@@ -2,8 +2,7 @@
 
 A statically typed, GC-managed application language with an embeddable bytecode VM.
 
-<!-- Badges will populate once CI is set up in M0 -->
-<!-- ![CI](https://github.com/<user>/lyric/actions/workflows/ci.yml/badge.svg) -->
+![CI](https://github.com/OIL1I/lyric/actions/workflows/ci.yml/badge.svg)
 
 > **Status: pre-alpha.** Lyric is in early development. The language design is
 > frozen for v1.0 (see [`docs/Sprache.md`](docs/Sprache.md)), but no working
