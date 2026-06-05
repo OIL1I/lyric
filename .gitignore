@@ -1,0 +1,99 @@
+# =============================================================================
+# .NET / C# build artifacts
+# =============================================================================
+bin/
+obj/
+out/
+build/
+publish/
+
+# Build configuration outputs
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Test results
+TestResults/
+[Tt]est[Rr]esults/
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+
+# Roslyn / source generator outputs
+GeneratedFiles/
+.vs/
+
+# =============================================================================
+# IDE-specific
+# =============================================================================
+# Visual Studio
+.vs/
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+
+# Rider / JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Visual Studio Code (allow shared settings, ignore personal)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# =============================================================================
+# OS-specific
+# =============================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# =============================================================================
+# Lyric-specific
+# =============================================================================
+# Compiled bytecode (regenerate via lyric build)
+*.lyrbc
+
+# Local dev playgrounds
+scratch/
+playground/
+
+# Local config overrides
+*.local.json
+.env
+.env.local
+
+# Generated docs
+docs/_site/
+docs/_book/

@@ -1,0 +1,95 @@
+name: Feature Idea
+description: Propose a language or tooling feature for consideration
+title: "[idea] "
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. Lyric has tight scope discipline
+        (see [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md)). Please fill
+        in all required fields honestly — vague ideas get parked in
+        `docs/IDEAS.md` without action.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What concrete problem does this solve?
+      description: |
+        Be specific. Describe code that exists today and is worse than it
+        could be. "It would be nice to have X" is not a problem.
+      placeholder: |
+        Example: When users write game-script callbacks, they currently
+        have to write `(x: int) => { return x + 1; }` even for trivial
+        one-liners because there is no trailing-closure syntax. This makes
+        ten-callback-deep game logic visually noisy.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workarounds
+    attributes:
+      label: What workarounds exist today, and why are they insufficient?
+      description: |
+        If the answer is "no workarounds exist", explain in detail why a
+        workaround is not possible. If workarounds exist but are clunky,
+        show the clunky version.
+      placeholder: |
+        Example: Today you can write the full lambda form, which works but
+        is 6 extra characters per callback. Over a typical game-logic file
+        with ~30 callbacks, that's ~180 characters of pure noise.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution (sketch)
+      description: |
+        A rough sketch of what the syntax / semantics would look like.
+        Does not need to be implementable. Just enough so we can discuss.
+      placeholder: |
+        Example:
+        ```lyr
+        xs.map { x => x + 1 }    // syntactic sugar for xs.map((x) => x + 1)
+        ```
+        Rule: if a function call's last argument is a block, the block
+        becomes a single-argument lambda.
+    validations:
+      required: true
+
+  - type: textarea
+    id: cost
+    attributes:
+      label: What does this break? What does it cost to implement?
+      description: |
+        Honestly assess. New keyword? Grammar change? Tooling impact
+        (formatter, LSP)? Documentation work?
+      placeholder: |
+        Example: No new keyword. Grammar change in the call-argument
+        production. Lexer unchanged. Pratt parser needs special-case
+        for trailing `{ ... }`. ~2 days of compiler work, ~1 day of
+        docs and tests.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: When could this realistically land?
+      options:
+        - "Before v1.0 (requires justification why this is a blocker, not a nice-to-have)"
+        - "Post-v1.0 (the default for almost every new feature)"
+        - "Unclear / experimental (will sit in IDEAS.md indefinitely)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: discipline
+    attributes:
+      label: Confirmation
+      options:
+        - label: "I have read CONTRIBUTING.md and understand the 7-day wait rule for any pre-v1.0 PR."
+          required: true
+        - label: "I confirm this is not just 'I saw it in another language and liked it' — there is a real Lyric-specific problem."
+          required: true
