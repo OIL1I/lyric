@@ -11,51 +11,60 @@
 
 ## Aktueller Meilenstein
 
-**M0 — Setup, Architekturrahmen, Test-Infra**
+**M1 — Lexer**
 
-Phase: Core-Schicht in Arbeit. Solution + CI stehen, SourceManager
-fertig. Es fehlt noch DiagnosticEngine, dann ist M0 fertig.
+M0 ist abgeschlossen (`m0-complete`-Tag). Bei M1 noch nicht begonnen —
+nächster Schritt: Slice-Planung.
 
 ## Was schon erledigt ist
 
-- [x] Repo, Doku-Files, CONTRIBUTING, LICENSE, README, .gitignore
-- [x] CLAUDE.md, STATUS.md für Session-Persistenz
-- [x] .NET-Solution mit Lyric.Core, Lyric.Cli, Lyric.Tests.Core
-- [x] GitHub Actions CI (Ubuntu + Windows Matrix), `dotnet build`/`test` grün
-- [x] `FileId`, `Span` (mit UTF-16-Code-Unit-Offsets)
-- [x] `SourceManager` + `LinePosition`: File-Laden (Disk+Virtual), Pfad-Zugriff,
-  Locate(offset)→1-basierte (Line, Col), Slice(span), GetLineText,
-  LineCount, FileCount — mit 50+ Tests grün
+- [x] **M0 — Setup, Architekturrahmen, Test-Infra** (siehe `m0-complete`-Tag)
+  - .NET-Solution + GitHub Actions CI (Ubuntu + Windows)
+  - `FileId`, `Span` (UTF-16 Code-Unit-Offsets), `LinePosition`
+  - `SourceManager`: Disk + Virtual Loading, Locate/Slice/GetLineText,
+    line-start cache mit Binary-Search-Lookup
+  - `Severity`, `Diagnostic`, `DiagnosticsComparer`, `DiagnosticEngine`:
+    sammeln, sortieren (file→start→end→code), Text- und JSON-Rendering
+  - 80+ xUnit-Tests grün, CI grün
+  - `lyric --version` und `lyric --help` funktionieren
 
 ## Woran wir gerade arbeiten
 
-**`DiagnosticEngine`** (Lieferposten 2 von 2 für M0-Core).
+Noch nichts begonnen. Erstes M1-Slice ist zu planen.
 
-Ausstehend:
-- `Diagnostic`-Record (Code, Severity, Span, Message)
-- Sammeln, deterministisch sortieren (File → Start → End → Code)
-- Text-Renderer (mit Source-Kontext, Underline-Caret)
-- JSON-Renderer
-- Diagnostik-Codes `LYR-CLI####` für CLI-Eingangsfehler
+Lieferposten von M1 (siehe `docs/ROADMAP.md`):
+- Token-Typen für alle Lexeme aus `Sprache.md §1`
+- Keywords, Operatoren (Longest-Match), Literals
+- f-String-Lexing mit Sub-Token-Modi
+- Verschachtelbare Block-Kommentare, Line-Kommentare, Doc-Kommentare
+- Diagnostik-Codes `LYR-LEX0001..0020`
+- CLI: `lyric tokenize <file>`
+- Golden-Tests pro Token-Klasse
 
 ## Was als nächstes ansteht
 
-Nach DiagnosticEngine:
-- M0-Exit-Kriterium prüfen: `dotnet build` grün, CI grün, `lyric --version`
-  funktioniert. → `m0-complete` Tag setzen.
-- Wechsel auf **M1 — Lexer**.
+Slice-Aufteilung in der ersten M1-Session:
+1. Token-Typen + Lexer-Skelett (Position-Tracking, Trivia-Handling)
+2. Einfache Tokens: Whitespace, Kommentare, Identifier, Keywords
+3. Numerische Literals (alle Bases + Suffixes)
+4. String- und Char-Literals (inkl. Escape-Sequenzen)
+5. f-String-Sub-Lexer
+6. Operatoren mit Longest-Match-Disambiguation
+7. CLI `lyric tokenize`
+8. Golden-Test-Infrastruktur
 
 ## Offene Fragen / Diskussions-Punkte
 
-- DiagnosticEngine: Sammler-Modell (eine Collect-Phase, dann Render) oder
-  Streaming-Modell (Diagnostics während des Compiles ausgeben)?
-  → Entscheidung im DiagnosticEngine-Plan.
-- JSON-Renderer-Schema: eigenes Format oder am Roslyn-/LSP-Schema orientieren?
-  → Klein anfangen, eigenes Format; LSP-Kompatibilität ist M9/Post-v1.
+- Lexer-Architektur: handgeschrieben mit `int _pos`-Index (rustc-Stil) oder
+  Reader/Stream-basiert (Roslyn-Stil)? → Entscheidung im M1-Plan.
+- Trivia-Modell: Tokens halten preceding Trivia (Roslyn) oder Trivia ist
+  ein eigener Token-Typ im Stream? → Hat Folgen für Parser.
+- f-String-Tokenisierung: Sub-Token-Modi inline im Hauptlexer (State-Maschine)
+  oder rekursiver Sub-Lexer? → Entscheidung im M1-Plan.
 
 ## Letzter relevanter Commit
 
-`M0: implement SourceManager with offset→line/column lookup`
+`M0: implement DiagnosticEngine with text and JSON renderers`
 
 ---
 
