@@ -4,7 +4,7 @@ namespace Lyric.Core;
 /// A half-open byte range within a source file: [Start, End).
 /// </summary>
 /// <remarks>
-/// Offsets are 0-based byte indices into the file's source text.
+/// 0-based UTF-16 code unit indices into the file's source text
 /// Use <see cref="SourceManager.Locate(Span)"/> to convert to line/column.
 /// </remarks>
 public readonly record struct Span(FileId File, int Start, int End)
