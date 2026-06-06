@@ -13,52 +13,49 @@
 
 **M0 — Setup, Architekturrahmen, Test-Infra**
 
-Phase: Setup läuft, .NET-Solution-Aufbau in Arbeit.
+Phase: Core-Schicht in Arbeit. Solution + CI stehen, SourceManager
+fertig. Es fehlt noch DiagnosticEngine, dann ist M0 fertig.
 
 ## Was schon erledigt ist
 
-- [x] Repo angelegt, `git init`, erster Commit mit Boilerplate
-- [x] Doku-Files in `docs/` (Sprache, Doku, ROADMAP, IDEAS)
-- [x] `CONTRIBUTING.md`, `LICENSE` (MIT), `README.md`, `.gitignore`
-- [x] GitHub-Issue-Template
-- [x] CLAUDE.md, STATUS.md (diese Datei) für Session-Persistenz
+- [x] Repo, Doku-Files, CONTRIBUTING, LICENSE, README, .gitignore
+- [x] CLAUDE.md, STATUS.md für Session-Persistenz
+- [x] .NET-Solution mit Lyric.Core, Lyric.Cli, Lyric.Tests.Core
+- [x] GitHub Actions CI (Ubuntu + Windows Matrix), `dotnet build`/`test` grün
+- [x] `FileId`, `Span` (mit UTF-16-Code-Unit-Offsets)
+- [x] `SourceManager` + `LinePosition`: File-Laden (Disk+Virtual), Pfad-Zugriff,
+  Locate(offset)→1-basierte (Line, Col), Slice(span), GetLineText,
+  LineCount, FileCount — mit 50+ Tests grün
 
 ## Woran wir gerade arbeiten
 
-`.NET-Solution-Setup` (Schritt A aus dem M0-Walkthrough). Sub-Steps:
+**`DiagnosticEngine`** (Lieferposten 2 von 2 für M0-Core).
 
-- [ ] `dotnet new sln`, `Lyric.Core` (classlib), `Lyric.Cli` (console),
-      `Lyric.Tests.Core` (xunit) erzeugen
-- [ ] Projekte zur Solution hinzufügen, Referenzen einrichten
-- [ ] Template-Müll (`Class1.cs`, `UnitTest1.cs`, Template-`Program.cs`) raus
-- [ ] Eigene Files: `FileId.cs`, `Span.cs`, `Program.cs` (CLI-Stub),
-      `SpanTests.cs`, `FileIdTests.cs`
-- [ ] `dotnet build` + `dotnet test` lokal grün
-- [ ] CI-Workflow committen, GitHub-Repo erzeugen, ersten Push
-- [ ] CI-Badge in README aktiviert (✓ schon drin, OIL1I/lyric)
+Ausstehend:
+- `Diagnostic`-Record (Code, Severity, Span, Message)
+- Sammeln, deterministisch sortieren (File → Start → End → Code)
+- Text-Renderer (mit Source-Kontext, Underline-Caret)
+- JSON-Renderer
+- Diagnostik-Codes `LYR-CLI####` für CLI-Eingangsfehler
 
-## Was als nächstes ansteht (im aktuellen Meilenstein)
+## Was als nächstes ansteht
 
-Nach Abschluss des Setup-Sub-Steps oben:
-
-1. **`SourceManager`-Implementierung** (~80 Zeilen + Tests)
-   - File-Loading aus Pfad → `FileId`
-   - Offset → (Zeile, Spalte) Lookup mit gecachten Line-Starts
-   - Source-Text-Zugriff über `FileId`
-2. **`DiagnosticEngine`-Implementierung** (~100 Zeilen + Tests)
-   - `Diagnostic`-Record (Code, Severity, Span, Message)
-   - Sammeln, deterministisch sortieren (File → Start → End → Code)
-   - Text-Renderer + JSON-Renderer
-
-Beides Lieferposten von M0 laut `docs/ROADMAP.md`.
+Nach DiagnosticEngine:
+- M0-Exit-Kriterium prüfen: `dotnet build` grün, CI grün, `lyric --version`
+  funktioniert. → `m0-complete` Tag setzen.
+- Wechsel auf **M1 — Lexer**.
 
 ## Offene Fragen / Diskussions-Punkte
 
-_(Nichts offen aktuell.)_
+- DiagnosticEngine: Sammler-Modell (eine Collect-Phase, dann Render) oder
+  Streaming-Modell (Diagnostics während des Compiles ausgeben)?
+  → Entscheidung im DiagnosticEngine-Plan.
+- JSON-Renderer-Schema: eigenes Format oder am Roslyn-/LSP-Schema orientieren?
+  → Klein anfangen, eigenes Format; LSP-Kompatibilität ist M9/Post-v1.
 
 ## Letzter relevanter Commit
 
-`(noch nicht vorhanden — Setup läuft)`
+`M0: implement SourceManager with offset→line/column lookup`
 
 ---
 
