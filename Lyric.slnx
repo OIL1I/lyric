@@ -2,8 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/Lyric.Cli/Lyric.Cli.csproj" />
     <Project Path="src/Lyric.Core/Lyric.Core.csproj" />
+    <Project Path="src/Lyric.Lexing/Lyric.Lexing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Lyric.Tests.Core/Lyric.Tests.Core.csproj" />
+    <Project Path="tests/Lyric.Tests.Lexing/Lyric.Tests.Lexing.csproj" />
   </Folder>
 </Solution>
