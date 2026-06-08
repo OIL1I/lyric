@@ -247,7 +247,7 @@ public class LexerTests
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
             new[] {
-                TokenKind.Identifier,   // fn
+                TokenKind.Fn,   // fn
                 TokenKind.Identifier,   // main
                 TokenKind.LParen,
                 TokenKind.RParen,
@@ -361,5 +361,339 @@ public class LexerTests
         Assert.Equal((5, 8), (tokens[2].Span.Start, tokens[2].Span.End));  // bar
         Assert.Equal((8, 9), (tokens[3].Span.Start, tokens[3].Span.End));  // )
         Assert.Equal((9, 9), (tokens[4].Span.Start, tokens[4].Span.End));  // EOF
+    }
+    
+        // ─── Keywords (Slice 2) ────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("module",    TokenKind.Module)]
+    [InlineData("import",    TokenKind.Import)]
+    [InlineData("as",        TokenKind.As)]
+    [InlineData("pub",       TokenKind.Pub)]
+    [InlineData("struct",    TokenKind.Struct)]
+    [InlineData("class",     TokenKind.Class)]
+    [InlineData("enum",      TokenKind.Enum)]
+    [InlineData("interface", TokenKind.Interface)]
+    [InlineData("extend",    TokenKind.Extend)]
+    [InlineData("fn",        TokenKind.Fn)]
+    [InlineData("mut",       TokenKind.Mut)]
+    [InlineData("let",       TokenKind.Let)]
+    [InlineData("var",       TokenKind.Var)]
+    [InlineData("params",    TokenKind.Params)]
+    [InlineData("if",        TokenKind.If)]
+    [InlineData("else",      TokenKind.Else)]
+    [InlineData("while",     TokenKind.While)]
+    [InlineData("do",        TokenKind.Do)]
+    [InlineData("for",       TokenKind.For)]
+    [InlineData("in",        TokenKind.In)]
+    [InlineData("match",     TokenKind.Match)]
+    [InlineData("break",     TokenKind.Break)]
+    [InlineData("continue",  TokenKind.Continue)]
+    [InlineData("return",    TokenKind.Return)]
+    [InlineData("yield",     TokenKind.Yield)]
+    [InlineData("resume",    TokenKind.Resume)]
+    [InlineData("defer",     TokenKind.Defer)]
+    [InlineData("try",       TokenKind.Try)]
+    [InlineData("catch",     TokenKind.Catch)]
+    [InlineData("throw",     TokenKind.Throw)]
+    [InlineData("true",      TokenKind.True)]
+    [InlineData("false",     TokenKind.False)]
+    [InlineData("null",      TokenKind.Null)]
+    [InlineData("this",      TokenKind.This)]
+    public void Keyword_is_recognized_as_its_specific_kind(string input, TokenKind expectedKind)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(expectedKind, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(input.Length, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("fnx")]      // Keyword als Präfix
+    [InlineData("fn_")]      // Underscore-Suffix
+    [InlineData("fn1")]      // Digit-Suffix
+    [InlineData("_fn")]      // Underscore-Präfix
+    [InlineData("FN")]       // Case-sensitive
+    [InlineData("Fn")]
+    [InlineData("LET")]
+    public void Identifier_that_only_resembles_keyword_is_Identifier(string input)
+    {
+        var (tokens, _) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
+    }
+
+    [Theory]
+    [InlineData("async")]
+    [InlineData("await")]
+    [InlineData("const")]
+    [InlineData("trait")]
+    [InlineData("move")]
+    [InlineData("own")]
+    public void Reserved_post_v1_words_are_Identifier_in_v1(string input)
+    {
+        // Spec §1.4: async, await, const, trait, move, own sind in v1 keine
+        // Keywords — sie bleiben normale Identifier.
+        var (tokens, _) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
+    }
+
+    [Fact]
+    public void Keyword_followed_by_identifier_separated_by_whitespace()
+    {
+        var (tokens, _) = Tokenize("fn main");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Fn, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(2, tokens[0].Span.End);
+        Assert.Equal(3, tokens[1].Span.Start);
+        Assert.Equal(7, tokens[1].Span.End);
+    }
+
+    [Fact]
+    public void Hello_world_with_keyword_dispatch()
+    {
+        // Aus Slice 1 — jetzt sollte `fn` als Keyword erkannt werden statt Identifier.
+        var (tokens, diag) = Tokenize("fn main() {}");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.Fn,            // <-- jetzt Keyword
+                TokenKind.Identifier,    // main
+                TokenKind.LParen,
+                TokenKind.RParen,
+                TokenKind.LBrace,
+                TokenKind.RBrace,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Doc-Comments (Slice 2) ────────────────────────────────────────────
+
+    [Fact]
+    public void DocComment_simple_emits_token()
+    {
+        var (tokens, diag) = Tokenize("/// hello");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(9, tokens[0].Span.End);   // "/// hello".Length
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void DocComment_empty_body()
+    {
+        var (tokens, _) = Tokenize("///");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(3, tokens[0].Span.End);
+    }
+
+    [Fact]
+    public void Four_slashes_are_DocComment_with_slash_body()
+    {
+        // "////" — ist DocComment mit Body "/".
+        var (tokens, _) = Tokenize("////");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(4, tokens[0].Span.End);
+    }
+
+    [Fact]
+    public void DocComment_disambiguated_from_line_comment()
+    {
+        // Regression für die "PeekAt(2)"-Disambiguierung in SkipTrivia und Next.
+        var (tokens, _) = Tokenize("// not a doc\n/// a doc");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(13, tokens[0].Span.Start);   // nach "// not a doc\n"
+        Assert.Equal(22, tokens[0].Span.End);     // bis Ende der Datei
+    }
+
+    [Fact]
+    public void DocComment_followed_by_identifier_on_next_line()
+    {
+        var (tokens, _) = Tokenize("/// docs\nfoo");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(8, tokens[0].Span.End);      // bis vor \n
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.Equal(9, tokens[1].Span.Start);    // direkt nach \n
+        Assert.Equal(12, tokens[1].Span.End);
+    }
+
+    [Fact]
+    public void Multiple_DocComments_in_a_row()
+    {
+        var (tokens, _) = Tokenize("/// line1\n/// line2\nfoo");
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.DocComment, tokens[1].TokenKind);
+        Assert.Equal(TokenKind.Identifier, tokens[2].TokenKind);
+        Assert.Equal(TokenKind.Eof, tokens[3].TokenKind);
+    }
+
+    [Fact]
+    public void DocComment_at_EOF_without_newline()
+    {
+        var (tokens, _) = Tokenize("/// at the end");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(14, tokens[0].Span.End);     // gesamte Länge
+        Assert.Equal(14, tokens[1].Span.Start);   // EOF an Length
+    }
+
+    // ─── Block-Comments (Slice 2, als Trivia) ──────────────────────────────
+
+    [Fact]
+    public void Block_comment_simple_is_skipped()
+    {
+        var (tokens, diag) = Tokenize("/* hello */");
+        Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Empty_block_comment_is_skipped()
+    {
+        var (tokens, _) = Tokenize("/**/");
+        Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
+    }
+
+    [Fact]
+    public void Block_comment_between_identifiers()
+    {
+        var (tokens, _) = Tokenize("foo /* mid */ bar");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.Equal(TokenKind.Eof, tokens[2].TokenKind);
+        Assert.Equal(14, tokens[1].Span.Start);   // direkt nach "foo /* mid */ "
+        Assert.Equal(17, tokens[1].Span.End);
+    }
+
+    [Fact]
+    public void Multiline_block_comment_is_skipped()
+    {
+        var (tokens, diag) = Tokenize("/* line1\nline2\nline3 */");
+        Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Nested_block_comment_one_level()
+    {
+        var (tokens, diag) = Tokenize("/* outer /* inner */ outer */");
+        Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Nested_block_comment_deep()
+    {
+        var (tokens, diag) = Tokenize("/* a /* b /* c */ b */ a */");
+        Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Block_comment_followed_by_identifier()
+    {
+        var (tokens, _) = Tokenize("/*foo*/bar");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
+        Assert.Equal(7, tokens[0].Span.Start);   // direkt nach "/*foo*/"
+        Assert.Equal(10, tokens[0].Span.End);
+    }
+
+    [Fact]
+    public void Unterminated_block_comment_emits_LEX0002()
+    {
+        var (tokens, diag) = Tokenize("/* unterminated");
+        Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
+        Assert.True(diag.HasErrors);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0002", diag.Diagnostics[0].Code);
+        Assert.Equal(0, diag.Diagnostics[0].Span.Start);
+        Assert.Equal(15, diag.Diagnostics[0].Span.End);
+    }
+
+    [Fact]
+    public void Unterminated_nested_block_comment_emits_one_diagnostic()
+    {
+        // Eine offen gebliebene Verschachtelung — nur eine Diagnostic erwartet
+        // (am Ende ist depth > 0, das löst genau einmal aus).
+        var (_, diag) = Tokenize("/* outer /* inner ");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0002", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Block_comment_with_doc_comment_marker_inside_is_just_block()
+    {
+        // Die /// in einem Block-Comment ist Inhalt, kein DocComment-Token.
+        var (tokens, _) = Tokenize("/* /// not a doc */");
+        Assert.Single(tokens);
+        Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
+    }
+
+    // ─── Trivia-Reihenfolge (Slice 2 Regressionen) ─────────────────────────
+
+    [Fact]
+    public void Line_then_block_then_doc()
+    {
+        var (tokens, _) = Tokenize("// line\n/* block */\n/// doc\nfoo");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.Equal(TokenKind.Eof, tokens[2].TokenKind);
+    }
+
+    [Fact]
+    public void Block_then_keyword()
+    {
+        var (tokens, _) = Tokenize("/* comment */ fn");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.Fn, tokens[0].TokenKind);
+        Assert.Equal(14, tokens[0].Span.Start);   // direkt nach "/* comment */ "
+        Assert.Equal(16, tokens[0].Span.End);
+    }
+
+    [Fact]
+    public void DocComment_then_keyword_then_doc_again()
+    {
+        // Ein realistischeres Beispiel.
+        var (tokens, diag) = Tokenize("/// docs\nfn foo() {}\n/// trailing");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.DocComment,
+                TokenKind.Fn,
+                TokenKind.Identifier,    // foo
+                TokenKind.LParen,
+                TokenKind.RParen,
+                TokenKind.LBrace,
+                TokenKind.RBrace,
+                TokenKind.DocComment,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
     }
 }
