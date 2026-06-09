@@ -4,12 +4,14 @@ namespace Lyric.Lexing;
 
 public sealed class Lexer
 {
-
     private enum SuffixCategory
     {
-        None, Invalid, Int, Float
+        None,
+        Invalid,
+        Int,
+        Float
     }
-    
+
     private readonly SourceManager _sources;
     private readonly DiagnosticEngine _diagnostics;
     private readonly FileId _file;
@@ -19,6 +21,9 @@ public sealed class Lexer
 
     private char Current => _pos < _source.Length ? _source[_pos] : '\0';
     private char PeekAt(int offset) => _pos + offset < _source.Length ? _source[_pos + offset] : '\0';
+
+    #region Is-Helpers
+
     private static bool IsWhitespace(char c) => (c == ' ' || c == '\t' || c == '\r' || c == '\n');
     private static bool IsIdentifierStart(char c) => c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or '_';
     private static bool IsIdentifierCont(char c) => IsIdentifierStart(c) || c is >= '0' and <= '9';
@@ -29,6 +34,8 @@ public sealed class Lexer
     private static bool IsDecDigit(char c) => c is >= '0' and <= '9';
     private static bool IsOctalDigit(char c) => c is >= '0' and <= '7';
     private static bool IsBinaryDigit(char c) => c is '0' or '1';
+
+    #endregion
 
     private static readonly Dictionary<string, TokenKind> Keywords = new()
     {
@@ -114,6 +121,16 @@ public sealed class Lexer
             return ScanNumber(_pos);
         }
 
+        if (Current == '"')
+        {
+            return ScanString(_pos);
+        }
+
+        if (Current == '\'')
+        {
+            return ScanChar(_pos);
+        }
+
         if (Current == '(')
         {
             _pos++;
@@ -143,6 +160,8 @@ public sealed class Lexer
         _pos++;
         return new Token(TokenKind.BadChar, span);
     }
+
+    #region Comments & Identifiers
 
     private void SkipTrivia()
     {
@@ -200,6 +219,17 @@ public sealed class Lexer
         }
     }
 
+    private Token ScanDocComment(int start)
+    {
+        _pos += 3; //Consume '///'
+        while (Current != '\n' && Current != '\0')
+        {
+            _pos++;
+        }
+
+        return new Token(TokenKind.DocComment, new Span(_file, start, _pos));
+    }
+
     private Token ScanIdentifier(int identifierStart)
     {
         while (IsIdentifierCont(Current))
@@ -214,16 +244,9 @@ public sealed class Lexer
         return new Token(TokenKind.Identifier, new Span(_file, identifierStart, _pos));
     }
 
-    private Token ScanDocComment(int start)
-    {
-        _pos += 3; //Consume '///'
-        while (Current != '\n' && Current != '\0')
-        {
-            _pos++;
-        }
+    #endregion
 
-        return new Token(TokenKind.DocComment, new Span(_file, start, _pos));
-    }
+    #region Numeric Literals
 
     private Token ScanNumber(int numberStart)
     {
@@ -261,9 +284,11 @@ public sealed class Lexer
             _pos++;
             while (digitCheck(Current)) _pos++;
             _diagnostics.Report(new Diagnostic("LYR-LEX0005", Severity.Error,
-                new Span(_file, numberStart, _pos), "numeric literal separator '_' is not allowed to follow after a prefix"));
+                new Span(_file, numberStart, _pos),
+                "numeric literal separator '_' is not allowed to follow after a prefix"));
             return new Token(TokenKind.IntLiteral, new Span(_file, numberStart, _pos));
         }
+
         if (!digitCheck(Current))
         {
             _diagnostics.Report(new Diagnostic("LYR-LEX0004", Severity.Error,
@@ -280,14 +305,16 @@ public sealed class Lexer
         {
             case SuffixCategory.Invalid:
             case SuffixCategory.Float:
-                var message = $"invalid suffix '{_source.Substring(suffixSpan.Start, suffixSpan.Length)}' on prefixed integer literal";
-                _diagnostics.Report(new Diagnostic("LYR-LEX0003", Severity.Error, new Span(_file, numberStart, _pos), message));
+                var message =
+                    $"invalid suffix '{_source.Substring(suffixSpan.Start, suffixSpan.Length)}' on prefixed integer literal";
+                _diagnostics.Report(new Diagnostic("LYR-LEX0003", Severity.Error, new Span(_file, numberStart, _pos),
+                    message));
                 return new Token(TokenKind.IntLiteral, new Span(_file, numberStart, _pos));
             default:
                 return new Token(TokenKind.IntLiteral, new Span(_file, numberStart, _pos));
         }
     }
-    
+
     private Token ScanDecLiteral(int numberStart)
     {
         var isFloat = false;
@@ -298,6 +325,7 @@ public sealed class Lexer
             while (IsDecDigit(Current) || Current == '_') _pos++;
             isFloat = true;
         }
+
         if (Current is 'e' or 'E')
         {
             _pos++; //Consume 'e' or 'E'
@@ -305,6 +333,7 @@ public sealed class Lexer
             {
                 _pos++; //Consume '+' or '-'
             }
+
             if (!IsDecDigit(Current))
             {
                 _diagnostics.Report(new Diagnostic("LYR-LEX0006", Severity.Error,
@@ -321,16 +350,19 @@ public sealed class Lexer
         {
             case SuffixCategory.Invalid:
                 message = $"invalid suffix '{_source.Substring(span.Start, span.Length)}' on decimal literal";
-                _diagnostics.Report(new Diagnostic("LYR-LEX0003", Severity.Error, new Span(_file, numberStart, _pos), message));
+                _diagnostics.Report(new Diagnostic("LYR-LEX0003", Severity.Error, new Span(_file, numberStart, _pos),
+                    message));
                 return new Token(TokenKind.IntLiteral, new Span(_file, numberStart, _pos));
             case SuffixCategory.Int:
                 if (isFloat)
                 {
-                    message = $"integer suffix '{_source.Substring(span.Start, span.Length)}' is not allowed on float literal";
+                    message =
+                        $"integer suffix '{_source.Substring(span.Start, span.Length)}' is not allowed on float literal";
                     _diagnostics.Report(new Diagnostic("LYR-LEX0003", Severity.Error,
                         new Span(_file, numberStart, _pos), message));
                     return new Token(TokenKind.FloatLiteral, new Span(_file, numberStart, _pos));
                 }
+
                 return new Token(TokenKind.IntLiteral, new Span(_file, numberStart, _pos));
             case SuffixCategory.Float:
                 return new Token(TokenKind.FloatLiteral, new Span(_file, numberStart, _pos));
@@ -343,16 +375,18 @@ public sealed class Lexer
     private SuffixCategory TryReadSuffix(out Span suffixSpan)
     {
         var start = _pos;
-        if (Current is not ('i' or  'f' or 'u'))
+        if (Current is not ('i' or 'f' or 'u'))
         {
             suffixSpan = new Span(_file, start, _pos);
             return SuffixCategory.None;
         }
+
         _pos++;
         while (IsDecDigit(Current))
         {
             _pos++;
         }
+
         var suffix = _source.Substring(start, _pos - start);
         if (ValidIntSuffixes.Contains(suffix))
         {
@@ -365,9 +399,169 @@ public sealed class Lexer
             suffixSpan = new Span(_file, start, _pos);
             return SuffixCategory.Float;
         }
+
         suffixSpan = new Span(_file, start, _pos);
         return SuffixCategory.Invalid;
     }
+
+    #endregion
+
+    #region String/Char Literals
+
+    private Token ScanString(int stringStart)
+    {
+        _pos++; // Consume '"'
+        while (Current is not ('\0' or '\n'))
+        {
+            if (Current == '"')
+            {
+                _pos++; // Consume closing '"'
+                return new Token(TokenKind.StringLiteral, new Span(_file, stringStart, _pos));
+            }
+
+            if (Current == '\\')
+                ConsumeEscapeSequence();
+            else
+                _pos++;
+        }
+
+        _diagnostics.Report(new Diagnostic("LYR-LEX0009", Severity.Error,
+            new Span(_file, stringStart, _pos), "unterminated string literal"));
+        return new Token(TokenKind.StringLiteral, new Span(_file, stringStart, _pos));
+    }
+
+    private Token ScanChar(int charStart)
+    {
+        _pos++; //Consume '''
+        var contentCount = 0;
+        while (true)
+        {
+            if (Current == '\0' || Current == '\n')
+            {
+                _diagnostics.Report(new Diagnostic("LYR-LEX0010", Severity.Error,
+                    new Span(_file, charStart, _pos), "unterminated character literal"));
+                return new Token(TokenKind.CharLiteral, new Span(_file, charStart, _pos));
+            }
+
+            if (Current == '\'')
+            {
+                _pos++; // Consume closing '''
+                if (contentCount != 1)
+                {
+                    _diagnostics.Report(new Diagnostic("LYR-LEX0008", Severity.Error, new Span(_file, charStart, _pos),
+                        $"expected only 1 character in character literal, got {contentCount}"));
+                    return new Token(TokenKind.CharLiteral, new Span(_file, charStart, _pos));
+                }
+
+                return new Token(TokenKind.CharLiteral, new Span(_file, charStart, _pos));
+            }
+
+            if (Current == '\\')
+            {
+                ConsumeEscapeSequence();
+                contentCount++;
+            }
+            else
+            {
+                contentCount++;
+                _pos++;
+            }
+        }
+    }
+
+    private void ConsumeEscapeSequence()
+    {
+        _pos++; //Consume '\'
+        if (Current is '\0' or '\n') return;
+        switch (Current)
+        {
+            case 'n':
+            case 't':
+            case 'r':
+            case '\\':
+            case '"':
+            case '\'':
+            case '0':
+                _pos++;
+                return;
+            case 'x':
+                ConsumeHexEscape(_pos);
+                return;
+            case 'u':
+                ConsumeUnicodeEscape(_pos);
+                return;
+            default:
+                var message = $"invalid escape sequence '\\{Current}'";
+                _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error,
+                    new Span(_file, _pos - 1, _pos), message));
+                _pos++;
+                return;
+        }
+    }
+
+    private void ConsumeHexEscape(int hexStart)
+    {
+        _pos++; //Consume 'x'
+        var hexCount = 0;
+        while (2 > hexCount && IsHexDigit(Current) && Current != '\0' && Current != '\n')
+        {
+            _pos++;
+            hexCount++;
+        }
+
+        if (hexCount != 2)
+        {
+            _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error, new Span(_file, hexStart - 1, _pos),
+                "expected 2 hex digits after '\\x' escape"));
+        }
+    }
+
+    private void ConsumeUnicodeEscape(int unicodeStart)
+    {
+        _pos++; //Consume 'u'
+        if (Current != '{')
+        {
+            _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error, new Span(_file, unicodeStart - 1, _pos),
+                "expected '{' after '\\u' escape"));
+            return;
+        }
+
+        _pos++; //Consume '{'
+        var hexCount = 0;
+        while (8 > hexCount && IsHexDigit(Current) && Current != '\0' && Current != '\n')
+        {
+            _pos++;
+            hexCount++;
+        }
+
+        if (hexCount == 0)
+        {
+            _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error, new Span(_file, unicodeStart - 1, _pos),
+                "expected hex digits after '\\u{' escape"));
+        }
+
+        if (Current != '}')
+        {
+            _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error, new Span(_file, unicodeStart - 1, _pos),
+                "expected closing '}' in '\\u' escape"));
+            return;
+        }
+
+        if (hexCount > 0)
+        {
+            var hexVal = Int32.Parse(_source.Substring(unicodeStart + 2, hexCount),
+                System.Globalization.NumberStyles.HexNumber);
+            if (hexVal > 0x10FFFF)
+            {
+                _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error, new Span(_file, unicodeStart - 1, _pos),
+                    "unicode value out of range (max: 0x10FFFF)"));
+            }
+        }
+
+        _pos++; // Consume '}'
+    }
+
+    #endregion
 
     private void ReportBadCharacter(char badChar, Span span)
     {

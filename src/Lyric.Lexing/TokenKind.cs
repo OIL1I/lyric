@@ -58,6 +58,8 @@ public enum TokenKind
     Null,
     IntLiteral ,     // alle Bases: dec, hex, bin, oct, mit/ohne Int-Suffix
     FloatLiteral,    // Dec mit '.' DecLit, oder Dec mit Exponent, oder Dec mit Float-Suffix
+    StringLiteral,
+    CharLiteral,
 
     // This
     This,

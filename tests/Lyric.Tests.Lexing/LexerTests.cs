@@ -1023,4 +1023,285 @@ public class LexerTests
             kinds);
         Assert.False(diag.HasErrors);
     }
+    
+        // ─── String Literals: Plain ────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("\"\"",             2)]
+    [InlineData("\"a\"",            3)]
+    [InlineData("\"hello\"",        7)]
+    [InlineData("\"hello world\"", 13)]
+    public void Plain_string_literal(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void String_with_non_ascii_chars()
+    {
+        var (tokens, diag) = Tokenize("\"äöü日\"");
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── String Literals: Escapes ──────────────────────────────────────────
+
+    [Theory]
+    [InlineData("\"\\n\"",   4)]   // Lyric: "\n"
+    [InlineData("\"\\r\"",   4)]
+    [InlineData("\"\\t\"",   4)]
+    [InlineData("\"\\\\\"",  4)]   // Lyric: "\\"
+    [InlineData("\"\\\"\"",  4)]   // Lyric: "\""
+    [InlineData("\"\\0\"",   4)]
+    [InlineData("\"\\'\"",   4)]
+    public void String_with_simple_escape(string input, int expectedEnd)
+    {
+        // Regression Bug 1: _pos++ nach ConsumeEscapeSequence.
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("\"\\x1F\"",     6)]
+    [InlineData("\"\\xFF\"",     6)]
+    [InlineData("\"\\x00\"",     6)]
+    [InlineData("\"\\xab\"",     6)]
+    public void String_with_valid_hex_escape(string input, int expectedEnd)
+    {
+        // Regression Bug 3: Loop-Count-Bug in ConsumeHexEscape.
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("\"\\u{41}\"",      8)]    // 'A'
+    [InlineData("\"\\u{0}\"",       7)]
+    [InlineData("\"\\u{1F30D}\"",  11)]    // 🌍
+    [InlineData("\"\\u{10FFFF}\"", 12)]    // max valid
+    public void String_with_valid_unicode_escape(string input, int expectedEnd)
+    {
+        // Regression Bug 3+4: Loop-Count + Int32.Parse ohne HexNumber.
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void String_with_multiple_escapes()
+    {
+        var (tokens, diag) = Tokenize("\"line1\\nline2\\t\\u{41}\"");
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── String Diagnostics ────────────────────────────────────────────────
+
+    [Fact]
+    public void Unknown_escape_emits_LEX0007()
+    {
+        var (tokens, diag) = Tokenize("\"\\q\"");
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0007", diag.Diagnostics[0].Code);
+    }
+
+    [Theory]
+    [InlineData("\"\\x\"")]      // keine Hex-Digits
+    [InlineData("\"\\x1\"")]     // nur 1 Hex-Digit
+    [InlineData("\"\\xZZ\"")]    // non-hex
+    public void Invalid_hex_escape_emits_LEX0007(string input)
+    {
+        var (_, diag) = Tokenize(input);
+        Assert.True(diag.ErrorCount >= 1);
+        Assert.Equal("LYR-LEX0007", diag.Diagnostics[0].Code);
+    }
+
+    [Theory]
+    [InlineData("\"\\u\"")]        // kein {
+    [InlineData("\"\\u{}\"")]      // leer — Regression Bug 5
+    [InlineData("\"\\u{ZZ}\"")]    // non-hex
+    [InlineData("\"\\u{41\"")]     // kein schließendes }
+    public void Invalid_unicode_escape_emits_LEX0007(string input)
+    {
+        var (_, diag) = Tokenize(input);
+        Assert.True(diag.ErrorCount >= 1);
+        Assert.Equal("LYR-LEX0007", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Unicode_escape_out_of_range_emits_LEX0007()
+    {
+        var (_, diag) = Tokenize("\"\\u{110000}\"");
+        Assert.True(diag.ErrorCount >= 1);
+        Assert.Equal("LYR-LEX0007", diag.Diagnostics[0].Code);
+    }
+
+    [Theory]
+    [InlineData("\"")]              // nur Open-Quote → EOF
+    [InlineData("\"foo")]           // kein Close → EOF
+    public void Unterminated_string_emits_LEX0009(string input)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0009", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void String_with_unescaped_newline_yields_cascade()
+    {
+        // Recovery-Verhalten: jedes `"` startet einen neuen String.
+        // Nach LYR-LEX0009 am `\n` lexed der Rest normal weiter, das
+        // zweite `"` öffnet wieder einen unterminated String bis EOF.
+        var (tokens, diag) = Tokenize("\"foo\nbar\"");
+        var stringTokens = tokens.Where(t => t.TokenKind == TokenKind.StringLiteral).ToList();
+        Assert.Equal(2, stringTokens.Count);
+        Assert.Equal(2, diag.ErrorCount);
+        Assert.All(diag.Diagnostics, d => Assert.Equal("LYR-LEX0009", d.Code));
+    }
+
+    // ─── Char Literals: Plain ──────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("'a'",   3)]
+    [InlineData("'Z'",   3)]
+    [InlineData("' '",   3)]
+    [InlineData("'5'",   3)]
+    public void Plain_char_literal(string input, int expectedEnd)
+    {
+        // Regression Bug 2: schließendes ' returnt nicht.
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.CharLiteral, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("'\\n'",   4)]
+    [InlineData("'\\t'",   4)]
+    [InlineData("'\\\\'",  4)]
+    [InlineData("'\\''",   4)]   // escaped '
+    [InlineData("'\\0'",   4)]
+    public void Char_with_simple_escape(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.CharLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("'\\x1F'",     6)]
+    [InlineData("'\\u{41}'",   8)]
+    [InlineData("'\\u{1F30D}'", 11)]
+    public void Char_with_full_escape(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.CharLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Char Diagnostics ──────────────────────────────────────────────────
+
+    [Fact]
+    public void Empty_char_emits_LEX0008()
+    {
+        var (tokens, diag) = Tokenize("''");
+        Assert.Equal(TokenKind.CharLiteral, tokens[0].TokenKind);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0008", diag.Diagnostics[0].Code);
+    }
+
+    [Theory]
+    [InlineData("'ab'")]
+    [InlineData("'abc'")]
+    [InlineData("'xyz'")]
+    public void Char_with_multiple_chars_emits_LEX0008(string input)
+    {
+        var (_, diag) = Tokenize(input);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0008", diag.Diagnostics[0].Code);
+    }
+
+    [Theory]
+    [InlineData("'")]              // nur Open → EOF
+    [InlineData("'a")]             // kein Close → EOF
+    public void Unterminated_char_emits_LEX0010(string input)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(TokenKind.CharLiteral, tokens[0].TokenKind);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0010", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Char_with_unescaped_newline_yields_cascade()
+    {
+        var (tokens, diag) = Tokenize("'a\n'");
+        var charTokens = tokens.Where(t => t.TokenKind == TokenKind.CharLiteral).ToList();
+        Assert.Equal(2, charTokens.Count);
+        Assert.Equal(2, diag.ErrorCount);
+        Assert.All(diag.Diagnostics, d => Assert.Equal("LYR-LEX0010", d.Code));
+    }
+
+    // ─── Adjazenz ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void String_followed_by_identifier()
+    {
+        var (tokens, diag) = Tokenize("\"hello\" world");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Char_followed_by_int()
+    {
+        var (tokens, diag) = Tokenize("'a' 42");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.CharLiteral, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.IntLiteral, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Multiple_strings_in_sequence()
+    {
+        var (tokens, diag) = Tokenize("\"foo\" \"bar\" \"baz\"");
+        Assert.Equal(4, tokens.Count);
+        Assert.All(tokens.Take(3), t => Assert.Equal(TokenKind.StringLiteral, t.TokenKind));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Mixed_strings_and_chars()
+    {
+        var (tokens, diag) = Tokenize("\"foo\" 'x' \"bar\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] { TokenKind.StringLiteral, TokenKind.CharLiteral,
+                    TokenKind.StringLiteral, TokenKind.Eof },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
 }
