@@ -696,4 +696,331 @@ public class LexerTests
             kinds);
         Assert.False(diag.HasErrors);
     }
+    
+        // ─── Dec Int Literals (Slice 3) ────────────────────────────────────────
+
+    [Theory]
+    [InlineData("0",            1)]
+    [InlineData("1",            1)]
+    [InlineData("42",           2)]
+    [InlineData("1_000_000",    9)]
+    [InlineData("1_",           2)]
+    [InlineData("123456789",    9)]
+    public void Decimal_int_literal(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Hex / Bin / Oct Int Literals ─────────────────────────────────────
+
+    [Theory]
+    [InlineData("0xFF",            4)]
+    [InlineData("0xff",            4)]
+    [InlineData("0xfF",            4)]
+    [InlineData("0XfF",            4)]
+    [InlineData("0xDEAD_BEEF",     11)]
+    [InlineData("0x0",             3)]
+    [InlineData("0x1234567890",    12)]
+    public void Hex_int_literal(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("0b0",         3)]
+    [InlineData("0b1",         3)]
+    [InlineData("0b1010",      6)]
+    [InlineData("0B1010_0101", 11)]
+    public void Binary_int_literal(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Theory]
+    [InlineData("0o0",   3)]
+    [InlineData("0o7",   3)]
+    [InlineData("0o755", 5)]
+    [InlineData("0O7_7", 5)]
+    public void Octal_int_literal(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Int Literals with Valid Suffix ────────────────────────────────────
+
+    [Theory]
+    [InlineData("0i8",        3)]
+    [InlineData("100i8",      5)]
+    [InlineData("100i16",     6)]
+    [InlineData("100i32",     6)]
+    [InlineData("100i64",     6)]
+    [InlineData("100u8",      5)]
+    [InlineData("100u16",     6)]
+    [InlineData("100u32",     6)]
+    [InlineData("100u64",     6)]
+    [InlineData("0xFFi8",     6)]
+    [InlineData("0b1010u32",  9)]
+    [InlineData("0o7u8",      5)]
+    public void Int_literal_with_valid_suffix(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Float Literals: Dot Form ──────────────────────────────────────────
+
+    [Theory]
+    [InlineData("1.0",      3)]
+    [InlineData("1.5",      3)]
+    [InlineData("0.0",      3)]
+    [InlineData("3.14159",  7)]
+    [InlineData("1_0.5",    5)]
+    [InlineData("1.5_5",    5)]
+    public void Float_literal_with_dot(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.FloatLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Float Literals: Exponent ──────────────────────────────────────────
+
+    [Theory]
+    [InlineData("1e5",    3)]
+    [InlineData("1E5",    3)]
+    [InlineData("1e0",    3)]
+    [InlineData("1.5e3",  5)]
+    [InlineData("1.5e+3", 6)]
+    [InlineData("1.5e-3", 6)]
+    [InlineData("1e+10",  5)]
+    [InlineData("1e-10",  5)]
+    [InlineData("1E-0",   4)]
+    public void Float_literal_with_exponent(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.FloatLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Float Literals: Valid Suffix ──────────────────────────────────────
+
+    [Theory]
+    [InlineData("1.0f32",  6)]
+    [InlineData("1.5f64",  6)]
+    [InlineData("1f32",    4)]   // DecLit FloatSuffix form
+    [InlineData("1f64",    4)]
+    [InlineData("100f32",  6)]
+    [InlineData("1e5f64",  6)]
+    [InlineData("1.5e3f32", 8)]
+    public void Float_literal_with_valid_suffix(string input, int expectedEnd)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.FloatLiteral, tokens[0].TokenKind);
+        Assert.Equal(expectedEnd, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Float Disambiguation ──────────────────────────────────────────────
+
+    [Fact]
+    public void Float_disambiguation_dot_followed_by_identifier()
+    {
+        // 1.foo → IntLiteral(1), '.' as BadChar (until Slice 6 adds Dot punct),
+        // Identifier(foo).
+        var (tokens, diag) = Tokenize("1.foo");
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal((0, 1), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(TokenKind.BadChar, tokens[1].TokenKind);
+        Assert.Equal((1, 2), (tokens[1].Span.Start, tokens[1].Span.End));
+        Assert.Equal(TokenKind.Identifier, tokens[2].TokenKind);
+        Assert.Equal((2, 5), (tokens[2].Span.Start, tokens[2].Span.End));
+    }
+
+    [Fact]
+    public void Float_followed_by_dot_and_identifier_keeps_float_kind()
+    {
+        // Regression für Bug 2: 1.5.foo muss FloatLiteral sein, nicht IntLiteral.
+        var (tokens, _) = Tokenize("1.5.foo");
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal(TokenKind.FloatLiteral, tokens[0].TokenKind);
+        Assert.Equal((0, 3), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(TokenKind.BadChar, tokens[1].TokenKind);
+        Assert.Equal((3, 4), (tokens[1].Span.Start, tokens[1].Span.End));
+        Assert.Equal(TokenKind.Identifier, tokens[2].TokenKind);
+    }
+
+    // ─── LYR-LEX0003: Invalid Suffix ───────────────────────────────────────
+
+    [Fact]
+    public void Invalid_int_suffix_emits_LEX0003()
+    {
+        var (tokens, diag) = Tokenize("100i7");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal((0, 5), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0003", diag.Diagnostics[0].Code);
+        Assert.Contains("i7", diag.Diagnostics[0].Message);
+    }
+
+    [Theory]
+    [InlineData("0xFFi7")]        // invalide Int-Größe
+    [InlineData("0xFFu7")]
+    [InlineData("0xFFi128")]      // gibt's nicht in v1
+    public void Invalid_suffix_on_hex_emits_LEX0003(string input)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0003", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Float_suffix_on_binary_emits_LEX0003()
+    {
+        var (_, diag) = Tokenize("0b1010f32");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0003", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Float_suffix_on_octal_emits_LEX0003()
+    {
+        var (_, diag) = Tokenize("0o7f32");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0003", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Int_suffix_on_float_form_emits_LEX0003()
+    {
+        var (_, diag) = Tokenize("1.5i32");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0003", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Int_suffix_on_exponent_form_emits_LEX0003()
+    {
+        var (_, diag) = Tokenize("1e3i32");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0003", diag.Diagnostics[0].Code);
+    }
+
+    // ─── LYR-LEX0004: Empty Literal After Prefix ───────────────────────────
+
+    [Theory]
+    [InlineData("0x")]
+    [InlineData("0X")]
+    [InlineData("0b")]
+    [InlineData("0B")]
+    [InlineData("0o")]
+    [InlineData("0O")]
+    public void Empty_prefixed_literal_emits_LEX0004(string input)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0004", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Hex_literal_with_leading_underscore_emits_diagnostic()
+    {
+        // Aktuell LYR-LEX0004 — wenn du die Branches in ScanNonDecLiteral
+        // vertauschst, wird's LYR-LEX0005. Beides ist OK; Test passt sich an.
+        var (_, diag) = Tokenize("0x_FF");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.True(
+            diag.Diagnostics[0].Code is "LYR-LEX0004" or "LYR-LEX0005",
+            $"unexpected code {diag.Diagnostics[0].Code}");
+    }
+
+    // ─── LYR-LEX0006: Exponent Without Digits ──────────────────────────────
+
+    [Theory]
+    [InlineData("1e")]
+    [InlineData("1e+")]
+    [InlineData("1e-")]
+    [InlineData("1E+")]
+    [InlineData("1.5e+")]
+    public void Exponent_without_digits_emits_LEX0006(string input)
+    {
+        var (_, diag) = Tokenize(input);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0006", diag.Diagnostics[0].Code);
+    }
+
+    // ─── Numbers Adjacent to Identifiers / Other Tokens ────────────────────
+
+    [Fact]
+    public void Number_followed_by_non_iuf_letter_starts_identifier()
+    {
+        // 100abc → IntLiteral(0..3), Identifier(3..6)
+        var (tokens, diag) = Tokenize("100abc");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal((0, 3), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.Equal((3, 6), (tokens[1].Span.Start, tokens[1].Span.End));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Number_with_valid_suffix_then_more_letters()
+    {
+        // 100i32x → IntLiteral(0..6), Identifier(6..7)
+        var (tokens, _) = Tokenize("100i32x");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal((0, 6), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.Equal((6, 7), (tokens[1].Span.Start, tokens[1].Span.End));
+    }
+
+    [Fact]
+    public void Multiple_numbers_separated_by_whitespace()
+    {
+        var (tokens, diag) = Tokenize("100 200 0xFF");
+        Assert.Equal(4, tokens.Count);
+        Assert.All(tokens.Take(3), t => Assert.Equal(TokenKind.IntLiteral, t.TokenKind));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Number_inside_braces()
+    {
+        var (tokens, diag) = Tokenize("{ 42 }");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] { TokenKind.LBrace, TokenKind.IntLiteral, TokenKind.RBrace, TokenKind.Eof },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
 }
