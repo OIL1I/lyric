@@ -13,51 +13,52 @@
 
 **M1 — Lexer**
 
-Slice 1 (Skeleton + Whitespace + Identifier + Brace-Punctuation) und
-Slice 2 (Keywords + Doc/Block-Comments) sind durch. Nächster Slice:
-Numerische Literals.
+Slices 1–4 sind durch. Nächster Slice: f-Strings mit Mode-Stack.
 
 ## Was schon erledigt ist
 
 - [x] **M0 — Setup, Architekturrahmen, Test-Infra** (siehe `m0-complete`-Tag)
-- [x] **M1-Slice 1** — Lexer-Skelett: Cursor mit Sentinel-`\0`, SkipTrivia
-  (Whitespace + Line-Comments), Identifier, `()`/`{}`, Bad-Char mit
-  `LYR-LEX0001`, EOF.
-- [x] **M1-Slice 2** — Alle 37 v1-Keywords als eigene TokenKinds (Dict-
-  Lookup in ScanIdentifier), DocComments (`///`) als emittierte Tokens,
-  Block-Comments mit Nesting als Trivia, `LYR-LEX0002` für unterminated
-  Block-Comments.
+- [x] **M1-Slice 1** — Lexer-Skelett, Whitespace, Identifier, Brace-Punctuation
+- [x] **M1-Slice 2** — Keywords, Doc-Comments, Block-Comments mit Nesting
+- [x] **M1-Slice 3** — Int/Float-Literals (4 Basen, Suffixes, Float-
+  Disambiguierung); Codes `LYR-LEX0003`/`0004`/`0006`
+- [x] **M1-Slice 4** — String- und Char-Literals mit Escapes (`\n`,
+  `\x##`, `\u{...}`-Range-Check); Codes `LYR-LEX0007`/`0008`/`0009`/`0010`
 
 ## Woran wir gerade arbeiten
 
-**M1-Slice 3** — Numerische Literals. Noch nicht begonnen, Plan steht aus.
+**M1-Slice 5** — f-String-Sub-Lexer. Noch nicht begonnen, Plan steht aus.
 
 Lieferposten (siehe `Sprache.md §1.5`):
-- Int-Literals: dec/hex/bin/oct mit `_`-Separator und Suffixes (`i32`, `u64`, …)
-- Float-Literals: Dezimal + Exponent + Suffix (`f32`, `f64`)
-- Diagnostik-Codes für: invalid digit, multiple decimal points, invalid suffix,
-  empty integer literal nach Präfix
+- `f"..."` als Start-Token
+- StringChunk-Tokens für die Plain-Text-Teile
+- `{` / `}` als InterpStart/InterpEnd innerhalb von f-Strings
+- Reguläre Token (Identifier, Operator, Literal) innerhalb von `{...}`
+- Format-Spec nach `:` bis `}`
+- Mode-Stack im Lexer: `Normal` ↔ `FStringText` ↔ `FStringInterp`
+- Nested f-Strings: `f"a={f"b={x}"}"` muss tokenisierbar sein
 
 ## Was als nächstes ansteht
 
-Nach Slice 3:
-4. String- und Char-Literals (Slice 4)
-5. f-String-Sub-Lexer (Slice 5)
+Nach Slice 5:
 6. Operatoren mit Longest-Match (Slice 6)
 7. CLI `lyric tokenize` + Golden-Test-Infrastruktur (Slice 7)
 
 ## Offene Fragen / Diskussions-Punkte
 
-Für Slice 3 zu klären:
-- Numerische Werte zur Lex-Zeit parsen (`int Value` aufs Token) oder Lex-Zeit nur
-  Erkennen, Parsen für Sema verschieben?
-- Suffix-Validation (z.B. `100i7` mit unbekannter Größe): Lexer-Fehler oder
-  Sema-Fehler?
-- Edge-Case `0x_FF`: erlaubt (Separator direkt nach Präfix) oder verboten?
+Für Slice 5 zu klären:
+- Mode-Stack als `Stack<LexMode>` Field oder rekursive Sub-Lexer-Instanzen?
+- Format-Spec als eigener Token-Typ oder als String-Chunk mit Marker?
+- Wieviel Lexer-State (Brace-Depth innerhalb Interp) ist nötig für
+  saubere `}`-Disambiguierung (Block-Close vs Interp-Close)?
+- Soll der Lexer zwischen `f"…"` und einer Sequenz `Identifier(f) "…"`
+  schon im Identifier-Pfad disambiguieren (Lookahead nach `f`),
+  oder dispatcht `Next()` zuerst auf `"` und Sub-Macht hat ein
+  Prefix-Flag?
 
 ## Letzter relevanter Commit
 
-`M1: add keyword tokens, doc comments, and block comments`
+`M1: lex string and character literals with escape sequences`
 
 ---
 
