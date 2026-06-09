@@ -13,52 +13,57 @@
 
 **M1 — Lexer**
 
-Slices 1–4 sind durch. Nächster Slice: f-Strings mit Mode-Stack.
+Slices 1–5 sind durch. Nur noch zwei Slices bis M1-Complete.
 
 ## Was schon erledigt ist
 
 - [x] **M0 — Setup, Architekturrahmen, Test-Infra** (siehe `m0-complete`-Tag)
 - [x] **M1-Slice 1** — Lexer-Skelett, Whitespace, Identifier, Brace-Punctuation
 - [x] **M1-Slice 2** — Keywords, Doc-Comments, Block-Comments mit Nesting
-- [x] **M1-Slice 3** — Int/Float-Literals (4 Basen, Suffixes, Float-
-  Disambiguierung); Codes `LYR-LEX0003`/`0004`/`0006`
-- [x] **M1-Slice 4** — String- und Char-Literals mit Escapes (`\n`,
-  `\x##`, `\u{...}`-Range-Check); Codes `LYR-LEX0007`/`0008`/`0009`/`0010`
+- [x] **M1-Slice 3** — Int/Float-Literals (4 Basen, Suffixes); Codes 0003–0006
+- [x] **M1-Slice 4** — String/Char-Literals mit Escapes (`\n`, `\x##`, `\u{...}`);
+  Codes 0007–0010
+- [x] **M1-Slice 5** — f-Strings via Mode-Stack: Text/Interp/FormatSpec/Normal,
+  Brace-Depth-Tracking, nested f-Strings, Disambiguierung `f"` vs
+  Identifier `f`; Code 0011
 
 ## Woran wir gerade arbeiten
 
-**M1-Slice 5** — f-String-Sub-Lexer. Noch nicht begonnen, Plan steht aus.
+**M1-Slice 6** — Operatoren und Interpunktion mit Longest-Match-Disambiguation.
 
-Lieferposten (siehe `Sprache.md §1.5`):
-- `f"..."` als Start-Token
-- StringChunk-Tokens für die Plain-Text-Teile
-- `{` / `}` als InterpStart/InterpEnd innerhalb von f-Strings
-- Reguläre Token (Identifier, Operator, Literal) innerhalb von `{...}`
-- Format-Spec nach `:` bis `}`
-- Mode-Stack im Lexer: `Normal` ↔ `FStringText` ↔ `FStringInterp`
-- Nested f-Strings: `f"a={f"b={x}"}"` muss tokenisierbar sein
+Lieferposten (siehe `Sprache.md §1.6`):
+- Single-char Puncts: `,` `.` `;` `:` `->` `=>` etc.
+- Arithmetik: `+` `-` `*` `/` `%`
+- Bitwise: `&` `|` `^` `~` `<<` `>>`
+- Vergleich: `==` `!=` `<` `<=` `>` `>=`
+- Logisch: `&&` `||` `!`
+- Assignment: `=` plus alle Compound (`+=`, `-=`, …, `&&=`, `??=`)
+- Optional: `?` `?.` `??` `!` (Postfix-Unwrap vs Prefix-Not — Context-frei
+  unterscheidbar via Lexer? Oder Parser?)
+- Range: `..` `..=`
+- Increment/Decrement: `++` `--`
+- Spezial: `::` (implements-Op)
+- Disambiguierung `<<` vs `<` `<` (Generics-Konflikt — Parser-Job)
 
 ## Was als nächstes ansteht
 
-Nach Slice 5:
-6. Operatoren mit Longest-Match (Slice 6)
-7. CLI `lyric tokenize` + Golden-Test-Infrastruktur (Slice 7)
+Nach Slice 6:
+7. CLI `lyric tokenize` + Golden-Test-Infrastruktur + `m1-complete`-Tag
 
 ## Offene Fragen / Diskussions-Punkte
 
-Für Slice 5 zu klären:
-- Mode-Stack als `Stack<LexMode>` Field oder rekursive Sub-Lexer-Instanzen?
-- Format-Spec als eigener Token-Typ oder als String-Chunk mit Marker?
-- Wieviel Lexer-State (Brace-Depth innerhalb Interp) ist nötig für
-  saubere `}`-Disambiguierung (Block-Close vs Interp-Close)?
-- Soll der Lexer zwischen `f"…"` und einer Sequenz `Identifier(f) "…"`
-  schon im Identifier-Pfad disambiguieren (Lookahead nach `f`),
-  oder dispatcht `Next()` zuerst auf `"` und Sub-Macht hat ein
-  Prefix-Flag?
+Für Slice 6 zu klären:
+- Longest-Match-Strategie: Tabelle aller mehrzeichigen Operatoren mit Trie-Lookup,
+  oder direkt Case-Analyse pro Anfangszeichen?
+- `!` ist sowohl Postfix-Force-Unwrap (`expr!`) als auch Prefix-Logical-Not (`!expr`).
+  Im Lexer ein TokenKind oder zwei? (Parser-Context entscheidet.)
+- `<` vs Generics `<T>`-Open: alles Less-Than-Token, Parser disambiguiert?
+- Reservierter Bereich: `LYR-LEX0012` aufwärts für Slice 6, falls Operatoren
+  Lex-Errors generieren können (vermutlich keine, da alles definiert ist).
 
 ## Letzter relevanter Commit
 
-`M1: lex string and character literals with escape sequences`
+`M1: lex f-strings with mode stack for nested interpolation`
 
 ---
 
