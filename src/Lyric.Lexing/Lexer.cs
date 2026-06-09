@@ -12,13 +12,29 @@ public sealed class Lexer
         Float
     }
 
+    private enum LexMode
+    {
+        Normal,
+        FStringText,
+        FStringInterp,
+        FStringFormatSpec
+    }
+
+    private sealed class ModeFrame
+    {
+        public required LexMode Mode { get; init; }
+        public int BraceDepth { get; set; } // nur für FStringInterp genutzt
+    }
+
+    private readonly Stack<ModeFrame> _modeStack = new();
     private readonly SourceManager _sources;
     private readonly DiagnosticEngine _diagnostics;
     private readonly FileId _file;
     private readonly string _source;
     private int _pos;
 
-
+    private ModeFrame CurrentFrame => _modeStack.Peek();
+    private LexMode CurrentMode => _modeStack.Peek().Mode;
     private char Current => _pos < _source.Length ? _source[_pos] : '\0';
     private char PeekAt(int offset) => _pos + offset < _source.Length ? _source[_pos + offset] : '\0';
 
@@ -91,6 +107,7 @@ public sealed class Lexer
 
     public Lexer(SourceManager pSourceManager, FileId fileId, DiagnosticEngine pDiagnosticEngine)
     {
+        _modeStack.Push(new ModeFrame { Mode = LexMode.Normal });
         _sources = pSourceManager ?? throw new ArgumentNullException(nameof(pSourceManager));
         _diagnostics = pDiagnosticEngine ?? throw new ArgumentNullException(nameof(pDiagnosticEngine));
         _file = fileId;
@@ -100,7 +117,49 @@ public sealed class Lexer
 
     public Token Next()
     {
+        if (CurrentMode == LexMode.FStringText) return ScanFStringText();
+        if (CurrentMode == LexMode.FStringFormatSpec) return ScanFStringFormatSpec();
+
         SkipTrivia();
+
+        if (CurrentMode == LexMode.FStringInterp)
+        {
+            if (Current is '\0' or '\n')
+                return HandleUnterminatedFString();
+            if (Current == '{')
+            {
+                _pos++;
+                CurrentFrame.BraceDepth++;
+                return new Token(TokenKind.LBrace, new Span(_file, _pos - 1, _pos));
+            }
+
+            if (Current == '}' && CurrentFrame.BraceDepth > 0)
+            {
+                _pos++;
+                CurrentFrame.BraceDepth--;
+                return new Token(TokenKind.RBrace, new Span(_file, _pos - 1, _pos));
+            }
+
+            if (Current == '}' && CurrentFrame.BraceDepth == 0)
+            {
+                _pos++;
+                _modeStack.Pop();
+                return new Token(TokenKind.FStringInterpEnd, new Span(_file, _pos - 1, _pos));
+            }
+
+            if (Current == ':' && CurrentFrame.BraceDepth == 0)
+            {
+                _pos++;
+                _modeStack.Push(new ModeFrame { Mode = LexMode.FStringFormatSpec });
+                return ScanFStringFormatSpec();
+            }
+        }
+
+        if (Current == 'f' && PeekAt(1) == '"')
+        {
+            return ScanFStringStart();
+        }
+
         if (Current == '\0')
         {
             return new Token(TokenKind.Eof, new Span(_file, _pos, _pos));
@@ -553,12 +612,68 @@ public sealed class Lexer
                 System.Globalization.NumberStyles.HexNumber);
             if (hexVal > 0x10FFFF)
             {
-                _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error, new Span(_file, unicodeStart - 1, _pos),
+                _diagnostics.Report(new Diagnostic("LYR-LEX0007", Severity.Error,
+                    new Span(_file, unicodeStart - 1, _pos),
                     "unicode value out of range (max: 0x10FFFF)"));
             }
         }
 
         _pos++; // Consume '}'
+    }
+
+    #endregion
+
+    #region FStrings
+
+    private Token ScanFStringStart()
+    {
+        _pos += 2; //Consume 'f"'
+        _modeStack.Push(new ModeFrame { Mode = LexMode.FStringText });
+        return new Token(TokenKind.FStringStart, new Span(_file, _pos - 2, _pos));
+    }
+
+    private Token ScanFStringText()
+    {
+        if (Current is '\0' or '\n') return HandleUnterminatedFString();
+        if (Current == '"')
+        {
+            _pos++;
+            _modeStack.Pop();
+            return new Token(TokenKind.FStringEnd, new Span(_file, _pos - 1, _pos));
+        }
+
+        if (Current == '{')
+        {
+            _pos++;
+            _modeStack.Push(new ModeFrame { Mode = LexMode.FStringInterp, BraceDepth = 0 });
+            return new Token(TokenKind.FStringInterpStart, new Span(_file, _pos - 1, _pos));
+        }
+
+        var chunkStart = _pos;
+        while (Current is not ('"' or '{' or '\0' or '\n'))
+        {
+            if (Current == '\\') ConsumeEscapeSequence();
+            else _pos++;
+        }
+
+        return new Token(TokenKind.FStringChunk, new Span(_file, chunkStart, _pos));
+    }
+
+    private Token ScanFStringFormatSpec()
+    {
+        var specStart = _pos;
+        while (Current is not ('}' or '\0' or '\n')) _pos++;
+        if (Current is '\0' or '\n') return HandleUnterminatedFString();
+        _modeStack.Pop();
+        return new Token(TokenKind.FStringFormatSpec, new Span(_file, specStart, _pos));
+    }
+
+    private Token HandleUnterminatedFString()
+    {
+        _diagnostics.Report(new Diagnostic("LYR-LEX0011", Severity.Error, new Span(_file, _pos, _pos),
+            "unterminated f-string"));
+        while (CurrentMode != LexMode.Normal) _modeStack.Pop();
+        return new Token(TokenKind.FStringEnd, new Span(_file, _pos, _pos));
     }
 
     #endregion

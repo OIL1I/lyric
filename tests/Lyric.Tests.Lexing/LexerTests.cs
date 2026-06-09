@@ -1304,4 +1304,528 @@ public class LexerTests
             kinds);
         Assert.False(diag.HasErrors);
     }
+    
+        // ─── F-Strings: Basics ─────────────────────────────────────────────────
+
+    [Fact]
+    public void Empty_fstring_yields_start_and_end()
+    {
+        var (tokens, diag) = Tokenize("f\"\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] { TokenKind.FStringStart, TokenKind.FStringEnd, TokenKind.Eof },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Plain_fstring_text_only()
+    {
+        var (tokens, diag) = Tokenize("f\"hello\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringChunk,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Plain_fstring_spans_are_correct()
+    {
+        var (tokens, _) = Tokenize("f\"hello\"");
+        // Chars: f " h e l l o "  — length 8
+        Assert.Equal((0, 2), (tokens[0].Span.Start, tokens[0].Span.End));   // FStringStart "f\""
+        Assert.Equal((2, 7), (tokens[1].Span.Start, tokens[1].Span.End));   // Chunk "hello"
+        Assert.Equal((7, 8), (tokens[2].Span.Start, tokens[2].Span.End));   // FStringEnd "\""
+    }
+
+    [Fact]
+    public void Fstring_with_single_interpolation()
+    {
+        var (tokens, diag) = Tokenize("f\"{x}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.Identifier,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Fstring_chunk_then_interp_then_chunk()
+    {
+        var (tokens, diag) = Tokenize("f\"hi {x}!\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringChunk,       // "hi "
+                TokenKind.FStringInterpStart,
+                TokenKind.Identifier,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringChunk,       // "!"
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Fstring_with_multiple_back_to_back_interpolations()
+    {
+        var (tokens, diag) = Tokenize("f\"{a}{b}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.Identifier,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringInterpStart,
+                TokenKind.Identifier,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Empty_interpolation_yields_consecutive_interp_markers()
+    {
+        // f"{}" — empty interp. Parser will reject, lexer just emits.
+        var (tokens, diag) = Tokenize("f\"{}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Escapes in F-String Chunks ────────────────────────────────────────
+
+    [Theory]
+    [InlineData("f\"\\n\"")]    // Lyric: f"\n"
+    [InlineData("f\"\\t\"")]
+    [InlineData("f\"\\r\"")]
+    [InlineData("f\"\\\\\"")]   // Lyric: f"\\"
+    [InlineData("f\"\\\"\"")]   // Lyric: f"\""
+    [InlineData("f\"\\0\"")]
+    public void Fstring_chunk_with_simple_escape_no_error(string input)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(4, tokens.Count);  // FStringStart, Chunk, FStringEnd, Eof
+        Assert.Equal(TokenKind.FStringChunk, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Fstring_chunk_with_hex_escape()
+    {
+        var (tokens, diag) = Tokenize("f\"\\x41\"");
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal(TokenKind.FStringChunk, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Fstring_chunk_with_unicode_escape()
+    {
+        var (tokens, diag) = Tokenize("f\"hello \\u{1F30D}\"");
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal(TokenKind.FStringChunk, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Fstring_chunk_with_invalid_escape_reports_LEX0007()
+    {
+        var (tokens, diag) = Tokenize("f\"\\q\"");
+        Assert.Equal(TokenKind.FStringChunk, tokens[1].TokenKind);
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0007", diag.Diagnostics[0].Code);
+    }
+
+    // ─── Format Spec ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void Fstring_with_format_spec_basic()
+    {
+        var (tokens, diag) = Tokenize("f\"{x:N2}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.Identifier,
+                TokenKind.FStringFormatSpec,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Format_spec_span_excludes_colon_and_brace()
+    {
+        // Chars: f " { x : N 2 } "  — length 9, indices 0..8
+        var (tokens, _) = Tokenize("f\"{x:N2}\"");
+        var spec = tokens.First(t => t.TokenKind == TokenKind.FStringFormatSpec);
+        Assert.Equal(5, spec.Span.Start);   // direkt nach dem ':'
+        Assert.Equal(7, spec.Span.End);     // direkt vor dem '}'
+    }
+
+    [Fact]
+    public void Empty_format_spec_emits_empty_token()
+    {
+        // f"{x:}" — Format-Spec ist leer, Token-Span (5,5).
+        var (tokens, diag) = Tokenize("f\"{x:}\"");
+        var spec = tokens.FirstOrDefault(t => t.TokenKind == TokenKind.FStringFormatSpec);
+        Assert.NotEqual(default, spec);
+        Assert.Equal(0, spec.Span.Length);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Format_spec_with_special_chars_is_opaque()
+    {
+        // "0>5" wäre normalerweise IntLit Gt IntLit — als FormatSpec ein Token.
+        var (tokens, diag) = Tokenize("f\"{x:0>5}\"");
+        var spec = tokens.First(t => t.TokenKind == TokenKind.FStringFormatSpec);
+        Assert.Equal(3, spec.Span.Length);   // "0>5"
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Format_spec_with_letters_and_digits()
+    {
+        var (tokens, diag) = Tokenize("f\"{x:foobar123}\"");
+        var spec = tokens.First(t => t.TokenKind == TokenKind.FStringFormatSpec);
+        Assert.Equal(9, spec.Span.Length);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Brace Depth in Interp ─────────────────────────────────────────────
+
+    [Fact]
+    public void Inner_braces_in_interp_tokenize_as_LBrace_RBrace()
+    {
+        // f"{{x}}" — outer {} sind Interp-Marker, inner {} sind LBrace/RBrace.
+        var (tokens, diag) = Tokenize("f\"{{x}}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,    // outer {
+                TokenKind.LBrace,                 // inner { (depth 0→1)
+                TokenKind.Identifier,
+                TokenKind.RBrace,                 // inner } (depth 1→0)
+                TokenKind.FStringInterpEnd,      // outer }
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Empty_inner_brace_pair_in_interp()
+    {
+        var (tokens, diag) = Tokenize("f\"{{}}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.LBrace,
+                TokenKind.RBrace,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Deeply_nested_braces_in_interp()
+    {
+        // f"{{ {x} }}" — drei brace-Tiefen in Reihe.
+        var (tokens, diag) = Tokenize("f\"{{ {x} }}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.LBrace,
+                TokenKind.LBrace,
+                TokenKind.Identifier,
+                TokenKind.RBrace,
+                TokenKind.RBrace,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Colon_at_depth_greater_zero_does_not_trigger_format_spec()
+    {
+        // f"{{x:y}}" — der innere `:` ist auf Brace-Tiefe 1, kein FormatSpec-Trigger.
+        // Im Slice-5-Kontext gibt's keinen Colon-Token (das ist Slice 6), also wird's BadChar.
+        var (tokens, diag) = Tokenize("f\"{{x:y}}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.LBrace,
+                TokenKind.Identifier,             // x
+                TokenKind.BadChar,                // : (nicht FormatSpec, weil depth=1)
+                TokenKind.Identifier,             // y
+                TokenKind.RBrace,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.Equal(1, diag.ErrorCount);   // nur LYR-LEX0001 für ':'
+        Assert.Equal("LYR-LEX0001", diag.Diagnostics[0].Code);
+    }
+
+    // ─── Nested F-Strings ──────────────────────────────────────────────────
+
+    [Fact]
+    public void Nested_fstring_one_level()
+    {
+        // f"a={f"b={x}"}"
+        var (tokens, diag) = Tokenize("f\"a={f\"b={x}\"}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,           // outer f"
+                TokenKind.FStringChunk,           // "a="
+                TokenKind.FStringInterpStart,     // outer {
+                TokenKind.FStringStart,           // inner f"
+                TokenKind.FStringChunk,           // "b="
+                TokenKind.FStringInterpStart,     // inner {
+                TokenKind.Identifier,             // x
+                TokenKind.FStringInterpEnd,       // inner }
+                TokenKind.FStringEnd,             // inner "
+                TokenKind.FStringInterpEnd,       // outer }
+                TokenKind.FStringEnd,             // outer "
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Disambiguation: f vs f-string ─────────────────────────────────────
+
+    [Fact]
+    public void Identifier_f_followed_by_other_token_is_identifier()
+    {
+        var (tokens, diag) = Tokenize("f x");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Identifier_f_with_space_then_string_is_two_separate_tokens()
+    {
+        // "f " + '"hello"' — der Space trennt, kein f-String.
+        var (tokens, diag) = Tokenize("f \"hello\"");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.StringLiteral, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Identifier_starting_with_f_is_not_fstring()
+    {
+        var (tokens, diag) = Tokenize("foo");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Keyword_fn_is_not_treated_as_fstring()
+    {
+        // "fn" beginnt mit 'f', aber zweites Char ist 'n', nicht '"'.
+        var (tokens, diag) = Tokenize("fn");
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(TokenKind.Fn, tokens[0].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Interp Content Variety ────────────────────────────────────────────
+
+    [Fact]
+    public void Interp_with_int_literal()
+    {
+        var (tokens, diag) = Tokenize("f\"{42}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.IntLiteral,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Interp_with_keyword_true()
+    {
+        var (tokens, diag) = Tokenize("f\"{true}\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.True,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Interp_with_whitespace_around_expression()
+    {
+        var (tokens, diag) = Tokenize("f\"{  x  }\"");
+        // SkipTrivia frisst Whitespace in InterpMode.
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.Identifier,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Interp_with_block_comment_is_skipped()
+    {
+        // SkipTrivia in InterpMode handhabt Comments wie überall.
+        var (tokens, diag) = Tokenize("f\"{ /* note */ x }\"");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FStringStart,
+                TokenKind.FStringInterpStart,
+                TokenKind.Identifier,
+                TokenKind.FStringInterpEnd,
+                TokenKind.FStringEnd,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Unterminated F-Strings ────────────────────────────────────────────
+
+    [Fact]
+    public void Unterminated_fstring_text_emits_LEX0011()
+    {
+        var (_, diag) = Tokenize("f\"hello");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0011", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Unterminated_fstring_in_interp_emits_LEX0011()
+    {
+        var (_, diag) = Tokenize("f\"{x");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0011", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Unterminated_fstring_in_format_spec_emits_LEX0011()
+    {
+        var (_, diag) = Tokenize("f\"{x:N2");
+        Assert.Equal(1, diag.ErrorCount);
+        Assert.Equal("LYR-LEX0011", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Newline_in_fstring_text_emits_LEX0011()
+    {
+        var (_, diag) = Tokenize("f\"hello\nworld\"");
+        Assert.True(diag.ErrorCount >= 1);
+        Assert.Equal("LYR-LEX0011", diag.Diagnostics[0].Code);
+    }
+
+    [Fact]
+    public void Recovery_after_unterminated_continues_in_normal_mode()
+    {
+        // Nach Unterminated bei EOF: gar nichts mehr (EOF folgt).
+        // Nach Unterminated bei \n: weitere Tokens danach lexen normal.
+        var (tokens, diag) = Tokenize("f\"hi\nbar");
+        Assert.True(diag.ErrorCount >= 1);
+        // "bar" muss als Identifier nach dem Recovery auftauchen.
+        Assert.Contains(tokens, t => t.TokenKind == TokenKind.Identifier);
+    }
+
+    // ─── Adjacency ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Fstring_followed_by_identifier()
+    {
+        var (tokens, diag) = Tokenize("f\"a\" foo");
+        Assert.Equal(5, tokens.Count);   // FStringStart, Chunk, FStringEnd, Identifier, Eof
+        Assert.Equal(TokenKind.FStringStart, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Identifier, tokens[3].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Multiple_fstrings_in_sequence()
+    {
+        var (tokens, diag) = Tokenize("f\"a\" f\"b\"");
+        var fStarts = tokens.Count(t => t.TokenKind == TokenKind.FStringStart);
+        var fEnds = tokens.Count(t => t.TokenKind == TokenKind.FStringEnd);
+        Assert.Equal(2, fStarts);
+        Assert.Equal(2, fEnds);
+        Assert.False(diag.HasErrors);
+    }
 }
