@@ -850,29 +850,32 @@ public class LexerTests
     [Fact]
     public void Float_disambiguation_dot_followed_by_identifier()
     {
-        // 1.foo → IntLiteral(1), '.' as BadChar (until Slice 6 adds Dot punct),
-        // Identifier(foo).
+        // 1.foo → IntLiteral(1), Dot, Identifier(foo). Seit Slice 6 ist '.' ein
+        // Dot-Token (vorher BadChar).
         var (tokens, diag) = Tokenize("1.foo");
         Assert.Equal(4, tokens.Count);
         Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
         Assert.Equal((0, 1), (tokens[0].Span.Start, tokens[0].Span.End));
-        Assert.Equal(TokenKind.BadChar, tokens[1].TokenKind);
+        Assert.Equal(TokenKind.Dot, tokens[1].TokenKind);
         Assert.Equal((1, 2), (tokens[1].Span.Start, tokens[1].Span.End));
         Assert.Equal(TokenKind.Identifier, tokens[2].TokenKind);
         Assert.Equal((2, 5), (tokens[2].Span.Start, tokens[2].Span.End));
+        Assert.False(diag.HasErrors);
     }
 
     [Fact]
     public void Float_followed_by_dot_and_identifier_keeps_float_kind()
     {
         // Regression für Bug 2: 1.5.foo muss FloatLiteral sein, nicht IntLiteral.
-        var (tokens, _) = Tokenize("1.5.foo");
+        // Seit Slice 6 ist das trennende '.' ein Dot-Token (vorher BadChar).
+        var (tokens, diag) = Tokenize("1.5.foo");
         Assert.Equal(4, tokens.Count);
         Assert.Equal(TokenKind.FloatLiteral, tokens[0].TokenKind);
         Assert.Equal((0, 3), (tokens[0].Span.Start, tokens[0].Span.End));
-        Assert.Equal(TokenKind.BadChar, tokens[1].TokenKind);
+        Assert.Equal(TokenKind.Dot, tokens[1].TokenKind);
         Assert.Equal((3, 4), (tokens[1].Span.Start, tokens[1].Span.End));
         Assert.Equal(TokenKind.Identifier, tokens[2].TokenKind);
+        Assert.False(diag.HasErrors);
     }
 
     // ─── LYR-LEX0003: Invalid Suffix ───────────────────────────────────────
@@ -1595,7 +1598,8 @@ public class LexerTests
     public void Colon_at_depth_greater_zero_does_not_trigger_format_spec()
     {
         // f"{{x:y}}" — der innere `:` ist auf Brace-Tiefe 1, kein FormatSpec-Trigger.
-        // Im Slice-5-Kontext gibt's keinen Colon-Token (das ist Slice 6), also wird's BadChar.
+        // Seit Slice 6 ist `:` ein Colon-Token (vorher BadChar), aber er triggert
+        // weiterhin keinen FormatSpec, weil depth=1.
         var (tokens, diag) = Tokenize("f\"{{x:y}}\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -1604,7 +1608,7 @@ public class LexerTests
                 TokenKind.FStringInterpStart,
                 TokenKind.LBrace,
                 TokenKind.Identifier,             // x
-                TokenKind.BadChar,                // : (nicht FormatSpec, weil depth=1)
+                TokenKind.Colon,                  // : (nicht FormatSpec, weil depth=1)
                 TokenKind.Identifier,             // y
                 TokenKind.RBrace,
                 TokenKind.FStringInterpEnd,
@@ -1612,8 +1616,7 @@ public class LexerTests
                 TokenKind.Eof
             },
             kinds);
-        Assert.Equal(1, diag.ErrorCount);   // nur LYR-LEX0001 für ':'
-        Assert.Equal("LYR-LEX0001", diag.Diagnostics[0].Code);
+        Assert.False(diag.HasErrors);
     }
 
     // ─── Nested F-Strings ──────────────────────────────────────────────────
@@ -1826,6 +1829,400 @@ public class LexerTests
         var fEnds = tokens.Count(t => t.TokenKind == TokenKind.FStringEnd);
         Assert.Equal(2, fStarts);
         Assert.Equal(2, fEnds);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Operators: Single-Char (Slice 6) ──────────────────────────────────
+
+    [Theory]
+    [InlineData("(", TokenKind.LParen)]
+    [InlineData(")", TokenKind.RParen)]
+    [InlineData("[", TokenKind.LBracket)]
+    [InlineData("]", TokenKind.RBracket)]
+    [InlineData("{", TokenKind.LBrace)]
+    [InlineData("}", TokenKind.RBrace)]
+    [InlineData(",", TokenKind.Comma)]
+    [InlineData(".", TokenKind.Dot)]
+    [InlineData(";", TokenKind.Semicolon)]
+    [InlineData(":", TokenKind.Colon)]
+    [InlineData("?", TokenKind.Question)]
+    [InlineData("!", TokenKind.Exclamation)]
+    [InlineData("+", TokenKind.Plus)]
+    [InlineData("-", TokenKind.Minus)]
+    [InlineData("*", TokenKind.Star)]
+    [InlineData("/", TokenKind.Slash)]
+    [InlineData("%", TokenKind.Percent)]
+    [InlineData("&", TokenKind.Amp)]
+    [InlineData("|", TokenKind.Pipe)]
+    [InlineData("^", TokenKind.Caret)]
+    [InlineData("~", TokenKind.Tilde)]
+    [InlineData("<", TokenKind.Less)]
+    [InlineData(">", TokenKind.Greater)]
+    [InlineData("=", TokenKind.Equal)]
+    public void Single_char_operator(string input, TokenKind expectedKind)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(expectedKind, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(1, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Operators: Two-Char ────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("::", TokenKind.ColonColon)]
+    [InlineData("->", TokenKind.Arrow)]
+    [InlineData("=>", TokenKind.FatArrow)]
+    [InlineData("?.", TokenKind.QuestionDot)]
+    [InlineData("??", TokenKind.QuestionQuestion)]
+    [InlineData("++", TokenKind.Inc)]
+    [InlineData("--", TokenKind.Dec)]
+    [InlineData("<<", TokenKind.Shl)]
+    [InlineData(">>", TokenKind.Shr)]
+    [InlineData("==", TokenKind.EqualEqual)]
+    [InlineData("!=", TokenKind.ExclamationEqual)]
+    [InlineData("<=", TokenKind.LessEqual)]
+    [InlineData(">=", TokenKind.GreaterEqual)]
+    [InlineData("&&", TokenKind.AmpAmp)]
+    [InlineData("||", TokenKind.PipePipe)]
+    [InlineData("..", TokenKind.DotDot)]
+    [InlineData("+=", TokenKind.PlusEqual)]
+    [InlineData("-=", TokenKind.MinusEqual)]
+    [InlineData("*=", TokenKind.StarEqual)]
+    [InlineData("/=", TokenKind.SlashEqual)]
+    [InlineData("%=", TokenKind.PercentEqual)]
+    [InlineData("&=", TokenKind.AmpEqual)]
+    [InlineData("|=", TokenKind.PipeEqual)]
+    [InlineData("^=", TokenKind.CaretEqual)]
+    public void Two_char_operator(string input, TokenKind expectedKind)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(expectedKind, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(2, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Operators: Three-Char ──────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("..=", TokenKind.DotDotEqual)]
+    [InlineData("<<=", TokenKind.ShlEqual)]
+    [InlineData(">>=", TokenKind.ShrEqual)]
+    [InlineData("&&=", TokenKind.AmpAmpEqual)]
+    [InlineData("||=", TokenKind.PipePipeEqual)]
+    [InlineData("??=", TokenKind.QuestionQuestionEqual)]
+    public void Three_char_operator(string input, TokenKind expectedKind)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(2, tokens.Count);
+        Assert.Equal(expectedKind, tokens[0].TokenKind);
+        Assert.Equal(0, tokens[0].Span.Start);
+        Assert.Equal(3, tokens[0].Span.End);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Longest-Match: Greedy schlägt kurz, aber nicht zu gierig ───────────
+
+    [Fact]
+    public void Triple_equals_is_EqualEqual_then_Equal()
+    {
+        // === darf nicht zu == + = werden, aber auch nicht zu einem Phantom-Token.
+        var (tokens, diag) = Tokenize("===");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.EqualEqual, tokens[0].TokenKind);
+        Assert.Equal((0, 2), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(TokenKind.Equal, tokens[1].TokenKind);
+        Assert.Equal((2, 3), (tokens[1].Span.Start, tokens[1].Span.End));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Triple_lt_is_Shl_then_Less()
+    {
+        var (tokens, _) = Tokenize("<<<");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Shl, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Less, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Triple_gt_is_Shr_then_Greater()
+    {
+        var (tokens, _) = Tokenize(">>>");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Shr, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Greater, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Triple_amp_is_AmpAmp_then_Amp()
+    {
+        var (tokens, _) = Tokenize("&&&");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.AmpAmp, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Amp, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Triple_pipe_is_PipePipe_then_Pipe()
+    {
+        var (tokens, _) = Tokenize("|||");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.PipePipe, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Pipe, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Triple_plus_is_Inc_then_Plus()
+    {
+        var (tokens, _) = Tokenize("+++");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Inc, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Plus, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Four_dots_is_DotDot_then_DotDot()
+    {
+        var (tokens, _) = Tokenize("....");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.DotDot, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.DotDot, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Three_dots_is_DotDot_then_Dot()
+    {
+        // '...' existiert nicht in der Spec → DotDot + Dot (Parser lehnt ab).
+        var (tokens, _) = Tokenize("...");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.DotDot, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Dot, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Triple_colon_is_ColonColon_then_Colon()
+    {
+        var (tokens, _) = Tokenize(":::");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.ColonColon, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Colon, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void Double_bang_is_two_Exclamations()
+    {
+        // '!=' ist 2-char, aber '!!' muss zwei Exclamation-Token sein.
+        var (tokens, _) = Tokenize("!!");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Exclamation, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Exclamation, tokens[1].TokenKind);
+    }
+
+    [Fact]
+    public void QuestionQuestion_not_swallowed_by_QuestionDot()
+    {
+        // '??.' → '??' dann '.', nicht '?' + '?.'.
+        var (tokens, _) = Tokenize("??.");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.QuestionQuestion, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.Dot, tokens[1].TokenKind);
+    }
+
+    // ─── Operators: Adjazenz ohne Whitespace ────────────────────────────────
+
+    [Fact]
+    public void Postfix_increment_after_identifier()
+    {
+        var (tokens, diag) = Tokenize("x++");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] { TokenKind.Identifier, TokenKind.Inc, TokenKind.Eof },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Compound_assign_between_identifier_and_number()
+    {
+        var (tokens, diag) = Tokenize("a+=1");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] { TokenKind.Identifier, TokenKind.PlusEqual, TokenKind.IntLiteral, TokenKind.Eof },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Shift_assign_glued_between_identifiers()
+    {
+        var (tokens, diag) = Tokenize("a<<=b");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] { TokenKind.Identifier, TokenKind.ShlEqual, TokenKind.Identifier, TokenKind.Eof },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Comparison_and_logical_chain()
+    {
+        var (tokens, diag) = Tokenize("a >= b && c != d");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.Identifier, TokenKind.GreaterEqual, TokenKind.Identifier,
+                TokenKind.AmpAmp,
+                TokenKind.Identifier, TokenKind.ExclamationEqual, TokenKind.Identifier,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Arrow_in_function_type_context()
+    {
+        var (tokens, _) = Tokenize("fn()->int");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.Fn, TokenKind.LParen, TokenKind.RParen,
+                TokenKind.Arrow, TokenKind.Identifier, TokenKind.Eof
+            },
+            kinds);
+    }
+
+    [Fact]
+    public void Implements_operator_with_bracket_list()
+    {
+        // 'struct X :: [I]' — :: ist der implements-Operator (Spec §1.6).
+        var (tokens, diag) = Tokenize("X :: [I]");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.Identifier, TokenKind.ColonColon,
+                TokenKind.LBracket, TokenKind.Identifier, TokenKind.RBracket,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Operators: Interaktion mit Zahlen / Range ──────────────────────────
+
+    [Fact]
+    public void Range_between_int_literals()
+    {
+        // Kritisch: '0..5' darf das '.' nicht in einen Float ziehen.
+        var (tokens, diag) = Tokenize("0..5");
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal((0, 1), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(TokenKind.DotDot, tokens[1].TokenKind);
+        Assert.Equal((1, 3), (tokens[1].Span.Start, tokens[1].Span.End));
+        Assert.Equal(TokenKind.IntLiteral, tokens[2].TokenKind);
+        Assert.Equal((3, 4), (tokens[2].Span.Start, tokens[2].Span.End));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Inclusive_range_between_int_literals()
+    {
+        var (tokens, diag) = Tokenize("0..=5");
+        Assert.Equal(4, tokens.Count);
+        Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
+        Assert.Equal((0, 1), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.Equal(TokenKind.DotDotEqual, tokens[1].TokenKind);
+        Assert.Equal((1, 4), (tokens[1].Span.Start, tokens[1].Span.End));
+        Assert.Equal(TokenKind.IntLiteral, tokens[2].TokenKind);
+        Assert.Equal((4, 5), (tokens[2].Span.Start, tokens[2].Span.End));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Dot_before_digit_is_Dot_not_float()
+    {
+        // '.5' ist kein Float (Spec FloatLit braucht führende DecLit).
+        var (tokens, diag) = Tokenize(".5");
+        Assert.Equal(3, tokens.Count);
+        Assert.Equal(TokenKind.Dot, tokens[0].TokenKind);
+        Assert.Equal(TokenKind.IntLiteral, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Member_access_on_float_keeps_float()
+    {
+        // '1.5.foo' — Float, dann Dot, dann Identifier (Slice 6 macht '.' jetzt
+        // zum Dot-Token statt BadChar wie in Slice 3).
+        var (tokens, diag) = Tokenize("1.5.foo");
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.FloatLiteral, TokenKind.Dot, TokenKind.Identifier, TokenKind.Eof
+            },
+            kinds);
+        Assert.Equal((0, 3), (tokens[0].Span.Start, tokens[0].Span.End));
+        Assert.False(diag.HasErrors);
+    }
+
+    // ─── Operators: Vollständige §1.6-Tabelle in einer Sequenz ──────────────
+
+    [Fact]
+    public void All_operators_in_sequence_map_one_to_one()
+    {
+        // Jeder Operator durch Whitespace isoliert (sonst würde '//' zum Comment).
+        var src =
+            "( ) { } [ ] " +
+            ", . ; : :: -> => " +
+            "? ?. ?? ! " +
+            "+ - * / % " +
+            "& | ^ ~ " +
+            "<< >> " +
+            "== != < <= > >= " +
+            "&& || " +
+            "++ -- " +
+            ".. ..= " +
+            "= += -= *= /= %= " +
+            "&= |= ^= <<= >>= " +
+            "&&= ||= ??=";
+        var (tokens, diag) = Tokenize(src);
+        var kinds = tokens.Select(t => t.TokenKind).ToArray();
+        Assert.Equal(
+            new[] {
+                TokenKind.LParen, TokenKind.RParen, TokenKind.LBrace, TokenKind.RBrace,
+                TokenKind.LBracket, TokenKind.RBracket,
+                TokenKind.Comma, TokenKind.Dot, TokenKind.Semicolon, TokenKind.Colon,
+                TokenKind.ColonColon, TokenKind.Arrow, TokenKind.FatArrow,
+                TokenKind.Question, TokenKind.QuestionDot, TokenKind.QuestionQuestion, TokenKind.Exclamation,
+                TokenKind.Plus, TokenKind.Minus, TokenKind.Star, TokenKind.Slash, TokenKind.Percent,
+                TokenKind.Amp, TokenKind.Pipe, TokenKind.Caret, TokenKind.Tilde,
+                TokenKind.Shl, TokenKind.Shr,
+                TokenKind.EqualEqual, TokenKind.ExclamationEqual,
+                TokenKind.Less, TokenKind.LessEqual, TokenKind.Greater, TokenKind.GreaterEqual,
+                TokenKind.AmpAmp, TokenKind.PipePipe,
+                TokenKind.Inc, TokenKind.Dec,
+                TokenKind.DotDot, TokenKind.DotDotEqual,
+                TokenKind.Equal, TokenKind.PlusEqual, TokenKind.MinusEqual,
+                TokenKind.StarEqual, TokenKind.SlashEqual, TokenKind.PercentEqual,
+                TokenKind.AmpEqual, TokenKind.PipeEqual, TokenKind.CaretEqual,
+                TokenKind.ShlEqual, TokenKind.ShrEqual,
+                TokenKind.AmpAmpEqual, TokenKind.PipePipeEqual, TokenKind.QuestionQuestionEqual,
+                TokenKind.Eof
+            },
+            kinds);
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Operators_emit_no_diagnostics()
+    {
+        var (_, diag) = Tokenize("+= -= *= /= %= &&= ||= ??= <<= >>= ..= ?. -> =>");
         Assert.False(diag.HasErrors);
     }
 }

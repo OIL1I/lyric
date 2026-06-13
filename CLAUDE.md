@@ -66,8 +66,7 @@ Wenn dir was nach dem Lesen unklar ist: **frag**, rate nicht.
   - Triviales Boilerplate, das nichts mit Sprach-Implementierung zu tun
     hat: `.gitignore`, CI-YAML, README-Inhalte, Lizenz-Texte.
   - Wenn ich explizit "schreib mir die Datei X" sage.
-  - Test-Fixtures (Beispiel-`.lyr`-Programme zum Testen), aber nicht den
-    Test-Runner-Code dafür.
+  - Test-Code (fixtures und runner) auf nachfrage.
 
 - **Du gehst nicht ungefragt voraus.** Wenn ich an M2 arbeite, planst du
   nicht heimlich M3 mit. Wenn ich nach Klasse `Lexer` frage, schreibst du

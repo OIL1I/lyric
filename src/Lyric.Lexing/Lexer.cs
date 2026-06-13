@@ -170,6 +170,11 @@ public sealed class Lexer
             return ScanDocComment(_pos);
         }
 
+        if (Current == '@')
+        {
+            return ScanAtIdentifier(_pos);
+        }
+
         if (IsIdentifierStart(Current))
         {
             return ScanIdentifier(_pos);
@@ -190,34 +195,16 @@ public sealed class Lexer
             return ScanChar(_pos);
         }
 
-        if (Current == '(')
+        var opTk = TryScanOperator(_pos);
+        if (opTk is null)
         {
+            Span span = new(_file, _pos, _pos + 1);
+            ReportBadCharacter(Current, span);
             _pos++;
-            return new Token(TokenKind.LParen, new Span(_file, _pos - 1, _pos));
+            return new Token(TokenKind.BadChar, span);
         }
 
-        if (Current == ')')
-        {
-            _pos++;
-            return new Token(TokenKind.RParen, new Span(_file, _pos - 1, _pos));
-        }
-
-        if (Current == '{')
-        {
-            _pos++;
-            return new Token(TokenKind.LBrace, new Span(_file, _pos - 1, _pos));
-        }
-
-        if (Current == '}')
-        {
-            _pos++;
-            return new Token(TokenKind.RBrace, new Span(_file, _pos - 1, _pos));
-        }
-
-        Span span = new(_file, _pos, _pos + 1);
-        ReportBadCharacter(Current, span);
-        _pos++;
-        return new Token(TokenKind.BadChar, span);
+        return (Token)opTk;
     }
 
     #region Comments & Identifiers
@@ -301,6 +288,22 @@ public sealed class Lexer
             return new Token(kind, new Span(_file, identifierStart, _pos));
 
         return new Token(TokenKind.Identifier, new Span(_file, identifierStart, _pos));
+    }
+
+    private Token ScanAtIdentifier(int start)
+    {
+        _pos++; //Consume '@'
+        if (!IsIdentifierStart(Current))
+        {
+            _diagnostics.Report((new Diagnostic("LYR-LEX0012", Severity.Error, new Span(_file, start, _pos),
+                "expected identifier after '@'")));
+            return new Token(TokenKind.BadChar, new Span(_file, start, _pos));
+        }
+        while (IsIdentifierCont(Current))
+        {
+            _pos++;
+        }
+        return new Token(TokenKind.AtIdentifier, new Span(_file, start, _pos));
     }
 
     #endregion
@@ -674,6 +677,254 @@ public sealed class Lexer
             "unterminated f-string"));
         while (CurrentMode != LexMode.Normal) _modeStack.Pop();
         return new Token(TokenKind.FStringEnd, new Span(_file, _pos, _pos));
+    }
+
+    #endregion
+
+    #region Operators
+
+    private Token? TryScanOperator(int operatorStart)
+    {
+        switch (Current)
+        {
+            case '(':
+                _pos++;
+                return new Token(TokenKind.LParen, new Span(_file, operatorStart, _pos));
+            case ')':
+                _pos++;
+                return new Token(TokenKind.RParen, new Span(_file, operatorStart, _pos));
+            case '[':
+                _pos++;
+                return new Token(TokenKind.LBracket, new Span(_file, operatorStart, _pos));
+            case ']':
+                _pos++;
+                return new Token(TokenKind.RBracket, new Span(_file, operatorStart, _pos));
+            case '{':
+                _pos++;
+                return new Token(TokenKind.LBrace, new Span(_file, operatorStart, _pos));
+            case '}':
+                _pos++;
+                return new Token(TokenKind.RBrace, new Span(_file, operatorStart, _pos));
+            case ',':
+                _pos++;
+                return new Token(TokenKind.Comma, new Span(_file, operatorStart, _pos));
+            case ';':
+                _pos++;
+                return new Token(TokenKind.Semicolon, new Span(_file, operatorStart, _pos));
+            case '~':
+                _pos++;
+                return new Token(TokenKind.Tilde, new Span(_file, operatorStart, _pos));
+            case '.':
+                if (PeekAt(1) == '.' && PeekAt(2) == '=')
+                {
+                    _pos += 3;
+                    return new Token(TokenKind.DotDotEqual, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '.')
+                {
+                    _pos+=2;
+                    return new Token(TokenKind.DotDot, new Span(_file, operatorStart, _pos));
+                }
+
+                _pos++;
+                return new Token(TokenKind.Dot, new Span(_file, operatorStart, _pos));
+            case ':':
+                if (PeekAt(1) == ':')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.ColonColon, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Colon, new Span(_file, operatorStart, _pos));
+            case '-':
+                if (PeekAt(1) == '>')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.Arrow, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.MinusEqual, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '-')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.Dec, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Minus, new Span(_file, operatorStart, _pos));
+            case '+':
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.PlusEqual, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '+')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.Inc, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Plus, new Span(_file, operatorStart, _pos));
+            case '*':
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.StarEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Star, new Span(_file, operatorStart, _pos));
+            case '/':
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.SlashEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Slash, new Span(_file, operatorStart, _pos));
+            case '%':
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.PercentEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Percent, new Span(_file, operatorStart, _pos));
+            case '=':
+                if (PeekAt(1) == '>')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.FatArrow, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.EqualEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Equal, new Span(_file, operatorStart, _pos));
+            case '^':
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.CaretEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Caret, new Span(_file, operatorStart, _pos));
+            case '!':
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.ExclamationEqual, new Span(_file, operatorStart, _pos));
+                }
+
+                _pos++;
+                return new Token(TokenKind.Exclamation, new Span(_file, operatorStart, _pos));
+            case '?':
+                if (PeekAt(1) == '?' && PeekAt(2) == '=')
+                {
+                    _pos += 3;
+                    return new Token(TokenKind.QuestionQuestionEqual, new Span(_file, operatorStart, _pos));
+                }
+                if (PeekAt(1) == '?')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.QuestionQuestion, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '.')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.QuestionDot, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Question, new Span(_file, operatorStart, _pos)); 
+            case '&':
+                if (PeekAt(1) == '&' && PeekAt(2) == '=')
+                {
+                    _pos += 3;
+                    return new Token(TokenKind.AmpAmpEqual, new Span(_file, operatorStart, _pos));
+                }
+                if (PeekAt(1) == '&')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.AmpAmp, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.AmpEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Amp, new Span(_file, operatorStart, _pos));
+            case '|':
+                if (PeekAt(1) == '|' && PeekAt(2) == '=')
+                {
+                    _pos += 3;
+                    return new Token(TokenKind.PipePipeEqual, new Span(_file, operatorStart, _pos));
+                }
+                if (PeekAt(1) == '|')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.PipePipe, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.PipeEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Pipe, new Span(_file, operatorStart, _pos));
+            case '<':
+                if (PeekAt(1) == '<' && PeekAt(2) == '=')
+                {
+                    _pos += 3;
+                    return new Token(TokenKind.ShlEqual, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '<')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.Shl, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.LessEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Less, new Span(_file, operatorStart, _pos));
+            case '>':
+                if (PeekAt(1) == '>' && PeekAt(2) == '=')
+                {
+                    _pos += 3;
+                    return new Token(TokenKind.ShrEqual, new Span(_file, operatorStart, _pos));
+                }
+
+                if (PeekAt(1) == '>')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.Shr, new Span(_file, operatorStart, _pos));
+                }
+                if (PeekAt(1) == '=')
+                {
+                    _pos += 2;
+                    return new Token(TokenKind.GreaterEqual, new Span(_file, operatorStart, _pos));
+                }
+                _pos++;
+                return new Token(TokenKind.Greater, new Span(_file, operatorStart, _pos));
+            default:
+                return null;
+        }
     }
 
     #endregion

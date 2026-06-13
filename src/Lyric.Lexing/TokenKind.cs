@@ -5,10 +5,15 @@ public enum TokenKind
     Eof,
     BadChar,
     Identifier,
+    AtIdentifier,
+    
+    // Braces
     LParen,
     RParen,
     LBrace,
     RBrace,
+    LBracket,
+    RBracket,
 
     // Module
     Module,
@@ -69,6 +74,71 @@ public enum TokenKind
     FStringFormatSpec,  // Span zwischen : und }
     FStringEnd,         // schließendes "
 
+    // Operators
+    //Punctuation
+    Comma,
+    Dot,
+    Semicolon,
+    Colon,
+    ColonColon,
+    Arrow,
+    FatArrow,
+    
+    //Optional/Nullable
+    Question,
+    QuestionDot,
+    QuestionQuestion,
+    Exclamation, //! ist prefix(logical not) und postfix(unwrap), parser disambiguiert
+    
+    //Arithmetic
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Inc, //++
+    Dec, //--
+    
+    //Bitwise
+    Amp, //&
+    Pipe, //|
+    Caret, //^
+    Tilde, //~
+    Shl, //<<
+    Shr, // >>
+    
+    //Comparison
+    EqualEqual, // ==
+    ExclamationEqual, // !=
+    Less, // <
+    LessEqual, // <=
+    Greater, // >
+    GreaterEqual, // >=
+    
+    //Logical
+    AmpAmp, // &&
+    PipePipe, // ||
+    
+    //Range 
+    DotDot, //..
+    DotDotEqual, //..= 
+    
+    //Assignment
+    Equal, // =
+    PlusEqual, // +=
+    MinusEqual, // -=
+    StarEqual, // *=
+    SlashEqual, // /=
+    PercentEqual, // %=
+    AmpEqual, // &=
+    PipeEqual, // |=
+    CaretEqual, // ^=
+    ShlEqual, // <<=
+    ShrEqual, // >>=
+    AmpAmpEqual, // &&=
+    PipePipeEqual, // ||=
+    QuestionQuestionEqual, // ??=
+    
     // This
     This,
 
