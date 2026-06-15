@@ -25,7 +25,7 @@ Startet gerade. M1 (Lexer) ist abgeschlossen — `m1-complete`-Tag.
 
 ## Woran wir gerade arbeiten
 
-**M2-Slice 1** — erster Slice noch zu schneiden (siehe `ROADMAP.md §M2`).
+**M2-Slice 1** — Parser-Infra + TypeExpr + Expressions (Pratt).
 
 ## Was als nächstes ansteht
 
@@ -35,11 +35,17 @@ Golden-Tests je Syntax-Form. Codes `LYR-PAR0001..0050`.
 
 ## Offene Fragen / Diskussions-Punkte
 
-- Wie schneiden wir M2? M2 ist groß. Grobe Kandidaten als getrennte Slices:
-  AST-Knoten + Dumper → Top-Level-Decls → Statements → Pratt-Expressions
-  → Patterns. Reihenfolge/Granularität beim M2-Kickoff festlegen.
-- Pratt vs. reiner Recursive-Descent für Expressions (Präzedenz-Tabelle
-  `Sprache.md §6.1`) — Entscheidung gehört in den ersten M2-Plan.
+## Entschieden für M2
+- Schnitt: vertikal, Expressions-first. 4 Slices: (1) Infra+TypeExpr+Expr,
+  (2) Statements, (3) Declarations+Generics, (4) Patterns+match.
+- Expression-Parsing: Hybrid — RD für Stmts/Decls/Types, Pratt
+  (Precedence-Climbing) für Expressions.
+
+## Offene Fragen (Slice 1)
+- AST-Repräsentation: sealed record-Hierarchie mit Span pro Knoten? Visitor
+  vs. Pattern-Match im Dumper? → wird im Slice-1-Plan festgelegt.
+- Die 3 vom Lexer delegierten Ambiguitäten (`<` Generics, `>>`-Split,
+  `{` Block-vs-Struct-Init) — Strategie im Slice-1-Plan.
 
 ## Letzter relevanter Commit
 
