@@ -13,7 +13,7 @@
 
 **M1 — Lexer**
 
-Slices 1–5 sind durch. Nur noch zwei Slices bis M1-Complete.
+Slices 1–6 sind durch. Nur noch ein Slice bis M1-Complete.
 
 ## Was schon erledigt ist
 
@@ -26,44 +26,28 @@ Slices 1–5 sind durch. Nur noch zwei Slices bis M1-Complete.
 - [x] **M1-Slice 5** — f-Strings via Mode-Stack: Text/Interp/FormatSpec/Normal,
   Brace-Depth-Tracking, nested f-Strings, Disambiguierung `f"` vs
   Identifier `f`; Code 0011
+- [x] **M1-Slice 4** — String/Char-Literals mit Escapes; Codes 0007–0010
+- [x] **M1-Slice 5** — f-Strings via Mode-Stack; Code 0011
+- [x] **M1-Slice 6** — Operatoren/Interpunktion mit Longest-Match
+  (Case-Analyse pro Anfangszeichen); `.`/`:` jetzt echte Tokens
 
 ## Woran wir gerade arbeiten
 
-**M1-Slice 6** — Operatoren und Interpunktion mit Longest-Match-Disambiguation.
-
-Lieferposten (siehe `Sprache.md §1.6`):
-- Single-char Puncts: `,` `.` `;` `:` `->` `=>` etc.
-- Arithmetik: `+` `-` `*` `/` `%`
-- Bitwise: `&` `|` `^` `~` `<<` `>>`
-- Vergleich: `==` `!=` `<` `<=` `>` `>=`
-- Logisch: `&&` `||` `!`
-- Assignment: `=` plus alle Compound (`+=`, `-=`, …, `&&=`, `??=`)
-- Optional: `?` `?.` `??` `!` (Postfix-Unwrap vs Prefix-Not — Context-frei
-  unterscheidbar via Lexer? Oder Parser?)
-- Range: `..` `..=`
-- Increment/Decrement: `++` `--`
-- Spezial: `::` (implements-Op)
-- Disambiguierung `<<` vs `<` `<` (Generics-Konflikt — Parser-Job)
+**M1-Slice 7** — CLI `lyric tokenize` + Golden-Test-Infrastruktur +
+`m1-complete`-Tag. Letzter Slice von M1.
 
 ## Was als nächstes ansteht
 
-Nach Slice 6:
-7. CLI `lyric tokenize` + Golden-Test-Infrastruktur + `m1-complete`-Tag
+Nach M1-Complete:
+M2
 
 ## Offene Fragen / Diskussions-Punkte
 
-Für Slice 6 zu klären:
-- Longest-Match-Strategie: Tabelle aller mehrzeichigen Operatoren mit Trie-Lookup,
-  oder direkt Case-Analyse pro Anfangszeichen?
-- `!` ist sowohl Postfix-Force-Unwrap (`expr!`) als auch Prefix-Logical-Not (`!expr`).
-  Im Lexer ein TokenKind oder zwei? (Parser-Context entscheidet.)
-- `<` vs Generics `<T>`-Open: alles Less-Than-Token, Parser disambiguiert?
-- Reservierter Bereich: `LYR-LEX0012` aufwärts für Slice 6, falls Operatoren
-  Lex-Errors generieren können (vermutlich keine, da alles definiert ist).
+
 
 ## Letzter relevanter Commit
 
-`M1: lex f-strings with mode stack for nested interpolation`
+`M1: lex operators and punctuation with longest-match`
 
 ---
 

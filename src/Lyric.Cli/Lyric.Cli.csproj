@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Lexing\Lyric.Lexing.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
