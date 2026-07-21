@@ -13,43 +13,45 @@
 
 **M2 — Parser**
 
-Startet gerade. M1 (Lexer) ist abgeschlossen — `m1-complete`-Tag.
+M2-Slice 1 (Expressions + TypeExpr) abgeschlossen. M1 (Lexer) = `m1-complete`.
 
 ## Was schon erledigt ist
 
-- [x] **M0 — Setup, Architekturrahmen, Test-Infra** (`m0-complete`-Tag)
-- [x] **M1 — Lexer komplett** (`m1-complete`-Tag): alle Token-Klassen aus
-  `Sprache.md §1`, Longest-Match-Operatoren, 4 Zahlbasen + Suffixe,
-  String/Char/f-Strings, Kommentare; Codes `LYR-LEX0001–0012`;
-  `lyric tokenize` + Golden-Test-Infrastruktur.
+- [x] **M1 — Lexer komplett** (`m1-complete`-Tag).
+- [x] **M2-Slice 1 — Expressions + TypeExpr**: Pratt-Parser für alle Operatoren
+  (§6.1) mit korrekter Präzedenz/Assoziativität; TypeExpr (Named/Generic/Array/
+  Tuple/Function/Nullable) inkl. `>>`-Split für verschachtelte Generics; f-Strings,
+  Lambdas (Expression-Body), Array-/Tuple-Literale, Grouping; `AstDumper`; Recovery
+  (Parser wirft nie → ErrorExpr/ErrorType). Codes `LYR-PAR0001..0015`. Golden- +
+  Unit-Tests in `Lyric.Tests.Parsing`.
 
 ## Woran wir gerade arbeiten
 
-**M2-Slice 1** — Parser-Infra + TypeExpr + Expressions (Pratt).
+**M2-Slice 2** — Statements (§5): Block, `let`/`var`, `if`/`while`/`do-while`/
+`for-in`, `break`/`continue`/`return`/`yield`/`resume`, `defer`, `throw`,
+`try`/`catch`, `ExprStmt`. (`match` erst mit Patterns in Slice 4.)
 
 ## Was als nächstes ansteht
 
-M2 liefert (laut ROADMAP): AST-Typen für alle Knoten, AST-Dumper,
-Recursive-Descent + Pratt-Expressions, Patterns, `lyric parse <file>`,
-Golden-Tests je Syntax-Form. Codes `LYR-PAR0001..0050`.
+- Slice 2: Statements (s.o.). `Block` schaltet Block-Body-Lambdas (`=> { … }`,
+  Parser-TODO) und später `IfExpr` frei.
+- Slice 3: Declarations + Generics. Slice 4: Patterns + `match`.
+- CLI `lyric parse <file>` (M2-Artefakt) sobald Top-Level-Parsing steht.
 
-## Offene Fragen / Diskussions-Punkte
+## Entschieden in Slice 1 (Kontext für spätere Sessions)
 
-## Entschieden für M2
-- Schnitt: vertikal, Expressions-first. 4 Slices: (1) Infra+TypeExpr+Expr,
-  (2) Statements, (3) Declarations+Generics, (4) Patterns+match.
-- Expression-Parsing: Hybrid — RD für Stmts/Decls/Types, Pratt
-  (Precedence-Climbing) für Expressions.
-
-## Offene Fragen (Slice 1)
-- AST-Repräsentation: sealed record-Hierarchie mit Span pro Knoten? Visitor
-  vs. Pattern-Match im Dumper? → wird im Slice-1-Plan festgelegt.
-- Die 3 vom Lexer delegierten Ambiguitäten (`<` Generics, `>>`-Split,
-  `{` Block-vs-Struct-Init) — Strategie im Slice-1-Plan.
+- AST = sealed-record-Hierarchie, Span pro Knoten. Dumper via Pattern-Match, kein Visitor.
+- Expression-`<` ist IMMER Vergleich — Lyric hat keinen Turbofish. Die „`<`-Generics
+  -Ambiguität" existiert nur im Typkontext und ist dort durch RD gelöst.
+- Lambda vs. Tuple vs. Grouping: Lookahead auf `=>` hinter der balancierten `)`.
+- Tuple: keine Arity-Obergrenze (min 2). `Sprache.md` entsprechend angepasst.
+- `IfExpr`/`StructInitExpr` entfernt (verfrüht) — kommen in ihrem Slice mit
+  `Block`/`StructInitField` korrekt zurück.
+- `{`-Block-vs-Struct-Init: in Slice 1 kein Thema (keine Blocks); im Decl-Slice klären.
 
 ## Letzter relevanter Commit
 
-`M1: add lyric tokenize and golden test infrastructure`
+`M2: complete parser expression + type layer (slice 1)`
 
 ---
 
