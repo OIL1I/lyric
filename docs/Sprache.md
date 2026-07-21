@@ -390,7 +390,7 @@ TypeAtom        = BuiltinType
                 | FunctionType
                 | TupleType .
 FunctionType    = 'fn' '(' [ TypeExpr { ',' TypeExpr } ] ')' '->' TypeExpr .
-TupleType       = '(' TypeExpr ',' TypeExpr [ ',' TypeExpr ] ')' .   (* arity 2 oder 3 *)
+TupleType       = '(' TypeExpr ',' TypeExpr { ',' TypeExpr } ')' .   (* arity >= 2, keine Obergrenze *)
 TypeSuffix      = '[' [ IntLit ] ']' .                          (* T[] oder T[N] *)
 
 BuiltinType     = 'int' | 'uint' | 'float'
@@ -415,7 +415,7 @@ BuiltinType     = 'int' | 'uint' | 'float'
 | `?T` | nullable, äquivalent `Option<T>` |
 | `T[]` | dynamisches Array (= `List<T>`-Slice) |
 | `T[N]` | Fix-Size-Array mit Compile-Time-Länge N |
-| `(A, B)` / `(A, B, C)` | Tupel (max arity 3) |
+| `(A, B)`, `(A, B, C)`, … | Tupel (arity ≥ 2, keine Obergrenze) |
 | `fn(A, B) -> R` | Funktionstyp / Closure-Slot |
 
 Semantische Einschränkungen:
@@ -543,7 +543,7 @@ StructInit      = TypePath '{' [ StructInitField { ',' StructInitField } [ ',' ]
 StructInitField = IDENTIFIER '=' Expr .                              (* '=' für Werte, ':' nur für Typen *)
 
 ArrayLit        = '[' [ Expr { ',' Expr } [ ',' ] ] ']' .
-TupleLit        = '(' Expr ',' Expr [ ',' Expr ] ')' .
+TupleLit        = '(' Expr ',' Expr { ',' Expr } ')' .
 
 IfExpr          = 'if' '(' Expr ')' Block 'else' ( Block | IfExpr ) .
 
