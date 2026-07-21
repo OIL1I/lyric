@@ -1,0 +1,7 @@
+Lambda [0..19)
+  Param x [1..2)
+  Lambda [7..19)
+    Param y [8..9)
+    Binary Add [14..19)
+      Ident x [14..15)
+      Ident y [18..19)

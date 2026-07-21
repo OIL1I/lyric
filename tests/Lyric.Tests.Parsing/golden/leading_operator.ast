@@ -1,0 +1,11 @@
+Error [0..1)
+
+=== diagnostics ===
+leading_operator.lyr:1:1: error[LYR-PAR0002]: expected an expression, got Star
+* 3
+^
+
+leading_operator.lyr:1:3: error[LYR-PAR0001]: unexpected token after expression: IntLiteral
+* 3
+  ^
+

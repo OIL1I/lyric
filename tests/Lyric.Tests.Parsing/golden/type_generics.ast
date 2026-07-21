@@ -1,0 +1,5 @@
+Cast [0..21)
+  Ident m [0..1)
+  NamedType Map [5..21)
+    NamedType string [9..15)
+    NamedType int [17..20)

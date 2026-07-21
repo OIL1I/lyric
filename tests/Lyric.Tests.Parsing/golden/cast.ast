@@ -1,0 +1,5 @@
+Cast [0..19)
+  Cast [0..8)
+    Ident x [0..1)
+    NamedType int [5..8)
+  NamedType float64 [12..19)

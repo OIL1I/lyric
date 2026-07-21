@@ -1,0 +1,208 @@
+using Lyric.AST;
+using Lyric.Core;
+using Lyric.Parsing;
+using Xunit;
+
+namespace Lyric.Tests.Parsing;
+
+/// <summary>
+/// Direkte AST-Assertions gegen den Parser-Kontrakt — unabhängig vom AstDumper.
+/// Die Golden-Tests sichern den *ganzen* Baum über den Dumper ab; diese Tests
+/// prüfen einzelne Invarianten (Assoziativität, Präzedenz, Recovery) direkt am
+/// Record-Baum, damit ein Dumper-Bug keinen Parser-Bug maskiert.
+/// </summary>
+public class ParserTests
+{
+    private static (Expr expr, DiagnosticEngine diag) Parse(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var expr = new Parser(sm, id, de).ParseExpression();
+        return (expr, de);
+    }
+
+    // --- Assoziativität ---
+
+    [Fact]
+    public void Coalesce_is_right_associative()
+    {
+        var (expr, de) = Parse("a ?? b ?? c");
+        Assert.False(de.HasErrors);
+        var top = Assert.IsType<BinaryExpr>(expr);
+        Assert.Equal(BinaryOp.Coalesce, top.Operator);
+        Assert.IsType<IdentifierExpr>(top.Left);            // a
+        var right = Assert.IsType<BinaryExpr>(top.Right);   // (b ?? c)
+        Assert.Equal(BinaryOp.Coalesce, right.Operator);
+    }
+
+    [Fact]
+    public void Addition_is_left_associative()
+    {
+        var (expr, _) = Parse("a + b + c");
+        var top = Assert.IsType<BinaryExpr>(expr);          // ((a + b) + c)
+        Assert.Equal(BinaryOp.Add, top.Operator);
+        var left = Assert.IsType<BinaryExpr>(top.Left);
+        Assert.Equal(BinaryOp.Add, left.Operator);
+        Assert.IsType<IdentifierExpr>(top.Right);           // c
+    }
+
+    [Fact]
+    public void Assignment_is_right_associative()
+    {
+        var (expr, _) = Parse("a = b = c");
+        var top = Assert.IsType<AssignExpr>(expr);
+        Assert.Null(top.Operator);                          // plain '='
+        Assert.IsType<AssignExpr>(top.Value);               // b = c
+    }
+
+    [Fact]
+    public void Compound_assign_carries_base_operator()
+    {
+        var (expr, _) = Parse("a += b");
+        var top = Assert.IsType<AssignExpr>(expr);
+        Assert.Equal(BinaryOp.Add, top.Operator);
+    }
+
+    [Fact]
+    public void Cast_is_left_associative()
+    {
+        var (expr, _) = Parse("x as int as float");
+        var outer = Assert.IsType<CastExpr>(expr);          // (x as int) as float
+        Assert.IsType<CastExpr>(outer.Operand);
+    }
+
+    // --- Präzedenz ---
+
+    [Fact]
+    public void Multiplication_binds_tighter_than_addition()
+    {
+        var (expr, _) = Parse("1 + 2 * 3");
+        var top = Assert.IsType<BinaryExpr>(expr);
+        Assert.Equal(BinaryOp.Add, top.Operator);
+        var right = Assert.IsType<BinaryExpr>(top.Right);
+        Assert.Equal(BinaryOp.Mul, right.Operator);
+    }
+
+    [Fact]
+    public void Postfix_binds_tighter_than_prefix()
+    {
+        var (expr, _) = Parse("-a!");
+        var neg = Assert.IsType<UnaryExpr>(expr);           // -(a!)
+        Assert.Equal(UnaryOp.Neg, neg.Operator);
+        var unwrap = Assert.IsType<PostfixExpr>(neg.Operand);
+        Assert.Equal(PostfixOp.ForceUnwrap, unwrap.Operator);
+    }
+
+    [Fact]
+    public void Grouping_overrides_precedence()
+    {
+        var (expr, _) = Parse("(1 + 2) * 3");
+        var top = Assert.IsType<BinaryExpr>(expr);
+        Assert.Equal(BinaryOp.Mul, top.Operator);
+        var left = Assert.IsType<BinaryExpr>(top.Left);
+        Assert.Equal(BinaryOp.Add, left.Operator);          // parens survived
+    }
+
+    // --- Typen ---
+
+    [Fact]
+    public void Nested_generics_split_the_double_gt()
+    {
+        var (expr, de) = Parse("x as List<List<int>>");
+        Assert.False(de.HasErrors);                         // '>>' correctly split into two '>'
+        var cast = Assert.IsType<CastExpr>(expr);
+        var outer = Assert.IsType<NamedType>(cast.Type);
+        Assert.Equal(["List"], outer.Path);
+        var inner = Assert.IsType<NamedType>(Assert.Single(outer.TypeArguments));
+        Assert.Equal(["List"], inner.Path);
+        var leaf = Assert.IsType<NamedType>(Assert.Single(inner.TypeArguments));
+        Assert.Equal(["int"], leaf.Path);
+    }
+
+    [Fact]
+    public void Dotted_type_path_is_captured()
+    {
+        var (expr, _) = Parse("d as std.collections.Deque");
+        var cast = Assert.IsType<CastExpr>(expr);
+        var named = Assert.IsType<NamedType>(cast.Type);
+        Assert.Equal(["std", "collections", "Deque"], named.Path);
+    }
+
+    [Fact]
+    public void Fixed_size_array_type_keeps_the_size()
+    {
+        var (expr, _) = Parse("a as int[8]");
+        var cast = Assert.IsType<CastExpr>(expr);
+        var arr = Assert.IsType<ArrayType>(cast.Type);
+        Assert.NotNull(arr.Size);
+        Assert.Equal(8UL, arr.Size!.Value);
+    }
+
+    // --- f-Strings ---
+
+    [Fact]
+    public void Fstring_splits_into_text_and_hole_segments()
+    {
+        var (expr, de) = Parse("f\"a{b}c\"");
+        Assert.False(de.HasErrors);
+        var fstr = Assert.IsType<InterpolatedStringExpr>(expr);
+        Assert.Collection(fstr.Segments,
+            s => Assert.Equal("a", Assert.IsType<InterpText>(s).Text),
+            s => Assert.IsType<IdentifierExpr>(Assert.IsType<InterpHole>(s).Expr),
+            s => Assert.Equal("c", Assert.IsType<InterpText>(s).Text));
+    }
+
+    // --- Recovery / Diagnostics ---
+
+    [Fact]
+    public void Range_is_not_chainable()
+    {
+        var (_, de) = Parse("1..2..3");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-PAR0005");
+    }
+
+    [Fact]
+    public void Tuple_has_no_upper_arity_limit()
+    {
+        var (expr, de) = Parse("(1, 2, 3, 4, 5)");
+        Assert.False(de.HasErrors);
+        Assert.Equal(5, Assert.IsType<TupleLitExpr>(expr).Elements.Length);
+    }
+
+    [Fact]
+    public void Single_element_with_trailing_comma_is_not_a_tuple()
+    {
+        // Untergrenze bleibt: 1 Element ist Gruppierung, kein Tuple.
+        var (_, de) = Parse("(x,)");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-PAR0010");
+    }
+
+    [Fact]
+    public void Empty_array_parses_without_error()
+    {
+        var (expr, de) = Parse("[]");
+        Assert.False(de.HasErrors);
+        Assert.Empty(Assert.IsType<ArrayLitExpr>(expr).Elements);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("(")]
+    [InlineData(")")]
+    [InlineData("1 +")]
+    [InlineData("* 3")]
+    [InlineData("a.")]
+    [InlineData("a[")]
+    [InlineData("f\"{")]
+    [InlineData("(x: ) => x")]
+    [InlineData("x as")]
+    [InlineData("(((((((((")]
+    public void Parser_never_throws_and_reports_on_garbage(string source)
+    {
+        // Kontrakt: der Parser wirft nie — jeder Fehler geht als Diagnostic raus.
+        var (expr, de) = Parse(source);
+        Assert.NotNull(expr);
+        Assert.True(de.HasErrors);
+    }
+}

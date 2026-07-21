@@ -1,0 +1,5 @@
+Cast [0..21)
+  Ident xs [0..2)
+  NamedType List [6..21)
+    NamedType List [11..20)
+      NamedType int [16..19)

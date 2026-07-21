@@ -1,0 +1,6 @@
+Cast [0..26)
+  Ident cb [0..2)
+  FunctionType [6..26)
+    NamedType int [9..12)
+    NamedType int [14..17)
+    NamedType bool [22..26)

@@ -1,0 +1,4 @@
+Cast [0..9)
+  Ident x [0..1)
+  Nullable [5..9)
+    NamedType int [6..9)

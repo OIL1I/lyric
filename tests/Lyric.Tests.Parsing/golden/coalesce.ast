@@ -1,0 +1,5 @@
+Binary Coalesce [0..11)
+  Ident a [0..1)
+  Binary Coalesce [5..11)
+    Ident b [5..6)
+    Ident c [10..11)

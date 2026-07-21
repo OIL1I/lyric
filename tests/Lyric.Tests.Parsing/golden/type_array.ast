@@ -1,0 +1,4 @@
+Cast [0..11)
+  Ident a [0..1)
+  ArrayType [4] [5..11)
+    NamedType int [5..8)

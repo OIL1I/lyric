@@ -31,4 +31,19 @@ public readonly record struct Span(FileId File, int Start, int End)
     }
 
     public override string ToString() => $"{File}[{Start}..{End})";
+
+    /// <summary>
+    /// Returns the smallest span that covers both <paramref name="first"> and <paramref name="seccond"/>.
+    /// Both spans must reference the same file.
+    /// </summary>
+    public static Span Union(Span first, Span seccond)
+    {
+        if (first.File != seccond.File)
+        {
+            throw new ArgumentException(
+                $"cannot union spans from different files: {first.File} vs {seccond.File}",
+                nameof(seccond));
+        }
+        return new Span(first.File, Math.Min(first.Start, seccond.Start), Math.Max(first.End, seccond.End));
+    }
 }

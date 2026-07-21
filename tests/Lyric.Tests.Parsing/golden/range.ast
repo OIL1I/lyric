@@ -1,0 +1,5 @@
+Range ..= [0..9)
+  Int 0 [0..1)
+  Binary Add [4..9)
+    Ident n [4..5)
+    Int 1 [8..9)

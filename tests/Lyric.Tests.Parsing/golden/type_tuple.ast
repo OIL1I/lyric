@@ -1,0 +1,6 @@
+Cast [0..23)
+  Ident p [0..1)
+  TupleType [5..23)
+    NamedType int [6..9)
+    NamedType float [11..16)
+    NamedType bool [18..22)

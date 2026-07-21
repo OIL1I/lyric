@@ -1,0 +1,9 @@
+Binary Add [0..4)
+  Int 1 [0..1)
+  Error [4..4)
+
+=== diagnostics ===
+missing_rhs.lyr:2:1: error[LYR-PAR0002]: expected an expression, got Eof
+
+^
+

@@ -1,11 +1,14 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Lyric.AST/Lyric.AST.csproj" />
     <Project Path="src/Lyric.Cli/Lyric.Cli.csproj" />
     <Project Path="src/Lyric.Core/Lyric.Core.csproj" />
     <Project Path="src/Lyric.Lexing/Lyric.Lexing.csproj" />
+    <Project Path="src/Lyric.Parsing/Lyric.Parsing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Lyric.Tests.Core/Lyric.Tests.Core.csproj" />
     <Project Path="tests/Lyric.Tests.Lexing/Lyric.Tests.Lexing.csproj" />
+    <Project Path="tests/Lyric.Tests.Parsing/Lyric.Tests.Parsing.csproj" />
   </Folder>
 </Solution>
