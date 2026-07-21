@@ -1,0 +1,15 @@
+42
+1_000_000
+0xFF
+0o755
+0b1010
+3.14159
+1.5e-3
+100i32
+2.5f64
+true
+false
+null
+"a string with \n escape"
+'x'
+'\u{1F30D}'

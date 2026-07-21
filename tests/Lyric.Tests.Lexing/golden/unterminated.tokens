@@ -1,0 +1,21 @@
+[0..3) Let 'let'
+[4..5) Identifier 'x'
+[6..7) Equal '='
+[8..13) StringLiteral '"oops'
+[14..15) BadChar '@'
+[16..19) IntLiteral '123'
+[36..36) Eof
+
+=== diagnostics ===
+unterminated.lyr:1:9: error[LYR-LEX0009]: unterminated string literal
+let x = "oops
+        ^^^^^
+
+unterminated.lyr:2:1: error[LYR-LEX0012]: expected identifier after '@'
+@ 123
+^
+
+unterminated.lyr:3:1: error[LYR-LEX0002]: unterminated block comment
+/* never closed
+^
+

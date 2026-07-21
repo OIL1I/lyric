@@ -1,0 +1,23 @@
+module demo;
+
+import std.io { println };
+
+pub struct Vector2 {
+    x: float,
+    y: float,
+
+    fn length(): float {
+        return sqrt(this.x * this.x + this.y * this.y);
+    }
+}
+
+fn main(): int {
+    let v = Vector2 { x = 3.0, y = 4.0 };
+    println(f"len = {v.length():N2}");
+    for (i in 0..10) {
+        if (i % 2 == 0) {
+            println(f"{i} is even");
+        }
+    }
+    return 0;
+}

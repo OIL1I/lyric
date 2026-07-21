@@ -1,0 +1,25 @@
+[0..5) IntLiteral '100i7'
+[6..12) FloatLiteral '1.5i32'
+[13..15) IntLiteral '0x'
+[15..17) Identifier 'GG'
+[18..20) IntLiteral '99'
+[21..22) BadChar '§'
+[23..23) Eof
+
+=== diagnostics ===
+bad_suffix.lyr:1:1: error[LYR-LEX0003]: invalid suffix 'i7' on decimal literal
+100i7
+^^^^^
+
+bad_suffix.lyr:2:1: error[LYR-LEX0003]: integer suffix 'i32' is not allowed on float literal
+1.5i32
+^^^^^^
+
+bad_suffix.lyr:3:1: error[LYR-LEX0004]: empty integer literal after prefix
+0xGG
+^^
+
+bad_suffix.lyr:4:4: error[LYR-LEX0001]: unexpected character '§'
+99 §
+   ^
+

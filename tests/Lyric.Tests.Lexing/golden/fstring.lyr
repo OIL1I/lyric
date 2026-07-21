@@ -1,0 +1,4 @@
+f"hello {name}"
+f"value: {x:N2}"
+f"nested {f"inner {y}"}"
+f"{a + b * c}"
