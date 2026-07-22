@@ -211,10 +211,15 @@ StructDecl      = [ 'pub' ] 'struct' IDENTIFIER [ GenericParams ]
                   [ '::' InterfaceList ]
                   '{' [ StructBody ] '}' .
 InterfaceList   = '[' TypeExpr { ',' TypeExpr } ']' .
-StructBody      = StructMember { ',' StructMember } [ ',' ] .
+StructBody      = { StructMember [ ',' ] } .                (* Trenner-Regel siehe unten *)
 StructMember    = Field | FunctionDecl .
 Field           = IDENTIFIER ':' TypeExpr [ '=' Expr ] .
 ```
+
+**Member-Trenner-Regel** (gilt auch für `ClassBody`): Das `,` trennt Member. Nach
+einem `Field` ist es **Pflicht**, außer das Feld ist das letzte Member vor `}`. Nach
+einer `FunctionDecl` (Block-Body endet mit `}`) ist es **optional**. So brauchen
+Methoden kein Trailing-Komma, Felder bleiben aber klar getrennt.
 
 Beispiel:
 
@@ -242,7 +247,7 @@ pub struct Vector3 :: [Equatable] {
 ClassDecl       = [ 'pub' ] 'class' IDENTIFIER [ GenericParams ]
                   [ '::' InterfaceList ]
                   '{' [ ClassBody ] '}' .
-ClassBody       = ClassMember { ',' ClassMember } [ ',' ] .
+ClassBody       = { ClassMember [ ',' ] } .                (* Trenner-Regel wie StructBody §3.2 *)
 ClassMember     = Field | FunctionDecl .
 ```
 
