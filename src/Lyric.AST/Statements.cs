@@ -33,6 +33,8 @@ public sealed record DeferStmt(Stmt Body, Span Span) : Stmt(Span);
 
 public sealed record ThrowStmt(Expr Value, Span Span) : Stmt(Span);
 
+public sealed record MatchStmt(Expr Scrutinee, MatchArm[] Arms, Span Span) : Stmt(Span);
+
 public sealed record TryStmt(Block Body, CatchClause[] Catches, Span Span) : Stmt(Span);
 // BindingName == null  => '_' (catch-all ohne Binding)
 // BindingType == null  => catch-all mit Binding (Throwable); sonst typed catch.

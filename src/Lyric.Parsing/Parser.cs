@@ -262,6 +262,10 @@ public sealed partial class Parser
                 return ParseArrayLit();
             case TokenKind.FStringStart:
                 return ParseFString();
+            case TokenKind.If:
+                return ParseIfExpr();      // if-Ausdruck (braucht else)
+            case TokenKind.Match:
+                return ParseMatchExpr();
             case TokenKind.LParen:
                 return ParseParenOrTupleOrLambda();
             default:

@@ -38,9 +38,16 @@ public sealed partial class Parser
         TokenKind.Defer => ParseDefer(),
         TokenKind.Throw => ParseThrow(),
         TokenKind.Try => ParseTry(),
-        TokenKind.Match => ParseMatchDeferred(),
+        TokenKind.Match => ParseMatchStmt(),
         _ => ParseExprStmt(),
     };
+
+    private Stmt ParseMatchStmt()
+    {
+        var kw = _buffer.Advance(); // 'match'
+        var (scrutinee, arms, end) = ParseMatchCore();
+        return new MatchStmt(scrutinee, arms, Span.Union(kw.Span, end));
+    }
 
     private Block ParseBlock()
     {
@@ -223,38 +230,6 @@ public sealed partial class Parser
         return new ExprStmt(expr, Span.Union(expr.Span, semi.Span));
     }
 
-    /// <summary>
-    /// match ist Slice-4-Material (braucht Patterns). Bis dahin: klar melden und den
-    /// gesamten <c>match (…) { … }</c>-Block balanciert überspringen, statt zu kaskadieren.
-    /// </summary>
-    private Stmt ParseMatchDeferred()
-    {
-        var kw = _buffer.Advance(); // match
-        _de.Report("LYR-PAR0024", Severity.Error, kw.Span,
-            "match statements are not yet implemented (planned for Slice 4)");
-        SkipBalanced(TokenKind.LParen, TokenKind.RParen);
-        var end = SkipBalanced(TokenKind.LBrace, TokenKind.RBrace);
-        return new ErrorStmt(Span.Union(kw.Span, end));
-    }
-
     private Token ExpectSemicolon() =>
         _buffer.Expect(TokenKind.Semicolon, "LYR-PAR0016", "expected ';'");
-
-    /// <summary>Überspringt eine balancierte <paramref name="open"/>…<paramref name="close"/>
-    /// -Gruppe und liefert den Span des zuletzt konsumierten Tokens. No-op, wenn das
-    /// aktuelle Token nicht <paramref name="open"/> ist.</summary>
-    private Span SkipBalanced(TokenKind open, TokenKind close)
-    {
-        var span = _buffer.Current.Span;
-        if (!_buffer.Check(open)) return span;
-        var depth = 0;
-        while (!_buffer.AtEnd)
-        {
-            var t = _buffer.Advance();
-            span = t.Span;
-            if (t.TokenKind == open) depth++;
-            else if (t.TokenKind == close && --depth == 0) break;
-        }
-        return span;
-    }
 }

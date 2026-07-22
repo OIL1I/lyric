@@ -335,6 +335,71 @@ public static class AstDumper
                 Line(sb, indent, "ErrorStmt", n.Span);
                 break;
 
+            // --- Control-flow als Ausdruck ---
+            case IfExpr n:
+                Line(sb, indent, "IfExpr", n.Span);
+                Write(n.Condition, indent + 1, sb);
+                Write(n.Then, indent + 1, sb);
+                Write(n.Else, indent + 1, sb);
+                break;
+            case MatchExpr n:
+                Line(sb, indent, "Match", n.Span);
+                Write(n.Scrutinee, indent + 1, sb);
+                foreach (var a in n.Arms) Write(a, indent + 1, sb);
+                break;
+            case MatchStmt n:
+                Line(sb, indent, "MatchStmt", n.Span);
+                Write(n.Scrutinee, indent + 1, sb);
+                foreach (var a in n.Arms) Write(a, indent + 1, sb);
+                break;
+            case MatchArm n:
+                Line(sb, indent, "Arm", n.Span);
+                Write(n.Pattern, indent + 1, sb);
+                if (n.Guard is not null)
+                {
+                    Line(sb, indent + 1, "Guard", n.Guard.Span);
+                    Write(n.Guard, indent + 2, sb);
+                }
+                Write(n.Body, indent + 1, sb); // letztes Kind = Arm-Body
+                break;
+
+            // --- Patterns (§6.3) ---
+            case WildcardPattern n:
+                Line(sb, indent, "Wildcard", n.Span);
+                break;
+            case LiteralPattern n:
+                Line(sb, indent, "LitPattern", n.Span);
+                Write(n.Literal, indent + 1, sb);
+                break;
+            case BindingPattern n:
+                Line(sb, indent, $"BindPattern {n.Name}", n.Span);
+                break;
+            case VariantPattern n:
+                Line(sb, indent, $"VariantPattern {string.Join('.', n.Path)}", n.Span);
+                foreach (var p in n.TupleElements ?? []) Write(p, indent + 1, sb);
+                foreach (var f in n.StructFields ?? []) Write(f, indent + 1, sb);
+                break;
+            case TuplePattern n:
+                Line(sb, indent, "TuplePattern", n.Span);
+                foreach (var p in n.Elements) Write(p, indent + 1, sb);
+                break;
+            case RangePattern n:
+                Line(sb, indent, $"RangePattern {(n.IsInclusive ? "..=" : "..")}", n.Span);
+                Write(n.Low, indent + 1, sb);
+                Write(n.High, indent + 1, sb);
+                break;
+            case OrPattern n:
+                Line(sb, indent, "OrPattern", n.Span);
+                foreach (var p in n.Alternatives) Write(p, indent + 1, sb);
+                break;
+            case FieldPattern n:
+                Line(sb, indent, $"FieldPattern {n.Name}", n.Span);
+                if (n.Pattern is not null) Write(n.Pattern, indent + 1, sb);
+                break;
+            case ErrorPattern n:
+                Line(sb, indent, "ErrorPattern", n.Span);
+                break;
+
             // --- Recovery ---
             case ErrorExpr n:
                 Line(sb, indent, "Error", n.Span);

@@ -1,0 +1,5 @@
+VariantPattern Point [0..18)
+  FieldPattern x [8..13)
+    LitPattern [12..13)
+      Int 0 [12..13)
+  FieldPattern y [15..16)

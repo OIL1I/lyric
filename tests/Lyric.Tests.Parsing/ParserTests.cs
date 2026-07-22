@@ -299,11 +299,24 @@ public class ParserTests
     }
 
     [Fact]
-    public void Match_statement_is_deferred_with_diagnostic()
+    public void Match_statement_parses_arms()
     {
-        var (stmt, de) = ParseStatement("match (x) { _ => 0 }");
-        Assert.IsType<ErrorStmt>(stmt);
-        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-PAR0024");
+        var (stmt, de) = ParseStatement("match (x) { 0 => a(), _ => b() }");
+        Assert.False(de.HasErrors);
+        var m = Assert.IsType<MatchStmt>(stmt);
+        Assert.Equal(2, m.Arms.Length);
+        Assert.IsType<LiteralPattern>(m.Arms[0].Pattern);
+        Assert.IsType<WildcardPattern>(m.Arms[1].Pattern);
+    }
+
+    [Fact]
+    public void Match_arm_guard_and_block_body()
+    {
+        var (stmt, de) = ParseStatement("match (x) { n if n > 0 => { use(n); }, _ => stop() }");
+        Assert.False(de.HasErrors);
+        var m = Assert.IsType<MatchStmt>(stmt);
+        Assert.NotNull(m.Arms[0].Guard);           // 'if n > 0'
+        Assert.IsType<Block>(m.Arms[0].Body);       // Block-Arm
     }
 
     [Theory]
@@ -453,6 +466,105 @@ public class ParserTests
     {
         var (m, de) = ParseModule(source);
         Assert.NotNull(m);
+        Assert.True(de.HasErrors);
+    }
+
+    // --- Patterns + match + if-expression (§6.2/§6.3) ---
+
+    private static (Pattern pattern, DiagnosticEngine diag) ParsePattern(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var pattern = new Parser(sm, id, de).ParsePattern();
+        return (pattern, de);
+    }
+
+    [Fact]
+    public void Wildcard_and_binding_patterns()
+    {
+        Assert.IsType<WildcardPattern>(ParsePattern("_").pattern);
+        Assert.Equal("x", Assert.IsType<BindingPattern>(ParsePattern("x").pattern).Name);
+    }
+
+    [Fact]
+    public void Tuple_variant_pattern()
+    {
+        var v = Assert.IsType<VariantPattern>(ParsePattern("Circle(r)").pattern);
+        Assert.Equal(["Circle"], v.Path);
+        Assert.Single(v.TupleElements!);
+        Assert.Null(v.StructFields);
+    }
+
+    [Fact]
+    public void Struct_variant_pattern()
+    {
+        var v = Assert.IsType<VariantPattern>(ParsePattern("Triangle { a, b, c }").pattern);
+        Assert.Null(v.TupleElements);
+        Assert.Equal(3, v.StructFields!.Length);
+    }
+
+    [Fact]
+    public void Or_pattern_flattens_alternatives()
+    {
+        Assert.Equal(3, Assert.IsType<OrPattern>(ParsePattern("1 | 2 | 3").pattern).Alternatives.Length);
+    }
+
+    [Fact]
+    public void Inclusive_range_pattern()
+    {
+        Assert.True(Assert.IsType<RangePattern>(ParsePattern("0..=9").pattern).IsInclusive);
+    }
+
+    [Fact]
+    public void Qualified_path_is_variant_not_binding()
+    {
+        var v = Assert.IsType<VariantPattern>(ParsePattern("Shape.Circle").pattern);
+        Assert.Equal(["Shape", "Circle"], v.Path);
+        Assert.Null(v.TupleElements);   // Unit-Variante, aber qualifiziert
+        Assert.Null(v.StructFields);
+    }
+
+    [Fact]
+    public void Match_as_expression()
+    {
+        var (e, de) = Parse("match (n) { 0 => \"z\", _ => \"o\" }");
+        Assert.False(de.HasErrors);
+        Assert.Equal(2, Assert.IsType<MatchExpr>(e).Arms.Length);
+    }
+
+    [Fact]
+    public void If_expression_branches_are_expressions()
+    {
+        var (e, de) = Parse("if (a) 1 else 2");
+        Assert.False(de.HasErrors);
+        var ifx = Assert.IsType<IfExpr>(e);
+        Assert.IsType<IntLiteralExpr>(ifx.Then);   // Branch ist ein Ausdruck, kein Block
+        Assert.IsType<IntLiteralExpr>(ifx.Else);
+    }
+
+    [Fact]
+    public void Else_if_chain_is_nested_if_expression()
+    {
+        var ifx = Assert.IsType<IfExpr>(Parse("if (a) 1 else if (b) 2 else 3").expr);
+        Assert.IsType<IfExpr>(ifx.Else);           // 'else if' → geschachteltes IfExpr
+    }
+
+    [Fact]
+    public void If_expression_without_else_reports()
+    {
+        Assert.Contains(Parse("if (a) 1").diag.Diagnostics, d => d.Code == "LYR-PAR0036");
+    }
+
+    [Theory]
+    [InlineData("(")]
+    [InlineData("Circle(")]
+    [InlineData("|")]
+    [InlineData("Point {")]
+    public void Pattern_parser_never_throws_and_reports(string source)
+    {
+        var (p, de) = ParsePattern(source);
+        Assert.NotNull(p);
         Assert.True(de.HasErrors);
     }
 }

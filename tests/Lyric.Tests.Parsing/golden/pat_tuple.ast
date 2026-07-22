@@ -1,0 +1,3 @@
+TuplePattern [0..6)
+  BindPattern a [1..2)
+  BindPattern b [4..5)

@@ -97,6 +97,9 @@ public class GoldenTests
     [InlineData("lambda_block")]      // Lambda mit Block-Body '=> { ... }'
     [InlineData("grouping")]          // Klammer-Gruppierung überschreibt Präzedenz
     [InlineData("atident")]           // AtIdentifierExpr mit Argumenten
+    [InlineData("match_expr")]        // match als Ausdruck (Or-Pattern-Arme)
+    [InlineData("if_expr")]           // if/else als Ausdruck
+    [InlineData("if_expr_chain")]     // if/else-if/else als Ausdruck
     // TypeExpr (§4) — via 'as'-Cast erreicht.
     [InlineData("type_generics")]     // NamedType mit Typargumenten
     [InlineData("type_nested_generics")] // '>>'-Split bei verschachtelten Generics
@@ -140,7 +143,7 @@ public class GoldenTests
     [InlineData("missing_semicolon")] // let x = 1
     [InlineData("try_no_catch")]      // try { } ohne catch
     [InlineData("if_without_block")]  // if (a) b();
-    [InlineData("match_deferred")]    // match ... (Slice 4, Recovery)
+    [InlineData("match_stmt")]        // match (…) { arms } mit Guard + Block-Arm
     public void Golden_statement_matches_snapshot(string name)
         => Check(name, p => p.ParseStatement());
 
@@ -177,4 +180,24 @@ public class GoldenTests
     [InlineData("bad_toplevel")]      // Ausdruck statt Deklaration
     public void Golden_module_matches_snapshot(string name)
         => Check(name, p => p.ParseModule());
+
+    // ---------------------------------------------------------------------
+    // Patterns (§6.3) — Einstieg ParsePattern
+    // ---------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("pat_wildcard")]       // _
+    [InlineData("pat_literal")]        // 42
+    [InlineData("pat_binding")]        // x
+    [InlineData("pat_tuple_variant")]  // Circle(r)
+    [InlineData("pat_struct_variant")] // Triangle { a, b, c }
+    [InlineData("pat_tuple")]          // (a, b)
+    [InlineData("pat_range")]          // 0..=9
+    [InlineData("pat_or")]             // 1 | 2 | 3
+    [InlineData("pat_qualified")]      // Shape.Circle
+    [InlineData("pat_nested")]         // Wrapper(Circle(r), _)
+    [InlineData("pat_field_sub")]      // Point { x = 0, y }
+    [InlineData("pat_negative_range")] // -10..=10
+    public void Golden_pattern_matches_snapshot(string name)
+        => Check(name, p => p.ParsePattern());
 }

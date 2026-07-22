@@ -1,0 +1,8 @@
+match (shape) {
+    Circle(r) if r < 1.0 => "tiny",
+    Circle(r) => "circle",
+    Rectangle(w, h) => {
+        compute(w, h);
+    },
+    _ => "other",
+}

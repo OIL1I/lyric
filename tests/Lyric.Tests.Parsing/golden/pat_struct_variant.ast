@@ -1,0 +1,4 @@
+VariantPattern Triangle [0..20)
+  FieldPattern a [11..12)
+  FieldPattern b [14..15)
+  FieldPattern c [17..18)

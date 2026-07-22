@@ -59,8 +59,14 @@ public sealed record InterpText(string Text, Span Span) : InterpSegment(Span);  
 public sealed record InterpHole(Expr Expr, string? FormatSpec, Span Span) : InterpSegment(Span);   // {expr} bzw. {expr:spec}
 
 // --- Lambdas ---
-public sealed record LambdaExpr(LambdaParam[] Parameters, TypeNode? ReturnType, Node Body, Span Span) : Expr(Span); // Body: Expr (Slice 1); Block folgt
+public sealed record LambdaExpr(LambdaParam[] Parameters, TypeNode? ReturnType, Node Body, Span Span) : Expr(Span); // Body: Expr oder Block
 public sealed record LambdaParam(string Name, TypeNode? Type, Span Span) : Node(Span);
+
+// --- Control-flow als Ausdruck (§6.2) ---
+// IfExpr-Branches sind AUSDRÜCKE (kein Block) → garantierter Wert. Für Statement-Blocks
+// gibt es das IfStmt. Else ist Pflicht; 'else if' ist ein geschachteltes IfExpr.
+public sealed record IfExpr(Expr Condition, Expr Then, Expr Else, Span Span) : Expr(Span);
+public sealed record MatchExpr(Expr Scrutinee, MatchArm[] Arms, Span Span) : Expr(Span);
 
 // --- Recovery ---
 public sealed record ErrorExpr(Span Span) : Expr(Span);

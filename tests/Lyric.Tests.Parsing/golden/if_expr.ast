@@ -1,0 +1,6 @@
+IfExpr [0..22)
+  Ident cond [4..8)
+  Binary Add [10..15)
+    Ident a [10..11)
+    Int 1 [14..15)
+  Ident b [21..22)
