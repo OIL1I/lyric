@@ -590,6 +590,25 @@ Linke Seite eines Assignments:
 - `Postfix '[' Expr ']'` (Container muss mut sein)
 - `( Lvalue )`
 
+### 6.5 Operator- und Konvertierungs-Semantik (Typen)
+
+Die Typregeln der Operatoren (von der Sema durchgesetzt):
+
+- **Numerik ist strikt.** Arithmetik (`+ - * / %`), Bitweise (`& | ^ << >>`) und
+  Vergleiche verlangen **denselben** numerischen Typ auf beiden Seiten. Es gibt
+  **kein** implizites Widening (`int8` → `int32` braucht `as`). Ausnahme: ein
+  *untyped* Ganzzahl-/Float-Literal (ohne Suffix) passt sich dem Kontext an, sofern
+  sein Wert hineinpasst — `let x: int8 = 5;` ist ok, `= 300` nicht.
+- **`+` und `*` überladen für `string` und `T[]`**: `string + string` / `T[] + T[]`
+  = Konkatenation; `string * int` / `T[] * int` = Wiederholung (`[0] * 5`). Ergebnis
+  ist dynamisch (`string` bzw. `T[]`). Iterativer Aufbau geht besser über
+  `std.string.StringBuilder` / `join`. (Das ist *eingebaute* Semantik, kein
+  user-defined Overloading — das bleibt post-v1.)
+- **`as`** konvertiert in v1 nur **Numerik ↔ Numerik** (alle Größen, int ↔ float).
+- **Vergleiche/Logik** liefern `bool`; `&&`/`||` verlangen `bool`-Operanden.
+- **Nullable** (§7): `T` → `?T` implizit; `?T` → `T` nur via `!`, `??` oder
+  Pattern-Match. Flow-Narrowing (`if (x != null)`) siehe §7.
+
 ---
 
 ## 7. Nullable und Optional-Operationen
