@@ -225,7 +225,12 @@ public sealed partial class Parser
 
     private Stmt ParseExprStmt()
     {
+        // Am Statement-Anfang kein Struct-Init lesen ('Foo { … };' wäre sonst mit einem
+        // Block mehrdeutig). In Wert-Positionen (Bindings, Args, …) bleibt es erlaubt.
+        var saved = _allowStructInit;
+        _allowStructInit = false;
         var expr = ParseExpr(0);
+        _allowStructInit = saved;
         var semi = ExpectSemicolon();
         return new ExprStmt(expr, Span.Union(expr.Span, semi.Span));
     }

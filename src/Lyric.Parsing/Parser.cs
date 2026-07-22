@@ -24,6 +24,10 @@ public sealed partial class Parser
     private readonly SourceManager _sm;
     private readonly DiagnosticEngine _de;
 
+    // Ob 'IDENT { … }' als Struct-Init gelesen werden darf. Ambient: am ExprStmt-Anfang
+    // false (sonst mehrdeutig mit einem Block), in Delimitern via ParseSubExpr wieder true.
+    private bool _allowStructInit = true;
+
     public Parser(SourceManager sm, FileId id, DiagnosticEngine de)
     {
         _sm = sm;
@@ -171,7 +175,7 @@ public sealed partial class Parser
                 case TokenKind.LBracket:
                 {
                     _buffer.Advance();
-                    var index = ParseExpr(0);
+                    var index = ParseSubExpr();
                     var close = _buffer.Expect(TokenKind.RBracket, "LYR-PAR0004", "expected ']' to close index");
                     operand = new IndexExpr(operand, index, Span.Union(operand.Span, close.Span));
                     break;
@@ -240,6 +244,7 @@ public sealed partial class Parser
                 _buffer.Advance();
                 return new NullLiteralExpr(cur.Span);
             case TokenKind.Identifier:
+                if (IsStructInitAhead()) return ParseStructInit();
                 _buffer.Advance();
                 return new IdentifierExpr(_sm.Slice(cur.Span).ToString(), cur.Span);
             case TokenKind.This:
@@ -291,7 +296,7 @@ public sealed partial class Parser
         if (IsLambdaAhead()) return ParseLambda();
 
         var open = _buffer.Advance(); // '('
-        var first = ParseExpr(0);
+        var first = ParseSubExpr();
 
         if (_buffer.Check(TokenKind.Comma))
         {
@@ -299,7 +304,7 @@ public sealed partial class Parser
             while (_buffer.Match(TokenKind.Comma))
             {
                 if (_buffer.Check(TokenKind.RParen)) break; // Trailing-Comma tolerieren
-                elems.Add(ParseExpr(0));
+                elems.Add(ParseSubExpr());
             }
             var close = _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' to close tuple literal");
             var span = Span.Union(open.Span, close.Span);
@@ -320,7 +325,7 @@ public sealed partial class Parser
         {
             while (true)
             {
-                elems.Add(ParseExpr(0));
+                elems.Add(ParseSubExpr());
                 if (!_buffer.Match(TokenKind.Comma)) break;
                 if (_buffer.Check(TokenKind.RBracket)) break; // Trailing-Comma
             }
@@ -335,11 +340,60 @@ public sealed partial class Parser
         if (_buffer.Check(TokenKind.RParen)) return args.ToArray();
         while (true)
         {
-            args.Add(ParseExpr(0));
+            args.Add(ParseSubExpr());
             if (!_buffer.Match(TokenKind.Comma)) break;
             if (_buffer.Check(TokenKind.RParen)) break; // Trailing-Comma
         }
         return args.ToArray();
+    }
+
+    /// <summary>
+    /// Parst einen Ausdruck in einem Delimiter (Klammer/Argument/Index/Array/Hole):
+    /// dort ist Struct-Init immer erlaubt, egal was der ambient-Flag außen sagt.
+    /// </summary>
+    private Expr ParseSubExpr()
+    {
+        var saved = _allowStructInit;
+        _allowStructInit = true;
+        var expr = ParseExpr(0);
+        _allowStructInit = saved;
+        return expr;
+    }
+
+    // Lookahead ab einem Identifier: ist es ein Struct-Init 'Path { … }'? Nur wenn erlaubt
+    // und ein '{' direkt hinter dem (ggf. dotted) Typ-Pfad steht.
+    private bool IsStructInitAhead()
+    {
+        if (!_allowStructInit) return false;
+        var i = 1; // hinter dem aktuellen Identifier
+        while (_buffer.Peek(i).TokenKind == TokenKind.Dot
+               && _buffer.Peek(i + 1).TokenKind == TokenKind.Identifier)
+            i += 2;
+        return _buffer.Peek(i).TokenKind == TokenKind.LBrace;
+    }
+
+    private Expr ParseStructInit()
+    {
+        var first = _buffer.Advance(); // erster IDENT
+        var path = new List<string> { _sm.Slice(first.Span).ToString() };
+        while (_buffer.Match(TokenKind.Dot))
+            path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                $"expected type name, got {_buffer.Current.TokenKind}").Span).ToString());
+
+        _buffer.Advance(); // '{' (durch IsStructInitAhead garantiert)
+        var fields = new List<StructInitField>();
+        while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
+        {
+            var nameTok = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                $"expected field name, got {_buffer.Current.TokenKind}");
+            _buffer.Expect(TokenKind.Equal, "LYR-PAR0037", "expected '=' in struct initializer (':' is only for types)");
+            var value = ParseSubExpr();
+            fields.Add(new StructInitField(_sm.Slice(nameTok.Span).ToString(), value,
+                Span.Union(nameTok.Span, value.Span)));
+            if (!_buffer.Match(TokenKind.Comma)) break;
+        }
+        var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close struct initializer");
+        return new StructInitExpr(path.ToArray(), fields.ToArray(), Span.Union(first.Span, close.Span));
     }
 
     // ---------------------------------------------------------------------
@@ -365,7 +419,7 @@ public sealed partial class Parser
             if (t.TokenKind == TokenKind.FStringInterpStart)
             {
                 _buffer.Advance();
-                var expr = ParseExpr(0);
+                var expr = ParseSubExpr();
                 string? formatSpec = null;
                 if (_buffer.Check(TokenKind.FStringFormatSpec))
                     formatSpec = _sm.Slice(_buffer.Advance().Span).ToString();

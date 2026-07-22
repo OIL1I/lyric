@@ -68,5 +68,11 @@ public sealed record LambdaParam(string Name, TypeNode? Type, Span Span) : Node(
 public sealed record IfExpr(Expr Condition, Expr Then, Expr Else, Span Span) : Expr(Span);
 public sealed record MatchExpr(Expr Scrutinee, MatchArm[] Arms, Span Span) : Expr(Span);
 
+// --- Struct-Init (§6.2): TypePath '{' field = expr, … '}' ---
+// Wird nur in Wert-Position erkannt, nicht am Anfang eines ExprStmt (sonst mehrdeutig
+// mit einem Block). Feld-Trenner ist '=' (':' ist Typen vorbehalten).
+public sealed record StructInitExpr(string[] Path, StructInitField[] Fields, Span Span) : Expr(Span);
+public sealed record StructInitField(string Name, Expr Value, Span Span) : Node(Span);
+
 // --- Recovery ---
 public sealed record ErrorExpr(Span Span) : Expr(Span);

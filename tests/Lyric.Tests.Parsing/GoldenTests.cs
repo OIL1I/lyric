@@ -100,6 +100,10 @@ public class GoldenTests
     [InlineData("match_expr")]        // match als Ausdruck (Or-Pattern-Arme)
     [InlineData("if_expr")]           // if/else als Ausdruck
     [InlineData("if_expr_chain")]     // if/else-if/else als Ausdruck
+    [InlineData("struct_init")]       // Point { x = 1, y = 2 }
+    [InlineData("struct_init_empty")] // Empty { }
+    [InlineData("struct_init_nested")]// verschachteltes Struct-Init im Feldwert
+    [InlineData("struct_init_qualified")] // dotted TypePath game.Player { … }
     // TypeExpr (§4) — via 'as'-Cast erreicht.
     [InlineData("type_generics")]     // NamedType mit Typargumenten
     [InlineData("type_nested_generics")] // '>>'-Split bei verschachtelten Generics
@@ -144,6 +148,7 @@ public class GoldenTests
     [InlineData("try_no_catch")]      // try { } ohne catch
     [InlineData("if_without_block")]  // if (a) b();
     [InlineData("match_stmt")]        // match (…) { arms } mit Guard + Block-Arm
+    [InlineData("struct_init_binding")] // let p = Point { … };  (Struct-Init in Wert-Position)
     public void Golden_statement_matches_snapshot(string name)
         => Check(name, p => p.ParseStatement());
 

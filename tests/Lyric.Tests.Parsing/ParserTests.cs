@@ -567,4 +567,51 @@ public class ParserTests
         Assert.NotNull(p);
         Assert.True(de.HasErrors);
     }
+
+    // --- Struct-Init (§6.2) + '{'-Disambiguierung ---
+
+    [Fact]
+    public void Struct_init_parses_fields()
+    {
+        var (e, de) = Parse("Point { x = 1, y = 2 }");
+        Assert.False(de.HasErrors);
+        var s = Assert.IsType<StructInitExpr>(e);
+        Assert.Equal(["Point"], s.Path);
+        Assert.Equal(2, s.Fields.Length);
+        Assert.Equal("x", s.Fields[0].Name);
+    }
+
+    [Fact]
+    public void Struct_init_can_be_empty_and_qualified()
+    {
+        Assert.Empty(Assert.IsType<StructInitExpr>(Parse("Empty { }").expr).Fields);
+        Assert.Equal(["game", "Player"], Assert.IsType<StructInitExpr>(Parse("game.Player { hp = 100 }").expr).Path);
+    }
+
+    [Fact]
+    public void Struct_init_allowed_in_binding_initializer()
+    {
+        var (stmt, de) = ParseStatement("let p = Point { x = 1 };");
+        Assert.False(de.HasErrors);
+        Assert.IsType<StructInitExpr>(Assert.IsType<BindingStmt>(stmt).Initializer);
+    }
+
+    [Fact]
+    public void Struct_init_re_enabled_inside_call_arguments()
+    {
+        // Statement-Anfang verbietet Struct-Init, aber das Argument liegt in einem Delimiter.
+        var (stmt, de) = ParseStatement("f(Point { x = 1 });");
+        Assert.False(de.HasErrors);
+        var call = Assert.IsType<CallExpr>(Assert.IsType<ExprStmt>(stmt).Expr);
+        Assert.IsType<StructInitExpr>(Assert.Single(call.Arguments));
+    }
+
+    [Fact]
+    public void Bare_struct_init_at_statement_start_is_not_recognized()
+    {
+        // '{'-Disambiguierung: 'Foo { … };' als Statement wird NICHT als Struct-Init gelesen.
+        var (stmt, de) = ParseStatement("Point { x = 1 };");
+        Assert.True(de.HasErrors);
+        Assert.IsType<IdentifierExpr>(Assert.IsType<ExprStmt>(stmt).Expr);
+    }
 }

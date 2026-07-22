@@ -400,6 +400,16 @@ public static class AstDumper
                 Line(sb, indent, "ErrorPattern", n.Span);
                 break;
 
+            // --- Struct-Init ---
+            case StructInitExpr n:
+                Line(sb, indent, $"StructInit {string.Join('.', n.Path)}", n.Span);
+                foreach (var f in n.Fields) Write(f, indent + 1, sb);
+                break;
+            case StructInitField n:
+                Line(sb, indent, $"InitField {n.Name}", n.Span);
+                Write(n.Value, indent + 1, sb);
+                break;
+
             // --- Recovery ---
             case ErrorExpr n:
                 Line(sb, indent, "Error", n.Span);

@@ -1,0 +1,1 @@
+Outer { inner = Inner { v = 1 } }
