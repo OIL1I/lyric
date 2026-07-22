@@ -1,0 +1,8 @@
+Let x [0..9)
+  Int 1 [8..9)
+
+=== diagnostics ===
+missing_semicolon.lyr:1:10: error[LYR-PAR0016]: expected ';'
+let x = 1
+         ^
+

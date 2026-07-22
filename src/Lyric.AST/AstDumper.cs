@@ -175,6 +175,82 @@ public static class AstDumper
                 Line(sb, indent, "ErrorType", n.Span);
                 break;
 
+            // --- Statements ---
+            case Block n:
+                Line(sb, indent, "Block", n.Span);
+                foreach (var s in n.Statements) Write(s, indent + 1, sb);
+                break;
+            case BindingStmt n:
+                Line(sb, indent, $"{(n.IsMutable ? "Var" : "Let")} {n.Name}", n.Span);
+                if (n.Type is not null) Write(n.Type, indent + 1, sb);
+                if (n.Initializer is not null) Write(n.Initializer, indent + 1, sb);
+                break;
+            case IfStmt n:
+                Line(sb, indent, "If", n.Span);
+                Write(n.Condition, indent + 1, sb);
+                Write(n.Then, indent + 1, sb);
+                if (n.Else is not null) Write(n.Else, indent + 1, sb);
+                break;
+            case WhileStmt n:
+                Line(sb, indent, "While", n.Span);
+                Write(n.Condition, indent + 1, sb);
+                Write(n.Body, indent + 1, sb);
+                break;
+            case DoWhileStmt n:
+                Line(sb, indent, "DoWhile", n.Span);
+                Write(n.Body, indent + 1, sb);
+                Write(n.Condition, indent + 1, sb);
+                break;
+            case ForInStmt n:
+                Line(sb, indent, $"ForIn {n.Variable}", n.Span);
+                Write(n.Iterable, indent + 1, sb);
+                Write(n.Body, indent + 1, sb);
+                break;
+            case BreakStmt n:
+                Line(sb, indent, "Break", n.Span);
+                break;
+            case ContinueStmt n:
+                Line(sb, indent, "Continue", n.Span);
+                break;
+            case ReturnStmt n:
+                Line(sb, indent, "Return", n.Span);
+                if (n.Value is not null) Write(n.Value, indent + 1, sb);
+                break;
+            case YieldStmt n:
+                Line(sb, indent, "Yield", n.Span);
+                if (n.Value is not null) Write(n.Value, indent + 1, sb);
+                break;
+            case ResumeStmt n:
+                Line(sb, indent, "Resume", n.Span);
+                Write(n.Coroutine, indent + 1, sb);
+                if (n.Value is not null) Write(n.Value, indent + 1, sb);
+                break;
+            case DeferStmt n:
+                Line(sb, indent, "Defer", n.Span);
+                Write(n.Body, indent + 1, sb);
+                break;
+            case ThrowStmt n:
+                Line(sb, indent, "Throw", n.Span);
+                Write(n.Value, indent + 1, sb);
+                break;
+            case TryStmt n:
+                Line(sb, indent, "Try", n.Span);
+                Write(n.Body, indent + 1, sb);
+                foreach (var c in n.Catches) Write(c, indent + 1, sb);
+                break;
+            case CatchClause n:
+                Line(sb, indent, $"Catch {n.BindingName ?? "_"}", n.Span);
+                if (n.BindingType is not null) Write(n.BindingType, indent + 1, sb);
+                Write(n.Body, indent + 1, sb);
+                break;
+            case ExprStmt n:
+                Line(sb, indent, "ExprStmt", n.Span);
+                Write(n.Expr, indent + 1, sb);
+                break;
+            case ErrorStmt n:
+                Line(sb, indent, "ErrorStmt", n.Span);
+                break;
+
             // --- Recovery ---
             case ErrorExpr n:
                 Line(sb, indent, "Error", n.Span);

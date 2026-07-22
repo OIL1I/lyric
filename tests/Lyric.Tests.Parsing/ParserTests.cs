@@ -22,6 +22,15 @@ public class ParserTests
         return (expr, de);
     }
 
+    private static (Stmt stmt, DiagnosticEngine diag) ParseStatement(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var stmt = new Parser(sm, id, de).ParseStatement();
+        return (stmt, de);
+    }
+
     // --- Assoziativität ---
 
     [Fact]
@@ -203,6 +212,113 @@ public class ParserTests
         // Kontrakt: der Parser wirft nie — jeder Fehler geht als Diagnostic raus.
         var (expr, de) = Parse(source);
         Assert.NotNull(expr);
+        Assert.True(de.HasErrors);
+    }
+
+    // --- Statements (§5) ---
+
+    [Fact]
+    public void Let_is_immutable_and_var_is_mutable()
+    {
+        Assert.False(Assert.IsType<BindingStmt>(ParseStatement("let x = 1;").stmt).IsMutable);
+        Assert.True(Assert.IsType<BindingStmt>(ParseStatement("var x = 1;").stmt).IsMutable);
+    }
+
+    [Fact]
+    public void Binding_captures_type_and_initializer()
+    {
+        var (stmt, de) = ParseStatement("let x: int = 42;");
+        Assert.False(de.HasErrors);
+        var binding = Assert.IsType<BindingStmt>(stmt);
+        Assert.Equal("x", binding.Name);
+        Assert.IsType<NamedType>(binding.Type);
+        Assert.IsType<IntLiteralExpr>(binding.Initializer);
+    }
+
+    [Fact]
+    public void Else_if_chains_as_nested_if()
+    {
+        var (stmt, de) = ParseStatement("if (a) {} else if (b) {} else {}");
+        Assert.False(de.HasErrors);
+        var outer = Assert.IsType<IfStmt>(stmt);
+        var inner = Assert.IsType<IfStmt>(outer.Else);   // 'else if' → verschachteltes IfStmt
+        Assert.IsType<Block>(inner.Else);                // finales 'else' → Block
+    }
+
+    [Fact]
+    public void Block_collects_statements()
+    {
+        var (stmt, de) = ParseStatement("{ a(); b(); }");
+        Assert.False(de.HasErrors);
+        Assert.Equal(2, Assert.IsType<Block>(stmt).Statements.Length);
+    }
+
+    [Fact]
+    public void Try_collects_typed_and_wildcard_catches()
+    {
+        var (stmt, de) = ParseStatement("try {} catch (e: E) {} catch (_) {}");
+        Assert.False(de.HasErrors);
+        var t = Assert.IsType<TryStmt>(stmt);
+        Assert.Equal(2, t.Catches.Length);
+        Assert.Equal("e", t.Catches[0].BindingName);
+        Assert.IsType<NamedType>(t.Catches[0].BindingType);
+        Assert.Null(t.Catches[1].BindingName);           // '_' bindet nicht
+        Assert.Null(t.Catches[1].BindingType);
+    }
+
+    [Fact]
+    public void Try_without_catch_reports()
+    {
+        var (_, de) = ParseStatement("try { x(); }");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-PAR0023");
+    }
+
+    [Fact]
+    public void Return_without_value_is_null()
+    {
+        Assert.Null(Assert.IsType<ReturnStmt>(ParseStatement("return;").stmt).Value);
+    }
+
+    [Fact]
+    public void Defer_expression_form_wraps_in_exprstmt()
+    {
+        Assert.IsType<ExprStmt>(Assert.IsType<DeferStmt>(ParseStatement("defer f();").stmt).Body);
+    }
+
+    [Fact]
+    public void Defer_block_form_holds_a_block()
+    {
+        Assert.IsType<Block>(Assert.IsType<DeferStmt>(ParseStatement("defer { f(); }").stmt).Body);
+    }
+
+    [Fact]
+    public void Lambda_can_have_a_block_body()
+    {
+        var lambda = Assert.IsType<LambdaExpr>(Parse("(x) => { return x; }").expr);
+        Assert.IsType<Block>(lambda.Body);
+    }
+
+    [Fact]
+    public void Match_statement_is_deferred_with_diagnostic()
+    {
+        var (stmt, de) = ParseStatement("match (x) { _ => 0 }");
+        Assert.IsType<ErrorStmt>(stmt);
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-PAR0024");
+    }
+
+    [Theory]
+    [InlineData("let")]
+    [InlineData("let x")]
+    [InlineData("if")]
+    [InlineData("if (a)")]
+    [InlineData("while ()")]
+    [InlineData("for (x in) {}")]
+    [InlineData("do {}")]
+    [InlineData("{")]
+    public void Statement_parser_never_throws_and_reports(string source)
+    {
+        var (stmt, de) = ParseStatement(source);
+        Assert.NotNull(stmt);
         Assert.True(de.HasErrors);
     }
 }

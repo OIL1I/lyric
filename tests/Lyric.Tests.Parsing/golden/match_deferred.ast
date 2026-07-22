@@ -1,0 +1,7 @@
+ErrorStmt [0..33)
+
+=== diagnostics ===
+match_deferred.lyr:1:1: error[LYR-PAR0024]: match statements are not yet implemented (planned for Slice 4)
+match (x) { Circle => 1, _ => 0 }
+^^^^^
+

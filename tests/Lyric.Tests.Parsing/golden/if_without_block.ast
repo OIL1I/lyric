@@ -1,0 +1,16 @@
+If [0..11)
+  Ident a [4..5)
+  Block [7..11)
+    ExprStmt [7..11)
+      Call [7..10)
+        Ident b [7..8)
+
+=== diagnostics ===
+if_without_block.lyr:1:8: error[LYR-PAR0017]: expected '{' to open block
+if (a) b();
+       ^
+
+if_without_block.lyr:1:12: error[LYR-PAR0018]: expected '}' to close block
+if (a) b();
+           ^
+

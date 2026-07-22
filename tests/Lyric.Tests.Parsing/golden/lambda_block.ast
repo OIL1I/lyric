@@ -1,0 +1,7 @@
+Lambda [0..24)
+  Param x [1..2)
+  Block [7..24)
+    Return [9..22)
+      Binary Add [16..21)
+        Ident x [16..17)
+        Int 1 [20..21)

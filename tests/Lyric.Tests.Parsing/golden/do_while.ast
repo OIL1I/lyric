@@ -1,0 +1,6 @@
+DoWhile [0..29)
+  Block [3..14)
+    ExprStmt [5..12)
+      Call [5..11)
+        Ident work [5..9)
+  Ident again [22..27)

@@ -1,0 +1,1 @@
+{ yield a; yield; resume co; resume co, v; }

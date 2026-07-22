@@ -41,6 +41,9 @@ namespace Lyric.Parsing
 
         public Token Current => _buffer[_pos];
 
+        /// <summary>Aktueller Lese-Index. Für Fortschritts-Guards in Recovery-Schleifen.</summary>
+        public int Position => _pos;
+
         public Token Advance()
         {
             var c = Current;

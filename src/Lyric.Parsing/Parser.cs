@@ -18,7 +18,7 @@ namespace Lyric.Parsing;
 /// die <see cref="DiagnosticEngine"/>; der Parser liefert einen ErrorExpr/ErrorType
 /// und macht bestmöglich weiter, damit ein Lauf mehrere Fehler meldet.
 /// </summary>
-public sealed class Parser
+public sealed partial class Parser
 {
     private readonly TokenBuffer _buffer;
     private readonly SourceManager _sm;
@@ -413,8 +413,8 @@ public sealed class Parser
         _buffer.Expect(TokenKind.FatArrow, "LYR-PAR0012",
             $"expected '=>' in lambda, got {_buffer.Current.TokenKind}");
 
-        // TODO(späterer Slice): Block-Body '=> { ... }', sobald Statements existieren.
-        var body = ParseExpr(0);
+        // Body: Expression oder Block ('=> expr' bzw. '=> { ... }', Sprache.md §6.2).
+        Node body = _buffer.Check(TokenKind.LBrace) ? ParseBlock() : ParseExpr(0);
         return new LambdaExpr(parameters.ToArray(), returnType, body, Span.Union(open.Span, body.Span));
     }
 

@@ -1,0 +1,5 @@
+ExprStmt [0..14)
+  Call [0..13)
+    Ident doThing [0..7)
+    Int 1 [8..9)
+    Int 2 [11..12)

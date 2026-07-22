@@ -1,0 +1,5 @@
+Defer [0..20)
+  Block [6..20)
+    ExprStmt [8..18)
+      Call [8..17)
+        Ident cleanup [8..15)

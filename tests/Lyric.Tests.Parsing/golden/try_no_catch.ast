@@ -1,0 +1,11 @@
+Try [0..12)
+  Block [4..12)
+    ExprStmt [6..10)
+      Call [6..9)
+        Ident x [6..7)
+
+=== diagnostics ===
+try_no_catch.lyr:1:1: error[LYR-PAR0023]: try needs at least one catch clause
+try { x(); }
+^^^^^^^^^^^^
+

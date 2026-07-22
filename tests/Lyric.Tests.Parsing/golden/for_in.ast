@@ -1,0 +1,7 @@
+ForIn x [0..28)
+  Ident items [10..15)
+  Block [17..28)
+    ExprStmt [19..26)
+      Call [19..25)
+        Ident use [19..22)
+        Ident x [23..24)
