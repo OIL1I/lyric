@@ -464,7 +464,7 @@ DoWhileStmt     = 'do' Block 'while' '(' Expr ')' ';' .
 ForInStmt       = 'for' '(' IDENTIFIER 'in' Expr ')' Block .
 
 MatchStmt       = 'match' '(' Expr ')' '{' { MatchArm } '}' .
-MatchArm        = Pattern [ 'if' Expr ] '=>' ( Expr ',' | Block ) .
+MatchArm        = Pattern [ 'if' Expr ] '=>' ( Expr | Block ) .   (* Trenner: Expr-Arm ',' Pflicht (außer letzter vor '}'), Block-Arm ',' optional *)
 
 BreakStmt       = 'break' ';' .
 ContinueStmt    = 'continue' ';' .
@@ -550,7 +550,7 @@ StructInitField = IDENTIFIER '=' Expr .                              (* '=' für
 ArrayLit        = '[' [ Expr { ',' Expr } [ ',' ] ] ']' .
 TupleLit        = '(' Expr ',' Expr { ',' Expr } ')' .
 
-IfExpr          = 'if' '(' Expr ')' Block 'else' ( Block | IfExpr ) .
+IfExpr          = 'if' '(' Expr ')' Expr 'else' Expr .   (* Branches sind Ausdrücke (garantierter Wert); 'else' Pflicht; 'else if' = geschachteltes IfExpr. Für Statement-Blocks: IfStmt §5 *)
 
 MatchExpr       = 'match' '(' Expr ')' '{' { MatchArm } '}' .
 ```
