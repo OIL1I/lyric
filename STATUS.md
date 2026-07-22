@@ -11,47 +11,56 @@
 
 ## Aktueller Meilenstein
 
-**M2 — Parser (abgeschlossen)**
+**M3 — Resolver + Sema (basic)**
 
-Alle Slices 1–4 plus Struct-Init fertig. `examples/hello.lyr` parst clean, `lyric parse`
-liefert vollständige Modul-ASTs. Offen: Tag `m2-complete` setzen, dann M3 planen.
+Slice 1 (Resolver) abgeschlossen. M2 = `m2-complete`, M1 = `m1-complete`.
 
 ## Was schon erledigt ist
 
-- [x] **M1 — Lexer komplett** (`m1-complete`-Tag).
-- [x] **M2 — Parser komplett**: Expressions (Pratt, §6.1), TypeExpr (inkl. `>>`-Split),
-  Statements (§5), Declarations + Generics (§2/§3), Patterns + `match` (§6.3), `IfExpr`,
-  Struct-Init. Einstiege `ParseModule`/`ParseStatement`/`ParsePattern`/`ParseExpression`,
-  `AstDumper`, CLI `lyric parse`. Recovery überall (Parser wirft nie). Codes
-  `LYR-PAR0001..0037`. 179 Parser-Tests (Golden + Unit).
+- [x] **M1 — Lexer** (`m1-complete`).
+- [x] **M2 — Parser** (`m2-complete`): voller AST, Recursive-Descent + Pratt, Patterns,
+  `match`, if-Ausdruck, Struct-Init; `AstDumper`, CLI `lyric parse`. Codes `LYR-PAR0001..0037`.
+- [x] **M3-Slice 1 — Resolver** (`Lyric.Resolver`): Symbol-Modell + Scopes, 3 Pässe
+  (Deklarieren / Imports / Typ-Namen-Bindung), 17 Builtin-Typen, Duplikat-/Zyklus-/
+  Sichtbarkeits-Checks, `SymbolDumper`, `Compilation` (single-file-first, Cross-Modul
+  funktioniert). Seiten-Tabelle `BindingResult`. Codes `LYR-RES0001..0005`. 20 Tests.
 
 ## Woran wir gerade arbeiten
 
-Nichts offen in M2. Nächster Meilenstein: **M3 — Resolver + Sema (basic)** (ROADMAP):
-Modul-Auflösung, Symboltabellen, Typsystem ohne Generics, DAA, Cast-Regeln,
-`main`-Entry-Contract. Noch nicht geplant/geschnitten.
+**M3-Slice 2 — Typsystem + Ausdrucks-Typprüfung** (`Lyric.Sema`): Type-Repräsentation
+(Primitive mit Größe/Signedness, Named→TypeSymbol, `?T`/`T[]`/`T[N]`/Tupel/`fn`),
+`TypeNode`→`Type`, Ausdrücke typprüfen (Literale/Operatoren/Calls/Member/Index/`as`/
+Nullable §7), lokale Inferenz (`let x = expr`). Codes `LYR-SEM0001..0040`.
 
 ## Was als nächstes ansteht
 
-- Tag `m2-complete` setzen.
-- M3 planen (Slice-Schnitt festlegen).
+- Slice 2: Typsystem + Ausdrucks-Check (s.o.).
+- Slice 3: Statement/Decl-Sema (DAA, Return-Coverage, Interface-Konformität, `main`-Contract)
+  + CLI `lyric check` + 10+ E2E-Programme.
 
-## Entschieden in M2 (Kontext für spätere Sessions)
+## Resolver-Grenzen (an Slice 2/3 übergeben)
 
-- AST = sealed-record-Hierarchie, Span pro Knoten. Dumper via Pattern-Match, kein Visitor.
-- Expression-`<` ist IMMER Vergleich (kein Turbofish). Generics nur im Typkontext.
-- Lambda vs. Tuple vs. Grouping: Lookahead auf `=>` hinter balancierter `)`.
-- Tuple: keine Arity-Obergrenze (min 2).
-- `throws`/`type` sind kontextuelle Keywords (Lexer liefert Identifier).
-- Struct/Class-Member + Match-Arme: Feld/Expr-Body braucht `,`, Block-Body nicht (Option 1).
-- Pattern-Bind-vs-Unit-Variante: nackter Einzel-Ident → BindingPattern (Sema entscheidet); qualifiziert/mit Payload → VariantPattern.
-- `if`: Statement → `IfStmt` (Blocks, else optional); Ausdruck → `IfExpr` (Ausdruck-Branches, else Pflicht → garantierter Wert).
-- Struct-Init: nur in Wert-Position (nicht am ExprStmt-Anfang; `{`-Block-Ambiguität via `_allowStructInit`-Flag).
-- **Für die Sema offen**: Block-Wert-Frage bei Match-Block-Armen; permissiv Geparstes prüfen (`mut` an freien fn, `pub` an Membern, `ExprStmt` nur Call/Assign, `params`/Default-Param-Regeln, `main`-Contract, Exhaustivität).
+- Nur Typ-Namen gebunden; Ausdrucks-Identifier (Locals/Calls) → Slice 2 mit dem Type-Checking.
+- Externe Imports (Stdlib nicht in Compilation) sind opak, nie ein Fehler — Tippfehler im
+  Modulpfad wird still „extern".
+- `extend`-Methoden noch nicht in den Ziel-Typ gemerged (+ Orphan-Rule) → M4.
+
+## Für die Sema offen (aus M2 übernommen)
+
+Block-Wert-Frage bei Match-Block-Armen; permissiv Geparstes prüfen: `mut` nur an Methoden,
+`pub` an Membern, `ExprStmt` nur Call/Assign, `params`/Default-Param-Regeln, `main`-Contract,
+Exhaustivität, `for-in`-Iterator, Nullable-Regeln.
+
+## Design-Entscheidungen (Kontext)
+
+- AST = immutable Records; Symbole = mutable Klassen (Identität, inkrementell angereichert).
+- Binding via Seiten-Tabelle `BindingResult` (Roslyn-`SemanticModel`-Stil), kein typed-AST.
+- Builtins als Wurzel-Scope; 2-Pass-Deklarieren für Forward-Refs.
+- M2-Kernentscheidungen: im Tag `m2-complete` bzw. der git-Historie.
 
 ## Letzter relevanter Commit
 
-`M2: struct-init expressions + '{' disambiguation`
+`M3: resolver — symbols, imports, type-name binding (slice 1)`
 
 ---
 
