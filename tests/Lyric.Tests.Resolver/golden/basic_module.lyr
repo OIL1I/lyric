@@ -1,0 +1,16 @@
+struct Point {
+    x: int,
+    y: int,
+
+    fn distance(other: Point): float {
+        return 0.0;
+    }
+}
+
+pub fn origin(): Point {
+    return here();
+}
+
+let pi = 3.14;
+
+type NodeId = int;

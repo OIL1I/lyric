@@ -1,0 +1,6 @@
+Module main
+  Function main
+  External io (from std.io)
+  External println (from std.io)
+  External eprintln (from std.io)
+  External Dict (from std.collections.HashMap)

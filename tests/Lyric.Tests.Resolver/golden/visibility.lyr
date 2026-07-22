@@ -1,0 +1,15 @@
+pub struct Exported {
+    x: int,
+}
+
+struct Internal {
+    y: int,
+}
+
+pub fn publicFn(): int {
+    return 0;
+}
+
+fn privateFn(): int {
+    return 0;
+}

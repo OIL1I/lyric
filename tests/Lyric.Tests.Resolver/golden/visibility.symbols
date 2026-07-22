@@ -1,0 +1,7 @@
+Module main
+  Struct Exported [pub]
+    Field x
+  Struct Internal
+    Field y
+  Function publicFn [pub]
+  Function privateFn

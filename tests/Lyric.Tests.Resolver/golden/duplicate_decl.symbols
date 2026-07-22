@@ -1,0 +1,8 @@
+Module main
+  Function foo
+
+=== diagnostics ===
+duplicate_decl.lyr:5:1: error[LYR-RES0001]: 'foo' is already declared in this module
+fn foo(): int {
+^
+

@@ -1,0 +1,9 @@
+Module main
+  Enum Shape
+    Variant Circle
+    Variant Rectangle
+    Variant Empty
+    Function area
+  Interface Damageable
+    Function takeDamage
+    Function isAlive

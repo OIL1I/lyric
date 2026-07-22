@@ -5,10 +5,12 @@
     <Project Path="src/Lyric.Core/Lyric.Core.csproj" />
     <Project Path="src/Lyric.Lexing/Lyric.Lexing.csproj" />
     <Project Path="src/Lyric.Parsing/Lyric.Parsing.csproj" />
+    <Project Path="src/Lyric.Resolver/Lyric.Resolver.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Lyric.Tests.Core/Lyric.Tests.Core.csproj" />
     <Project Path="tests/Lyric.Tests.Lexing/Lyric.Tests.Lexing.csproj" />
     <Project Path="tests/Lyric.Tests.Parsing/Lyric.Tests.Parsing.csproj" />
+    <Project Path="tests/Lyric.Tests.Resolver/Lyric.Tests.Resolver.csproj" />
   </Folder>
 </Solution>

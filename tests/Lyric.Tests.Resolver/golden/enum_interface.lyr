@@ -1,0 +1,16 @@
+enum Shape {
+    Circle(float),
+    Rectangle(float, float),
+    Empty;
+
+    fn area(): float {
+        return 0.0;
+    }
+}
+
+interface Damageable {
+    fn takeDamage(amount: int);
+    fn isAlive(): bool {
+        return true;
+    }
+}

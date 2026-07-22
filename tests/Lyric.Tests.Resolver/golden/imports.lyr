@@ -1,0 +1,7 @@
+import std.io;
+import std.io { println, eprintln };
+import std.collections.HashMap as Dict;
+
+fn main(): int {
+    return 0;
+}

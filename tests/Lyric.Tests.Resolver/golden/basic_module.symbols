@@ -1,0 +1,8 @@
+Module main
+  Struct Point
+    Field x
+    Field y
+    Function distance
+  Function origin [pub]
+  Global pi
+  Alias NodeId

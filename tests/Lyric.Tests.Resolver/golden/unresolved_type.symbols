@@ -1,0 +1,9 @@
+Module main
+  Struct Widget
+    Field thing
+
+=== diagnostics ===
+unresolved_type.lyr:2:12: error[LYR-RES0002]: unresolved type 'UnknownType'
+    thing: UnknownType,
+           ^^^^^^^^^^^
+
