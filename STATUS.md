@@ -24,24 +24,25 @@ Slice 1 (Resolver) abgeschlossen. M2 = `m2-complete`, M1 = `m1-complete`.
   (Deklarieren / Imports / Typ-Namen-Bindung), 17 Builtin-Typen, Duplikat-/Zyklus-/
   Sichtbarkeits-Checks, `SymbolDumper`, `Compilation` (single-file-first, Cross-Modul
   funktioniert). Seiten-Tabelle `BindingResult`. Codes `LYR-RES0001..0005`. 20 Tests.
-- [x] **M3-Slice 2a — Typ-Kern** (`Lyric.Sema`): `LyrType`-Repräsentation, `TypeFacts`
-  (Numerik/Fit/Anzeige), `TypeResult`-Seitentabelle, `TypeChecker`. Literale, Namen/
-  Scopes (Locals/Params/Globals), Operatoren (①A strikt + ②a Literal-Fit; `+`/`*` für
-  string/T[]), `as` (④), Index, Nullable-Ops (⑤), lokale Inferenz, Control-Flow-Statements.
-  Codes `LYR-SEM0001..0011`. 30 Tests.
+- [x] **M3-Slice 2 — Ausdrucks-Typprüfung** (`Lyric.Sema`): `LyrType`-Repräsentation,
+  `TypeChecker`. Literale, Namen/Scopes, Operatoren (①A strikt + ②a Literal-Fit; `+`/`*`
+  für string/T[]), `as` (④), Nullable-Ops (⑤), lokale Inferenz, Control-Flow (2a); Calls
+  (Signatur/Arity), Member (Field/Method/static/Modul/Enum-Variante), Struct-Init,
+  if-Ausdruck/`match`-Unifikation, Lambda (2b). Enum-Payload-Destructuring als Poison
+  (→ M4). Codes `LYR-SEM0001..0016`. 43 Sema-Tests.
 
 ## Woran wir gerade arbeiten
 
-**M3-Slice 2b — composite Ausdrücke** (`Lyric.Sema`): Calls (Signatur-Match), Member
--Zugriff (Field/Method/static/Modul/Enum-Variante), Struct-Init-Feldprüfung, Array/Tuple
--/f-String-Typisierung, if-Ausdruck-Unifikation, `match` (Scrutinee+Arme+Pattern-Var-Typen),
-Lambda-Inferenz. (In 2a liefern diese vorerst `Error`, Sub-Ausdrücke werden aber geprüft.)
+**M3-Slice 3 — Statement/Decl-Sema + Regeln** (`Lyric.Sema`): Return-Path-Coverage, DAA
+(`var`-Init vor Read), Lvalue-/Mutabilitäts-Check, Nullable-Flow-Narrowing (`if (x != null)`),
+Interface-Konformität (`::`), `main`-Entry-Contract, Signatur-Regeln (`mut` nur an Methoden,
+`ExprStmt` nur Call/Assign, `params`/Default-Trailing). CLI `lyric check`. 10+ E2E-Programme.
+Codes `LYR-SEM0017+`.
 
 ## Was als nächstes ansteht
 
-- Slice 2b: composite Ausdrücke (s.o.).
-- Slice 3: Statement/Decl-Sema (DAA, Return-Coverage, Interface-Konformität, `main`-Contract,
-  Lvalue/Mutabilität, Flow-Narrowing) + CLI `lyric check` + 10+ E2E-Programme.
+- Slice 3: Statement/Decl-Sema + Regeln (s.o.) → schließt M3 ab.
+- Danach M4: Sema (full) — Generics, Pattern-Payload-Destructuring, Coroutine/Exception-Sema.
 
 ## Resolver-Grenzen (an Slice 2/3 übergeben)
 
@@ -69,7 +70,7 @@ Exhaustivität, `for-in`-Iterator, Nullable-Regeln.
 
 ## Letzter relevanter Commit
 
-`M3: sema — type system + expression checking (slice 2a)`
+`M3: sema — calls, members, struct-init, match, lambda (slice 2b)`
 
 ---
 
