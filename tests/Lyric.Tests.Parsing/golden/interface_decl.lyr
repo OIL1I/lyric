@@ -1,0 +1,7 @@
+interface Damageable {
+    mut fn takeDamage(amount: int);
+    fn isAlive(): bool {
+        return true;
+    }
+    fn getHp(): int;
+}

@@ -1,0 +1,1 @@
+fn map<T, U>(xs: T[], transform: fn(T) -> U): U[] { return xs; }

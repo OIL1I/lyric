@@ -1,0 +1,7 @@
+Module [0..29)
+  Fn risky [0..29)
+    Throws (any) [11..17)
+    Block [18..29)
+      ExprStmt [20..27)
+        Call [20..26)
+          Ident doIt [20..24)

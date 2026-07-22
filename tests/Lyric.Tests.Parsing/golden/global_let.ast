@@ -1,0 +1,4 @@
+Module [0..25)
+  Global pub [0..25)
+    Let maxBuffer [4..25)
+      Int 1024 [20..24)

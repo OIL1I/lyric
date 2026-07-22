@@ -1,0 +1,13 @@
+struct Vector3 :: [Equatable] {
+    x: float,
+    y: float,
+    z: float,
+
+    fn length(): float {
+        return this.x;
+    }
+
+    fn equals(other: Vector3): bool {
+        return this.x == other.x;
+    }
+}

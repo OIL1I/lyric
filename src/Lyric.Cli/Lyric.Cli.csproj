@@ -3,6 +3,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
     <ProjectReference Include="..\Lyric.Lexing\Lyric.Lexing.csproj" />
+    <ProjectReference Include="..\Lyric.AST\Lyric.AST.csproj" />
+    <ProjectReference Include="..\Lyric.Parsing\Lyric.Parsing.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

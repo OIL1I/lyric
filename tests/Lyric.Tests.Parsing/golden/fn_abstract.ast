@@ -1,0 +1,3 @@
+Module [0..16)
+  Fn getHp (abstract) [0..16)
+    NamedType int [12..15)

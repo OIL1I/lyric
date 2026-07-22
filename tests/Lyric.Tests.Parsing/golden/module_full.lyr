@@ -1,0 +1,14 @@
+module app;
+
+import std.io { println };
+
+pub struct Point {
+    x: int,
+    y: int,
+}
+
+pub fn main(): int {
+    let sum = 1 + 2;
+    println(sum);
+    return sum;
+}

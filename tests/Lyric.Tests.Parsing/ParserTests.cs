@@ -321,4 +321,138 @@ public class ParserTests
         Assert.NotNull(stmt);
         Assert.True(de.HasErrors);
     }
+
+    // --- Declarations (§2/§3) ---
+
+    private static (Module module, DiagnosticEngine diag) ParseModule(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var module = new Parser(sm, id, de).ParseModule();
+        return (module, de);
+    }
+
+    [Fact]
+    public void Module_captures_header_and_declarations()
+    {
+        var (m, de) = ParseModule("module app; fn main(): int { return 0; }");
+        Assert.False(de.HasErrors);
+        Assert.Equal(["app"], m.Header!.Segments);
+        var fn = Assert.IsType<FunctionDecl>(Assert.Single(m.Declarations));
+        Assert.Equal("main", fn.Name);
+        Assert.NotNull(fn.Body);
+    }
+
+    [Fact]
+    public void Import_alias_and_selective_forms()
+    {
+        var alias = Assert.IsType<ImportDecl>(Assert.Single(ParseModule("import a.b as C;").module.Declarations));
+        Assert.Equal(["a", "b"], alias.Path);
+        Assert.Equal("C", Assert.IsType<ImportAlias>(alias.Clause).Alias);
+
+        var sel = Assert.IsType<ImportDecl>(Assert.Single(ParseModule("import a { x, y };").module.Declarations));
+        Assert.Equal(["x", "y"], Assert.IsType<ImportSelective>(sel.Clause).Names);
+    }
+
+    [Fact]
+    public void Function_captures_generics_params_return_throws()
+    {
+        var (m, de) = ParseModule("fn f<T>(x: T): int throws E { return 0; }");
+        Assert.False(de.HasErrors);
+        var fn = Assert.IsType<FunctionDecl>(m.Declarations[0]);
+        Assert.Equal("T", Assert.Single(fn.Generics).Name);
+        Assert.Equal("x", Assert.Single(fn.Parameters).Name);
+        Assert.IsType<NamedType>(fn.ReturnType);
+        Assert.IsType<NamedType>(fn.Throws!.Type);
+    }
+
+    [Fact]
+    public void Abstract_function_has_no_body()
+    {
+        Assert.Null(Assert.IsType<FunctionDecl>(ParseModule("fn getHp(): int;").module.Declarations[0]).Body);
+    }
+
+    [Fact]
+    public void Throws_without_type_is_any()
+    {
+        var fn = Assert.IsType<FunctionDecl>(ParseModule("fn risky() throws { }").module.Declarations[0]);
+        Assert.NotNull(fn.Throws);
+        Assert.Null(fn.Throws!.Type);   // 'throws' ohne Typ
+    }
+
+    [Fact]
+    public void Params_parameter_flag_is_set()
+    {
+        var fn = Assert.IsType<FunctionDecl>(ParseModule("fn log(params xs: string[]) { }").module.Declarations[0]);
+        Assert.True(Assert.Single(fn.Parameters).IsParams);
+    }
+
+    [Fact]
+    public void Struct_captures_interfaces_and_ordered_members()
+    {
+        var (m, de) = ParseModule("struct V :: [Eq] { x: int, fn get(): int { return this.x; } }");
+        Assert.False(de.HasErrors);
+        var s = Assert.IsType<StructDecl>(m.Declarations[0]);
+        Assert.Single(s.Interfaces);
+        Assert.IsType<FieldDecl>(s.Members[0]);
+        Assert.IsType<FunctionDecl>(s.Members[1]);
+    }
+
+    [Fact]
+    public void Mut_method_flag_is_set()
+    {
+        var s = Assert.IsType<StructDecl>(ParseModule("struct S { mut fn go() { } }").module.Declarations[0]);
+        Assert.True(Assert.IsType<FunctionDecl>(Assert.Single(s.Members)).IsMut);
+    }
+
+    [Fact]
+    public void Enum_variant_shapes()
+    {
+        var (m, de) = ParseModule("enum E { A, B(int), C { x: int } }");
+        Assert.False(de.HasErrors);
+        var e = Assert.IsType<EnumDecl>(m.Declarations[0]);
+        Assert.Equal(3, e.Variants.Length);
+        Assert.Null(e.Variants[0].TupleFields);            // A: unit
+        Assert.Null(e.Variants[0].StructFields);
+        Assert.Single(e.Variants[1].TupleFields!);         // B(int)
+        Assert.Single(e.Variants[2].StructFields!);        // C { x: int }
+    }
+
+    [Fact]
+    public void Generic_constraints_parse()
+    {
+        var fn = Assert.IsType<FunctionDecl>(ParseModule("fn f<T :: [Ord, Eq]>(): void { }").module.Declarations[0]);
+        Assert.Equal(2, Assert.Single(fn.Generics).Constraints.Length);
+    }
+
+    [Fact]
+    public void Global_var_is_reported()
+    {
+        Assert.Contains(ParseModule("var x = 1;").diag.Diagnostics, d => d.Code == "LYR-PAR0027");
+    }
+
+    [Fact]
+    public void Type_alias_parses()
+    {
+        var (m, de) = ParseModule("type Id = int;");
+        Assert.False(de.HasErrors);
+        Assert.Equal("Id", Assert.IsType<TypeAliasDecl>(m.Declarations[0]).Name);
+    }
+
+    [Theory]
+    [InlineData("fn")]
+    [InlineData("fn f(")]
+    [InlineData("struct")]
+    [InlineData("struct S {")]
+    [InlineData("import")]
+    [InlineData("enum E {")]
+    [InlineData("pub")]
+    [InlineData("1 + 2;")]
+    public void Module_parser_never_throws_and_reports(string source)
+    {
+        var (m, de) = ParseModule(source);
+        Assert.NotNull(m);
+        Assert.True(de.HasErrors);
+    }
 }

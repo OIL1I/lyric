@@ -1,0 +1,3 @@
+Module [0..36)
+  Import std.io [0..36)
+    Selective println, eprintln [14..35)

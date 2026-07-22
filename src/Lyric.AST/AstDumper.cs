@@ -175,6 +175,90 @@ public static class AstDumper
                 Line(sb, indent, "ErrorType", n.Span);
                 break;
 
+            // --- Declarations (§2/§3) ---
+            case Module n:
+                Line(sb, indent, n.Header is null ? "Module" : $"Module {string.Join('.', n.Header.Segments)}", n.Span);
+                foreach (var d in n.Declarations) Write(d, indent + 1, sb);
+                break;
+            case ImportDecl n:
+                Line(sb, indent, $"Import {string.Join('.', n.Path)}", n.Span);
+                if (n.Clause is not null) Write(n.Clause, indent + 1, sb);
+                break;
+            case ImportSelective n:
+                Line(sb, indent, $"Selective {string.Join(", ", n.Names)}", n.Span);
+                break;
+            case ImportAlias n:
+                Line(sb, indent, $"Alias {n.Alias}", n.Span);
+                break;
+            case GenericParam n:
+                Line(sb, indent, $"Generic {n.Name}", n.Span);
+                foreach (var c in n.Constraints) Write(c, indent + 1, sb);
+                break;
+            case Param n:
+                Line(sb, indent, $"Param {n.Name}{(n.IsParams ? " (params)" : "")}", n.Span);
+                Write(n.Type, indent + 1, sb);
+                if (n.Default is not null) Write(n.Default, indent + 1, sb);
+                break;
+            case ThrowsClause n:
+                Line(sb, indent, n.Type is null ? "Throws (any)" : "Throws", n.Span);
+                if (n.Type is not null) Write(n.Type, indent + 1, sb);
+                break;
+            case FunctionDecl n:
+                Line(sb, indent, $"Fn {n.Name}{Vis(n.IsPublic)}{(n.IsMut ? " mut" : "")}{(n.Body is null ? " (abstract)" : "")}", n.Span);
+                foreach (var g in n.Generics) Write(g, indent + 1, sb);
+                foreach (var p in n.Parameters) Write(p, indent + 1, sb);
+                if (n.ReturnType is not null) Write(n.ReturnType, indent + 1, sb);
+                if (n.Throws is not null) Write(n.Throws, indent + 1, sb);
+                if (n.Body is not null) Write(n.Body, indent + 1, sb);
+                break;
+            case FieldDecl n:
+                Line(sb, indent, $"Field {n.Name}", n.Span);
+                Write(n.Type, indent + 1, sb);
+                if (n.Default is not null) Write(n.Default, indent + 1, sb);
+                break;
+            case StructDecl n:
+                Line(sb, indent, $"Struct {n.Name}{Vis(n.IsPublic)}", n.Span);
+                WriteTypeDeclChildren(n.Generics, n.Interfaces, n.Members, indent, sb);
+                break;
+            case ClassDecl n:
+                Line(sb, indent, $"Class {n.Name}{Vis(n.IsPublic)}", n.Span);
+                WriteTypeDeclChildren(n.Generics, n.Interfaces, n.Members, indent, sb);
+                break;
+            case EnumDecl n:
+                Line(sb, indent, $"Enum {n.Name}{Vis(n.IsPublic)}", n.Span);
+                foreach (var g in n.Generics) Write(g, indent + 1, sb);
+                foreach (var i in n.Interfaces) Write(i, indent + 1, sb);
+                foreach (var v in n.Variants) Write(v, indent + 1, sb);
+                foreach (var m in n.Methods) Write(m, indent + 1, sb);
+                break;
+            case EnumVariant n:
+                Line(sb, indent, $"Variant {n.Name}", n.Span);
+                foreach (var t in n.TupleFields ?? []) Write(t, indent + 1, sb);
+                foreach (var f in n.StructFields ?? []) Write(f, indent + 1, sb);
+                break;
+            case InterfaceDecl n:
+                Line(sb, indent, $"Interface {n.Name}{Vis(n.IsPublic)}", n.Span);
+                foreach (var g in n.Generics) Write(g, indent + 1, sb);
+                foreach (var m in n.Members) Write(m, indent + 1, sb);
+                break;
+            case ExtendDecl n:
+                Line(sb, indent, $"Extend{Vis(n.IsPublic)}", n.Span);
+                Write(n.Target, indent + 1, sb);            // erstes Kind = Ziel-Typ
+                foreach (var i in n.Interfaces) Write(i, indent + 1, sb);
+                foreach (var m in n.Methods) Write(m, indent + 1, sb);
+                break;
+            case GlobalBindingDecl n:
+                Line(sb, indent, $"Global{Vis(n.IsPublic)}", n.Span);
+                Write(n.Binding, indent + 1, sb);
+                break;
+            case TypeAliasDecl n:
+                Line(sb, indent, $"TypeAlias {n.Name}{Vis(n.IsPublic)}", n.Span);
+                Write(n.Aliased, indent + 1, sb);
+                break;
+            case ErrorDecl n:
+                Line(sb, indent, "ErrorDecl", n.Span);
+                break;
+
             // --- Statements ---
             case Block n:
                 Line(sb, indent, "Block", n.Span);
@@ -260,6 +344,17 @@ public static class AstDumper
                 throw new InternalCompilationException($"AstDumper: unhandled node {node.GetType().Name}");
         }
     }
+
+    // struct/class teilen sich die Kind-Reihenfolge: Generics, Interfaces (TypeNodes), Member (Decls).
+    private static void WriteTypeDeclChildren(GenericParam[] generics, TypeNode[] interfaces, Decl[] members,
+        int indent, StringBuilder sb)
+    {
+        foreach (var g in generics) Write(g, indent + 1, sb);
+        foreach (var i in interfaces) Write(i, indent + 1, sb);
+        foreach (var m in members) Write(m, indent + 1, sb);
+    }
+
+    private static string Vis(bool isPublic) => isPublic ? " pub" : "";
 
     private static void Line(StringBuilder sb, int indent, string text, Span span)
     {

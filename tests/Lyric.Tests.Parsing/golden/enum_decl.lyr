@@ -1,0 +1,10 @@
+enum Shape {
+    Circle(float),
+    Rectangle(float, float),
+    Triangle { a: float, b: float, c: float },
+    Empty;
+
+    fn area(): float {
+        return 0.0;
+    }
+}

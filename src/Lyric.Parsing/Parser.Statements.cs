@@ -57,7 +57,7 @@ public sealed partial class Parser
         return new Block(stmts.ToArray(), Span.Union(open.Span, close.Span));
     }
 
-    private Stmt ParseBinding()
+    private BindingStmt ParseBinding()
     {
         var kw = _buffer.Advance(); // let / var
         var isMutable = kw.TokenKind == TokenKind.Var;

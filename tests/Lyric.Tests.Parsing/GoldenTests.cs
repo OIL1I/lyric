@@ -143,4 +143,38 @@ public class GoldenTests
     [InlineData("match_deferred")]    // match ... (Slice 4, Recovery)
     public void Golden_statement_matches_snapshot(string name)
         => Check(name, p => p.ParseStatement());
+
+    // ---------------------------------------------------------------------
+    // Declarations / Module (§2/§3) — Einstieg ParseModule
+    // ---------------------------------------------------------------------
+
+    [Theory]
+    // Modul + Imports.
+    [InlineData("module_header")]     // module a.b;
+    [InlineData("import_simple")]     // import a.b;
+    [InlineData("import_selective")]  // import a.b { x, y };
+    [InlineData("import_alias")]      // import a.b as C;
+    // Funktionen.
+    [InlineData("fn_simple")]         // fn add(a, b): int { ... }
+    [InlineData("fn_abstract")]       // fn getHp(): int;  (bodyless)
+    [InlineData("fn_generic")]        // fn map<T, U>(...)  + fn-Typ-Param
+    [InlineData("fn_throws")]         // throws FileNotFound
+    [InlineData("fn_throws_any")]     // throws (ohne Typ)
+    [InlineData("fn_variadic")]       // params-Parameter
+    [InlineData("fn_default_param")]  // Default-Parameterwert
+    // Typen.
+    [InlineData("struct_decl")]       // Felder + Methoden + :: [Interfaces]
+    [InlineData("class_decl")]        // Default-Feldwert + mut fn
+    [InlineData("enum_decl")]         // Tuple-/Struct-/Unit-Varianten + Methode
+    [InlineData("interface_decl")]    // abstrakte + Default-Methoden
+    [InlineData("extend_decl")]       // extend T :: [I] { ... }
+    // Alias, Global, ganzes Modul.
+    [InlineData("type_alias")]        // type X = int;
+    [InlineData("global_let")]        // pub let ...
+    [InlineData("module_full")]       // Header + Import + Struct + Fn
+    // Negativ.
+    [InlineData("global_var")]        // var auf Top-Level (LYR-PAR0027)
+    [InlineData("bad_toplevel")]      // Ausdruck statt Deklaration
+    public void Golden_module_matches_snapshot(string name)
+        => Check(name, p => p.ParseModule());
 }

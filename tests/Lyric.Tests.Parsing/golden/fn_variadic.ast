@@ -1,0 +1,8 @@
+Module [0..49)
+  Fn log [0..49)
+    Param prefix [7..21)
+      NamedType string [15..21)
+    Param args (params) [23..44)
+      ArrayType [36..44)
+        NamedType string [36..42)
+    Block [46..49)

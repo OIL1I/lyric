@@ -1,0 +1,1 @@
+fn greet(name: string, greeting: string = "hi"): string { return greeting; }

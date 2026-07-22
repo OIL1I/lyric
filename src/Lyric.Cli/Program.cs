@@ -1,5 +1,7 @@
+using Lyric.AST;
 using Lyric.Core;
 using Lyric.Lexing;
+using Lyric.Parsing;
 
 namespace Lyric.Cli;
 
@@ -21,8 +23,36 @@ public static class Program
             "--version" or "-v" => PrintVersion(),
             "--help" or "-h" => HelpAndOk(),
             "tokenize" => Tokenize(args),
+            "parse" => Parse(args),
             _ => Unknown(args[0]),
         };
+    }
+
+    private static int Parse(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("parse: missing file argument");
+            return 2;
+        }
+        var fpath = args[1];
+        var sm = new SourceManager();
+        var de = new DiagnosticEngine(sm);
+        FileId id;
+        try
+        {
+            id = sm.AddFromDisk(fpath);
+        }
+        catch
+        {
+            de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
+            de.RenderText(Console.Error);
+            return 1;
+        }
+        var module = new Parser(sm, id, de).ParseModule();
+        Console.Out.Write(AstDumper.Dump(module, sm));
+        de.RenderText(Console.Error);
+        return de.HasErrors ? 1 : 0;
     }
 
     private static int Tokenize(string[] args)
@@ -87,5 +117,6 @@ public static class Program
         Console.WriteLine("  --version, -v    Show version");
         Console.WriteLine("  --help, -h       Show this help");
         Console.WriteLine("  tokenize <file>  Print token stream (debug)");
+        Console.WriteLine("  parse <file>     Print AST dump (debug)");
     }
 }

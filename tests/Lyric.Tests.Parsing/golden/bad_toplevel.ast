@@ -1,0 +1,8 @@
+Module [0..6)
+  ErrorDecl [0..6)
+
+=== diagnostics ===
+bad_toplevel.lyr:1:1: error[LYR-PAR0025]: expected a declaration, got IntLiteral
+1 + 2;
+^
+

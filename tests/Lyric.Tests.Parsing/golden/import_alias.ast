@@ -1,0 +1,3 @@
+Module [0..39)
+  Import std.collections.HashMap [0..39)
+    Alias Dict [31..38)

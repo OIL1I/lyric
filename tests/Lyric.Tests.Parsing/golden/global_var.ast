@@ -1,0 +1,10 @@
+Module [0..16)
+  Global [0..16)
+    Var counter [0..16)
+      Int 0 [14..15)
+
+=== diagnostics ===
+global_var.lyr:1:1: error[LYR-PAR0027]: global bindings must be immutable — use 'let', not 'var'
+var counter = 0;
+^^^
+
