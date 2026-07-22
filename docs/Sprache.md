@@ -544,7 +544,7 @@ Primary         = IntLit | FloatLit | StringLit | InterpolatedStr
 Lambda          = '(' [ LambdaParam { ',' LambdaParam } ] ')' [ ':' TypeExpr ] '=>' ( Expr | Block ) .
 LambdaParam     = IDENTIFIER [ ':' TypeExpr ] .
 
-StructInit      = TypePath '{' [ StructInitField { ',' StructInitField } [ ',' ] ] '}' .
+StructInit      = TypePath '{' [ StructInitField { ',' StructInitField } [ ',' ] ] '}' .  (* nicht am ExprStmt-Anfang erkannt (mehrdeutig mit Block); in jeder Wert-Position erlaubt *)
 StructInitField = IDENTIFIER '=' Expr .                              (* '=' für Werte, ':' nur für Typen *)
 
 ArrayLit        = '[' [ Expr { ',' Expr } [ ',' ] ] ']' .
