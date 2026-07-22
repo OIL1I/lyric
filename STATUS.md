@@ -30,18 +30,22 @@ Slice 1 (Resolver) abgeschlossen. M2 = `m2-complete`, M1 = `m1-complete`.
   (Signatur/Arity), Member (Field/Method/static/Modul/Enum-Variante), Struct-Init,
   if-Ausdruck/`match`-Unifikation, Lambda (2b). Enum-Payload-Destructuring als Poison
   (→ M4). Codes `LYR-SEM0001..0016`. 43 Sema-Tests.
+- [x] **M3-Slice 3a — Flow-Analysen** (`Lyric.Sema`): Return-Path-Coverage (`Flow`,
+  strukturiert), DAA (`FlowAnalyzer`, definite-assignment mit Zweig-Schnitt), Nullable
+  -Narrowing im `TypeChecker` (then-Zweig + Early-Exit D1b, Reassign-Invalidierung).
+  Codes `LYR-SEM0017/0018`. 51 Sema-Tests.
 
 ## Woran wir gerade arbeiten
 
-**M3-Slice 3 — Statement/Decl-Sema + Regeln** (`Lyric.Sema`): Return-Path-Coverage, DAA
-(`var`-Init vor Read), Lvalue-/Mutabilitäts-Check, Nullable-Flow-Narrowing (`if (x != null)`),
-Interface-Konformität (`::`), `main`-Entry-Contract, Signatur-Regeln (`mut` nur an Methoden,
-`ExprStmt` nur Call/Assign, `params`/Default-Trailing). CLI `lyric check`. 10+ E2E-Programme.
-Codes `LYR-SEM0017+`.
+**M3-Slice 3b — Strukturelle Regeln + Deliverables** (`Lyric.Sema`): Lvalue/Mutabilität
+(§6.4; `let` nicht neu zuweisen, `.field`/`[i]` nur mut), Interface-Konformität (`::`),
+`main`-Entry-Contract (§11, Library-Modus), Signatur-Regeln (`mut` nur an Methoden,
+`ExprStmt` nur Call/Assign, `params`/Default-Trailing). CLI `lyric check`. 10+ E2E-Programme
+= **M3-Exit**. Codes `LYR-SEM0019..0040`.
 
 ## Was als nächstes ansteht
 
-- Slice 3: Statement/Decl-Sema + Regeln (s.o.) → schließt M3 ab.
+- Slice 3b: strukturelle Regeln + `lyric check` + E2E → schließt M3 ab.
 - Danach M4: Sema (full) — Generics, Pattern-Payload-Destructuring, Coroutine/Exception-Sema.
 
 ## Resolver-Grenzen (an Slice 2/3 übergeben)
@@ -70,7 +74,7 @@ Exhaustivität, `for-in`-Iterator, Nullable-Regeln.
 
 ## Letzter relevanter Commit
 
-`M3: sema — calls, members, struct-init, match, lambda (slice 2b)`
+`M3: sema — flow analyses: return-coverage, DAA, narrowing (slice 3a)`
 
 ---
 
