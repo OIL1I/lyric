@@ -24,19 +24,24 @@ Slice 1 (Resolver) abgeschlossen. M2 = `m2-complete`, M1 = `m1-complete`.
   (Deklarieren / Imports / Typ-Namen-Bindung), 17 Builtin-Typen, Duplikat-/Zyklus-/
   Sichtbarkeits-Checks, `SymbolDumper`, `Compilation` (single-file-first, Cross-Modul
   funktioniert). Seiten-Tabelle `BindingResult`. Codes `LYR-RES0001..0005`. 20 Tests.
+- [x] **M3-Slice 2a — Typ-Kern** (`Lyric.Sema`): `LyrType`-Repräsentation, `TypeFacts`
+  (Numerik/Fit/Anzeige), `TypeResult`-Seitentabelle, `TypeChecker`. Literale, Namen/
+  Scopes (Locals/Params/Globals), Operatoren (①A strikt + ②a Literal-Fit; `+`/`*` für
+  string/T[]), `as` (④), Index, Nullable-Ops (⑤), lokale Inferenz, Control-Flow-Statements.
+  Codes `LYR-SEM0001..0011`. 30 Tests.
 
 ## Woran wir gerade arbeiten
 
-**M3-Slice 2 — Typsystem + Ausdrucks-Typprüfung** (`Lyric.Sema`): Type-Repräsentation
-(Primitive mit Größe/Signedness, Named→TypeSymbol, `?T`/`T[]`/`T[N]`/Tupel/`fn`),
-`TypeNode`→`Type`, Ausdrücke typprüfen (Literale/Operatoren/Calls/Member/Index/`as`/
-Nullable §7), lokale Inferenz (`let x = expr`). Codes `LYR-SEM0001..0040`.
+**M3-Slice 2b — composite Ausdrücke** (`Lyric.Sema`): Calls (Signatur-Match), Member
+-Zugriff (Field/Method/static/Modul/Enum-Variante), Struct-Init-Feldprüfung, Array/Tuple
+-/f-String-Typisierung, if-Ausdruck-Unifikation, `match` (Scrutinee+Arme+Pattern-Var-Typen),
+Lambda-Inferenz. (In 2a liefern diese vorerst `Error`, Sub-Ausdrücke werden aber geprüft.)
 
 ## Was als nächstes ansteht
 
-- Slice 2: Typsystem + Ausdrucks-Check (s.o.).
-- Slice 3: Statement/Decl-Sema (DAA, Return-Coverage, Interface-Konformität, `main`-Contract)
-  + CLI `lyric check` + 10+ E2E-Programme.
+- Slice 2b: composite Ausdrücke (s.o.).
+- Slice 3: Statement/Decl-Sema (DAA, Return-Coverage, Interface-Konformität, `main`-Contract,
+  Lvalue/Mutabilität, Flow-Narrowing) + CLI `lyric check` + 10+ E2E-Programme.
 
 ## Resolver-Grenzen (an Slice 2/3 übergeben)
 
@@ -54,13 +59,17 @@ Exhaustivität, `for-in`-Iterator, Nullable-Regeln.
 ## Design-Entscheidungen (Kontext)
 
 - AST = immutable Records; Symbole = mutable Klassen (Identität, inkrementell angereichert).
-- Binding via Seiten-Tabelle `BindingResult` (Roslyn-`SemanticModel`-Stil), kein typed-AST.
+- Binding/Typen via Seiten-Tabellen (`BindingResult`/`TypeResult`, Roslyn-Stil), kein typed-AST.
 - Builtins als Wurzel-Scope; 2-Pass-Deklarieren für Forward-Refs.
+- **Typsystem** (`Sprache.md §6.5`): Numerik strikt (kein implizites Widening); untyped
+  Literale passen sich per Range-Fit an; `+`/`*` = concat/repeat für string & T[]; `as`
+  nur Numerik↔Numerik; `?T`-Widening implizit, Unwrap via `!`/`??`. `ErrorType` ist
+  Poison (zu/von allem zuweisbar → keine Folgefehler).
 - M2-Kernentscheidungen: im Tag `m2-complete` bzw. der git-Historie.
 
 ## Letzter relevanter Commit
 
-`M3: resolver — symbols, imports, type-name binding (slice 1)`
+`M3: sema — type system + expression checking (slice 2a)`
 
 ---
 
