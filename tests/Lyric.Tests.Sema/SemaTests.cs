@@ -338,6 +338,63 @@ public class SemaTests
         AssertType(LyrType.Int, fn.Return);
     }
 
+    // --- Slice 3a: Flow (Return-Coverage / DAA / Narrowing) ---
+
+    [Fact]
+    public void Missing_return_is_reported()
+    {
+        Assert.Contains(Check("fn f(): int { }").de.Diagnostics, d => d.Code == "LYR-SEM0017");
+        Assert.Contains(Check("fn f(c: bool): int { if (c) { return 1; } }").de.Diagnostics, d => d.Code == "LYR-SEM0017");
+    }
+
+    [Fact]
+    public void Full_return_coverage_passes()
+    {
+        Assert.False(Check("fn f(c: bool): int { if (c) { return 1; } else { return 2; } }").de.HasErrors);
+        Assert.False(Check("fn f(): int { while (true) { } }").de.HasErrors); // divergiert
+        Assert.False(Check("fn f() { }").de.HasErrors);                       // void
+    }
+
+    [Fact]
+    public void Use_of_unassigned_variable_is_reported()
+    {
+        Assert.Contains(Check("fn f() { var x: int; let y = x; }").de.Diagnostics, d => d.Code == "LYR-SEM0018");
+        Assert.Contains(Check("fn f(c: bool) { var x: int; if (c) { x = 1; } let y = x; }").de.Diagnostics, d => d.Code == "LYR-SEM0018");
+    }
+
+    [Fact]
+    public void Definite_assignment_passes()
+    {
+        Assert.False(Check("fn f() { var x: int; x = 5; let y = x; }").de.HasErrors);
+        Assert.False(Check("fn f(c: bool) { var x: int; if (c) { x = 1; } else { x = 2; } let y = x; }").de.HasErrors);
+        Assert.False(Check("fn f(c: bool): int { var x: int; if (c) { return 0; } x = 1; return x; }").de.HasErrors);
+    }
+
+    [Fact]
+    public void Narrowing_allows_use_in_then_branch()
+    {
+        Assert.False(Check("fn f(p: ?int) { if (p != null) { let x = p + 1; } }").de.HasErrors);
+        Assert.False(Check("struct P { field: int, } fn f(p: ?P) { if (p != null) { let x = p.field; } }").de.HasErrors);
+    }
+
+    [Fact]
+    public void Optional_without_narrowing_is_rejected()
+    {
+        Assert.Contains(Check("fn f(p: ?int) { let x = p + 1; }").de.Diagnostics, d => d.Code == "LYR-SEM0003");
+    }
+
+    [Fact]
+    public void Early_exit_narrows_after_the_if()
+    {
+        Assert.False(Check("fn f(p: ?int): int { if (p == null) { return 0; } return p + 1; }").de.HasErrors);
+    }
+
+    [Fact]
+    public void Reassignment_invalidates_narrowing()
+    {
+        Assert.Contains(Check("fn f(q: ?int) { var p = q; if (p != null) { p = null; let x = p + 1; } }").de.Diagnostics, d => d.Code == "LYR-SEM0003");
+    }
+
     // --- Robustheit ---
 
     [Theory]

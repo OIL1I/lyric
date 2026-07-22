@@ -24,6 +24,7 @@ public sealed class TypeChecker
 
     private LyrType _currentReturn = LyrType.Void;
     private LyrType? _currentThis;
+    private Dictionary<Symbol, LyrType> _narrowed = new(ReferenceEqualityComparer.Instance); // ?T → T im bewiesen-non-null-Bereich
 
     public TypeChecker(Compilation comp, BindingResult binding, DiagnosticEngine de)
     {
@@ -38,6 +39,7 @@ public sealed class TypeChecker
         foreach (var module in _comp.Modules)
             foreach (var decl in _comp.AstOf(module).Declarations)
                 CheckDecl(decl, module);
+        new FlowAnalyzer(_comp, _result, _de).Run(); // DAA (definite assignment)
         return _result;
     }
 
@@ -105,22 +107,32 @@ public sealed class TypeChecker
     {
         var savedReturn = _currentReturn;
         var savedThis = _currentThis;
+        var savedNarrowed = _narrowed;
         _currentThis = thisType;
+        _narrowed = new(ReferenceEqualityComparer.Instance);
 
         var scope = new SymbolTable(outerScope);
         foreach (var p in fn.Parameters)
         {
             var pt = ResolveType(p.Type, scope);
-            scope.TryDeclare(new ParameterSymbol(p.Name, pt, p));
+            var ps = new ParameterSymbol(p.Name, pt, p);
+            scope.TryDeclare(ps);
+            _result.BindRef(p, ps); // für DAA
             if (p.Default is not null)
                 CheckAssignable(p.Default, CheckExpr(p.Default, scope), pt, p.Span);
         }
         _currentReturn = fn.ReturnType is not null ? ResolveType(fn.ReturnType, scope) : LyrType.Void;
 
-        if (fn.Body is not null) CheckBlock(fn.Body, scope);
+        if (fn.Body is not null)
+        {
+            CheckBlock(fn.Body, scope);
+            if (!TypeFacts.IsVoid(_currentReturn) && !Flow.AlwaysReturns(fn.Body))
+                _de.Report("LYR-SEM0017", Severity.Error, fn.Span, $"not all code paths of '{fn.Name}' return a value");
+        }
 
         _currentReturn = savedReturn;
         _currentThis = savedThis;
+        _narrowed = savedNarrowed;
     }
 
     // --- Statements ---
@@ -128,7 +140,9 @@ public sealed class TypeChecker
     private void CheckBlock(Block block, SymbolTable parent)
     {
         var scope = new SymbolTable(parent);
+        var savedNarrowed = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
         foreach (var stmt in block.Statements) CheckStmt(stmt, scope);
+        _narrowed = savedNarrowed; // im Block etablierte Narrowings (Early-Exit) enden hier
     }
 
     private void CheckStmt(Stmt stmt, SymbolTable scope)
@@ -137,11 +151,7 @@ public sealed class TypeChecker
         {
             case Block b: CheckBlock(b, scope); break;
             case BindingStmt bnd: CheckBinding(bnd, scope); break;
-            case IfStmt f:
-                CheckCondition(f.Condition, scope);
-                CheckBlock(f.Then, scope);
-                if (f.Else is not null) CheckStmt(f.Else, scope);
-                break;
+            case IfStmt f: CheckIf(f, scope); break;
             case WhileStmt w: CheckCondition(w.Condition, scope); CheckBlock(w.Body, scope); break;
             case DoWhileStmt d: CheckBlock(d.Body, scope); CheckCondition(d.Condition, scope); break;
             case ForInStmt fo: CheckForIn(fo, scope); break;
@@ -178,7 +188,9 @@ public sealed class TypeChecker
         else if (initT is not null) type = initT;
         else { _de.Report("LYR-SEM0010", Severity.Error, bnd.Span, $"binding '{bnd.Name}' needs a type or an initializer"); type = LyrType.Error; }
 
-        scope.TryDeclare(new LocalSymbol(bnd.Name, type, bnd.IsMutable, bnd));
+        var local = new LocalSymbol(bnd.Name, type, bnd.IsMutable, bnd);
+        scope.TryDeclare(local);
+        _result.BindRef(bnd, local); // für DAA
     }
 
     private void CheckForIn(ForInStmt fo, SymbolTable scope)
@@ -193,7 +205,9 @@ public sealed class TypeChecker
             _ => Report(fo.Iterable.Span, "LYR-SEM0007", $"'{TypeFacts.Display(iterType)}' is not iterable")
         };
         var loopScope = new SymbolTable(scope);
-        loopScope.TryDeclare(new LocalSymbol(fo.Variable, elem, false, fo));
+        var loopVar = new LocalSymbol(fo.Variable, elem, false, fo);
+        loopScope.TryDeclare(loopVar);
+        _result.BindRef(fo, loopVar); // für DAA
         CheckBlock(fo.Body, loopScope);
     }
 
@@ -214,6 +228,56 @@ public sealed class TypeChecker
         if (!TypeFacts.IsBool(t) && !t.IsError)
             _de.Report("LYR-SEM0004", Severity.Error, cond.Span, $"condition must be 'bool', got '{TypeFacts.Display(t)}'");
     }
+
+    // if mit Nullable-Narrowing (§7): 'if (x != null)' engt x im then-Zweig auf T ein;
+    // 'if (x == null) { return; }' engt x danach ein (Early-Exit, D1b).
+    private void CheckIf(IfStmt f, SymbolTable scope)
+    {
+        CheckCondition(f.Condition, scope);
+        var (thenFacts, elseFacts) = NarrowingFacts(f.Condition);
+
+        var snapshot = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
+        Apply(thenFacts);
+        CheckBlock(f.Then, scope);
+        _narrowed = snapshot;
+
+        if (f.Else is not null)
+        {
+            snapshot = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
+            Apply(elseFacts);
+            CheckStmt(f.Else, scope);
+            _narrowed = snapshot;
+        }
+
+        if (Flow.AlwaysReturns(f.Then)) Apply(elseFacts);
+        else if (f.Else is not null && Flow.AlwaysReturns(f.Else)) Apply(thenFacts);
+    }
+
+    private void Apply(Dictionary<Symbol, LyrType> facts)
+    {
+        foreach (var (sym, type) in facts) _narrowed[sym] = type;
+    }
+
+    private (Dictionary<Symbol, LyrType> then, Dictionary<Symbol, LyrType> els) NarrowingFacts(Expr cond)
+    {
+        var then = new Dictionary<Symbol, LyrType>(ReferenceEqualityComparer.Instance);
+        var els = new Dictionary<Symbol, LyrType>(ReferenceEqualityComparer.Instance);
+        if (cond is BinaryExpr { Operator: BinaryOp.Ne or BinaryOp.Eq } b
+            && NullCompared(b) is { } id
+            && _result.RefOf(id) is { } sym
+            && DeclaredType(sym) is Optional opt)
+        {
+            (b.Operator == BinaryOp.Ne ? then : els)[sym] = opt.Inner;
+        }
+        return (then, els);
+    }
+
+    private static IdentifierExpr? NullCompared(BinaryExpr b) => b switch
+    {
+        { Left: IdentifierExpr l, Right: NullLiteralExpr } => l,
+        { Left: NullLiteralExpr, Right: IdentifierExpr r } => r,
+        _ => null
+    };
 
     // --- Ausdrücke ---
 
@@ -269,6 +333,7 @@ public sealed class TypeChecker
         var sym = scope.Lookup(id.Name);
         if (sym is null) return Report(id.Span, "LYR-SEM0002", $"unknown identifier '{id.Name}'");
         _result.BindRef(id, sym);
+        if (_narrowed.TryGetValue(sym, out var narrowed)) return narrowed; // ?T → T im narrowten Bereich
         return sym switch
         {
             ParameterSymbol p => p.Type,
@@ -394,12 +459,24 @@ public sealed class TypeChecker
 
     private LyrType CheckAssign(AssignExpr a, SymbolTable scope)
     {
-        var target = CheckExpr(a.Target, scope);
+        CheckExpr(a.Target, scope); // bindet RefOf
+        var targetSym = a.Target is IdentifierExpr ? _result.RefOf(a.Target) : null;
+        // Bei Identifier-Zielen den DEKLARIERTEN Typ nehmen (nicht den narrowten) — sonst
+        // wäre 'x = null' auf einem narrowten ?T fälschlich ein Fehler.
+        var targetType = targetSym is not null ? DeclaredType(targetSym) ?? _result.TypeOf(a.Target) : _result.TypeOf(a.Target);
         var value = CheckExpr(a.Value, scope);
-        // Lvalue-/Mutabilitäts-Check → Slice 3. Hier nur Typ-Kompatibilität.
-        CheckAssignable(a.Value, value, target, a.Span);
-        return target;
+        // Lvalue-/Mutabilitäts-Check → Slice 3b. Hier nur Typ-Kompatibilität.
+        CheckAssignable(a.Value, value, targetType, a.Span);
+        if (targetSym is not null) _narrowed.Remove(targetSym); // Neuzuweisung hebt Narrowing auf
+        return targetType;
     }
+
+    private static LyrType? DeclaredType(Symbol s) => s switch
+    {
+        LocalSymbol l => l.Type,
+        ParameterSymbol p => p.Type,
+        _ => null
+    };
 
     private LyrType CheckRange(RangeExpr r, SymbolTable scope)
     {
@@ -642,7 +719,9 @@ public sealed class TypeChecker
                 if (scrutinee is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } nr
                     && nr.Symbol.Members.LookupLocal(b.Name) is EnumVariantSymbol)
                     return; // Unit-Varianten-Match, keine Bindung
-                scope.TryDeclare(new LocalSymbol(b.Name, scrutinee, false, b));
+                var local = new LocalSymbol(b.Name, scrutinee, false, b);
+                scope.TryDeclare(local);
+                _result.BindRef(b, local); // für DAA
                 return;
             case TuplePattern t when scrutinee is TupleOf tup && tup.Elements.Length == t.Elements.Length:
                 for (var i = 0; i < t.Elements.Length; i++) BindPattern(t.Elements[i], tup.Elements[i], scope);
@@ -658,13 +737,22 @@ public sealed class TypeChecker
     {
         switch (pattern)
         {
-            case BindingPattern b: scope.TryDeclare(new LocalSymbol(b.Name, LyrType.Error, false, b)); return;
+            case BindingPattern b:
+                var lb = new LocalSymbol(b.Name, LyrType.Error, false, b);
+                scope.TryDeclare(lb);
+                _result.BindRef(b, lb);
+                return;
             case VariantPattern v:
                 foreach (var sub in v.TupleElements ?? []) BindPoison(sub, scope);
                 foreach (var f in v.StructFields ?? [])
                 {
                     if (f.Pattern is not null) BindPoison(f.Pattern, scope);
-                    else scope.TryDeclare(new LocalSymbol(f.Name, LyrType.Error, false, f));
+                    else
+                    {
+                        var fl = new LocalSymbol(f.Name, LyrType.Error, false, f);
+                        scope.TryDeclare(fl);
+                        _result.BindRef(f, fl);
+                    }
                 }
                 return;
             case TuplePattern t: foreach (var sub in t.Elements) BindPoison(sub, scope); return;
