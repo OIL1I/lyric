@@ -162,7 +162,7 @@ public sealed class TypeChecker
                 CheckBlock(tr.Body, scope);
                 foreach (var c in tr.Catches) CheckCatch(c, scope);
                 break;
-            case MatchStmt m: CheckExpr(m.Scrutinee, scope); break; // Arme + Patterns → Slice 2b
+            case MatchStmt m: CheckMatch(m.Scrutinee, m.Arms, scope); break;
             // Break/Continue/Error: nichts zu prüfen.
         }
     }
@@ -252,23 +252,13 @@ public sealed class TypeChecker
                 return LyrType.String;
             case ErrorExpr: return LyrType.Error;
 
-            // → Slice 2b: Sub-Ausdrücke prüfen (für Fehler), Ergebnis vorerst Error.
-            case CallExpr call:
-                CheckExpr(call.Callee, scope);
-                foreach (var arg in call.Arguments) CheckExpr(arg, scope);
-                return LyrType.Error;
-            case MemberExpr mem: CheckExpr(mem.Target, scope); return LyrType.Error;
-            case StructInitExpr si:
-                foreach (var f in si.Fields) CheckExpr(f.Value, scope);
-                return LyrType.Error;
-            case IfExpr iff:
-                CheckCondition(iff.Condition, scope);
-                CheckExpr(iff.Then, scope);
-                CheckExpr(iff.Else, scope);
-                return LyrType.Error;
-            case MatchExpr ma: CheckExpr(ma.Scrutinee, scope); return LyrType.Error;
-            case LambdaExpr: return LyrType.Error;
-            case AtIdentifierExpr: return LyrType.Error;
+            case CallExpr call: return CheckCall(call, scope);
+            case MemberExpr mem: return CheckMember(mem, scope);
+            case StructInitExpr si: return CheckStructInit(si, scope);
+            case IfExpr iff: return CheckIfExpr(iff, scope);
+            case MatchExpr ma: return UnifyArms(CheckMatch(ma.Scrutinee, ma.Arms, scope), ma.Span);
+            case LambdaExpr lam: return CheckLambda(lam, scope);
+            case AtIdentifierExpr: return LyrType.Error; // Attribute haben in v1 keinen Ausdruckstyp
 
             default: return LyrType.Error;
         }
@@ -458,6 +448,248 @@ public sealed class TypeChecker
                     $"array elements must share a type: '{TypeFacts.Display(first)}' vs '{TypeFacts.Display(t)}'");
         }
         return new ArrayOf(first, null);
+    }
+
+    // --- Calls / Member / Struct-Init / composite (Slice 2b) ---
+
+    private LyrType CheckCall(CallExpr call, SymbolTable scope)
+    {
+        var calleeType = CheckExpr(call.Callee, scope);
+        var argTypes = call.Arguments.Select(a => CheckExpr(a, scope)).ToArray();
+        if (calleeType.IsError) return LyrType.Error;
+        if (calleeType is not FnType fn)
+            return Report(call.Span, "LYR-SEM0013", $"'{TypeFacts.Display(calleeType)}' is not callable");
+
+        var decl = (_result.RefOf(call.Callee) as FunctionSymbol)?.Declaration as FunctionDecl;
+        CheckCallArgs(call, fn, argTypes, decl);
+        return fn.Return;
+    }
+
+    private void CheckCallArgs(CallExpr call, FnType fn, LyrType[] argTypes, FunctionDecl? decl)
+    {
+        var ps = decl?.Parameters;
+        var variadic = ps is { Length: > 0 } && ps[^1].IsParams;
+        var fixedCount = variadic ? ps!.Length - 1 : ps?.Length ?? fn.Parameters.Length;
+        var minRequired = ps is null ? fn.Parameters.Length : ps.Take(fixedCount).Count(p => p.Default is null);
+
+        if (argTypes.Length < minRequired || (!variadic && argTypes.Length > fn.Parameters.Length))
+            _de.Report("LYR-SEM0014", Severity.Error, call.Span,
+                $"call expects {(variadic ? $"at least {minRequired}" : minRequired == fn.Parameters.Length ? minRequired.ToString() : $"{minRequired}–{fn.Parameters.Length}")} argument(s), got {argTypes.Length}");
+
+        for (var i = 0; i < argTypes.Length && i < fixedCount && i < fn.Parameters.Length; i++)
+            CheckAssignable(call.Arguments[i], argTypes[i], fn.Parameters[i], call.Arguments[i].Span);
+
+        if (variadic && fn.Parameters[^1] is ArrayOf elem)
+            for (var i = fixedCount; i < argTypes.Length; i++)
+                CheckAssignable(call.Arguments[i], argTypes[i], elem.Element, call.Arguments[i].Span);
+    }
+
+    private LyrType CheckMember(MemberExpr mem, SymbolTable scope)
+    {
+        var targetType = CheckExpr(mem.Target, scope);
+        switch (TargetSymbol(mem.Target))
+        {
+            case TypeSymbol ts: return BindMember(mem, MemberOfType(ts, mem.Member, mem.Span));
+            case ModuleSymbol mod: return BindMember(mem, MemberOfModule(mod, mem.Member, mem.Span));
+            case ExternalSymbol: return LyrType.Error;
+        }
+
+        var baseType = mem.IsOptional && targetType is Optional opt ? opt.Inner : targetType;
+        if (baseType is NamedRef nr)
+        {
+            var mt = BindMember(mem, InstanceMember(nr.Symbol, mem.Member, mem.Span));
+            return mem.IsOptional ? new Optional(mt) : mt;
+        }
+        if (targetType.IsError) return LyrType.Error;
+        return Report(mem.Span, "LYR-SEM0012", $"'{TypeFacts.Display(targetType)}' has no member '{mem.Member}'");
+    }
+
+    private LyrType BindMember(MemberExpr mem, (LyrType type, Symbol? sym) r)
+    {
+        if (r.sym is not null) _result.BindRef(mem, r.sym);
+        return r.type;
+    }
+
+    private Symbol? TargetSymbol(Expr target)
+    {
+        var sym = _result.RefOf(target);
+        return sym is ImportBindingSymbol ib ? ib.Target : sym;
+    }
+
+    private (LyrType, Symbol?) InstanceMember(TypeSymbol ts, string member, Span span) =>
+        ts.Members.LookupLocal(member) switch
+        {
+            FieldSymbol fs => (FieldType(fs), fs),
+            FunctionSymbol fn => (FnTypeOf(fn), fn),
+            _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null)
+        };
+
+    private (LyrType, Symbol?) MemberOfType(TypeSymbol ts, string member, Span span) =>
+        ts.Members.LookupLocal(member) switch
+        {
+            FunctionSymbol fn => (FnTypeOf(fn), fn),                 // statische Methode / Factory (Point.new)
+            EnumVariantSymbol ev => (VariantConstructorType(ev, ts), ev),
+            _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no static member '{member}'"), null)
+        };
+
+    private (LyrType, Symbol?) MemberOfModule(ModuleSymbol mod, string member, Span span) =>
+        mod.Members.LookupLocal(member) switch
+        {
+            FunctionSymbol fn => (FnTypeOf(fn), fn),
+            GlobalSymbol g => (_globals.TryGetValue(g, out var t) ? t : LyrType.Error, g),
+            ExternalSymbol ex => (LyrType.Error, ex),
+            TypeSymbol tsym => (LyrType.Error, tsym), // Typ als Wert → kein Ausdruckstyp
+            _ => (Report(span, "LYR-SEM0012", $"module '{mod.FullName}' has no member '{member}'"), null)
+        };
+
+    private LyrType VariantConstructorType(EnumVariantSymbol ev, TypeSymbol enumTs)
+    {
+        var v = (EnumVariant)ev.Declaration!;
+        return v.TupleFields is not null
+            ? new FnType(v.TupleFields.Select(t => ResolveType(t, enumTs.Members)).ToArray(), new NamedRef(enumTs))
+            : new NamedRef(enumTs); // Unit; Struct-Varianten-Konstruktion → M4
+    }
+
+    private LyrType FieldType(FieldSymbol fs) => ResolveType(((FieldDecl)fs.Declaration!).Type, _comp.Builtins);
+
+    private LyrType CheckStructInit(StructInitExpr si, SymbolTable scope)
+    {
+        var sym = ResolveTypePath(si.Path, scope);
+        if (sym is ImportBindingSymbol ib) sym = ib.Target;
+        if (sym is not TypeSymbol ts)
+        {
+            if (sym is null) _de.Report("LYR-SEM0011", Severity.Error, si.Span, $"unknown type '{string.Join('.', si.Path)}'");
+            foreach (var f in si.Fields) CheckExpr(f.Value, scope);
+            return LyrType.Error;
+        }
+        foreach (var field in si.Fields)
+        {
+            var vt = CheckExpr(field.Value, scope);
+            if (ts.Members.LookupLocal(field.Name) is FieldSymbol fs)
+                CheckAssignable(field.Value, vt, FieldType(fs), field.Span);
+            else
+                _de.Report("LYR-SEM0015", Severity.Error, field.Span, $"'{ts.Name}' has no field '{field.Name}'");
+        }
+        return new NamedRef(ts);
+    }
+
+    private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope)
+    {
+        CheckCondition(iff.Condition, scope);
+        var thenT = CheckExpr(iff.Then, scope);
+        var elseT = CheckExpr(iff.Else, scope);
+        return Unify(iff.Then, thenT, iff.Else, elseT, iff.Span);
+    }
+
+    private LyrType Unify(Expr ae, LyrType a, Expr be, LyrType b, Span span)
+    {
+        if (LyrType.Equal(a, b)) return a;
+        if (a.IsError) return b;
+        if (b.IsError) return a;
+        if (IsAssignable(be, b, a)) return a;
+        if (IsAssignable(ae, a, b)) return b;
+        _de.Report("LYR-SEM0016", Severity.Error, span, $"incompatible branch types: '{TypeFacts.Display(a)}' vs '{TypeFacts.Display(b)}'");
+        return a;
+    }
+
+    private List<LyrType> CheckMatch(Expr scrutinee, MatchArm[] arms, SymbolTable scope)
+    {
+        var st = CheckExpr(scrutinee, scope);
+        var bodies = new List<LyrType>();
+        foreach (var arm in arms)
+        {
+            var armScope = new SymbolTable(scope);
+            BindPattern(arm.Pattern, st, armScope);
+            if (arm.Guard is not null) CheckCondition(arm.Guard, armScope);
+            bodies.Add(arm.Body switch
+            {
+                Block b => CheckBlockAsValue(b, armScope),
+                Expr e => CheckExpr(e, armScope),
+                _ => LyrType.Error
+            });
+        }
+        return bodies;
+    }
+
+    private LyrType UnifyArms(List<LyrType> bodies, Span span)
+    {
+        if (bodies.Count == 0) return LyrType.Error;
+        var result = bodies[0];
+        for (var i = 1; i < bodies.Count; i++)
+        {
+            if (bodies[i].IsError) continue;
+            if (result.IsError) { result = bodies[i]; continue; }
+            if (LyrType.Equal(result, bodies[i])) continue;
+            _de.Report("LYR-SEM0016", Severity.Error, span, $"match arms have incompatible types: '{TypeFacts.Display(result)}' vs '{TypeFacts.Display(bodies[i])}'");
+            break;
+        }
+        return result;
+    }
+
+    private LyrType CheckBlockAsValue(Block block, SymbolTable scope)
+    {
+        CheckBlock(block, scope);
+        return LyrType.Error; // Block-Arm-/Block-Lambda-Wert → Block-Wert-Frage (geparkt)
+    }
+
+    // Pattern-Bindungen: einfache Bindings + Tuple-Destructuring werden echt getypt;
+    // Enum-Payload-Destructuring ist M4 → dort gebundene Variablen als Error (Poison).
+    private void BindPattern(Pattern pattern, LyrType scrutinee, SymbolTable scope)
+    {
+        switch (pattern)
+        {
+            case BindingPattern b:
+                if (scrutinee is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } nr
+                    && nr.Symbol.Members.LookupLocal(b.Name) is EnumVariantSymbol)
+                    return; // Unit-Varianten-Match, keine Bindung
+                scope.TryDeclare(new LocalSymbol(b.Name, scrutinee, false, b));
+                return;
+            case TuplePattern t when scrutinee is TupleOf tup && tup.Elements.Length == t.Elements.Length:
+                for (var i = 0; i < t.Elements.Length; i++) BindPattern(t.Elements[i], tup.Elements[i], scope);
+                return;
+            case VariantPattern or TuplePattern or OrPattern:
+                BindPoison(pattern, scope);
+                return;
+            // Wildcard/Literal/Range: keine Bindung
+        }
+    }
+
+    private void BindPoison(Pattern pattern, SymbolTable scope)
+    {
+        switch (pattern)
+        {
+            case BindingPattern b: scope.TryDeclare(new LocalSymbol(b.Name, LyrType.Error, false, b)); return;
+            case VariantPattern v:
+                foreach (var sub in v.TupleElements ?? []) BindPoison(sub, scope);
+                foreach (var f in v.StructFields ?? [])
+                {
+                    if (f.Pattern is not null) BindPoison(f.Pattern, scope);
+                    else scope.TryDeclare(new LocalSymbol(f.Name, LyrType.Error, false, f));
+                }
+                return;
+            case TuplePattern t: foreach (var sub in t.Elements) BindPoison(sub, scope); return;
+            case OrPattern o: if (o.Alternatives.Length > 0) BindPoison(o.Alternatives[0], scope); return;
+        }
+    }
+
+    private LyrType CheckLambda(LambdaExpr lam, SymbolTable scope)
+    {
+        var lambdaScope = new SymbolTable(scope);
+        var pTypes = lam.Parameters.Select(p =>
+        {
+            var pt = p.Type is not null ? ResolveType(p.Type, scope) : LyrType.Error; // unannotiert → Kontext-Inferenz ist M4
+            lambdaScope.TryDeclare(new ParameterSymbol(p.Name, pt, p));
+            return pt;
+        }).ToArray();
+
+        var bodyType = lam.Body switch
+        {
+            Block b => CheckBlockAsValue(b, lambdaScope),
+            Expr e => CheckExpr(e, lambdaScope),
+            _ => LyrType.Error
+        };
+        var ret = lam.ReturnType is not null ? ResolveType(lam.ReturnType, scope) : bodyType;
+        return new FnType(pTypes, ret);
     }
 
     // --- Numerik / Zuweisbarkeit / Literal-Fit (①A / ②a) ---

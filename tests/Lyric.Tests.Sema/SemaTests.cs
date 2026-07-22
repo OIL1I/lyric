@@ -47,12 +47,14 @@ public class SemaTests
         return acc;
     }
 
-    // Typ des Initializers der LETZTEN Bindung in der ersten Funktion.
-    private static (LyrType type, DiagnosticEngine de) LastInit(string function)
+    // Typ des Initializers der LETZTEN Bindung über alle Top-Level-Funktionen.
+    private static (LyrType type, DiagnosticEngine de) LastInit(string program)
     {
-        var (types, de, module) = Check(function);
-        var fn = module.Declarations.OfType<FunctionDecl>().First();
-        var init = Bindings(fn.Body!.Statements).Last().Initializer!;
+        var (types, de, module) = Check(program);
+        var init = module.Declarations.OfType<FunctionDecl>()
+            .Where(f => f.Body is not null)
+            .SelectMany(f => Bindings(f.Body!.Statements))
+            .Last().Initializer!;
         return (types.TypeOf(init), de);
     }
 
@@ -237,6 +239,103 @@ public class SemaTests
     public void Binding_without_type_or_init_is_reported()
     {
         Assert.Contains(Check("fn t() { let x; }").de.Diagnostics, d => d.Code == "LYR-SEM0010");
+    }
+
+    // --- Slice 2b: Calls / Member / Struct-Init / composite ---
+
+    private static void AssertNamed(string name, LyrType t) => Assert.Equal(name, Assert.IsType<NamedRef>(t).Symbol.Name);
+
+    [Fact]
+    public void Call_checks_arguments_and_yields_return_type()
+    {
+        var (t, de) = LastInit("fn add(a: int, b: int): int { return a + b; } fn t() { let x = add(1, 2); }");
+        Assert.False(de.HasErrors);
+        AssertType(LyrType.Int, t);
+    }
+
+    [Fact]
+    public void Call_with_wrong_arity_or_type_is_reported()
+    {
+        Assert.Contains(Check("fn f(a: int): int { return a; } fn t() { let x = f(1, 2); }").de.Diagnostics, d => d.Code == "LYR-SEM0014");
+        Assert.Contains(Check("fn f(a: int): int { return a; } fn t() { let x = f(true); }").de.Diagnostics, d => d.Code == "LYR-SEM0001");
+    }
+
+    [Fact]
+    public void Calling_a_non_function_is_reported()
+    {
+        Assert.Contains(Check("fn t() { let x = 5(); }").de.Diagnostics, d => d.Code == "LYR-SEM0013");
+    }
+
+    [Fact]
+    public void Field_and_method_access()
+    {
+        AssertType(LyrType.Int, LastInit("struct P { x: int, } fn t(p: P) { let y = p.x; }").type);
+        AssertType(LyrType.Int, LastInit("struct P { x: int, fn get(): int { return this.x; } } fn t(p: P) { let y = p.get(); }").type);
+    }
+
+    [Fact]
+    public void Optional_member_access_yields_optional()
+    {
+        var (t, de) = LastInit("struct P { x: int, } fn t(p: ?P) { let y = p?.x; }");
+        Assert.False(de.HasErrors);
+        Assert.True(LyrType.Equal(new Optional(LyrType.Int), t));
+    }
+
+    [Fact]
+    public void Unknown_member_is_reported()
+    {
+        Assert.Contains(Check("struct P { x: int, } fn t(p: P) { let y = p.nope; }").de.Diagnostics, d => d.Code == "LYR-SEM0012");
+    }
+
+    [Fact]
+    public void Struct_init_yields_the_named_type()
+    {
+        var (t, de) = LastInit("struct P { x: int, y: int, } fn t() { let p = P { x = 1, y = 2 }; }");
+        Assert.False(de.HasErrors);
+        AssertNamed("P", t);
+    }
+
+    [Fact]
+    public void Struct_init_checks_field_names_and_types()
+    {
+        Assert.Contains(Check("struct P { x: int, } fn t() { let p = P { z = 1 }; }").de.Diagnostics, d => d.Code == "LYR-SEM0015");
+        Assert.Contains(Check("struct P { x: int, } fn t() { let p = P { x = true }; }").de.Diagnostics, d => d.Code == "LYR-SEM0001");
+    }
+
+    [Fact]
+    public void Enum_variant_construction()
+    {
+        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Circle(2.5); }").type);   // Tuple-Variante als Konstruktor
+        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Empty; }").type);         // Unit-Variante
+    }
+
+    [Fact]
+    public void If_expression_unifies_branches()
+    {
+        AssertType(LyrType.Int, LastInit("fn t() { let x = if (true) 1 else 2; }").type);
+        Assert.Contains(Check("fn t() { let x = if (true) 1 else \"a\"; }").de.Diagnostics, d => d.Code == "LYR-SEM0016");
+    }
+
+    [Fact]
+    public void Match_expression_unifies_arms()
+    {
+        AssertType(LyrType.String, LastInit("fn t(n: int) { let x = match (n) { 0 => \"a\", _ => \"b\" }; }").type);
+    }
+
+    [Fact]
+    public void Match_binds_the_whole_scrutinee_in_a_simple_binding()
+    {
+        var (t, de) = LastInit("fn t(n: int) { let r = match (n) { v => v }; }");
+        Assert.False(de.HasErrors);
+        AssertType(LyrType.Int, t); // v bindet den int-Scrutinee, Arm-Body v → int
+    }
+
+    [Fact]
+    public void Lambda_with_annotated_params_has_a_function_type()
+    {
+        var fn = Assert.IsType<FnType>(LastInit("fn t() { let f = (x: int) => x + 1; }").type);
+        AssertType(LyrType.Int, fn.Parameters.Single());
+        AssertType(LyrType.Int, fn.Return);
     }
 
     // --- Robustheit ---
