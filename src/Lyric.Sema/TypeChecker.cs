@@ -190,7 +190,7 @@ public sealed class TypeChecker
                     }
                 }
                 else if (r.Value is not null) CheckAssignable(r.Value, CheckExpr(r.Value, scope, _currentReturn), _currentReturn, r.Span);
-                else if (!TypeFacts.IsVoid(_currentReturn))
+                else if (!TypeFacts.IsVoid(_currentReturn) && !_currentReturn.IsError)
                     _de.Report("LYR-SEM0001", Severity.Error, r.Span, "return without a value in a non-void function");
                 break;
             case ExprStmt es: CheckExpr(es.Expr, scope); break;
@@ -394,7 +394,7 @@ public sealed class TypeChecker
             case StructInitExpr si: return CheckStructInit(si, scope, expected);
             case IfExpr iff: return CheckIfExpr(iff, scope);
             case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
-            case LambdaExpr lam: return CheckLambda(lam, scope);
+            case LambdaExpr lam: return CheckLambda(lam, scope, expected);
             case ResumeExpr re: return CheckResume(re, scope);
             case AtIdentifierExpr: return LyrType.Error; // Attribute haben in v1 keinen Ausdruckstyp
 
@@ -606,26 +606,67 @@ public sealed class TypeChecker
 
     // --- Calls / Member / Struct-Init / composite (Slice 2b) ---
 
+    // Zweiphasig (D5, C#-Modell): Nicht-Lambda-Argumente eager typen, daraus Typ-Args
+    // inferieren, dann Lambdas mit dem substituierten Parametertyp als Kontext prüfen —
+    // deren tatsächlicher Typ bindet die restlichen Typ-Args (U aus dem Lambda-Return).
     private LyrType CheckCall(CallExpr call, SymbolTable scope)
     {
         var calleeType = CheckExpr(call.Callee, scope);
-        var argTypes = call.Arguments.Select(a => CheckExpr(a, scope)).ToArray();
-        if (calleeType.IsError) return LyrType.Error;
         if (calleeType is not FnType fn)
+        {
+            foreach (var a in call.Arguments) CheckExpr(a, scope); // trotzdem typen (keine Folgefehler)
+            if (calleeType.IsError) return LyrType.Error;
             return Report(call.Span, "LYR-SEM0013", $"'{TypeFacts.Display(calleeType)}' is not callable");
+        }
 
         var fsym = _result.RefOf(call.Callee) as FunctionSymbol;
         var decl = fsym?.Declaration as FunctionDecl;
+        var args = call.Arguments;
+        var argTypes = new LyrType[args.Length];
 
-        // Generische Funktion: Typ-Args aus den Argumenten inferieren, Signatur substituieren.
+        // Phase A: Nicht-Lambdas eager.
+        for (var i = 0; i < args.Length; i++)
+            if (args[i] is not LambdaExpr)
+                argTypes[i] = CheckExpr(args[i], scope);
+
+        // Phase B: Typ-Args aus den eager getypten Argumenten.
+        Dictionary<GenericParamSymbol, LyrType>? map = null;
+        var substituted = fn;
         if (fsym is { Generics.Length: > 0 })
         {
-            var map = InferTypeArgs(fn, argTypes);
-            CheckInferredConstraints(fsym.Generics, map, call.Span);
-            fn = (FnType)Substitute(fn, map);
+            map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
+            var n = Math.Min(fn.Parameters.Length, args.Length);
+            for (var i = 0; i < n; i++)
+                if (args[i] is not LambdaExpr) UnifyInfer(fn.Parameters[i], argTypes[i], map);
+            substituted = (FnType)Substitute(fn, map);
         }
-        CheckCallArgs(call, fn, argTypes, decl);
-        return fn.Return;
+
+        // Phase C: Lambdas mit Kontext; ihr Ist-Typ bindet noch offene Typ-Args nach.
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i] is not LambdaExpr) continue;
+            argTypes[i] = CheckExpr(args[i], scope, ExpectedParamAt(substituted, decl, i));
+            if (map is not null && i < fn.Parameters.Length)
+                UnifyInfer(Substitute(fn.Parameters[i], map), argTypes[i], map);
+        }
+        if (map is not null)
+        {
+            CheckInferredConstraints(fsym!.Generics, map, call.Span);
+            substituted = (FnType)Substitute(fn, map);
+        }
+
+        CheckCallArgs(call, substituted, argTypes, decl);
+        return substituted.Return;
+    }
+
+    private static LyrType? ExpectedParamAt(FnType fn, FunctionDecl? decl, int i)
+    {
+        var ps = decl?.Parameters;
+        var variadic = ps is { Length: > 0 } && ps[^1].IsParams;
+        var fixedCount = variadic ? ps!.Length - 1 : fn.Parameters.Length;
+        if (i < fixedCount && i < fn.Parameters.Length) return fn.Parameters[i];
+        if (variadic && fn.Parameters[^1] is ArrayOf elem) return elem.Element;
+        return null;
     }
 
     private void CheckCallArgs(CallExpr call, FnType fn, LyrType[] argTypes, FunctionDecl? decl)
@@ -726,14 +767,6 @@ public sealed class TypeChecker
     }
 
     // --- Generische Call-Inferenz + Constraint-Erfüllung (Slice 1b) ---
-
-    private Dictionary<GenericParamSymbol, LyrType> InferTypeArgs(FnType fn, LyrType[] args)
-    {
-        var map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
-        var n = Math.Min(fn.Parameters.Length, args.Length);
-        for (var i = 0; i < n; i++) UnifyInfer(fn.Parameters[i], args[i], map);
-        return map;
-    }
 
     // Löst Typ-Params aus (param trägt T, arg ist konkret). Erste Bindung gewinnt;
     // Widersprüche (pair(1, "x")) fallen später in CheckCallArgs als Typfehler auf.
@@ -1185,12 +1218,6 @@ public sealed class TypeChecker
         return result;
     }
 
-    private LyrType CheckBlockAsValue(Block block, SymbolTable scope)
-    {
-        CheckBlock(block, scope);
-        return LyrType.Error; // Block-Lambda-Wert → Slice 4 (bidirektionale Lambda-Inferenz, D5)
-    }
-
     // Pattern-Bindungen (§6.3): jede Form typt ihre Bindungen echt gegen den Scrutinee-Typ.
     // Nicht-null-Patterns auf ?T matchen gegen T (Doku §6: 'null => …, u => u.name');
     // Fehler poisonen ihre Sub-Bindungen, damit Arm-Bodies nicht kaskadieren.
@@ -1517,27 +1544,167 @@ public sealed class TypeChecker
         };
     }
 
-    private LyrType CheckLambda(LambdaExpr lam, SymbolTable scope)
+    // Lambda mit bidirektionaler Inferenz (D5): unannotierte Parameter nehmen den
+    // Kontext-FnType, der Return-Kontext (Annotation vor Kontext) typt den Body.
+    // Block-Lambdas (D9): liefern Werte nur über 'return' — der Return-Typ muss aus
+    // Annotation oder Kontext kommen, nicht-void verlangt Return-Coverage.
+    private LyrType CheckLambda(LambdaExpr lam, SymbolTable scope, LyrType? expected = null)
     {
-        var savedYield = _currentYield;
-        _currentYield = null; // Lambda ist keine Coroutine — yield darin ist ein Fehler
-        var lambdaScope = new SymbolTable(scope);
-        var pTypes = lam.Parameters.Select(p =>
-        {
-            var pt = p.Type is not null ? ResolveType(p.Type, scope) : LyrType.Error; // unannotiert → Kontext-Inferenz ist M4
-            lambdaScope.TryDeclare(new ParameterSymbol(p.Name, pt, p));
-            return pt;
-        }).ToArray();
+        var expFn = expected is FnType ef && ef.Parameters.Length == lam.Parameters.Length ? ef : null;
 
-        var bodyType = lam.Body switch
+        var savedYield = _currentYield;
+        var savedReturn = _currentReturn;
+        _currentYield = null; // Lambda ist keine Coroutine — yield darin ist ein Fehler
+
+        var lambdaScope = new SymbolTable(scope);
+        var pTypes = new LyrType[lam.Parameters.Length];
+        for (var i = 0; i < lam.Parameters.Length; i++)
         {
-            Block b => CheckBlockAsValue(b, lambdaScope),
-            Expr e => CheckExpr(e, lambdaScope),
-            _ => LyrType.Error
-        };
-        var ret = lam.ReturnType is not null ? ResolveType(lam.ReturnType, scope) : bodyType;
+            var p = lam.Parameters[i];
+            LyrType pt;
+            if (p.Type is not null) pt = ResolveType(p.Type, scope);
+            else if (expFn is not null) pt = expFn.Parameters[i];
+            else pt = Report(p.Span, "LYR-SEM0045",
+                $"lambda parameter '{p.Name}' needs a type annotation (no context type available)");
+            var ps = new ParameterSymbol(p.Name, pt, p);
+            lambdaScope.TryDeclare(ps);
+            _result.BindRef(p, ps); // für DAA (Lambda-Params sind zugewiesen)
+            pTypes[i] = pt;
+        }
+
+        var contextRet = lam.ReturnType is not null ? ResolveType(lam.ReturnType, scope) : expFn?.Return;
+        // Kontext-Return mit noch UNGEBUNDENEN Typ-Params (map(xs, (x) => …): U offen):
+        // nicht dagegen prüfen — der Ist-Typ des Bodys bindet U in Phase C nach.
+        var openGeneric = lam.ReturnType is null && contextRet is not null && ContainsTypeParam(contextRet);
+        LyrType ret;
+        switch (lam.Body)
+        {
+            case Expr e:
+                var bt = CheckExpr(e, lambdaScope, openGeneric ? null : contextRet);
+                if (contextRet is null || openGeneric) ret = bt;
+                else
+                {
+                    ret = contextRet;
+                    if (!TypeFacts.IsVoid(contextRet)) // void-Kontext verwirft den Wert: () => doStuff()
+                        CheckAssignable(e, bt, contextRet, e.Span);
+                }
+                break;
+            case Block b:
+                if (contextRet is null || openGeneric)
+                {
+                    ret = Report(lam.Span, "LYR-SEM0046", openGeneric
+                        ? "cannot infer a generic return type for a block lambda — add a return type annotation"
+                        : "a block lambda needs a return type annotation or a context type (blocks have no value)");
+                    _currentReturn = LyrType.Error; // returns im Body nicht kaskadieren lassen
+                    CheckBlock(b, lambdaScope);
+                }
+                else
+                {
+                    ret = contextRet;
+                    _currentReturn = contextRet; // 'return' gehört der LAMBDA, nicht der umgebenden Funktion
+                    CheckBlock(b, lambdaScope);
+                    if (!TypeFacts.IsVoid(contextRet) && !contextRet.IsError && !Flow.AlwaysReturns(b, _result))
+                        _de.Report("LYR-SEM0046", Severity.Error, lam.Span,
+                            "a non-void block lambda must return or throw on every path");
+                }
+                break;
+            default:
+                ret = LyrType.Error;
+                break;
+        }
+
+        _currentReturn = savedReturn;
         _currentYield = savedYield;
+
+        RecordCaptures(lam);
         return new FnType(pTypes, ret);
+    }
+
+    private static bool ContainsTypeParam(LyrType t) => t switch
+    {
+        TypeParamType => true,
+        Optional o => ContainsTypeParam(o.Inner),
+        ArrayOf a => ContainsTypeParam(a.Element),
+        TupleOf tu => tu.Elements.Any(ContainsTypeParam),
+        FnType f => ContainsTypeParam(f.Return) || f.Parameters.Any(ContainsTypeParam),
+        GenericInstance gi => gi.Arguments.Any(ContainsTypeParam),
+        RangeOf r => ContainsTypeParam(r.Element),
+        CoroutineOf c => ContainsTypeParam(c.Yield),
+        _ => false
+    };
+
+    // Implizite Captures (ADR-011): alle referenzierten Locals/Params, deren Deklaration
+    // AUSSERHALB der Lambda liegt, plus this-Nutzung. Seiten-Tabelle für das M5-Lifting.
+    private void RecordCaptures(LambdaExpr lam)
+    {
+        var captured = new List<Symbol>();
+        var seen = new HashSet<Symbol>(ReferenceEqualityComparer.Instance);
+        var capturesThis = false;
+
+        void WalkNode(Node? node)
+        {
+            switch (node)
+            {
+                case null: return;
+                case ThisExpr: capturesThis = true; return;
+                case IdentifierExpr id:
+                    if (_result.RefOf(id) is { } sym && sym is LocalSymbol or ParameterSymbol
+                        && !DeclaredInside(sym) && seen.Add(sym))
+                        captured.Add(sym);
+                    return;
+                case LambdaExpr inner: // verschachtelt: der Span-Test sortiert Inner-Deklarationen aus
+                    WalkNode(inner.Body);
+                    return;
+                case Block b: foreach (var s in b.Statements) WalkNode(s); return;
+                case BindingStmt bd: WalkNode(bd.Initializer); return;
+                case IfStmt f: WalkNode(f.Condition); WalkNode(f.Then); WalkNode(f.Else); return;
+                case WhileStmt w: WalkNode(w.Condition); WalkNode(w.Body); return;
+                case DoWhileStmt d: WalkNode(d.Body); WalkNode(d.Condition); return;
+                case ForInStmt fo: WalkNode(fo.Iterable); WalkNode(fo.Body); return;
+                case ReturnStmt r: WalkNode(r.Value); return;
+                case YieldStmt y: WalkNode(y.Value); return;
+                case ThrowStmt t: WalkNode(t.Value); return;
+                case DeferStmt de: WalkNode(de.Body); return;
+                case ExprStmt es: WalkNode(es.Expr); return;
+                case TryStmt tr:
+                    WalkNode(tr.Body);
+                    foreach (var c in tr.Catches) WalkNode(c.Body);
+                    return;
+                case MatchStmt m:
+                    WalkNode(m.Scrutinee);
+                    foreach (var arm in m.Arms) { WalkNode(arm.Guard); WalkNode(arm.Body); }
+                    return;
+                case MatchExpr ma:
+                    WalkNode(ma.Scrutinee);
+                    foreach (var arm in ma.Arms) { WalkNode(arm.Guard); WalkNode(arm.Body); }
+                    return;
+                case UnaryExpr u: WalkNode(u.Operand); return;
+                case PostfixExpr p: WalkNode(p.Operand); return;
+                case BinaryExpr b2: WalkNode(b2.Left); WalkNode(b2.Right); return;
+                case AssignExpr a: WalkNode(a.Target); WalkNode(a.Value); return;
+                case RangeExpr r2: WalkNode(r2.Low); WalkNode(r2.High); return;
+                case CastExpr c2: WalkNode(c2.Operand); return;
+                case CallExpr call: WalkNode(call.Callee); foreach (var a in call.Arguments) WalkNode(a); return;
+                case IndexExpr ix: WalkNode(ix.Target); WalkNode(ix.Index); return;
+                case MemberExpr mem: WalkNode(mem.Target); return;
+                case ResumeExpr re: WalkNode(re.Coroutine); return;
+                case ArrayLitExpr arr: foreach (var e in arr.Elements) WalkNode(e); return;
+                case TupleLitExpr tu: foreach (var e in tu.Elements) WalkNode(e); return;
+                case StructInitExpr si: foreach (var f in si.Fields) WalkNode(f.Value); return;
+                case InterpolatedStringExpr fs:
+                    foreach (var seg in fs.Segments) if (seg is InterpHole h) WalkNode(h.Expr);
+                    return;
+                case IfExpr iff: WalkNode(iff.Condition); WalkNode(iff.Then); WalkNode(iff.Else); return;
+            }
+        }
+
+        bool DeclaredInside(Symbol sym) =>
+            sym.Declaration is { } d && d.Span.File == lam.Span.File
+            && d.Span.Start >= lam.Span.Start && d.Span.End <= lam.Span.End;
+
+        WalkNode(lam.Body);
+        if (captured.Count > 0 || capturesThis)
+            _result.SetCaptures(lam, captured, capturesThis);
     }
 
     // --- Numerik / Zuweisbarkeit / Literal-Fit (①A / ②a) ---

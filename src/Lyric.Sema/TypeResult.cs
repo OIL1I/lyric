@@ -24,4 +24,14 @@ public sealed class TypeResult
     // ohne selbst Typ-Wissen zu brauchen.
     public void MarkMatchExhaustive(Node match) => _exhaustiveMatches.Add(match);
     public bool IsMatchExhaustive(Node match) => _exhaustiveMatches.Contains(match);
+
+    // Captures (M4-4, ADR-011): welche äußeren Locals/Params (und this) eine Lambda
+    // implizit einfängt — Abnehmer ist das Closure-Lifting in M5.
+    private static readonly IReadOnlyList<Symbol> NoCaptures = [];
+    private readonly Dictionary<Node, (IReadOnlyList<Symbol> Symbols, bool This)> _captures = new(ReferenceEqualityComparer.Instance);
+
+    public void SetCaptures(Node lambda, IReadOnlyList<Symbol> symbols, bool capturesThis) =>
+        _captures[lambda] = (symbols, capturesThis);
+    public (IReadOnlyList<Symbol> Symbols, bool CapturesThis) CapturesOf(Node lambda) =>
+        _captures.TryGetValue(lambda, out var c) ? c : (NoCaptures, false);
 }

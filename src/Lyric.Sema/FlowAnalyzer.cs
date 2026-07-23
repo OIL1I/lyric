@@ -201,6 +201,17 @@ internal sealed class FlowAnalyzer
             case IfExpr iff:
                 AnalyzeExpr(iff.Condition, assigned); AnalyzeExpr(iff.Then, assigned); AnalyzeExpr(iff.Else, assigned);
                 return;
+            case LambdaExpr lam:
+            {
+                // Captures müssen am ERSTELLUNGSORT definitiv zugewiesen sein (C#-Regel):
+                // Body mit Snapshot der aktuellen Menge plus eigenen Params analysieren.
+                var lamSet = Clone(assigned);
+                foreach (var p in lam.Parameters)
+                    if (_types.RefOf(p) is { } ps) lamSet.Add(ps);
+                if (lam.Body is Block lb) AnalyzeStatements(lb.Statements, lamSet);
+                else if (lam.Body is Expr le) AnalyzeExpr(le, lamSet);
+                return;
+            }
             case MatchExpr ma:
                 AnalyzeExpr(ma.Scrutinee, assigned);
                 foreach (var arm in ma.Arms)
@@ -211,7 +222,7 @@ internal sealed class FlowAnalyzer
                     if (arm.Body is Expr ae) AnalyzeExpr(ae, armSet);
                 }
                 return;
-            // Lambda-Bodies (Closures) → separater Kontext, hier übersprungen; Literale/this/@ident: keine Reads.
+            // Literale/this/@ident: keine Reads.
         }
     }
 

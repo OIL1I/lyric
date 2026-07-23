@@ -538,10 +538,33 @@ public sealed partial class Parser
                 case TokenKind.RBracket:
                 case TokenKind.RBrace:
                     depth--;
-                    if (depth == 0) return _buffer.Peek(i + 1).TokenKind == TokenKind.FatArrow;
+                    if (depth == 0) return LambdaTailAhead(i + 1);
                     break;
                 case TokenKind.Eof:
                     return false;
+            }
+        }
+    }
+
+    // Hinter der schließenden ')': direkt '=>' ODER ': TypeExpr =>' (Rückgabe-Annotation,
+    // §6.2). Der Typ wird nur token-klassifiziert übersprungen (wie SkipTypeArgs).
+    private bool LambdaTailAhead(int i)
+    {
+        if (_buffer.Peek(i).TokenKind == TokenKind.FatArrow) return true;
+        if (_buffer.Peek(i).TokenKind != TokenKind.Colon) return false;
+        var depth = 0;
+        for (var j = i + 1; ; j++)
+        {
+            switch (_buffer.Peek(j).TokenKind)
+            {
+                case TokenKind.FatArrow when depth == 0: return true;
+                case TokenKind.LParen or TokenKind.LBracket: depth++; break;
+                case TokenKind.RParen or TokenKind.RBracket: depth--; if (depth < 0) return false; break;
+                case TokenKind.Identifier or TokenKind.Dot or TokenKind.Comma or TokenKind.Question
+                    or TokenKind.Fn or TokenKind.Arrow or TokenKind.Less or TokenKind.Greater
+                    or TokenKind.Shr or TokenKind.IntLiteral:
+                    break; // typ-artig
+                default: return false; // z.B. ';', Literal, Operator → kein Lambda-Tail
             }
         }
     }
