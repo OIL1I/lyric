@@ -71,7 +71,7 @@ public sealed record MatchExpr(Expr Scrutinee, MatchArm[] Arms, Span Span) : Exp
 // --- Struct-Init (§6.2): TypePath '{' field = expr, … '}' ---
 // Wird nur in Wert-Position erkannt, nicht am Anfang eines ExprStmt (sonst mehrdeutig
 // mit einem Block). Feld-Trenner ist '=' (':' ist Typen vorbehalten).
-public sealed record StructInitExpr(string[] Path, StructInitField[] Fields, Span Span) : Expr(Span);
+public sealed record StructInitExpr(string[] Path, TypeNode[] TypeArguments, StructInitField[] Fields, Span Span) : Expr(Span);
 public sealed record StructInitField(string Name, Expr Value, Span Span) : Node(Span);
 
 // --- Recovery ---

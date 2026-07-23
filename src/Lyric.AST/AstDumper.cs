@@ -403,6 +403,7 @@ public static class AstDumper
             // --- Struct-Init ---
             case StructInitExpr n:
                 Line(sb, indent, $"StructInit {string.Join('.', n.Path)}", n.Span);
+                foreach (var a in n.TypeArguments) { Line(sb, indent + 1, "TypeArg", a.Span); Write(a, indent + 2, sb); }
                 foreach (var f in n.Fields) Write(f, indent + 1, sb);
                 break;
             case StructInitField n:

@@ -360,8 +360,10 @@ public sealed partial class Parser
         return expr;
     }
 
-    // Lookahead ab einem Identifier: ist es ein Struct-Init 'Path { … }'? Nur wenn erlaubt
-    // und ein '{' direkt hinter dem (ggf. dotted) Typ-Pfad steht.
+    // Lookahead ab einem Identifier: ist es ein Struct-Init 'TypePath { … }'? Nur wenn erlaubt
+    // und ein '{' direkt hinter dem (ggf. dotted, ggf. generischen) Typ-Pfad steht. Das '<'
+    // wird nur als Typ-Argument-Liste gedeutet, wenn es balanciert schließt und ein '{' folgt —
+    // sonst ist es ein Vergleich (a < b).
     private bool IsStructInitAhead()
     {
         if (!_allowStructInit) return false;
@@ -369,7 +371,36 @@ public sealed partial class Parser
         while (_buffer.Peek(i).TokenKind == TokenKind.Dot
                && _buffer.Peek(i + 1).TokenKind == TokenKind.Identifier)
             i += 2;
+        if (_buffer.Peek(i).TokenKind == TokenKind.Less)
+        {
+            i = SkipTypeArgs(i);
+            if (i < 0) return false;
+        }
         return _buffer.Peek(i).TokenKind == TokenKind.LBrace;
+    }
+
+    // Überspringt ab Peek(start)=='<' eine balancierte Typ-Argument-Gruppe (Tiefe über '<'/'>',
+    // '>>' schließt zwei). Rückgabe: Index hinter dem schließenden '>', oder -1 wenn nicht
+    // balanciert / ein nicht-typ-artiges Token auftaucht (dann war '<' ein Vergleich).
+    private int SkipTypeArgs(int start)
+    {
+        var depth = 0;
+        for (var i = start; ; i++)
+        {
+            switch (_buffer.Peek(i).TokenKind)
+            {
+                case TokenKind.Less: depth++; break;
+                case TokenKind.Greater: depth--; break;
+                case TokenKind.Shr: depth -= 2; break;
+                case TokenKind.Identifier or TokenKind.Dot or TokenKind.Comma
+                    or TokenKind.LBracket or TokenKind.RBracket or TokenKind.Question
+                    or TokenKind.LParen or TokenKind.RParen or TokenKind.Fn or TokenKind.Arrow:
+                    break; // typ-artig, Tiefe unverändert
+                default: return -1; // z.B. ';', '{', Literal, Operator → kein Typ-Arg
+            }
+            if (depth == 0) return i + 1; // sauber geschlossen
+            if (depth < 0) return -1;      // über-geschlossen
+        }
     }
 
     private Expr ParseStructInit()
@@ -379,6 +410,10 @@ public sealed partial class Parser
         while (_buffer.Match(TokenKind.Dot))
             path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
                 $"expected type name, got {_buffer.Current.TokenKind}").Span).ToString());
+
+        TypeNode[] typeArgs = [];
+        if (_buffer.Check(TokenKind.Less))
+            typeArgs = ParseTypeArguments(out _);
 
         _buffer.Advance(); // '{' (durch IsStructInitAhead garantiert)
         var fields = new List<StructInitField>();
@@ -393,7 +428,7 @@ public sealed partial class Parser
             if (!_buffer.Match(TokenKind.Comma)) break;
         }
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close struct initializer");
-        return new StructInitExpr(path.ToArray(), fields.ToArray(), Span.Union(first.Span, close.Span));
+        return new StructInitExpr(path.ToArray(), typeArgs, fields.ToArray(), Span.Union(first.Span, close.Span));
     }
 
     // ---------------------------------------------------------------------

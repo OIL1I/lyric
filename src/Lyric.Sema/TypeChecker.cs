@@ -548,7 +548,16 @@ public sealed class TypeChecker
         if (calleeType is not FnType fn)
             return Report(call.Span, "LYR-SEM0013", $"'{TypeFacts.Display(calleeType)}' is not callable");
 
-        var decl = (_result.RefOf(call.Callee) as FunctionSymbol)?.Declaration as FunctionDecl;
+        var fsym = _result.RefOf(call.Callee) as FunctionSymbol;
+        var decl = fsym?.Declaration as FunctionDecl;
+
+        // Generische Funktion: Typ-Args aus den Argumenten inferieren, Signatur substituieren.
+        if (fsym is { Generics.Length: > 0 })
+        {
+            var map = InferTypeArgs(fn, argTypes);
+            CheckInferredConstraints(fsym.Generics, map, call.Span);
+            fn = (FnType)Substitute(fn, map);
+        }
         CheckCallArgs(call, fn, argTypes, decl);
         return fn.Return;
     }
@@ -649,6 +658,95 @@ public sealed class TypeChecker
         };
     }
 
+    // --- Generische Call-Inferenz + Constraint-Erfüllung (Slice 1b) ---
+
+    private Dictionary<GenericParamSymbol, LyrType> InferTypeArgs(FnType fn, LyrType[] args)
+    {
+        var map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
+        var n = Math.Min(fn.Parameters.Length, args.Length);
+        for (var i = 0; i < n; i++) UnifyInfer(fn.Parameters[i], args[i], map);
+        return map;
+    }
+
+    // Löst Typ-Params aus (param trägt T, arg ist konkret). Erste Bindung gewinnt;
+    // Widersprüche (pair(1, "x")) fallen später in CheckCallArgs als Typfehler auf.
+    private static void UnifyInfer(LyrType param, LyrType arg, Dictionary<GenericParamSymbol, LyrType> map)
+    {
+        switch (param)
+        {
+            case TypeParamType tp:
+                if (!arg.IsError) map.TryAdd(tp.Param, arg);
+                break;
+            case ArrayOf pa when arg is ArrayOf aa: UnifyInfer(pa.Element, aa.Element, map); break;
+            case Optional po when arg is Optional ao: UnifyInfer(po.Inner, ao.Inner, map); break;
+            case TupleOf pt when arg is TupleOf at && pt.Elements.Length == at.Elements.Length:
+                for (var i = 0; i < pt.Elements.Length; i++) UnifyInfer(pt.Elements[i], at.Elements[i], map);
+                break;
+            case GenericInstance pg when arg is GenericInstance ag
+                && ReferenceEquals(pg.Definition, ag.Definition) && pg.Arguments.Length == ag.Arguments.Length:
+                for (var i = 0; i < pg.Arguments.Length; i++) UnifyInfer(pg.Arguments[i], ag.Arguments[i], map);
+                break;
+            case FnType pf when arg is FnType af && pf.Parameters.Length == af.Parameters.Length:
+                for (var i = 0; i < pf.Parameters.Length; i++) UnifyInfer(pf.Parameters[i], af.Parameters[i], map);
+                UnifyInfer(pf.Return, af.Return, map);
+                break;
+        }
+    }
+
+    private void CheckConstraints(GenericParamSymbol[] generics, LyrType[] args, Span span)
+    {
+        var n = Math.Min(generics.Length, args.Length);
+        for (var i = 0; i < n; i++) CheckSatisfies(generics[i], args[i], span);
+    }
+
+    private void CheckInferredConstraints(GenericParamSymbol[] generics, Dictionary<GenericParamSymbol, LyrType> map, Span span)
+    {
+        foreach (var g in generics)
+            if (map.TryGetValue(g, out var arg)) CheckSatisfies(g, arg, span);
+    }
+
+    private void CheckSatisfies(GenericParamSymbol param, LyrType arg, Span span)
+    {
+        foreach (var c in param.Constraints)
+            if (ConstraintInterface(c) is { } iface && !Satisfies(arg, iface))
+                _de.Report("LYR-SEM0028", Severity.Error, span,
+                    $"type '{TypeFacts.Display(arg)}' does not satisfy constraint '{iface.Name}' on '{param.Name}'");
+    }
+
+    private TypeSymbol? ConstraintInterface(TypeNode c)
+    {
+        if (c is not NamedType nt) return null;
+        var s = _binding.Resolve(nt);
+        if (s is ImportBindingSymbol ib) s = ib.Target;
+        return s is TypeSymbol { Kind: TypeSymbolKind.Interface } it ? it : null;
+    }
+
+    // Erfüllt arg das Constraint iface? Nutzertypen über ihre deklarierte Interface-Liste;
+    // Typ-Param über seine eigenen Constraints. Builtins/extern: lenient (Conformance erst M8).
+    private bool Satisfies(LyrType arg, TypeSymbol iface) => arg switch
+    {
+        NamedRef nr => TypeImplements(nr.Symbol, iface),
+        GenericInstance gi => TypeImplements(gi.Definition, iface),
+        TypeParamType tp => tp.Param.Constraints.Any(c => ReferenceEquals(ConstraintInterface(c), iface)),
+        _ => true // Primitive/extern/Error: opak durchlassen
+    };
+
+    private bool TypeImplements(TypeSymbol ts, TypeSymbol iface) =>
+        DeclaredInterfaces(ts).Any(it => ReferenceEquals(it, iface));
+
+    private IEnumerable<TypeSymbol> DeclaredInterfaces(TypeSymbol ts)
+    {
+        var list = ts.Declaration switch
+        {
+            StructDecl s => s.Interfaces,
+            ClassDecl c => c.Interfaces,
+            EnumDecl e => e.Interfaces,
+            _ => (TypeNode[])[]
+        };
+        foreach (var t in list)
+            if (ConstraintInterface(t) is { } iface) yield return iface;
+    }
+
     private LyrType BindMember(MemberExpr mem, (LyrType type, Symbol? sym) r)
     {
         if (r.sym is not null) _result.BindRef(mem, r.sym);
@@ -707,15 +805,36 @@ public sealed class TypeChecker
             foreach (var f in si.Fields) CheckExpr(f.Value, scope);
             return LyrType.Error;
         }
+
+        // Generischer Typ: explizite Typ-Argumente (Stack<int> { }); Feld-Inferenz ist nicht dabei.
+        LyrType result;
+        Dictionary<GenericParamSymbol, LyrType> subst;
+        if (ts.Generics.Length > 0 || si.TypeArguments.Length > 0)
+        {
+            var args = si.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
+            if (args.Length != ts.Generics.Length)
+                _de.Report("LYR-SEM0026", Severity.Error, si.Span,
+                    $"generic type '{ts.Name}' expects {ts.Generics.Length} type argument(s), got {args.Length}");
+            var gi = new GenericInstance(ts, args);
+            subst = SubstMap(gi);
+            CheckConstraints(ts.Generics, args, si.Span);
+            result = gi;
+        }
+        else
+        {
+            result = new NamedRef(ts);
+            subst = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
+        }
+
         foreach (var field in si.Fields)
         {
             var vt = CheckExpr(field.Value, scope);
             if (ts.Members.LookupLocal(field.Name) is FieldSymbol fs)
-                CheckAssignable(field.Value, vt, FieldType(fs), field.Span);
+                CheckAssignable(field.Value, vt, Substitute(FieldType(fs), subst), field.Span);
             else
                 _de.Report("LYR-SEM0015", Severity.Error, field.Span, $"'{ts.Name}' has no field '{field.Name}'");
         }
-        return new NamedRef(ts);
+        return result;
     }
 
     private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope)
