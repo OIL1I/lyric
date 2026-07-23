@@ -20,6 +20,7 @@ public abstract record LyrType
 {
     public static readonly LyrType Error = new ErrorType();
     public static readonly LyrType Null = new NullType();
+    public static readonly LyrType Never = new NeverType();
     public static readonly LyrType Bool = new PrimitiveType(PrimitiveKind.Bool);
     public static readonly LyrType Int = new PrimitiveType(PrimitiveKind.Int);
     public static readonly LyrType Float = new PrimitiveType(PrimitiveKind.Float);
@@ -41,6 +42,7 @@ public abstract record LyrType
         (RangeOf x, RangeOf y) => Equal(x.Element, y.Element),
         (ErrorType, ErrorType) => true,
         (NullType, NullType) => true,
+        (NeverType, NeverType) => true,
         _ => false
     };
 
@@ -66,3 +68,4 @@ public sealed record FnType(LyrType[] Parameters, LyrType Return) : LyrType;
 public sealed record RangeOf(LyrType Element) : LyrType;             // interner Typ von 0..9 (kein Spec-Typ)
 public sealed record ErrorType : LyrType;                           // Recovery-Sentinel
 public sealed record NullType : LyrType;                            // Typ des null-Literals (nur ?T-zuweisbar)
+public sealed record NeverType : LyrType;                           // Rückgabetyp von panic (§9); Bottom-Typ, nicht benennbar

@@ -108,7 +108,12 @@ internal sealed class FlowAnalyzer
                 return assigned;
             case TryStmt tr:
                 AnalyzeStatements(tr.Body.Statements, Clone(assigned));
-                foreach (var c in tr.Catches) AnalyzeStatements(c.Body.Statements, Clone(assigned));
+                foreach (var c in tr.Catches)
+                {
+                    var catchSet = Clone(assigned);
+                    if (_types.RefOf(c) is { } bind) catchSet.Add(bind); // der Catch weist die Bindung zu
+                    AnalyzeStatements(c.Body.Statements, catchSet);
+                }
                 return assigned;
             case MatchStmt m:
             {

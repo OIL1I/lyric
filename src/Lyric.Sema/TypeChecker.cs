@@ -21,6 +21,8 @@ public sealed class TypeChecker
     private readonly DiagnosticEngine _de;
     private readonly TypeResult _result = new();
     private readonly Dictionary<GlobalSymbol, LyrType> _globals = new(ReferenceEqualityComparer.Instance);
+    private readonly TypeSymbol? _throwable; // Builtin-Interface Throwable (§9)
+    private readonly FunctionSymbol? _panic; // Builtin panic → never (§9)
 
     private LyrType _currentReturn = LyrType.Void;
     private LyrType? _currentThis;
@@ -31,6 +33,8 @@ public sealed class TypeChecker
         _comp = comp;
         _binding = binding;
         _de = de;
+        _throwable = comp.Builtins.LookupLocal("Throwable") as TypeSymbol;
+        _panic = comp.Builtins.LookupLocal("panic") as FunctionSymbol;
     }
 
     public TypeResult Check()
@@ -133,6 +137,7 @@ public sealed class TypeChecker
                 CheckAssignable(p.Default, CheckExpr(p.Default, scope), pt, p.Span);
         }
         _currentReturn = fn.ReturnType is not null ? ResolveType(fn.ReturnType, scope) : LyrType.Void;
+        CheckThrowsClause(fn, scope);
 
         if (fn.Body is not null)
         {
@@ -172,7 +177,12 @@ public sealed class TypeChecker
                     _de.Report("LYR-SEM0001", Severity.Error, r.Span, "return without a value in a non-void function");
                 break;
             case ExprStmt es: CheckExpr(es.Expr, scope); break;
-            case ThrowStmt t: CheckExpr(t.Value, scope); break;
+            case ThrowStmt t:
+                var thrown = CheckExpr(t.Value, scope);
+                if (!Conformance.IsThrowable(thrown, _throwable, _binding))
+                    _de.Report("LYR-SEM0030", Severity.Error, t.Span,
+                        $"cannot throw '{TypeFacts.Display(thrown)}' — only types implementing 'Throwable' can be thrown");
+                break;
             case YieldStmt y: if (y.Value is not null) CheckExpr(y.Value, scope); break;
             case ResumeStmt re:
                 CheckExpr(re.Coroutine, scope);
@@ -222,13 +232,37 @@ public sealed class TypeChecker
         CheckBlock(fo.Body, loopScope);
     }
 
+    // throws-Klausel (§9): deklarierter Typ muss werfbar sein; das aufgelöste Symbol wird
+    // für den ExceptionAnalyzer an die Klausel gebunden.
+    private void CheckThrowsClause(FunctionDecl fn, SymbolTable scope)
+    {
+        if (fn.Throws?.Type is not { } tn) return;
+        var t = ResolveType(tn, scope);
+        if (!Conformance.IsThrowable(t, _throwable, _binding))
+            _de.Report("LYR-SEM0030", Severity.Error, fn.Throws.Span,
+                $"'{TypeFacts.Display(t)}' in 'throws' does not implement 'Throwable'");
+        if (t is NamedRef nr) _result.BindRef(fn.Throws, nr.Symbol);
+    }
+
     private void CheckCatch(CatchClause clause, SymbolTable scope)
     {
         var catchScope = new SymbolTable(scope);
+        LyrType bt;
+        if (clause.BindingType is not null)
+        {
+            bt = ResolveType(clause.BindingType, scope);
+            if (!Conformance.IsThrowable(bt, _throwable, _binding))
+                _de.Report("LYR-SEM0030", Severity.Error, clause.BindingType.Span,
+                    $"cannot catch '{TypeFacts.Display(bt)}' — only types implementing 'Throwable' can be caught");
+            if (bt is NamedRef nr) _result.BindRef(clause.BindingType, nr.Symbol); // für den ExceptionAnalyzer
+        }
+        else bt = _throwable is not null ? new NamedRef(_throwable) : LyrType.Error; // Catch-All bindet Throwable
+
         if (clause.BindingName is not null)
         {
-            var bt = clause.BindingType is not null ? ResolveType(clause.BindingType, scope) : LyrType.Error; // untyped catch: Throwable → opak
-            catchScope.TryDeclare(new LocalSymbol(clause.BindingName, bt, false, clause));
+            var local = new LocalSymbol(clause.BindingName, bt, false, clause);
+            catchScope.TryDeclare(local);
+            _result.BindRef(clause, local); // für DAA: der Catch weist die Bindung zu
         }
         CheckBlock(clause.Body, catchScope);
     }
@@ -362,7 +396,8 @@ public sealed class TypeChecker
     {
         var fn = (FunctionDecl)f.Declaration!;
         var ps = fn.Parameters.Select(p => ResolveType(p.Type, _comp.Builtins)).ToArray();
-        var ret = fn.ReturnType is not null ? ResolveType(fn.ReturnType, _comp.Builtins) : LyrType.Void;
+        var ret = ReferenceEquals(f, _panic) ? LyrType.Never // §9: panic hat den unbenennbaren Typ never
+            : fn.ReturnType is not null ? ResolveType(fn.ReturnType, _comp.Builtins) : LyrType.Void;
         return new FnType(ps, ret);
     }
 
@@ -718,39 +753,17 @@ public sealed class TypeChecker
                     $"type '{TypeFacts.Display(arg)}' does not satisfy constraint '{iface.Name}' on '{param.Name}'");
     }
 
-    private TypeSymbol? ConstraintInterface(TypeNode c)
-    {
-        if (c is not NamedType nt) return null;
-        var s = _binding.Resolve(nt);
-        if (s is ImportBindingSymbol ib) s = ib.Target;
-        return s is TypeSymbol { Kind: TypeSymbolKind.Interface } it ? it : null;
-    }
+    private TypeSymbol? ConstraintInterface(TypeNode c) => Conformance.InterfaceOf(c, _binding);
 
     // Erfüllt arg das Constraint iface? Nutzertypen über ihre deklarierte Interface-Liste;
     // Typ-Param über seine eigenen Constraints. Builtins/extern: lenient (Conformance erst M8).
     private bool Satisfies(LyrType arg, TypeSymbol iface) => arg switch
     {
-        NamedRef nr => TypeImplements(nr.Symbol, iface),
-        GenericInstance gi => TypeImplements(gi.Definition, iface),
+        NamedRef nr => Conformance.Implements(nr.Symbol, iface, _binding),
+        GenericInstance gi => Conformance.Implements(gi.Definition, iface, _binding),
         TypeParamType tp => tp.Param.Constraints.Any(c => ReferenceEquals(ConstraintInterface(c), iface)),
         _ => true // Primitive/extern/Error: opak durchlassen
     };
-
-    private bool TypeImplements(TypeSymbol ts, TypeSymbol iface) =>
-        DeclaredInterfaces(ts).Any(it => ReferenceEquals(it, iface));
-
-    private IEnumerable<TypeSymbol> DeclaredInterfaces(TypeSymbol ts)
-    {
-        var list = ts.Declaration switch
-        {
-            StructDecl s => s.Interfaces,
-            ClassDecl c => c.Interfaces,
-            EnumDecl e => e.Interfaces,
-            _ => (TypeNode[])[]
-        };
-        foreach (var t in list)
-            if (ConstraintInterface(t) is { } iface) yield return iface;
-    }
 
     private LyrType BindMember(MemberExpr mem, (LyrType type, Symbol? sym) r)
     {
@@ -1503,6 +1516,7 @@ public sealed class TypeChecker
     private bool IsAssignable(Expr expr, LyrType from, LyrType to)
     {
         if (from.IsError || to.IsError) return true;      // Poison: keine Folgefehler
+        if (from is NeverType) return true;               // Bottom-Typ: panic(...) passt überall
         if (LyrType.Equal(from, to)) return true;
         if (to is Optional inner)                          // T → ?T (Widening §4)
             return from is NullType || IsAssignable(expr, from, inner.Inner);

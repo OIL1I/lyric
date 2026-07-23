@@ -1,0 +1,14 @@
+// Negativ: Aufruf einer throws-Funktion ohne try/catch und ohne eigene
+// throws-Deklaration → LYR-SEM0034.
+
+class Boom :: [Throwable] {
+    fn message(): string { return "boom"; }
+}
+
+fn risky(): int throws Boom {
+    throw Boom { };
+}
+
+fn main(): int {
+    return risky();
+}

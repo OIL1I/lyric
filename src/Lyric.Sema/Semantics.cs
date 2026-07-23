@@ -11,6 +11,7 @@ public static class Semantics
     {
         var types = new TypeChecker(compilation, binding, de).Check();
         new SemaRules(compilation, binding, types, de).Run();
+        new ExceptionAnalyzer(compilation, binding, types, de).Run(); // throws-Propagation (§9)
         return types;
     }
 }

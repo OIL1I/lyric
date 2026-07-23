@@ -15,6 +15,7 @@ internal static class Flow
     {
         ReturnStmt => true,
         ThrowStmt => true,
+        ExprStmt es => types?.TypeOf(es.Expr) is NeverType, // panic(...) divergiert (§9)
         Block b => b.Statements.Any(st => AlwaysReturns(st, types)),
         IfStmt f => f.Else is not null && AlwaysReturns(f.Then, types) && AlwaysReturns(f.Else, types),
         DoWhileStmt d => AlwaysReturns(d.Body, types) || Diverges(d.Condition, d.Body),

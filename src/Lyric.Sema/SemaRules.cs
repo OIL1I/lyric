@@ -158,7 +158,7 @@ public sealed class SemaRules
             case YieldStmt y: if (y.Value is not null) WalkExpr(y.Value); break;
             case ResumeStmt re: WalkExpr(re.Coroutine); if (re.Value is not null) WalkExpr(re.Value); break;
             case DeferStmt de: WalkStmt(de.Body); break;
-            case TryStmt tr: WalkStmt(tr.Body); foreach (var c in tr.Catches) WalkStmt(c.Body); break;
+            case TryStmt tr: CheckTry(tr); WalkStmt(tr.Body); foreach (var c in tr.Catches) WalkStmt(c.Body); break;
             case MatchStmt m:
                 WalkExpr(m.Scrutinee);
                 foreach (var arm in m.Arms)
@@ -168,6 +168,18 @@ public sealed class SemaRules
                 }
                 break;
         }
+    }
+
+    // try/catch-Struktur (§5/§9): mindestens ein catch; Catch-All (ohne Typ) nur als letzte Klausel.
+    private void CheckTry(TryStmt tr)
+    {
+        if (tr.Catches.Length == 0)
+            _de.Report("LYR-SEM0036", Severity.Error, tr.Span,
+                "'try' needs at least one 'catch' ('finally' does not exist — use 'defer')");
+        for (var i = 0; i < tr.Catches.Length - 1; i++)
+            if (tr.Catches[i].BindingType is null)
+                _de.Report("LYR-SEM0035", Severity.Error, tr.Catches[i].Span,
+                    "catch-all must be the last catch clause");
     }
 
     private void CheckExprStmt(ExprStmt es)

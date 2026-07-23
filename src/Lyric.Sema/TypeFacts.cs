@@ -66,6 +66,7 @@ public static class TypeFacts
             case FnType f: return "fn(" + string.Join(", ", f.Parameters.Select(Display)) + ") -> " + Display(f.Return);
             case RangeOf r: return "range<" + Display(r.Element) + ">";
             case NullType: return "null";
+            case NeverType: return "never";
             case ErrorType: return "<error>";
             default: return "<?>";
         }
