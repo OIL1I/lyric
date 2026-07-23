@@ -1,0 +1,13 @@
+struct Vec2 {
+    x: int,
+    y: int,
+
+    fn sum(): int {
+        return this.x + this.y;
+    }
+
+    mut fn scale(factor: int) {
+        this.x = this.x * factor;
+        this.y = this.y * factor;
+    }
+}

@@ -1,0 +1,9 @@
+interface Named {
+    fn name(): string;
+}
+
+class Thing :: [Named] {
+    fn other(): int {
+        return 0;
+    }
+}

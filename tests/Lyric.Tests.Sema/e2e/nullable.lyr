@@ -1,0 +1,10 @@
+fn describe(x: ?int): int {
+    if (x == null) {
+        return 0;
+    }
+    return x + 1;
+}
+
+fn orDefault(x: ?int): int {
+    return x ?? 0;
+}

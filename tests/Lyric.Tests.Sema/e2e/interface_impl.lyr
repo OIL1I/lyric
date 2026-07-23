@@ -1,0 +1,12 @@
+interface Greeter {
+    fn greet(): string;
+    fn shout(): string {
+        return this.greet();
+    }
+}
+
+class English :: [Greeter] {
+    fn greet(): string {
+        return "hello";
+    }
+}

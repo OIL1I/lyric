@@ -1,0 +1,6 @@
+fn build(name: string, count: int): string {
+    let greeting = "hello, " + name;
+    let repeated = "ab" * count;
+    let message = f"{greeting} ({count})";
+    return greeting;
+}

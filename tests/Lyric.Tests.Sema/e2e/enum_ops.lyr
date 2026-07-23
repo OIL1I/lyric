@@ -1,0 +1,13 @@
+enum Color {
+    Red,
+    Green,
+    Blue;
+
+    fn code(): int {
+        return 0;
+    }
+}
+
+fn pick(): Color {
+    return Color.Red;
+}

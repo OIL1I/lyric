@@ -1,0 +1,12 @@
+class Player {
+    name: string,
+    hp: int,
+
+    fn getName(): string {
+        return this.name;
+    }
+
+    mut fn takeDamage(amount: int) {
+        this.hp = this.hp - amount;
+    }
+}
