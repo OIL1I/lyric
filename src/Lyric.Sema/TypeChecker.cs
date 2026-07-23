@@ -28,6 +28,7 @@ public sealed class TypeChecker
     private LyrType _currentReturn = LyrType.Void;
     private LyrType? _currentYield; // Yield-Typ, wenn die aktuelle Funktion eine Coroutine ist
     private LyrType? _currentThis;
+    private ModuleSymbol? _currentModule; // für Extension-Sichtbarkeit (§3.6)
     private Dictionary<Symbol, LyrType> _narrowed = new(ReferenceEqualityComparer.Instance); // ?T → T im bewiesen-non-null-Bereich
 
     public TypeChecker(Compilation comp, BindingResult binding, DiagnosticEngine de)
@@ -44,8 +45,13 @@ public sealed class TypeChecker
     {
         foreach (var module in _comp.Modules) ComputeGlobals(module);
         foreach (var module in _comp.Modules)
+        {
+            _currentModule = module;
             foreach (var decl in _comp.AstOf(module).Declarations)
                 CheckDecl(decl, module);
+        }
+        CheckExtensionBlocks(); // Extend-Bodies, Orphan-Rule, Konformanz (§3.6)
+        _currentModule = null;
         new FlowAnalyzer(_comp, _result, _de).Run(); // DAA (definite assignment)
         return _result;
     }
@@ -76,12 +82,11 @@ public sealed class TypeChecker
         switch (decl)
         {
             case FunctionDecl fn: CheckFunction(fn, module.Members, thisType: null); break;
-            case StructDecl s: CheckMethods(s.Name, s.Members, module); break;
-            case ClassDecl c: CheckMethods(c.Name, c.Members, module); break;
-            case EnumDecl e: CheckEnumMethods(e, module); break;
+            case StructDecl s: CheckMethods(s.Name, s.Members, module); CheckTypeConformance(s.Name, s.Interfaces, module); break;
+            case ClassDecl c: CheckMethods(c.Name, c.Members, module); CheckTypeConformance(c.Name, c.Interfaces, module); break;
+            case EnumDecl e: CheckEnumMethods(e, module); CheckTypeConformance(e.Name, e.Interfaces, module); break;
             case InterfaceDecl i: CheckMethods(i.Name, i.Members, module); break;
-            case ExtendDecl ex: CheckExtend(ex, module); break;
-            // GlobalBindingDecl: schon in ComputeGlobals geprüft.
+            // ExtendDecl → CheckExtensionBlocks (nach allen Typen); GlobalBindingDecl → ComputeGlobals.
         }
     }
 
@@ -108,14 +113,138 @@ public sealed class TypeChecker
             ? new NamedRef(ts)
             : new GenericInstance(ts, Array.ConvertAll(ts.Generics, g => (LyrType)new TypeParamType(g)));
 
-    private void CheckExtend(ExtendDecl ex, ModuleSymbol module)
+    // Extend-Blöcke (§3.6): Bodies prüfen, Orphan-Rule, Interface-Konformanz. Läuft nach
+    // allen Typen, damit Member-Lookup über die vollständige Registry geht.
+    private void CheckExtensionBlocks()
     {
-        var target = ResolveType(ex.Target, module.Members);
-        var (scope, thisType) = target is NamedRef nr
-            ? (nr.Symbol.Members, (LyrType?)nr)
-            : (module.Members, null);
-        foreach (var fn in ex.Methods) CheckFunction(fn, scope, thisType);
+        foreach (var block in _comp.Extensions.Blocks)
+        {
+            _currentModule = block.Module;
+
+            if (block.Target is null)
+            {
+                // Ziel unauflösbar (RES0002 schon gemeldet) vs. aufgelöst-aber-nicht-erweiterbar
+                // (generische Instanz, Array, Tupel, Alias …). Nur Letzteres meldet SEM0047.
+                if (_binding.Resolve(block.Decl.Target) is not (null or ErrorSymbol))
+                    _de.Report("LYR-SEM0047", Severity.Error, block.Decl.Target.Span,
+                        "extend target must be a plain named type in v1 (no generic, array, tuple or function targets)");
+                continue; // ohne Ziel keine sinnvolle Body-Prüfung
+            }
+
+            // Body-Check: Outer-Scope ist die Block-Method-Scope (Cross-Calls + Methoden-Generics).
+            // `this` ist der Ziel-Typ — bei Builtins der Primitivtyp, sonst die Referenz.
+            var thisType = block.Target.Kind == TypeSymbolKind.Builtin
+                ? TypeFacts.FromBuiltinName(block.Target.Name)
+                : new NamedRef(block.Target);
+            foreach (var fn in block.Decl.Methods) CheckFunction(fn, block.MethodScope, thisType);
+
+            CheckOrphanRule(block);
+            CheckTypeConformance(block.Target, block.Decl.Interfaces, block.Module, block.Target.Name);
+        }
     }
+
+    // Orphan-Rule (§3.6): `extend T :: [I]` nur, wenn T oder ein I im eigenen Modul deklariert ist.
+    // Inhärente Extends (`extend T { }`, ohne Interfaces) sind uneingeschränkt.
+    private void CheckOrphanRule(ExtensionBlock block)
+    {
+        if (block.Decl.Interfaces.Length == 0) return;
+        if (DeclaredInModule(block.Target!, block.Module)) return;
+        foreach (var iface in block.Decl.Interfaces)
+            if (Conformance.InterfaceOf(iface, _binding) is { } it && DeclaredInModule(it, block.Module))
+                return;
+        _de.Report("LYR-SEM0041", Severity.Error, block.Decl.Span,
+            $"orphan extension: neither '{block.Target!.Name}' nor any implemented interface is declared in this module");
+    }
+
+    private bool DeclaredInModule(TypeSymbol ts, ModuleSymbol module) =>
+        ReferenceEquals(module.Members.LookupLocal(ts.Name), ts);
+
+    // --- Interface-Konformanz mit Signatur-Match (§3.5, D10) ---
+
+    private void CheckTypeConformance(string typeName, TypeNode[] interfaces, ModuleSymbol module)
+    {
+        if (module.Members.LookupLocal(typeName) is TypeSymbol ts)
+            CheckTypeConformance(ts, interfaces, module, typeName);
+    }
+
+    // Pro abstrakter Interface-Methode eine passende Implementierung (eigenes Member oder
+    // sichtbare Extension); Default-Methoden dürfen fehlen. Signatur muss exakt matchen (D10).
+    private void CheckTypeConformance(TypeSymbol implementer, TypeNode[] interfaces, ModuleSymbol module, string name)
+    {
+        if (interfaces.Length == 0) return;
+        var candidates = CandidateMethods(implementer, module);
+
+        foreach (var node in interfaces)
+        {
+            if (InterfaceWithSubst(node) is not { } r) continue;
+            var (iface, subst) = r;
+            if (iface.Declaration is not InterfaceDecl idecl) continue;
+
+            foreach (var im in idecl.Members)
+            {
+                var impl = candidates.TryGetValue(im.Name, out var c) ? c : null;
+                if (impl is null)
+                {
+                    if (im.Body is null) // abstrakt und nicht implementiert
+                        _de.Report("LYR-SEM0020", Severity.Error, NodeSpan(node),
+                            $"'{name}' does not implement abstract method '{im.Name}' of interface '{iface.Name}'");
+                    continue; // Default-Methode wird geerbt
+                }
+                var want = (FnType)Substitute(FnTypeOf(FnSym(iface, im.Name)!), subst);
+                if (SignatureMismatch(want, im, impl) is { } reason)
+                    _de.Report("LYR-SEM0042", Severity.Error, impl.Declaration?.Span ?? NodeSpan(node),
+                        $"'{name}.{im.Name}' does not match interface '{iface.Name}': {reason}");
+            }
+        }
+    }
+
+    // Eigene Methoden + sichtbare Extension-Methoden, nach Name (eigene gewinnen).
+    private Dictionary<string, FunctionSymbol> CandidateMethods(TypeSymbol ts, ModuleSymbol module)
+    {
+        var map = new Dictionary<string, FunctionSymbol>();
+        foreach (var s in ts.Members.Symbols)
+            if (s is FunctionSymbol fn) map[fn.Name] = fn;
+        foreach (var ext in _comp.Extensions.MethodsFor(ts))
+            if (_comp.Sees(module, ext.Module)) map.TryAdd(ext.Symbol.Name, ext.Symbol);
+        return map;
+    }
+
+    private static FunctionSymbol? FnSym(TypeSymbol iface, string name) =>
+        iface.Members.LookupLocal(name) as FunctionSymbol;
+
+    // Signatur-Vergleich (D10, invariant): Arity, Parametertypen, Rückgabe, mut, throws ⊆.
+    private string? SignatureMismatch(FnType want, FunctionDecl ifaceMethod, FunctionSymbol impl)
+    {
+        var decl = (FunctionDecl)impl.Declaration!;
+        var have = FnTypeOf(impl);
+        if (want.Parameters.Length != have.Parameters.Length)
+            return $"expected {want.Parameters.Length} parameter(s), found {have.Parameters.Length}";
+        for (var i = 0; i < want.Parameters.Length; i++)
+            if (!LyrType.Equal(want.Parameters[i], have.Parameters[i]))
+                return $"parameter {i + 1} is '{TypeFacts.Display(have.Parameters[i])}', expected '{TypeFacts.Display(want.Parameters[i])}'";
+        if (!LyrType.Equal(want.Return, have.Return))
+            return $"returns '{TypeFacts.Display(have.Return)}', expected '{TypeFacts.Display(want.Return)}'";
+        if (ifaceMethod.IsMut != decl.IsMut)
+            return decl.IsMut ? "must not be 'mut'" : "must be declared 'mut'";
+        if (!ThrowsSubset(decl.Throws, ifaceMethod.Throws))
+            return "throws more than the interface method allows";
+        return null;
+    }
+
+    // Darf die Impl-throws-Klausel unter der Interface-Klausel liegen? (nichts ⊆ typed ⊆ any)
+    private bool ThrowsSubset(ThrowsClause? impl, ThrowsClause? iface)
+    {
+        if (impl is null) return true;            // wirft nichts → immer erlaubt
+        if (iface is null) return false;          // Interface verbietet Werfen, Impl wirft
+        if (iface.Type is null) return true;      // Interface erlaubt beliebige Throwables
+        if (impl.Type is null) return false;      // Impl beliebig, Interface eng
+        var it = ResolveType(iface.Type, _currentModule?.Members ?? _comp.Builtins);
+        var pt = ResolveType(impl.Type, _currentModule?.Members ?? _comp.Builtins);
+        if (LyrType.Equal(it, pt)) return true;
+        return pt is NamedRef pr && it is NamedRef ir && Conformance.Implements(pr.Symbol, ir.Symbol, _binding);
+    }
+
+    private static Span NodeSpan(TypeNode n) => n.Span;
 
     private void CheckFunction(FunctionDecl fn, SymbolTable outerScope, LyrType? thisType)
     {
@@ -719,10 +848,16 @@ public sealed class TypeChecker
                 return Substitute(t, SubstMap(gi));
             case TypeParamType tp:
                 return BindMember(mem, MemberOfTypeParam(tp.Param, mem.Member, span));
+            case PrimitiveType p when BuiltinSymbol(p) is { } bs: // Extensions auf Builtins (string.shout())
+                return BindMember(mem, InstanceMember(bs, mem.Member, span));
             default:
                 return null;
         }
     }
+
+    // Builtin-TypeSymbol zu einem Primitivtyp (für Extension-Lookup auf string/int/…).
+    private TypeSymbol? BuiltinSymbol(PrimitiveType p) =>
+        _comp.Builtins.LookupLocal(TypeFacts.Display(p)) as TypeSymbol;
 
     // Member auf einem Typ-Param T: nur was seine Constraint-Interfaces bereitstellen (D2).
     private (LyrType, Symbol?) MemberOfTypeParam(GenericParamSymbol gp, string member, Span span)
@@ -820,11 +955,25 @@ public sealed class TypeChecker
     // Typ-Param über seine eigenen Constraints. Builtins/extern: lenient (Conformance erst M8).
     private bool Satisfies(LyrType arg, TypeSymbol iface) => arg switch
     {
-        NamedRef nr => Conformance.Implements(nr.Symbol, iface, _binding),
-        GenericInstance gi => Conformance.Implements(gi.Definition, iface, _binding),
+        NamedRef nr => ImplementsWithExtensions(nr.Symbol, iface),
+        GenericInstance gi => ImplementsWithExtensions(gi.Definition, iface),
         TypeParamType tp => tp.Param.Constraints.Any(c => ReferenceEquals(ConstraintInterface(c), iface)),
         _ => true // Primitive/extern/Error: opak durchlassen
     };
+
+    // Konformanz via deklarierte Interfaces ODER ein sichtbarer `extend T :: [I]`-Block (§3.6).
+    private bool ImplementsWithExtensions(TypeSymbol ts, TypeSymbol iface)
+    {
+        if (Conformance.Implements(ts, iface, _binding)) return true;
+        foreach (var block in _comp.Extensions.Blocks)
+        {
+            if (!ReferenceEquals(block.Target, ts)) continue;
+            if (_currentModule is not null && !_comp.Sees(_currentModule, block.Module)) continue;
+            foreach (var node in block.Decl.Interfaces)
+                if (ReferenceEquals(Conformance.InterfaceOf(node, _binding), iface)) return true;
+        }
+        return false;
+    }
 
     private LyrType BindMember(MemberExpr mem, (LyrType type, Symbol? sym) r)
     {
@@ -838,13 +987,90 @@ public sealed class TypeChecker
         return sym is ImportBindingSymbol ib ? ib.Target : sym;
     }
 
-    private (LyrType, Symbol?) InstanceMember(TypeSymbol ts, string member, Span span) =>
-        ts.Members.LookupLocal(member) switch
+    // Member-Auflösung (§3.6): eigene Members → sichtbare Extensions → Interface-Default-Methoden.
+    private (LyrType, Symbol?) InstanceMember(TypeSymbol ts, string member, Span span)
+    {
+        if (ts.Members.LookupLocal(member) is { } own)
+            return own switch
+            {
+                FieldSymbol fs => (FieldType(fs), fs),
+                FunctionSymbol fn => (FnTypeOf(fn), fn),
+                _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null)
+            };
+        if (ExtensionMember(ts, member, span) is { } ext) return (FnTypeOf(ext), ext);
+        if (DefaultMember(ts, member, span) is { } def) return def;
+        return (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null);
+    }
+
+    // Sichtbare Extension-Methode dieses Namens (deklarierendes Modul == aktuelles oder importiert).
+    // Mehrere sichtbare Kandidaten → SEM0044 (Ambiguität), erster gewinnt.
+    private FunctionSymbol? ExtensionMember(TypeSymbol ts, string member, Span span)
+    {
+        FunctionSymbol? found = null;
+        var ambiguous = false;
+        foreach (var ext in _comp.Extensions.MethodsFor(ts))
         {
-            FieldSymbol fs => (FieldType(fs), fs),
-            FunctionSymbol fn => (FnTypeOf(fn), fn),
-            _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null)
-        };
+            if (ext.Symbol.Name != member) continue;
+            if (_currentModule is not null && !_comp.Sees(_currentModule, ext.Module)) continue;
+            if (found is null) found = ext.Symbol;
+            else if (!ReferenceEquals(found, ext.Symbol)) ambiguous = true;
+        }
+        if (ambiguous)
+            _de.Report("LYR-SEM0044", Severity.Error, span,
+                $"ambiguous member '{member}' on '{ts.Name}': provided by more than one visible extension");
+        return found;
+    }
+
+    // Interface-Default-Methode (mit Body) über die Interfaces des Typs (deklariert + via Extend).
+    // Zwei Defaults aus verschiedenen Interfaces → SEM0043 (explizit überschreiben).
+    private (LyrType, Symbol?)? DefaultMember(TypeSymbol ts, string member, Span span)
+    {
+        (LyrType type, Symbol sym)? found = null;
+        var ambiguous = false;
+        foreach (var (iface, subst) in InterfacesOf(ts))
+        {
+            if (iface.Members.LookupLocal(member) is not FunctionSymbol fn) continue;
+            if (fn.Declaration is not FunctionDecl { Body: not null }) continue; // nur Defaults, nicht abstrakt
+            var t = Substitute(FnTypeOf(fn), subst);
+            if (found is null) found = (t, fn);
+            else if (!ReferenceEquals(found.Value.sym, fn)) ambiguous = true;
+        }
+        if (ambiguous)
+            _de.Report("LYR-SEM0043", Severity.Error, span,
+                $"ambiguous default method '{member}' on '{ts.Name}': multiple interfaces provide it — override it explicitly");
+        return found is { } f ? (f.type, f.sym) : null;
+    }
+
+    // Alle Interfaces eines Typs mit ihrer Substitution (Interface-Generics → Typ-Args aus '::').
+    // Deklarierte Interfaces plus die aus sichtbaren `extend T :: [I]`-Blöcken.
+    private IEnumerable<(TypeSymbol iface, Dictionary<GenericParamSymbol, LyrType> subst)> InterfacesOf(TypeSymbol ts)
+    {
+        foreach (var node in DeclaredInterfaceNodes(ts))
+            if (InterfaceWithSubst(node) is { } r) yield return r;
+        foreach (var block in _comp.Extensions.Blocks)
+        {
+            if (!ReferenceEquals(block.Target, ts)) continue;
+            if (_currentModule is not null && !_comp.Sees(_currentModule, block.Module)) continue;
+            foreach (var node in block.Decl.Interfaces)
+                if (InterfaceWithSubst(node) is { } r) yield return r;
+        }
+    }
+
+    private (TypeSymbol, Dictionary<GenericParamSymbol, LyrType>)? InterfaceWithSubst(TypeNode node)
+    {
+        if (Conformance.InterfaceOf(node, _binding) is not { } iface) return null;
+        var resolved = ResolveType(node, _currentModule?.Members ?? _comp.Builtins);
+        var subst = resolved is GenericInstance gi ? SubstMap(gi) : EmptySubst;
+        return (iface, subst);
+    }
+
+    private static TypeNode[] DeclaredInterfaceNodes(TypeSymbol ts) => ts.Declaration switch
+    {
+        StructDecl s => s.Interfaces,
+        ClassDecl c => c.Interfaces,
+        EnumDecl e => e.Interfaces,
+        _ => []
+    };
 
     private (LyrType, Symbol?) MemberOfType(TypeSymbol ts, string member, Span span) =>
         ts.Members.LookupLocal(member) switch

@@ -25,6 +25,18 @@ public sealed class Compilation
 
     public IReadOnlyList<ModuleSymbol> Modules => _modules;
     public SymbolTable Builtins => _builtins;
+    public ExtensionRegistry Extensions { get; } = new();
+
+    /// <summary>Sieht Modul <paramref name="from"/> Deklarationen aus <paramref name="to"/>?
+    /// Gleiches Modul oder ein Import von <paramref name="to"/> (§3.6-Sichtbarkeit).</summary>
+    public bool Sees(ModuleSymbol from, ModuleSymbol to)
+    {
+        if (ReferenceEquals(from, to)) return true;
+        foreach (var decl in AstOf(from).Declarations)
+            if (decl is ImportDecl imp && FindModule(imp.Path) is { } t && ReferenceEquals(t, to))
+                return true;
+        return false;
+    }
 
     /// <summary>Registriert ein Modul. Der Pfad kommt aus dem Header, sonst aus
     /// <paramref name="name"/>, sonst "main" (Single-File-Default).</summary>

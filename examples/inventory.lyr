@@ -1,0 +1,86 @@
+// inventory.lyr — Komplexität: fortgeschritten (M4-Vollausbau)
+// Zeigt: Interface mit Default-Methode, `::`-Konformanz, extend-Block auf einem
+// eigenen Typ, Closures mit Capture als Funktionsparameter, generische Funktion mit
+// Constraint, Pattern-Match auf einem Enum mit Payload, Nullable-Rückgabe.
+
+import std.io.console { println };
+
+// Ein Interface mit einer abstrakten und einer Default-Methode.
+interface Priced {
+    fn price(): int;                       // abstrakt
+    fn isFree(): bool {                    // Default: nutzt die abstrakte Methode
+        return this.price() == 0;
+    }
+}
+
+enum Rarity {
+    Common,
+    Rare,
+    Legendary
+}
+
+struct Item :: [Priced] {
+    name: string,
+    basePrice: int,
+    rarity: Rarity,
+
+    fn price(): int {
+        return this.basePrice * match (this.rarity) {
+            Common    => 1,
+            Rare      => 3,
+            Legendary => 10,
+        };
+    }
+}
+
+// extend fügt dem eigenen Typ eine Methode hinzu — inhärent, keine Aktivierung nötig.
+extend Item {
+    fn label(): string {
+        return f"{this.name} ({this.price()} gold)";
+    }
+}
+
+// Generische Summe über einen Constraint: jedes Priced-Element trägt bei.
+fn totalPrice<T :: [Priced]>(items: T[]): int {
+    var sum = 0;
+    for (it in items) {
+        sum += it.price();
+    }
+    return sum;
+}
+
+// Nimmt eine Closure als Filter (impliziter Capture des Schwellwerts beim Aufrufer).
+fn firstMatching(items: Item[], keep: fn(Item) -> bool): ?Item {
+    for (it in items) {
+        if (keep(it)) {
+            return it;
+        }
+    }
+    return null;
+}
+
+fn main(): int {
+    let items: Item[] = [
+        Item { name = "Bread",  basePrice = 0,  rarity = Rarity.Common },
+        Item { name = "Sword",  basePrice = 5,  rarity = Rarity.Rare },
+        Item { name = "Amulet", basePrice = 8,  rarity = Rarity.Legendary },
+    ];
+
+    for (it in items) {
+        println(it.label());
+    }
+
+    println(f"Gesamtwert: {totalPrice(items)} gold");
+
+    let budget = 20;
+    let affordable = firstMatching(items, (it) => it.price() <= budget);
+    let name = match (affordable) {
+        null => "nichts Bezahlbares",
+        it   => it.name,
+    };
+    println(f"Erstes im Budget ({budget}): {name}");
+
+    let free = items[0];
+    println(f"{free.name} gratis? {free.isFree()}");
+    return 0;
+}

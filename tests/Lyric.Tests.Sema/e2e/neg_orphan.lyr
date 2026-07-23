@@ -1,0 +1,14 @@
+// Negativ: Orphan-Extension (LYR-SEM0041). Weder das Ziel (Builtin string) noch das
+// Interface (aus einem fremden Modul importiert) ist hier lokal deklariert.
+
+import std.core { Comparable };
+
+extend string :: [Comparable] {
+    fn compareTo(other: string): int {
+        return 0;
+    }
+}
+
+fn main(): int {
+    return 0;
+}

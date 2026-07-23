@@ -32,6 +32,8 @@ public sealed class Resolver
         foreach (var module in _comp.Modules) ResolveImports(module);
         DetectImportCycles();
         foreach (var module in _comp.Modules) BindTypeNames(module);
+        ResolveExtensionTargets();
+        _comp.Extensions.BuildIndex();
         return _binding;
     }
 
@@ -56,9 +58,26 @@ public sealed class Resolver
                 case GlobalBindingDecl g:
                     DeclareTop(module, new GlobalSymbol(g.Binding.Name, Vis(g.IsPublic), g), g);
                     break;
-                // ImportDecl → Pass 2; ExtendDecl → nur Typ-Binding (kein neues Top-Level-Symbol); ErrorDecl → skip
+                case ExtendDecl ex: DeclareExtend(module, ex); break;
+                // ImportDecl → Pass 2; ErrorDecl → skip
             }
         }
+    }
+
+    // Extend-Block (§3.6): Methoden bekommen ein eigenes FunctionSymbol in einer Block-Scope
+    // (Parent = Modul-Scope), damit `T`/freie Namen auflösen. Der Ziel-Typ wird erst in Pass 3
+    // gebunden. Kein neues Top-Level-Symbol; die Methoden leben nur in der ExtensionRegistry.
+    private void DeclareExtend(ModuleSymbol module, ExtendDecl ex)
+    {
+        var methodScope = new SymbolTable(module.Members);
+        var methods = new List<FunctionSymbol>();
+        foreach (var fn in ex.Methods)
+        {
+            var fsym = Fn(fn);
+            if (methodScope.TryDeclare(fsym)) methods.Add(fsym);
+            else _de.Report("LYR-RES0001", Severity.Error, fn.Span, $"'{fn.Name}' is already declared in this extend block");
+        }
+        _comp.Extensions.Add(new ExtensionBlock(ex, module, methodScope, methods.ToArray()));
     }
 
     private void DeclareType(ModuleSymbol module, string name, TypeSymbolKind kind, Visibility vis, GenericParam[] generics, Decl[] members, Decl decl)
@@ -238,15 +257,31 @@ public sealed class Resolver
                 BindGenerics(i.Generics, isc);
                 foreach (var m in i.Members) BindFunctionTypes(m, isc);
                 break;
-            case ExtendDecl ex:
-                BindType(ex.Target, scope);
-                BindEach(ex.Interfaces, scope);
-                foreach (var m in ex.Methods) BindFunctionTypes(m, scope);
-                break;
+            // ExtendDecl → ResolveExtensionTargets (braucht die Block-Method-Scope für Generics).
             case TypeAliasDecl a: BindType(a.Aliased, scope); break;
             case GlobalBindingDecl g:
                 if (g.Binding.Type is not null) BindType(g.Binding.Type, scope);
                 break;
+        }
+    }
+
+    // Pass 3.5: Extend-Ziele + Signaturen binden. Läuft nach allen BindTypeNames, damit
+    // jeder Ziel-Typ bekannt ist. Signaturen binden gegen die Block-Method-Scope (Parent =
+    // Modul), plus die Methoden-Generics — so löst `T` in `fn map<T>(x: T)` auf.
+    private void ResolveExtensionTargets()
+    {
+        foreach (var block in _comp.Extensions.Blocks)
+        {
+            var scope = block.MethodScope;
+            BindType(block.Decl.Target, scope);
+            BindEach(block.Decl.Interfaces, scope);
+            foreach (var m in block.Decl.Methods) BindFunctionTypes(m, scope);
+
+            var sym = _binding.Resolve(block.Decl.Target);
+            if (sym is ImportBindingSymbol ib) sym = ib.Target;
+            // Nur schlichte benannte Ziele (kein Box<int>, kein T[]) sind in v1 erweiterbar (D-cut);
+            // alles andere lässt Target null → Sema meldet SEM0047.
+            block.Target = block.Decl.Target is NamedType { TypeArguments.Length: 0 } ? sym as TypeSymbol : null;
         }
     }
 

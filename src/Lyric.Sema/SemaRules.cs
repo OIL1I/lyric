@@ -41,19 +41,18 @@ public sealed class SemaRules
                 CheckSignature(fn, isMethod: false);
                 RunBody(fn);
                 break;
-            case StructDecl s: CheckTypeDecl(s.Name, s.Interfaces, s.Members.OfType<FunctionDecl>()); break;
-            case ClassDecl c: CheckTypeDecl(c.Name, c.Interfaces, c.Members.OfType<FunctionDecl>()); break;
-            case EnumDecl e: CheckTypeDecl(e.Name, e.Interfaces, e.Methods); break;
+            case StructDecl s: CheckTypeDecl(s.Members.OfType<FunctionDecl>()); break;
+            case ClassDecl c: CheckTypeDecl(c.Members.OfType<FunctionDecl>()); break;
+            case EnumDecl e: CheckTypeDecl(e.Methods); break;
             case InterfaceDecl i: foreach (var m in i.Members) { CheckSignature(m, true); RunBody(m); } break;
             case ExtendDecl x: foreach (var m in x.Methods) { CheckSignature(m, true); RunBody(m); } break;
         }
     }
 
-    private void CheckTypeDecl(string name, TypeNode[] interfaces, IEnumerable<FunctionDecl> methods)
+    // Konformanz (Signatur-Match) macht der TypeChecker; hier nur Signatur-Regeln + Bodies.
+    private void CheckTypeDecl(IEnumerable<FunctionDecl> methods)
     {
-        var methodList = methods.ToList();
-        CheckConformance(name, interfaces, methodList);
-        foreach (var fn in methodList) { CheckSignature(fn, isMethod: true); RunBody(fn); }
+        foreach (var fn in methods) { CheckSignature(fn, isMethod: true); RunBody(fn); }
     }
 
     // --- Signatur-Regeln (§3.1) ---
@@ -79,24 +78,6 @@ public sealed class SemaRules
             if (p.Default is not null) seenDefault = true;
             else if (seenDefault && !p.IsParams)
                 _de.Report("LYR-SEM0025", Severity.Error, p.Span, $"required parameter '{p.Name}' follows a default parameter");
-        }
-    }
-
-    // --- Interface-Konformität (`::`) ---
-
-    private void CheckConformance(string typeName, TypeNode[] interfaces, List<FunctionDecl> methods)
-    {
-        var implemented = new HashSet<string>(methods.Select(m => m.Name));
-        foreach (var ifaceNode in interfaces)
-        {
-            var sym = _binding.Resolve(ifaceNode);
-            if (sym is ImportBindingSymbol ib) sym = ib.Target;
-            if (sym is not TypeSymbol { Kind: TypeSymbolKind.Interface } isym || isym.Declaration is not InterfaceDecl idecl)
-                continue; // extern/unaufgelöst/kein Interface → übersprungen
-            foreach (var im in idecl.Members)
-                if (im.Body is null && !implemented.Contains(im.Name)) // abstrakt (Default-Methoden werden geerbt)
-                    _de.Report("LYR-SEM0020", Severity.Error, ifaceNode.Span,
-                        $"'{typeName}' does not implement abstract method '{im.Name}' of interface '{isym.Name}'");
         }
     }
 
