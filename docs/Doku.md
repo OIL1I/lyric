@@ -658,6 +658,46 @@ Pattern-Formen:
 
 **Exhaustivity** ist Pflicht: wenn nicht alle Fälle abgedeckt sind, gibt es einen Compile-Fehler `LYR-SEM0050` mit Liste der fehlenden Patterns.
 
+### 14.2 Match-Arme: Ausdruck oder Block
+
+Ein Match-Arm ist entweder ein **Ausdruck** (`Circle(r) => pi * r * r`) oder ein **Block** (`... => { ... }`). Der Unterschied zählt, sobald der `match` selbst ein Ausdruck ist (`let x = match (...)`, `return match (...)`):
+
+**Blöcke haben in Lyric keinen Wert.** Es gibt keine Rust-artige „letzter Ausdruck ist der Block-Wert“-Regel. Der Wert eines Match-Ausdrucks kommt deshalb ausschließlich aus Ausdrucks-Armen. Ein Block-Arm ist im Match-Ausdruck trotzdem erlaubt — aber nur, wenn er auf jedem Pfad die Funktion verlässt (`return` oder `throw`). So macht es `Shape.area()` oben: der Triangle-Arm rechnet in Ruhe und `return`t direkt aus der Funktion, am `match` vorbei. Ein Block-Arm, der einfach „durchläuft“, ist ein Compile-Fehler `LYR-SEM0033`:
+
+```lyr
+let label = match (s) {
+    Circle(r) => f"Kreis({r})",
+    Triangle { a, b, c } => {
+        let u = a + b + c;          // Fehler LYR-SEM0033: dieser Block
+    },                              // liefert keinen Wert für 'label'
+    _ => "sonstiges",
+};
+```
+
+Wenn ein Arm mehr als einen Ausdruck braucht, gibt es zwei idiomatische Wege:
+
+```lyr
+// 1) Helper-Funktion — der Arm bleibt ein Ausdruck
+let label = match (s) {
+    Circle(r)            => f"Kreis({r})",
+    Triangle { a, b, c } => triangleLabel(a, b, c),
+    _                    => "sonstiges",
+};
+
+// 2) match als STATEMENT + var — im Statement sind Block-Arme frei
+var label: string;
+match (s) {
+    Circle(r) => label = f"Kreis({r})",
+    Triangle { a, b, c } => {
+        let u = a + b + c;
+        label = f"Dreieck(U={u})";
+    }
+    _ => label = "sonstiges",
+}
+```
+
+Der Compiler weiß bei einem exhaustiven `match`, dass genau ein Arm läuft — `label` gilt nach Variante 2 als sicher zugewiesen.
+
 ---
 
 ## 15. Extend-Blöcke
