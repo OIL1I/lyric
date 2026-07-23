@@ -111,16 +111,29 @@ internal sealed class FlowAnalyzer
                 foreach (var c in tr.Catches) AnalyzeStatements(c.Body.Statements, Clone(assigned));
                 return assigned;
             case MatchStmt m:
+            {
                 AnalyzeExpr(m.Scrutinee, assigned);
+                HashSet<Symbol>? merged = null; // Schnitt der Arm-Zuweisungen (nur nicht-verlassende Arme)
                 foreach (var arm in m.Arms)
                 {
                     var armSet = Clone(assigned);
                     AddPatternBindings(arm.Pattern, armSet);
                     if (arm.Guard is not null) AnalyzeExpr(arm.Guard, armSet);
-                    if (arm.Body is Block ab) AnalyzeStatements(ab.Statements, armSet);
+                    var exits = false;
+                    if (arm.Body is Block ab)
+                    {
+                        armSet = AnalyzeStatements(ab.Statements, armSet);
+                        exits = Flow.AlwaysReturns(ab, _types);
+                    }
                     else if (arm.Body is Expr ae) AnalyzeExpr(ae, armSet);
+                    if (!exits) merged = merged is null ? armSet : Intersect(merged, armSet);
                 }
+                // Exhaustiver match: genau ein Arm läuft — was ALLE (fortsetzenden) Arme
+                // zuweisen, ist danach definitiv zugewiesen. merged == null: alle Arme verlassen.
+                if (_types.IsMatchExhaustive(m) && m.Arms.Length > 0)
+                    return merged ?? assigned;
                 return assigned;
+            }
             default: // Break/Continue/Error
                 return assigned;
         }
@@ -130,13 +143,13 @@ internal sealed class FlowAnalyzer
     {
         AnalyzeExpr(f.Condition, assigned);
         var thenSet = AnalyzeStatements(f.Then.Statements, Clone(assigned));
-        var thenExits = Flow.AlwaysReturns(f.Then);
+        var thenExits = Flow.AlwaysReturns(f.Then, _types);
 
         if (f.Else is null)
             return assigned; // ohne else nichts definitiv Neues (then-Zweig evtl. übersprungen)
 
         var elseSet = AnalyzeStmt(f.Else, Clone(assigned));
-        var elseExits = Flow.AlwaysReturns(f.Else);
+        var elseExits = Flow.AlwaysReturns(f.Else, _types);
 
         if (thenExits && elseExits) return assigned;          // danach unerreichbar
         if (thenExits) return elseSet;                        // Fortsetzung folgt else

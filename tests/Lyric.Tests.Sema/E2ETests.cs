@@ -46,6 +46,7 @@ public class E2ETests
     [InlineData("factory.lyr")]
     [InlineData("imports.lyr")]
     [InlineData("main_args.lyr")]
+    [InlineData("shapes.lyr")]
     public void Valid_program_checks_clean(string name)
     {
         var de = Analyze(name);
@@ -60,6 +61,7 @@ public class E2ETests
     [InlineData("neg_type_mismatch.lyr", "LYR-SEM0001")]
     [InlineData("neg_unassigned.lyr", "LYR-SEM0018")]
     [InlineData("neg_missing_impl.lyr", "LYR-SEM0020")]
+    [InlineData("neg_nonexhaustive.lyr", "LYR-SEM0050")]
     public void Negative_program_reports(string name, string code)
     {
         Assert.Contains(Analyze(name).Diagnostics, d => d.Code == code);

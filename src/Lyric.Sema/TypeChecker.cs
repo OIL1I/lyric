@@ -137,7 +137,7 @@ public sealed class TypeChecker
         if (fn.Body is not null)
         {
             CheckBlock(fn.Body, scope);
-            if (!TypeFacts.IsVoid(_currentReturn) && !Flow.AlwaysReturns(fn.Body))
+            if (!TypeFacts.IsVoid(_currentReturn) && !Flow.AlwaysReturns(fn.Body, _result))
                 _de.Report("LYR-SEM0017", Severity.Error, fn.Span, $"not all code paths of '{fn.Name}' return a value");
         }
 
@@ -167,7 +167,7 @@ public sealed class TypeChecker
             case DoWhileStmt d: CheckBlock(d.Body, scope); CheckCondition(d.Condition, scope); break;
             case ForInStmt fo: CheckForIn(fo, scope); break;
             case ReturnStmt r:
-                if (r.Value is not null) CheckAssignable(r.Value, CheckExpr(r.Value, scope), _currentReturn, r.Span);
+                if (r.Value is not null) CheckAssignable(r.Value, CheckExpr(r.Value, scope, _currentReturn), _currentReturn, r.Span);
                 else if (!TypeFacts.IsVoid(_currentReturn))
                     _de.Report("LYR-SEM0001", Severity.Error, r.Span, "return without a value in a non-void function");
                 break;
@@ -183,7 +183,7 @@ public sealed class TypeChecker
                 CheckBlock(tr.Body, scope);
                 foreach (var c in tr.Catches) CheckCatch(c, scope);
                 break;
-            case MatchStmt m: CheckMatch(m.Scrutinee, m.Arms, scope); break;
+            case MatchStmt m: CheckMatch(m, m.Scrutinee, m.Arms, scope, asExpression: false); break;
             // Break/Continue/Error: nichts zu prüfen.
         }
     }
@@ -191,7 +191,7 @@ public sealed class TypeChecker
     private void CheckBinding(BindingStmt bnd, SymbolTable scope)
     {
         var declared = bnd.Type is not null ? ResolveType(bnd.Type, scope) : null;
-        var initT = bnd.Initializer is not null ? CheckExpr(bnd.Initializer, scope) : null;
+        var initT = bnd.Initializer is not null ? CheckExpr(bnd.Initializer, scope, declared) : null;
 
         LyrType type;
         if (declared is not null && initT is not null) { CheckAssignable(bnd.Initializer!, initT, declared, bnd.Span); type = declared; }
@@ -260,8 +260,8 @@ public sealed class TypeChecker
             _narrowed = snapshot;
         }
 
-        if (Flow.AlwaysReturns(f.Then)) Apply(elseFacts);
-        else if (f.Else is not null && Flow.AlwaysReturns(f.Else)) Apply(thenFacts);
+        if (Flow.AlwaysReturns(f.Then, _result)) Apply(elseFacts);
+        else if (f.Else is not null && Flow.AlwaysReturns(f.Else, _result)) Apply(thenFacts);
     }
 
     private void Apply(Dictionary<Symbol, LyrType> facts)
@@ -292,14 +292,17 @@ public sealed class TypeChecker
 
     // --- Ausdrücke ---
 
-    private LyrType CheckExpr(Expr expr, SymbolTable scope)
+    // 'expected' ist der Kontext-Typ der Position (Binding-Typ, Return-Typ, Feld-Typ, …).
+    // Er wird nur von den Formen genutzt, die ihn brauchen (leeres Array-Literal,
+    // kontextuelle Enum-Varianten-Konstruktion §3.4); alles andere ignoriert ihn.
+    private LyrType CheckExpr(Expr expr, SymbolTable scope, LyrType? expected = null)
     {
-        var type = Compute(expr, scope);
+        var type = Compute(expr, scope, expected);
         _result.SetType(expr, type);
         return type;
     }
 
-    private LyrType Compute(Expr expr, SymbolTable scope)
+    private LyrType Compute(Expr expr, SymbolTable scope, LyrType? expected)
     {
         switch (expr)
         {
@@ -320,7 +323,7 @@ public sealed class TypeChecker
             case RangeExpr r: return CheckRange(r, scope);
             case CastExpr c: return CheckCast(c, scope);
             case IndexExpr ix: return CheckIndex(ix, scope);
-            case ArrayLitExpr arr: return CheckArrayLit(arr, scope);
+            case ArrayLitExpr arr: return CheckArrayLit(arr, scope, expected);
             case TupleLitExpr tu: return new TupleOf(tu.Elements.Select(e => CheckExpr(e, scope)).ToArray());
             case InterpolatedStringExpr fs:
                 foreach (var seg in fs.Segments) if (seg is InterpHole h) CheckExpr(h.Expr, scope);
@@ -329,9 +332,9 @@ public sealed class TypeChecker
 
             case CallExpr call: return CheckCall(call, scope);
             case MemberExpr mem: return CheckMember(mem, scope);
-            case StructInitExpr si: return CheckStructInit(si, scope);
+            case StructInitExpr si: return CheckStructInit(si, scope, expected);
             case IfExpr iff: return CheckIfExpr(iff, scope);
-            case MatchExpr ma: return UnifyArms(CheckMatch(ma.Scrutinee, ma.Arms, scope), ma.Span);
+            case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
             case LambdaExpr lam: return CheckLambda(lam, scope);
             case AtIdentifierExpr: return LyrType.Error; // Attribute haben in v1 keinen Ausdruckstyp
 
@@ -475,7 +478,7 @@ public sealed class TypeChecker
         // Bei Identifier-Zielen den DEKLARIERTEN Typ nehmen (nicht den narrowten) — sonst
         // wäre 'x = null' auf einem narrowten ?T fälschlich ein Fehler.
         var targetType = targetSym is not null ? DeclaredType(targetSym) ?? _result.TypeOf(a.Target) : _result.TypeOf(a.Target);
-        var value = CheckExpr(a.Value, scope);
+        var value = CheckExpr(a.Value, scope, targetType);
         // Lvalue-/Mutabilitäts-Check → Slice 3b. Hier nur Typ-Kompatibilität.
         CheckAssignable(a.Value, value, targetType, a.Span);
         if (targetSym is not null) _narrowed.Remove(targetSym); // Neuzuweisung hebt Narrowing auf
@@ -524,13 +527,15 @@ public sealed class TypeChecker
         };
     }
 
-    private LyrType CheckArrayLit(ArrayLitExpr arr, SymbolTable scope)
+    private LyrType CheckArrayLit(ArrayLitExpr arr, SymbolTable scope, LyrType? expected)
     {
-        if (arr.Elements.Length == 0) return new ArrayOf(LyrType.Error, null); // leeres Array braucht Kontext → 2b
-        var first = CheckExpr(arr.Elements[0], scope);
+        var elemExpected = expected is ArrayOf ea ? ea.Element : null;
+        if (arr.Elements.Length == 0)
+            return new ArrayOf(elemExpected ?? LyrType.Error, null); // leer: Element-Typ nur aus dem Kontext
+        var first = CheckExpr(arr.Elements[0], scope, elemExpected);
         for (var i = 1; i < arr.Elements.Length; i++)
         {
-            var t = CheckExpr(arr.Elements[i], scope);
+            var t = CheckExpr(arr.Elements[i], scope, elemExpected);
             if (!LyrType.Equal(t, first) && !t.IsError && !first.IsError)
                 _de.Report("LYR-SEM0009", Severity.Error, arr.Elements[i].Span,
                     $"array elements must share a type: '{TypeFacts.Display(first)}' vs '{TypeFacts.Display(t)}'");
@@ -771,7 +776,7 @@ public sealed class TypeChecker
         ts.Members.LookupLocal(member) switch
         {
             FunctionSymbol fn => (FnTypeOf(fn), fn),                 // statische Methode / Factory (Point.new)
-            EnumVariantSymbol ev => (VariantConstructorType(ev, ts), ev),
+            EnumVariantSymbol ev => (VariantConstructorType(ev, ts, span), ev),
             _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no static member '{member}'"), null)
         };
 
@@ -785,20 +790,30 @@ public sealed class TypeChecker
             _ => (Report(span, "LYR-SEM0012", $"module '{mod.FullName}' has no member '{member}'"), null)
         };
 
-    private LyrType VariantConstructorType(EnumVariantSymbol ev, TypeSymbol enumTs)
+    private LyrType VariantConstructorType(EnumVariantSymbol ev, TypeSymbol enumTs, Span span)
     {
         var v = (EnumVariant)ev.Declaration!;
-        return v.TupleFields is not null
-            ? new FnType(v.TupleFields.Select(t => ResolveType(t, enumTs.Members)).ToArray(), new NamedRef(enumTs))
-            : new NamedRef(enumTs); // Unit; Struct-Varianten-Konstruktion → M4
+        if (v.TupleFields is not null)
+            return new FnType(v.TupleFields.Select(t => ResolveType(t, enumTs.Members)).ToArray(), new NamedRef(enumTs));
+        if (v.StructFields is not null)
+            return Report(span, "LYR-SEM0031", $"struct variant '{ev.Name}' must be constructed with '{ev.Name} {{ … }}'");
+        return new NamedRef(enumTs); // Unit-Variante als Wert
     }
 
     private LyrType FieldType(FieldSymbol fs) => ResolveType(((FieldDecl)fs.Declaration!).Type, _comp.Builtins);
 
-    private LyrType CheckStructInit(StructInitExpr si, SymbolTable scope)
+    private LyrType CheckStructInit(StructInitExpr si, SymbolTable scope, LyrType? expected)
     {
-        var sym = ResolveTypePath(si.Path, scope);
-        if (sym is ImportBindingSymbol ib) sym = ib.Target;
+        var (sym, owner) = ResolveInitPath(si.Path, scope);
+
+        // Enum-Struct-Variante (§3.4): qualifiziert (Shape.Triangle { … }) oder kontextuell
+        // (Triangle { … } in einer Position mit erwartetem Enum-Typ).
+        if (sym is EnumVariantSymbol ev && owner is not null)
+            return CheckVariantInit(si, ev, owner, ExpectedInstance(expected, owner), scope);
+        if (sym is null && si.Path.Length == 1 && EnumFromExpected(expected) is { } ex
+            && ex.def.Members.LookupLocal(si.Path[0]) is EnumVariantSymbol cev)
+            return CheckVariantInit(si, cev, ex.def, ex.instance, scope);
+
         if (sym is not TypeSymbol ts)
         {
             if (sym is null) _de.Report("LYR-SEM0011", Severity.Error, si.Span, $"unknown type '{string.Join('.', si.Path)}'");
@@ -823,16 +838,100 @@ public sealed class TypeChecker
         else
         {
             result = new NamedRef(ts);
-            subst = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
+            subst = EmptySubst;
         }
 
         foreach (var field in si.Fields)
         {
-            var vt = CheckExpr(field.Value, scope);
             if (ts.Members.LookupLocal(field.Name) is FieldSymbol fs)
-                CheckAssignable(field.Value, vt, Substitute(FieldType(fs), subst), field.Span);
+            {
+                var ft = Substitute(FieldType(fs), subst);
+                CheckAssignable(field.Value, CheckExpr(field.Value, scope, ft), ft, field.Span);
+            }
             else
+            {
                 _de.Report("LYR-SEM0015", Severity.Error, field.Span, $"'{ts.Name}' has no field '{field.Name}'");
+                CheckExpr(field.Value, scope);
+            }
+        }
+        return result;
+    }
+
+    // Pfad-Auflösung für Struct-Init: läuft durch Module UND Typ-Member (Enum-Varianten).
+    // Liefert das Endsymbol plus — falls Enum-Variante — den umgebenden Enum-Typ.
+    private (Symbol? sym, TypeSymbol? owner) ResolveInitPath(string[] path, SymbolTable scope)
+    {
+        var cur = scope.Lookup(path[0]);
+        if (cur is ImportBindingSymbol ib0) cur = ib0.Target;
+        TypeSymbol? owner = null;
+        for (var i = 1; i < path.Length && cur is not null; i++)
+        {
+            owner = cur as TypeSymbol;
+            cur = cur switch
+            {
+                ModuleSymbol mod => mod.Members.LookupLocal(path[i]),
+                TypeSymbol t => t.Members.LookupLocal(path[i]),
+                _ => null
+            };
+            if (cur is ImportBindingSymbol ib) cur = ib.Target;
+        }
+        return (cur, cur is EnumVariantSymbol ? owner : null);
+    }
+
+    // Erwarteter Typ (Shape / ?Shape / Opt<int>) → Enum-Definition plus ggf. Instanz.
+    private static (TypeSymbol def, GenericInstance? instance)? EnumFromExpected(LyrType? expected)
+    {
+        var t = expected is Optional o ? o.Inner : expected;
+        return t switch
+        {
+            NamedRef { Symbol: { Kind: TypeSymbolKind.Enum } d } => (d, null),
+            GenericInstance { Definition.Kind: TypeSymbolKind.Enum } gi => (gi.Definition, gi),
+            _ => null
+        };
+    }
+
+    private static GenericInstance? ExpectedInstance(LyrType? expected, TypeSymbol owner) =>
+        EnumFromExpected(expected) is { } x && ReferenceEquals(x.def, owner) ? x.instance : null;
+
+    private LyrType CheckVariantInit(StructInitExpr si, EnumVariantSymbol ev, TypeSymbol enumTs,
+        GenericInstance? instance, SymbolTable scope)
+    {
+        _result.BindRef(si, ev);
+        var v = (EnumVariant)ev.Declaration!;
+        var subst = instance is not null ? SubstMap(instance) : EmptySubst;
+
+        LyrType result;
+        if (instance is not null) result = instance;
+        else if (enumTs.Generics.Length > 0 || si.TypeArguments.Length > 0)
+        {
+            // Generisches Enum ohne Kontext-Instanz (bzw. Typ-Args an der Variante statt am Enum).
+            _de.Report("LYR-SEM0026", Severity.Error, si.Span,
+                $"generic enum '{enumTs.Name}' expects {enumTs.Generics.Length} type argument(s) from context");
+            result = LyrType.Error;
+        }
+        else result = new NamedRef(enumTs);
+
+        if (v.StructFields is not { } decls)
+        {
+            _de.Report("LYR-SEM0031", Severity.Error, si.Span, v.TupleFields is not null
+                ? $"variant '{ev.Name}' has a tuple payload — construct it as '{ev.Name}(…)'"
+                : $"variant '{ev.Name}' has no payload");
+            foreach (var f in si.Fields) CheckExpr(f.Value, scope);
+            return result;
+        }
+
+        foreach (var field in si.Fields)
+        {
+            if (Array.Find(decls, d => d.Name == field.Name) is { } fd)
+            {
+                var ft = Substitute(ResolveType(fd.Type, enumTs.Members), subst);
+                CheckAssignable(field.Value, CheckExpr(field.Value, scope, ft), ft, field.Span);
+            }
+            else
+            {
+                _de.Report("LYR-SEM0015", Severity.Error, field.Span, $"variant '{ev.Name}' has no field '{field.Name}'");
+                CheckExpr(field.Value, scope);
+            }
         }
         return result;
     }
@@ -856,23 +955,178 @@ public sealed class TypeChecker
         return a;
     }
 
-    private List<LyrType> CheckMatch(Expr scrutinee, MatchArm[] arms, SymbolTable scope)
+    private List<LyrType> CheckMatch(Node match, Expr scrutinee, MatchArm[] arms, SymbolTable scope, bool asExpression)
     {
         var st = CheckExpr(scrutinee, scope);
         var bodies = new List<LyrType>();
+        var patternsClean = true;
         foreach (var arm in arms)
         {
             var armScope = new SymbolTable(scope);
+            var before = _de.Diagnostics.Count;
             BindPattern(arm.Pattern, st, armScope);
+            if (_de.Diagnostics.Count > before) patternsClean = false;
             if (arm.Guard is not null) CheckCondition(arm.Guard, armScope);
-            bodies.Add(arm.Body switch
+            switch (arm.Body)
             {
-                Block b => CheckBlockAsValue(b, armScope),
-                Expr e => CheckExpr(e, armScope),
-                _ => LyrType.Error
-            });
+                case Block b:
+                    CheckBlock(b, armScope);
+                    // Blöcke haben keinen Wert: im match-AUSDRUCK muss ein Block-Arm die
+                    // Funktion auf jedem Pfad verlassen; er trägt nichts zur Unifikation bei.
+                    if (asExpression && !Flow.AlwaysReturns(b, _result))
+                        _de.Report("LYR-SEM0033", Severity.Error, arm.Span,
+                            "a block arm of a match expression must return or throw on every path (blocks have no value)");
+                    break;
+                case Expr e:
+                    bodies.Add(CheckExpr(e, armScope));
+                    break;
+            }
         }
+        // Fehlerhafte Patterns würden nur Folge-Rauschen produzieren → Exhaustivität dann skippen.
+        if (patternsClean && !st.IsError)
+            CheckExhaustiveness(match, st, arms);
         return bodies;
+    }
+
+    // --- Exhaustivität (§5, D4 pragmatisch): Enum-Varianten, bool und ?T werden aufgezählt,
+    // --- offene Typen (int, string, …) brauchen einen '_'-/Bindungs-Arm. Guards zählen nicht.
+
+    private void CheckExhaustiveness(Node match, LyrType scrutinee, MatchArm[] arms)
+    {
+        var pats = new List<Pattern>();
+        foreach (var arm in arms)
+            if (arm.Guard is null) Flatten(arm.Pattern, pats);
+        var missing = MissingCases(scrutinee, pats);
+        if (missing.Count == 0)
+        {
+            _result.MarkMatchExhaustive(match);
+            return;
+        }
+        var what = missing is ["_"]
+            ? "add a '_' or binding arm to cover the remaining values"
+            : $"missing case(s): {string.Join(", ", missing.Select(m => $"'{m}'"))}";
+        _de.Report("LYR-SEM0050", Severity.Error, match.Span,
+            $"match on '{TypeFacts.Display(scrutinee)}' is not exhaustive — {what}");
+    }
+
+    private static void Flatten(Pattern p, List<Pattern> into)
+    {
+        if (p is OrPattern o) foreach (var a in o.Alternatives) Flatten(a, into);
+        else into.Add(p);
+    }
+
+    private List<string> MissingCases(LyrType type, List<Pattern> pats)
+    {
+        if (pats.Any(p => IsIrrefutable(p, type))) return [];
+        switch (type)
+        {
+            case Optional o:
+            {
+                var missing = new List<string>();
+                if (!pats.Any(IsNullPattern)) missing.Add("null");
+                missing.AddRange(MissingCases(o.Inner, pats.Where(p => !IsNullPattern(p)).ToList()));
+                return missing;
+            }
+            case PrimitiveType { Kind: PrimitiveKind.Bool }:
+            {
+                var missing = new List<string>();
+                if (!pats.Any(p => p is LiteralPattern { Literal: BoolLiteralExpr { Value: true } })) missing.Add("true");
+                if (!pats.Any(p => p is LiteralPattern { Literal: BoolLiteralExpr { Value: false } })) missing.Add("false");
+                return missing;
+            }
+            default:
+                if (EnumDefOf(type) is { Declaration: EnumDecl ed } enumTs)
+                {
+                    var covered = new HashSet<string>();
+                    foreach (var p in pats)
+                        if (CoveredVariant(p, type, enumTs) is { } name) covered.Add(name);
+                    return ed.Variants.Where(v => !covered.Contains(v.Name)).Select(v => v.Name).ToList();
+                }
+                return ["_"]; // offener Typ: nur per Default abdeckbar
+        }
+    }
+
+    // Welche Variante deckt dieses Pattern vollständig ab (Payload irrefutabel)?
+    private string? CoveredVariant(Pattern p, LyrType scrutinee, TypeSymbol enumTs)
+    {
+        switch (p)
+        {
+            case BindingPattern b when VariantOf(enumTs, b.Name) is
+                { Declaration: EnumVariant { TupleFields: null, StructFields: null } } ev:
+                return ev.Name;
+            case VariantPattern v when VariantOf(enumTs, v.Path[^1]) is { } ev
+                && VariantCovered(v, ev, scrutinee, enumTs):
+                return ev.Name;
+            default:
+                return null;
+        }
+    }
+
+    private bool VariantCovered(VariantPattern v, EnumVariantSymbol ev, LyrType scrutinee, TypeSymbol enumTs)
+    {
+        var variant = (EnumVariant)ev.Declaration!;
+        var subst = scrutinee is GenericInstance gi ? SubstMap(gi) : EmptySubst;
+        if (v.TupleElements is { } elems)
+        {
+            if (variant.TupleFields is not { } fields || fields.Length != elems.Length) return false;
+            for (var i = 0; i < elems.Length; i++)
+                if (!IsIrrefutable(elems[i], Substitute(ResolveType(fields[i], enumTs.Members), subst)))
+                    return false;
+            return true;
+        }
+        if (v.StructFields is { } fps)
+        {
+            if (variant.StructFields is null) return false;
+            foreach (var fp in fps)
+            {
+                if (fp.Pattern is null) continue; // Kurzform bindet nur — irrefutabel
+                var fd = Array.Find(variant.StructFields, f => f.Name == fp.Name);
+                if (fd is null || !IsIrrefutable(fp.Pattern, Substitute(ResolveType(fd.Type, enumTs.Members), subst)))
+                    return false;
+            }
+            return true;
+        }
+        return variant.TupleFields is null && variant.StructFields is null; // qualifizierte Unit-Variante
+    }
+
+    // Matcht dieses Pattern JEDEN Wert des Typs?
+    private bool IsIrrefutable(Pattern p, LyrType type)
+    {
+        switch (p)
+        {
+            case WildcardPattern:
+                return true;
+            case OrPattern o:
+                return o.Alternatives.Any(a => IsIrrefutable(a, type));
+            case BindingPattern b:
+                if (type is Optional) return false; // bindet den Inner-Teil, deckt null nicht ab
+                return EnumDefOf(type) is not { } e || VariantOf(e, b.Name) is null; // Varianten-Name = Test
+            case TuplePattern t:
+                if (type is not TupleOf tt || tt.Elements.Length != t.Elements.Length) return false;
+                for (var i = 0; i < t.Elements.Length; i++)
+                    if (!IsIrrefutable(t.Elements[i], tt.Elements[i])) return false;
+                return true;
+            case VariantPattern v:
+                if (EnumDefOf(type) is { Declaration: EnumDecl ed } enumTs)
+                    return ed.Variants.Length == 1 && VariantOf(enumTs, v.Path[^1]) is { } ev
+                        && VariantCovered(v, ev, type, enumTs);
+                return StructDestructureIrrefutable(v, type);
+            default:
+                return false; // Literal / Range
+        }
+    }
+
+    private bool StructDestructureIrrefutable(VariantPattern v, LyrType type)
+    {
+        var (def, subst) = DefinitionOf(type);
+        if (def is null || v.StructFields is null || v.Path[^1] != def.Name) return false;
+        foreach (var fp in v.StructFields)
+        {
+            if (fp.Pattern is null) continue;
+            if (def.Members.LookupLocal(fp.Name) is not FieldSymbol fs) return false;
+            if (!IsIrrefutable(fp.Pattern, Substitute(FieldType(fs), subst))) return false;
+        }
+        return true;
     }
 
     private LyrType UnifyArms(List<LyrType> bodies, Span span)
@@ -893,32 +1147,295 @@ public sealed class TypeChecker
     private LyrType CheckBlockAsValue(Block block, SymbolTable scope)
     {
         CheckBlock(block, scope);
-        return LyrType.Error; // Block-Arm-/Block-Lambda-Wert → Block-Wert-Frage (geparkt)
+        return LyrType.Error; // Block-Lambda-Wert → Slice 4 (bidirektionale Lambda-Inferenz, D5)
     }
 
-    // Pattern-Bindungen: einfache Bindings + Tuple-Destructuring werden echt getypt;
-    // Enum-Payload-Destructuring ist M4 → dort gebundene Variablen als Error (Poison).
+    // Pattern-Bindungen (§6.3): jede Form typt ihre Bindungen echt gegen den Scrutinee-Typ.
+    // Nicht-null-Patterns auf ?T matchen gegen T (Doku §6: 'null => …, u => u.name');
+    // Fehler poisonen ihre Sub-Bindungen, damit Arm-Bodies nicht kaskadieren.
     private void BindPattern(Pattern pattern, LyrType scrutinee, SymbolTable scope)
     {
+        if (scrutinee.IsError) { BindPoison(pattern, scope); return; }
+        if (scrutinee is Optional opt && pattern is not (WildcardPattern or OrPattern) && !IsNullPattern(pattern))
+        {
+            BindPattern(pattern, opt.Inner, scope);
+            return;
+        }
+
         switch (pattern)
         {
+            case LiteralPattern lit:
+                CheckLiteralPattern(lit, scrutinee, scope);
+                return;
+
             case BindingPattern b:
-                if (scrutinee is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } nr
-                    && nr.Symbol.Members.LookupLocal(b.Name) is EnumVariantSymbol)
-                    return; // Unit-Varianten-Match, keine Bindung
+                if (EnumDefOf(scrutinee) is { } be && VariantOf(be, b.Name) is { } bev)
+                {
+                    if ((EnumVariant)bev.Declaration! is not { TupleFields: null, StructFields: null })
+                        _de.Report("LYR-SEM0031", Severity.Error, b.Span,
+                            $"variant '{b.Name}' carries a payload — destructure it ('{b.Name}(…)' or '{b.Name} {{ … }}')");
+                    _result.BindRef(b, bev); // Unit-Varianten-Test, keine Bindung
+                    return;
+                }
                 var local = new LocalSymbol(b.Name, scrutinee, false, b);
                 scope.TryDeclare(local);
                 _result.BindRef(b, local); // für DAA
                 return;
-            case TuplePattern t when scrutinee is TupleOf tup && tup.Elements.Length == t.Elements.Length:
-                for (var i = 0; i < t.Elements.Length; i++) BindPattern(t.Elements[i], tup.Elements[i], scope);
+
+            case TuplePattern t:
+                if (scrutinee is TupleOf tup && tup.Elements.Length == t.Elements.Length)
+                {
+                    for (var i = 0; i < t.Elements.Length; i++) BindPattern(t.Elements[i], tup.Elements[i], scope);
+                    return;
+                }
+                Report(t.Span, "LYR-SEM0029", scrutinee is TupleOf other
+                    ? $"tuple pattern has {t.Elements.Length} element(s), but '{TypeFacts.Display(scrutinee)}' has {other.Elements.Length}"
+                    : $"tuple pattern cannot match '{TypeFacts.Display(scrutinee)}'");
+                BindPoison(t, scope);
                 return;
-            case VariantPattern or TuplePattern or OrPattern:
-                BindPoison(pattern, scope);
+
+            case VariantPattern v:
+                BindVariantPattern(v, scrutinee, scope);
                 return;
-            // Wildcard/Literal/Range: keine Bindung
+
+            case RangePattern r:
+                CheckRangePattern(r, scrutinee, scope);
+                return;
+
+            case OrPattern o:
+                BindOrPattern(o, scrutinee, scope);
+                return;
+            // Wildcard/Error: keine Bindung
         }
     }
+
+    private void CheckLiteralPattern(LiteralPattern lit, LyrType scrutinee, SymbolTable scope)
+    {
+        if (lit.Literal is NullLiteralExpr)
+        {
+            if (scrutinee is not Optional)
+                _de.Report("LYR-SEM0029", Severity.Error, lit.Span,
+                    $"'null' pattern cannot match non-nullable '{TypeFacts.Display(scrutinee)}'");
+            return;
+        }
+        var lt = CheckExpr(lit.Literal, scope);
+        if (!lt.IsError && !IsAssignable(lit.Literal, lt, scrutinee))
+            _de.Report("LYR-SEM0029", Severity.Error, lit.Span,
+                $"literal pattern of type '{TypeFacts.Display(lt)}' cannot match '{TypeFacts.Display(scrutinee)}'");
+    }
+
+    private void CheckRangePattern(RangePattern r, LyrType scrutinee, SymbolTable scope)
+    {
+        var lo = CheckExpr(r.Low, scope);
+        var hi = CheckExpr(r.High, scope);
+        if (lo.IsError || hi.IsError) return;
+        var comparable = TypeFacts.IsNumeric(scrutinee) || scrutinee is PrimitiveType { Kind: PrimitiveKind.Char };
+        if (!comparable || !IsAssignable(r.Low, lo, scrutinee) || !IsAssignable(r.High, hi, scrutinee))
+            _de.Report("LYR-SEM0029", Severity.Error, r.Span,
+                $"range pattern of '{TypeFacts.Display(lo)}'..'{TypeFacts.Display(hi)}' cannot match '{TypeFacts.Display(scrutinee)}'");
+    }
+
+    private void BindVariantPattern(VariantPattern v, LyrType scrutinee, SymbolTable scope)
+    {
+        if (EnumDefOf(scrutinee) is { } enumTs)
+        {
+            // Qualifizierter Pfad (Shape.Circle) muss auf GENAU dieses Enum zeigen.
+            if (v.Path.Length > 1
+                && !ReferenceEquals(ResolveNamePath(v.Path, v.Path.Length - 1, scope), enumTs))
+            {
+                Report(v.Span, "LYR-SEM0029",
+                    $"pattern path '{string.Join('.', v.Path[..^1])}' does not refer to matched enum '{enumTs.Name}'");
+                BindPoison(v, scope);
+                return;
+            }
+            if (VariantOf(enumTs, v.Path[^1]) is not { } ev)
+            {
+                Report(v.Span, "LYR-SEM0031", $"enum '{enumTs.Name}' has no variant '{v.Path[^1]}'");
+                BindPoison(v, scope);
+                return;
+            }
+            _result.BindRef(v, ev);
+            BindVariantPayload(v, ev, scrutinee, enumTs, scope);
+            return;
+        }
+
+        // Struct-/Class-Destructuring: Point { x, y }
+        var (def, subst) = DefinitionOf(scrutinee);
+        if (def is null)
+        {
+            Report(v.Span, "LYR-SEM0029", $"pattern cannot destructure '{TypeFacts.Display(scrutinee)}'");
+            BindPoison(v, scope);
+            return;
+        }
+        if (!ReferenceEquals(ResolveNamePath(v.Path, v.Path.Length, scope), def))
+        {
+            Report(v.Span, "LYR-SEM0029",
+                $"pattern names '{string.Join('.', v.Path)}', but the matched value is '{TypeFacts.Display(scrutinee)}'");
+            BindPoison(v, scope);
+            return;
+        }
+        if (v.TupleElements is not null)
+        {
+            Report(v.Span, "LYR-SEM0031", $"'{def.Name}' is not an enum variant — destructure fields with '{def.Name} {{ … }}'");
+            BindPoison(v, scope);
+            return;
+        }
+        _result.BindRef(v, def);
+        foreach (var fp in v.StructFields ?? [])
+        {
+            if (def.Members.LookupLocal(fp.Name) is FieldSymbol fs)
+            {
+                BindFieldPattern(fp, Substitute(FieldType(fs), subst), scope);
+            }
+            else
+            {
+                _de.Report("LYR-SEM0015", Severity.Error, fp.Span, $"'{def.Name}' has no field '{fp.Name}'");
+                BindPoisonField(fp, scope);
+            }
+        }
+    }
+
+    private void BindVariantPayload(VariantPattern v, EnumVariantSymbol ev, LyrType scrutinee,
+        TypeSymbol enumTs, SymbolTable scope)
+    {
+        var variant = (EnumVariant)ev.Declaration!;
+        var subst = scrutinee is GenericInstance gi ? SubstMap(gi) : EmptySubst;
+
+        if (v.TupleElements is { } elems)
+        {
+            if (variant.TupleFields is not { } fields)
+            {
+                Report(v.Span, "LYR-SEM0031", variant.StructFields is not null
+                    ? $"variant '{ev.Name}' has named fields — destructure with '{ev.Name} {{ … }}'"
+                    : $"variant '{ev.Name}' has no payload");
+                BindPoison(v, scope);
+                return;
+            }
+            if (fields.Length != elems.Length)
+            {
+                Report(v.Span, "LYR-SEM0031",
+                    $"variant '{ev.Name}' has {fields.Length} payload element(s), pattern has {elems.Length}");
+                BindPoison(v, scope);
+                return;
+            }
+            for (var i = 0; i < elems.Length; i++)
+                BindPattern(elems[i], Substitute(ResolveType(fields[i], enumTs.Members), subst), scope);
+            return;
+        }
+
+        if (v.StructFields is { } fps)
+        {
+            if (variant.StructFields is not { } decls)
+            {
+                Report(v.Span, "LYR-SEM0031", variant.TupleFields is not null
+                    ? $"variant '{ev.Name}' has a tuple payload — destructure with '{ev.Name}(…)'"
+                    : $"variant '{ev.Name}' has no payload");
+                BindPoison(v, scope);
+                return;
+            }
+            foreach (var fp in fps)
+            {
+                if (Array.Find(decls, f => f.Name == fp.Name) is { } fd)
+                {
+                    BindFieldPattern(fp, Substitute(ResolveType(fd.Type, enumTs.Members), subst), scope);
+                }
+                else
+                {
+                    _de.Report("LYR-SEM0031", Severity.Error, fp.Span, $"variant '{ev.Name}' has no field '{fp.Name}'");
+                    BindPoisonField(fp, scope);
+                }
+            }
+            return;
+        }
+
+        // Qualifizierte Unit-Variante (Shape.Empty): darf keinen Payload haben.
+        if (variant.TupleFields is not null || variant.StructFields is not null)
+            Report(v.Span, "LYR-SEM0031", $"variant '{ev.Name}' carries a payload — destructure it");
+    }
+
+    private void BindFieldPattern(FieldPattern fp, LyrType type, SymbolTable scope)
+    {
+        if (fp.Pattern is not null) { BindPattern(fp.Pattern, type, scope); return; }
+        var local = new LocalSymbol(fp.Name, type, false, fp); // Kurzform: Feldname bindet
+        scope.TryDeclare(local);
+        _result.BindRef(fp, local);
+    }
+
+    private void BindPoisonField(FieldPattern fp, SymbolTable scope)
+    {
+        if (fp.Pattern is not null) { BindPoison(fp.Pattern, scope); return; }
+        var local = new LocalSymbol(fp.Name, LyrType.Error, false, fp);
+        scope.TryDeclare(local);
+        _result.BindRef(fp, local);
+    }
+
+    // Or-Pattern (§6.3): jede Alternative bindet in eine eigene Tabelle; alle müssen dieselben
+    // Namen mit denselben Typen binden. Die Bindungen der ERSTEN Alternative werden zum
+    // Arm-Scope (konsistent mit der DAA, die Alternative 0 nutzt).
+    private void BindOrPattern(OrPattern o, LyrType scrutinee, SymbolTable scope)
+    {
+        if (o.Alternatives.Length == 0) return;
+        var tables = new List<SymbolTable>(o.Alternatives.Length);
+        foreach (var alt in o.Alternatives)
+        {
+            var t = new SymbolTable(scope);
+            BindPattern(alt, scrutinee, t);
+            tables.Add(t);
+        }
+        var reference = tables[0].Symbols.OfType<LocalSymbol>().ToList();
+        for (var i = 1; i < tables.Count; i++)
+        {
+            var alt = tables[i].Symbols.OfType<LocalSymbol>().ToList();
+            foreach (var name in reference.Select(s => s.Name).Union(alt.Select(s => s.Name)))
+            {
+                var a = reference.Find(s => s.Name == name);
+                var b = alt.Find(s => s.Name == name);
+                if (a is null || b is null)
+                    _de.Report("LYR-SEM0032", Severity.Error, o.Alternatives[i].Span,
+                        $"or-pattern alternatives bind different variables: '{name}' is not bound in every alternative");
+                else if (!a.Type.IsError && !b.Type.IsError && !LyrType.Equal(a.Type, b.Type))
+                    _de.Report("LYR-SEM0032", Severity.Error, o.Alternatives[i].Span,
+                        $"'{name}' is bound as '{TypeFacts.Display(a.Type)}' and as '{TypeFacts.Display(b.Type)}' in different or-pattern alternatives");
+            }
+        }
+        foreach (var s in reference) scope.TryDeclare(s);
+    }
+
+    // --- Pattern-Helfer ---
+
+    private static bool IsNullPattern(Pattern p) => p is LiteralPattern { Literal: NullLiteralExpr };
+
+    private static TypeSymbol? EnumDefOf(LyrType t) => t switch
+    {
+        NamedRef { Symbol.Kind: TypeSymbolKind.Enum } nr => nr.Symbol,
+        GenericInstance { Definition.Kind: TypeSymbolKind.Enum } gi => gi.Definition,
+        _ => null
+    };
+
+    private static EnumVariantSymbol? VariantOf(TypeSymbol enumTs, string name) =>
+        enumTs.Members.LookupLocal(name) as EnumVariantSymbol;
+
+    private static (TypeSymbol? def, Dictionary<GenericParamSymbol, LyrType> subst) DefinitionOf(LyrType t) => t switch
+    {
+        NamedRef nr => (nr.Symbol, EmptySubst),
+        GenericInstance gi => (gi.Definition, SubstMap(gi)),
+        _ => (null, EmptySubst)
+    };
+
+    // Löst die ersten count Segmente eines Pattern-Pfads über den Scope auf (Module/Imports).
+    private static Symbol? ResolveNamePath(string[] path, int count, SymbolTable scope)
+    {
+        var cur = scope.Lookup(path[0]);
+        if (cur is ImportBindingSymbol ib0) cur = ib0.Target;
+        for (var i = 1; i < count && cur is not null; i++)
+        {
+            cur = cur is ModuleSymbol mod ? mod.Members.LookupLocal(path[i]) : null;
+            if (cur is ImportBindingSymbol ib) cur = ib.Target;
+        }
+        return cur;
+    }
+
+    private static readonly Dictionary<GenericParamSymbol, LyrType> EmptySubst = new(ReferenceEqualityComparer.Instance);
 
     private void BindPoison(Pattern pattern, SymbolTable scope)
     {

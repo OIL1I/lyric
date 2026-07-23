@@ -1,0 +1,18 @@
+// Negativ: match ohne vollständige Varianten-Abdeckung und ohne '_' → LYR-SEM0050.
+
+enum Color {
+    Red,
+    Green,
+    Blue
+}
+
+fn code(c: Color): int {
+    return match (c) {
+        Red => 0,
+        Green => 1,
+    };
+}
+
+fn main(): int {
+    return code(Color.Red);
+}
