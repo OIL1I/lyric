@@ -16,7 +16,8 @@
 Slice-Schnitt: **1** Generics, **2** Pattern-Match voll + Exhaustivität, **3** Exceptions
 + Coroutinen, **4** Closures + Interfaces + Extend. Entscheidungen D1–D5 bestätigt
 (Monomorph / strenge Constraints / kein Turbofish / pragmatische Exhaustivität /
-bidir. Lambda-Inferenz). **Slice 1a (Generics-Fundament) durch.**
+bidir. Lambda-Inferenz). **Slice 1 (Generics) komplett — 1a Fundament + 1b
+Konstruktion/Inferenz/Constraints.**
 M3 = `m3-complete`, M2 = `m2-complete`, M1 = `m1-complete`.
 
 ## Was schon erledigt ist
@@ -29,32 +30,39 @@ M3 = `m3-complete`, M2 = `m2-complete`, M1 = `m1-complete`.
   `+`/`*` string/T[], Calls/Member/Struct-Init/if/match/Lambda), Flow (Return-Coverage, DAA,
   Narrowing), Regeln (Lvalue/Mutabilität, Konformität, `main`). CLI `lyric check`.
   Codes `LYR-RES0001..0005`, `LYR-SEM0001..0025`.
-- [x] **M4 — Slice 1a — Generics-Fundament**:
+- [x] **M4 — Slice 1 — Generics** (1a + 1b):
   - **Resolver**: `GenericParamSymbol`; Typ-Params (Typ- und Funktions-generisch) lösen auf
     (kein `RES0002` mehr auf `T`); Member gegen Typ-Member-Scope gebunden, Constraints gebunden.
-  - **Sema**: `TypeParamType` + `GenericInstance` (invariant-gleich); `Box<int>.value: T` →
-    `int` per **Substitution** (rekursiv, in Array-/Tuple-/Fn-Feldern); Constraint-Member auf
-    `T` nur aus Constraints (D2); Arity-Check. Codes `LYR-SEM0026/0027`. 13 Tests.
+  - **Sema**: `TypeParamType` + `GenericInstance` (invariant-gleich); Member-**Substitution**
+    (`Box<int>.value: T` → `int`, rekursiv); Constraint-Member auf `T` nur aus Constraints (D2);
+    **Konstruktion** `Box<int> { }` (Feld-Typen substituiert, Arity, keine Feld-Inferenz);
+    **Call-Inferenz** (`ident(5)` → `T=int`, strukturell durch `T[]`/`?T`/Tupel/Instanzen/fn);
+    **Constraint-Erfüllung** bei Konstruktion + Call (Nutzertypen via `:: [I]`-Liste, Typ-Params
+    via eigene Constraints; Builtins lenient bis M8). Codes `LYR-SEM0026..0028`. 28 Tests.
+  - **Parser/Grammatik**: `IsStructInitAhead` skippt balancierte `<…>` (Vergleich bleibt
+    Vergleich); `StructInitExpr.TypeArguments`; `TypePath` in Sprache.md §6.2 definiert
+    (Typen explizit, Funktionen inferieren, kein Turbofish).
+  - `stack.lyr` damit sauber bis auf Array-Methoden (`.push/.pop/.length` → M8-Stdlib).
 
 ## Woran wir gerade arbeiten
 
-**M4 — Slice 1b (Generics, Teil 2)**: generische Konstruktion `Stack<int> { }` + `TypePath`
-(Grammatik §6.2/§6.3 scharf machen + Parser), Call-Inferenz (`identity(5)` → `T=int`),
-Constraint-Erfüllung (`int :: Comparable`? inkl. Builtin-Conformance).
+Slice 1 fertig. Nächster Slice: **M4-2 — Pattern-Match voll** (Enum-Payload-Destructuring
+mit echten Typen statt M3-Poison, Struct-/Tuple-Destructuring, Or-Pattern-Konsistenz,
+Exhaustivität). Noch nicht geplant.
 
 ## Was als nächstes ansteht
 
-- M4-1b (s.o.), dann Slices **2** (Pattern-Payload + Exhaustivität), **3** (Exceptions +
-  Coroutinen), **4** (Closures + Interfaces + Extend-Merge + Orphan-Rule).
+- M4-2 planen + bauen, dann **3** (Exceptions + Coroutinen), **4** (Closures + Interfaces +
+  Extend-Merge + Orphan-Rule).
 
 ## Noch offen in M4 (Slice-Zuordnung)
 
-- **1b**: Konstruktion `Stack<int> { }` + `TypePath`; Call-Inferenz; Constraint-Erfüllung;
-  Constraints mit eigenen Typ-Args (`Comparable<T>` über die Constraint-Grenze substituieren).
 - **2**: Enum-Payload-Destructuring (M3-Poison → echte Typen); `match`-Exhaustivität;
   Block-Wert-Frage (Block-Arme / Block-Lambdas).
 - **4**: `extend`-Merge + Orphan-Rule (inkl. Extend-Methoden-Generics); Interface-Konformität
   mit Signatur-Match (nicht nur Namen).
+- Generics-Rest (bewusst vertagt): Constraints mit eigenen Typ-Args (`Comparable<T>` über die
+  Constraint-Grenze substituieren); Monomorph-Instanzen-Sammeln → M5 (dort sitzt der Abnehmer).
 - Extern (nicht M4): Stdlib-Imports opak → Modul-Universum erst mit M8.
 
 ## Design-Entscheidungen (Kontext)
@@ -67,7 +75,7 @@ Constraint-Erfüllung (`int :: Comparable`? inkl. Builtin-Conformance).
 
 ## Letzter relevanter Commit
 
-`M4: sema — generics foundation (slice 1a)`
+`M4: generics — construction, call inference, constraints (slice 1b)`
 
 ---
 
