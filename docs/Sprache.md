@@ -490,6 +490,9 @@ Sema-Regeln (Auswahl):
 - `let` ist immutable; `var` mutable. Beide Pflicht-Init in lokalen Scope, außer DAA beweist Init vor erstem Read.
 - `for-in` benötigt einen Ausdruck, der das `Iterator<T>`-Interface implementiert.
 - `match` ist exhaustive: alle Cases müssen abgedeckt sein oder `_` als Default (`LYR-SEM0050`).
+- Blöcke haben keinen Wert. Ein Block-Arm in einem match-**Ausdruck** (§6.2) muss deshalb auf
+  jedem Pfad die Funktion verlassen (`return`/`throw`) und trägt keinen Wert zur
+  Arm-Unifikation bei (`LYR-SEM0033`); im match-**Statement** sind Block-Arme frei.
 - `defer` registriert in LIFO-Reihenfolge, läuft auf jedem Scope-Exit (auch bei Exception).
 - `yield` und `resume` sind nur in Coroutine-Funktionen erlaubt (siehe §8).
 - `try` braucht mindestens ein `catch`. `finally` gibt es nicht — `defer` ist der einzige Cleanup-Mechanismus.
@@ -554,7 +557,7 @@ TupleLit        = '(' Expr ',' Expr { ',' Expr } ')' .
 
 IfExpr          = 'if' '(' Expr ')' Expr 'else' Expr .   (* Branches sind Ausdrücke (garantierter Wert); 'else' Pflicht; 'else if' = geschachteltes IfExpr. Für Statement-Blocks: IfStmt §5 *)
 
-MatchExpr       = 'match' '(' Expr ')' '{' { MatchArm } '}' .
+MatchExpr       = 'match' '(' Expr ')' '{' { MatchArm } '}' .   (* Wert kommt nur aus Expr-Armen; Block-Arme müssen return/throw-en, siehe §5 *)
 ```
 
 ### 6.3 Patterns (für `match`)
