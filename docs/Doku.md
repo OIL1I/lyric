@@ -456,28 +456,44 @@ let e = Enemy.new(5);
 ## 11. Lambdas und Closures
 
 ```lyr
-let inc = (x: int) => x + 1;
-let pair = (a: int, b: int): int => a * b;
+let inc = (x: int) => x + 1;                    // annotierte Parameter
+let pair = (a: int, b: int): int => a * b;      // + annotierter Rückgabetyp
 
-let printAll = (xs: int[]) => {
-    for (x in xs) { console.println(x); }
-};
+// Parameter-Typen dürfen wegfallen, wenn der Kontext sie liefert:
+let f: fn(int) -> int = (x) => x + 1;           // x: int aus dem Binding-Typ
 
-// Closure mit Capture (implizit)
+// Closure mit implizitem Capture
 let factor = 3;
-let scale = (x: int) => x * factor;        // captures factor
-let result = scale(10);                     // 30
-
-// Higher-order use
-let doubled = [1, 2, 3].map((x) => x * 2);   // [2, 4, 6]
+let scale = (x: int) => x * factor;             // fängt factor ein
+let result = scale(10);                          // 30
 ```
 
-Lambda-Syntax:
-- `(params) => expr` für Single-Expression
-- `(params) => { stmts; }` für Block-Body
-- Parameter-Typen können wegfallen, wenn der Compiler sie kontextuell inferieren kann.
+**Zwei Body-Formen:**
 
-Captures sind implizit. Wenn das Performance-relevant ist (z.B. häufig erzeugte Game-Logic-Lambdas), kann post-v1 ein `@noCapture`-Marker kommen.
+- `(params) => expr` — der Ausdruck *ist* der Wert.
+- `(params) => { stmts }` — ein Block. Blöcke haben keinen Wert (dieselbe Regel wie bei
+  `match`, siehe [§14.2](#142-match-arme-ausdruck-oder-block)): ein Block-Lambda liefert
+  sein Ergebnis über `return`, und ein nicht-void-Block-Lambda muss auf jedem Pfad returnen.
+
+```lyr
+let clamp: fn(int) -> int = (x) => {
+    if (x < 0) { return 0; }
+    return x;
+};
+```
+
+**Regeln:**
+
+- **Parameter-Typen** kommen aus einer Annotation oder aus dem Kontext (Binding-Typ,
+  Aufruf-Argument, Rückgabeposition). Fehlt beides, ist der Parameter ein Fehler
+  (`LYR-SEM0045`) — dann annotieren: `(x: int) => …`.
+- **Block-Lambdas** brauchen ihren Rückgabetyp aus Annotation oder Kontext (`LYR-SEM0046`).
+- **`return` in einem Lambda** verlässt das Lambda, nicht die umgebende Funktion.
+- **Captures** sind implizit und müssen am Erzeugungsort bereits sicher zugewiesen sein —
+  dieselbe Definite-Assignment-Regel wie bei Variablen.
+
+Captures sind implizit (ADR-011). Wenn das performance-relevant wird (z.B. häufig erzeugte
+Game-Logic-Lambdas), kann post-v1 ein `@noCapture`-Marker kommen.
 
 ---
 

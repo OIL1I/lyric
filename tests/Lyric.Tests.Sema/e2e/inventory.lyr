@@ -28,7 +28,7 @@ struct Item :: [Priced] {
         return this.basePrice * match (this.rarity) {
             Common    => 1,
             Rare      => 3,
-            Legendary => 10,
+            Legendary => 10
         };
     }
 }
@@ -76,7 +76,7 @@ fn main(): int {
     let affordable = firstMatching(items, (it) => it.price() <= budget);
     let name = match (affordable) {
         null => "nichts Bezahlbares",
-        it   => it.name,
+        it   => it.name
     };
     println(f"Erstes im Budget ({budget}): {name}");
 
