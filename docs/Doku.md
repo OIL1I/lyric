@@ -895,16 +895,33 @@ fn main(): int {
 }
 ```
 
-### 19.1 Bidirektional
+Die Regeln dazu:
 
-Coroutinen können auch Werte vom `resume`-Aufrufer entgegennehmen:
+- `resume co` ist ein **Ausdruck** (Präfix, bindet wie unäre Operatoren): er setzt die
+  Coroutine fort und liefert den Wert des nächsten `yield`. Als Statement (`resume co;`)
+  wird der Wert verworfen.
+- `yield` ist nur in Funktionen mit Rückgabetyp `Coroutine<T>` erlaubt; der ge-yieldete
+  Wert muss zu `T` passen. Nacktes `yield;` verlangt `Coroutine<void>`.
+- Eine Coroutine endet mit nacktem `return;` (frühes Ende) oder wenn der Body
+  durchläuft. `return wert;` gibt es in Coroutinen nicht — sie liefern Werte
+  ausschließlich über `yield`. Weitere `resume`-Aufrufe nach dem Ende werfen
+  `CoroutineEndedError`.
+
+### 19.1 Bidirektional? Post-v1.
+
+Werte **in** eine laufende Coroutine schicken (`resume co, wert` mit `yield` als
+Ausdruck, der den Wert empfängt) gibt es in v1 nicht — das kommt, wenn überhaupt,
+als Paket mit `Coroutine<TOut, TIn>` nach v1. Wer heute Daten in eine Coroutine
+reichen will, nutzt geteilten Zustand über eine `class`-Referenz, die beide Seiten
+kennen:
 
 ```lyr
-fn echo(): Coroutine<string> {
+class Inbox { message: string = "" }
+
+fn worker(inbox: Inbox): Coroutine<string> {
     while (true) {
-        let input = yield "ready";
-        if (input == "stop") { return; }
-        // hier: input verarbeiten
+        if (inbox.message == "stop") { return; }
+        yield f"gesehen: {inbox.message}";
     }
 }
 ```

@@ -448,7 +448,6 @@ Statement       = Block
                 | ContinueStmt
                 | ReturnStmt
                 | YieldStmt
-                | ResumeStmt
                 | DeferStmt
                 | ThrowStmt
                 | TryStmt
@@ -470,7 +469,8 @@ BreakStmt       = 'break' ';' .
 ContinueStmt    = 'continue' ';' .
 ReturnStmt      = 'return' [ Expr ] ';' .
 YieldStmt       = 'yield' [ Expr ] ';' .
-ResumeStmt      = 'resume' Expr [ ',' Expr ] ';' .
+(* resume ist ein AUSDRUCK (§6.2 ResumeExpr); 'resume co;' läuft als ExprStmt.
+   Send-Werte ('resume co, v') sind post-v1 (§13). *)
 
 DeferStmt       = 'defer' ( Block | Expr ';' ) .
 
@@ -482,7 +482,7 @@ CatchBinding    = '_'                                          (* catch-all ohne
                 | IDENTIFIER ':' TypeExpr                       (* typed catch *)
                 | IDENTIFIER .                                  (* catch-all mit binding (Throwable) *)
 
-ExprStmt        = Expr ';' .                                    (* nur Call und Assign *)
+ExprStmt        = Expr ';' .                                    (* nur Call, Assign und resume *)
 ```
 
 Sema-Regeln (Auswahl):
@@ -494,7 +494,8 @@ Sema-Regeln (Auswahl):
   jedem Pfad die Funktion verlassen (`return`/`throw`) und trägt keinen Wert zur
   Arm-Unifikation bei (`LYR-SEM0033`); im match-**Statement** sind Block-Arme frei.
 - `defer` registriert in LIFO-Reihenfolge, läuft auf jedem Scope-Exit (auch bei Exception).
-- `yield` und `resume` sind nur in Coroutine-Funktionen erlaubt (siehe §8).
+- `yield` ist nur in Coroutine-Funktionen erlaubt (`LYR-SEM0038`); `resume` ist ein
+  Ausdruck und überall erlaubt — er *treibt* eine Coroutine von außen (siehe §8).
 - `try` braucht mindestens ein `catch`. `finally` gibt es nicht — `defer` ist der einzige Cleanup-Mechanismus.
 
 ---
@@ -506,7 +507,7 @@ Sema-Regeln (Auswahl):
 | # | Operatoren | Assoz. |
 |---|---|---|
 | 1 | Postfix `.` `?.` `[ ]` `( )` `++` `--` `!` (unwrap) | links |
-| 2 | Prefix `!` (logical not) `-` `~` `++` `--` | rechts |
+| 2 | Prefix `!` (logical not) `-` `~` `++` `--` `resume` | rechts |
 | 3 | `as` | links |
 | 4 | `*` `/` `%` | links |
 | 5 | `+` `-` | links |
@@ -546,6 +547,8 @@ Primary         = IntLit | FloatLit | StringLit | InterpolatedStr
 
 Lambda          = '(' [ LambdaParam { ',' LambdaParam } ] ')' [ ':' TypeExpr ] '=>' ( Expr | Block ) .
 LambdaParam     = IDENTIFIER [ ':' TypeExpr ] .
+
+ResumeExpr      = 'resume' UnaryExpr .   (* Präfix-Ebene (§6.1 Level 2, await-Modell): liefert den Wert des nächsten yield (§8) *)
 
 StructInit      = TypePath '{' [ StructInitField { ',' StructInitField } [ ',' ] ] '}' .  (* nicht am ExprStmt-Anfang erkannt (mehrdeutig mit Block); in jeder Wert-Position erlaubt *)
 StructInitField = IDENTIFIER '=' Expr .                              (* '=' für Werte, ':' nur für Typen *)
@@ -653,9 +656,16 @@ for (i in 0..10) {
 
 Regeln (Sema):
 
-- Eine Funktion ist Coroutine, wenn sie `yield` enthält oder Rückgabetyp `Coroutine<T>` hat.
-- `yield expr;` pausiert die Coroutine und liefert `expr` an den Aufrufer.
-- `resume co` und `resume co, value` setzen die Coroutine fort, optional mit einem Wert, der an `yield` zurückgegeben wird.
+- Eine Funktion ist eine Coroutine, wenn ihr Rückgabetyp `Coroutine<T>` ist. `yield` ist
+  nur dort erlaubt (`LYR-SEM0038`); der Body liefert den Coroutine-Wert nie selbst —
+  ihn konstruiert die Runtime beim Aufruf (keine Return-Coverage-Pflicht).
+- `yield expr;` pausiert die Coroutine und liefert `expr` (zuweisbar an `T`) an den
+  Aufrufer; nacktes `yield;` verlangt `Coroutine<void>`.
+- `resume co` ist ein **Ausdruck** (§6.1 Präfix-Ebene): setzt die Coroutine fort und
+  liefert den Wert des nächsten `yield` (`LYR-SEM0040` auf Nicht-Coroutinen).
+  Send-Werte (`resume co, value`) gibt es in v1 nicht (§13).
+- In einer Coroutine ist nur nacktes `return;` erlaubt — frühes Ende, kein
+  Terminal-Wert (`LYR-SEM0039`).
 - Coroutine endet, wenn der Body durchläuft. Weitere `resume`-Aufrufe werfen `CoroutineEndedError`.
 
 ---
@@ -767,6 +777,7 @@ Module, die nur als Library oder Embed-Script dienen, brauchen kein `main`.
 | User-defined Operator-Overloading | v1.X |
 | User-defined Attribute / Macros | post-v1 oder nie |
 | Async/Await-Syntax | v1.X (Coroutines genügen) |
+| Coroutine-Send-Werte (`resume co, v`) + `yield` als Ausdruck | post-v1 (als Paket, braucht `Coroutine<TOut, TIn>`) |
 | Reflection (run-time) | post-v1 |
 | `unsafe` / Raw-Pointer | nie (wir sind GC-VM) |
 | Direkte FFI (`@extern`/`DllImport`) | nie (Host-Bindings stattdessen) |
