@@ -43,15 +43,15 @@ public sealed class Resolver
         {
             switch (decl)
             {
-                case StructDecl s: DeclareType(module, s.Name, TypeSymbolKind.Struct, Vis(s.IsPublic), s.Members, s); break;
-                case ClassDecl c: DeclareType(module, c.Name, TypeSymbolKind.Class, Vis(c.IsPublic), c.Members, c); break;
+                case StructDecl s: DeclareType(module, s.Name, TypeSymbolKind.Struct, Vis(s.IsPublic), s.Generics, s.Members, s); break;
+                case ClassDecl c: DeclareType(module, c.Name, TypeSymbolKind.Class, Vis(c.IsPublic), c.Generics, c.Members, c); break;
                 case EnumDecl e: DeclareEnum(module, e); break;
                 case InterfaceDecl i: DeclareInterface(module, i); break;
                 case TypeAliasDecl a:
                     DeclareTop(module, new TypeSymbol(a.Name, TypeSymbolKind.Alias, Vis(a.IsPublic), new SymbolTable(), a), a);
                     break;
                 case FunctionDecl fn:
-                    DeclareTop(module, new FunctionSymbol(fn.Name, Vis(fn.IsPublic), fn.IsMut, fn), fn);
+                    DeclareTop(module, Fn(fn), fn);
                     break;
                 case GlobalBindingDecl g:
                     DeclareTop(module, new GlobalSymbol(g.Binding.Name, Vis(g.IsPublic), g), g);
@@ -61,16 +61,18 @@ public sealed class Resolver
         }
     }
 
-    private void DeclareType(ModuleSymbol module, string name, TypeSymbolKind kind, Visibility vis, Decl[] members, Decl decl)
+    private void DeclareType(ModuleSymbol module, string name, TypeSymbolKind kind, Visibility vis, GenericParam[] generics, Decl[] members, Decl decl)
     {
         var scope = new SymbolTable(module.Members);
-        DeclareTop(module, new TypeSymbol(name, kind, vis, scope, decl), decl);
+        var ts = new TypeSymbol(name, kind, vis, scope, decl) { Generics = MakeGenerics(generics) };
+        DeclareGenerics(scope, ts.Generics);
+        DeclareTop(module, ts, decl);
         foreach (var m in members)
         {
             switch (m)
             {
                 case FieldDecl f: DeclareMember(scope, new FieldSymbol(f.Name, f), f); break;
-                case FunctionDecl fn: DeclareMember(scope, new FunctionSymbol(fn.Name, Vis(fn.IsPublic), fn.IsMut, fn), fn); break;
+                case FunctionDecl fn: DeclareMember(scope, Fn(fn), fn); break;
             }
         }
     }
@@ -78,16 +80,39 @@ public sealed class Resolver
     private void DeclareEnum(ModuleSymbol module, EnumDecl e)
     {
         var scope = new SymbolTable(module.Members);
-        DeclareTop(module, new TypeSymbol(e.Name, TypeSymbolKind.Enum, Vis(e.IsPublic), scope, e), e);
+        var ts = new TypeSymbol(e.Name, TypeSymbolKind.Enum, Vis(e.IsPublic), scope, e) { Generics = MakeGenerics(e.Generics) };
+        DeclareGenerics(scope, ts.Generics);
+        DeclareTop(module, ts, e);
         foreach (var v in e.Variants) DeclareMember(scope, new EnumVariantSymbol(v.Name, v), v);
-        foreach (var fn in e.Methods) DeclareMember(scope, new FunctionSymbol(fn.Name, Vis(fn.IsPublic), fn.IsMut, fn), fn);
+        foreach (var fn in e.Methods) DeclareMember(scope, Fn(fn), fn);
     }
 
     private void DeclareInterface(ModuleSymbol module, InterfaceDecl i)
     {
         var scope = new SymbolTable(module.Members);
-        DeclareTop(module, new TypeSymbol(i.Name, TypeSymbolKind.Interface, Vis(i.IsPublic), scope, i), i);
-        foreach (var fn in i.Members) DeclareMember(scope, new FunctionSymbol(fn.Name, Vis(fn.IsPublic), fn.IsMut, fn), fn);
+        var ts = new TypeSymbol(i.Name, TypeSymbolKind.Interface, Vis(i.IsPublic), scope, i) { Generics = MakeGenerics(i.Generics) };
+        DeclareGenerics(scope, ts.Generics);
+        DeclareTop(module, ts, i);
+        foreach (var fn in i.Members) DeclareMember(scope, Fn(fn), fn);
+    }
+
+    private static FunctionSymbol Fn(FunctionDecl fn) =>
+        new(fn.Name, Vis(fn.IsPublic), fn.IsMut, fn) { Generics = MakeGenerics(fn.Generics) };
+
+    private static GenericParamSymbol[] MakeGenerics(GenericParam[] generics)
+    {
+        if (generics.Length == 0) return [];
+        var result = new GenericParamSymbol[generics.Length];
+        for (var i = 0; i < generics.Length; i++)
+            result[i] = new GenericParamSymbol(generics[i].Name, generics[i].Constraints, generics[i]);
+        return result;
+    }
+
+    // Typ-Params in den Member-/Signatur-Scope legen, damit `T` auflöst. Kollidiert ein
+    // Param mit einem Member-Namen, meldet TryDeclare später ohnehin — hier still ignoriert.
+    private static void DeclareGenerics(SymbolTable scope, GenericParamSymbol[] generics)
+    {
+        foreach (var g in generics) scope.TryDeclare(g);
     }
 
     private void DeclareTop(ModuleSymbol module, Symbol sym, Node decl)
@@ -195,19 +220,23 @@ public sealed class Resolver
         switch (decl)
         {
             case FunctionDecl fn: BindFunctionTypes(fn, scope); break;
-            case StructDecl s: BindEach(s.Interfaces, scope); BindMembers(s.Members, scope); break;
-            case ClassDecl c: BindEach(c.Interfaces, scope); BindMembers(c.Members, scope); break;
+            case StructDecl s: { var ms = MemberScope(scope, s.Name); BindGenerics(s.Generics, ms); BindEach(s.Interfaces, ms); BindMembers(s.Members, ms); break; }
+            case ClassDecl c: { var ms = MemberScope(scope, c.Name); BindGenerics(c.Generics, ms); BindEach(c.Interfaces, ms); BindMembers(c.Members, ms); break; }
             case EnumDecl e:
-                BindEach(e.Interfaces, scope);
+                var es = MemberScope(scope, e.Name);
+                BindGenerics(e.Generics, es);
+                BindEach(e.Interfaces, es);
                 foreach (var v in e.Variants)
                 {
-                    foreach (var t in v.TupleFields ?? []) BindType(t, scope);
-                    foreach (var f in v.StructFields ?? []) BindType(f.Type, scope);
+                    foreach (var t in v.TupleFields ?? []) BindType(t, es);
+                    foreach (var f in v.StructFields ?? []) BindType(f.Type, es);
                 }
-                foreach (var m in e.Methods) BindFunctionTypes(m, scope);
+                foreach (var m in e.Methods) BindFunctionTypes(m, es);
                 break;
             case InterfaceDecl i:
-                foreach (var m in i.Members) BindFunctionTypes(m, scope);
+                var isc = MemberScope(scope, i.Name);
+                BindGenerics(i.Generics, isc);
+                foreach (var m in i.Members) BindFunctionTypes(m, isc);
                 break;
             case ExtendDecl ex:
                 BindType(ex.Target, scope);
@@ -232,18 +261,39 @@ public sealed class Resolver
 
     private void BindFunctionTypes(FunctionDecl fn, SymbolTable scope)
     {
-        foreach (var p in fn.Parameters) BindType(p.Type, scope);
-        if (fn.ReturnType is not null) BindType(fn.ReturnType, scope);
-        if (fn.Throws?.Type is not null) BindType(fn.Throws.Type, scope);
+        // Generische Funktion: Signatur gegen einen Scope binden, der die Typ-Params enthält
+        // (dieselben Symbol-Instanzen, die auf dem FunctionSymbol liegen → identisch für die Sema).
+        var fsym = scope.LookupLocal(fn.Name) as FunctionSymbol;
+        var sig = fsym is { Generics.Length: > 0 } ? WithGenerics(scope, fsym.Generics) : scope;
+        foreach (var p in fn.Parameters) BindType(p.Type, sig);
+        if (fn.ReturnType is not null) BindType(fn.ReturnType, sig);
+        if (fn.Throws?.Type is not null) BindType(fn.Throws.Type, sig);
         foreach (var g in fn.Generics)
             foreach (var c in g.Constraints)
-                BindType(c, scope);
-        // Body-Typen (lokale Bindings, Casts) → Slice 2/3.
+                BindType(c, sig);
+        // Body-Typen (lokale Bindings, Casts) → Sema (TypeChecker).
+    }
+
+    private static SymbolTable MemberScope(SymbolTable enclosing, string typeName) =>
+        (enclosing.LookupLocal(typeName) as TypeSymbol)?.Members ?? enclosing;
+
+    private static SymbolTable WithGenerics(SymbolTable parent, GenericParamSymbol[] generics)
+    {
+        var s = new SymbolTable(parent);
+        DeclareGenerics(s, generics);
+        return s;
     }
 
     private void BindEach(TypeNode[] types, SymbolTable scope)
     {
         foreach (var t in types) BindType(t, scope);
+    }
+
+    private void BindGenerics(GenericParam[] generics, SymbolTable scope)
+    {
+        foreach (var g in generics)
+            foreach (var c in g.Constraints)
+                BindType(c, scope);
     }
 
     private void BindType(TypeNode type, SymbolTable scope)
@@ -310,6 +360,7 @@ public sealed class Resolver
     private static bool IsTypeLike(Symbol s) => s switch
     {
         TypeSymbol => true,
+        GenericParamSymbol => true, // T ist ein (abstrakter) Typ
         ExternalSymbol => true,
         ErrorSymbol => true,
         ImportBindingSymbol ib => IsTypeLike(ib.Target),

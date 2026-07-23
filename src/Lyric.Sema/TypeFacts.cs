@@ -58,6 +58,8 @@ public static class TypeFacts
                 _ => "?"
             };
             case NamedRef n: return n.Symbol.Name;
+            case TypeParamType tp: return tp.Param.Name;
+            case GenericInstance gi: return gi.Definition.Name + "<" + string.Join(", ", gi.Arguments.Select(Display)) + ">";
             case Optional o: return "?" + Display(o.Inner);
             case ArrayOf a: return Display(a.Element) + (a.Size is null ? "[]" : $"[{a.Size}]");
             case TupleOf tu: return "(" + string.Join(", ", tu.Elements.Select(Display)) + ")";

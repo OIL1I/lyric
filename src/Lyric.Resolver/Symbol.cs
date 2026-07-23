@@ -51,6 +51,7 @@ public sealed class TypeSymbol : Symbol
     public TypeSymbolKind Kind { get; }
     public Visibility Visibility { get; }
     public SymbolTable Members { get; } // Felder, Methoden, Enum-Varianten (leer bei Builtin/Alias)
+    public GenericParamSymbol[] Generics { get; set; } = []; // Typ-Parameter (nach Deklaration gesetzt)
 
     public TypeSymbol(string name, TypeSymbolKind kind, Visibility visibility, SymbolTable members, Node? declaration)
         : base(name, declaration)
@@ -65,6 +66,7 @@ public sealed class FunctionSymbol : Symbol
 {
     public Visibility Visibility { get; }
     public bool IsMut { get; }
+    public GenericParamSymbol[] Generics { get; set; } = [];
 
     public FunctionSymbol(string name, Visibility visibility, bool isMut, Node? declaration)
         : base(name, declaration)
@@ -72,6 +74,16 @@ public sealed class FunctionSymbol : Symbol
         Visibility = visibility;
         IsMut = isMut;
     }
+}
+
+/// <summary>Ein generischer Typ-Parameter (`T`), mit seinen Constraint-Interfaces
+/// (als noch unaufgelöste TypeNodes — die Sema löst sie auf).</summary>
+public sealed class GenericParamSymbol : Symbol
+{
+    public TypeNode[] Constraints { get; }
+
+    public GenericParamSymbol(string name, TypeNode[] constraints, Node? declaration) : base(name, declaration)
+        => Constraints = constraints;
 }
 
 public sealed class FieldSymbol : Symbol

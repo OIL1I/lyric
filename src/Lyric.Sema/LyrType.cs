@@ -32,6 +32,8 @@ public abstract record LyrType
     {
         (PrimitiveType x, PrimitiveType y) => x.Kind == y.Kind,
         (NamedRef x, NamedRef y) => ReferenceEquals(x.Symbol, y.Symbol),
+        (TypeParamType x, TypeParamType y) => ReferenceEquals(x.Param, y.Param),
+        (GenericInstance x, GenericInstance y) => ReferenceEquals(x.Definition, y.Definition) && SameSequence(x.Arguments, y.Arguments),
         (Optional x, Optional y) => Equal(x.Inner, y.Inner),
         (ArrayOf x, ArrayOf y) => x.Size == y.Size && Equal(x.Element, y.Element),
         (TupleOf x, TupleOf y) => SameSequence(x.Elements, y.Elements),
@@ -54,7 +56,9 @@ public abstract record LyrType
 }
 
 public sealed record PrimitiveType(PrimitiveKind Kind) : LyrType;
-public sealed record NamedRef(TypeSymbol Symbol) : LyrType;          // struct/class/enum/interface-Instanz
+public sealed record NamedRef(TypeSymbol Symbol) : LyrType;          // struct/class/enum/interface-Instanz (nicht-generisch)
+public sealed record TypeParamType(GenericParamSymbol Param) : LyrType; // T innerhalb einer generischen Definition
+public sealed record GenericInstance(TypeSymbol Definition, LyrType[] Arguments) : LyrType; // Stack<int>
 public sealed record Optional(LyrType Inner) : LyrType;              // ?T
 public sealed record ArrayOf(LyrType Element, int? Size) : LyrType;  // T[] / T[N]
 public sealed record TupleOf(LyrType[] Elements) : LyrType;

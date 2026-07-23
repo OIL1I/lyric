@@ -81,7 +81,7 @@ public sealed class TypeChecker
     private void CheckMethods(string typeName, Decl[] members, ModuleSymbol module)
     {
         if (module.Members.LookupLocal(typeName) is not TypeSymbol ts) return;
-        var thisType = new NamedRef(ts);
+        var thisType = SelfType(ts);
         foreach (var m in members)
             if (m is FunctionDecl fn)
                 CheckFunction(fn, ts.Members, thisType);
@@ -90,9 +90,16 @@ public sealed class TypeChecker
     private void CheckEnumMethods(EnumDecl e, ModuleSymbol module)
     {
         if (module.Members.LookupLocal(e.Name) is not TypeSymbol ts) return;
-        var thisType = new NamedRef(ts);
+        var thisType = SelfType(ts);
         foreach (var fn in e.Methods) CheckFunction(fn, ts.Members, thisType);
     }
+
+    // `this` innerhalb einer Methode: bei generischem Typ die Selbst-Instanz Stack<T>
+    // (Typ-Params als Argumente), sonst schlicht die Referenz.
+    private static LyrType SelfType(TypeSymbol ts) =>
+        ts.Generics.Length == 0
+            ? new NamedRef(ts)
+            : new GenericInstance(ts, Array.ConvertAll(ts.Generics, g => (LyrType)new TypeParamType(g)));
 
     private void CheckExtend(ExtendDecl ex, ModuleSymbol module)
     {
@@ -112,6 +119,10 @@ public sealed class TypeChecker
         _narrowed = new(ReferenceEqualityComparer.Instance);
 
         var scope = new SymbolTable(outerScope);
+        // Funktions-eigene Typ-Params (fn map<U>) in den Body-Scope; Signatur-Typen sind schon
+        // vom Resolver gebunden, aber Body-Typen (let x: U) lösen nur über diesen Scope auf.
+        if (outerScope.LookupLocal(fn.Name) is FunctionSymbol fsym)
+            foreach (var g in fsym.Generics) scope.TryDeclare(g);
         foreach (var p in fn.Parameters)
         {
             var pt = ResolveType(p.Type, scope);
@@ -572,13 +583,70 @@ public sealed class TypeChecker
         }
 
         var baseType = mem.IsOptional && targetType is Optional opt ? opt.Inner : targetType;
-        if (baseType is NamedRef nr)
-        {
-            var mt = BindMember(mem, InstanceMember(nr.Symbol, mem.Member, mem.Span));
+        if (InstanceMemberOf(baseType, mem, mem.Span) is { } mt)
             return mem.IsOptional ? new Optional(mt) : mt;
-        }
         if (targetType.IsError) return LyrType.Error;
         return Report(mem.Span, "LYR-SEM0012", $"'{TypeFacts.Display(targetType)}' has no member '{mem.Member}'");
+    }
+
+    // Instanz-Member über die drei „Objekt"-Typen: konkret (NamedRef), generische Instanz
+    // (Member-Typ mit T→Argument substituiert), oder Typ-Param (Member aus den Constraints).
+    private LyrType? InstanceMemberOf(LyrType baseType, MemberExpr mem, Span span)
+    {
+        switch (baseType)
+        {
+            case NamedRef nr:
+                return BindMember(mem, InstanceMember(nr.Symbol, mem.Member, span));
+            case GenericInstance gi:
+                var (t, s) = InstanceMember(gi.Definition, mem.Member, span);
+                if (s is not null) _result.BindRef(mem, s);
+                return Substitute(t, SubstMap(gi));
+            case TypeParamType tp:
+                return BindMember(mem, MemberOfTypeParam(tp.Param, mem.Member, span));
+            default:
+                return null;
+        }
+    }
+
+    // Member auf einem Typ-Param T: nur was seine Constraint-Interfaces bereitstellen (D2).
+    private (LyrType, Symbol?) MemberOfTypeParam(GenericParamSymbol gp, string member, Span span)
+    {
+        foreach (var c in gp.Constraints)
+        {
+            if (c is not NamedType nt) continue;
+            var csym = _binding.Resolve(nt);
+            if (csym is ImportBindingSymbol ib) csym = ib.Target;
+            if (csym is TypeSymbol { Kind: TypeSymbolKind.Interface } it
+                && it.Members.LookupLocal(member) is FunctionSymbol fn)
+                return (FnTypeOf(fn), fn);
+        }
+        return (Report(span, "LYR-SEM0027",
+            $"type parameter '{gp.Name}' has no member '{member}' (no constraint provides it)"), null);
+    }
+
+    private static Dictionary<GenericParamSymbol, LyrType> SubstMap(GenericInstance gi)
+    {
+        var map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
+        var n = Math.Min(gi.Definition.Generics.Length, gi.Arguments.Length);
+        for (var i = 0; i < n; i++) map[gi.Definition.Generics[i]] = gi.Arguments[i];
+        return map;
+    }
+
+    // T → Argument über einen Typ hinweg (Stack<T>.items: T[]  →  int[] bei Stack<int>).
+    private static LyrType Substitute(LyrType type, Dictionary<GenericParamSymbol, LyrType> map)
+    {
+        if (map.Count == 0) return type;
+        return type switch
+        {
+            TypeParamType tp => map.TryGetValue(tp.Param, out var m) ? m : tp,
+            Optional o => new Optional(Substitute(o.Inner, map)),
+            ArrayOf a => new ArrayOf(Substitute(a.Element, map), a.Size),
+            TupleOf t => new TupleOf(t.Elements.Select(e => Substitute(e, map)).ToArray()),
+            FnType f => new FnType(f.Parameters.Select(p => Substitute(p, map)).ToArray(), Substitute(f.Return, map)),
+            GenericInstance gi => new GenericInstance(gi.Definition, gi.Arguments.Select(a => Substitute(a, map)).ToArray()),
+            RangeOf r => new RangeOf(Substitute(r.Element, map)),
+            _ => type // Primitive / NamedRef / Error / Null
+        };
     }
 
     private LyrType BindMember(MemberExpr mem, (LyrType type, Symbol? sym) r)
@@ -844,8 +912,13 @@ public sealed class TypeChecker
         {
             case NamedType n:
                 var sym = _binding.Resolve(n) ?? ResolveTypePath(n.Path, scope);
+                if (sym is ImportBindingSymbol ibt) sym = ibt.Target;
                 if (sym is null)
                     return Report(n.Span, "LYR-SEM0011", $"unresolved type '{string.Join('.', n.Path)}'");
+                if (sym is GenericParamSymbol gp) return new TypeParamType(gp);
+                if (sym is TypeSymbol { Kind: not (TypeSymbolKind.Builtin or TypeSymbolKind.Alias) } gts
+                    && (gts.Generics.Length > 0 || n.TypeArguments.Length > 0))
+                    return MakeGenericInstance(gts, n, scope);
                 return SymbolToType(sym, scope);
             case NullableType nn: return new Optional(ResolveType(nn.Inner, scope));
             case ArrayType a: return new ArrayOf(ResolveType(a.Element, scope), a.Size is { } sz ? (int)sz.Value : null);
@@ -859,10 +932,22 @@ public sealed class TypeChecker
     {
         TypeSymbol { Kind: TypeSymbolKind.Builtin } t => TypeFacts.FromBuiltinName(t.Name) ?? LyrType.Error,
         TypeSymbol { Kind: TypeSymbolKind.Alias } t => ResolveType(((TypeAliasDecl)t.Declaration!).Aliased, scope),
+        GenericParamSymbol g => new TypeParamType(g),
         TypeSymbol t => new NamedRef(t),
         ImportBindingSymbol ib => SymbolToType(ib.Target, scope),
         _ => LyrType.Error // Extern/Error/Nicht-Typ → opak
     };
+
+    // Stack<int> → GenericInstance. Arity wird geprüft; Constraint-Erfüllung (int :: Comparable?)
+    // ist Slice 1b (braucht Konformanz-Modell inkl. Builtins).
+    private LyrType MakeGenericInstance(TypeSymbol ts, NamedType n, SymbolTable scope)
+    {
+        var args = n.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
+        if (ts.Generics.Length != args.Length)
+            _de.Report("LYR-SEM0026", Severity.Error, n.Span,
+                $"generic type '{ts.Name}' expects {ts.Generics.Length} type argument(s), got {args.Length}");
+        return new GenericInstance(ts, args);
+    }
 
     // Kompakte Pfad-Auflösung für Body-Typen (die der Resolver nicht gebunden hat).
     private Symbol? ResolveTypePath(string[] path, SymbolTable scope)
