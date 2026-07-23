@@ -16,8 +16,9 @@
 Slice-Schnitt: **1** Generics, **2** Pattern-Match voll + Exhaustivität, **3** Exceptions
 + Coroutinen, **4** Closures + Interfaces + Extend. Entscheidungen D1–D5 bestätigt
 (Monomorph / strenge Constraints / kein Turbofish / pragmatische Exhaustivität /
-bidir. Lambda-Inferenz). **Slice 1 (Generics) und Slice 2 (Pattern-Match voll) komplett.**
-M3 = `m3-complete`, M2 = `m2-complete`, M1 = `m1-complete`.
+bidir. Lambda-Inferenz); D6–D8 ratifiziert (resume ist Ausdruck / Send-Werte post-v1 /
+nur nacktes return in Coroutinen — in Sprache.md §5/§6/§8 fixiert).
+**Slices 1–3 komplett.** M3 = `m3-complete`, M2 = `m2-complete`, M1 = `m1-complete`.
 
 ## Was schon erledigt ist
 
@@ -61,15 +62,31 @@ M3 = `m3-complete`, M2 = `m2-complete`, M1 = `m1-complete`.
     leeres Array-Literal nimmt den Kontext-Typ.
   - Codes `LYR-SEM0029..0033` + `0050`. 50 Tests; `shapes.lyr` checkt sauber.
 
+- [x] **M4 — Slice 3 — Exceptions + Coroutinen** (3a + 3b):
+  - **Builtins**: `Throwable` als Builtin-Interface (abstraktes `message(): string`,
+    Konformanz wird geprüft), `panic` → `never` (Bottom-Typ, zählt als Divergenz),
+    `Coroutine<T>` als Builtin-Name → interner `CoroutineOf`.
+  - **Exceptions (3a)**: Throwable-Constraint an throw/throws/catch (SEM0030);
+    try braucht ≥1 catch (SEM0036), Catch-All zuletzt (SEM0035); Catch-Bindung typlos →
+    `Throwable` (DAA-gefixt); **throws-Propagation** als Post-Pass (`ExceptionAnalyzer`):
+    try-Zuordnung exakt/Interface/Catch-All oder eigene throws-Klausel (SEM0034);
+    Lambdas/Globals/Default-Werte eigene Kontexte; throws-Fn als Wert verboten (SEM0037,
+    FnType trägt keine throws-Info — Java-Lambda-Falle bewusst zum Fehler gemacht).
+  - **Coroutinen (3b, D6–D8)**: `resume` ist Präfix-Ausdruck (ResumeExpr, ResumeStmt weg);
+    yield nur bei `Coroutine<T>`-Rückgabetyp + wertgeprüft, nacktes yield nur
+    `Coroutine<void>` (SEM0038); nur nacktes return (SEM0039); resume liefert Yield-Typ
+    (SEM0040); Return-Coverage für Coroutinen ausgesetzt.
+  - Codes `LYR-SEM0030, 0034..0040`. 48 Tests; `bank.lyr` + `fibonacci.lyr` checken sauber.
+
 ## Woran wir gerade arbeiten
 
-Slice 2 fertig. Nächster Slice: **M4-3 — Exceptions + Coroutinen** (`throws`-Propagation,
-Catch-Typ-Validierung, Throwable-Constraint SEM0030; `yield`/`resume`-Validierung,
-Coroutine-Return-Typ). Noch nicht geplant.
+Slice 3 fertig. Letzter M4-Slice: **M4-4 — Closures + Interfaces + Extend**
+(bidir. Lambda-Inferenz D5, Block-Lambda-Wert, Interface-Konformanz mit Signatur-Match,
+Extend-Merge + Orphan-Rule). Noch nicht geplant.
 
 ## Was als nächstes ansteht
 
-- M4-3 planen + bauen, dann **4** (Closures + Interfaces + Extend-Merge + Orphan-Rule).
+- M4-4 planen + bauen → M4-Exit (`m4-complete`), dann M5 (IR + Bytecode, ADR-013 beachten).
 
 ## Noch offen in M4 (Slice-Zuordnung)
 
@@ -92,7 +109,7 @@ Coroutine-Return-Typ). Noch nicht geplant.
 
 ## Letzter relevanter Commit
 
-`M4: sema — pattern match full (slice 2)`
+`M4: sema — coroutines (slice 3b)`
 
 ---
 
