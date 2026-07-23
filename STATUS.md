@@ -53,7 +53,8 @@ M3 = `m3-complete`, M2 = `m2-complete`, M1 = `m1-complete`.
     brauchen `_`/Bindung; Guards zählen nicht. Exhaustive matches speisen Return-Coverage
     (kein falsches SEM0017) und DAA (Schnitt der Arm-Zuweisungen, kein falsches SEM0018).
   - **Block-Wert-Regel**: Blöcke haben keinen Wert — Block-Arm im match-**Ausdruck** muss
-    auf jedem Pfad return/throw-en (SEM0033), im match-Statement frei. → Offene Fragen.
+    auf jedem Pfad return/throw-en (SEM0033), im match-Statement frei. Ratifiziert,
+    in `Sprache.md` §5/§6.2 festgehalten.
   - **Konstruktion (§3.4)**: Enum-Struct-Varianten qualifiziert (`Shape.Triangle { … }`)
     und kontextuell (`let s: Shape = Triangle { … }`, auch Array-Element/Return/Feld/
     Assign) via minimalem expected-Type-Threading in CheckExpr (Vorstufe von D5);
@@ -80,13 +81,6 @@ Coroutine-Return-Typ). Noch nicht geplant.
   typt noch ohne Instanz-Inferenz — und `Opt<int>.Some(…)` ist per TypePath-Grammatik nicht
   ausdrückbar.
 - Extern (nicht M4): Stdlib-Imports opak → Modul-Universum erst mit M8.
-
-## Offene Fragen
-
-- **Block-Wert-Entscheidung ratifizieren**: Slice 2 hat pragmatisch festgelegt, dass Blöcke
-  keinen Wert haben (Block-Arm im match-Ausdruck ⇒ return/throw-Pflicht, SEM0033).
-  Alternativen (Rust-Tail-Expression etc.) und Trade-offs sind diskutiert. Wenn ratifiziert:
-  Satz in `Sprache.md` §5 (MatchArm) ergänzen.
 
 ## Design-Entscheidungen (Kontext)
 
