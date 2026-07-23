@@ -14,9 +14,10 @@
 **M4 — Sema (full) — abgeschlossen** (Tag `m4-complete` ausstehend)
 
 Volle v1-Sprache typgeprüft: Generics, Pattern-Match + Exhaustivität, Exceptions,
-Coroutinen, Closures, Interfaces + Extend. Entscheidungen D1–D10 ratifiziert und in
-`Sprache.md`/`Doku.md` fixiert. `lyric check` läuft sauber auf allen Beispielen außer
-`stack.lyr`/`stats.lyr` (warten auf M8-Array-Methoden). 937 Tests grün.
+Coroutinen, Closures, Interfaces + Extend. Entscheidungen D1–D11 ratifiziert und in
+`Sprache.md`/`Doku.md` fixiert (D11: wertloses Block-Lambda ohne Kontext ist void).
+`lyric check` läuft sauber auf allen Beispielen außer `stack.lyr`/`stats.lyr` (warten
+auf M8-Array-Methoden). 941 Tests grün.
 
 **Nächster Meilenstein: M5 — IR + Bytecode.** ADR-013 (`.lyrbc` als plattformneutraler,
 spezifizierter Vertrag → `docs/Bytecode.md`) und ADR-006 (Coroutine-State-Machine-Lowering)
@@ -79,7 +80,7 @@ planen (erstes Backend-Slice, `docs/Bytecode.md` entsteht dabei laut ADR-013).
 
 ## Letzter relevanter Commit
 
-`M4: sema — interfaces + extend (slice 4b)`
+`M4: sema — void-Block-Lambda ohne Kontext defaultet auf void (D11)`
 
 ---
 
