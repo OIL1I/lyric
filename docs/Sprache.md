@@ -381,7 +381,8 @@ Regeln:
 - `extend T { ... }` fügt inherent Methoden zu `T` hinzu.
 - `extend T :: [I] { ... }` fügt Interface-Impl zu `T` hinzu.
 - Extensions gelten in jedem Modul, das das deklarierende Modul importiert. **Keine** separate Aktivierung.
-- **Orphan-Rule**: Du darfst `extend T :: [I]` nur, wenn `T` oder `I` in deinem eigenen Modul deklariert wurde (`LYR-SEM0010`).
+- **Orphan-Rule**: Du darfst `extend T :: [I]` nur, wenn `T` oder `I` in deinem eigenen Modul deklariert wurde (`LYR-SEM0041`). Inhärente Extends (`extend T { }`, ohne Interface) sind uneingeschränkt.
+- Extend-Ziele sind in v1 nur **schlichte benannte Typen** (kein `Stack<int>`, `T[]`, Tupel oder Funktionstyp) (`LYR-SEM0047`).
 
 ---
 
