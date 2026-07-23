@@ -26,7 +26,8 @@ public sealed record BreakStmt(Span Span) : Stmt(Span);
 public sealed record ContinueStmt(Span Span) : Stmt(Span);
 public sealed record ReturnStmt(Expr? Value, Span Span) : Stmt(Span);
 public sealed record YieldStmt(Expr? Value, Span Span) : Stmt(Span);
-public sealed record ResumeStmt(Expr Coroutine, Expr? Value, Span Span) : Stmt(Span);
+// resume ist ein AUSDRUCK (ResumeExpr in Expressions.cs, D6) — als Statement läuft
+// 'resume co;' über ExprStmt. Send-Werte ('resume co, v') sind post-v1 (D7).
 
 // Body ist Block oder ExprStmt (Sprache.md §5: 'defer' ( Block | Expr ';' )).
 public sealed record DeferStmt(Stmt Body, Span Span) : Stmt(Span);

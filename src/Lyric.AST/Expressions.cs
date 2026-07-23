@@ -37,6 +37,9 @@ public sealed record ThisExpr(Span Span) : Expr(Span);
 
 // --- Operatoren ---
 public sealed record UnaryExpr(UnaryOp Operator, Expr Operand, Span Span) : Expr(Span);
+// 'resume co' (§8, D6): Präfix-Ausdruck auf Unary-Ebene (await-Modell) — liefert den
+// Wert des nächsten yield der Coroutine. Send-Werte sind post-v1 (D7).
+public sealed record ResumeExpr(Expr Coroutine, Span Span) : Expr(Span);
 public sealed record PostfixExpr(Expr Operand, PostfixOp Operator, Span Span) : Expr(Span);
 public sealed record BinaryExpr(Expr Left, BinaryOp Operator, Expr Right, Span Span) : Expr(Span);
 public sealed record AssignExpr(Expr Target, BinaryOp? Operator, Expr Value, Span Span) : Expr(Span); // Operator == null: '='; sonst compound (z.B. Add => '+=')
