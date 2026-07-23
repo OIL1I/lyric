@@ -547,6 +547,8 @@ LambdaParam     = IDENTIFIER [ ':' TypeExpr ] .
 StructInit      = TypePath '{' [ StructInitField { ',' StructInitField } [ ',' ] ] '}' .  (* nicht am ExprStmt-Anfang erkannt (mehrdeutig mit Block); in jeder Wert-Position erlaubt *)
 StructInitField = IDENTIFIER '=' Expr .                              (* '=' für Werte, ':' nur für Typen *)
 
+TypePath        = ModulePath [ '<' TypeExpr { ',' TypeExpr } '>' ] . (* Typ-Referenz in Wert-/Pattern-Position: Stack<int>, game.Enemy. Generische Typen brauchen explizite Argumente (keine Feld-Inferenz); generische FUNKTIONEN dagegen inferieren aus den Argumenten — es gibt kein f<T>(x) (Turbofish) *)
+
 ArrayLit        = '[' [ Expr { ',' Expr } [ ',' ] ] ']' .
 TupleLit        = '(' Expr ',' Expr { ',' Expr } ')' .
 
