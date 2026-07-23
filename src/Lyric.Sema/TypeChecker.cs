@@ -1816,11 +1816,19 @@ public sealed class TypeChecker
                 }
                 break;
             case Block b:
-                if (contextRet is null || openGeneric)
+                if (contextRet is null && !openGeneric && !HasValueReturn(b))
+                {
+                    // D11: Block-Lambda ohne Kontext, das keinen Wert zurückgibt → void.
+                    // Seiteneffekt-Closures (`() => { doStuff(); }`) brauchen kein `: void`.
+                    ret = LyrType.Void;
+                    _currentReturn = LyrType.Void;
+                    CheckBlock(b, lambdaScope);
+                }
+                else if (contextRet is null || openGeneric)
                 {
                     ret = Report(lam.Span, "LYR-SEM0046", openGeneric
                         ? "cannot infer a generic return type for a block lambda — add a return type annotation"
-                        : "a block lambda needs a return type annotation or a context type (blocks have no value)");
+                        : "a block lambda that returns a value needs a return type annotation or a context type");
                     _currentReturn = LyrType.Error; // returns im Body nicht kaskadieren lassen
                     CheckBlock(b, lambdaScope);
                 }
@@ -1845,6 +1853,23 @@ public sealed class TypeChecker
         RecordCaptures(lam);
         return new FnType(pTypes, ret);
     }
+
+    // Gibt der Block auf irgendeinem Pfad einen WERT zurück (`return expr;`)? Steigt durch die
+    // Statement-Struktur, aber NICHT in verschachtelte Lambdas (deren return gehört ihnen). Für
+    // den D11-void-Default: nur wertlose Block-Lambdas ohne Kontext dürfen void werden.
+    private static bool HasValueReturn(Stmt s) => s switch
+    {
+        ReturnStmt r => r.Value is not null,
+        Block b => b.Statements.Any(HasValueReturn),
+        IfStmt f => HasValueReturn(f.Then) || (f.Else is not null && HasValueReturn(f.Else)),
+        WhileStmt w => HasValueReturn(w.Body),
+        DoWhileStmt d => HasValueReturn(d.Body),
+        ForInStmt fo => HasValueReturn(fo.Body),
+        DeferStmt de => HasValueReturn(de.Body),
+        TryStmt t => HasValueReturn(t.Body) || t.Catches.Any(c => HasValueReturn(c.Body)),
+        MatchStmt m => m.Arms.Any(a => a.Body is Block ab && HasValueReturn(ab)),
+        _ => false
+    };
 
     private static bool ContainsTypeParam(LyrType t) => t switch
     {

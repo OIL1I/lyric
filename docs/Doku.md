@@ -474,6 +474,8 @@ let result = scale(10);                          // 30
 - `(params) => { stmts }` — ein Block. Blöcke haben keinen Wert (dieselbe Regel wie bei
   `match`, siehe [§14.2](#142-match-arme-ausdruck-oder-block)): ein Block-Lambda liefert
   sein Ergebnis über `return`, und ein nicht-void-Block-Lambda muss auf jedem Pfad returnen.
+  Ein Block-Lambda ohne `return <wert>` ist ein Seiteneffekt-Lambda und automatisch `void`
+  — auch ohne Kontext: `let log = () => { console.println("hi"); };`.
 
 ```lyr
 let clamp: fn(int) -> int = (x) => {
@@ -487,7 +489,8 @@ let clamp: fn(int) -> int = (x) => {
 - **Parameter-Typen** kommen aus einer Annotation oder aus dem Kontext (Binding-Typ,
   Aufruf-Argument, Rückgabeposition). Fehlt beides, ist der Parameter ein Fehler
   (`LYR-SEM0045`) — dann annotieren: `(x: int) => …`.
-- **Block-Lambdas** brauchen ihren Rückgabetyp aus Annotation oder Kontext (`LYR-SEM0046`).
+- **Block-Lambdas, die einen Wert liefern,** brauchen ihren Rückgabetyp aus Annotation oder
+  Kontext (`LYR-SEM0046`); wertlose Block-Lambdas sind `void`.
 - **`return` in einem Lambda** verlässt das Lambda, nicht die umgebende Funktion.
 - **Captures** sind implizit und müssen am Erzeugungsort bereits sicher zugewiesen sein —
   dieselbe Definite-Assignment-Regel wie bei Variablen.

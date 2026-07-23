@@ -196,9 +196,41 @@ public class LambdaTests
     }
 
     [Fact]
-    public void Block_lambda_without_context_is_reported()
+    public void Value_returning_block_lambda_without_context_is_reported()
     {
         var de = Diags("fn u() { let f = (x: int) => { return x + 1; }; }");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0046");
+    }
+
+    // --- D11: wertlose Block-Lambdas ohne Kontext sind void ---
+
+    [Fact]
+    public void Void_block_lambda_without_context_defaults_to_void()
+    {
+        var (t, de) = LastInit("fn u() { let f = () => { let y = 1; }; }");
+        AssertClean(de);
+        AssertType(new FnType([], LyrType.Void), t);
+    }
+
+    [Fact]
+    public void Side_effect_block_lambda_without_context_is_clean()
+    {
+        AssertClean(Diags("fn u(xs: int[]) { let printAll = (ys: int[]) => { for (y in ys) { } }; }"));
+    }
+
+    [Fact]
+    public void Bare_return_block_lambda_without_context_defaults_to_void()
+    {
+        var (t, de) = LastInit("fn u() { let f = (x: int) => { if (x < 0) { return; } }; }");
+        AssertClean(de);
+        AssertType(new FnType([LyrType.Int], LyrType.Void), t);
+    }
+
+    [Fact]
+    public void Void_defaulted_block_lambda_returning_a_value_is_still_flagged()
+    {
+        // Wert-return im Body → HasValueReturn → SEM0046 (braucht Annotation/Kontext), kein void-Default.
+        var de = Diags("fn u() { let f = (x: int) => { let y = x; return y; }; }");
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0046");
     }
 
