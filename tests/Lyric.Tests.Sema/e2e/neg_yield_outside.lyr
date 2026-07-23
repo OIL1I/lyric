@@ -1,0 +1,11 @@
+// Negativ: yield außerhalb einer Coroutine (Rückgabetyp ist kein Coroutine<T>)
+// → LYR-SEM0038.
+
+fn notACoroutine(): int {
+    yield 1;
+    return 0;
+}
+
+fn main(): int {
+    return notACoroutine();
+}

@@ -48,6 +48,7 @@ public class E2ETests
     [InlineData("main_args.lyr")]
     [InlineData("shapes.lyr")]
     [InlineData("bank.lyr")]
+    [InlineData("fibonacci.lyr")]
     public void Valid_program_checks_clean(string name)
     {
         var de = Analyze(name);
@@ -64,6 +65,7 @@ public class E2ETests
     [InlineData("neg_missing_impl.lyr", "LYR-SEM0020")]
     [InlineData("neg_nonexhaustive.lyr", "LYR-SEM0050")]
     [InlineData("neg_unhandled_throw.lyr", "LYR-SEM0034")]
+    [InlineData("neg_yield_outside.lyr", "LYR-SEM0038")]
     public void Negative_program_reports(string name, string code)
     {
         Assert.Contains(Analyze(name).Diagnostics, d => d.Code == code);

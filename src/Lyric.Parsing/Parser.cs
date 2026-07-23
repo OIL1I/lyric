@@ -144,6 +144,12 @@ public sealed partial class Parser
             var operand = ParsePrefix();
             return new UnaryExpr(Operators.MapPrefix(op), operand, Span.Union(opTok.Span, operand.Span));
         }
+        if (op is TokenKind.Resume) // 'resume co' (§8): Präfix wie await, bindet die Postfix-Kette
+        {
+            var kw = _buffer.Advance();
+            var co = ParsePrefix();
+            return new ResumeExpr(co, Span.Union(kw.Span, co.Span));
+        }
 
         return ParsePostfix(ParsePrimary());
     }

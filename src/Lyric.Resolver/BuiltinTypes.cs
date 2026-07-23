@@ -29,6 +29,9 @@ public static class BuiltinTypes
                 new SymbolTable(), declaration: null));
         scope.TryDeclare(CreateThrowable());
         scope.TryDeclare(CreatePanic());
+        // Coroutine<T> (§8): der Name löst hier auf, die Typ-Form baut die Sema (CoroutineOf).
+        scope.TryDeclare(new TypeSymbol("Coroutine", TypeSymbolKind.Builtin, Visibility.Public,
+            new SymbolTable(), declaration: null));
         return scope;
     }
 

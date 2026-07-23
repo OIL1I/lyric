@@ -84,10 +84,6 @@ internal sealed class FlowAnalyzer
             case YieldStmt y:
                 if (y.Value is not null) AnalyzeExpr(y.Value, assigned);
                 return assigned;
-            case ResumeStmt re:
-                AnalyzeExpr(re.Coroutine, assigned);
-                if (re.Value is not null) AnalyzeExpr(re.Value, assigned);
-                return assigned;
             case DeferStmt de:
                 return AnalyzeStmt(de.Body, assigned);
             case IfStmt f:
@@ -186,6 +182,7 @@ internal sealed class FlowAnalyzer
                 return;
             case BinaryExpr b: AnalyzeExpr(b.Left, assigned); AnalyzeExpr(b.Right, assigned); return;
             case UnaryExpr u: AnalyzeExpr(u.Operand, assigned); return;
+            case ResumeExpr re: AnalyzeExpr(re.Coroutine, assigned); return;
             case PostfixExpr p: AnalyzeExpr(p.Operand, assigned); return;
             case CallExpr c:
                 AnalyzeExpr(c.Callee, assigned);

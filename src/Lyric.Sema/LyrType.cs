@@ -40,6 +40,7 @@ public abstract record LyrType
         (TupleOf x, TupleOf y) => SameSequence(x.Elements, y.Elements),
         (FnType x, FnType y) => Equal(x.Return, y.Return) && SameSequence(x.Parameters, y.Parameters),
         (RangeOf x, RangeOf y) => Equal(x.Element, y.Element),
+        (CoroutineOf x, CoroutineOf y) => Equal(x.Yield, y.Yield),
         (ErrorType, ErrorType) => true,
         (NullType, NullType) => true,
         (NeverType, NeverType) => true,
@@ -66,6 +67,7 @@ public sealed record ArrayOf(LyrType Element, int? Size) : LyrType;  // T[] / T[
 public sealed record TupleOf(LyrType[] Elements) : LyrType;
 public sealed record FnType(LyrType[] Parameters, LyrType Return) : LyrType;
 public sealed record RangeOf(LyrType Element) : LyrType;             // interner Typ von 0..9 (kein Spec-Typ)
+public sealed record CoroutineOf(LyrType Yield) : LyrType;           // Coroutine<T> (§8), als interner Typ wie RangeOf
 public sealed record ErrorType : LyrType;                           // Recovery-Sentinel
 public sealed record NullType : LyrType;                            // Typ des null-Literals (nur ?T-zuweisbar)
 public sealed record NeverType : LyrType;                           // Rückgabetyp von panic (§9); Bottom-Typ, nicht benennbar

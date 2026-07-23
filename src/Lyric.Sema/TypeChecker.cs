@@ -23,8 +23,10 @@ public sealed class TypeChecker
     private readonly Dictionary<GlobalSymbol, LyrType> _globals = new(ReferenceEqualityComparer.Instance);
     private readonly TypeSymbol? _throwable; // Builtin-Interface Throwable (§9)
     private readonly FunctionSymbol? _panic; // Builtin panic → never (§9)
+    private readonly TypeSymbol? _coroutine; // Builtin Coroutine<T> (§8) → CoroutineOf
 
     private LyrType _currentReturn = LyrType.Void;
+    private LyrType? _currentYield; // Yield-Typ, wenn die aktuelle Funktion eine Coroutine ist
     private LyrType? _currentThis;
     private Dictionary<Symbol, LyrType> _narrowed = new(ReferenceEqualityComparer.Instance); // ?T → T im bewiesen-non-null-Bereich
 
@@ -35,6 +37,7 @@ public sealed class TypeChecker
         _de = de;
         _throwable = comp.Builtins.LookupLocal("Throwable") as TypeSymbol;
         _panic = comp.Builtins.LookupLocal("panic") as FunctionSymbol;
+        _coroutine = comp.Builtins.LookupLocal("Coroutine") as TypeSymbol;
     }
 
     public TypeResult Check()
@@ -117,6 +120,7 @@ public sealed class TypeChecker
     private void CheckFunction(FunctionDecl fn, SymbolTable outerScope, LyrType? thisType)
     {
         var savedReturn = _currentReturn;
+        var savedYield = _currentYield;
         var savedThis = _currentThis;
         var savedNarrowed = _narrowed;
         _currentThis = thisType;
@@ -137,16 +141,20 @@ public sealed class TypeChecker
                 CheckAssignable(p.Default, CheckExpr(p.Default, scope), pt, p.Span);
         }
         _currentReturn = fn.ReturnType is not null ? ResolveType(fn.ReturnType, scope) : LyrType.Void;
+        // Coroutine (§8): der Body liefert nie den Coroutine-Wert (den baut die Runtime beim
+        // Aufruf) — Return-Coverage entfällt, stattdessen gilt der Yield-Kontext.
+        _currentYield = _currentReturn is CoroutineOf co ? co.Yield : null;
         CheckThrowsClause(fn, scope);
 
         if (fn.Body is not null)
         {
             CheckBlock(fn.Body, scope);
-            if (!TypeFacts.IsVoid(_currentReturn) && !Flow.AlwaysReturns(fn.Body, _result))
+            if (!TypeFacts.IsVoid(_currentReturn) && _currentYield is null && !Flow.AlwaysReturns(fn.Body, _result))
                 _de.Report("LYR-SEM0017", Severity.Error, fn.Span, $"not all code paths of '{fn.Name}' return a value");
         }
 
         _currentReturn = savedReturn;
+        _currentYield = savedYield;
         _currentThis = savedThis;
         _narrowed = savedNarrowed;
     }
@@ -172,7 +180,16 @@ public sealed class TypeChecker
             case DoWhileStmt d: CheckBlock(d.Body, scope); CheckCondition(d.Condition, scope); break;
             case ForInStmt fo: CheckForIn(fo, scope); break;
             case ReturnStmt r:
-                if (r.Value is not null) CheckAssignable(r.Value, CheckExpr(r.Value, scope, _currentReturn), _currentReturn, r.Span);
+                if (_currentYield is not null) // Coroutine (§8, D8): nur nacktes return (frühes Ende)
+                {
+                    if (r.Value is not null)
+                    {
+                        CheckExpr(r.Value, scope);
+                        _de.Report("LYR-SEM0039", Severity.Error, r.Span,
+                            "a coroutine ends with a bare 'return;' — it cannot return a value");
+                    }
+                }
+                else if (r.Value is not null) CheckAssignable(r.Value, CheckExpr(r.Value, scope, _currentReturn), _currentReturn, r.Span);
                 else if (!TypeFacts.IsVoid(_currentReturn))
                     _de.Report("LYR-SEM0001", Severity.Error, r.Span, "return without a value in a non-void function");
                 break;
@@ -183,10 +200,18 @@ public sealed class TypeChecker
                     _de.Report("LYR-SEM0030", Severity.Error, t.Span,
                         $"cannot throw '{TypeFacts.Display(thrown)}' — only types implementing 'Throwable' can be thrown");
                 break;
-            case YieldStmt y: if (y.Value is not null) CheckExpr(y.Value, scope); break;
-            case ResumeStmt re:
-                CheckExpr(re.Coroutine, scope);
-                if (re.Value is not null) CheckExpr(re.Value, scope);
+            case YieldStmt y: // §8: nur in Coroutinen; Wert gegen den Yield-Typ
+                var yv = y.Value is not null ? CheckExpr(y.Value, scope, _currentYield) : null;
+                if (_currentYield is null)
+                    _de.Report("LYR-SEM0038", Severity.Error, y.Span,
+                        "'yield' is only allowed in a coroutine — declare the return type as 'Coroutine<T>'");
+                else if (yv is null)
+                {
+                    if (!TypeFacts.IsVoid(_currentYield) && !_currentYield.IsError)
+                        _de.Report("LYR-SEM0038", Severity.Error, y.Span,
+                            $"'yield' without a value requires 'Coroutine<void>', this coroutine yields '{TypeFacts.Display(_currentYield)}'");
+                }
+                else CheckAssignable(y.Value!, yv, _currentYield, y.Span);
                 break;
             case DeferStmt de: CheckStmt(de.Body, scope); break;
             case TryStmt tr:
@@ -370,6 +395,7 @@ public sealed class TypeChecker
             case IfExpr iff: return CheckIfExpr(iff, scope);
             case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
             case LambdaExpr lam: return CheckLambda(lam, scope);
+            case ResumeExpr re: return CheckResume(re, scope);
             case AtIdentifierExpr: return LyrType.Error; // Attribute haben in v1 keinen Ausdruckstyp
 
             default: return LyrType.Error;
@@ -694,6 +720,7 @@ public sealed class TypeChecker
             FnType f => new FnType(f.Parameters.Select(p => Substitute(p, map)).ToArray(), Substitute(f.Return, map)),
             GenericInstance gi => new GenericInstance(gi.Definition, gi.Arguments.Select(a => Substitute(a, map)).ToArray()),
             RangeOf r => new RangeOf(Substitute(r.Element, map)),
+            CoroutineOf co => new CoroutineOf(Substitute(co.Yield, map)),
             _ => type // Primitive / NamedRef / Error / Null
         };
     }
@@ -730,6 +757,7 @@ public sealed class TypeChecker
                 for (var i = 0; i < pf.Parameters.Length; i++) UnifyInfer(pf.Parameters[i], af.Parameters[i], map);
                 UnifyInfer(pf.Return, af.Return, map);
                 break;
+            case CoroutineOf pc when arg is CoroutineOf ac: UnifyInfer(pc.Yield, ac.Yield, map); break;
         }
     }
 
@@ -1477,8 +1505,22 @@ public sealed class TypeChecker
         }
     }
 
+    // resume co (§8): liefert den Wert des nächsten yield.
+    private LyrType CheckResume(ResumeExpr re, SymbolTable scope)
+    {
+        var t = CheckExpr(re.Coroutine, scope);
+        return t switch
+        {
+            CoroutineOf co => co.Yield,
+            ErrorType => LyrType.Error,
+            _ => Report(re.Span, "LYR-SEM0040", $"'resume' needs a Coroutine<T>, got '{TypeFacts.Display(t)}'")
+        };
+    }
+
     private LyrType CheckLambda(LambdaExpr lam, SymbolTable scope)
     {
+        var savedYield = _currentYield;
+        _currentYield = null; // Lambda ist keine Coroutine — yield darin ist ein Fehler
         var lambdaScope = new SymbolTable(scope);
         var pTypes = lam.Parameters.Select(p =>
         {
@@ -1494,6 +1536,7 @@ public sealed class TypeChecker
             _ => LyrType.Error
         };
         var ret = lam.ReturnType is not null ? ResolveType(lam.ReturnType, scope) : bodyType;
+        _currentYield = savedYield;
         return new FnType(pTypes, ret);
     }
 
@@ -1566,6 +1609,13 @@ public sealed class TypeChecker
                 if (sym is null)
                     return Report(n.Span, "LYR-SEM0011", $"unresolved type '{string.Join('.', n.Path)}'");
                 if (sym is GenericParamSymbol gp) return new TypeParamType(gp);
+                if (ReferenceEquals(sym, _coroutine)) // Coroutine<T> (§8) → interner CoroutineOf
+                {
+                    if (n.TypeArguments.Length != 1)
+                        return Report(n.Span, "LYR-SEM0026",
+                            $"'Coroutine' expects exactly 1 type argument, got {n.TypeArguments.Length}");
+                    return new CoroutineOf(ResolveType(n.TypeArguments[0], scope));
+                }
                 if (sym is TypeSymbol { Kind: not (TypeSymbolKind.Builtin or TypeSymbolKind.Alias) } gts
                     && (gts.Generics.Length > 0 || n.TypeArguments.Length > 0))
                     return MakeGenericInstance(gts, n, scope);

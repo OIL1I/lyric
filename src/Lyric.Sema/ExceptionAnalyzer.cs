@@ -111,10 +111,6 @@ internal sealed class ExceptionAnalyzer
             case ForInStmt fo: AnalyzeExpr(fo.Iterable); AnalyzeStmt(fo.Body); break;
             case ReturnStmt r: if (r.Value is not null) AnalyzeExpr(r.Value); break;
             case YieldStmt y: if (y.Value is not null) AnalyzeExpr(y.Value); break;
-            case ResumeStmt re:
-                AnalyzeExpr(re.Coroutine);
-                if (re.Value is not null) AnalyzeExpr(re.Value);
-                break;
             case DeferStmt de: AnalyzeStmt(de.Body); break; // v1: wie Code am Deklarationsort
             case ThrowStmt t:
                 AnalyzeExpr(t.Value);
@@ -162,6 +158,7 @@ internal sealed class ExceptionAnalyzer
                 break;
             case LambdaExpr lam: AnalyzeLambda(lam); break;
             case UnaryExpr u: AnalyzeExpr(u.Operand); break;
+            case ResumeExpr re: AnalyzeExpr(re.Coroutine); break;
             case PostfixExpr p: AnalyzeExpr(p.Operand); break;
             case BinaryExpr b: AnalyzeExpr(b.Left); AnalyzeExpr(b.Right); break;
             case AssignExpr a: AnalyzeExpr(a.Target); AnalyzeExpr(a.Value); break;

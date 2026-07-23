@@ -34,7 +34,6 @@ public sealed partial class Parser
         TokenKind.Continue => ParseContinue(),
         TokenKind.Return => ParseReturn(),
         TokenKind.Yield => ParseYield(),
-        TokenKind.Resume => ParseResume(),
         TokenKind.Defer => ParseDefer(),
         TokenKind.Throw => ParseThrow(),
         TokenKind.Try => ParseTry(),
@@ -160,14 +159,7 @@ public sealed partial class Parser
         return new YieldStmt(value, Span.Union(kw.Span, semi.Span));
     }
 
-    private Stmt ParseResume()
-    {
-        var kw = _buffer.Advance();
-        var coroutine = ParseExpr(0);
-        Expr? value = _buffer.Match(TokenKind.Comma) ? ParseExpr(0) : null;
-        var semi = ExpectSemicolon();
-        return new ResumeStmt(coroutine, value, Span.Union(kw.Span, semi.Span));
-    }
+    // resume ist ein Ausdruck (§6.2, D6) — 'resume co;' läuft als ExprStmt durch ParseExprStmt.
 
     private Stmt ParseDefer()
     {

@@ -156,7 +156,6 @@ public sealed class SemaRules
             case ReturnStmt r: if (r.Value is not null) WalkExpr(r.Value); break;
             case ThrowStmt t: WalkExpr(t.Value); break;
             case YieldStmt y: if (y.Value is not null) WalkExpr(y.Value); break;
-            case ResumeStmt re: WalkExpr(re.Coroutine); if (re.Value is not null) WalkExpr(re.Value); break;
             case DeferStmt de: WalkStmt(de.Body); break;
             case TryStmt tr: CheckTry(tr); WalkStmt(tr.Body); foreach (var c in tr.Catches) WalkStmt(c.Body); break;
             case MatchStmt m:
@@ -184,9 +183,10 @@ public sealed class SemaRules
 
     private void CheckExprStmt(ExprStmt es)
     {
-        var ok = es.Expr is CallExpr or AssignExpr or PostfixExpr { Operator: PostfixOp.Inc or PostfixOp.Dec } or ErrorExpr;
+        var ok = es.Expr is CallExpr or AssignExpr or ResumeExpr
+            or PostfixExpr { Operator: PostfixOp.Inc or PostfixOp.Dec } or ErrorExpr;
         if (!ok)
-            _de.Report("LYR-SEM0022", Severity.Error, es.Span, "expression statement has no effect (only calls and assignments are allowed)");
+            _de.Report("LYR-SEM0022", Severity.Error, es.Span, "expression statement has no effect (only calls, assignments and resume are allowed)");
     }
 
     private void WalkExpr(Expr expr)
@@ -228,6 +228,7 @@ public sealed class SemaRules
     {
         UnaryExpr u => [u.Operand],
         PostfixExpr p => [p.Operand],
+        ResumeExpr re => [re.Coroutine],
         BinaryExpr b => [b.Left, b.Right],
         RangeExpr r => [r.Low, r.High],
         CastExpr c => [c.Operand],
