@@ -11,59 +11,63 @@
 
 ## Aktueller Meilenstein
 
-**M3 — Resolver + Sema (basic) — abgeschlossen**
+**M4 — Sema (full) — in Arbeit**
 
-Alle Slices durch; `lyric check` läuft; 18 E2E-Programme (11 valide / 7 negativ) checken
-sauber = M3-Exit erreicht. Offen: Tag `m3-complete`, dann M4 planen.
-M2 = `m2-complete`, M1 = `m1-complete`.
+Slice-Schnitt: **1** Generics, **2** Pattern-Match voll + Exhaustivität, **3** Exceptions
++ Coroutinen, **4** Closures + Interfaces + Extend. Entscheidungen D1–D5 bestätigt
+(Monomorph / strenge Constraints / kein Turbofish / pragmatische Exhaustivität /
+bidir. Lambda-Inferenz). **Slice 1a (Generics-Fundament) durch.**
+M3 = `m3-complete`, M2 = `m2-complete`, M1 = `m1-complete`.
 
 ## Was schon erledigt ist
 
 - [x] **M1 — Lexer** (`m1-complete`).
 - [x] **M2 — Parser** (`m2-complete`): voller AST, RD + Pratt, Patterns/`match`/if-Ausdruck/
   Struct-Init; `AstDumper`, CLI `lyric parse`. Codes `LYR-PAR0001..0037`.
-- [x] **M3 — Resolver + Sema (basic)**:
-  - **Resolver** (`Lyric.Resolver`): Symbole/Scopes, Deklarieren/Imports/Typ-Namen-Bindung,
-    Builtins, Duplikat-/Zyklus-/Sichtbarkeits-Checks. `LYR-RES0001..0005`.
-  - **TypeChecker** (`Lyric.Sema`): jeder Ausdruck typt; Numerik strikt + Literal-Fit,
-    `+`/`*` für string/T[], `as`-Numerik, Nullable-Ops, Calls/Member/Struct-Init/if/match/
-    Lambda. `LYR-SEM0001..0016`.
-  - **Flow** (`Flow`/`FlowAnalyzer`): Return-Coverage, DAA, Nullable-Narrowing (Early-Exit).
-    `LYR-SEM0017/0018`.
-  - **Regeln** (`SemaRules`): Lvalue/Mutabilität, Interface-Konformität, `main`-Contract,
-    Signatur-Regeln. `LYR-SEM0019..0025`. CLI `lyric check`. 89 Resolver+Sema-Tests.
+- [x] **M3 — Resolver + Sema (basic)** (`m3-complete`): Resolver (Symbole/Scopes, Imports,
+  Typ-Namen-Bindung, Builtins, Zyklen), TypeChecker (jeder Ausdruck typt, Numerik strikt,
+  `+`/`*` string/T[], Calls/Member/Struct-Init/if/match/Lambda), Flow (Return-Coverage, DAA,
+  Narrowing), Regeln (Lvalue/Mutabilität, Konformität, `main`). CLI `lyric check`.
+  Codes `LYR-RES0001..0005`, `LYR-SEM0001..0025`.
+- [x] **M4 — Slice 1a — Generics-Fundament**:
+  - **Resolver**: `GenericParamSymbol`; Typ-Params (Typ- und Funktions-generisch) lösen auf
+    (kein `RES0002` mehr auf `T`); Member gegen Typ-Member-Scope gebunden, Constraints gebunden.
+  - **Sema**: `TypeParamType` + `GenericInstance` (invariant-gleich); `Box<int>.value: T` →
+    `int` per **Substitution** (rekursiv, in Array-/Tuple-/Fn-Feldern); Constraint-Member auf
+    `T` nur aus Constraints (D2); Arity-Check. Codes `LYR-SEM0026/0027`. 13 Tests.
 
 ## Woran wir gerade arbeiten
 
-Nichts offen in M3. Nächster Meilenstein: **M4 — Sema (full)** (ROADMAP): Generics
-(Type-Params, Constraints, Monomorphisierung), Pattern-Payload-Destructuring +
-Exhaustivität, Coroutine-Sema (`yield`/`resume`), Exception-Sema (`throws`-Propagation),
-`extend`-Merge + Orphan-Rule, Closure-Capture. Noch nicht geplant/geschnitten.
+**M4 — Slice 1b (Generics, Teil 2)**: generische Konstruktion `Stack<int> { }` + `TypePath`
+(Grammatik §6.2/§6.3 scharf machen + Parser), Call-Inferenz (`identity(5)` → `T=int`),
+Constraint-Erfüllung (`int :: Comparable`? inkl. Builtin-Conformance).
 
 ## Was als nächstes ansteht
 
-- Tag `m3-complete` setzen.
-- M4 planen (Slice-Schnitt).
+- M4-1b (s.o.), dann Slices **2** (Pattern-Payload + Exhaustivität), **3** (Exceptions +
+  Coroutinen), **4** (Closures + Interfaces + Extend-Merge + Orphan-Rule).
 
-## An M4 übergeben (bewusst in M3 vertagt)
+## Noch offen in M4 (Slice-Zuordnung)
 
-- Enum-Payload-Destructuring: Pattern-Vars sind in M3 Poison → echte Typen in M4.
-- Externe Imports (Stdlib) opak, nie ein Fehler (Modul-Universum erst mit M8).
-- `extend`-Methoden noch nicht in Ziel-Typ gemerged (+ Orphan-Rule).
-- Interface-Konformität prüft nur Methoden-Namen (Signatur-Match → M4).
-- Block-Wert-Frage bei Match-Block-Armen / Block-Lambdas; `match`-Exhaustivität
-  (M3-Return-Coverage nutzt `_`-Arm-Näherung).
+- **1b**: Konstruktion `Stack<int> { }` + `TypePath`; Call-Inferenz; Constraint-Erfüllung;
+  Constraints mit eigenen Typ-Args (`Comparable<T>` über die Constraint-Grenze substituieren).
+- **2**: Enum-Payload-Destructuring (M3-Poison → echte Typen); `match`-Exhaustivität;
+  Block-Wert-Frage (Block-Arme / Block-Lambdas).
+- **4**: `extend`-Merge + Orphan-Rule (inkl. Extend-Methoden-Generics); Interface-Konformität
+  mit Signatur-Match (nicht nur Namen).
+- Extern (nicht M4): Stdlib-Imports opak → Modul-Universum erst mit M8.
 
 ## Design-Entscheidungen (Kontext)
 
 - AST = immutable Records; Symbole = mutable Klassen; Binding/Typen via Seiten-Tabellen (Roslyn-Stil).
 - Builtins als Wurzel-Scope; 2-Pass-Deklarieren; strukturierte Flow-Analyse (kein CFG).
 - Typsystem-Regeln in `Sprache.md §6.5`; `ErrorType` = Poison (keine Folgefehler).
+- Generics: Monomorphisierung (Sema sammelt Instanzen, Codegen → M5); strenge Constraints (D2).
 - M1/M2-Kernentscheidungen: in den Tags bzw. der git-Historie.
 
 ## Letzter relevanter Commit
 
-`M3: sema — structural rules, lyric check, e2e (slice 3b)`
+`M4: sema — generics foundation (slice 1a)`
 
 ---
 
