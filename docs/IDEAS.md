@@ -22,10 +22,9 @@
 
 ## Language features
 
-<!-- Add bullets here as ideas surface. Examples below; delete once real ones arrive. -->
+<!-- Add bullets here as ideas surface. -->
 
-- _(example, delete me)_ `if-let` shorthand for matching a single pattern: `if let Some(x) = maybe { ... }`
-- _(example, delete me)_ Trailing-closure syntax à la Swift: `xs.map { x => x + 1 }`
+- Unreachable-/redundante Match-Arme erkennen und warnen — ein Arm nach einem irrefutablen Binding (oder nach vollständiger Varianten-Abdeckung) ist toter Code. Schwester der Exhaustivitätsprüfung; rustc meldet das als „unreachable pattern".
 
 ## Standard library
 
@@ -39,8 +38,8 @@
 
 ## VM / runtime
 
-- _(example, delete me)_ JIT backend via Cranelift for hot loops
-- _(example, delete me)_ Generational GC instead of relying on .NET GC
+- Native Runtime (Rust o.ä.) als zweite, unabhängige Implementierung der `.lyrbc`-Spec — GC-Lernprojekt (eigener Tracing-GC). Setzt eine eingefrorene, plattformneutrale Bytecode-Spec und die explizite Native-Hook-Liste voraus.
+- JIT-Backend (z.B. Cranelift) in der nativen Runtime — Codegen-Lernprojekt. Setzt die native Runtime voraus.
 
 ## Wild ideas
 
