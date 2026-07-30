@@ -80,9 +80,6 @@ public static class IrVerifier
     /// </summary>
     private sealed class FunctionVerifier
     {
-        private static readonly IrType VoidType = new IrScalarType(IrScalar.Void);
-        private static readonly IrType BoolType = new IrScalarType(IrScalar.Bool);
-
         private readonly IrModule _module; // nur für die Auflösung von Call-Zielen
         private readonly IrFunction _fn;
         private readonly List<string> _findings;
@@ -134,7 +131,7 @@ public static class IrVerifier
                 }
 
                 // Es gibt keine void-Werte; void ist nur ein Funktions-Rückgabetyp (Sprache.md §4).
-                if (VoidType.Equals(local.Type))
+                if (IsVoid(local.Type))
                 {
                     Report($"local {local.Id} ({local.Name}) has type void");
                     ok = false;
@@ -150,7 +147,7 @@ public static class IrVerifier
                     ok = false;
                 }
 
-                if (VoidType.Equals(temp.Type))
+                if (IsVoid(temp.Type))
                 {
                     Report($"temp {temp.Id} has type void");
                     ok = false;
@@ -539,7 +536,7 @@ public static class IrVerifier
             var rhs = TypeOf(b.Rhs);
 
             // Sprache.md §6.5: Numerik ist strikt, kein implizites Widening.
-            if (!lhs.Equals(rhs))
+            if (!IrType.Equal(lhs, rhs))
             {
                 Report(block, index,
                     $"operand types differ: {b.Lhs} is {Show(lhs)}, {b.Rhs} is {Show(rhs)}");
@@ -552,7 +549,7 @@ public static class IrVerifier
                 // sondern in der Temp-Tabelle — der Emitter schlägt ihn dort nach, weil
                 // signed/unsigned verschiedene Opcodes sind. Bewusst kein zweites Typ-Feld:
                 // das wäre eine dritte Wahrheitsquelle, die driften kann.
-                if (!BoolType.Equals(b.Type) || !BoolType.Equals(TypeOf(b.Dest)))
+                if (!IsBool(b.Type) || !IsBool(TypeOf(b.Dest)))
                     Report(block, index,
                         $"comparison must produce bool, found type {Show(b.Type)} " +
                         $"and dest {b.Dest} of {Show(TypeOf(b.Dest))}");
@@ -560,22 +557,22 @@ public static class IrVerifier
                 var ordering = b.Kind is not (IrBinKind.Eq or IrBinKind.Ne);
                 if (ordering && !IsNumeric(lhs))
                     Report(block, index,
-                        $"ordering comparison {BinName(b.Kind)} on non-numeric type {Show(lhs)}");
+                        $"ordering comparison {IrNames.Bin(b.Kind)} on non-numeric type {Show(lhs)}");
                 else if (!ordering && !IsEquatable(lhs))
                     Report(block, index, $"equality comparison on type {Show(lhs)}");
 
                 return;
             }
 
-            if (!b.Type.Equals(lhs) || !TypeOf(b.Dest).Equals(lhs))
+            if (!IrType.Equal(b.Type, lhs) || !IrType.Equal(TypeOf(b.Dest), lhs))
                 Report(block, index,
-                    $"{BinName(b.Kind)} result must have the operand type {Show(lhs)}, found type " +
+                    $"{IrNames.Bin(b.Kind)} result must have the operand type {Show(lhs)}, found type " +
                     $"{Show(b.Type)} and dest {b.Dest} of {Show(TypeOf(b.Dest))}");
 
             if (IsBitwiseOrShift(b.Kind))
             {
                 if (!IsInteger(lhs))
-                    Report(block, index, $"{BinName(b.Kind)} on non-integer type {Show(lhs)}");
+                    Report(block, index, $"{IrNames.Bin(b.Kind)} on non-integer type {Show(lhs)}");
             }
             else if (!IsNumeric(lhs))
             {
@@ -585,7 +582,7 @@ public static class IrVerifier
                 var hint = IsStringLike(lhs) && b.Kind is IrBinKind.Add or IrBinKind.Mul
                     ? " (string concatenation/repetition lowers to a call, not a binop)"
                     : "";
-                Report(block, index, $"{BinName(b.Kind)} on non-numeric type {Show(lhs)}{hint}");
+                Report(block, index, $"{IrNames.Bin(b.Kind)} on non-numeric type {Show(lhs)}{hint}");
             }
         }
 
@@ -593,9 +590,9 @@ public static class IrVerifier
         {
             var operand = TypeOf(u.Operand);
 
-            if (!u.Type.Equals(operand) || !TypeOf(u.Dest).Equals(operand))
+            if (!IrType.Equal(u.Type, operand) || !IrType.Equal(TypeOf(u.Dest), operand))
                 Report(block, index,
-                    $"{UnName(u.Kind)} result must have the operand type {Show(operand)}, found type " +
+                    $"{IrNames.Un(u.Kind)} result must have the operand type {Show(operand)}, found type " +
                     $"{Show(u.Type)} and dest {u.Dest} of {Show(TypeOf(u.Dest))}");
 
             switch (u.Kind)
@@ -603,7 +600,7 @@ public static class IrVerifier
                 case IrUnKind.Neg when !IsNumeric(operand):
                     Report(block, index, $"neg on non-numeric type {Show(operand)}");
                     break;
-                case IrUnKind.Not when !BoolType.Equals(operand):
+                case IrUnKind.Not when !IsBool(operand):
                     Report(block, index, $"not on non-bool type {Show(operand)}");
                     break;
                 case IrUnKind.BitNot when !IsInteger(operand):
@@ -615,7 +612,7 @@ public static class IrVerifier
         private void CheckConvert(Convert cv, BlockId block, int index)
         {
             var operand = TypeOf(cv.Operand);
-            if (!cv.From.Equals(operand))
+            if (!IrType.Equal(cv.From, operand))
                 Report(block, index,
                     $"convert declares from-type {Show(cv.From)} but {cv.Operand} is {Show(operand)}");
 
@@ -631,7 +628,7 @@ public static class IrVerifier
 
             // Das Lowering elidiert Identitäts-Konvertierungen (`x as int` bei x: int ist legales
             // Lyric, ergibt aber keinen sinnvollen Opcode).
-            if (cv.From.Equals(cv.To))
+            if (IrType.Equal(cv.From, cv.To))
                 Report(block, index, $"identity convert {Show(cv.From)} -> {Show(cv.To)}");
         }
 
@@ -643,7 +640,7 @@ public static class IrVerifier
                 return;
             }
 
-            if (!l.Type.Equals(localType))
+            if (!IrType.Equal(l.Type, localType))
                 Report(block, index,
                     $"load declares type {Show(l.Type)} but {l.Local} is {Show(localType)}");
 
@@ -659,7 +656,7 @@ public static class IrVerifier
             }
 
             var value = TypeOf(s.Value);
-            if (!localType.Equals(value))
+            if (!IrType.Equal(localType, value))
                 Report(block, index,
                     $"store of {s.Value} ({Show(value)}) into {s.Local} ({Show(localType)})");
         }
@@ -693,20 +690,20 @@ public static class IrVerifier
                 {
                     var expected = callee.Locals[i].Type; // Konvention: erste N Locals = Params
                     var actual = TypeOf(k.Args[i]);
-                    if (!expected.Equals(actual))
+                    if (!IrType.Equal(expected, actual))
                         Report(block, index, $"call to {callee.Name}: arg {N(i)} is {Show(actual)}, " +
                                              $"expected {Show(expected)}");
                 }
             }
 
-            var returnsVoid = VoidType.Equals(callee.ReturnType);
+            var returnsVoid = IsVoid(callee.ReturnType);
             if (returnsVoid && k.Dest is { } unwanted)
                 Report(block, index,
                     $"call to void function {callee.Name} must not have a dest (found {unwanted})");
             else if (!returnsVoid && k.Dest is null)
                 Report(block, index,
                     $"call to {callee.Name} returning {Show(callee.ReturnType)} must have a dest");
-            else if (k.Dest is { } dest && !callee.ReturnType.Equals(TypeOf(dest)))
+            else if (k.Dest is { } dest && !IrType.Equal(callee.ReturnType, TypeOf(dest)))
                 Report(block, index, $"call dest {dest} is {Show(TypeOf(dest))} but {callee.Name} " +
                                      $"returns {Show(callee.ReturnType)}");
         }
@@ -717,20 +714,20 @@ public static class IrVerifier
             {
                 case Return r:
                 {
-                    var returnsVoid = VoidType.Equals(_fn.ReturnType);
+                    var returnsVoid = IsVoid(_fn.ReturnType);
                     if (returnsVoid && r.Value is { } unwanted)
                         ReportTerm(block, $"void function returns a value ({unwanted})");
                     else if (!returnsVoid && r.Value is null)
                         ReportTerm(block, $"function returns {Show(_fn.ReturnType)} " +
                                           "but 'ret' carries no value");
-                    else if (r.Value is { } value && !_fn.ReturnType.Equals(TypeOf(value)))
+                    else if (r.Value is { } value && !IrType.Equal(_fn.ReturnType, TypeOf(value)))
                         ReportTerm(block, $"returns {value} ({Show(TypeOf(value))}), " +
                                           $"expected {Show(_fn.ReturnType)}");
                     break;
                 }
 
                 case CondBranch c:
-                    if (!BoolType.Equals(TypeOf(c.Cond)))
+                    if (!IsBool(TypeOf(c.Cond)))
                         ReportTerm(block, $"condition {c.Cond} is {Show(TypeOf(c.Cond))}, must be bool");
                     break;
 
@@ -749,7 +746,7 @@ public static class IrVerifier
             // Die Type-Felder auf den Instruktionen sind Kopien für den Printer; die Temp-Tabelle
             // ist die Autorität. Dass beide übereinstimmen, ist der Kern-Job des Verifiers.
             var fromTable = TypeOf(dest);
-            if (!declared.Equals(fromTable))
+            if (!IrType.Equal(declared, fromTable))
                 Report(block, index, $"{what} declares type {Show(declared)} but {dest} is " +
                                      $"{Show(fromTable)} in the temp table");
         }
@@ -813,6 +810,14 @@ public static class IrVerifier
             local.Value >= 0 && local.Value < _fn.Locals.Count ? _fn.Locals[local.Value].Type : null;
 
         // ------------------------------------------------------------------ Typ-Prädikate
+
+        // "Ist der Typ genau dieser Skalar?" läuft über Pattern-Matching, nicht über
+        // IrType.Equal: die Frage ist für jeden Typ beantwortbar, und in CheckTables muss sie
+        // auch für einen künftigen nicht-skalaren Typ eine Antwort geben statt zu werfen.
+        // IrType.Equal ist für das andere Problem da — zwei Typen gegeneinander zu vergleichen.
+        private static bool IsVoid(IrType type) => type is IrScalarType { Kind: IrScalar.Void };
+
+        private static bool IsBool(IrType type) => type is IrScalarType { Kind: IrScalar.Bool };
 
         private static bool IsInteger(IrType type) => type is IrScalarType
         {
@@ -886,28 +891,15 @@ public static class IrVerifier
         private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
         private static string N(ulong value) => value.ToString(CultureInfo.InvariantCulture);
 
-        /// <summary>Typ-Name für Fehlermeldungen. Gleiche Schreibweise wie <see cref="IrPrinter"/>,
-        /// aber mit Fallback statt Wurf: ein Verifier darf auf malformed IR nie selbst crashen.</summary>
+        /// <summary>Typ-Name für Fehlermeldungen, über <see cref="IrNames"/> also in derselben
+        /// Schreibweise wie der Printer-Dump — man liest beide nebeneinander.</summary>
+        /// <remarks>Der Fallback für nicht-skalare Typen ist Absicht: <c>Show</c> läuft
+        /// ausschließlich beim Bauen von Befund-Texten, und ein Wurf würde dort genau den Befund
+        /// verdecken, den wir gerade melden wollen. Der laute Wurf sitzt in
+        /// <see cref="IrType.Equal"/>, wo er dem Vergleich selbst gilt.</remarks>
         private static string Show(IrType type) => type switch
         {
-            IrScalarType s => s.Kind switch
-            {
-                IrScalar.I8 => "i8",
-                IrScalar.I16 => "i16",
-                IrScalar.I32 => "i32",
-                IrScalar.I64 => "i64",
-                IrScalar.U8 => "u8",
-                IrScalar.U16 => "u16",
-                IrScalar.U32 => "u32",
-                IrScalar.U64 => "u64",
-                IrScalar.F32 => "f32",
-                IrScalar.F64 => "f64",
-                IrScalar.Bool => "bool",
-                IrScalar.Char => "char",
-                IrScalar.String => "string",
-                IrScalar.Void => "void",
-                _ => s.Kind.ToString()
-            },
+            IrScalarType s => IrNames.Scalar(s.Kind),
             _ => type.ToString() ?? type.GetType().Name
         };
 
@@ -919,35 +911,6 @@ public static class IrVerifier
             CharConst => "char",
             StringConst => "string",
             _ => value.GetType().Name
-        };
-
-        private static string BinName(IrBinKind kind) => kind switch
-        {
-            IrBinKind.Add => "add",
-            IrBinKind.Sub => "sub",
-            IrBinKind.Mul => "mul",
-            IrBinKind.Div => "div",
-            IrBinKind.Rem => "rem",
-            IrBinKind.Shl => "shl",
-            IrBinKind.Shr => "shr",
-            IrBinKind.BitAnd => "and",
-            IrBinKind.BitOr => "or",
-            IrBinKind.BitXor => "xor",
-            IrBinKind.Lt => "lt",
-            IrBinKind.Le => "le",
-            IrBinKind.Gt => "gt",
-            IrBinKind.Ge => "ge",
-            IrBinKind.Eq => "eq",
-            IrBinKind.Ne => "ne",
-            _ => kind.ToString()
-        };
-
-        private static string UnName(IrUnKind kind) => kind switch
-        {
-            IrUnKind.Neg => "neg",
-            IrUnKind.Not => "not",
-            IrUnKind.BitNot => "bitnot",
-            _ => kind.ToString()
         };
     }
 }

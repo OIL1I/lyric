@@ -86,8 +86,8 @@ public static class IrPrinter
     private static string OpStr(IrOp op, CallContext ctx) => op switch
     {
         Const c => $"{c.Dest}: {TypeStr(c.Type)} = const {ConstStr(c.Value)}",
-        BinOp b => $"{b.Dest}: {TypeStr(b.Type)} = {BinMn(b.Kind)} {b.Lhs}, {b.Rhs}",
-        UnOp u => $"{u.Dest}: {TypeStr(u.Type)} = {UnMn(u.Kind)} {u.Operand}",
+        BinOp b => $"{b.Dest}: {TypeStr(b.Type)} = {IrNames.Bin(b.Kind)} {b.Lhs}, {b.Rhs}",
+        UnOp u => $"{u.Dest}: {TypeStr(u.Type)} = {IrNames.Un(u.Kind)} {u.Operand}",
         Convert cv => $"{cv.Dest}: {TypeStr(cv.To)} = convert {TypeStr(cv.From)} {cv.Operand}",
         LoadLocal l => $"{l.Dest}: {TypeStr(l.Type)} = load {l.Local}",
         StoreLocal s => $"store {s.Local}, {s.Value}",
@@ -117,27 +117,8 @@ public static class IrPrinter
     // --- Formatierungs-Helfer ---
     private static string TypeStr(IrType t) => t switch
     {
-        IrScalarType s => ScalarStr(s.Kind),
+        IrScalarType s => IrNames.Scalar(s.Kind),
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
-    };
-
-    private static string ScalarStr(IrScalar k) => k switch
-    {
-        IrScalar.I8 => "i8",
-        IrScalar.I16 => "i16",
-        IrScalar.I32 => "i32",
-        IrScalar.I64 => "i64",
-        IrScalar.U8 => "u8",
-        IrScalar.U16 => "u16",
-        IrScalar.U32 => "u32",
-        IrScalar.U64 => "u64",
-        IrScalar.F32 => "f32",
-        IrScalar.F64 => "f64",
-        IrScalar.Bool => "bool",
-        IrScalar.Char => "char",
-        IrScalar.String => "string",
-        IrScalar.Void => "void",
-        _ => throw new InternalCompilationException($"ir-printer: unknown scalar {k}")
     };
 
     private static string ConstStr(IrConstValue v) => v switch
@@ -148,35 +129,6 @@ public static class IrPrinter
         CharConst c => c.CodePoint.ToString(CultureInfo.InvariantCulture),
         StringConst s => Quote(s.Value),
         _ => throw new InternalCompilationException($"ir-printer: unhandled const {v.GetType().Name}")
-    };
-
-    private static string BinMn(IrBinKind k) => k switch
-    {
-        IrBinKind.Add => "add",
-        IrBinKind.Sub => "sub",
-        IrBinKind.Mul => "mul",
-        IrBinKind.Div => "div",
-        IrBinKind.Rem => "rem",
-        IrBinKind.Shl => "shl",
-        IrBinKind.Shr => "shr",
-        IrBinKind.BitAnd => "and",
-        IrBinKind.BitOr => "or",
-        IrBinKind.BitXor => "xor",
-        IrBinKind.Lt => "lt",
-        IrBinKind.Le => "le",
-        IrBinKind.Gt => "gt",
-        IrBinKind.Ge => "ge",
-        IrBinKind.Eq => "eq",
-        IrBinKind.Ne => "ne",
-        _ => throw new InternalCompilationException($"ir-printer: unknown binop {k}")
-    };
-
-    private static string UnMn(IrUnKind k) => k switch
-    {
-        IrUnKind.Neg => "neg",
-        IrUnKind.Not => "not",
-        IrUnKind.BitNot => "bitnot",
-        _ => throw new InternalCompilationException($"ir-printer: unknown unop {k}")
     };
 
     // Escaping wie AstDumper.Quote — konsistent halten, damit String-Snapshots nicht driften.

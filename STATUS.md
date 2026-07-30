@@ -52,16 +52,8 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 
 ## Noch offen
 
-**Aus M5 P1–P3 (klein, vor oder mit P4 abräumen):**
+**Aus M5 P1–P3:**
 
-- `IrType.Equal` liefert für Nicht-Skalare `false`, auch für `Equal(a, a)` — sobald ein
-  nicht-skalarer Typ existiert, meldet der Verifier eine Flut falscher Typ-Mismatches. Der Verifier
-  umgeht sie und nutzt Record-Gleichheit (strukturell). **Löschen oder `default` auf `throw`.**
-- `IrVerifier.Show`/`BinName`/`UnName` duplizieren `IrPrinter.TypeStr`/`BinMn`/`UnMn` (~60 Zeilen,
-  Drift-Risiko bei Mnemonic-Umbenennungen). Teilen, sobald `IrPrinter` sie `internal` freigibt —
-  der Verifier braucht dort nur einen Fallback statt eines Wurfs.
-- Die Konvention „die ersten `ParamCount` Locals **sind** die Parameter, in Reihenfolge" trägt der
-  Verifier, steht aber nirgends an `IrFunction`. Ohne sie ist ein Call nicht typprüfbar.
 - Der Verifier läuft noch an keiner Produktions-Aufrufstelle (kommt mit P4: immer in Debug/Tests,
   im Release hinter Flag).
 - `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
@@ -84,7 +76,17 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 - Typsystem-Regeln in `Sprache.md §6.5`; `ErrorType` = Poison (keine Folgefehler).
 - Generics: Monomorphisierung (Sema sammelt Instanzen, Codegen → M5); strenge Constraints (D2).
 - **IR**: Type-Felder auf den Instruktionen sind Kopien für den Printer, die Temp-Tabelle ist die
-  Autorität — dass beide übereinstimmen, ist der Kern-Job des Verifiers.
+  Autorität — dass beide übereinstimmen, ist der Kern-Job des Verifiers. Die tragenden
+  IR-Invarianten (Parameter-Konvention, dichte Id-Tabellen, Entry-Regel, Single-Definition) stehen
+  als Doku an `IrFunction`, durchgesetzt werden sie vom Verifier.
+- **Totale Funktionen über das heutige Typ-Universum werfen im `default`**, statt einen Ersatzwert
+  zu liefern: `IrType.Equal`, `IrNames.Scalar/Bin/Un`, `TypeLowering.Lower`, `IrPrinter.TypeStr`,
+  `IrBinKind.FromAst`. Der Wurf nennt die Stelle, die beim Erweitern nachzuziehen ist. Ausnahme ist
+  `IrVerifier.Show`: es baut Befund-Texte, ein Wurf würde dort den Befund verdecken.
+- **`IrNames` ist die einzige Quelle für Skalar-Namen und Op-Mnemonics** (Printer + Verifier). Man
+  liest Dump und Befunde nebeneinander, wenn man einen Lowering-Bug sucht — sie dürfen nicht driften.
+- „Ist der Typ genau dieser Skalar?" → Pattern-Match (`IsVoid`/`IsBool`, total). „Stimmen zwei Typen
+  überein?" → `IrType.Equal`. Zwei verschiedene Fragen, zwei Mechanismen.
 - **IR-Invarianten, die Arbeit ins Lowering verschieben** (alle im Verifier durchgesetzt und
   getestet): unerreichbare Blöcke sind ein Fehler (kein `SimplifyCfg`-Pass in v1); Block-Ids dicht
   und `Entry == Blocks[0]`; `string + string` lowert zu einem Call, **nicht** zu `BinOp Add` (sonst
@@ -99,7 +101,7 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 
 ## Letzter relevanter Commit
 
-`repo: .gitattributes mit eol=lf ergänzen`
+`M5: Review-Punkte aus P3 abräumen`
 
 ---
 
