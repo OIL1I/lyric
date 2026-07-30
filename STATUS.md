@@ -67,16 +67,6 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 - `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
 - M4 taggen (`m4-complete`).
 
-**Infrastruktur (vorbestehend, in dieser Session aufgefallen):**
-
-- **Das Repo baut aus einem frischen Checkout nicht grün.** In einem sauberen Worktree fallen 6
-  Lexer- und 8 Parser-Golden-Tests — reproduzierbar auch auf `0114908`, also unabhängig von M5.
-  Ursache: `core.autocrlf=true` und **keine `.gitattributes`**; die `.lyr`-Fixtures kommen als CRLF
-  aus dem Checkout, wodurch sich die Span-Offsets um ein Byte pro Zeile verschieben. Im aktuellen
-  Arbeitsbaum fällt es nicht auf, weil die Dateien dort noch in ihrem Ursprungszustand liegen.
-  Fix: `.gitattributes` mit `* text=auto eol=lf` (mindestens für `*.lyr`, `*.cs`, `golden/*`), dann
-  einmalig renormalisieren (`git add --renormalize .`). Betrifft auch die Linux-CI.
-
 **Aus M4 vertagt:**
 
 - **Generics-Rest**: Constraints mit eigenen Typ-Args (`Comparable<T>` über die Constraint-Grenze
@@ -102,10 +92,14 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
   64 Bit nullerweitert; Identitäts-`Convert` elidiert das Lowering; Ordnungsvergleiche nur auf
   Numerik, `eq`/`ne` auch auf bool/char/string.
 - M1/M2-Kernentscheidungen: in den Tags bzw. der git-Historie.
+- **Zeilenenden sind Test-Vertrag, nicht Geschmack**: `.gitattributes` erzwingt `eol=lf` auch im
+  Arbeitsbaum, weil die Lexer-/Parser-Goldens Span-Offsets vergleichen und CRLF jeden Offset um ein
+  Byte pro Zeile verschiebt. Nicht entfernen — ohne sie fallen 14 Golden-Tests in jedem frischen
+  Clone.
 
 ## Letzter relevanter Commit
 
-`M5: IR-Verifier (P3)`
+`repo: .gitattributes mit eol=lf ergänzen`
 
 ---
 
