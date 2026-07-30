@@ -247,7 +247,7 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 - `Lyric.Ir`-Typen: Module, Function, BasicBlock, Inst.
 - IR-Instructions: Const, BinOp, UnOp, Call, Return, Branch, CondBranch, Phi, LoadField, StoreField, NewStruct, NewClass, NewArray, MatchDispatch, Throw, Catch, Yield, Resume.
 - Lowering AST → IR (mit Closure-Lifting, Coroutine-State-Machine-Lowering).
-- Bytecode-Format-Spec (stack-based VM): Opcode-Liste, Operand-Encoding (LEB128), Header (Magic, Version, Capabilities-Bitset, Type-Table, Function-Table, Constant-Pool).
+- Bytecode-Format-Spec (stack-based VM): Opcode-Liste, Operand-Encoding (LEB128), Header (Magic, Version, Capabilities-Bitset, Type-Table, Function-Table, Constant-Pool) — als normatives Dokument `docs/Bytecode.md` (ADR-013).
 - Bytecode-Serializer (`.lyrbc`-Files).
 - Bytecode-Disassembler (`lyric disasm <file.lyrbc>`).
 - Diagnostik-Codes `LYR-IR0001..0010`, `LYR-BC0001..0010`.
@@ -417,17 +417,15 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
-### ADR-006 — Coroutine-Implementation: Fibern vs. State-Machine — offen
+### ADR-006 — Coroutine-Implementation: State-Machine-Lowering
 
-**Datum**: 2026-06-05. **Status**: Offen, Entscheidung in M7.
+**Datum**: 2026-06-05, entschieden 2026-07-23. **Status**: Akzeptiert (Option a).
 
-**Optionen**:
-- (a) State-Machine-Lowering im IR (wie C#-async/Rust-async): Sema transformiert Coroutine in Struct mit `step`-Methode und State-Variable.
-- (b) Echte Fibern via .NET-Threads mit Cooperative-Scheduling.
+**Entscheidung**: Coroutinen werden im IR zu State-Machines gelowert (wie C#-async/Rust-async): Sema/Lowering transformiert die Coroutine in ein Struct mit `step`-Methode und State-Variable. Keine Fibern via .NET-Threads.
 
-**Trade-off**: (a) ist portabler und GC-friendlier, aber komplexer im Lowering. (b) ist einfacher zu implementieren, hat aber Overhead pro Coroutine.
+**Begründung**: Ursprünglich offen bis M7 (a: State-Machine-Lowering, b: Fibern). Vorgezogen, weil das Bytecode-Format von der Wahl abhängt und in M5 designt wird: mit (a) braucht `.lyrbc` keine Coroutine-Opcodes, mit (b) müsste jede Runtime die Coroutine-Mechanik selbst mitbringen. (a) ist portabel (siehe ADR-013), GC-freundlicher und hält die VM einfach; die Komplexität liegt einmalig im Lowering statt in jeder Runtime.
 
-**Wann entschieden**: In M7, basierend auf Prototyping-Erfahrungen aus M5/M6.
+**Konsequenz**: Das Coroutine-Lowering ist Teil von M5 (war dort bereits als Lieferposten gelistet); M7 implementiert nur noch die Runtime-Seite der gelowerten Form. Der Fiber-Ansatz ist verworfen.
 
 ---
 
@@ -496,6 +494,18 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 **Entscheidung**: Modulname wird aus Dateipfad relativ zum Source-Root abgeleitet. Optional darf Datei einen expliziten `module foo;`-Header haben, der zum Pfad konsistent sein muss.
 
 **Begründung**: Spart Boilerplate. C#/Java haben das mit Package-Headern, aber für Solo-Projekt ist Pfad-Inferenz einfacher.
+
+---
+
+### ADR-013 — `.lyrbc` ist ein plattformneutraler, spezifizierter Vertrag
+
+**Datum**: 2026-07-23. **Status**: Akzeptiert.
+
+**Entscheidung**: Das Bytecode-Format `.lyrbc` wird als eigenständiges, normatives Dokument spezifiziert (`docs/Bytecode.md`, entsteht in M5). Der C#-Serializer ist eine Implementierung der Spec, nicht ihre Definition. Das Format ist plattformneutral: Little-Endian für Fixbreiten-Felder, LEB128 für variable Ints, Strings als längenpräfigierte UTF-8-Bytes, Floats als IEEE-754-Bitmuster. Konstantenpool, Type- und Function-Table enthalten ausschließlich Lyric-Begriffe — keine CLR-Typnamen, keine .NET-Serialisierungsmechanik. Host-/Native-Funktionen werden über eine Import-Tabelle mit symbolischem Namen und Signatur referenziert; Calls verweisen per Index in diese Tabelle (WASM-Modell, Validierung beim Load statt beim Call). Source-Mapping (PC → Datei/Zeile) liegt in einer optionalen, strippbaren Sektion. Encoding ist deterministisch: gleicher Compiler-Input erzeugt byte-identischen Output.
+
+**Begründung**: Ziel-Test: jemand kann allein aus Spec + Import-Tabellen-Katalog einen Disassembler oder eine zweite Runtime schreiben, ohne den C#-Code zu lesen. Das hält eine native Runtime oder ein WASM-Target als spätere, kontainierte Projekte offen, ohne v1 zu verteuern. Determinismus macht Golden-Tests und Bytecode-Diffs trivial. Das Gegenmodell (Lua/CPython: Bytecode als Implementierungsdetail, plattform- und versionsabhängig) passt nicht zu Lyric, weil `.lyrbc` ein First-Class-Auslieferungs-Artefakt ist (`lyric build`, Host-Execution, Hot-Reload).
+
+**Konsequenz**: Format-Version im Header ist von der Compiler-Version entkoppelt; Runtimes lehnen unbekannte Major-Versionen ab. Bis v1.0 darf sich das Format inkompatibel ändern (Version-Bump ohne Migrationspfad) — Stabilitätsversprechen erst ab v1.0. Opcode-Liste und Sektions-Layout bleiben M5-Design; dieses ADR bindet nur die Rahmenbedingungen. M5-Aufwand steigt um das Schreiben von `docs/Bytecode.md` parallel zur Implementierung (geschätzt +3–5 Tage; die Spec ist zugleich Design-Werkzeug).
 
 ---
 
