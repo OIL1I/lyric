@@ -38,8 +38,17 @@ internal static class Fixtures
         "void_store" => VoidStore(),
         "convert" => ConvertWiden(),
         "two_functions_call" => TwoFunctionsCall(),
+        "loop" => Loop(),
         _ => throw new ArgumentException($"unknown fixture: {name}")
     };
+
+    /// <summary>Alle Fixtures, die gültiges IR sind — der Verifier muss auf jeder davon
+    /// befundfrei durchlaufen.</summary>
+    public static readonly string[] AllNames =
+    [
+        "single_block", "comparison", "diamond", "void_store", "convert",
+        "two_functions_call", "loop"
+    ];
 
     // fn main.add(a, b) -> i64  { return a + b; }
     private static IrModule SingleBlock()
@@ -159,5 +168,65 @@ internal static class Fixtures
         var main = Fn("main.main", I64, 0, new List<IrLocal>(), mTemps, new List<IrBlock> { mbb0 });
 
         return new IrModule(new List<IrFunction> { dbl, log, main });
+    }
+
+    // fn main.sumTo(n) -> i64  { var acc = 0; for (i in 0..n) { acc += i; } return acc; }
+    //
+    // Der einzige Fixture mit einer Back-Edge (bb2 -> bb1). Wichtig für den Verifier: das
+    // Availability-Dataflow muss über den Loop-Header zum Fixpunkt konvergieren, und der
+    // optimistische TOP-Startwert wird nur hier überhaupt ausgeübt.
+    private static IrModule Loop()
+    {
+        var locals = new List<IrLocal> { new(L(0), "n", I64), new(L(1), "i", I64), new(L(2), "acc", I64) };
+        var temps = new List<IrTemp>
+        {
+            new(T(0), I64), new(T(1), I64), new(T(2), I64), new(T(3), I64),
+            new(T(4), Bool), new(T(5), I64), new(T(6), I64), new(T(7), I64),
+            new(T(8), I64), new(T(9), I64), new(T(10), I64), new(T(11), I64),
+        };
+
+        // bb0: acc = 0; i = 0
+        var bb0 = Block(0,
+            new List<IrOp>
+            {
+                new Const(T(0), I64, new IntConst(0), Sp),
+                new StoreLocal(L(2), T(0), Sp),
+                new Const(T(1), I64, new IntConst(0), Sp),
+                new StoreLocal(L(1), T(1), Sp),
+            },
+            new Branch(B(1), Sp));
+
+        // bb1 (Loop-Header): i < n ?
+        var bb1 = Block(1,
+            new List<IrOp>
+            {
+                new LoadLocal(T(2), L(1), I64, Sp),
+                new LoadLocal(T(3), L(0), I64, Sp),
+                new BinOp(T(4), IrBinKind.Lt, Bool, T(2), T(3), Sp),
+            },
+            new CondBranch(T(4), B(2), B(3), Sp));
+
+        // bb2 (Body): acc += i; i += 1  — springt zurück auf bb1
+        var bb2 = Block(2,
+            new List<IrOp>
+            {
+                new LoadLocal(T(5), L(2), I64, Sp),
+                new LoadLocal(T(6), L(1), I64, Sp),
+                new BinOp(T(7), IrBinKind.Add, I64, T(5), T(6), Sp),
+                new StoreLocal(L(2), T(7), Sp),
+                new LoadLocal(T(8), L(1), I64, Sp),
+                new Const(T(9), I64, new IntConst(1), Sp),
+                new BinOp(T(10), IrBinKind.Add, I64, T(8), T(9), Sp),
+                new StoreLocal(L(1), T(10), Sp),
+            },
+            new Branch(B(1), Sp));
+
+        // bb3 (Exit): return acc
+        var bb3 = Block(3, new List<IrOp> { new LoadLocal(T(11), L(2), I64, Sp) }, new Return(T(11), Sp));
+
+        return new IrModule(new List<IrFunction>
+        {
+            Fn("main.sumTo", I64, 1, locals, temps, new List<IrBlock> { bb0, bb1, bb2, bb3 })
+        });
     }
 }

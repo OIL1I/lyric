@@ -11,61 +11,78 @@
 
 ## Aktueller Meilenstein
 
-**M4 — Sema (full) — abgeschlossen** (Tag `m4-complete` ausstehend)
+**M5 — IR + Bytecode — in Arbeit**
 
-Volle v1-Sprache typgeprüft: Generics, Pattern-Match + Exhaustivität, Exceptions,
-Coroutinen, Closures, Interfaces + Extend. Entscheidungen D1–D11 ratifiziert und in
-`Sprache.md`/`Doku.md` fixiert (D11: wertloses Block-Lambda ohne Kontext ist void).
-`lyric check` läuft sauber auf allen Beispielen außer `stack.lyr`/`stats.lyr` (warten
-auf M8-Array-Methoden). 941 Tests grün.
-
-**Nächster Meilenstein: M5 — IR + Bytecode.** ADR-013 (`.lyrbc` als plattformneutraler,
-spezifizierter Vertrag → `docs/Bytecode.md`) und ADR-006 (Coroutine-State-Machine-Lowering)
-beachten. Noch nicht geplant.
+Slices P1–P3 stehen: IR-Datentypen, Printer + Goldens, Verifier. Das **Lowering AST → IR fehlt
+noch** — IR entsteht bisher nur aus handgebauten Fixtures. ADR-006 (Coroutine-State-Machine-
+Lowering) und ADR-013 (`.lyrbc` als plattformneutraler, spezifizierter Vertrag →
+`docs/Bytecode.md`) sind ratifiziert und in `ROADMAP.md` fixiert. 1025 Tests grün, davon 84 in
+`Lyric.Tests.Ir`.
 
 ## Was schon erledigt ist
 
-- [x] **M1 — Lexer** (`m1-complete`), **M2 — Parser** (`m2-complete`), **M3 — Resolver +
-  Sema basic** (`m3-complete`). Details in den Tags / `git log`.
-- [x] **M4 — Slices 1+2** (Generics, Pattern-Match voll): `TypeParamType`/`GenericInstance`
-  mit Substitution, Call-Inferenz und Constraints (D2); Enum-Payload-/Struct-/Tuple-
-  Destructuring, Or-Pattern-Konsistenz, Exhaustivität (D4), Block-Wert-Regel (SEM0033),
-  kontextuelle Varianten-Konstruktion (§3.4). Codes `LYR-SEM0026..0033`, `0050`.
-- [x] **M4 — Slice 3 — Exceptions + Coroutinen** (3a + 3b):
-  - **Builtins**: `Throwable` als Builtin-Interface (abstraktes `message(): string`),
-    `panic` → `never` (Bottom-Typ, Divergenz), `Coroutine<T>` → interner `CoroutineOf`.
-  - **Exceptions (3a)**: Throwable-Constraint an throw/throws/catch (SEM0030); try ≥1 catch
-    (SEM0036), Catch-All zuletzt (SEM0035); throws-Propagation als Post-Pass
-    (`ExceptionAnalyzer`, SEM0034); throws-Fn als Wert verboten (SEM0037).
-  - **Coroutinen (3b, D6–D8)**: `resume` als Präfix-Ausdruck; yield nur in `Coroutine<T>`
-    + wertgeprüft (SEM0038); nur nacktes return (SEM0039); resume liefert Yield-Typ (SEM0040).
-  - Codes `LYR-SEM0030, 0034..0040`. `bank.lyr` + `fibonacci.lyr` checken sauber.
-- [x] **M4 — Slice 4 — Closures + Interfaces + Extend** (4a + 4b):
-  - **Lambdas (4a, D5/D9)**: bidirektionale Inferenz — CheckCall zweiphasig (T aus eager
-    Argumenten, U aus dem Lambda-Return); unannotierte Params nehmen den Kontext-FnType
-    (SEM0045); Block-Lambdas liefern Werte über return, Typ aus Annotation/Kontext (SEM0046),
-    `return` checkt gegen die Lambda. Captures (ADR-011) als Seitentabelle fürs M5-Lifting;
-    DAA analysiert Lambda-Bodies (Erstellungsort-Snapshot). Codes `LYR-SEM0045, 0046`.
-  - **Interfaces + Extend (4b, D10)**: Extend-Merge über `ExtensionRegistry` (import-gebundene
-    Sichtbarkeit); Member-Lookup eigene → Extension (SEM0044) → Interface-Default (SEM0043),
-    Builtins via Primitiv→Builtin-Symbol; signatur-genaue Konformanz (SEM0020 + SEM0042,
-    generische Interfaces substituiert, throws-Subset); Orphan-Rule (SEM0041); nicht-benannte
-    Extend-Ziele (SEM0047); `extend :: [I]` erfüllt Generics-Constraints. Codes
-    `LYR-SEM0041..0044, 0047`.
-  - `examples/inventory.lyr` als M4-Exit-Artefakt (Interface+Default+Extend+Closure+Generics
-    +Match), checkt sauber.
+- [x] **M1 — Lexer** (`m1-complete`), **M2 — Parser** (`m2-complete`), **M3 — Resolver + Sema
+  basic** (`m3-complete`), **M4 — Sema full** (Tag `m4-complete` ausstehend). Volle v1-Sprache
+  typgeprüft; Entscheidungen D1–D11 in `Sprache.md`/`Doku.md` fixiert. Details in den Tags / `git log`.
+- [x] **M5 — P1 — IR-Datentypen**: `IrModule`/`IrFunction`/`IrBlock`, Ids als
+  `BlockId`/`TempId`/`LocalId`/`FunctionId` (die Id **ist** der Slot-/Sprung-Index im späteren
+  Bytecode, daher dichte Tabellen). Instruktionen als Records, Ops und Terminatoren getrennt
+  (`IrOp` vs. `IrTerminator`) — „Terminator mitten im Block" ist damit unrepräsentierbar statt
+  geprüft. `IrScalarType` + `TypeLowering` von `LyrType`.
+- [x] **M5 — P2 — Printer + Golden-Tests**: `IrPrinter` als deterministischer Text-Dump (Typ steht
+  am Dest, nie `AppendLine`, `switch` mit default-Wurf erzwingt Vollständigkeit). 7 Golden-Fixtures
+  inkl. `loop` (Back-Edge).
+- [x] **M5 — P3 — Verifier**: `IrVerifier.Verify` sammelt Befunde als Klartext-Strings, `VerifyOrThrow`
+  wirft. Bewusst **keine** `LYR-IR####`-Codes: jeder Befund ist ein Compiler-Bug, keine
+  User-Diagnose — der Code-Bereich bleibt echten Lowering-Fehlern vorbehalten.
+  - **Vier Phasen mit Bail-out** (Tabellen → CFG-Form → Reachability + Availability → Def/Use +
+    Typen). Prüfungen setzen einander voraus; bei Fundamentalfehlern bricht die Funktion ab, damit
+    ein Fehler keine Kaskade auslöst (dasselbe Prinzip wie `ErrorType` als Poison in der Sema).
+  - **Def/Use per Availability-Dataflow** (vorwärts, Schnittmenge als Meet, optimistisches TOP für
+    Loop-Header). Bei genau einer Definition pro Temp ist „auf jedem Pfad verfügbar" äquivalent zu
+    „die Definition dominiert den Use" — kein Dominator-Baum nötig, bis Phi-Knoten dazukommen.
+  - 74 Testfälle: jede gültige Fixture befundfrei, eine Invariante pro Negativ-Test, plus
+    Bail-out-ohne-Kaskade, Isolation zwischen Funktionen, Determinismus, und dass der Verifier auf
+    malformed IR nie selbst crasht.
 
 ## Woran wir gerade arbeiten
 
-M4 abgeschlossen. Als Nächstes: **M4 taggen** (`m4-complete`), dann **M5 — IR + Bytecode**
-planen (erstes Backend-Slice, `docs/Bytecode.md` entsteht dabei laut ADR-013).
+Als Nächstes **M5 — P4: Lowering AST → IR**. Es ist der erste echte Abnehmer des Verifiers — ab
+dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 
-## Noch offen (nach M4 vertagt)
+## Noch offen
 
-- **Generics-Rest**: Constraints mit eigenen Typ-Args (`Comparable<T>` über die Constraint-
-  Grenze substituieren); Tuple-Varianten-Konstruktion generischer Enums über Call
-  (`Opt.Some(5)`) — typt noch ohne Instanz-Inferenz, `Opt<int>.Some(…)` ist per TypePath
-  nicht ausdrückbar; Monomorph-Instanzen-Sammeln → M5 (dort sitzt der Abnehmer).
+**Aus M5 P1–P3 (klein, vor oder mit P4 abräumen):**
+
+- `IrType.Equal` liefert für Nicht-Skalare `false`, auch für `Equal(a, a)` — sobald ein
+  nicht-skalarer Typ existiert, meldet der Verifier eine Flut falscher Typ-Mismatches. Der Verifier
+  umgeht sie und nutzt Record-Gleichheit (strukturell). **Löschen oder `default` auf `throw`.**
+- `IrVerifier.Show`/`BinName`/`UnName` duplizieren `IrPrinter.TypeStr`/`BinMn`/`UnMn` (~60 Zeilen,
+  Drift-Risiko bei Mnemonic-Umbenennungen). Teilen, sobald `IrPrinter` sie `internal` freigibt —
+  der Verifier braucht dort nur einen Fallback statt eines Wurfs.
+- Die Konvention „die ersten `ParamCount` Locals **sind** die Parameter, in Reihenfolge" trägt der
+  Verifier, steht aber nirgends an `IrFunction`. Ohne sie ist ein Call nicht typprüfbar.
+- Der Verifier läuft noch an keiner Produktions-Aufrufstelle (kommt mit P4: immer in Debug/Tests,
+  im Release hinter Flag).
+- `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
+- M4 taggen (`m4-complete`).
+
+**Infrastruktur (vorbestehend, in dieser Session aufgefallen):**
+
+- **Das Repo baut aus einem frischen Checkout nicht grün.** In einem sauberen Worktree fallen 6
+  Lexer- und 8 Parser-Golden-Tests — reproduzierbar auch auf `0114908`, also unabhängig von M5.
+  Ursache: `core.autocrlf=true` und **keine `.gitattributes`**; die `.lyr`-Fixtures kommen als CRLF
+  aus dem Checkout, wodurch sich die Span-Offsets um ein Byte pro Zeile verschieben. Im aktuellen
+  Arbeitsbaum fällt es nicht auf, weil die Dateien dort noch in ihrem Ursprungszustand liegen.
+  Fix: `.gitattributes` mit `* text=auto eol=lf` (mindestens für `*.lyr`, `*.cs`, `golden/*`), dann
+  einmalig renormalisieren (`git add --renormalize .`). Betrifft auch die Linux-CI.
+
+**Aus M4 vertagt:**
+
+- **Generics-Rest**: Constraints mit eigenen Typ-Args (`Comparable<T>` über die Constraint-Grenze
+  substituieren); Tuple-Varianten-Konstruktion generischer Enums über Call (`Opt.Some(5)`) — typt
+  noch ohne Instanz-Inferenz, `Opt<int>.Some(…)` ist per TypePath nicht ausdrückbar;
+  Monomorph-Instanzen-Sammeln → M5 (dort sitzt der Abnehmer).
 - **Slice-4-Feinheiten**: generische Interface-Default-Substitution beim Member-Lookup nur
   best-effort; `@noCapture`-Enforcement fehlt (Lambda-Params tragen keine Attribute im AST).
 - **Extern**: Stdlib-Imports opak → Modul-Universum + Builtin-Konformanz erst mit M8.
@@ -76,11 +93,19 @@ planen (erstes Backend-Slice, `docs/Bytecode.md` entsteht dabei laut ADR-013).
 - Builtins als Wurzel-Scope; 2-Pass-Deklarieren; strukturierte Flow-Analyse (kein CFG).
 - Typsystem-Regeln in `Sprache.md §6.5`; `ErrorType` = Poison (keine Folgefehler).
 - Generics: Monomorphisierung (Sema sammelt Instanzen, Codegen → M5); strenge Constraints (D2).
+- **IR**: Type-Felder auf den Instruktionen sind Kopien für den Printer, die Temp-Tabelle ist die
+  Autorität — dass beide übereinstimmen, ist der Kern-Job des Verifiers.
+- **IR-Invarianten, die Arbeit ins Lowering verschieben** (alle im Verifier durchgesetzt und
+  getestet): unerreichbare Blöcke sind ein Fehler (kein `SimplifyCfg`-Pass in v1); Block-Ids dicht
+  und `Entry == Blocks[0]`; `string + string` lowert zu einem Call, **nicht** zu `BinOp Add` (sonst
+  wäre der `add`-Opcode polymorph — gegen ADR-013); `IntConst` ist zweierkomplement-kodiert und auf
+  64 Bit nullerweitert; Identitäts-`Convert` elidiert das Lowering; Ordnungsvergleiche nur auf
+  Numerik, `eq`/`ne` auch auf bool/char/string.
 - M1/M2-Kernentscheidungen: in den Tags bzw. der git-Historie.
 
 ## Letzter relevanter Commit
 
-`M4: sema — void-Block-Lambda ohne Kontext defaultet auf void (D11)`
+`M5: IR-Verifier (P3)`
 
 ---
 

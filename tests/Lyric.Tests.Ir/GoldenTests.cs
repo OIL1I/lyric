@@ -53,5 +53,6 @@ public class GoldenTests
     [InlineData("void_store")]         // void: nacktes ret + dest-loses store
     [InlineData("convert")]            // convert mit From/To sichtbar
     [InlineData("two_functions_call")] // CallContext: Name + Rückgabetyp, value- + void-Call
+    [InlineData("loop")]               // Back-Edge: br zurück auf einen früheren Block
     public void Golden_ir_matches_snapshot(string name) => Check(name);
 }
