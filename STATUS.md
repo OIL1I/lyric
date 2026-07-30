@@ -22,7 +22,7 @@ Lowering) und ADR-013 (`.lyrbc` als plattformneutraler, spezifizierter Vertrag �
 ## Was schon erledigt ist
 
 - [x] **M1 — Lexer** (`m1-complete`), **M2 — Parser** (`m2-complete`), **M3 — Resolver + Sema
-  basic** (`m3-complete`), **M4 — Sema full** (Tag `m4-complete` ausstehend). Volle v1-Sprache
+  basic** (`m3-complete`), **M4 — Sema full** (`m4-complete`). Volle v1-Sprache
   typgeprüft; Entscheidungen D1–D11 in `Sprache.md`/`Doku.md` fixiert. Details in den Tags / `git log`.
 - [x] **M5 — P1 — IR-Datentypen**: `IrModule`/`IrFunction`/`IrBlock`, Ids als
   `BlockId`/`TempId`/`LocalId`/`FunctionId` (die Id **ist** der Slot-/Sprung-Index im späteren
@@ -57,7 +57,12 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 - Der Verifier läuft noch an keiner Produktions-Aufrufstelle (kommt mit P4: immer in Debug/Tests,
   im Release hinter Flag).
 - `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
-- M4 taggen (`m4-complete`).
+
+**Git-Stand (nicht vergessen):**
+
+- `origin/main` steht auf `0114908`, also 6 Commits hinter lokal. Und auf origin liegen nur
+  `m0-complete`, `m1-complete`, `setup-complete` — **`m2-complete`, `m3-complete` und `m4-complete`
+  sind lokal, nie gepusht**. Solange das so bleibt, existiert alles ab M2 nur auf diesem Rechner.
 
 **Aus M4 vertagt:**
 
@@ -101,7 +106,7 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 
 ## Letzter relevanter Commit
 
-`M5: Review-Punkte aus P3 abräumen`
+`docs: STATUS.md - m4-complete-Stand korrigiert`
 
 ---
 
