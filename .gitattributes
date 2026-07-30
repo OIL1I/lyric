@@ -1,0 +1,8 @@
+# Zeilenenden sind in diesem Repo Teil des Test-Vertrags, nicht Formatierungsgeschmack:
+# die Golden-Snapshots von Lexer und Parser vergleichen Span-Offsets, und CRLF verschiebt
+# jeden Offset um ein Byte pro Zeile. Ohne diese Datei liefert `core.autocrlf=true` bei
+# jedem Checkout CRLF und 14 Golden-Tests fallen — reproduzierbar in jedem frischen Clone.
+#
+# `eol=lf` erzwingt LF auch im Arbeitsbaum (nicht nur im Objektspeicher), damit lokal
+# dasselbe gilt wie auf der Linux-CI.
+* text=auto eol=lf
