@@ -1,0 +1,205 @@
+using System.Globalization;
+using System.Text;
+using Lyric.Core;
+
+namespace Lyric.Ir;
+
+/// <summary>
+/// Deterministischer Text-Dump eines <see cref="IrModule"/>/<see cref="IrFunction"/> für
+/// Golden-Snapshots und Debug-Ausgabe (analog zu <c>AstDumper</c>). Eine Instruktion pro
+/// Zeile, 2-Space-Einrückung pro Ebene, Newline immer '\n' (nie AppendLine — CRLF bräche
+/// die Snapshots auf Linux-CI).
+///
+/// Format (siehe P2-Grammatik): der Typ steht am Dest (<c>t2: bool = lt t0, t1</c>), nicht
+/// im Mnemonic — so ist jede Zeile aus den Feldern der Instruktion allein formatierbar, ohne
+/// Temp-Tabellen-Lookup. Einzige Ausnahme ist <c>call</c>: Name und Rückgabetyp der Ziel-
+/// Funktion liegen bei der Callee, nicht an der Call-Stelle, und werden über den
+/// <see cref="CallContext"/> aufgelöst (Index → module.Functions).
+///
+/// Der Dump ist bewusst über <c>switch</c> statt Visitor gelöst: der <c>default</c>-Wurf
+/// erzwingt Vollständigkeit, sobald eine neue Instruktion hinzukommt.
+/// </summary>
+public static class IrPrinter
+{
+    public static string Dump(IrModule module)
+    {
+        var sb = new StringBuilder();
+        var ctx = CallContext.ForModule(module);
+        for (var i = 0; i < module.Functions.Count; i++)
+        {
+            if (i > 0) sb.Append('\n'); // Leerzeile zwischen Funktionen
+            WriteFunction(sb, module.Functions[i], ctx);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Standalone-Dump einer einzelnen Funktion. Ohne Modul-Kontext werden
+    /// Call-Ziele als roher <c>fN</c>-Index und ihr Rückgabetyp als <c>?</c> gedruckt.</summary>
+    public static string Dump(IrFunction function)
+    {
+        var sb = new StringBuilder();
+        WriteFunction(sb, function, CallContext.None);
+        return sb.ToString();
+    }
+
+    // --- Call-Auflösung: FunctionId -> (Name, ReturnType) aus der Funktionsliste ---
+    private readonly struct CallContext
+    {
+        private readonly IReadOnlyList<IrFunction>? _functions;
+
+        private CallContext(IReadOnlyList<IrFunction>? functions) => _functions = functions;
+
+        public static CallContext ForModule(IrModule module) => new(module.Functions);
+        public static CallContext None => new(functions: null);
+
+        public string NameOf(FunctionId id) =>
+            _functions is null ? id.ToString() : _functions[id.Value].Name;
+
+        public IrType? ReturnTypeOf(FunctionId id) =>
+            _functions is null ? null : _functions[id.Value].ReturnType;
+    }
+
+    // --- Struktur ---
+    private static void WriteFunction(StringBuilder sb, IrFunction func, CallContext ctx)
+    {
+        sb.Append($"fn {func.Name} -> {TypeStr(func.ReturnType)} {{\n");
+        sb.Append($"  params: {func.ParamCount.ToString(CultureInfo.InvariantCulture)}\n");
+        sb.Append("  locals:\n");
+        foreach (var loc in func.Locals)
+            sb.Append($"    {loc.Id} {loc.Name}: {TypeStr(loc.Type)}\n");
+        foreach (var block in func.Blocks)
+            WriteBlock(sb, block, ctx);
+        sb.Append("}\n");
+    }
+
+    private static void WriteBlock(StringBuilder sb, IrBlock block, CallContext ctx)
+    {
+        sb.Append($"  {block.Id}:\n");
+        foreach (var op in block.Insts)
+            sb.Append($"    {OpStr(op, ctx)}\n");
+        if (block.Terminator is null)
+            throw new InternalCompilationException($"ir-printer: block {block.Id} has no terminator");
+        sb.Append($"    {TermStr(block.Terminator)}\n");
+    }
+
+    // --- Instruktionen ---
+    private static string OpStr(IrOp op, CallContext ctx) => op switch
+    {
+        Const c => $"{c.Dest}: {TypeStr(c.Type)} = const {ConstStr(c.Value)}",
+        BinOp b => $"{b.Dest}: {TypeStr(b.Type)} = {BinMn(b.Kind)} {b.Lhs}, {b.Rhs}",
+        UnOp u => $"{u.Dest}: {TypeStr(u.Type)} = {UnMn(u.Kind)} {u.Operand}",
+        Convert cv => $"{cv.Dest}: {TypeStr(cv.To)} = convert {TypeStr(cv.From)} {cv.Operand}",
+        LoadLocal l => $"{l.Dest}: {TypeStr(l.Type)} = load {l.Local}",
+        StoreLocal s => $"store {s.Local}, {s.Value}",
+        Call k => CallStr(k, ctx),
+        _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
+    };
+
+    private static string CallStr(Call k, CallContext ctx)
+    {
+        var args = string.Join(", ", k.Args);
+        var target = ctx.NameOf(k.Target);
+        if (k.Dest is not { } dest)
+            return $"call {target}({args})";
+        var ret = ctx.ReturnTypeOf(k.Target);
+        return $"{dest}: {(ret is null ? "?" : TypeStr(ret))} = call {target}({args})";
+    }
+
+    private static string TermStr(IrTerminator term) => term switch
+    {
+        Return r => r.Value is { } v ? $"ret {v}" : "ret",
+        Branch b => $"br {b.Target}",
+        CondBranch c => $"condbr {c.Cond} -> {c.IfTrue}, {c.IfFalse}",
+        Unreachable => "unreachable",
+        _ => throw new InternalCompilationException($"ir-printer: unhandled terminator {term.GetType().Name}")
+    };
+
+    // --- Formatierungs-Helfer ---
+    private static string TypeStr(IrType t) => t switch
+    {
+        IrScalarType s => ScalarStr(s.Kind),
+        _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
+    };
+
+    private static string ScalarStr(IrScalar k) => k switch
+    {
+        IrScalar.I8 => "i8",
+        IrScalar.I16 => "i16",
+        IrScalar.I32 => "i32",
+        IrScalar.I64 => "i64",
+        IrScalar.U8 => "u8",
+        IrScalar.U16 => "u16",
+        IrScalar.U32 => "u32",
+        IrScalar.U64 => "u64",
+        IrScalar.F32 => "f32",
+        IrScalar.F64 => "f64",
+        IrScalar.Bool => "bool",
+        IrScalar.Char => "char",
+        IrScalar.String => "string",
+        IrScalar.Void => "void",
+        _ => throw new InternalCompilationException($"ir-printer: unknown scalar {k}")
+    };
+
+    private static string ConstStr(IrConstValue v) => v switch
+    {
+        IntConst i => i.Value.ToString(CultureInfo.InvariantCulture),
+        FloatConst f => f.Value.ToString("R", CultureInfo.InvariantCulture),
+        BoolConst b => b.Value ? "true" : "false",
+        CharConst c => c.CodePoint.ToString(CultureInfo.InvariantCulture),
+        StringConst s => Quote(s.Value),
+        _ => throw new InternalCompilationException($"ir-printer: unhandled const {v.GetType().Name}")
+    };
+
+    private static string BinMn(IrBinKind k) => k switch
+    {
+        IrBinKind.Add => "add",
+        IrBinKind.Sub => "sub",
+        IrBinKind.Mul => "mul",
+        IrBinKind.Div => "div",
+        IrBinKind.Rem => "rem",
+        IrBinKind.Shl => "shl",
+        IrBinKind.Shr => "shr",
+        IrBinKind.BitAnd => "and",
+        IrBinKind.BitOr => "or",
+        IrBinKind.BitXor => "xor",
+        IrBinKind.Lt => "lt",
+        IrBinKind.Le => "le",
+        IrBinKind.Gt => "gt",
+        IrBinKind.Ge => "ge",
+        IrBinKind.Eq => "eq",
+        IrBinKind.Ne => "ne",
+        _ => throw new InternalCompilationException($"ir-printer: unknown binop {k}")
+    };
+
+    private static string UnMn(IrUnKind k) => k switch
+    {
+        IrUnKind.Neg => "neg",
+        IrUnKind.Not => "not",
+        IrUnKind.BitNot => "bitnot",
+        _ => throw new InternalCompilationException($"ir-printer: unknown unop {k}")
+    };
+
+    // Escaping wie AstDumper.Quote — konsistent halten, damit String-Snapshots nicht driften.
+    private static string Quote(string s)
+    {
+        var sb = new StringBuilder();
+        sb.Append('"');
+        foreach (var c in s)
+        {
+            switch (c)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default:
+                    if (c < 0x20) sb.Append($"\\u{(int)c:x4}");
+                    else sb.Append(c);
+                    break;
+            }
+        }
+        sb.Append('"');
+        return sb.ToString();
+    }
+}

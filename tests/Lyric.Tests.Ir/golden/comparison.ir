@@ -1,0 +1,10 @@
+fn main.isNeg -> bool {
+  params: 1
+  locals:
+    l0 x: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = const 0
+    t2: bool = lt t0, t1
+    ret t2
+}

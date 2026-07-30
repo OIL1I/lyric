@@ -1,0 +1,20 @@
+fn main.clamp -> i64 {
+  params: 1
+  locals:
+    l0 x: i64
+    l1 r: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = const 0
+    t2: bool = lt t0, t1
+    condbr t2 -> bb1, bb2
+  bb1:
+    store l1, t1
+    br bb3
+  bb2:
+    store l1, t0
+    br bb3
+  bb3:
+    t3: i64 = load l1
+    ret t3
+}

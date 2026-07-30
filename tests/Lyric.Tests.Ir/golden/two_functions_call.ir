@@ -1,0 +1,28 @@
+fn main.double -> i64 {
+  params: 1
+  locals:
+    l0 n: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = const 2
+    t2: i64 = mul t0, t1
+    ret t2
+}
+
+fn main.log -> void {
+  params: 1
+  locals:
+    l0 msg: i64
+  bb0:
+    ret
+}
+
+fn main.main -> i64 {
+  params: 0
+  locals:
+  bb0:
+    t0: i64 = const 21
+    t1: i64 = call main.double(t0)
+    call main.log(t1)
+    ret t1
+}

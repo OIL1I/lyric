@@ -1,0 +1,9 @@
+fn main.reset -> void {
+  params: 0
+  locals:
+    l0 count: i64
+  bb0:
+    t0: i64 = const 0
+    store l0, t0
+    ret
+}
