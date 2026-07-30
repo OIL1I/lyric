@@ -58,12 +58,6 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
   im Release hinter Flag).
 - `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
 
-**Git-Stand (nicht vergessen):**
-
-- `origin/main` steht auf `0114908`, also 6 Commits hinter lokal. Und auf origin liegen nur
-  `m0-complete`, `m1-complete`, `setup-complete` — **`m2-complete`, `m3-complete` und `m4-complete`
-  sind lokal, nie gepusht**. Solange das so bleibt, existiert alles ab M2 nur auf diesem Rechner.
-
 **Aus M4 vertagt:**
 
 - **Generics-Rest**: Constraints mit eigenen Typ-Args (`Comparable<T>` über die Constraint-Grenze
@@ -101,12 +95,13 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 - M1/M2-Kernentscheidungen: in den Tags bzw. der git-Historie.
 - **Zeilenenden sind Test-Vertrag, nicht Geschmack**: `.gitattributes` erzwingt `eol=lf` auch im
   Arbeitsbaum, weil die Lexer-/Parser-Goldens Span-Offsets vergleichen und CRLF jeden Offset um ein
-  Byte pro Zeile verschiebt. Nicht entfernen — ohne sie fallen 14 Golden-Tests in jedem frischen
-  Clone.
+  Byte pro Zeile verschiebt. **Nicht entfernen** — ohne sie fallen 14 Golden-Tests in jedem frischen
+  Clone und der `windows-latest`-CI-Job bricht (GitHubs Windows-Runner haben `core.autocrlf=true`,
+  Linux nicht; genau daran war die CI vom 24.07. bis 30.07.2026 halbseitig rot).
 
 ## Letzter relevanter Commit
 
-`docs: STATUS.md - m4-complete-Stand korrigiert`
+`docs: STATUS.md - Git-Stand-Notiz entfernt`
 
 ---
 
