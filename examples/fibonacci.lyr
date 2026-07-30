@@ -1,0 +1,26 @@
+// fibonacci.lyr — Komplexität: fortgeschritten
+// Zeigt: Coroutine<T>, `yield` zum Pausieren, `resume` zum Fortsetzen,
+// endlose Erzeugung mit begrenztem Konsum durch den Aufrufer.
+
+import std.io.console { println };
+
+// Liefert unendlich viele Fibonacci-Zahlen, eine pro `resume`.
+fn fibonacci(): Coroutine<int> {
+    var a = 0;
+    var b = 1;
+    while (true) {
+        yield a;
+        let next = a + b;
+        a = b;
+        b = next;
+    }
+}
+
+fn main(): int {
+    let fib = fibonacci();
+    for (i in 0..15) {
+        let v = resume fib;
+        println(f"fib({i}) = {v}");
+    }
+    return 0;
+}

@@ -1,0 +1,51 @@
+// bank.lyr — Komplexität: fortgeschritten
+// Zeigt: class als Reference-Typ, Throwable-Typ, `throws` in der Signatur,
+// throw/try/catch mit typed catch, `new`-Fabrik-Konvention, defer beim Scope-Exit.
+
+import std.io.console { println, eprintln };
+
+pub class InsufficientFunds :: [Throwable] {
+    requested: int,
+    available: int,
+
+    fn message(): string {
+        return f"nicht genug Guthaben: {this.requested} angefordert, {this.available} verfuegbar";
+    }
+}
+
+pub class Account {
+    owner: string,
+    balance: int = 0,
+
+    // Fabrik-Methode (keine Sprach-Magie, nur Konvention).
+    fn new(owner: string, opening: int): Account {
+        return Account { owner = owner, balance = opening };
+    }
+
+    mut fn deposit(amount: int) {
+        this.balance += amount;
+    }
+
+    mut fn withdraw(amount: int) throws InsufficientFunds {
+        if (amount > this.balance) {
+            throw InsufficientFunds { requested = amount, available = this.balance };
+        }
+        this.balance -= amount;
+    }
+}
+
+fn main(): int {
+    let acc = Account.new("Olivier", 100);
+    defer println(f"Endstand von {acc.owner}: {acc.balance}");
+
+    acc.deposit(50);
+
+    try {
+        acc.withdraw(30);    // ok  -> 120
+        acc.withdraw(200);   // wirft InsufficientFunds
+    } catch (e: InsufficientFunds) {
+        eprintln(f"Fehler: {e.message()}");
+    }
+
+    return 0;
+}

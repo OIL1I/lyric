@@ -1,0 +1,52 @@
+// stack.lyr — Komplexität: mittel–fortgeschritten
+// Zeigt: generische class + generisches interface, Interface-Konformität via `::`,
+// mut-Methoden, Nullable-Rückgabe, Default-Feld-Wert, while-Schleife.
+
+import std.io.console { println };
+
+pub interface Container<T> {
+    mut fn add(item: T);
+    fn count(): int;
+}
+
+pub class Stack<T> :: [Container<T>] {
+    items: T[] = [],
+
+    mut fn add(item: T) {
+        this.items.push(item);
+    }
+
+    mut fn pop(): ?T {
+        if (this.items.length == 0) {
+            return null;
+        }
+        return this.items.pop();
+    }
+
+    fn peek(): ?T {
+        if (this.items.length == 0) {
+            return null;
+        }
+        return this.items[this.items.length - 1];
+    }
+
+    fn count(): int {
+        return this.items.length;
+    }
+}
+
+fn main(): int {
+    var stack = Stack<int> { };
+    stack.add(1);
+    stack.add(2);
+    stack.add(3);
+
+    println(f"Groesse: {stack.count()}");
+    println(f"Spitze:  {stack.peek() ?? 0}");
+
+    while (stack.count() > 0) {
+        let top = stack.pop() ?? 0;
+        println(f"pop -> {top}");
+    }
+    return 0;
+}

@@ -1,0 +1,40 @@
+// stats.lyr — Komplexität: einfach–mittel
+// Zeigt: freie Funktionen, variadische `params`, Arrays (.length, Indexing),
+// Nullable-Rückgabe mit `??`, `as`-Konvertierung, Format-Spec.
+
+import std.io.console { println };
+
+// `params` sammelt beliebig viele Argumente in ein int[].
+fn sum(params nums: int[]): int {
+    var total = 0;
+    for (n in nums) {
+        total += n;
+    }
+    return total;
+}
+
+// Leeres Array hat kein Maximum -> ?int.
+fn max(xs: int[]): ?int {
+    if (xs.length == 0) {
+        return null;
+    }
+    var best = xs[0];
+    for (x in xs) {
+        if (x > best) {
+            best = x;
+        }
+    }
+    return best;
+}
+
+fn main(): int {
+    let total = sum(3, 7, 1, 9, 4);
+    let numbers = [3, 7, 1, 9, 4];
+    let biggest = max(numbers) ?? 0;
+    let avg = total as float / numbers.length as float;
+
+    println(f"Summe:        {total}");
+    println(f"Maximum:      {biggest}");
+    println(f"Durchschnitt: {avg:N2}");
+    return 0;
+}
