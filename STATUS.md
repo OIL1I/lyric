@@ -11,14 +11,12 @@
 
 ## Aktueller Meilenstein
 
-**M5 — IR + Bytecode — in Arbeit**
+**M5 — IR + Bytecode — Exit-Kriterium erreicht, Tag `v0.1.0` ausstehend**
 
-Slices P1–P4 stehen: IR-Datentypen, Printer + Goldens, Verifier, Lowering AST → IR. Damit
-entsteht IR erstmals aus echtem Quelltext statt aus handgebauten Fixtures. **Bytecode-Format und
-Emitter fehlen noch** (`docs/Bytecode.md`, Serializer, `lyric build`, `lyric disasm`).
-ADR-006 (Coroutine-State-Machine-Lowering) und ADR-013 (`.lyrbc` als plattformneutraler,
-spezifizierter Vertrag) sind ratifiziert und in `ROADMAP.md` fixiert. 1062 Tests grün, davon 121
-in `Lyric.Tests.Ir`.
+Slices P1–P5 stehen: IR-Datentypen, Printer + Goldens, Verifier, Lowering AST → IR, Bytecode-Format
++ Writer/Reader/Disassembler. Die Pipeline läuft durch: `lyric build examples/arith.lyr` erzeugt
+`.lyrbc`, `lyric disasm` zeigt sinnvolle Instruktionen. ADR-006 und ADR-013 sind umgesetzt,
+`docs/Bytecode.md` ist normativ geschrieben. 1107 Tests grün.
 
 **M5-Gate-Programm ist `examples/arith.lyr`**, nicht `hello.lyr`: letzteres braucht
 `console.println` und f-Strings, also eine Import-Tabelle mit Signaturen — und die entsteht erst mit
@@ -66,21 +64,40 @@ Programm, mit Begründung als Blockzitat).
   - 47 Testfälle: 11 Golden-Fixtures (Quelle + Snapshot als Paar), Invarianten (Blockdichte,
     Parameter-Konvention, verworfener toter Code, kein Merge bei beidseitigem return), Determinismus
     und die Scope-Grenzen mit Quellposition.
+- [x] **M5 — P5 — Bytecode** (`Lyric.Bytecode/`): `docs/Bytecode.md` normativ, Writer, Reader mit
+  Load-Zeit-Validierung, Disassembler, `lyric build` und `lyric disasm`.
+  - **Stack-Scheduling statt Slot pro Temp.** Die IR ist temp-basiert, das Ziel eine Stack-VM.
+    Naiv würde `return a + b` zehn Instruktionen erzeugen; mit Scheduling sind es vier. Möglich ist
+    das, weil **der Stack an jeder Blockgrenze leer ist** — Werte über Blockgrenzen laufen durch
+    Locals, was das P4-Lowering schon strukturell garantiert. Damit ist das Scheduling blocklokal
+    und die Tiefe beim Laden statisch prüfbar. Korrektheit hängt nie an der Optimierung: der
+    Slot-Weg ist immer verfügbar, das Scheduling entscheidet nur, wo er entfällt.
+  - **Ein Opcode pro Operation + Typ-Tag-Byte**, nicht ein Opcode pro (Operation × Typ). Bei zehn
+    numerischen Typen wären es sonst ~100 Arithmetik-Opcodes und die Tabelle wäre nicht mehr
+    lesbar — lesbar muss sie sein, weil ADR-013 die Implementierbarkeit aus der Spec verlangt.
+    Der Tag steht im Instruktionsstrom, nicht im Wert: der Dispatch bleibt statisch.
+  - **Sprungziele sind Block-Indizes** mit Offset-Tabelle im Funktionskopf, keine Byte-Offsets.
+    Ein Ziel prüft man mit `index < blockCount` (ADR-013s Load-Zeit-Validierung) statt Byte-Offsets
+    gegen Instruktionsgrenzen zu verifizieren — das CIL-Problem.
+  - 45 Testfälle: Round-Trip (schreiben → lesen → schreiben, byte-identisch) über alle
+    P4-Fixtures, Determinismus, Stack-Bilanz, Reader-Robustheit inkl. 400 Fuzzing-Läufen mit
+    festem Seed, und ein Test, der `docs/Bytecode.md` gegen die Opcode-/Tag-Tabellen bindet.
 
 ## Woran wir gerade arbeiten
 
-Als Nächstes **M5 — P5: Bytecode-Format + Emitter**. Jetzt gibt es einen zweiten Abnehmer der IR
-(neben Printer und Verifier), damit ist der Zeitpunkt für `docs/Bytecode.md` da: die Container-Teile
-(Header, LEB128, String-/Float-Encoding, Sektions-Layout, Determinismus) sind von ADR-013 schon
-gesetzt und hängen nicht am Opcode-Set; die Opcode-Tabelle wächst mit dem Emitter.
+M5 ist inhaltlich fertig. Offen: **`v0.1.0` taggen** (CONTRIBUTING §Releases), danach **M6 — VM**.
 
 ## Noch offen
 
-**Aus M5 P1–P4:**
+**Aus M5:**
 
-- `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
+- `v0.1.0` taggen und Release-Seite anlegen.
 - `ModuleLowerer.Lower` verifiziert per Default immer. Für Release-Builds fehlt noch der Schalter,
   der das abstellt (heute nur als Parameter, nicht an einer Build-Konfiguration).
+- **Source-Map-Sektion** (Id 6) ist in der Spec beschrieben und reserviert, wird aber noch nicht
+  geschrieben. Braucht M6 für Runtime-Fehler mit Zeilenangabe.
+- **Copy-Propagation im Emitter**: ein Temp mit mehreren Lesern erzeugt heute ein
+  `ldloc`/`stloc`-Paar, das ein Optimierer einsparen könnte. Format-neutral nachrüstbar.
 - **Generics**: Richtung entschieden (Worklist im Lowering, ab den Wurzeln, eine Instanz pro
   Typargument-Tupel), Bau offen. Der Substitutions-Haken sitzt in `FunctionLowerer.LowerType`,
   `NameMangling` ist die Stelle für die Typargumente im Namen.
@@ -116,6 +133,7 @@ gesetzt und hängen nicht am Opcode-Set; die Opcode-Tabelle wächst mit dem Emit
   zu liefern: `IrType.Equal`, `IrNames.Scalar/Bin/Un`, `TypeLowering.Lower`, `IrPrinter.TypeStr`,
   `IrBinKind.FromAst`. Der Wurf nennt die Stelle, die beim Erweitern nachzuziehen ist. Ausnahme ist
   `IrVerifier.Show`: es baut Befund-Texte, ein Wurf würde dort den Befund verdecken.
+- **`IrShape` ist die einzige Quelle für Operanden/Dest/Successors** einer Instruktion (Verifier + Stack-Scheduler); zwei Kopien dieser switch-Blöcke wären still falscher Code statt eines Fehlers.
 - **`IrNames` ist die einzige Quelle für Skalar-Namen und Op-Mnemonics** (Printer + Verifier). Man
   liest Dump und Befunde nebeneinander, wenn man einen Lowering-Bug sucht — sie dürfen nicht driften.
 - „Ist der Typ genau dieser Skalar?" → Pattern-Match (`IsVoid`/`IsBool`, total). „Stimmen zwei Typen
@@ -144,7 +162,7 @@ gesetzt und hängen nicht am Opcode-Set; die Opcode-Tabelle wächst mit dem Emit
 
 ## Letzter relevanter Commit
 
-`M5: LYR-IR0001 fuer Scope-Grenzen, ROADMAP-Exit korrigiert`
+`M5: Bytecode-Format, Writer, Reader und Disassembler (P5)`
 
 ---
 

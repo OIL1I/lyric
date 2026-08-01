@@ -171,7 +171,7 @@ public static class IrVerifier
             {
                 for (var i = 0; i < block.Insts.Count; i++)
                 {
-                    if (DestOf(block.Insts[i]) is not { } dest) continue;
+                    if (IrShape.DestOf(block.Insts[i]) is not { } dest) continue;
 
                     if (!IsKnownTemp(dest))
                     {
@@ -263,7 +263,7 @@ public static class IrVerifier
 
             foreach (var block in _fn.Blocks)
             {
-                foreach (var target in SuccessorsOf(block.Terminator!))
+                foreach (var target in IrShape.SuccessorsOf(block.Terminator!))
                 {
                     if (!_blockById.ContainsKey(target))
                     {
@@ -352,7 +352,7 @@ public static class IrVerifier
             {
                 _defs[block] = new HashSet<TempId>();
                 foreach (var op in _blockById[block].Insts)
-                    if (DestOf(op) is { } dest) _defs[block].Add(dest);
+                    if (IrShape.DestOf(op) is { } dest) _defs[block].Add(dest);
             }
 
             foreach (var block in _rpo)
@@ -434,13 +434,13 @@ public static class IrVerifier
                 for (var i = 0; i < block.Insts.Count; i++)
                 {
                     var op = block.Insts[i];
-                    if (CheckOperands(OperandsOf(op), live, blockId, i))
+                    if (CheckOperands(IrShape.OperandsOf(op), live, blockId, i))
                         CheckOpTypes(op, blockId, i);
-                    if (DestOf(op) is { } dest) live.Add(dest);
+                    if (IrShape.DestOf(op) is { } dest) live.Add(dest);
                 }
 
                 var terminator = block.Terminator!;
-                if (CheckOperands(OperandsOf(terminator), live, blockId, index: null))
+                if (CheckOperands(IrShape.OperandsOf(terminator), live, blockId, index: null))
                     CheckTerminatorTypes(terminator, blockId);
             }
         }
@@ -750,52 +750,6 @@ public static class IrVerifier
                 Report(block, index, $"{what} declares type {Show(declared)} but {dest} is " +
                                      $"{Show(fromTable)} in the temp table");
         }
-
-        // ------------------------------------------------------------------ Struktur-Helfer
-
-        private static IReadOnlyList<TempId> OperandsOf(IrOp op) => op switch
-        {
-            Const => Array.Empty<TempId>(),
-            BinOp b => new[] { b.Lhs, b.Rhs },
-            UnOp u => new[] { u.Operand },
-            Convert cv => new[] { cv.Operand },
-            LoadLocal => Array.Empty<TempId>(),
-            StoreLocal s => new[] { s.Value },
-            Call k => k.Args,
-            _ => throw new InternalCompilationException($"ir-verifier: unhandled op {op.GetType().Name}")
-        };
-
-        private static IReadOnlyList<TempId> OperandsOf(IrTerminator terminator) => terminator switch
-        {
-            Return r => r.Value is { } value ? new[] { value } : Array.Empty<TempId>(),
-            Branch => Array.Empty<TempId>(),
-            CondBranch c => new[] { c.Cond },
-            Unreachable => Array.Empty<TempId>(),
-            _ => throw new InternalCompilationException(
-                $"ir-verifier: unhandled terminator {terminator.GetType().Name}")
-        };
-
-        private static TempId? DestOf(IrOp op) => op switch
-        {
-            Const c => c.Dest,
-            BinOp b => b.Dest,
-            UnOp u => u.Dest,
-            Convert cv => cv.Dest,
-            LoadLocal l => l.Dest,
-            StoreLocal => null,
-            Call k => k.Dest,
-            _ => throw new InternalCompilationException($"ir-verifier: unhandled op {op.GetType().Name}")
-        };
-
-        private static IReadOnlyList<BlockId> SuccessorsOf(IrTerminator terminator) => terminator switch
-        {
-            Return => Array.Empty<BlockId>(),
-            Branch b => new[] { b.Target },
-            CondBranch c => new[] { c.IfTrue, c.IfFalse },
-            Unreachable => Array.Empty<BlockId>(),
-            _ => throw new InternalCompilationException(
-                $"ir-verifier: unhandled terminator {terminator.GetType().Name}")
-        };
 
         // ------------------------------------------------------------------ Tabellen-Lookups
 

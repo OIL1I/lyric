@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Lyric.AST/Lyric.AST.csproj" />
+    <Project Path="src/Lyric.Bytecode/Lyric.Bytecode.csproj" />
     <Project Path="src/Lyric.Cli/Lyric.Cli.csproj" />
     <Project Path="src/Lyric.Core/Lyric.Core.csproj" />
     <Project Path="src/Lyric.Ir/Lyric.Ir.csproj" Id="4743d4f8-5fe5-4d60-9352-8c3423234aae" />
@@ -10,6 +11,7 @@
     <Project Path="src/Lyric.Sema/Lyric.Sema.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Lyric.Tests.Bytecode/Lyric.Tests.Bytecode.csproj" />
     <Project Path="tests/Lyric.Tests.Core/Lyric.Tests.Core.csproj" />
     <Project Path="tests/Lyric.Tests.Ir/Lyric.Tests.Ir.csproj" />
     <Project Path="tests/Lyric.Tests.Lexing/Lyric.Tests.Lexing.csproj" />

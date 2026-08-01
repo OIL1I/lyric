@@ -247,7 +247,7 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 - `Lyric.Ir`-Typen: Module, Function, BasicBlock, Inst.
 - IR-Instructions: Const, BinOp, UnOp, Call, Return, Branch, CondBranch, Phi, LoadField, StoreField, NewStruct, NewClass, NewArray, MatchDispatch, Throw, Catch, Yield, Resume.
 - Lowering AST → IR (mit Closure-Lifting, Coroutine-State-Machine-Lowering).
-- Bytecode-Format-Spec (stack-based VM): Opcode-Liste, Operand-Encoding (LEB128), Header (Magic, Version, Capabilities-Bitset, Type-Table, Function-Table, Constant-Pool) — als normatives Dokument `docs/Bytecode.md` (ADR-013).
+- Bytecode-Format-Spec (stack-based VM): Opcode-Liste, Operand-Encoding (LEB128), Header (Magic, Version, Capabilities-Bitset, Type-Table, Function-Table, Constant-Pool) — als normatives Dokument [`docs/Bytecode.md`](Bytecode.md) (ADR-013). ✅
 - Bytecode-Serializer (`.lyrbc`-Files).
 - Bytecode-Disassembler (`lyric disasm <file.lyrbc>`).
 - Diagnostik-Codes `LYR-IR0001..0010`, `LYR-BC0001..0010`.

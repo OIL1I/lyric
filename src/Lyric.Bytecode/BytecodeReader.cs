@@ -1,0 +1,284 @@
+using Lyric.Bytecode.Encoding;
+using Lyric.Core;
+
+namespace Lyric.Bytecode;
+
+/// <summary>
+/// <c>.lyrbc</c>-Bytes → <see cref="BytecodeModule"/>, mit vollständiger Validierung <b>beim Laden</b>.
+///
+/// <para>Das ist ADR-013s Modell (von WASM übernommen): ein Modul wird beim Laden einmal komplett
+/// geprüft und läuft danach ohne Sicherheitschecks. Jeder Fehler hier ist ein Grund, das Modul gar
+/// nicht erst anzunehmen — deshalb bricht der Leser beim ersten Befund ab, anders als der
+/// IR-Verifier, der sammelt. Bei einer kaputten Datei ist der zweite Befund meist Folge des ersten.</para>
+///
+/// <para>Der Leser ist die Stelle, an der nicht vertrauenswürdige Bytes ins System kommen. Er darf
+/// auf keiner Eingabe mit einer .NET-Ausnahme aussteigen, sondern nur mit einer
+/// <c>LYR-BC####</c>-Diagnose.</para>
+/// </summary>
+public static class BytecodeReader
+{
+    /// <summary>Liest und validiert. Liefert <c>null</c> und meldet <c>LYR-BC####</c>, wenn die
+    /// Datei kein gültiges Modul ist.</summary>
+    public static BytecodeModule? Read(byte[] bytes, DiagnosticEngine de)
+    {
+        try
+        {
+            return ReadOrThrow(bytes);
+        }
+        catch (MalformedBytecodeException ex)
+        {
+            // Kein Span: der Fehler sitzt in einer Binärdatei, nicht in Quelltext. Die
+            // DiagnosticEngine rendert solche Diagnosen ohne Positionszeile.
+            de.Report(ex.Code, Severity.Error, default, ex.Message);
+            return null;
+        }
+    }
+
+    public static BytecodeModule ReadOrThrow(byte[] bytes)
+    {
+        var reader = new ByteReader(bytes);
+        reader.ExpectMagic();
+
+        var major = reader.U16();
+        var minor = reader.U16();
+        if (major != Format.VersionMajor)
+            throw new MalformedBytecodeException(BytecodeDiagnostics.UnsupportedVersion,
+                $"bytecode major version {major} is not supported (this build reads {Format.VersionMajor})");
+
+        ulong capabilities = 0;
+        IReadOnlyList<string> strings = Array.Empty<string>();
+        IReadOnlyList<BytecodeImport> imports = Array.Empty<BytecodeImport>();
+        IReadOnlyList<BytecodeFunction> functions = Array.Empty<BytecodeFunction>();
+
+        var previousId = -1;
+        while (!reader.AtEnd)
+        {
+            var id = reader.U8();
+            var length = reader.ULebAsCount();
+            var payload = new ByteReader(reader.Raw(length));
+
+            // Aufsteigend und höchstens einmal — das ist Teil der Determinismus-Zusage und
+            // erlaubt einem Leser, in einem Durchlauf zu arbeiten.
+            if (id <= previousId)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"section id {id} is out of order (previous was {previousId})");
+            previousId = id;
+
+            switch ((SectionId)id)
+            {
+                case SectionId.Capabilities: capabilities = payload.ULeb(); break;
+                case SectionId.Strings: strings = ReadStrings(payload); break;
+                case SectionId.Imports: imports = ReadImports(payload); break;
+                case SectionId.Functions: functions = ReadFunctions(payload, strings); break;
+                default: break; // unbekannt oder reserviert: überspringen, dafür ist die Länge da
+            }
+
+            if (!payload.AtEnd)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.Truncated,
+                    $"section {id} has {payload.Remaining} trailing byte(s)");
+        }
+
+        var module = new BytecodeModule
+        {
+            VersionMajor = major,
+            VersionMinor = minor,
+            Capabilities = capabilities,
+            Strings = strings,
+            Imports = imports,
+            Functions = functions,
+        };
+
+        Validate(module);
+        return module;
+    }
+
+    private static IReadOnlyList<string> ReadStrings(ByteReader payload)
+    {
+        var count = payload.ULebAsCount();
+        var values = new List<string>(Math.Min(count, 1024));
+        for (var i = 0; i < count; i++) values.Add(payload.String());
+        return values;
+    }
+
+    private static IReadOnlyList<BytecodeImport> ReadImports(ByteReader payload)
+    {
+        var count = payload.ULebAsCount();
+        var imports = new List<BytecodeImport>(Math.Min(count, 1024));
+        for (var i = 0; i < count; i++)
+        {
+            var name = payload.String();
+            var paramCount = payload.ULebAsCount();
+            var parameters = new List<TypeTag>(Math.Min(paramCount, 256));
+            for (var p = 0; p < paramCount; p++) parameters.Add(payload.Tag());
+            imports.Add(new BytecodeImport
+            {
+                Name = name, ParamTypes = parameters, ReturnType = payload.Tag(),
+            });
+        }
+        return imports;
+    }
+
+    private static IReadOnlyList<BytecodeFunction> ReadFunctions(ByteReader payload,
+        IReadOnlyList<string> strings)
+    {
+        var count = payload.ULebAsCount();
+        var functions = new List<BytecodeFunction>(Math.Min(count, 4096));
+
+        for (var i = 0; i < count; i++)
+        {
+            var nameIndex = payload.ULebAsCount();
+            if (nameIndex >= strings.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"function {i}: name index {nameIndex} is outside the string pool ({strings.Count})");
+
+            var paramCount = payload.ULebAsCount();
+            var returnType = payload.Tag();
+
+            var slotCount = payload.ULebAsCount();
+            var slotTypes = new List<TypeTag>(Math.Min(slotCount, 4096));
+            for (var s = 0; s < slotCount; s++) slotTypes.Add(payload.Tag());
+
+            if (paramCount > slotCount)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"function '{strings[nameIndex]}': {paramCount} parameters but only {slotCount} slots");
+
+            var maxStack = payload.ULebAsCount();
+
+            var blockCount = payload.ULebAsCount();
+            var blockOffsets = new List<int>(Math.Min(blockCount, 4096));
+            for (var b = 0; b < blockCount; b++) blockOffsets.Add(payload.ULebAsCount());
+
+            var codeLength = payload.ULebAsCount();
+            functions.Add(new BytecodeFunction
+            {
+                Name = strings[nameIndex],
+                ParamCount = paramCount,
+                ReturnType = returnType,
+                SlotTypes = slotTypes,
+                MaxStack = maxStack,
+                BlockOffsets = blockOffsets,
+                Code = payload.Raw(codeLength),
+            });
+        }
+
+        return functions;
+    }
+
+    /// <summary>Prüfungen, die erst gehen, wenn alles gelesen ist — Call-Ziele brauchen die
+    /// Signaturen anderer Funktionen, Sprungziele die Blockanzahl.</summary>
+    private static void Validate(BytecodeModule module)
+    {
+        foreach (var function in module.Functions)
+        {
+            if (function.BlockOffsets.Count == 0)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.Truncated,
+                    $"function '{function.Name}' has no blocks");
+
+            var instructions = CodeDecoder.Decode(function.Code);
+            var byOffset = instructions.ToDictionary(i => i.Offset);
+
+            foreach (var offset in function.BlockOffsets)
+                if (!byOffset.ContainsKey(offset))
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}': block offset {offset} is not an instruction boundary");
+
+            ValidateOperands(module, function, instructions);
+            ValidateStack(module, function, instructions);
+        }
+    }
+
+    private static void ValidateOperands(BytecodeModule module, BytecodeFunction function,
+        IReadOnlyList<BytecodeInstruction> instructions)
+    {
+        var callable = module.Imports.Count + module.Functions.Count;
+
+        foreach (var instruction in instructions)
+        {
+            switch (instruction.Opcode)
+            {
+                case Op.LoadLocal or Op.StoreLocal when instruction.Immediate >= (ulong)function.SlotTypes.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: local slot " +
+                        $"{instruction.Immediate} is outside {function.SlotTypes.Count} slot(s)");
+
+                case Op.Call when instruction.Immediate >= (ulong)callable:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: call target " +
+                        $"{instruction.Immediate} is outside {callable} callable(s)");
+
+                case Op.Const when instruction.Type == TypeTag.String
+                                   && instruction.Immediate >= (ulong)module.Strings.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: string index " +
+                        $"{instruction.Immediate} is outside the pool ({module.Strings.Count})");
+
+                case Op.Branch when instruction.Immediate >= (ulong)function.BlockOffsets.Count:
+                case Op.CondBranch when instruction.Immediate >= (ulong)function.BlockOffsets.Count
+                                        || instruction.Immediate2 >= (ulong)function.BlockOffsets.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: branch target is outside " +
+                        $"{function.BlockOffsets.Count} block(s)");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Die tragende Invariante des Formats: <b>der Operanden-Stack ist an jeder Blockgrenze leer</b>.
+    /// Werte, die Blöcke überqueren, laufen durch Local-Slots. Das macht die Tiefe statisch
+    /// bestimmbar — die VM kann ihren Frame beim Laden dimensionieren und braucht zur Laufzeit
+    /// keine Überlauf-Prüfung.
+    /// </summary>
+    private static void ValidateStack(BytecodeModule module, BytecodeFunction function,
+        IReadOnlyList<BytecodeInstruction> instructions)
+    {
+        var byOffset = new Dictionary<int, int>();
+        for (var i = 0; i < instructions.Count; i++) byOffset[instructions[i].Offset] = i;
+
+        foreach (var start in function.BlockOffsets)
+        {
+            var depth = 0;
+            for (var i = byOffset[start]; i < instructions.Count; i++)
+            {
+                var instruction = instructions[i];
+                var (arity, returnsValue) = CalleeShape(module, instruction);
+                var (pops, pushes) = CodeDecoder.StackEffect(instruction, arity, returnsValue);
+
+                if (depth < pops)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.StackDiscipline,
+                        $"function '{function.Name}' at {instruction.Offset}: {instruction.Opcode} " +
+                        $"needs {pops} value(s) but the stack holds {depth}");
+
+                depth = depth - pops + pushes;
+                if (depth > function.MaxStack)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.StackDiscipline,
+                        $"function '{function.Name}' at {instruction.Offset}: stack depth {depth} " +
+                        $"exceeds the declared maximum of {function.MaxStack}");
+
+                if (!CodeDecoder.IsTerminator(instruction.Opcode)) continue;
+
+                if (depth != 0)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.StackDiscipline,
+                        $"function '{function.Name}': block at {start} ends with {depth} value(s) " +
+                        "on the stack, expected 0");
+                break;
+            }
+        }
+    }
+
+    private static (int Arity, bool ReturnsValue) CalleeShape(BytecodeModule module,
+        BytecodeInstruction instruction)
+    {
+        if (instruction.Opcode != Op.Call) return (0, false);
+
+        // Gemeinsamer Indexraum: erst Imports, dann definierte Funktionen (WASM-Modell).
+        var index = (int)instruction.Immediate;
+        if (index < module.Imports.Count)
+        {
+            var import = module.Imports[index];
+            return (import.ParamTypes.Count, import.ReturnType != TypeTag.Void);
+        }
+
+        var callee = module.Functions[index - module.Imports.Count];
+        return (callee.ParamCount, callee.ReturnType != TypeTag.Void);
+    }
+}

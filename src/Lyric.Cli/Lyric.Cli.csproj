@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
@@ -8,6 +8,7 @@
     <ProjectReference Include="..\Lyric.Resolver\Lyric.Resolver.csproj" />
     <ProjectReference Include="..\Lyric.Sema\Lyric.Sema.csproj" />
     <ProjectReference Include="..\Lyric.Ir\Lyric.Ir.csproj" />
+    <ProjectReference Include="..\Lyric.Bytecode\Lyric.Bytecode.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
