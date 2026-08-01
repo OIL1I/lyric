@@ -171,7 +171,19 @@ Tags follow `vMAJOR.MINOR.PATCH` semver. Pre-1.0 releases are
 - `v0.9.0` after M9 (REPL + tooling)
 - `v1.0.0` after M10 (embedding API)
 
-Each release has a tag, a GitHub release page, and a CHANGELOG entry.
+Every release has an **annotated tag**. Its message is the release note: what the
+milestone delivered, and what the state cannot do yet.
+
+**No `CHANGELOG.md` before `v1.0.0`.** A changelog answers "what changed for me
+since last time", and that question presupposes something to be compatible with.
+Pre-1.0 there is no such promise — neither for the `.lyrbc` format (ADR-013
+allows breaking major bumps) nor for the language itself, which is still being
+made internally consistent. A changelog written under those conditions would
+record churn, not change. The annotated tag carries the release note instead.
+
+From `v1.0.0` on: tag, GitHub release page, and a `CHANGELOG.md` entry.
+
+*(Decided in the scope check of 2026-08-02.)*
 
 ---
 

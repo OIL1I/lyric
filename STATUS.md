@@ -11,7 +11,7 @@
 
 ## Aktueller Meilenstein
 
-**M5 — IR + Bytecode — Exit-Kriterium erreicht, Tag `v0.1.0` ausstehend**
+**M5 — IR + Bytecode — abgeschlossen** (`v0.1.0`)
 
 Slices P1–P5 stehen: IR-Datentypen, Printer + Goldens, Verifier, Lowering AST → IR, Bytecode-Format
 + Writer/Reader/Disassembler. Die Pipeline läuft durch: `lyric build examples/arith.lyr` erzeugt
@@ -85,13 +85,32 @@ Programm, mit Begründung als Blockzitat).
 
 ## Woran wir gerade arbeiten
 
-M5 ist inhaltlich fertig. Offen: **`v0.1.0` taggen** (CONTRIBUTING §Releases), danach **M6 — VM**.
+Als Nächstes **M6 — VM (basic)**: Value-Repräsentation, Stack-VM, alle Opcodes außer Exceptions
+und Coroutinen, Stdlib-Minimum (`println`, `panic`, `format`), Source-Mapping, `lyric run`.
+Exit: Hello-World, FizzBuzz, Fibonacci laufen.
+
+## Scope-Check 2026-08-02 (Ergebnis)
+
+- **Nichts gekürzt.** M0–M5 brauchten 58 Kalendertage gegen 140–210 geschätzte — die Kürzungs-
+  Klauseln (>50 % / >100 % Überzug) greifen nicht. Die Zahl ist allerdings **nicht auswertbar**:
+  die ROADMAP-Schätzungen sind für „~10 h/Woche solo" kalibriert, und die Slices M5-P3 bis P5 hat
+  Claude implementiert. Sie messen den Wechsel des Arbeitsmodus, nicht den Fortschritt.
+- **Schätzungen für M6–M10 bleiben unverändert.** Sie taugen als pessimistische Obergrenze, falls
+  der Modus zurückwechselt; sie an den aktuellen anzupassen würde diese Reserve vernichten.
+- **v1-Grenze bestätigt.** `docs/IDEAS.md` bleibt geparkt. Das Risiko hier ist Scope-Creep aus
+  gefühltem Vorsprung, nicht aus Verzug.
+- **Arbeitsmodus bleibt vorerst**: Claude plant *und* implementiert, der Maintainer reviewt.
+  Bewusste Abweichung von `CLAUDE.md` §Collaboration — dort steht Plan-von-Claude/Code-vom-User.
+  Zu beobachten ist, ob das Verständnis des Codes mit seinem Umfang mithält.
+- **Kein `CHANGELOG.md` vor `v1.0.0`** — pre-1.0 gibt es keinen Kompatibilitäts-Anspruch, weder
+  fürs `.lyrbc`-Format (ADR-013) noch für die Sprache selbst. Die annotierte Tag-Message ist bis
+  dahin die Release-Notiz. `CONTRIBUTING` §Releases ist entsprechend geändert.
+- **ROADMAP-Korrektur vom 30.07.** (M5-Exit auf `examples/arith.lyr`) formlos ratifiziert.
 
 ## Noch offen
 
 **Aus M5:**
 
-- `v0.1.0` taggen und Release-Seite anlegen.
 - **Source-Map-Sektion** (Id 6) ist in der Spec beschrieben und reserviert, wird aber noch nicht
   geschrieben. Braucht M6 für Runtime-Fehler mit Zeilenangabe.
 - **Copy-Propagation im Emitter**: ein Temp mit mehreren Lesern erzeugt heute ein
@@ -156,7 +175,7 @@ M5 ist inhaltlich fertig. Offen: **`v0.1.0` taggen** (CONTRIBUTING §Releases), 
 
 ## Letzter relevanter Commit
 
-`M5: Verifier-Schalter und Doku-Korrektur (P4-Reste)`
+`repo: Scope-Check 2026-08-02`
 
 ---
 

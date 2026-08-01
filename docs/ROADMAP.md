@@ -256,7 +256,8 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 
 **Exit**: `examples/arith.lyr` compiliert zu Bytecode, Disasm zeigt sinnvolle Instruktionen. **v0.1 Release-Tag**.
 
-> **Korrektur (2026-07-30, während M5/P4):** Das Exit-Kriterium lautete ursprünglich „Hello-World
+> **Korrektur (2026-07-30, während M5/P4; ratifiziert im Scope-Check 2026-08-02):** Das
+> Exit-Kriterium lautete ursprünglich „Hello-World
 > compiliert zu Bytecode". Das war aus M5s eigenen Lieferposten nie erreichbar: `examples/hello.lyr`
 > ruft `console.println` und nutzt f-Strings, braucht also eine Import-Tabelle **mit Signaturen** —
 > und die entsteht erst mit dem Stdlib-Minimum in **M6** (`ExternalSymbol` trägt heute nur Name und
