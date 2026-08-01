@@ -92,22 +92,16 @@ M5 ist inhaltlich fertig. Offen: **`v0.1.0` taggen** (CONTRIBUTING §Releases), 
 **Aus M5:**
 
 - `v0.1.0` taggen und Release-Seite anlegen.
-- `ModuleLowerer.Lower` verifiziert per Default immer. Für Release-Builds fehlt noch der Schalter,
-  der das abstellt (heute nur als Parameter, nicht an einer Build-Konfiguration).
 - **Source-Map-Sektion** (Id 6) ist in der Spec beschrieben und reserviert, wird aber noch nicht
   geschrieben. Braucht M6 für Runtime-Fehler mit Zeilenangabe.
 - **Copy-Propagation im Emitter**: ein Temp mit mehreren Lesern erzeugt heute ein
   `ldloc`/`stloc`-Paar, das ein Optimierer einsparen könnte. Format-neutral nachrüstbar.
+- **Verifier-Laufzeit**: er ist ~90 % der Lowering-Zeit, das meiste davon der Availability-Dataflow
+  (HashSet pro Block, Fixpunkt-Iteration). Bitsets statt HashSets wären die naheliegende
+  Optimierung — nur nötig, wenn Debug-Builds spürbar zäh werden.
 - **Generics**: Richtung entschieden (Worklist im Lowering, ab den Wurzeln, eine Instanz pro
   Typargument-Tupel), Bau offen. Der Substitutions-Haken sitzt in `FunctionLowerer.LowerType`,
   `NameMangling` ist die Stelle für die Typargumente im Namen.
-
-**Doku-Fehler (beim Schreiben von `arith.lyr` aufgefallen):**
-
-- `Doku.md` §9.1 und §16.1 zeigen if-**Ausdrücke** mit Blöcken
-  (`if (n > 0) { 1 } else { 0 }`). Der Parser lehnt das ab (`LYR-PAR0002`), und `Sprache.md` §6.2
-  definiert die Zweige als **Ausdrücke** (`if (n > 0) 1 else 0`) — Blöcke haben in Lyric keinen
-  Wert. `Sprache.md` gewinnt laut eigenem Header; `Doku.md` muss an beiden Stellen nachgezogen werden.
 
 **Aus M4 vertagt:**
 
@@ -162,7 +156,7 @@ M5 ist inhaltlich fertig. Offen: **`v0.1.0` taggen** (CONTRIBUTING §Releases), 
 
 ## Letzter relevanter Commit
 
-`M5: Bytecode-Format, Writer, Reader und Disassembler (P5)`
+`M5: Verifier-Schalter und Doku-Korrektur (P4-Reste)`
 
 ---
 

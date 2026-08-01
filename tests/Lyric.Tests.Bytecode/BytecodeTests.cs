@@ -39,7 +39,7 @@ public class BytecodeTests
         de.RenderText(writer);
         Assert.False(de.HasErrors, "source did not compile:\n" + writer.ToString());
 
-        var ir = ModuleLowerer.Lower(comp, types, de);
+        var ir = ModuleLowerer.Lower(comp, types, de, verify: true);
         Assert.NotNull(ir);
         return ir!;
     }

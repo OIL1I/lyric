@@ -29,11 +29,34 @@ public static class ModuleLowerer
     private static readonly Dictionary<GenericParamSymbol, LyrType> NoSubstitution =
         new(ReferenceEqualityComparer.Instance);
 
+    /// <summary>
+    /// Läuft der Verifier, wenn der Aufrufer nichts anderes sagt? In Debug-Builds ja, im Release
+    /// nein — Vorbild ist LLVMs Verifier in Assert-Builds.
+    ///
+    /// <para>Gemessen an 400 Funktionen / 18 400 Instruktionen: Lowering mit Verifikation 30 ms,
+    /// ohne 2,8 ms. Die Prüfung ist also <b>90 % der Gesamtzeit</b>, nicht der vernachlässigbare
+    /// Posten, nach dem sie aussieht — das meiste davon steckt im Availability-Dataflow, der pro
+    /// Block HashSets alloziert und zum Fixpunkt iteriert.</para>
+    ///
+    /// <para>Das Risiko bleibt beherrschbar, weil der Bytecode-Leser beim Laden ohnehin
+    /// vollständig validiert (<c>LYR-BC####</c>). Ein Lowering-Bug im Release-Compiler äußert sich
+    /// also nicht als still falscher Code, sondern spätestens beim Laden — nur mit schlechterer
+    /// Fehlermeldung als ein Verifier-Befund.</para>
+    /// </summary>
+    public static bool VerifyByDefault =>
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
     /// <summary>Lowert die Compilation. Liefert <c>null</c>, wenn Scope-Grenzen als
     /// <c>LYR-IR0001</c> gemeldet wurden — dann steht die Ursache in
     /// <paramref name="de"/>.</summary>
+    /// <param name="verify"><c>null</c> = <see cref="VerifyByDefault"/>. Tests setzen den Wert
+    /// explizit, damit ihr Ergebnis nicht von der Build-Konfiguration abhängt.</param>
     public static IrModule? Lower(Compilation compilation, TypeResult types, DiagnosticEngine de,
-        bool verify = true)
+        bool? verify = null)
     {
         var pending = new List<(FunctionDecl Decl, string Name)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
@@ -76,7 +99,7 @@ public static class ModuleLowerer
         if (failed) return null;
 
         var result = new IrModule(functions);
-        if (verify) IrVerifier.VerifyOrThrow(result);
+        if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }
 }

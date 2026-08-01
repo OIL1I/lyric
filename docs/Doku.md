@@ -329,12 +329,25 @@ for (i in 0..=10)  { ... }   // 0, 1, ..., 10
 
 ### 9.1 If/Else (Statement & Expression)
 
+Als **Statement** sind die Zweige Blöcke:
+
 ```lyr
 if (n > 0) { ... } else if (n < 0) { ... } else { ... }
-
-// als Ausdruck (Pflicht-else)
-let sign: int = if (n > 0) { 1 } else if (n < 0) { -1 } else { 0 };
 ```
+
+Als **Ausdruck** sind die Zweige Ausdrücke — <b>keine</b> Blöcke, und `else` ist Pflicht:
+
+```lyr
+let sign: int = if (n > 0) 1 else if (n < 0) -1 else 0;
+```
+
+Der Unterschied ist kein Schönheitsfehler: **Blöcke haben in Lyric keinen Wert** (dieselbe Regel
+wie bei den match-Armen, [§14.2](#142-match-arme-ausdruck-oder-block)). `{ 1 }` ist deshalb kein
+Ausdruck, der `1` liefert, sondern ein Block — und ein Block kann rechts von `=` nicht stehen.
+`if (n > 0) { 1 } else { 0 }` ist ein Syntaxfehler (`LYR-PAR0002`).
+
+Wenn ein Zweig mehr als einen Ausdruck braucht, gilt derselbe Ausweg wie beim `match`: eine
+Helper-Funktion aufrufen, oder das if als **Statement** schreiben und in eine `var` zuweisen.
 
 ### 9.2 Schleifen
 
@@ -791,7 +804,7 @@ pub interface Comparable {
 }
 
 pub fn max<T :: [Comparable]>(a: T, b: T): T {
-    return if (a.compareTo(b) >= 0) { a } else { b };
+    return if (a.compareTo(b) >= 0) a else b;
 }
 ```
 
