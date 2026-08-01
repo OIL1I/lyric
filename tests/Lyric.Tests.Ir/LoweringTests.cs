@@ -32,6 +32,15 @@ public class LoweringTests
     /// jedes Lowering-Ergebnis Raten.</summary>
     private static IrModule Lower(string source, bool verify = true)
     {
+        var (ir, de) = TryLower(source, verify);
+        Assert.True(ir is not null, "lowering reported diagnostics:\n" + Render(de));
+        return ir!;
+    }
+
+    /// <summary>Wie <see cref="Lower"/>, akzeptiert aber gemeldete Scope-Grenzen. Bricht weiterhin
+    /// bei Sema-Fehlern ab: auf fehlerhaftem AST wäre jedes Lowering-Ergebnis Raten.</summary>
+    private static (IrModule? Ir, DiagnosticEngine De) TryLower(string source, bool verify = true)
+    {
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr", source);
         var de = new DiagnosticEngine(sm);
@@ -41,7 +50,7 @@ public class LoweringTests
         var types = Semantics.Analyze(comp, binding, de);
 
         Assert.False(de.HasErrors, "source did not type-check:\n" + Render(de));
-        return ModuleLowerer.Lower(comp, types, verify);
+        return (ModuleLowerer.Lower(comp, types, de, verify), de);
     }
 
     private static string Render(DiagnosticEngine de)
@@ -333,24 +342,28 @@ public class LoweringTests
     // Konstrukte, deren Typ skalar ist — hier greift die Grenze erst am Ausdruck bzw. Statement.
     [Theory]
     [InlineData("fn f(): string { return \"a\" + \"b\"; }", "string concatenation")]
-    [InlineData("fn f(): string { return f\"hi\"; }", "f-strings")]
+    [InlineData("fn f(): string { return f\"hi\"; }", "f-string interpolation")]
     [InlineData("fn f(n: int): int { return match (n) { 0 => 1, _ => 2 }; }", "'match'")]
     [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "'for-in'")]
     public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
         AssertNotSupported(source, expected);
 
-    /// <summary>P4 deckt einen Teil der Sprache ab. Was fehlt, muss mit Quellposition auffallen
-    /// statt still falschen Code zu erzeugen — dieselbe Konvention wie
-    /// <c>TypeLowering.Lower</c>.</summary>
+    /// <summary>Was P4 nicht lowert, ist gültiges Lyric — also eine <b>Diagnose</b> mit
+    /// Datei/Zeile/Spalte, kein Absturz. Der Code <c>LYR-IR0001</c> ist die stabile Kategorie
+    /// („dieser Compiler-Stand kann das noch nicht"), das Konstrukt steht in der Nachricht.</summary>
     private static void AssertNotSupported(string source, string expected)
     {
-        var ex = Assert.Throws<InternalCompilationException>(() => Lower(source));
-        Assert.Contains(expected, ex.Message, StringComparison.Ordinal);
-        Assert.Contains("not supported yet", ex.Message, StringComparison.Ordinal);
-        // Die Meldung trägt den Span. Er ist heute die rohe Span-Notation (FileId[start..end)),
-        // nicht file:line:col — der Lowerer hat keinen SourceManager. Solange die Scope-Grenzen
-        // über 'lyric lower' user-sichtbar sind, ist das eine bekannte raue Kante.
-        Assert.Contains(" at ", ex.Message, StringComparison.Ordinal);
+        var (ir, de) = TryLower(source);
+
+        Assert.Null(ir); // kein Teilergebnis: die FunctionIds wären verschoben
+        var diagnostic = Assert.Single(de.Diagnostics);
+        Assert.Equal("LYR-IR0001", diagnostic.Code);
+        Assert.Equal(Severity.Error, diagnostic.Severity);
+        Assert.Contains(expected, diagnostic.Message, StringComparison.Ordinal);
+
+        // Der Span zeigt in die Quelldatei — genau das war vorher die raue Kante.
+        Assert.True(diagnostic.Span.File.IsValid, "diagnostic has no source position");
+        Assert.Contains("test.lyr:", Render(de), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -358,12 +371,26 @@ public class LoweringTests
     {
         // Generics brauchen die Worklist-Monomorphisierung: pro konkretem Typargument-Tupel eine
         // Instanz, ausgehend von den Wurzeln. Bis dahin bekommen sie keine FunctionId.
-        var ex = Assert.Throws<InternalCompilationException>(() => Lower("""
+        AssertNotSupported("""
             fn id<T>(x: T): T { return x; }
             fn main(): int { return id(1); }
-            """));
+            """, "call to 'id'");
+    }
 
-        Assert.Contains("call to 'id'", ex.Message, StringComparison.Ordinal);
+    [Fact]
+    public void All_scope_limits_of_a_program_are_reported_in_one_run()
+    {
+        // Eine Meldung pro Aufruf wäre Schikane: wer drei nicht unterstützte Konstrukte benutzt,
+        // soll sie in einem Durchlauf sehen. Deshalb sammelt das Lowering pro Funktion weiter.
+        var (ir, de) = TryLower("""
+            fn a(): int { let xs = [1, 2]; return xs[0]; }
+            fn b(): string { return f"x"; }
+            fn c(): int { let t = (1, 2); return 0; }
+            """);
+
+        Assert.Null(ir);
+        Assert.Equal(3, de.Diagnostics.Count);
+        Assert.All(de.Diagnostics, d => Assert.Equal("LYR-IR0001", d.Code));
     }
 
     [Fact]

@@ -17,14 +17,14 @@ Slices P1–P4 stehen: IR-Datentypen, Printer + Goldens, Verifier, Lowering AST 
 entsteht IR erstmals aus echtem Quelltext statt aus handgebauten Fixtures. **Bytecode-Format und
 Emitter fehlen noch** (`docs/Bytecode.md`, Serializer, `lyric build`, `lyric disasm`).
 ADR-006 (Coroutine-State-Machine-Lowering) und ADR-013 (`.lyrbc` als plattformneutraler,
-spezifizierter Vertrag) sind ratifiziert und in `ROADMAP.md` fixiert. 1061 Tests grün, davon 120
+spezifizierter Vertrag) sind ratifiziert und in `ROADMAP.md` fixiert. 1062 Tests grün, davon 121
 in `Lyric.Tests.Ir`.
 
 **M5-Gate-Programm ist `examples/arith.lyr`**, nicht `hello.lyr`: letzteres braucht
-`console.println` und f-Strings, also eine Import-Tabelle mit Signaturen — und die Signaturquelle
-für Stdlib-Symbole entsteht erst mit M8. Das Exit-Kriterium der ROADMAP („Hello-World compiliert
-zu Bytecode") war nie aus M5s eigenen Lieferposten erreichbar; **die ROADMAP ist an dieser Stelle
-noch nicht nachgezogen** (gehört in den Scope-Check).
+`console.println` und f-Strings, also eine Import-Tabelle mit Signaturen — und die entsteht erst mit
+dem Stdlib-Minimum in **M6**. Hello-World ist ohnehin schon M6s Exit-Kriterium; M5 endet damit an
+der Grenze, die es selbst kontrolliert. Die ROADMAP ist entsprechend korrigiert (M5-Exit + Gate-
+Programm, mit Begründung als Blockzitat).
 
 ## Was schon erledigt ist
 
@@ -63,7 +63,7 @@ noch nicht nachgezogen** (gehört in den Scope-Check).
     Genau deshalb braucht diese IR kein `Phi`.
   - **Zwei Pässe**: Pass 1 vergibt die `FunctionId`s, Pass 2 lowert — sonst scheitern Vorwärts-Call
     und Rekursion. Der Verifier läuft als Abnahme nach jedem Lowering (`VerifyOrThrow`).
-  - 46 Testfälle: 11 Golden-Fixtures (Quelle + Snapshot als Paar), Invarianten (Blockdichte,
+  - 47 Testfälle: 11 Golden-Fixtures (Quelle + Snapshot als Paar), Invarianten (Blockdichte,
     Parameter-Konvention, verworfener toter Code, kein Merge bei beidseitigem return), Determinismus
     und die Scope-Grenzen mit Quellposition.
 
@@ -79,9 +79,6 @@ gesetzt und hängen nicht am Opcode-Set; die Opcode-Tabelle wächst mit dem Emit
 **Aus M5 P1–P4:**
 
 - `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
-- **Lowering-Meldungen tragen den rohen Span** (`0[13..27)` statt `test.lyr:1:14`) — der Lowerer
-  hat keinen `SourceManager`. Über `lyric lower` ist das user-sichtbar. Sauber wäre eine echte
-  `LYR-IR####`-Diagnose; der Code-Bereich ist in der ROADMAP genau dafür reserviert.
 - `ModuleLowerer.Lower` verifiziert per Default immer. Für Release-Builds fehlt noch der Schalter,
   der das abstellt (heute nur als Parameter, nicht an einer Build-Konfiguration).
 - **Generics**: Richtung entschieden (Worklist im Lowering, ab den Wurzeln, eine Instanz pro
@@ -125,8 +122,13 @@ gesetzt und hängen nicht am Opcode-Set; die Opcode-Tabelle wächst mit dem Emit
   überein?" → `IrType.Equal`. Zwei verschiedene Fragen, zwei Mechanismen.
 - **Lowering**: Statements liefern „fällt der Kontrollfluss durch?"; Werte über Blockgrenzen laufen
   durch (ggf. synthetische) Locals, nie durch Temps; Blockdichte und `Entry == bb0` sind im
-  `BlockBuilder` strukturell garantiert statt geprüft. Was P4 nicht kann, **wirft mit Quellposition**
-  statt still falschen Code zu erzeugen — dieselbe Konvention wie `TypeLowering.Lower`.
+  `BlockBuilder` strukturell garantiert statt geprüft.
+- **Zwei Fehlerklassen im Lowering, sauber getrennt**: gültiges Lyric, das der Backend-Stand noch
+  nicht kann → Diagnose `LYR-IR0001` mit Datei/Zeile/Spalte, alle eines Programms in einem Durchlauf
+  (`ModuleLowerer` liefert dann `null`, kein Teilergebnis — die `FunctionId`s wären verschoben).
+  Interne Inkonsistenz → `InternalCompilationException` wie gehabt. **Bewusst genau ein IR-Code**:
+  Codes sind stabile Bezeichner, die Lücken sind vorübergehend; ein Code, der verschwindet sobald
+  Lambdas gelowert werden, war nie einer. `LYR-IR0002..0010` bleiben frei.
 - **IR-Invarianten, die Arbeit ins Lowering verschieben** (alle im Verifier durchgesetzt und
   getestet): unerreichbare Blöcke sind ein Fehler (kein `SimplifyCfg`-Pass in v1); Block-Ids dicht
   und `Entry == Blocks[0]`; `string + string` lowert zu einem Call, **nicht** zu `BinOp Add` (sonst
@@ -142,7 +144,7 @@ gesetzt und hängen nicht am Opcode-Set; die Opcode-Tabelle wächst mit dem Emit
 
 ## Letzter relevanter Commit
 
-`M5: Lowering AST -> IR (P4)`
+`M5: LYR-IR0001 fuer Scope-Grenzen, ROADMAP-Exit korrigiert`
 
 ---
 

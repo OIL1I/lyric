@@ -26,8 +26,10 @@ namespace Lyric.Ir.Lowering;
 ///
 /// <para>Was P4 <b>nicht</b> lowert (die IR kann es nicht ausdrücken): Nullable, struct/class/enum,
 /// Arrays, Tupel, <c>match</c>, <c>for-in</c>, Lambdas, Exceptions, <c>defer</c>, Coroutinen,
-/// Generics, Stdlib-/Extern-Calls, f-Strings. Alles davon wirft mit Quellposition statt still
-/// falschen Code zu erzeugen.</para>
+/// Generics, Stdlib-/Extern-Calls, f-Strings. Das ist gültiges Lyric, also eine <b>Diagnose</b>
+/// (<c>LYR-IR0001</c>) mit Datei/Zeile/Spalte und kein Absturz — siehe
+/// <see cref="UnsupportedConstructException"/>. Interne Inkonsistenzen bleiben davon getrennt und
+/// werfen weiterhin <see cref="InternalCompilationException"/>.</para>
 /// </summary>
 internal sealed class FunctionLowerer
 {
@@ -286,15 +288,15 @@ internal sealed class FunctionLowerer
         IfExpr e => LowerIfExpr(e),
 
         NullLiteralExpr e => throw NotSupported("'null' (needs a nullable IR type)", e.Span),
-        InterpolatedStringExpr e => throw NotSupported("f-strings (lower to format calls)", e.Span),
-        LambdaExpr e => throw NotSupported("lambdas (need closure lifting)", e.Span),
+        InterpolatedStringExpr e => throw NotSupported("f-string interpolation (lowers to format calls)", e.Span),
+        LambdaExpr e => throw NotSupported("lambda (needs closure lifting)", e.Span),
         MatchExpr e => throw NotSupported("'match' as an expression", e.Span),
         MemberExpr e => throw NotSupported($"member access '.{e.Member}'", e.Span),
         IndexExpr e => throw NotSupported("indexing", e.Span),
-        ArrayLitExpr e => throw NotSupported("array literals", e.Span),
-        TupleLitExpr e => throw NotSupported("tuple literals", e.Span),
-        StructInitExpr e => throw NotSupported("struct initializers", e.Span),
-        RangeExpr e => throw NotSupported("ranges", e.Span),
+        ArrayLitExpr e => throw NotSupported("array literal", e.Span),
+        TupleLitExpr e => throw NotSupported("tuple literal", e.Span),
+        StructInitExpr e => throw NotSupported("struct initializer", e.Span),
+        RangeExpr e => throw NotSupported("range expression", e.Span),
         ResumeExpr e => throw NotSupported("'resume'", e.Span),
         ThisExpr e => throw NotSupported("'this' (methods are not lowered yet)", e.Span),
         AtIdentifierExpr e => throw NotSupported($"attribute '{e.Name}'", e.Span),
@@ -557,8 +559,7 @@ internal sealed class FunctionLowerer
     {
         IrScalarType { Kind: IrScalar.F32 or IrScalar.F64 } => new FloatConst(1.0),
         IrScalarType s when IsIntegerScalar(s.Kind) => new IntConst(1),
-        _ => throw new InternalCompilationException(
-            $"lowering: increment/decrement on non-numeric type at {span}")
+        _ => throw NotSupported("increment/decrement on a non-numeric type", span)
     };
 
     private static bool IsIntegerScalar(IrScalar kind) => kind is
@@ -604,10 +605,13 @@ internal sealed class FunctionLowerer
         throw NotSupported("non-primitive return type", _decl.ReturnType.Span);
     }
 
-    private InternalCompilationException NotSupported(string what, Span span) =>
-        new($"lowering: {what} is not supported yet — at {span} in '{_name}'. " +
-            "P4 covers scalars, locals, module-local calls and structured control flow.");
+    /// <summary>Scope-Grenze: gültiges Lyric, für das der Backend-Teil noch fehlt. Wird von
+    /// <see cref="ModuleLowerer"/> zu einer <c>LYR-IR0001</c>-Diagnose mit Datei/Zeile/Spalte —
+    /// deshalb hier keine Position in den Text schreiben, die rendert die DiagnosticEngine.</summary>
+    private static UnsupportedConstructException NotSupported(string what, Span span) =>
+        new($"{what} is not supported by this compiler version yet", span);
 
+    /// <summary>Interne Inkonsistenz — der Compiler ist kaputt, nicht der Quelltext.</summary>
     private InternalCompilationException Bug(string message) =>
         new($"lowering: {message} (in '{_name}')");
 }

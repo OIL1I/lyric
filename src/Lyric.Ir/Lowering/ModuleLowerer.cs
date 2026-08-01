@@ -1,4 +1,5 @@
 using Lyric.AST;
+using Lyric.Core;
 using Lyric.Resolver;
 using Lyric.Sema;
 
@@ -21,14 +22,18 @@ namespace Lyric.Ir.Lowering;
 /// <para><b>Was übersprungen wird</b>: bodylose Deklarationen (nichts zu lowern) und generische
 /// Funktionen. Letztere brauchen die Worklist-Monomorphisierung — pro konkretem Typargument-Tupel
 /// eine Instanz, ausgehend von den Wurzeln. Ein Call auf eine übersprungene Funktion findet keine
-/// Id und meldet das als „nicht unterstützt" statt still falschen Code zu erzeugen.</para>
+/// Id und meldet das als <c>LYR-IR0001</c> statt still falschen Code zu erzeugen.</para>
 /// </summary>
 public static class ModuleLowerer
 {
     private static readonly Dictionary<GenericParamSymbol, LyrType> NoSubstitution =
         new(ReferenceEqualityComparer.Instance);
 
-    public static IrModule Lower(Compilation compilation, TypeResult types, bool verify = true)
+    /// <summary>Lowert die Compilation. Liefert <c>null</c>, wenn Scope-Grenzen als
+    /// <c>LYR-IR0001</c> gemeldet wurden — dann steht die Ursache in
+    /// <paramref name="de"/>.</summary>
+    public static IrModule? Lower(Compilation compilation, TypeResult types, DiagnosticEngine de,
+        bool verify = true)
     {
         var pending = new List<(FunctionDecl Decl, string Name)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
@@ -49,10 +54,26 @@ public static class ModuleLowerer
             }
         }
 
-        // Pass 2 — Bodies.
+        // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
+        // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
         var functions = new List<IrFunction>(pending.Count);
+        var failed = false;
         foreach (var (decl, name) in pending)
-            functions.Add(new FunctionLowerer(decl, name, types, ids, NoSubstitution).Run());
+        {
+            try
+            {
+                functions.Add(new FunctionLowerer(decl, name, types, ids, NoSubstitution).Run());
+            }
+            catch (UnsupportedConstructException ex)
+            {
+                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+                failed = true;
+            }
+        }
+
+        // Eine übersprungene Funktion würde die FunctionIds der folgenden verschieben — der
+        // Modulaufbau ist damit nicht mehr rettbar. Kein Teilergebnis zurückgeben.
+        if (failed) return null;
 
         var result = new IrModule(functions);
         if (verify) IrVerifier.VerifyOrThrow(result);

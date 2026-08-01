@@ -63,20 +63,19 @@ public static class Program
         var binding = comp.Resolve();
         var types = Semantics.Analyze(comp, binding, de);
 
-        de.RenderText(Console.Error);
-        if (de.HasErrors) return 1;
-
-        try
+        if (de.HasErrors)
         {
-            Console.Out.Write(IrPrinter.Dump(ModuleLowerer.Lower(comp, types)));
-        }
-        catch (InternalCompilationException ex)
-        {
-            // P4 deckt einen Teil der Sprache ab. Was fehlt, meldet das Lowering mit Quellposition
-            // — als Klartext statt Stacktrace, weil es eine Scope-Grenze ist und kein Absturz.
-            Console.Error.WriteLine(ex.Message);
+            de.RenderText(Console.Error);
             return 1;
         }
+
+        // Scope-Grenzen des Lowerings kommen als LYR-IR0001 in dieselbe DiagnosticEngine und
+        // werden mit Datei/Zeile/Spalte gerendert wie jeder andere Fehler auch.
+        var ir = ModuleLowerer.Lower(comp, types, de);
+        de.RenderText(Console.Error);
+        if (ir is null) return 1;
+
+        Console.Out.Write(IrPrinter.Dump(ir));
         return 0;
     }
 

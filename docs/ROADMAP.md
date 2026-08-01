@@ -251,9 +251,20 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 - Bytecode-Serializer (`.lyrbc`-Files).
 - Bytecode-Disassembler (`lyric disasm <file.lyrbc>`).
 - Diagnostik-Codes `LYR-IR0001..0010`, `LYR-BC0001..0010`.
-- CLI: `lyric build <file>` produziert `.lyrbc`.
+- CLI: `lyric lower <file>` (IR-Dump, Debug), `lyric build <file>` produziert `.lyrbc`.
+- **Gate-Programm `examples/arith.lyr`** — stdlib-frei, damit es allein aus M5-Mitteln compiliert.
 
-**Exit**: Hello-World compiliert zu Bytecode, Disasm zeigt sinnvolle Instruktionen. **v0.1 Release-Tag**.
+**Exit**: `examples/arith.lyr` compiliert zu Bytecode, Disasm zeigt sinnvolle Instruktionen. **v0.1 Release-Tag**.
+
+> **Korrektur (2026-07-30, während M5/P4):** Das Exit-Kriterium lautete ursprünglich „Hello-World
+> compiliert zu Bytecode". Das war aus M5s eigenen Lieferposten nie erreichbar: `examples/hello.lyr`
+> ruft `console.println` und nutzt f-Strings, braucht also eine Import-Tabelle **mit Signaturen** —
+> und die entsteht erst mit dem Stdlib-Minimum in **M6** (`ExternalSymbol` trägt heute nur Name und
+> Modulpfad, keine Signatur). Das Kriterium ist deshalb auf ein stdlib-freies Programm umgestellt.
+>
+> Keine Scope-Kürzung, sondern die Auflösung einer Inkonsistenz zwischen zwei Meilensteinen:
+> Hello-World **ist bereits M6s Exit-Kriterium**, und M6 liefert mit `std.io.console.println` genau
+> das, was dafür fehlt. M5 endet damit an der Grenze, die es selbst kontrolliert.
 
 ### M6 — VM (basic) (4–6 Wochen)
 
