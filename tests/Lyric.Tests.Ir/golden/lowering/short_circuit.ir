@@ -1,0 +1,47 @@
+fn main.inRange -> bool {
+  params: 3
+  locals:
+    l0 n: i64
+    l1 lo: i64
+    l2 hi: i64
+    l3 $and0: bool
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = load l1
+    t2: bool = ge t0, t1
+    store l3, t2
+    condbr t2 -> bb1, bb2
+  bb1:
+    t3: i64 = load l0
+    t4: i64 = load l2
+    t5: bool = le t3, t4
+    store l3, t5
+    br bb2
+  bb2:
+    t6: bool = load l3
+    ret t6
+}
+
+fn main.outside -> bool {
+  params: 3
+  locals:
+    l0 n: i64
+    l1 lo: i64
+    l2 hi: i64
+    l3 $or0: bool
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = load l1
+    t2: bool = lt t0, t1
+    store l3, t2
+    condbr t2 -> bb2, bb1
+  bb1:
+    t3: i64 = load l0
+    t4: i64 = load l2
+    t5: bool = gt t3, t4
+    store l3, t5
+    br bb2
+  bb2:
+    t6: bool = load l3
+    ret t6
+}

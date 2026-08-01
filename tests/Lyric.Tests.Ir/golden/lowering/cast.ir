@@ -1,0 +1,28 @@
+fn main.widen -> i64 {
+  params: 1
+  locals:
+    l0 x: i32
+  bb0:
+    t0: i32 = load l0
+    t1: i64 = convert i32 t0
+    ret t1
+}
+
+fn main.same -> i64 {
+  params: 1
+  locals:
+    l0 x: i64
+  bb0:
+    t0: i64 = load l0
+    ret t0
+}
+
+fn main.toFloat -> f64 {
+  params: 1
+  locals:
+    l0 x: i64
+  bb0:
+    t0: i64 = load l0
+    t1: f64 = convert i64 t0
+    ret t1
+}

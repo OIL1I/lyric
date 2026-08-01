@@ -1,0 +1,7 @@
+fn inRange(n: int, lo: int, hi: int): bool {
+    return n >= lo && n <= hi;
+}
+
+fn outside(n: int, lo: int, hi: int): bool {
+    return n < lo || n > hi;
+}

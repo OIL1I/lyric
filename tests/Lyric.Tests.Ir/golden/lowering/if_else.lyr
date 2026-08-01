@@ -1,0 +1,9 @@
+fn classify(n: int): int {
+    var r = 0;
+    if (n < 0) {
+        r = -1;
+    } else {
+        r = 1;
+    }
+    return r;
+}

@@ -1,0 +1,20 @@
+fn double(n: int): int {
+    return n * 2;
+}
+
+fn touch(n: int) {
+    var x = n;
+    x += 1;
+}
+
+fn fact(n: int): int {
+    if (n <= 1) {
+        return 1;
+    }
+    return n * fact(n - 1);
+}
+
+fn main(): int {
+    touch(1);
+    return double(fact(4));
+}

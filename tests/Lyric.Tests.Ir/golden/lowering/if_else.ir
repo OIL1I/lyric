@@ -1,0 +1,25 @@
+fn main.classify -> i64 {
+  params: 1
+  locals:
+    l0 n: i64
+    l1 r: i64
+  bb0:
+    t0: i64 = const 0
+    store l1, t0
+    t1: i64 = load l0
+    t2: i64 = const 0
+    t3: bool = lt t1, t2
+    condbr t3 -> bb1, bb2
+  bb1:
+    t4: i64 = const 1
+    t5: i64 = neg t4
+    store l1, t5
+    br bb3
+  bb2:
+    t6: i64 = const 1
+    store l1, t6
+    br bb3
+  bb3:
+    t7: i64 = load l1
+    ret t7
+}

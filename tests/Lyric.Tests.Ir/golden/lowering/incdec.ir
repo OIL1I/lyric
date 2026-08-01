@@ -1,0 +1,35 @@
+fn main.counters -> i64 {
+  params: 1
+  locals:
+    l0 start: i64
+    l1 i: i64
+    l2 post: i64
+    l3 pre: i64
+  bb0:
+    t0: i64 = load l0
+    store l1, t0
+    t1: i64 = load l1
+    t2: i64 = const 1
+    t3: i64 = add t1, t2
+    store l1, t3
+    store l2, t1
+    t4: i64 = load l1
+    t5: i64 = const 1
+    t6: i64 = add t4, t5
+    store l1, t6
+    store l3, t6
+    t7: i64 = load l1
+    t8: i64 = const 3
+    t9: i64 = add t7, t8
+    store l1, t9
+    t10: i64 = load l1
+    t11: i64 = const 2
+    t12: i64 = mul t10, t11
+    store l1, t12
+    t13: i64 = load l2
+    t14: i64 = load l3
+    t15: i64 = add t13, t14
+    t16: i64 = load l1
+    t17: i64 = add t15, t16
+    ret t17
+}

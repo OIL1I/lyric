@@ -1,0 +1,14 @@
+fn firstMultiple(limit: int, step: int): int {
+    var i = 0;
+    while (i < limit) {
+        if (step == 0) {
+            break;
+        }
+        if (i % step != 0) {
+            i++;
+            continue;
+        }
+        return i;
+    }
+    return -1;
+}

@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
     <ProjectReference Include="..\..\src\Lyric.Ir\Lyric.Ir.csproj" />
+    <ProjectReference Include="..\..\src\Lyric.Parsing\Lyric.Parsing.csproj" />
   </ItemGroup>
 
 </Project>

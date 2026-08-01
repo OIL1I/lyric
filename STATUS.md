@@ -13,11 +13,18 @@
 
 **M5 — IR + Bytecode — in Arbeit**
 
-Slices P1–P3 stehen: IR-Datentypen, Printer + Goldens, Verifier. Das **Lowering AST → IR fehlt
-noch** — IR entsteht bisher nur aus handgebauten Fixtures. ADR-006 (Coroutine-State-Machine-
-Lowering) und ADR-013 (`.lyrbc` als plattformneutraler, spezifizierter Vertrag →
-`docs/Bytecode.md`) sind ratifiziert und in `ROADMAP.md` fixiert. 1025 Tests grün, davon 84 in
-`Lyric.Tests.Ir`.
+Slices P1–P4 stehen: IR-Datentypen, Printer + Goldens, Verifier, Lowering AST → IR. Damit
+entsteht IR erstmals aus echtem Quelltext statt aus handgebauten Fixtures. **Bytecode-Format und
+Emitter fehlen noch** (`docs/Bytecode.md`, Serializer, `lyric build`, `lyric disasm`).
+ADR-006 (Coroutine-State-Machine-Lowering) und ADR-013 (`.lyrbc` als plattformneutraler,
+spezifizierter Vertrag) sind ratifiziert und in `ROADMAP.md` fixiert. 1061 Tests grün, davon 120
+in `Lyric.Tests.Ir`.
+
+**M5-Gate-Programm ist `examples/arith.lyr`**, nicht `hello.lyr`: letzteres braucht
+`console.println` und f-Strings, also eine Import-Tabelle mit Signaturen — und die Signaturquelle
+für Stdlib-Symbole entsteht erst mit M8. Das Exit-Kriterium der ROADMAP („Hello-World compiliert
+zu Bytecode") war nie aus M5s eigenen Lieferposten erreichbar; **die ROADMAP ist an dieser Stelle
+noch nicht nachgezogen** (gehört in den Scope-Check).
 
 ## Was schon erledigt ist
 
@@ -44,19 +51,49 @@ Lowering) und ADR-013 (`.lyrbc` als plattformneutraler, spezifizierter Vertrag �
   - 74 Testfälle: jede gültige Fixture befundfrei, eine Invariante pro Negativ-Test, plus
     Bail-out-ohne-Kaskade, Isolation zwischen Funktionen, Determinismus, und dass der Verifier auf
     malformed IR nie selbst crasht.
+- [x] **M5 — P4 — Lowering AST → IR** (`Lyric.Ir/Lowering/`, ~534 LOC): skalare Ausdrücke, Locals,
+  modulinterne Calls inkl. Rekursion und Vorwärts-Call, `if`/`while`/`do-while`/`break`/`continue`/
+  `return`, `if` als Ausdruck, `&&`/`||`, Casts, `++`/`--`, Compound-Assign. `lyric lower <file>`
+  druckt den IR-Dump. Gate-Artefakt: `examples/arith.lyr`.
+  - **Statements liefern „fällt der Kontrollfluss durch?"** — ohne diesen Rückgabewert kann man
+    nicht entscheiden, ob ein Merge-Block angelegt werden darf, und einer ohne Prädecessoren wäre
+    unerreichbar. Aus demselben Grund bricht die Statement-Schleife bei einem Terminator ab: Code
+    nach `return` darf keinen Block erzeugen.
+  - **Werte über Blockgrenzen laufen durch Locals, nicht durch Temps** (if-Ausdruck, `&&`, `||`).
+    Genau deshalb braucht diese IR kein `Phi`.
+  - **Zwei Pässe**: Pass 1 vergibt die `FunctionId`s, Pass 2 lowert — sonst scheitern Vorwärts-Call
+    und Rekursion. Der Verifier läuft als Abnahme nach jedem Lowering (`VerifyOrThrow`).
+  - 46 Testfälle: 11 Golden-Fixtures (Quelle + Snapshot als Paar), Invarianten (Blockdichte,
+    Parameter-Konvention, verworfener toter Code, kein Merge bei beidseitigem return), Determinismus
+    und die Scope-Grenzen mit Quellposition.
 
 ## Woran wir gerade arbeiten
 
-Als Nächstes **M5 — P4: Lowering AST → IR**. Es ist der erste echte Abnehmer des Verifiers — ab
-dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
+Als Nächstes **M5 — P5: Bytecode-Format + Emitter**. Jetzt gibt es einen zweiten Abnehmer der IR
+(neben Printer und Verifier), damit ist der Zeitpunkt für `docs/Bytecode.md` da: die Container-Teile
+(Header, LEB128, String-/Float-Encoding, Sektions-Layout, Determinismus) sind von ADR-013 schon
+gesetzt und hängen nicht am Opcode-Set; die Opcode-Tabelle wächst mit dem Emitter.
 
 ## Noch offen
 
-**Aus M5 P1–P3:**
+**Aus M5 P1–P4:**
 
-- Der Verifier läuft noch an keiner Produktions-Aufrufstelle (kommt mit P4: immer in Debug/Tests,
-  im Release hinter Flag).
 - `docs/Bytecode.md` (ADR-013) noch nicht begonnen.
+- **Lowering-Meldungen tragen den rohen Span** (`0[13..27)` statt `test.lyr:1:14`) — der Lowerer
+  hat keinen `SourceManager`. Über `lyric lower` ist das user-sichtbar. Sauber wäre eine echte
+  `LYR-IR####`-Diagnose; der Code-Bereich ist in der ROADMAP genau dafür reserviert.
+- `ModuleLowerer.Lower` verifiziert per Default immer. Für Release-Builds fehlt noch der Schalter,
+  der das abstellt (heute nur als Parameter, nicht an einer Build-Konfiguration).
+- **Generics**: Richtung entschieden (Worklist im Lowering, ab den Wurzeln, eine Instanz pro
+  Typargument-Tupel), Bau offen. Der Substitutions-Haken sitzt in `FunctionLowerer.LowerType`,
+  `NameMangling` ist die Stelle für die Typargumente im Namen.
+
+**Doku-Fehler (beim Schreiben von `arith.lyr` aufgefallen):**
+
+- `Doku.md` §9.1 und §16.1 zeigen if-**Ausdrücke** mit Blöcken
+  (`if (n > 0) { 1 } else { 0 }`). Der Parser lehnt das ab (`LYR-PAR0002`), und `Sprache.md` §6.2
+  definiert die Zweige als **Ausdrücke** (`if (n > 0) 1 else 0`) — Blöcke haben in Lyric keinen
+  Wert. `Sprache.md` gewinnt laut eigenem Header; `Doku.md` muss an beiden Stellen nachgezogen werden.
 
 **Aus M4 vertagt:**
 
@@ -86,6 +123,10 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
   liest Dump und Befunde nebeneinander, wenn man einen Lowering-Bug sucht — sie dürfen nicht driften.
 - „Ist der Typ genau dieser Skalar?" → Pattern-Match (`IsVoid`/`IsBool`, total). „Stimmen zwei Typen
   überein?" → `IrType.Equal`. Zwei verschiedene Fragen, zwei Mechanismen.
+- **Lowering**: Statements liefern „fällt der Kontrollfluss durch?"; Werte über Blockgrenzen laufen
+  durch (ggf. synthetische) Locals, nie durch Temps; Blockdichte und `Entry == bb0` sind im
+  `BlockBuilder` strukturell garantiert statt geprüft. Was P4 nicht kann, **wirft mit Quellposition**
+  statt still falschen Code zu erzeugen — dieselbe Konvention wie `TypeLowering.Lower`.
 - **IR-Invarianten, die Arbeit ins Lowering verschieben** (alle im Verifier durchgesetzt und
   getestet): unerreichbare Blöcke sind ein Fehler (kein `SimplifyCfg`-Pass in v1); Block-Ids dicht
   und `Entry == Blocks[0]`; `string + string` lowert zu einem Call, **nicht** zu `BinOp Add` (sonst
@@ -101,7 +142,7 @@ dann läuft er nach jedem Lowering-Durchlauf statt nur gegen Fixtures.
 
 ## Letzter relevanter Commit
 
-`docs: STATUS.md - Git-Stand-Notiz entfernt`
+`M5: Lowering AST -> IR (P4)`
 
 ---
 

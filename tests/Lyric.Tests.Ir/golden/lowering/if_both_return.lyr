@@ -1,0 +1,8 @@
+// Beide Zweige returnen -> es darf KEIN Merge-Block entstehen.
+fn sign(n: int): int {
+    if (n < 0) {
+        return -1;
+    } else {
+        return 1;
+    }
+}

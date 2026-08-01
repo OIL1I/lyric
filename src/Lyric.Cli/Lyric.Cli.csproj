@@ -7,6 +7,7 @@
     <ProjectReference Include="..\Lyric.Parsing\Lyric.Parsing.csproj" />
     <ProjectReference Include="..\Lyric.Resolver\Lyric.Resolver.csproj" />
     <ProjectReference Include="..\Lyric.Sema\Lyric.Sema.csproj" />
+    <ProjectReference Include="..\Lyric.Ir\Lyric.Ir.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

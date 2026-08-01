@@ -1,5 +1,7 @@
 using Lyric.AST;
 using Lyric.Core;
+using Lyric.Ir;
+using Lyric.Ir.Lowering;
 using Lyric.Lexing;
 using Lyric.Parsing;
 using Lyric.Resolver;
@@ -27,8 +29,55 @@ public static class Program
             "tokenize" => Tokenize(args),
             "parse" => Parse(args),
             "check" => CheckCmd(args),
+            "lower" => Lower(args),
             _ => Unknown(args[0]),
         };
+    }
+
+    /// <summary>Debug-Ausgabe der Mid-IR (M5/P4), analog zu 'parse'. Lowert nur, wenn die Sema
+    /// fehlerfrei war — auf fehlerhaftem AST wäre jedes Lowering-Ergebnis Raten.</summary>
+    private static int Lower(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("lower: missing file argument");
+            return 2;
+        }
+        var fpath = args[1];
+        var sm = new SourceManager();
+        var de = new DiagnosticEngine(sm);
+        FileId id;
+        try
+        {
+            id = sm.AddFromDisk(fpath);
+        }
+        catch
+        {
+            de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
+            de.RenderText(Console.Error);
+            return 1;
+        }
+        var module = new Parser(sm, id, de).ParseModule();
+        var comp = new Compilation(sm, de);
+        comp.AddModule(module);
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+
+        de.RenderText(Console.Error);
+        if (de.HasErrors) return 1;
+
+        try
+        {
+            Console.Out.Write(IrPrinter.Dump(ModuleLowerer.Lower(comp, types)));
+        }
+        catch (InternalCompilationException ex)
+        {
+            // P4 deckt einen Teil der Sprache ab. Was fehlt, meldet das Lowering mit Quellposition
+            // — als Klartext statt Stacktrace, weil es eine Scope-Grenze ist und kein Absturz.
+            Console.Error.WriteLine(ex.Message);
+            return 1;
+        }
+        return 0;
     }
 
     private static int CheckCmd(string[] args)
@@ -155,5 +204,6 @@ public static class Program
         Console.WriteLine("  tokenize <file>  Print token stream (debug)");
         Console.WriteLine("  parse <file>     Print AST dump (debug)");
         Console.WriteLine("  check <file>     Resolve + type-check (no build)");
+        Console.WriteLine("  lower <file>     Print mid-IR dump (debug)");
     }
 }

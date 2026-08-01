@@ -1,0 +1,43 @@
+fn main.firstMultiple -> i64 {
+  params: 2
+  locals:
+    l0 limit: i64
+    l1 step: i64
+    l2 i: i64
+  bb0:
+    t0: i64 = const 0
+    store l2, t0
+    br bb1
+  bb1:
+    t1: i64 = load l2
+    t2: i64 = load l0
+    t3: bool = lt t1, t2
+    condbr t3 -> bb2, bb3
+  bb2:
+    t4: i64 = load l1
+    t5: i64 = const 0
+    t6: bool = eq t4, t5
+    condbr t6 -> bb4, bb5
+  bb3:
+    t16: i64 = const 1
+    t17: i64 = neg t16
+    ret t17
+  bb4:
+    br bb3
+  bb5:
+    t7: i64 = load l2
+    t8: i64 = load l1
+    t9: i64 = rem t7, t8
+    t10: i64 = const 0
+    t11: bool = ne t9, t10
+    condbr t11 -> bb6, bb7
+  bb6:
+    t12: i64 = load l2
+    t13: i64 = const 1
+    t14: i64 = add t12, t13
+    store l2, t14
+    br bb1
+  bb7:
+    t15: i64 = load l2
+    ret t15
+}

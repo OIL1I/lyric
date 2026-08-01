@@ -1,0 +1,17 @@
+fn main.abs -> i64 {
+  params: 1
+  locals:
+    l0 n: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = const 0
+    t2: bool = lt t0, t1
+    condbr t2 -> bb1, bb2
+  bb1:
+    t3: i64 = load l0
+    t4: i64 = neg t3
+    ret t4
+  bb2:
+    t5: i64 = load l0
+    ret t5
+}

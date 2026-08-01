@@ -1,0 +1,8 @@
+fn counters(start: int): int {
+    var i = start;
+    let post = i++;
+    let pre = ++i;
+    i += 3;
+    i *= 2;
+    return post + pre + i;
+}

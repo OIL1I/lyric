@@ -1,0 +1,374 @@
+using System.Runtime.CompilerServices;
+using System.Text;
+using Lyric.Core;
+using Lyric.Ir;
+using Lyric.Ir.Lowering;
+using Lyric.Parsing;
+using Lyric.Resolver;
+using Lyric.Sema;
+
+namespace Lyric.Tests.Ir;
+
+/// <summary>
+/// Tests für das Lowering AST → IR (M5/P4).
+///
+/// <para><b>Golden-Tests sind das Rückgrat</b>: Quelltext rein, IR-Dump raus, gegen Snapshot.
+/// Quelle und Erwartung liegen als Paar in <c>golden/lowering/&lt;name&gt;.lyr</c> und
+/// <c>.ir</c> — dasselbe Muster wie die Lexer-Goldens.</para>
+///
+/// <para><b>Der Verifier läuft in jedem dieser Tests mit.</b> <see cref="ModuleLowerer.Lower"/>
+/// ruft <see cref="IrVerifier.VerifyOrThrow"/>, ein Befund wirft also, bevor überhaupt
+/// verglichen wird. Damit sind die 74 Verifier-Testfälle erstmals gegen echtes Lowering scharf
+/// statt nur gegen handgebaute Fixtures — das war der eigentliche Zweck von P3.</para>
+///
+/// <para>Die Unit-Tests darunter nageln die Invarianten fest, die man im Dump zwar sehen, aber
+/// leicht übersehen kann (Blockdichte, Parameter-Konvention, verworfener toter Code).</para>
+/// </summary>
+public class LoweringTests
+{
+    // ------------------------------------------------------------------ Helfer
+
+    /// <summary>Quelltext → IR. Bricht ab, wenn die Sema meckert: auf fehlerhaftem AST wäre
+    /// jedes Lowering-Ergebnis Raten.</summary>
+    private static IrModule Lower(string source, bool verify = true)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de);
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+
+        Assert.False(de.HasErrors, "source did not type-check:\n" + Render(de));
+        return ModuleLowerer.Lower(comp, types, verify);
+    }
+
+    private static string Render(DiagnosticEngine de)
+    {
+        var writer = new StringWriter();
+        de.RenderText(writer);
+        return writer.ToString();
+    }
+
+    private static IrFunction Single(string source) => Assert.Single(Lower(source).Functions);
+
+    private static string Normalize(string s) => s.Replace("\r\n", "\n").Replace("\r", "\n");
+
+    private static string GoldenDir([CallerFilePath] string thisFile = "")
+        => Path.Combine(Path.GetDirectoryName(thisFile)!, "golden", "lowering");
+
+    // ------------------------------------------------------------------ 1) Golden
+
+    private static bool UpdateMode =>
+        Environment.GetEnvironmentVariable("LYRIC_UPDATE_SNAPSHOTS") is "1" or "true";
+
+    [Theory]
+    [InlineData("arith")]           // Parameter, binop, ret — das Grundgerüst
+    [InlineData("if_else")]         // beide Zweige fallen durch -> Merge-Block
+    [InlineData("if_both_return")]  // beide Zweige returnen -> KEIN Merge-Block
+    [InlineData("if_no_else")]      // ohne else ist der false-Zweig der Merge-Block
+    [InlineData("while_loop")]      // Back-Edge, break, continue, verschachtelte ifs
+    [InlineData("do_while")]        // continue springt zur Bedingung, nicht an den Body-Anfang
+    [InlineData("if_expr")]         // if als Ausdruck über ein synthetisches Local
+    [InlineData("short_circuit")]   // && und || als Kontrollfluss
+    [InlineData("calls")]           // void-Call, Vorwärts-Call, Rekursion
+    [InlineData("cast")]            // convert + elidierte Identität
+    [InlineData("incdec")]          // ++/-- prä und post, compound assign
+    public void Golden_lowering_matches_snapshot(string name)
+    {
+        var dir = GoldenDir();
+        var sourcePath = Path.Combine(dir, name + ".lyr");
+        var snapshotPath = Path.Combine(dir, name + ".ir");
+
+        Assert.True(File.Exists(sourcePath), $"missing source fixture: {sourcePath}");
+        var actual = Normalize(IrPrinter.Dump(Lower(File.ReadAllText(sourcePath, Encoding.UTF8))));
+
+        if (UpdateMode)
+        {
+            File.WriteAllText(snapshotPath, actual, new UTF8Encoding(false));
+            return;
+        }
+
+        Assert.True(File.Exists(snapshotPath),
+            $"missing snapshot: {snapshotPath}\n" +
+            "Run once with LYRIC_UPDATE_SNAPSHOTS=1 to generate it, then review and commit.");
+
+        Assert.Equal(Normalize(File.ReadAllText(snapshotPath, Encoding.UTF8)), actual);
+    }
+
+    [Fact]
+    public void Every_fixture_lowers_to_verifier_clean_ir()
+    {
+        // Explizit mit verify:false lowern und danach selbst prüfen — sonst würde der Test nur
+        // wiederholen, dass ModuleLowerer den Verifier aufruft, statt dessen Ergebnis zu zeigen.
+        foreach (var path in Directory.GetFiles(GoldenDir(), "*.lyr"))
+        {
+            var module = Lower(File.ReadAllText(path, Encoding.UTF8), verify: false);
+            var findings = IrVerifier.Verify(module);
+            Assert.True(findings.Count == 0,
+                $"{Path.GetFileName(path)} produced malformed IR:\n  " + string.Join("\n  ", findings));
+        }
+    }
+
+    [Fact]
+    public void Gate_program_lowers_end_to_end()
+    {
+        // examples/arith.lyr ist das M5-Gate: bewusst stdlib-frei, damit es allein aus
+        // M5-Mitteln compiliert. Bricht das, ist das Exit-Kriterium des Meilensteins verletzt.
+        var path = Path.Combine(RepoRoot(), "examples", "arith.lyr");
+        Assert.True(File.Exists(path), $"missing gate program: {path}");
+
+        var module = Lower(File.ReadAllText(path, Encoding.UTF8));
+
+        Assert.Equal(6, module.Functions.Count);
+        Assert.Contains(module.Functions, f => f.Name == "main.main");
+        Assert.Empty(IrVerifier.Verify(module));
+    }
+
+    private static string RepoRoot([CallerFilePath] string thisFile = "")
+        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
+
+    // ------------------------------------------------------------------ 2) Invarianten
+
+    [Fact]
+    public void Block_ids_are_dense_and_entry_is_the_first_block()
+    {
+        var fn = Single("""
+            fn f(limit: int): int {
+                var acc = 0;
+                var n = limit;
+                while (n > 0) {
+                    if (n % 2 == 0) { acc += n; } else { acc -= n; }
+                    n -= 1;
+                }
+                return acc;
+            }
+            """);
+
+        for (var i = 0; i < fn.Blocks.Count; i++)
+            Assert.Equal(i, fn.Blocks[i].Id.Value);
+        Assert.Equal(fn.Blocks[0].Id, fn.Entry);
+        Assert.True(fn.Blocks.Count > 4, "fixture should produce a non-trivial CFG");
+    }
+
+    [Fact]
+    public void First_locals_are_the_parameters_in_order()
+    {
+        var fn = Single("fn f(alpha: int, beta: bool): int { let gamma = 1; return alpha + gamma; }");
+
+        Assert.Equal(2, fn.ParamCount);
+        Assert.Equal("alpha", fn.Locals[0].Name);
+        Assert.Equal("beta", fn.Locals[1].Name);
+        Assert.Equal("gamma", fn.Locals[2].Name);
+    }
+
+    [Fact]
+    public void Statements_after_a_return_are_dropped()
+    {
+        // Ein Block für den toten Code wäre unerreichbar — und der Verifier lehnt unerreichbare
+        // Blöcke ab. Das Lowering muss die Statement-Liste abbrechen, statt hinterher aufzuräumen.
+        var fn = Single("fn f(): int { return 1; let dead = 2; }");
+
+        Assert.Single(fn.Blocks);
+        Assert.DoesNotContain(fn.Locals, l => l.Name == "dead");
+    }
+
+    [Fact]
+    public void If_with_both_arms_returning_creates_no_merge_block()
+    {
+        var fn = Single("fn f(n: int): int { if (n > 0) { return 1; } else { return 0; } }");
+
+        // bb0 = Bedingung, bb1 = then, bb2 = else. Ein vierter Block wäre der unerreichbare Merge.
+        Assert.Equal(3, fn.Blocks.Count);
+    }
+
+    [Fact]
+    public void Void_function_gets_an_implicit_return()
+    {
+        var fn = Single("fn f(n: int) { var x = n; x += 1; }");
+
+        var terminator = Assert.IsType<Return>(fn.Blocks[^1].Terminator);
+        Assert.Null(terminator.Value);
+    }
+
+    [Fact]
+    public void Identity_cast_is_elided()
+    {
+        var fn = Single("fn f(x: int): int { return x as int; }");
+
+        Assert.DoesNotContain(fn.Blocks.SelectMany(b => b.Insts), op => op is Lyric.Ir.Convert);
+    }
+
+    [Fact]
+    public void Widening_cast_emits_a_convert()
+    {
+        var fn = Single("fn f(x: int32): int64 { return x as int64; }");
+
+        var convert = Assert.Single(fn.Blocks.SelectMany(b => b.Insts).OfType<Lyric.Ir.Convert>());
+        Assert.Equal(new IrScalarType(IrScalar.I32), convert.From);
+        Assert.Equal(new IrScalarType(IrScalar.I64), convert.To);
+    }
+
+    [Fact]
+    public void Float32_literal_is_narrowed_by_the_lowering()
+    {
+        // Ein f32-Const, dessen Wert kein f32-Wert ist, wäre malformed. Die Verengung gehört ins
+        // Lowering, damit der Wert im Bytecode deterministisch derselbe ist — sonst meldet es
+        // der Verifier, und zwar zu Recht.
+        var fn = Single("fn f(): float32 { return 0.1f32; }");
+
+        var constant = Assert.Single(fn.Blocks.SelectMany(b => b.Insts).OfType<Const>());
+        var value = Assert.IsType<FloatConst>(constant.Value);
+        Assert.Equal((double)(float)0.1, value.Value);
+    }
+
+    [Fact]
+    public void Short_circuit_routes_the_value_through_a_synthetic_local()
+    {
+        // Ein Temp darf nur einmal definiert werden, kann also nicht den Wert aus zwei Zweigen
+        // tragen. Genau deshalb braucht diese IR kein Phi.
+        var fn = Single("fn f(a: bool, b: bool): bool { return a && b; }");
+
+        Assert.Contains(fn.Locals, l => l.Name.StartsWith("$and", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Recursion_and_forward_calls_resolve()
+    {
+        var module = Lower("""
+            fn fact(n: int): int {
+                if (n <= 1) { return 1; }
+                return n * fact(n - 1);
+            }
+            fn main(): int { return helper(); }
+            fn helper(): int { return fact(3); }
+            """);
+
+        var calls = module.Functions.SelectMany(f => f.Blocks).SelectMany(b => b.Insts)
+            .OfType<Call>().ToList();
+        Assert.Equal(3, calls.Count);
+        Assert.All(calls, c => Assert.InRange(c.Target.Value, 0, module.Functions.Count - 1));
+    }
+
+    [Fact]
+    public void Short_circuit_inside_a_loop_condition_seals_the_right_block()
+    {
+        // '&&' erzeugt selbst Blöcke, der Cursor steht nach der Bedingung also nicht mehr auf dem
+        // Cond-Block. Wer hier den Cond-Block statt des aktuellen versiegelt, baut einen Sprung
+        // ins Leere — der Verifier fängt es, aber nur wenn der Fall überhaupt vorkommt.
+        var fn = Single("""
+            fn f(a: int, b: int): int {
+                var x = a;
+                var y = b;
+                while (x > 0 && y > 0) {
+                    x -= 1;
+                    y -= 1;
+                }
+                return x;
+            }
+            """);
+
+        Assert.All(fn.Blocks, b => Assert.NotNull(b.Terminator));
+    }
+
+    [Fact]
+    public void Continue_in_a_do_while_jumps_to_the_condition()
+    {
+        // Nicht an den Body-Anfang: 'do' prüft am Ende, ein continue muss dort landen, sonst
+        // wird die Bedingung übersprungen.
+        var fn = Single("""
+            fn f(n: int): int {
+                var i = n;
+                var seen = 0;
+                do {
+                    i -= 1;
+                    if (i % 2 == 0) { continue; }
+                    seen += 1;
+                } while (i > 0);
+                return seen;
+            }
+            """);
+
+        // Genau ein Block wird von zwei Branches angesprungen: vom regulären Body-Ende und vom
+        // continue. Das ist die Bedingung der do-while — erkennbar an ihrem CondBranch.
+        var shared = fn.Blocks.Select(b => b.Terminator).OfType<Branch>()
+            .GroupBy(br => br.Target)
+            .Where(g => g.Count() >= 2)
+            .Select(g => g.Key)
+            .ToList();
+
+        var target = Assert.Single(shared);
+        Assert.IsType<CondBranch>(fn.Blocks[target.Value].Terminator);
+    }
+
+    [Fact]
+    public void Lowering_is_deterministic()
+    {
+        const string source = """
+            fn f(a: int, b: int): int {
+                var acc = 0;
+                if (a > b && a > 0) { acc = a; } else { acc = b; }
+                while (acc > 0) { acc -= 1; }
+                return if (acc == 0) 1 else 0;
+            }
+            """;
+
+        Assert.Equal(IrPrinter.Dump(Lower(source)), IrPrinter.Dump(Lower(source)));
+    }
+
+    // ------------------------------------------------------------------ 3) Scope-Grenzen
+
+    // Die IR kennt heute nur Skalare. Ein nicht-skalarer Typ ist deshalb die ERSTE Grenze, auf
+    // die man läuft — noch vor dem Ausdruck, der ihn benutzt. Die Meldung benennt den Lyric-Typ,
+    // nicht den Ausdruck: das ist die fundamentalere Aussage.
+    [Theory]
+    [InlineData("fn f(): int { let xs = [1, 2, 3]; return xs[0]; }", "type 'int[]'")]
+    [InlineData("fn f(): int { let g = (x: int) => x + 1; return g(1); }", "type 'fn(int) -> int'")]
+    [InlineData("fn f(): int { let t = (1, 2); return 0; }", "type '(int, int)'")]
+    [InlineData("fn f(n: ?int): int { return n ?? 0; }", "type '?int'")]
+    public void Non_scalar_types_are_reported_by_name(string source, string expected) =>
+        AssertNotSupported(source, expected);
+
+    // Konstrukte, deren Typ skalar ist — hier greift die Grenze erst am Ausdruck bzw. Statement.
+    [Theory]
+    [InlineData("fn f(): string { return \"a\" + \"b\"; }", "string concatenation")]
+    [InlineData("fn f(): string { return f\"hi\"; }", "f-strings")]
+    [InlineData("fn f(n: int): int { return match (n) { 0 => 1, _ => 2 }; }", "'match'")]
+    [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "'for-in'")]
+    public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
+        AssertNotSupported(source, expected);
+
+    /// <summary>P4 deckt einen Teil der Sprache ab. Was fehlt, muss mit Quellposition auffallen
+    /// statt still falschen Code zu erzeugen — dieselbe Konvention wie
+    /// <c>TypeLowering.Lower</c>.</summary>
+    private static void AssertNotSupported(string source, string expected)
+    {
+        var ex = Assert.Throws<InternalCompilationException>(() => Lower(source));
+        Assert.Contains(expected, ex.Message, StringComparison.Ordinal);
+        Assert.Contains("not supported yet", ex.Message, StringComparison.Ordinal);
+        // Die Meldung trägt den Span. Er ist heute die rohe Span-Notation (FileId[start..end)),
+        // nicht file:line:col — der Lowerer hat keinen SourceManager. Solange die Scope-Grenzen
+        // über 'lyric lower' user-sichtbar sind, ist das eine bekannte raue Kante.
+        Assert.Contains(" at ", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Generic_functions_are_skipped_and_calling_them_is_reported()
+    {
+        // Generics brauchen die Worklist-Monomorphisierung: pro konkretem Typargument-Tupel eine
+        // Instanz, ausgehend von den Wurzeln. Bis dahin bekommen sie keine FunctionId.
+        var ex = Assert.Throws<InternalCompilationException>(() => Lower("""
+            fn id<T>(x: T): T { return x; }
+            fn main(): int { return id(1); }
+            """));
+
+        Assert.Contains("call to 'id'", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Generic_function_alone_lowers_to_an_empty_module()
+    {
+        Assert.Empty(Lower("fn id<T>(x: T): T { return x; }").Functions);
+    }
+}

@@ -1,0 +1,23 @@
+fn main.max -> i64 {
+  params: 2
+  locals:
+    l0 a: i64
+    l1 b: i64
+    l2 $if0: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = load l1
+    t2: bool = ge t0, t1
+    condbr t2 -> bb1, bb2
+  bb1:
+    t3: i64 = load l0
+    store l2, t3
+    br bb3
+  bb2:
+    t4: i64 = load l1
+    store l2, t4
+    br bb3
+  bb3:
+    t5: i64 = load l2
+    ret t5
+}

@@ -1,0 +1,11 @@
+fn main.add -> i64 {
+  params: 2
+  locals:
+    l0 a: i64
+    l1 b: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = load l1
+    t2: i64 = add t0, t1
+    ret t2
+}
