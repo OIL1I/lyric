@@ -18,13 +18,24 @@ public class E2ETests
     private static string ProgramDir([CallerFilePath] string thisFile = "")
         => Path.Combine(Path.GetDirectoryName(thisFile)!, "e2e");
 
+    private static string RepoRoot([CallerFilePath] string thisFile = "")
+        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
+
     private static DiagnosticEngine Analyze(string name)
     {
         var source = File.ReadAllText(Path.Combine(ProgramDir(), name), Encoding.UTF8);
         var sm = new SourceManager();
         var id = sm.AddVirtual(name, source);
         var de = new DiagnosticEngine(sm);
-        var comp = new Compilation(sm, de);
+
+        // Mit Stdlib auf dem Modulpfad: seit ein unauffindbares Modul ein Fehler ist
+        // (LYR-RES0003), muss dieser Harness dieselbe Welt sehen wie 'lyric check'. Vorher war
+        // jeder Stdlib-Import hier stillschweigend opak — und damit war jede Verwendung der
+        // importierten Namen ungeprueft, was diese Tests nicht bemerken konnten.
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
         comp.AddModule(new Parser(sm, id, de).ParseModule());
         var binding = comp.Resolve();
         Semantics.Analyze(comp, binding, de);
@@ -44,9 +55,7 @@ public class E2ETests
     [InlineData("control_flow.lyr")]
     [InlineData("strings.lyr")]
     [InlineData("factory.lyr")]
-    [InlineData("imports.lyr")]
     [InlineData("main_args.lyr")]
-    [InlineData("shapes.lyr")]
     [InlineData("bank.lyr")]
     [InlineData("fibonacci.lyr")]
     [InlineData("inventory.lyr")]
@@ -54,6 +63,26 @@ public class E2ETests
     {
         var de = Analyze(name);
         Assert.False(de.HasErrors, $"{name} should check clean but got: {Errors(de)}");
+    }
+
+    /// <summary>
+    /// Programme, die ein Stdlib-Modul importieren, das es noch nicht gibt. Bis M6-2 fiel das
+    /// nicht auf — ein unauffindbares Modul galt als „extern/opak", und damit war stillschweigend
+    /// auch jede Verwendung der importierten Namen ungeprüft. Seit <c>LYR-RES0003</c> ist es ein
+    /// Fehler, und diese beiden Fixtures zeigen ihn.
+    ///
+    /// <para>Sie stehen hier statt in der Liste oben, weil sie <b>gültiges Lyric</b> sind — es
+    /// fehlt die Bibliothek, nicht die Sprache. Wenn <c>std.math</c> und <c>std.io</c> in M8
+    /// entstehen, wandern sie zurück; dass dieser Test dann fehlschlägt, ist die Erinnerung daran.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("imports.lyr", "std.io")]
+    [InlineData("shapes.lyr", "std.math")]
+    public void Program_waiting_on_a_stdlib_module_reports_it(string name, string missing)
+    {
+        var de = Analyze(name);
+        Assert.Contains(de.Diagnostics, d =>
+            d.Code == "LYR-RES0003" && d.Message.Contains(missing, StringComparison.Ordinal));
     }
 
     [Theory]

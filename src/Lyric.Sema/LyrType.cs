@@ -69,5 +69,20 @@ public sealed record FnType(LyrType[] Parameters, LyrType Return) : LyrType;
 public sealed record RangeOf(LyrType Element) : LyrType;             // interner Typ von 0..9 (kein Spec-Typ)
 public sealed record CoroutineOf(LyrType Yield) : LyrType;           // Coroutine<T> (§8), als interner Typ wie RangeOf
 public sealed record ErrorType : LyrType;                           // Recovery-Sentinel
+
+/// <summary>
+/// Der Ausdruck <b>benennt</b> etwas (einen Typ, ein Modul), das kein Wert ist.
+///
+/// <para>Bewusst nicht <see cref="ErrorType"/>: <c>Error</c> heißt „hierfür wurde bereits eine
+/// Diagnose gemeldet", und jeder Konsument schweigt daraufhin. Wer beides vermischt, macht aus
+/// „ich weiß nicht, was das ist" ein stummes Durchwinken — <c>P(1,2,3).quatsch</c> prüfte so
+/// vollständig durch, ohne dass je etwas gemeldet wurde.</para>
+///
+/// <para>Legal ist dieser Typ an genau einer Stelle: als <b>Ziel eines Member-Zugriffs</b>
+/// (<c>Point.new(…)</c>, <c>console.println(…)</c>). Überall sonst meldet
+/// <c>TypeChecker.CheckExpr</c> <c>LYR-SEM0052</c> und degradiert zu <see cref="ErrorType"/> —
+/// ab da gilt wieder die normale Poison-Regel.</para>
+/// </summary>
+public sealed record NonValueType(Symbol Symbol, string Kind) : LyrType;
 public sealed record NullType : LyrType;                            // Typ des null-Literals (nur ?T-zuweisbar)
 public sealed record NeverType : LyrType;                           // Rückgabetyp von panic (§9); Bottom-Typ, nicht benennbar

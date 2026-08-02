@@ -158,6 +158,18 @@ public sealed class Resolver
     private void ResolveImport(ModuleSymbol module, ImportDecl imp)
     {
         var target = _comp.FindModule(imp.Path);
+
+        // Ein Modul, das nicht gefunden wird, ist ein Fehler — kein „extern/opak". Die alte
+        // Regel stammt aus M3, als es den ModuleLoader noch nicht gab; seit M6-2 wird die Stdlib
+        // wirklich geladen, und was dann fehlt, fehlt.
+        //
+        // Ohne die Meldung ist ein Tippfehler im Modulnamen unsichtbar UND schaltet die Prüfung
+        // jeder Verwendung stumm ab: das ExternalSymbol tragt LyrType.Error, und Error heißt für
+        // jeden Konsumenten „wurde schon gemeldet", also schweigt er.
+        if (target is null)
+            _de.Report("LYR-RES0003", Severity.Error, imp.Span,
+                $"cannot find module '{string.Join('.', imp.Path)}'");
+
         switch (imp.Clause)
         {
             case null: // import a.b;  → 'b' bindet das Modul

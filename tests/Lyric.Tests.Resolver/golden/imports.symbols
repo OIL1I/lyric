@@ -4,3 +4,17 @@ Module main
   External println (from std.io)
   External eprintln (from std.io)
   External Dict (from std.collections.HashMap)
+
+=== diagnostics ===
+imports.lyr:1:1: error[LYR-RES0003]: cannot find module 'std.io'
+import std.io;
+^^^^^^^^^^^^^^
+
+imports.lyr:2:1: error[LYR-RES0003]: cannot find module 'std.io'
+import std.io { println, eprintln };
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+imports.lyr:3:1: error[LYR-RES0003]: cannot find module 'std.collections.HashMap'
+import std.collections.HashMap as Dict;
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+

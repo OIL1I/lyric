@@ -158,6 +158,9 @@ import std.collections.HashMap as Dict;     // alias: Dict<string, int>()
 
 Wildcard-Imports (`import std.io.*`) sind **nicht** unterstützt (`LYR-RES0002`).
 
+Ein Modulpfad, der sich nicht auflösen lässt, ist ein **Fehler** (`LYR-RES0003`) — nicht ein
+extern/opakes Modul. Ein unbekannter *Name* aus einem bekannten Modul ebenso (`LYR-RES0004`).
+
 ### 2.3 Top-Level-Deklarationen
 
 ```ebnf

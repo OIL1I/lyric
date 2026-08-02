@@ -503,7 +503,31 @@ public sealed class TypeChecker
     // 'expected' ist der Kontext-Typ der Position (Binding-Typ, Return-Typ, Feld-Typ, …).
     // Er wird nur von den Formen genutzt, die ihn brauchen (leeres Array-Literal,
     // kontextuelle Enum-Varianten-Konstruktion §3.4); alles andere ignoriert ihn.
+    /// <summary>
+    /// Ein Ausdruck in <b>Wert-Position</b>. Benennt er stattdessen einen Typ oder ein Modul, ist
+    /// das hier ein Fehler — und zwar genau einmal, an der Stelle, an der der Wert gebraucht wird.
+    /// Danach gilt <see cref="ErrorType"/> und damit die normale „schon gemeldet"-Regel.
+    /// </summary>
     private LyrType CheckExpr(Expr expr, SymbolTable scope, LyrType? expected = null)
+    {
+        var type = CheckTarget(expr, scope, expected);
+        if (type is not NonValueType nv) return type;
+
+        var hint = nv.Symbol is TypeSymbol ? $" — did you mean '{nv.Symbol.Name} {{ … }}'?" : "";
+        _de.Report("LYR-SEM0052", Severity.Error, expr.Span,
+            $"'{nv.Symbol.Name}' is a {nv.Kind}, not a value{hint}");
+
+        _result.SetType(expr, LyrType.Error);
+        return LyrType.Error;
+    }
+
+    /// <summary>
+    /// Wie <see cref="CheckExpr"/>, lässt aber einen <see cref="NonValueType"/> stehen. Nur für das
+    /// <b>Ziel eines Member-Zugriffs</b> — dort ist ein Typ- oder Modulname legitim
+    /// (<c>Point.new(…)</c>, <c>console.println(…)</c>), und <c>CheckMember</c> arbeitet ohnehin
+    /// über das Symbol weiter, nicht über den Typ.
+    /// </summary>
+    private LyrType CheckTarget(Expr expr, SymbolTable scope, LyrType? expected = null)
     {
         var type = Compute(expr, scope, expected);
         _result.SetType(expr, type);
@@ -545,7 +569,11 @@ public sealed class TypeChecker
             case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
             case LambdaExpr lam: return CheckLambda(lam, scope, expected);
             case ResumeExpr re: return CheckResume(re, scope);
-            case AtIdentifierExpr: return LyrType.Error; // Attribute haben in v1 keinen Ausdruckstyp
+            // Attribute haben in v1 keinen Ausdruckstyp. Das zu melden statt still Error zu
+            // liefern ist der Unterschied zwischen „geht nicht" und „geht unbemerkt nicht".
+            case AtIdentifierExpr at:
+                return Report(at.Span, "LYR-SEM0053",
+                    $"attribute '{at.Name}' is not an expression");
 
             default: return LyrType.Error;
         }
@@ -567,7 +595,16 @@ public sealed class TypeChecker
             LocalSymbol l => l.Type,
             GlobalSymbol g => _globals.TryGetValue(g, out var t) ? t : LyrType.Error,
             FunctionSymbol f => FnTypeOf(f),
-            _ => LyrType.Error // Type/Module/Import als Wert → Member-Zugriff in Slice 2b
+
+            // Ein Typ- oder Modulname ist kein Wert. Als Member-ZIEL ist er trotzdem legitim,
+            // deshalb kein sofortiger Fehler — CheckExpr meldet ihn dort, wo ein Wert gebraucht
+            // wird. Vorher stand hier LyrType.Error, und damit schwieg jeder Konsument.
+            TypeSymbol ts => new NonValueType(ts, "type"),
+            ModuleSymbol ms => new NonValueType(ms, "module"),
+
+            // ExternalSymbol: das Modul war unauffindbar und wurde als LYR-RES0003 gemeldet —
+            // hier ist Error korrektes Poison.
+            _ => LyrType.Error
         };
     }
 
@@ -843,7 +880,8 @@ public sealed class TypeChecker
 
     private LyrType CheckMember(MemberExpr mem, SymbolTable scope)
     {
-        var targetType = CheckExpr(mem.Target, scope);
+        // CheckTarget statt CheckExpr: hier ist ein Typ- oder Modulname erlaubt.
+        var targetType = CheckTarget(mem.Target, scope);
         switch (TargetSymbol(mem.Target))
         {
             case TypeSymbol ts: return BindMember(mem, MemberOfType(ts, mem.Member, mem.Span));

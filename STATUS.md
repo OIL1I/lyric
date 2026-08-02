@@ -181,10 +181,49 @@ Programm, mit Begründung als Blockzitat).
     Gegenprobe auf Selbstreferenz, Round-Trip und Fuzzing laufen über die neuen Fixtures mit,
     6 E2E-Tests — darunter **der Test, der P1 von P4 trennt**: zwei Namen, ein Objekt.
 
+- [x] **Reparatur — stumm übersprungene Prüfungen** (`LYR-RES0003`, `LYR-SEM0052/0053`).
+  Systematisch vermessen: **sechs** Konstrukte prüften vollständig durch, obwohl sie ungültig sind.
+  - **Die Ursache ist eine überladene Invariante**: `ErrorType` trug zwei Zustände — „hierfür wurde
+    schon gemeldet" (schweigen ist richtig) und „ich weiß nicht, was das ist" (schweigen ist
+    falsch). Jeder Konsument tut `if (x.IsError) return Error;`, also riss der zweite Zustand jede
+    Prüfung darunter mit. **Ab jetzt gilt: `Error` heißt ausschließlich „schon gemeldet".**
+  - **Teuerster Fall**: `import std.io.consle { println };` — ein fehlender Buchstabe im Modulnamen
+    war stumm *und* schaltete die Prüfung jeder Verwendung ab. Ein falsches *Symbol* in einem
+    richtigen Modul wurde dagegen immer gemeldet. Die Asymmetrie war ein Überbleibsel aus M3
+    („Module außerhalb der Compilation gelten als extern/opak") — seit es den `ModuleLoader` gibt,
+    ist ein unauffindbares Modul schlicht ein Fehler.
+  - **Warum man es nicht am Erzeuger melden kann**: `CheckMember` prüft sein Ziel, *bevor* es
+    weiß, ob das Ziel ein Typ ist — `P` in `P.new()` läuft durch denselben Pfad wie `P` als Wert.
+    Deshalb ein eigener `NonValueType`, der nur als Member-Ziel überlebt und überall sonst einmal
+    gemeldet und zu `Error` degradiert wird. Nebeneffekt: bessere Meldung als vorher
+    („'P' is a type, not a value — did you mean 'P { … }'?").
+  - Der Fix deckte sofort zwei echte Fehler im eigenen Korpus auf: `shapes.lyr` importiert
+    `std.math`, `imports.lyr` importiert `std.io` — **beide Module existieren nicht**. Sie stehen
+    jetzt als „wartet auf M8-Stdlib" fest, statt still als sauber zu gelten.
+  - 12 Regressionstests, jeder mit einem groben Folgefehler im Rumpf: bricht die Prüfung je wieder
+    stumm ab, meldet der Compiler *gar nichts* und der Test fällt. Dazu die Gegenprobe, dass
+    `P.make()` und `console.println(…)` legal bleiben — daran scheitert der naive Fix.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
-der ROADMAP). **P1 steht** (siehe unten), als nächstes **P2 — Arrays**.
+der ROADMAP). **P1 steht** (siehe unten).
+
+**Vorgezogen, weil beim P1-Review aufgefallen**: eine Reflexionsrunde über Konstruktion, Member und
+Sichtbarkeit. Entschieden ist (ADRs noch zu schreiben):
+
+- **`static` und `static let`** kommen — `static fn new(…)` löst die Methoden-Frage (Empfänger
+  ja/nein), `static let ZERO: Vector3 = …` gibt typgebundene Konstanten. Ein Keyword, zwei Lücken.
+- **Companions: nein.** Ohne Objektidentität sind sie `static` mit Klammern; mit Identität ziehen
+  sie Initialisierungsreihenfolge und Companion-Vererbung nach. Und sie wären ein zweiter
+  Namensraum neben Modulen — bei ADR-012 (Datei = Modul) meist derselbe.
+- **Funktions-Overloading: vertagt auf v1.X**, wo Operator-Overloading schon steht. Es war nie
+  entschieden — die Behauptung „Lyric hat kein Overloading" stammt aus M6-2 von Claude und stand
+  fälschlich in `Doku.md` und `ROADMAP.md`. Ausschlaggebend: Overloading ist **additiv**
+  (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
+  schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
+
+Als nächstes: die beiden ADRs, dann `static`/`static let`, dann **P2 — Arrays**.
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
