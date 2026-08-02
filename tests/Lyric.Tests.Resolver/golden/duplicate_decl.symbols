@@ -2,7 +2,7 @@ Module main
   Function foo
 
 === diagnostics ===
-duplicate_decl.lyr:5:1: error[LYR-RES0001]: 'foo' is already declared in this module
+duplicate_decl.lyr:5:1: error[LYR-RES0001]: 'foo' is already declared in this module — Lyric has no overloading in v1; give the functions distinct names
 fn foo(): int {
 ^
 

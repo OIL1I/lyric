@@ -137,14 +137,26 @@ public sealed class Resolver
     private void DeclareTop(ModuleSymbol module, Symbol sym, Node decl)
     {
         if (!module.Members.TryDeclare(sym))
-            _de.Report("LYR-RES0001", Severity.Error, decl.Span, $"'{sym.Name}' is already declared in this module");
+            _de.Report("LYR-RES0001", Severity.Error, decl.Span,
+                $"'{sym.Name}' is already declared in this module{OverloadHint(module.Members, sym)}");
     }
 
     private void DeclareMember(SymbolTable scope, Symbol sym, Node decl)
     {
         if (!scope.TryDeclare(sym))
-            _de.Report("LYR-RES0001", Severity.Error, decl.Span, $"'{sym.Name}' is already declared in this type");
+            _de.Report("LYR-RES0001", Severity.Error, decl.Span,
+                $"'{sym.Name}' is already declared in this type{OverloadHint(scope, sym)}");
     }
+
+    /// <summary>
+    /// Zwei gleichnamige Funktionen sind kein Versehen, sondern der Versuch zu überladen — und das
+    /// ist eine bewusste Regel (ADR-015: auf v1.X vertagt), keine bloße Namenskollision. Ohne den
+    /// Zusatz liest sich die Meldung, als hätte man sich vertan.
+    /// </summary>
+    private static string OverloadHint(SymbolTable scope, Symbol sym) =>
+        sym is FunctionSymbol && scope.LookupLocal(sym.Name) is FunctionSymbol
+            ? " — Lyric has no overloading in v1; give the functions distinct names"
+            : "";
 
     // --- Pass 2: Imports ---
 

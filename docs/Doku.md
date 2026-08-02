@@ -1069,10 +1069,11 @@ pub fn calculateDamage(attackerId: int, defenderId: int): int {
 
 Vollständige API-Doku entsteht in v1.0. Hier nur ein Überblick.
 
-> **`println` nimmt `string`.** Lyric hat kein Overloading, und ein generisches
-> `println<T :: [Display]>` bräuchte, dass Builtin-Typen ein Interface erfüllen — das kommt erst
-> mit M8. Zahlen gehen deshalb über einen f-String: `println(f"{v}")`. Wenn die Builtin-Konformanz
-> da ist, wird `println(v)` nachträglich legal; der Weg ist nicht verbaut.
+> **`println` nimmt `string`.** Die gewollte Form ist `println<T :: [Display]>(v: T)` — eine
+> Funktion für alle Typen. Sie setzt voraus, dass Builtin-Typen ein Interface erfüllen können, und
+> das entsteht erst mit **M8**. Bis dahin gehen Zahlen über einen f-String: `println(f"{v}")`.
+> Sobald die Builtin-Konformanz da ist, wird `println(v)` nachträglich legal; der Weg ist nicht
+> verbaut.
 
 | Modul | Inhalt | Capability |
 |---|---|---|

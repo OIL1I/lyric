@@ -301,11 +301,18 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 > eigener Brocken und gehört dorthin, wo die Stdlib ohnehin ausgebaut wird. f-Strings ohne Spec
 > lowern zu einer `concat`/`toString`-Kette und brauchen kein `format`.
 >
-> Ebenfalls hier fixiert: **`println` nimmt `string`**. Lyric hat kein Overloading, und ein
-> generisches `println<T :: [Display]>` setzt Builtin-Konformanz voraus (M8). Zahlen gehen über
-> `println(f"{v}")`; die Beispiele in `Sprache.md` §8 und `Doku.md` §19 sind entsprechend korrigiert.
+> Ebenfalls hier fixiert: **`println` nimmt `string`**. Die gewollte Form
+> `println<T :: [Display]>(v: T)` setzt Builtin-Konformanz voraus, und die entsteht erst in **M8**.
+> Zahlen gehen bis dahin über `println(f"{v}")`; die Beispiele in `Sprache.md` §8 und `Doku.md` §19
+> sind entsprechend korrigiert.
 >
 > *(Zur Ratifizierung im nächsten Scope-Check.)*
+>
+> **Richtigstellung (2026-08-02):** Der ursprüngliche Text begründete das mit „Lyric hat kein
+> Overloading". Das war frei erfunden — es gab dazu nie eine Entscheidung, und jede andere
+> Erwähnung von Overloading in der Spec meint das **Operator**-Overloading. Die tatsächliche
+> Begründung ist die fehlende Builtin-Konformanz, wie oben jetzt formuliert. Zum Thema selbst
+> siehe **ADR-015**.
 
 > **Korrektur (2026-08-02, Abschluss M6/Slice 2):** Das Exit-Kriterium ist **`examples/hello.lyr`**;
 > FizzBuzz und Fibonacci entfallen hier. Beide sind aus M6s eigenen Lieferposten nicht erreichbar:
@@ -623,6 +630,30 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-014 — `static` als Member-Marker; Konstruktion bleibt zweigleisig
+
+**Datum**: 2026-08-02. **Status**: Akzeptiert.
+
+**Entscheidung**: `ClassMember`/`StructMember` erlauben ein vorangestelltes `static`, sowohl vor einer `FunctionDecl` als auch vor einem `BindingStmt` (`static let`). Ein `static`-Member hat **keinen Empfänger**, kennt kein `this` und ist ausschließlich über den Typ erreichbar (`Account.new(…)`, `Vector3.ZERO`). Ein Member ohne Marker ist Instanz-Member, hat `this` gebunden und ist ausschließlich über eine Instanz erreichbar. Die Kreuzformen sind Fehler. `static mut fn` ist ein Fehler (kein Empfänger, der mutieren könnte). `mut` an einer **Klassen**-Methode ist ebenfalls ein Fehler: es ist laut §3.1 ein Struct-Receiver-Marker und setzt an einer Referenz nichts durch. Konstruktion bleibt zweigleisig: der Struct-Init-Ausdruck `T { … }` für reine Daten, eine `static fn` für Konstruktion mit Logik. `new` bleibt **kein** Keyword — nur Konvention. Companion-Objekte werden **nicht** eingeführt.
+
+**Begründung**: Ohne Marker war jede Methode zugleich statisch und instanzgebunden — gemessen am 2026-08-02 gingen `P.getHp()` (Instanzmethode ohne Empfänger), `p.new()` (Fabrik auf einer Instanz) und sogar `this.hp` in einer als `P.new()` gerufenen Methode allesamt durch die Typprüfung. Das ist keine Unterspezifikation, sondern eine Lücke, die erst beim Lowering (M7/P1) sichtbar wurde und dort einen Feldzugriff ohne Objekt erzeugt hätte. — Der explizite Marker ist die Antwort, die zu einer bereits getroffenen Entscheidung passt: `this` ist in Lyric ein Keyword-Ausdruck (§6), kein deklarierter Parameter. Damit steht die Sprache in der C#/Java-Familie, und dort heißt „Member ohne Empfänger" `static`. Der Rust/Python-Weg (expliziter `this`-Parameter, der zugleich `mut` überflüssig machen würde) wäre das sauberere Gesamtdesign, kehrt aber die `this`-Entscheidung um und ändert jede Methodensignatur in Spec, Doku und Beispielen. — `static let` erledigt typgebundene Konstanten (`Vector3.ZERO`) und nimmt damit Companions ihr stärkstes Argument; was ohne Objektidentität von einem Companion bliebe, ist `static` mit Klammern, und mit Identität zöge er Initialisierungsreihenfolge, `this` im Companion und Companion-Vererbung nach. Companions wären zudem ein zweiter Namensraum neben Modulen — bei ADR-012 (eine Datei = ein Modul) meist derselbe. — Ein reserviertes `new` als einzige empfängerlose Form wurde verworfen, weil Lyric kein Overloading hat (ADR-015): es gäbe genau **einen** Konstruktor pro Typ, und jede weitere Fabrik (`Account.fromJson`) wäre heimatlos. In C#/Java fällt das nicht auf, weil Overloading die zweite und dritte Variante auffängt — genau die Stütze, die hier fehlt.
+
+**Konsequenz**: Ein Keyword mehr in §2. Grammatik, Sema-Regeln (vier neue) und die Migration von vier `fn new` in `examples/bank.lyr`, dessen Sema-Kopie, `Sprache.md` §3.3 und `Doku.md`. `mut` fällt aus den Klassen-Beispielen in `bank.lyr` und `Sprache.md` §3.3 heraus — es war dort wirkungslos. Für M7/P3 ist der Marker die Antwort auf „was steht in der vtable": Instanz-Member ja, `static` nein. Methoden-Lowering (in P1 bewusst ausgelassen) wird damit entblockt.
+
+---
+
+### ADR-015 — Funktions-Overloading auf v1.X vertagt
+
+**Datum**: 2026-08-02. **Status**: Akzeptiert.
+
+**Entscheidung**: Zwei gleichnamige Funktionen oder Methoden in demselben Scope bleiben in v1 ein Fehler (`LYR-RES0001`). Overloading wandert in die v1.X-Skizze, neben das bereits dort stehende Operator-Overloading. Dies ist eine **Vertagung, kein Ausschluss**.
+
+**Begründung**: Zuerst die Richtigstellung — es gab hierzu nie eine Entscheidung. Die Behauptung „Lyric hat kein Overloading" stand in `Doku.md` und in der M6-Korrektur dieses Dokuments; beide Stellen entstanden 2026-08-02 als Begründung dafür, dass `println` nur `string` nimmt, und beide sind falsch: jede andere Erwähnung von „Overloading" in der Spec meint das **Operator**-Overloading. Dass der Compiler es ablehnt, ist eine Folge davon, dass `SymbolTable` eine Name→Symbol-Map ist — eine Implementierungs-Eigenheit, keine Position. — Zur Sache: Overloading ist in Lyric **billiger als sein Ruf**, weil der Löwenanteil von C#s „better function member" die impliziten Konvertierungen sind, die es hier nicht gibt (§6.5 verlangt `as` schon für `int8` → `int32`). Teuer bleibt es an vier Stellen, und alle vier sind die, die dieser Sprache ohnehin schwerfallen: untypisierte Literale, die sich dem Kontext anpassen (`f(int8)` vs. `f(int64)` bei `f(5)`); Default-Argumente (`f(int)` vs. `f(int, int = 0)` bei `f(1)`); Lambdas mit bidirektionaler Inferenz, wo Argumenttyp und Überladungswahl zirkulär voneinander abhängen; und `extend`-Methoden, deren Überladungsmengen Modulgrenzen mit Sichtbarkeitsregeln kreuzen. Dazu müsste `NameMangling` die Signatur in den Symbolnamen ziehen, und Symbolnamen sind Bytecode-Vertrag (ADR-013). — Die beiden Fälle, die den Wunsch ausgelöst hatten, haben bessere Antworten: `println` will `println<T :: [Display]>(v: T)` (M8, Builtin-Konformanz), nicht drei Überladungen; mehrere Fabriken wollen sprechende Namen (`fromJson`) oder Default-Argumente. Go und Zig verzichten vollständig und gelten nicht als kaputt. — Ausschlaggebend ist die Richtung: **Overloading ist additiv.** Es lässt sich in v1.2 einführen, ohne ein einziges v1.0-Programm zu brechen, weil zwei gleichnamige Funktionen vorher nie erlaubt waren. Umgekehrt geht es nicht. Bei dieser Asymmetrie ist Vertagen billig und reversibel, Einführen ist beides nicht — und der richtige Zeitpunkt ist der, an dem die vier Kostenstellen stabil stehen.
+
+**Konsequenz**: Die falschen Sätze in `Doku.md` und der M6-Korrektur werden auf die tatsächliche Begründung umgeschrieben (`println` nimmt `string`, weil `Display`-Konformanz für Builtins erst in M8 entsteht). `LYR-RES0001` bekommt bei gleichnamigen Funktionen eine Meldung, die die Regel benennt, statt wie eine bloße Kollision zu klingen. Eintrag in der v1.X-Tabelle.
+
+---
+
 ## Was nach v1.0 kommt
 
 Wir schreiben **keine** ausführliche post-v1-Roadmap (das war einer der Oil-Fehler — das Dokument verselbständigte sich). Hier nur eine sehr kurze Skizze, was *vielleicht* kommt, in vagem Prioritäts-Sortier. Konkretisierung erfolgt erst, wenn die jeweilige Phase angefangen wird.
@@ -632,7 +663,7 @@ Wir schreiben **keine** ausführliche post-v1-Roadmap (das war einer der Oil-Feh
 | **v1.1** | DateTime, Regex, JSON in Stdlib. Newtypes. `pub(package)`. Raw-Strings. | wenn echter Bedarf erkennbar |
 | **v1.2** | LSP-Server (Diagnostics-Streaming, Hover, Go-to-Definition) | wenn Sprache produktiv ist |
 | **v1.3** | Async/Await-Syntax als Zucker über Coroutinen | wenn Async-Code stark gefragt |
-| **v1.4** | User-defined Operator-Overloading | wenn Math-Libs schreien |
+| **v1.4** | User-defined Operator-Overloading; Funktions-Overloading (ADR-015) | wenn Math-Libs schreien |
 | **v1.5** | Formatter `lyric fmt` | wenn Community entsteht |
 | **v1.X?** | JIT-Backend (Cranelift), Package-Manager | nur bei demonstriertem Bedarf |
 

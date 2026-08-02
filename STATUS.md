@@ -210,7 +210,8 @@ Programm, mit Begründung als Blockzitat).
 der ROADMAP). **P1 steht** (siehe unten).
 
 **Vorgezogen, weil beim P1-Review aufgefallen**: eine Reflexionsrunde über Konstruktion, Member und
-Sichtbarkeit. Entschieden ist (ADRs noch zu schreiben):
+Sichtbarkeit. Entschieden und als **ADR-014** (Member/Konstruktion) und **ADR-015** (Overloading)
+festgehalten:
 
 - **`static` und `static let`** kommen — `static fn new(…)` löst die Methoden-Frage (Empfänger
   ja/nein), `static let ZERO: Vector3 = …` gibt typgebundene Konstanten. Ein Keyword, zwei Lücken.
@@ -223,7 +224,8 @@ Sichtbarkeit. Entschieden ist (ADRs noch zu schreiben):
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-Als nächstes: die beiden ADRs, dann `static`/`static let`, dann **P2 — Arrays**.
+Als nächstes: **`static`/`static let`** umsetzen (entblockt das Methoden-Lowering und damit P3),
+dann **P2 — Arrays**.
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
