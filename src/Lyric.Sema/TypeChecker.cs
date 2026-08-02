@@ -81,7 +81,7 @@ public sealed class TypeChecker
     {
         switch (decl)
         {
-            case FunctionDecl fn: CheckFunction(fn, module.Members, thisType: null); break;
+            case FunctionDecl fn: RequireBody(fn, module); CheckFunction(fn, module.Members, thisType: null); break;
             case StructDecl s: CheckMethods(s.Name, s.Members, module); CheckTypeConformance(s.Name, s.Interfaces, module); break;
             case ClassDecl c: CheckMethods(c.Name, c.Members, module); CheckTypeConformance(c.Name, c.Interfaces, module); break;
             case EnumDecl e: CheckEnumMethods(e, module); CheckTypeConformance(e.Name, e.Interfaces, module); break;
@@ -90,13 +90,33 @@ public sealed class TypeChecker
         }
     }
 
+    /// <summary>
+    /// Eine rumpflose Funktion ist eine <b>native Deklaration</b>: die Signatur steht in Lyric, die
+    /// Implementierung liegt im Host und wird beim Laden über den Namen gebunden (ADR-013). Das ist
+    /// der Stdlib vorbehalten — in User-Code gibt es nichts, was den Rumpf liefern könnte.
+    /// </summary>
+    /// <remarks>Interfaces sind ausgenommen: dort heißt rumpflos „abstrakt" (§3.5), und das prüft
+    /// die Konformanz. Deshalb ruft <see cref="CheckMethods"/> das hier nur für Struct, Class und
+    /// Enum auf.</remarks>
+    private void RequireBody(FunctionDecl fn, ModuleSymbol module)
+    {
+        if (fn.Body is not null || _comp.IsNative(module)) return;
+
+        _de.Report("LYR-SEM0051", Severity.Error, fn.Span,
+            $"'{fn.Name}' has no body; only standard-library modules may declare native functions");
+    }
+
     private void CheckMethods(string typeName, Decl[] members, ModuleSymbol module)
     {
         if (module.Members.LookupLocal(typeName) is not TypeSymbol ts) return;
         var thisType = SelfType(ts);
+        var isInterface = ts.Kind == TypeSymbolKind.Interface;
         foreach (var m in members)
             if (m is FunctionDecl fn)
+            {
+                if (!isInterface) RequireBody(fn, module);
                 CheckFunction(fn, ts.Members, thisType);
+            }
     }
 
     private void CheckEnumMethods(EnumDecl e, ModuleSymbol module)
@@ -537,6 +557,10 @@ public sealed class TypeChecker
         if (sym is null) return Report(id.Span, "LYR-SEM0002", $"unknown identifier '{id.Name}'");
         _result.BindRef(id, sym);
         if (_narrowed.TryGetValue(sym, out var narrowed)) return narrowed; // ?T → T im narrowten Bereich
+        // Selektiver Import (import std.io.console { println }) bindet an eine Huelle; getypt
+        // wird das Ziel. Ohne das faellt jeder Stdlib-Aufruf in den Error-Zweig und wird stumm
+        // uebersprungen — die Signatur aus dem .lyr-File haette dann keine Wirkung.
+        if (sym is ImportBindingSymbol binding) sym = binding.Target;
         return sym switch
         {
             ParameterSymbol p => p.Type,
@@ -748,7 +772,7 @@ public sealed class TypeChecker
             return Report(call.Span, "LYR-SEM0013", $"'{TypeFacts.Display(calleeType)}' is not callable");
         }
 
-        var fsym = _result.RefOf(call.Callee) as FunctionSymbol;
+        var fsym = TargetSymbol(call.Callee) as FunctionSymbol;
         var decl = fsym?.Declaration as FunctionDecl;
         var args = call.Arguments;
         var argTypes = new LyrType[args.Length];

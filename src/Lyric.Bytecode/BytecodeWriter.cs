@@ -33,7 +33,7 @@ public static class BytecodeWriter
         // Code vor dem Header schreiben: er füllt den String-Pool, und der steht als Sektion davor.
         var bodies = new List<byte[]>(module.Functions.Count);
         for (var i = 0; i < module.Functions.Count; i++)
-            bodies.Add(WriteFunction(module.Functions[i], layouts[i], strings));
+            bodies.Add(WriteFunction(module.Functions[i], layouts[i], strings, module.Imports.Count));
 
         var writer = new ByteWriter();
         writer.Raw(Format.Magic);
@@ -50,9 +50,18 @@ public static class BytecodeWriter
             foreach (var value in strings.InOrder) s.String(value);
         });
 
-        // Leer, aber vorhanden: ADR-013 verlangt die Tabelle, das Lowering füllt sie erst, wenn es
-        // externe Calls kennt (M6/M8). Die Rahmung jetzt festzulegen kostet nichts.
-        WriteSection(writer, SectionId.Imports, s => s.ULeb(0));
+        // Symbolisch: Name + Signatur, gebunden beim Laden (ADR-013, WASM-Modell). Keine Adressen.
+        WriteSection(writer, SectionId.Imports, s =>
+        {
+            s.ULeb(module.Imports.Count);
+            foreach (var import in module.Imports)
+            {
+                s.String(import.Name);
+                s.ULeb(import.ParamTypes.Length);
+                foreach (var type in import.ParamTypes) s.Tag(TagOf(type));
+                s.Tag(TagOf(import.ReturnType));
+            }
+        });
 
         WriteSection(writer, SectionId.Functions, s =>
         {
@@ -80,7 +89,7 @@ public static class BytecodeWriter
         writer.Raw(bytes);
     }
 
-    private static byte[] WriteFunction(IrFunction function, FunctionLayout layout, StringPool strings)
+    private static byte[] WriteFunction(IrFunction function, FunctionLayout layout, StringPool strings, int importCount)
     {
         var code = new ByteWriter();
         var blockOffsets = new int[function.Blocks.Count];
@@ -88,7 +97,7 @@ public static class BytecodeWriter
         foreach (var block in function.Blocks)
         {
             blockOffsets[block.Id.Value] = code.Position;
-            foreach (var op in block.Insts) WriteOp(code, function, layout, strings, op);
+            foreach (var op in block.Insts) WriteOp(code, function, layout, strings, op, importCount);
             WriteTerminator(code, layout, block.Terminator!);
         }
 
@@ -113,7 +122,7 @@ public static class BytecodeWriter
     }
 
     private static void WriteOp(ByteWriter code, IrFunction function, FunctionLayout layout,
-        StringPool strings, IrOp op)
+        StringPool strings, IrOp op, int importCount)
     {
         LoadSlotOperands(code, layout, IrShape.OperandsOf(op));
 
@@ -158,9 +167,16 @@ public static class BytecodeWriter
                 code.ULeb(s.Local.Value);
                 break;
 
+            case CallImport k:
+                // Gemeinsamer Indexraum: erst Imports, dann Funktionen. Die Arithmetik sitzt hier,
+                // weil hier die Konvention lebt — die IR hält beide bewusst getrennt.
+                code.Opcode(Op.Call);
+                code.ULeb(k.Target.Value);
+                break;
+
             case Call k:
                 code.Opcode(Op.Call);
-                code.ULeb(k.Target.Value); // heute keine Imports -> Index == FunctionId
+                code.ULeb(importCount + k.Target.Value);
                 break;
 
             default:

@@ -1,0 +1,21 @@
+// std.string — String-Bau.
+//
+// Diese Funktionen benutzt auch das f-String-Lowering: `f"n={x}"` wird zu
+// `concat("n=", fromInt(x))`. Der Compiler referenziert sie also, ohne dass der Nutzer
+// `std.string` importiert hat — dasselbe Modell wie Roslyns Verweis auf `String.Concat`.
+//
+// Sie stehen bewusst in einem normalen, dokumentierten Modul und nicht in einem versteckten
+// Compiler-Modul: ein `lyric.rt`, das niemand importieren darf, wäre ein zweiter Modul-Begriff
+// für dieselbe Sache.
+//
+// Die Namen unterscheiden nach Quelltyp (`fromInt`, `fromFloat`, …) statt vier gleichnamige
+// Überladungen zu sein — Lyric hat kein Overloading.
+
+module std.string;
+
+pub fn concat(a: string, b: string): string;
+
+pub fn fromInt(value: int): string;
+pub fn fromFloat(value: float): string;
+pub fn fromBool(value: bool): string;
+pub fn fromChar(value: char): string;

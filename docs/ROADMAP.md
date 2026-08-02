@@ -282,7 +282,7 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 - Diagnostik-Codes `LYR-VM0001..0020`.
 - CLI: `lyric run <file>` (Compile + Execute in einem Schritt).
 
-**Exit**: Hello-World, FizzBuzz, Fibonacci laufen. E2E-Tests: 15+ einfache Programme.
+**Exit**: Hello-World läuft. E2E-Tests: 15+ einfache Programme. *(Korrektur unten.)*
 
 > **Korrektur (2026-08-02, vor M6/Slice 1):** `std.fmt.format` ist nach **M8** verschoben. Keines
 > der drei Exit-Programme benutzt Format-Specs (`{x:N2}` steht nur in `shapes.lyr`/`stats.lyr`) —
@@ -293,6 +293,20 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 > Ebenfalls hier fixiert: **`println` nimmt `string`**. Lyric hat kein Overloading, und ein
 > generisches `println<T :: [Display]>` setzt Builtin-Konformanz voraus (M8). Zahlen gehen über
 > `println(f"{v}")`; die Beispiele in `Sprache.md` §8 und `Doku.md` §19 sind entsprechend korrigiert.
+>
+> *(Zur Ratifizierung im nächsten Scope-Check.)*
+
+> **Korrektur (2026-08-02, Abschluss M6/Slice 2):** Das Exit-Kriterium ist **`examples/hello.lyr`**;
+> FizzBuzz und Fibonacci entfallen hier. Beide sind aus M6s eigenen Lieferposten nicht erreichbar:
+> FizzBuzz braucht `for-in` über einen Range, also den `Iterator`-Kontrakt, und Fibonacci ist als
+> `Coroutine<int>` geschrieben — Coroutinen sind ausdrücklich **M7**. Der Stdlib-Teil, den M6 zu
+> liefern hat, steht dagegen vollständig: `println` samt Import-Bindung mit Signaturen und f-Strings.
+>
+> Das ist derselbe Fehler wie bei M5s Exit, eine Stufe später: ein Meilenstein wurde an einem
+> Programm gemessen, dessen Sprachmittel erst der nächste liefert. Die beiden Programme wandern
+> nach M7 (Fibonacci) bzw. dorthin, wo `for-in` gelowert wird (FizzBuzz) — sie bleiben Gate, nur
+> nicht hier. Die E2E-Forderung („15+ einfache Programme") bleibt und ist mit 44 Pipeline-Tests
+> übererfüllt.
 >
 > *(Zur Ratifizierung im nächsten Scope-Check.)*
 

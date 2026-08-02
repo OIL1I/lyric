@@ -46,11 +46,19 @@ public static class IrPrinter
     private readonly struct CallContext
     {
         private readonly IReadOnlyList<IrFunction>? _functions;
+        private readonly IReadOnlyList<IrImport>? _imports;
 
-        private CallContext(IReadOnlyList<IrFunction>? functions) => _functions = functions;
+        private CallContext(IReadOnlyList<IrFunction>? functions, IReadOnlyList<IrImport>? imports)
+        {
+            _functions = functions;
+            _imports = imports;
+        }
 
-        public static CallContext ForModule(IrModule module) => new(module.Functions);
-        public static CallContext None => new(functions: null);
+        public static CallContext ForModule(IrModule module) => new(module.Functions, module.Imports);
+        public static CallContext None => new(functions: null, imports: null);
+
+        public IrImport? ImportOf(ImportId id) =>
+            _imports is null || id.Value < 0 || id.Value >= _imports.Count ? null : _imports[id.Value];
 
         public string NameOf(FunctionId id) =>
             _functions is null ? id.ToString() : _functions[id.Value].Name;
@@ -92,6 +100,7 @@ public static class IrPrinter
         LoadLocal l => $"{l.Dest}: {TypeStr(l.Type)} = load {l.Local}",
         StoreLocal s => $"store {s.Local}, {s.Value}",
         Call k => CallStr(k, ctx),
+        CallImport k => CallImportStr(k, ctx),
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 
@@ -103,6 +112,19 @@ public static class IrPrinter
             return $"call {target}({args})";
         var ret = ctx.ReturnTypeOf(k.Target);
         return $"{dest}: {(ret is null ? "?" : TypeStr(ret))} = call {target}({args})";
+    }
+
+    /// <summary>Native Aufrufe zeigen den <b>symbolischen Namen</b> — er ist das, was beim Laden
+    /// gebunden wird, und damit die Information, die man beim Lesen braucht.</summary>
+    private static string CallImportStr(CallImport k, CallContext ctx)
+    {
+        var args = string.Join(", ", k.Args);
+        var import = ctx.ImportOf(k.Target);
+        var name = import?.Name ?? k.Target.ToString();
+
+        if (k.Dest is not { } dest) return $"callimport {name}({args})";
+        var ret = import?.ReturnType;
+        return $"{dest}: {(ret is null ? "?" : TypeStr(ret))} = callimport {name}({args})";
     }
 
     private static string TermStr(IrTerminator term) => term switch

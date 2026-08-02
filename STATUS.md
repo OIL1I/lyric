@@ -11,12 +11,17 @@
 
 ## Aktueller Meilenstein
 
-**M6 — VM — in Arbeit** (Slice 1 steht)
+**M6 — VM — abgeschlossen**
 
-`lyric run examples/arith.lyr` läuft und liefert Exit-Code **55**. Damit prüft das Projekt zum
-ersten Mal, ob ein Programm das Richtige *tut* — bis M5 konnte nur geprüft werden, ob es korrekt
-übersetzt wird. Noch ohne Stdlib: Slice 2 bringt Import-Bindung, `println` und f-Strings, und damit
-hello/fizzbuzz/fibonacci.
+`lyric run examples/hello.lyr` gibt `Hello, Lyric!` aus, `examples/arith.lyr` liefert Exit-Code
+**55**. Damit prüft das Projekt zum ersten Mal, ob ein Programm das Richtige *tut* — bis M5 konnte
+nur geprüft werden, ob es korrekt übersetzt wird. 1156 Tests grün.
+
+**M6-Exit ist `hello.lyr` allein**, nicht zusätzlich FizzBuzz und Fibonacci: FizzBuzz braucht
+`for-in` über einen Range (also `Iterator`), Fibonacci ist eine `Coroutine<int>` — und Coroutinen
+sind M7. Derselbe Fehler wie bei M5s Exit, eine Stufe später: gemessen an Programmen, deren
+Sprachmittel erst der nächste Meilenstein liefert. Die ROADMAP ist entsprechend korrigiert
+(Blockzitat unter M6).
 
 **M5 — IR + Bytecode — abgeschlossen** (`v0.1.0`)
 
@@ -115,10 +120,37 @@ Programm, mit Begründung als Blockzitat).
     Arithmetik inkl. Vorzeichen- und Breiten-Kanten, Konvertierungen mit Sättigung, Kontrollfluss,
     Kurzschluss-Nachweis über eine sonst auslösende Division durch Null, Laufzeitfehler.
 
+- [x] **M6 — Slice 2 — Stdlib + f-Strings** (`stdlib/`, Import-Sektion, `NativeRegistry`):
+  `lyric run examples/hello.lyr` gibt `Hello, Lyric!` aus.
+  - **Source-first: die Stdlib ist gewöhnlicher Lyric-Quelltext.** `stdlib/std/io/console.lyr` und
+    `stdlib/std/string.lyr` enthalten bodylose `fn`-Deklarationen — kein neuer Mechanismus,
+    `Sprache.md` §3.1 erlaubt `( Block | ';' )` schon. Sie werden geparst, aufgelöst und typgeprüft
+    wie jedes andere Modul; der Compiler kennt keinen Sonderfall „println". Nur die **Herkunft**
+    entscheidet, ob ein rumpfloses `fn` eine Import-Deklaration ist: außerhalb der Stdlib ist es
+    `LYR-SEM0051`. Am Inhalt festzumachen hieße, jeder könnte sich Natives erschleichen, indem er
+    sein Modul `std.foo` nennt.
+  - **Nachladen vor dem Auflösen, nicht mittendrin** (`Compilation.LoadImportedModules`): sonst
+    wüchse die Modul-Liste, während der Resolver über sie iteriert. Zyklen terminieren von allein,
+    weil vor dem Betrachten der eigenen Imports registriert wird.
+  - **Well-Known-Module** (`std.string`) werden geladen, ohne dass der Nutzer sie importiert — das
+    f-String-Lowering ruft `concat`/`fromXxx` auf. Dasselbe Modell wie Roslyns Well-Known-Members.
+  - **Natives binden über den symbolischen Namen zur Ladezeit** (`NativeRegistry.Bind`), mit Prüfung
+    von Name **und** Signatur. Ein `.lyrbc` mit unbekanntem Import scheitert beim Laden, nicht beim
+    ersten Aufruf — ADR-013s Load-Zeit-Validierung.
+  - **Escape-Auflösung nach `Lyric.Core`** (`Escapes.Resolve`): `Lyric.Ir` darf `Lyric.Parsing`
+    nicht referenzieren, braucht aber beim f-String-Lowering dieselbe Regel wie der Lexer. Eine
+    zweite Kopie wäre zwei Wahrheiten über `\n`.
+  - **Ein Front-End für alle CLI-Kommandos** (`Program.Frontend`): `run`, `lower` und `check` hatten
+    je eine eigene Kopie des Vorspanns, und nur eine verdrahtete den `ModuleLoader`. `check` hielt
+    deshalb jeden Stdlib-Import für opak und prüfte die Aufrufe **stumm gar nicht**. Zusammen mit
+    dem fehlenden Auspacken von `ImportBindingSymbol` im `TypeChecker` ging `println(42)` bis in die
+    VM durch — und `LyrValue` hat kein Typ-Tag, das wäre eine stille Fehlinterpretation geworden.
+
 ## Woran wir gerade arbeiten
 
-**M6 — Slice 2**: Import-Bindung, Mini-Stdlib, f-Strings. Design steht (siehe Entscheidungen
-unten); Exit ist dann M6s Exit-Kriterium — hello/fizzbuzz/fibonacci laufen.
+**Nichts** — M6 ist abgeschlossen. Als nächstes steht **M7 — Coroutinen + Exceptions** an
+(ADR-006: Zustandsmaschinen-Lowering). Vorher zu klären: ob `for-in`/`Iterator` dort mitläuft,
+denn `fizzbuzz.lyr` hängt allein daran.
 
 ## Scope-Check 2026-08-02 (Ergebnis)
 
@@ -140,22 +172,17 @@ unten); Exit ist dann M6s Exit-Kriterium — hello/fizzbuzz/fibonacci laufen.
 
 ## Noch offen
 
+**Aus M6:**
 
-**Entscheidungen für M6 Slice 2 (getroffen, noch nicht gebaut):**
-
-- **Stdlib-Signaturen als bodylose `fn` in `.lyr`** unter `stdlib/`. Kein neuer Mechanismus:
-  `Sprache.md` §3.1 erlaubt `( Block | ';' )`, und `BuiltinTypes.CreatePanic()` benutzt genau das
-  schon. **Zu bauen**: die Unterscheidung native Modul / User-Modul — heute rutscht ein bodyless
-  `fn` in User-Code stillschweigend durch `lyric check`.
-- **`println` nimmt `string`.** Kein Overloading in Lyric; generisch mit `Display` bräuchte
-  Builtin-Konformanz (M8). `Sprache.md` §8 und `Doku.md` §19 sind korrigiert.
-- **`std.fmt.format` nach M8 verschoben** — keines der drei Exit-Programme nutzt Format-Specs.
-- **f-Strings lowern zu einer `concat`/`toString`-Kette** (Roslyn-Modell), keine Arrays nötig.
+- **Kein CLI-Test-Projekt.** Dass `check` den `ModuleLoader` nicht verdrahtete, fiel nur beim
+  Handprobieren auf — die Sema-Tests setzen ihn selbst. Ein Test, der die Kommandos gegen die
+  Beispiele fährt, hätte das gefangen. Kandidat für M7.
+- **`std.fmt.format` nach M8** (Format-Specs `{x:N2}` in `shapes.lyr`/`stats.lyr`).
+- **Source-Map-Sektion** (Id 6) ist in der Spec beschrieben und reserviert, wird aber noch nicht
+  geschrieben — Panics zeigen deshalb Funktion, nicht Zeile.
 
 **Aus M5:**
 
-- **Source-Map-Sektion** (Id 6) ist in der Spec beschrieben und reserviert, wird aber noch nicht
-  geschrieben. Braucht M6 für Runtime-Fehler mit Zeilenangabe.
 - **Copy-Propagation im Emitter**: ein Temp mit mehreren Lesern erzeugt heute ein
   `ldloc`/`stloc`-Paar, das ein Optimierer einsparen könnte. Format-neutral nachrüstbar.
 - **Verifier-Laufzeit**: er ist ~90 % der Lowering-Zeit, das meiste davon der Availability-Dataflow
@@ -218,7 +245,7 @@ unten); Exit ist dann M6s Exit-Kriterium — hello/fizzbuzz/fibonacci laufen.
 
 ## Letzter relevanter Commit
 
-`M6: numerische Laufzeit-Semantik in Sprache.md §6.6`
+`M6: Source-first-Stdlib, Import-Bindung und f-Strings (Slice 2)`
 
 ---
 

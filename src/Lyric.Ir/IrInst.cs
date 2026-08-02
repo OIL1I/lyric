@@ -23,6 +23,12 @@ public sealed record LoadLocal(TempId Dest, LocalId Local, IrType Type, Span Spa
 public sealed record StoreLocal(LocalId Local, TempId Value, Span Span) : IrOp(Span);
 public sealed record Call(TempId? Dest, FunctionId Target, TempId[] Args, Span Span) : IrOp(Span); // Dest == null -> gwd. void
 
+// Aufruf einer nativ hinterlegten Funktion (Stdlib). Eigene Instruktion statt eines gemeinsamen
+// Index-Raums mit Call: in der IR sind das zwei verschiedene Dinge — eines hat einen Rumpf, das
+// andere nicht —, und der Verifier prüft jedes gegen seine eigene Tabelle. Die Index-Arithmetik
+// gehört dorthin, wo die Konvention lebt: in den Bytecode-Writer.
+public sealed record CallImport(TempId? Dest, ImportId Target, TempId[] Args, Span Span) : IrOp(Span);
+
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);

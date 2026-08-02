@@ -1,4 +1,4 @@
-﻿using Lyric.AST;
+using Lyric.AST;
 using Lyric.Core;
 using System;
 using System.Collections.Generic;
@@ -39,76 +39,9 @@ namespace Lyric.Parsing
             _ => 0
         };
 
-        private static string ResolveEscapes(string content)
-        {
-            StringBuilder result = new StringBuilder();
-            var i = 0;
-            while (i < content.Length)
-            {
-                if (content[i] != '\\')
-                {
-                    result.Append(content[i]);
-                    i++;
-                    continue;
-                }
-                i++; //Consume '\'
-                if (i >= content.Length) break;
-                switch (content[i])
-                {
-                    case 'n':
-                        result.Append('\u000A'); break;
-                    case 'r':
-                        result.Append('\u000D'); break;
-                    case 't':
-                        result.Append('\u0009'); break;
-                    case '\\':
-                        result.Append('\u005C'); break;
-                    case '"':
-                        result.Append('\u0022'); break;
-                    case '\'':
-                        result.Append('\u0027'); break;
-                    case '0':
-                        result.Append('\u0000'); break;
-                    case 'x':
-                        try
-                        {
-                            var v = Convert.ToInt32(content[(i + 1)..(i + 3)], 16);
-                            result.Append((char)v);
-                            i += 3; //Consume 'xHH'
-                            break;
-                        }
-                        catch
-                        {
-                            if (content[i] == 'x') i += 3; //Consume wrong hex and recover
-                            break;
-                        }
-                    case 'u':
-                        i += 2; //Consume 'u{'
-                        var j = 0;
-                        while (i + j < content.Length)
-                        {
-                            if (content[i + j] == '}') break;
-                            j++;
-                        }
-                        try
-                        {
-                            var v = Convert.ToInt32(content[i..(i + j)], 16);
-                            result.Append(char.ConvertFromUtf32(v));
-                            i += j + 1;
-                            break;
-                        }
-                        catch 
-                        {
-                            i += j + 1; //Consume wrong unicode and recover
-                            break;
-                        }
-                    default:
-                        result.Append(content[i]);
-                        break;
-                }                
-            }
-            return result.ToString();
-        }
+        // Die Auflösung liegt in Lyric.Core: das f-String-Lowering braucht sie ebenfalls, und
+        // Lyric.Ir darf Lyric.Parsing nicht referenzieren.
+        private static string ResolveEscapes(string content) => Escapes.Resolve(content);
 
         private static string StripQuotes(string text) //From lexer at least -> "\"..." (maybe unterminated)
         {

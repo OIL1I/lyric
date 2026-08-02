@@ -79,7 +79,8 @@ public static class Program
         try
         {
             // §11: Exit-Code ist 0..255. Wie jedes POSIX-System nehmen wir das niedrigste Byte.
-            return (int)(Interpreter.Run(module).AsI64 & 0xFF);
+            var natives = NativeRegistry.CreateDefault(Console.Out, Console.Error);
+            return (int)(Interpreter.Run(module, natives).AsI64 & 0xFF);
         }
         catch (LyricPanic panic)
         {
@@ -165,8 +166,15 @@ public static class Program
         return null;
     }
 
-    /// <summary>Quelle → IR, mit allen Diagnosen gerendert. <c>Ir == null</c> heißt: abgebrochen.</summary>
-    private static (IrModule? Ir, DiagnosticEngine De) Compile(string fpath)
+    /// <summary>
+    /// Der gemeinsame Vorspann jedes Kommandos: lesen, parsen, auflösen, typprüfen.
+    /// <c>Comp == null</c> heißt: die Datei war nicht lesbar (Diagnose ist schon gerendert).
+    ///
+    /// <para>Bewusst <b>ein</b> Front-End für alle Kommandos: als 'run', 'lower' und 'check' je eine
+    /// eigene Kopie hatten, verdrahtete nur eine davon den <see cref="Compilation.ModuleLoader"/> —
+    /// 'check' hielt jeden Stdlib-Import für opak und prüfte die Aufrufe deshalb stumm gar nicht.</para>
+    /// </summary>
+    private static (Compilation? Comp, TypeResult? Types, DiagnosticEngine De) Frontend(string fpath)
     {
         var sm = new SourceManager();
         var de = new DiagnosticEngine(sm);
@@ -179,13 +187,22 @@ public static class Program
         {
             de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
             de.RenderText(Console.Error);
-            return (null, de);
+            return (null, null, de);
         }
 
         var comp = new Compilation(sm, de);
+        // Source-first: die Stdlib ist gewoehnlicher Lyric-Quelltext und wird bei Bedarf geladen.
+        comp.ModuleLoader = StdlibLoader.ForRoot(StdlibLoader.DefaultRoot(), sm, de);
         comp.AddModule(new Parser(sm, id, de).ParseModule());
         var binding = comp.Resolve();
-        var types = Semantics.Analyze(comp, binding, de);
+        return (comp, Semantics.Analyze(comp, binding, de), de);
+    }
+
+    /// <summary>Quelle → IR, mit allen Diagnosen gerendert. <c>Ir == null</c> heißt: abgebrochen.</summary>
+    private static (IrModule? Ir, DiagnosticEngine De) Compile(string fpath)
+    {
+        var (comp, types, de) = Frontend(fpath);
+        if (comp is null) return (null, de);
 
         if (de.HasErrors)
         {
@@ -193,7 +210,7 @@ public static class Program
             return (null, de);
         }
 
-        var ir = ModuleLowerer.Lower(comp, types, de);
+        var ir = ModuleLowerer.Lower(comp, types!, de);
         de.RenderText(Console.Error);
         return (ir, de);
     }
@@ -208,24 +225,8 @@ public static class Program
             return 2;
         }
         var fpath = args[1];
-        var sm = new SourceManager();
-        var de = new DiagnosticEngine(sm);
-        FileId id;
-        try
-        {
-            id = sm.AddFromDisk(fpath);
-        }
-        catch
-        {
-            de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
-            de.RenderText(Console.Error);
-            return 1;
-        }
-        var module = new Parser(sm, id, de).ParseModule();
-        var comp = new Compilation(sm, de);
-        comp.AddModule(module);
-        var binding = comp.Resolve();
-        var types = Semantics.Analyze(comp, binding, de);
+        var (comp, types, de) = Frontend(fpath);
+        if (comp is null) return 1;
 
         if (de.HasErrors)
         {
@@ -235,7 +236,7 @@ public static class Program
 
         // Scope-Grenzen des Lowerings kommen als LYR-IR0001 in dieselbe DiagnosticEngine und
         // werden mit Datei/Zeile/Spalte gerendert wie jeder andere Fehler auch.
-        var ir = ModuleLowerer.Lower(comp, types, de);
+        var ir = ModuleLowerer.Lower(comp, types!, de);
         de.RenderText(Console.Error);
         if (ir is null) return 1;
 
@@ -251,24 +252,8 @@ public static class Program
             return 2;
         }
         var fpath = args[1];
-        var sm = new SourceManager();
-        var de = new DiagnosticEngine(sm);
-        FileId id;
-        try
-        {
-            id = sm.AddFromDisk(fpath);
-        }
-        catch
-        {
-            de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
-            de.RenderText(Console.Error);
-            return 1;
-        }
-        var module = new Parser(sm, id, de).ParseModule();
-        var comp = new Compilation(sm, de);
-        comp.AddModule(module);
-        var binding = comp.Resolve();
-        Semantics.Analyze(comp, binding, de);
+        var (comp, _, de) = Frontend(fpath);
+        if (comp is null) return 1;
 
         de.RenderText(Console.Error);
         if (de.HasErrors) return 1;

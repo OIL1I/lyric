@@ -26,13 +26,8 @@ public static class Interpreter
     private const int MaxCallDepth = 1024;
 
     /// <summary>Führt die Start-Funktion aus und liefert ihren Rückgabewert.</summary>
-    public static LyrValue Run(BytecodeModule module)
+    public static LyrValue Run(BytecodeModule module, NativeRegistry? natives = null)
     {
-        if (module.Imports.Count > 0)
-            throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
-                $"module requires {module.Imports.Count} import(s); binding native functions " +
-                "is not implemented yet");
-
         if (module.Start is not { } start)
             throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
                 "module has no start section — it is a library, not a program");
@@ -40,18 +35,21 @@ public static class Interpreter
         var prepared = new Prepared[module.Functions.Count];
         for (var i = 0; i < prepared.Length; i++) prepared[i] = Prepared.From(module.Functions[i]);
 
-        return Execute(prepared, start, module.Strings);
+        // Bindung beim Laden: fehlt ein Native, wird das Modul abgelehnt, bevor eine
+        // Instruktion laeuft.
+        var bound = (natives ?? new NativeRegistry()).Bind(module);
+        return Execute(prepared, start, module.Strings, bound);
     }
 
     private static LyrValue Execute(Prepared[] prepared, int startIndex,
-        IReadOnlyList<string> strings)
+        IReadOnlyList<string> strings, NativeRegistry.BoundNative[] natives)
     {
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
 
         try
         {
-            return Loop(prepared, strings, frames, ref frame);
+            return Loop(prepared, strings, natives, frames, ref frame);
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
@@ -64,7 +62,7 @@ public static class Interpreter
     }
 
     private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
-        Stack<Frame> frames, ref Frame frame)
+        NativeRegistry.BoundNative[] natives, Stack<Frame> frames, ref Frame frame)
     {
         while (true)
         {
@@ -125,11 +123,25 @@ public static class Interpreter
 
                 case Op.Call:
                 {
+                    // Gemeinsamer Indexraum: erst Imports, dann definierte Funktionen (ADR-013).
+                    // Ein Import bekommt keinen Frame — er läuft im Host und kehrt sofort zurück.
+                    var index = (int)instruction.Immediate;
+                    if (index < natives.Length)
+                    {
+                        var native = natives[index];
+                        var args = new LyrValue[native.Arity];
+                        for (var i = native.Arity - 1; i >= 0; i--) args[i] = frame.Pop();
+
+                        var produced = native.Implementation(args);
+                        if (native.ReturnsValue) frame.Push(produced);
+                        break;
+                    }
+
                     if (frames.Count >= MaxCallDepth)
                         throw new LyricPanic(VmDiagnostics.CallDepthExceeded,
                             $"call depth exceeded {MaxCallDepth} frames in '{frame.Fn.Source.Name}'");
 
-                    var callee = prepared[(int)instruction.Immediate];
+                    var callee = prepared[index - natives.Length];
                     var next = Frame.For(callee);
                     // Argumente liegen in Aufrufreihenfolge auf dem Stack, das erste zuunterst.
                     for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();

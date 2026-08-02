@@ -138,6 +138,102 @@ public class LoweringTests
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
+    // ------------------------------------------------------------- 1b) Source-first Stdlib
+
+    /// <summary>Wie <see cref="TryLower"/>, aber mit der echten Stdlib auf dem Modulpfad — sie ist
+    /// gewöhnlicher Lyric-Quelltext und wird beim Auflösen geladen.</summary>
+    private static IrModule LowerWithStdlib(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var types = Semantics.Analyze(comp, comp.Resolve(), de);
+
+        var writer = new StringWriter();
+        de.RenderText(writer);
+        Assert.False(de.HasErrors, "source did not compile:\n" + writer.ToString());
+
+        var ir = ModuleLowerer.Lower(comp, types, de, verify: true);
+        Assert.NotNull(ir);
+        return ir!;
+    }
+
+    [Fact]
+    public void Stdlib_is_loaded_from_source_when_imported()
+    {
+        // Der Kern von „source-first": std.io.console ist ein normales Lyric-Modul, das beim
+        // Auflösen geladen und typgeprüft wird — kein Sonderfall im Compiler.
+        var module = LowerWithStdlib("""
+            import std.io.console { println };
+            fn main(): int { println("hi"); return 0; }
+            """);
+
+        var import = Assert.Single(module.Imports);
+        Assert.Equal("std.io.console.println", import.Name);
+        Assert.Equal(new IrScalarType(IrScalar.String), Assert.Single(import.ParamTypes));
+        Assert.Equal(new IrScalarType(IrScalar.Void), import.ReturnType);
+    }
+
+    [Fact]
+    public void Stdlib_signatures_are_enforced()
+    {
+        // Der Beweis, dass die Signatur wirklich ankommt: vorher war jedes Stdlib-Symbol opak und
+        // `println(42)` wäre stillschweigend durchgegangen.
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr",
+            "import std.io.console { println };\nfn main(): int { println(42); return 0; }");
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        Semantics.Analyze(comp, comp.Resolve(), de);
+
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001");
+    }
+
+    [Fact]
+    public void Interpolation_lowers_to_a_concat_chain()
+    {
+        var module = LowerWithStdlib("""
+            fn main(): int { let n = 7; let s = f"n={n}!"; return 0; }
+            """);
+
+        // "n=" ++ fromInt(n) ++ "!" — zwei concat, ein Wandler. Nur die tatsächlich benutzten
+        // Helfer stehen in der Tabelle, nicht alle deklarierten.
+        Assert.Equal(new[] { "std.string.fromInt", "std.string.concat" },
+            module.Imports.Select(i => i.Name).Distinct());
+    }
+
+    [Fact]
+    public void Adjacent_text_segments_collapse_into_one_constant()
+    {
+        // f"ab" hat kein Loch: das Ergebnis ist eine schlichte Konstante, kein concat.
+        var module = LowerWithStdlib("fn main(): int { let s = f\"ab\"; return 0; }");
+        Assert.Empty(module.Imports);
+    }
+
+    [Fact]
+    public void A_bodyless_function_outside_the_stdlib_is_an_error()
+    {
+        // Genau der Mechanismus, den die Stdlib nutzt — in User-Code muss er zu sein, sonst
+        // deklariert sich jeder beliebige Natives.
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", "fn native(x: int): int;\nfn main(): int { return 0; }");
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de);
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        Semantics.Analyze(comp, comp.Resolve(), de);
+
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0051");
+    }
+
     // ------------------------------------------------------------------ 2) Invarianten
 
     [Fact]
@@ -342,7 +438,10 @@ public class LoweringTests
     // Konstrukte, deren Typ skalar ist — hier greift die Grenze erst am Ausdruck bzw. Statement.
     [Theory]
     [InlineData("fn f(): string { return \"a\" + \"b\"; }", "string concatenation")]
-    [InlineData("fn f(): string { return f\"hi\"; }", "f-string interpolation")]
+    // f-Strings lowern zu einer concat/fromXxx-Kette. Ohne Stdlib auf dem Modulpfad fehlen die
+    // Helfer — die Meldung nennt genau den fehlenden, statt „f-Strings gehen nicht" zu behaupten.
+    // Beim ersten Loch ist das der Wandler, noch vor dem concat.
+    [InlineData("fn f(): string { return f\"n={1}\"; }", "std.string.fromInt")]
     [InlineData("fn f(n: int): int { return match (n) { 0 => 1, _ => 2 }; }", "'match'")]
     [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "'for-in'")]
     public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
@@ -384,7 +483,7 @@ public class LoweringTests
         // soll sie in einem Durchlauf sehen. Deshalb sammelt das Lowering pro Funktion weiter.
         var (ir, de) = TryLower("""
             fn a(): int { let xs = [1, 2]; return xs[0]; }
-            fn b(): string { return f"x"; }
+            fn b(): int { var s = 0; for (i in 0..3) { s += i; } return s; }
             fn c(): int { let t = (1, 2); return 0; }
             """);
 

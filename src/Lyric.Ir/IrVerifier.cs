@@ -493,6 +493,7 @@ public static class IrVerifier
                 case LoadLocal l: CheckLoadLocal(l, block, index); break;
                 case StoreLocal s: CheckStoreLocal(s, block, index); break;
                 case Call k: CheckCall(k, block, index); break;
+                case CallImport k: CheckCallImport(k, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -720,7 +721,48 @@ public static class IrVerifier
                                      $"returns {Show(callee.ReturnType)}");
         }
 
-        private void CheckTerminatorTypes(IrTerminator terminator, BlockId block)
+        /// <summary>Wie <see cref="CheckCall"/>, nur gegen die Import-Tabelle. Ein Import hat keinen
+    /// Rumpf, also kommt die Signatur aus seiner Deklaration statt aus einer Funktion.</summary>
+    private void CheckCallImport(CallImport k, BlockId block, int index)
+    {
+        if (k.Target.Value < 0 || k.Target.Value >= _module.Imports.Count)
+        {
+            Report(block, index, $"import target {k.Target} is out of range " +
+                                 $"(module has {N(_module.Imports.Count)} import(s))");
+            return;
+        }
+
+        var import = _module.Imports[k.Target.Value];
+
+        if (k.Args.Length != import.ParamTypes.Length)
+        {
+            Report(block, index, $"call to import '{import.Name}' passes {N(k.Args.Length)} arg(s), " +
+                                 $"expected {N(import.ParamTypes.Length)}");
+        }
+        else
+        {
+            for (var i = 0; i < k.Args.Length; i++)
+            {
+                var actual = TypeOf(k.Args[i]);
+                if (!IrType.Equal(import.ParamTypes[i], actual))
+                    Report(block, index, $"call to import '{import.Name}': arg {N(i)} is " +
+                                         $"{Show(actual)}, expected {Show(import.ParamTypes[i])}");
+            }
+        }
+
+        var returnsVoid = IsVoid(import.ReturnType);
+        if (returnsVoid && k.Dest is { } unwanted)
+            Report(block, index,
+                $"call to void import '{import.Name}' must not have a dest (found {unwanted})");
+        else if (!returnsVoid && k.Dest is null)
+            Report(block, index,
+                $"call to import '{import.Name}' returning {Show(import.ReturnType)} must have a dest");
+        else if (k.Dest is { } dest && !IrType.Equal(import.ReturnType, TypeOf(dest)))
+            Report(block, index, $"call dest {dest} is {Show(TypeOf(dest))} but import " +
+                                 $"'{import.Name}' returns {Show(import.ReturnType)}");
+    }
+
+    private void CheckTerminatorTypes(IrTerminator terminator, BlockId block)
         {
             switch (terminator)
             {

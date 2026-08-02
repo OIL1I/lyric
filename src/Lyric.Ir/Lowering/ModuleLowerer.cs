@@ -60,6 +60,7 @@ public static class ModuleLowerer
     {
         var pending = new List<(FunctionDecl Decl, string Name)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
+        var imports = new ImportTable();
         FunctionId? entry = null;
 
         // Pass 1 — Funktionstabelle. Die Reihenfolge ist Modul- dann Deklarations-Reihenfolge und
@@ -69,9 +70,21 @@ public static class ModuleLowerer
             foreach (var decl in compilation.AstOf(module).Declarations)
             {
                 if (decl is not FunctionDecl function) continue;
-                if (function.Body is null) continue;
                 if (function.Generics.Length > 0) continue;
                 if (module.Members.LookupLocal(function.Name) is not FunctionSymbol symbol) continue;
+
+                // Rumpflos in einem Stdlib-Modul = native Deklaration. Die Signatur steht in Lyric,
+                // die Implementierung liegt im Host und wird beim Laden über den Namen gebunden.
+                // In User-Code hat die Sema das schon als LYR-SEM0051 abgelehnt.
+                if (function.Body is null)
+                {
+                    if (!compilation.IsNative(module)) continue;
+                    imports.Declare(symbol, new IrImport(
+                        NameMangling.ForFunction(module, function.Name),
+                        function.Parameters.Select(p => DeclaredTypes.Lower(p.Type)).ToArray(),
+                        DeclaredTypes.Lower(function.ReturnType)));
+                    continue;
+                }
 
                 var id = new FunctionId(pending.Count);
                 ids[symbol] = id;
@@ -91,7 +104,7 @@ public static class ModuleLowerer
         {
             try
             {
-                functions.Add(new FunctionLowerer(decl, name, types, ids, NoSubstitution).Run());
+                functions.Add(new FunctionLowerer(decl, name, types, ids, imports, NoSubstitution).Run());
             }
             catch (UnsupportedConstructException ex)
             {
@@ -104,7 +117,7 @@ public static class ModuleLowerer
         // Modulaufbau ist damit nicht mehr rettbar. Kein Teilergebnis zurückgeben.
         if (failed) return null;
 
-        var result = new IrModule(functions) { EntryFunction = entry };
+        var result = new IrModule(functions) { EntryFunction = entry, Imports = imports.Used };
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }

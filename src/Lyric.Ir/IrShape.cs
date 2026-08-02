@@ -25,6 +25,7 @@ public static class IrShape
         LoadLocal => Array.Empty<TempId>(),
         StoreLocal s => new[] { s.Value },
         Call k => k.Args,
+        CallImport k => k.Args,
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 
@@ -49,6 +50,7 @@ public static class IrShape
         LoadLocal l => l.Dest,
         StoreLocal => null,
         Call k => k.Dest,
+        CallImport k => k.Dest,
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 

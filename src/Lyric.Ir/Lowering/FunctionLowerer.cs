@@ -40,6 +40,7 @@ internal sealed class FunctionLowerer
     private readonly string _name;
     private readonly TypeResult _types;
     private readonly IReadOnlyDictionary<FunctionSymbol, FunctionId> _functions;
+    private readonly ImportTable _imports;
 
     /// <summary>Typargumente der Instanz, für die gelowert wird. In P4 immer leer — der Haken sitzt
     /// in <see cref="LowerType"/>, damit die Worklist-Monomorphisierung später nur die Map füllen
@@ -54,12 +55,14 @@ internal sealed class FunctionLowerer
 
     public FunctionLowerer(FunctionDecl decl, string name, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions,
+        ImportTable imports,
         IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution)
     {
         _decl = decl;
         _name = name;
         _types = types;
         _functions = functions;
+        _imports = imports;
         _substitution = substitution;
         _b = new BlockBuilder(_blocks);
         _returnType = LowerDeclaredReturnType();
@@ -287,8 +290,9 @@ internal sealed class FunctionLowerer
         CallExpr e => LowerCall(e),
         IfExpr e => LowerIfExpr(e),
 
+        InterpolatedStringExpr e => LowerInterpolatedString(e),
+
         NullLiteralExpr e => throw NotSupported("'null' (needs a nullable IR type)", e.Span),
-        InterpolatedStringExpr e => throw NotSupported("f-string interpolation (lowers to format calls)", e.Span),
         LambdaExpr e => throw NotSupported("lambda (needs closure lifting)", e.Span),
         MatchExpr e => throw NotSupported("'match' as an expression", e.Span),
         MemberExpr e => throw NotSupported($"member access '.{e.Member}'", e.Span),
@@ -513,8 +517,19 @@ internal sealed class FunctionLowerer
         if (expr.Callee is not IdentifierExpr callee)
             throw NotSupported("call target (only module-level functions)", expr.Callee.Span);
 
-        if (_types.RefOf(callee) is not FunctionSymbol symbol)
+        // Ein selektiver Import bindet über ein ImportBindingSymbol; das eigentliche Ziel liegt
+        // darunter. Ohne das Auspacken sieht `import std.io.console { println };` anders aus als
+        // ein Aufruf im selben Modul, obwohl es dieselbe Funktion ist.
+        var bound = _types.RefOf(callee) is ImportBindingSymbol binding
+            ? binding.Target
+            : _types.RefOf(callee);
+
+        if (bound is not FunctionSymbol symbol)
             throw NotSupported($"call to '{callee.Name}' (not a module-level function)", expr.Span);
+
+        // Nativ hinterlegt (Stdlib): eigener Instruktionstyp, eigener Indexraum.
+        if (_imports.IsNative(symbol))
+            return LowerImportCall(_imports.Intern(symbol), expr.Arguments, expr.Span);
 
         if (!_functions.TryGetValue(symbol, out var target))
             throw NotSupported($"call to '{callee.Name}' (external, generic or bodiless)", expr.Span);
@@ -539,6 +554,114 @@ internal sealed class FunctionLowerer
         var dest = _slots.NewTemp(returnType);
         _b.Emit(new Call(dest, target, args, expr.Span));
         return dest;
+    }
+
+    /// <summary>Aufruf einer nativ hinterlegten Funktion. Die Signatur kommt aus der Import-Tabelle,
+    /// nicht aus einer Funktion — ein Import hat keinen Rumpf.</summary>
+    private TempId? LowerImportCall(ImportId target, Expr[] arguments, Span span)
+    {
+        var import = _imports.Used[target.Value];
+        if (arguments.Length != import.ParamTypes.Length)
+            throw NotSupported($"call to '{import.Name}' with default or variadic arguments", span);
+
+        var args = new TempId[arguments.Length];
+        for (var i = 0; i < arguments.Length; i++) args[i] = LowerExpr(arguments[i]);
+
+        if (IsVoid(import.ReturnType))
+        {
+            _b.Emit(new CallImport(null, target, args, span));
+            return null;
+        }
+
+        var dest = _slots.NewTemp(import.ReturnType);
+        _b.Emit(new CallImport(dest, target, args, span));
+        return dest;
+    }
+
+    /// <summary>Direkter Aufruf eines Runtime-Helfers über seinen festen Namen — das f-String-
+    /// Lowering referenziert <c>std.string.concat</c>, ohne dass jemand <c>std.string</c>
+    /// importiert hätte. Dasselbe Modell wie Roslyns Verweis auf <c>String.Concat</c>.</summary>
+    private TempId CallHelper(string name, Span span, params TempId[] args)
+    {
+        if (!_imports.TryFind(name, out var import))
+            throw NotSupported($"the f-string helper '{name}' (is the standard library on the module path?)", span);
+
+        var target = _imports.Intern(import);
+        var dest = _slots.NewTemp(import.ReturnType);
+        _b.Emit(new CallImport(dest, target, args, span));
+        return dest;
+    }
+
+    /// <summary>
+    /// f-String → Kette aus <c>concat</c> und den <c>fromXxx</c>-Wandlern. Keine Arrays, keine
+    /// Varargs — beides kann die IR nicht, und so braucht sie es auch nicht. Roslyn macht es für
+    /// <c>$"…"</c> ohne Format-Spec genauso.
+    /// </summary>
+    private TempId LowerInterpolatedString(InterpolatedStringExpr expr)
+    {
+        var stringType = new IrScalarType(IrScalar.String);
+        var parts = new List<TempId>();
+        var pendingText = new System.Text.StringBuilder();
+
+        void FlushText(Span span)
+        {
+            if (pendingText.Length == 0) return;
+            parts.Add(EmitConst(new StringConst(pendingText.ToString()), stringType, span));
+            pendingText.Clear();
+        }
+
+        foreach (var segment in expr.Segments)
+        {
+            switch (segment)
+            {
+                case InterpText text:
+                    // Der Parser speichert die Textstücke roh (siehe InterpText) — hier werden die
+                    // Escapes aufgelöst. Benachbarte Stücke sammeln sich zu einer Konstante.
+                    pendingText.Append(Escapes.Resolve(text.Text));
+                    break;
+
+                case InterpHole hole:
+                    if (hole.FormatSpec is not null)
+                        throw NotSupported($"format spec '{hole.FormatSpec}' (std.fmt arrives with M8)",
+                            hole.Span);
+
+                    FlushText(hole.Span);
+                    parts.Add(ToStringValue(hole.Expr));
+                    break;
+
+                default:
+                    throw Bug($"unhandled interpolation segment {segment.GetType().Name}");
+            }
+        }
+        FlushText(expr.Span);
+
+        if (parts.Count == 0) return EmitConst(new StringConst(string.Empty), stringType, expr.Span);
+
+        var result = parts[0];
+        for (var i = 1; i < parts.Count; i++)
+            result = CallHelper("std.string.concat", expr.Span, result, parts[i]);
+        return result;
+    }
+
+    /// <summary>Ein Loch im f-String als string. Strings bleiben, wie sie sind; alles andere geht
+    /// durch den passenden Wandler — die Namen unterscheiden nach Quelltyp, weil Lyric kein
+    /// Overloading hat.</summary>
+    private TempId ToStringValue(Expr expr)
+    {
+        var value = LowerExpr(expr);
+        var type = TypeOfExpr(expr);
+        if (type is not IrScalarType scalar)
+            throw NotSupported($"interpolating a non-scalar value", expr.Span);
+
+        return scalar.Kind switch
+        {
+            IrScalar.String => value,
+            IrScalar.Bool => CallHelper("std.string.fromBool", expr.Span, value),
+            IrScalar.Char => CallHelper("std.string.fromChar", expr.Span, value),
+            IrScalar.F32 or IrScalar.F64 => CallHelper("std.string.fromFloat", expr.Span, value),
+            _ when IsIntegerScalar(scalar.Kind) => CallHelper("std.string.fromInt", expr.Span, value),
+            _ => throw NotSupported($"interpolating a non-scalar value", expr.Span),
+        };
     }
 
     // ------------------------------------------------------------------ Helfer

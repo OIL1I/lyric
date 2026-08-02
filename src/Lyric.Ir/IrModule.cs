@@ -56,8 +56,16 @@ public class IrFunction(string Name, IrType ReturnType, int ParamCount, List<IrL
     public BlockId Entry { get; set; }
 }
 
+/// <summary>Eine nativ hinterlegte Funktion: Signatur in Lyric deklariert, Implementierung im
+/// Host. Wird beim Laden über <see cref="Name"/> gebunden (ADR-013, WASM-Modell).</summary>
+public record struct IrImport(string Name, IrType[] ParamTypes, IrType ReturnType);
+
 public class IrModule(List<IrFunction> Functions)
 {
+    /// <summary>Native Funktionen, die dieses Modul aufruft — nur die tatsächlich benutzten.
+    /// <c>CallImport</c> referenziert sie per Index.</summary>
+    public List<IrImport> Imports { get; init; } = new();
+
     /// <summary>Call-Ziele referenzieren per <see cref="FunctionId"/> den Index in diese Liste.
     /// Namen müssen eindeutig sein — sie werden die Symbol-Namen im Bytecode (ADR-013).</summary>
     public List<IrFunction> Functions { get; init; } = Functions;

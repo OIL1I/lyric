@@ -1,0 +1,19 @@
+// std.io.console — Konsolen-Ausgabe.
+//
+// Die Funktionen haben keinen Rumpf: sie sind nativ hinterlegt und werden beim Laden des
+// Bytecodes über ihren symbolischen Namen gebunden (ADR-013). Rumpflos ist hier keine
+// Sonder-Syntax — Sprache.md §3.1 erlaubt `( Block | ';' )` für jede Funktion; dass daraus ein
+// Import wird statt eines Fehlers, entscheidet die Herkunft des Moduls, nicht sein Inhalt.
+//
+// Bekommt eine dieser Funktionen später einen echten Lyric-Rumpf, ändert sich am Compiler nichts.
+//
+// Keine Capability nötig (Doku.md §20.1): Konsolen-Ausgabe ist immer verfügbar.
+
+module std.io.console;
+
+// Nimmt `string`. Lyric hat kein Overloading, und ein generisches `println<T :: [Display]>`
+// setzt Builtin-Konformanz voraus — die kommt mit M8. Zahlen gehen über einen f-String:
+// `println(f"{v}")`.
+pub fn print(value: string);
+pub fn println(value: string);
+pub fn eprintln(value: string);
