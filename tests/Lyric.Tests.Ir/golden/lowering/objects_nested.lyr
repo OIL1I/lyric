@@ -1,0 +1,29 @@
+// Ein Feld, dessen Typ selbst eine Klasse ist — und ein REKURSIVER Typ.
+//
+// Node kann in diesem Compiler-Stand nicht konstruiert werden: jedes Node braucht ein next, und
+// ohne Optionals (?T) endet diese Kette nie. Der TYP muss trotzdem kodierbar sein, und genau das
+// prueft diese Fixture — Node wird ueber einen Parameter interniert, nicht ueber ein newobj.
+// Strukturell waere das Layout nicht endlich; ueber die Typ-Id ist es das.
+class Node {
+    payload: int,
+    next: Node
+}
+
+class Inner {
+    value: int
+}
+
+class Outer {
+    inner: Inner,
+    count: int
+}
+
+fn depth(n: Node): int {
+    return n.next.payload;
+}
+
+fn main(): int {
+    let inner = Inner { value = 7 };
+    let outer = Outer { inner = inner, count = 1 };
+    return outer.inner.value;
+}

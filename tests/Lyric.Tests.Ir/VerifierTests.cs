@@ -216,6 +216,88 @@ public class VerifierTests
         Assert.Contains("entry bb0 has predecessors bb1", findings[0], StringComparison.Ordinal);
     }
 
+    // ------------------------------------------------------ 2b') Objekte und Typ-Tabelle
+
+    /// <summary>Ein Modul mit genau einem Typ <c>P { x: i32 }</c> und einer void-Funktion, deren
+    /// Instruktionen der Test vorgibt. Träger für die Objekt-Defekte.</summary>
+    private static IrModule WithPoint(List<IrTemp> temps, List<IrOp> insts, List<IrTypeDef>? types = null)
+        => ModuleWithTypes(
+            types ?? new List<IrTypeDef> { TypeDef("P", ("x", I32)) },
+            Fn("main.f", VoidT, 0, new List<IrLocal>(), temps,
+                new List<IrBlock> { Block(0, insts, new Return(null, Sp)) }));
+
+    [Fact]
+    public void Newobj_type_must_exist() =>
+        AssertFinding(
+            WithPoint(
+                new List<IrTemp> { new(T(0), Ref(9)) },
+                new List<IrOp> { new NewObject(T(0), Ty(9), Sp) }),
+            "newobj references type ty9 which is out of range");
+
+    [Fact]
+    public void Field_index_must_be_inside_the_type() =>
+        AssertFinding(
+            WithPoint(
+                new List<IrTemp> { new(T(0), Ref(0)), new(T(1), I32) },
+                new List<IrOp>
+                {
+                    new NewObject(T(0), Ty(0), Sp),
+                    new LoadField(T(1), T(0), Ty(0), Fld(3), I32, Sp),
+                }),
+            "loadfield references field #3 of type ty0 'P', which has 1 field(s)");
+
+    [Fact]
+    public void Storefield_value_must_match_the_declared_field_type() =>
+        AssertFinding(
+            WithPoint(
+                new List<IrTemp> { new(T(0), Ref(0)), new(T(1), Str) },
+                new List<IrOp>
+                {
+                    new NewObject(T(0), Ty(0), Sp),
+                    new Const(T(1), Str, new StringConst("nope"), Sp),
+                    new StoreField(T(0), Ty(0), Fld(0), T(1), Sp),
+                }),
+            "storefield into ty0#0 takes i32, but t1 is string");
+
+    /// <summary>
+    /// Der Objekt-Operand muss eine Referenz auf <b>genau</b> den Typ sein, den die Instruktion
+    /// nennt. Beide zu tragen ist Absicht (Bytecode.md §5) — laufen sie auseinander, prüft der
+    /// Bytecode-Leser den Feldindex später gegen das falsche Layout.
+    /// </summary>
+    [Fact]
+    public void Field_access_needs_a_reference_to_the_named_type() =>
+        AssertFinding(
+            WithPoint(
+                new List<IrTemp> { new(T(0), I32), new(T(1), I32) },
+                new List<IrOp>
+                {
+                    new Const(T(0), I32, new IntConst(0), Sp),
+                    new LoadField(T(1), T(0), Ty(0), Fld(0), I32, Sp),
+                }),
+            "loadfield expects t0 to be a reference to type ty0, found i32");
+
+    [Fact]
+    public void A_void_field_is_reported() =>
+        AssertFinding(
+            WithPoint(new List<IrTemp>(), new List<IrOp>(),
+                new List<IrTypeDef> { TypeDef("P", ("nothing", VoidT)) }),
+            "type ty0 'P': field #0 'nothing' is void");
+
+    [Fact]
+    public void A_field_type_referencing_an_unknown_type_is_reported() =>
+        AssertFinding(
+            WithPoint(new List<IrTemp>(), new List<IrOp>(),
+                new List<IrTypeDef> { TypeDef("P", ("other", Ref(4))) }),
+            "field #0 'other' references type ty4, which is out of range");
+
+    /// <summary>Ein Typ darf sich selbst als Feldtyp nennen — <c>class Node { next: Node }</c> ist
+    /// gültig. Der Gegentest zu den beiden Bereichs-Befunden oben: die Prüfung darf Rekursion nicht
+    /// mit einem Fehler verwechseln.</summary>
+    [Fact]
+    public void A_self_referential_type_is_clean() =>
+        AssertClean(WithPoint(new List<IrTemp>(), new List<IrOp>(),
+            new List<IrTypeDef> { TypeDef("Node", ("payload", I32), ("next", Ref(0))) }));
+
     // ------------------------------------------------------ 2c) Phase 2: Erreichbarkeit
 
     [Fact]

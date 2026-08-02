@@ -50,7 +50,7 @@ public class LoweringTests
         var types = Semantics.Analyze(comp, binding, de);
 
         Assert.False(de.HasErrors, "source did not type-check:\n" + Render(de));
-        return (ModuleLowerer.Lower(comp, types, de, verify), de);
+        return (ModuleLowerer.Lower(comp, binding, types, de, verify), de);
     }
 
     private static string Render(DiagnosticEngine de)
@@ -84,6 +84,8 @@ public class LoweringTests
     [InlineData("calls")]           // void-Call, Vorwärts-Call, Rekursion
     [InlineData("cast")]            // convert + elidierte Identität
     [InlineData("incdec")]          // ++/-- prä und post, compound assign
+    [InlineData("objects")]         // newobj, Feld lesen/schreiben, Referenz-Semantik
+    [InlineData("objects_nested")]  // Klasse als Feldtyp, plus ein rekursiver Typ
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();
@@ -152,13 +154,14 @@ public class LoweringTests
             ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
         };
         comp.AddModule(new Parser(sm, id, de).ParseModule());
-        var types = Semantics.Analyze(comp, comp.Resolve(), de);
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
 
         var writer = new StringWriter();
         de.RenderText(writer);
         Assert.False(de.HasErrors, "source did not compile:\n" + writer.ToString());
 
-        var ir = ModuleLowerer.Lower(comp, types, de, verify: true);
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         Assert.NotNull(ir);
         return ir!;
     }

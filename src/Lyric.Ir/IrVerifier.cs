@@ -37,6 +37,8 @@ public static class IrVerifier
         var findings = new List<string>();
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
 
+        VerifyTypes(module, findings);
+
         foreach (var function in module.Functions)
         {
             // Namen sind die Symbol-Namen im Bytecode (ADR-013). Eine Kollision ist der
@@ -61,6 +63,50 @@ public static class IrVerifier
         }
 
         return findings;
+    }
+
+    /// <summary>
+    /// Prüft die Typ-Tabelle, bevor irgendeine Funktion sie benutzt. Vorgezogen aus demselben
+    /// Grund, aus dem die Funktions-Phasen einen Bail-out haben: läuft eine Instruktion gegen ein
+    /// kaputtes Layout, ist ihr Befund Folge des Tabellen-Fehlers und nicht seine Ursache.
+    ///
+    /// <para><b>Rekursion ist ausdrücklich erlaubt</b> — <c>class Node { next: Node }</c> ist
+    /// gültig, auch vorwärts. Deshalb prüft diese Schleife nur Bereichsgrenzen und läuft dem
+    /// Feldtyp nicht nach; genau dafür trägt <see cref="IrRefType"/> nur die Id.</para>
+    /// </summary>
+    private static void VerifyTypes(IrModule module, List<string> findings)
+    {
+        for (var i = 0; i < module.Types.Count; i++)
+        {
+            var def = module.Types[i];
+            var id = new TypeId(i);
+
+            if (def.FieldTypes.Length != def.FieldNames.Length)
+            {
+                findings.Add($"type {id} '{def.Name}' has {def.FieldTypes.Length} field type(s) " +
+                             $"but {def.FieldNames.Length} name(s)");
+                continue;
+            }
+
+            for (var f = 0; f < def.FieldTypes.Length; f++)
+            {
+                switch (def.FieldTypes[f])
+                {
+                    // void ist ausschließlich Rückgabetyp (Bytecode.md §3). Ein void-Feld hätte
+                    // keine Breite und keinen Nullwert — es ist kein Wert.
+                    case IrScalarType { Kind: IrScalar.Void }:
+                        findings.Add($"type {id} '{def.Name}': field {new FieldId(f)} " +
+                                     $"'{def.FieldNames[f]}' is void");
+                        break;
+
+                    case IrRefType r when r.Type.Value < 0 || r.Type.Value >= module.Types.Count:
+                        findings.Add($"type {id} '{def.Name}': field {new FieldId(f)} " +
+                                     $"'{def.FieldNames[f]}' references type {r.Type}, which is out " +
+                                     $"of range (module has {module.Types.Count} type(s))");
+                        break;
+                }
+            }
+        }
     }
 
     /// <summary>Wie <see cref="Verify"/>, wirft aber bei Befunden. Für Aufrufstellen im Lowering,
@@ -494,6 +540,9 @@ public static class IrVerifier
                 case StoreLocal s: CheckStoreLocal(s, block, index); break;
                 case Call k: CheckCall(k, block, index); break;
                 case CallImport k: CheckCallImport(k, block, index); break;
+                case NewObject n: CheckNewObject(n, block, index); break;
+                case LoadField f: CheckLoadField(f, block, index); break;
+                case StoreField f: CheckStoreField(f, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -762,6 +811,87 @@ public static class IrVerifier
                                  $"'{import.Name}' returns {Show(import.ReturnType)}");
     }
 
+    /// <summary>Löst eine <see cref="TypeId"/> gegen die Modul-Tabelle auf. <c>null</c> heißt: der
+    /// Index zeigt ins Leere und wurde bereits gemeldet — der Aufrufer bricht dann ab, statt mit
+    /// einem Ersatz-Layout weiterzuprüfen und Folgebefunde zu erzeugen.</summary>
+    private IrTypeDef? ResolveType(TypeId type, string what, BlockId block, int index)
+    {
+        if (type.Value >= 0 && type.Value < _module.Types.Count) return _module.Types[type.Value];
+
+        Report(block, index, $"{what} references type {type} which is out of range " +
+                             $"(module has {N(_module.Types.Count)} type(s))");
+        return null;
+    }
+
+    /// <summary>Liefert den deklarierten Feldtyp, oder <c>null</c> bei Bereichs-/Layout-Fehler.
+    /// Prüft dabei auch, dass Typen- und Namensliste gleich lang sind: läuft das auseinander,
+    /// fiele es sonst erst im Printer als Index-Ausnahme auf.</summary>
+    private IrType? ResolveField(IrTypeDef def, TypeId type, FieldId field, string what,
+        BlockId block, int index)
+    {
+        if (def.FieldTypes.Length != def.FieldNames.Length)
+        {
+            Report(block, index, $"type {type} '{def.Name}' has {N(def.FieldTypes.Length)} field " +
+                                 $"type(s) but {N(def.FieldNames.Length)} name(s)");
+            return null;
+        }
+
+        if (field.Value >= 0 && field.Value < def.FieldTypes.Length) return def.FieldTypes[field.Value];
+
+        Report(block, index, $"{what} references field {field} of type {type} '{def.Name}', " +
+                             $"which has {N(def.FieldTypes.Length)} field(s)");
+        return null;
+    }
+
+    /// <summary>Der Objekt-Operand muss eine Referenz auf <b>genau</b> den Typ sein, den die
+    /// Instruktion nennt. Beides zu tragen ist Absicht (Bytecode.md §5): der Typ im
+    /// Instruktionsstrom macht die Feldindex-Prüfung beim Laden ohne Datenfluss-Analyse möglich.
+    /// Genau deshalb muss der Verifier hier durchsetzen, dass die beiden nicht auseinanderlaufen —
+    /// sonst prüft der Bytecode-Leser später gegen das falsche Layout.</summary>
+    private bool RequireObject(TempId obj, TypeId type, string what, BlockId block, int index)
+    {
+        var actual = TypeOf(obj);
+        if (actual is IrRefType r && r.Type == type) return true;
+
+        Report(block, index, $"{what} expects {obj} to be a reference to type {type}, " +
+                             $"found {Show(actual)}");
+        return false;
+    }
+
+    private void CheckNewObject(NewObject n, BlockId block, int index)
+    {
+        if (ResolveType(n.Type, "newobj", block, index) is null) return;
+        RequireDestType(n.Dest, new IrRefType(n.Type), "newobj", block, index);
+    }
+
+    private void CheckLoadField(LoadField f, BlockId block, int index)
+    {
+        if (ResolveType(f.Type, "loadfield", block, index) is not { } def) return;
+        if (ResolveField(def, f.Type, f.Field, "loadfield", block, index) is not { } declared) return;
+        if (!RequireObject(f.Object, f.Type, "loadfield", block, index)) return;
+
+        // Wie überall in dieser IR: das Type-Feld auf der Instruktion ist eine Kopie für den
+        // Printer, die Temp-Tabelle ist die Autorität. Beide gegen die Deklaration zu prüfen ist
+        // der Kern-Job des Verifiers.
+        if (!IrType.Equal(f.FieldType, declared))
+            Report(block, index, $"loadfield of {f.Type}{f.Field} is declared {Show(declared)} " +
+                                 $"but the instruction says {Show(f.FieldType)}");
+        else
+            RequireDestType(f.Dest, declared, "loadfield", block, index);
+    }
+
+    private void CheckStoreField(StoreField f, BlockId block, int index)
+    {
+        if (ResolveType(f.Type, "storefield", block, index) is not { } def) return;
+        if (ResolveField(def, f.Type, f.Field, "storefield", block, index) is not { } declared) return;
+        if (!RequireObject(f.Object, f.Type, "storefield", block, index)) return;
+
+        var actual = TypeOf(f.Value);
+        if (!IrType.Equal(declared, actual))
+            Report(block, index, $"storefield into {f.Type}{f.Field} takes {Show(declared)}, " +
+                                 $"but {f.Value} is {Show(actual)}");
+    }
+
     private void CheckTerminatorTypes(IrTerminator terminator, BlockId block)
         {
             switch (terminator)
@@ -908,6 +1038,7 @@ public static class IrVerifier
         private static string Show(IrType type) => type switch
         {
             IrScalarType s => IrNames.Scalar(s.Kind),
+            IrRefType r => $"&{r.Type}",
             _ => type.ToString() ?? type.GetType().Name
         };
 

@@ -37,12 +37,24 @@ public readonly struct LyrValue
     public static LyrValue FromF32(float value) => new(BitConverter.SingleToUInt32Bits(value), null);
     public static LyrValue FromString(string value) => new(0, value);
 
+    /// <summary>Eine Objekt-Referenz: ein Slot je Feld. Kein Typ-Tag im Wert — der
+    /// Instruktionsstrom trägt es, und der Loader hat Typ- und Feldindex geprüft. Um die
+    /// Lebenszeit kümmert sich der .NET-GC (ADR-002).</summary>
+    public static LyrValue FromObject(LyrValue[] fields) => new(0, fields);
+
     public long AsI64 => (long)Bits;
     public ulong AsU64 => Bits;
     public bool AsBool => Bits != 0;
     public double AsF64 => BitConverter.UInt64BitsToDouble(Bits);
     public float AsF32 => BitConverter.UInt32BitsToSingle((uint)Bits);
     public string AsString => (string)(Ref ?? string.Empty);
+
+    /// <summary>Die Feld-Slots einer Instanz. Wirft bei einer Null-Referenz — die kann in Format
+    /// 1.2 nicht entstehen, weil das Lowering <c>newobj</c> und Feld-Initialisierung immer zusammen
+    /// erzeugt und Optionals noch nicht gelowert werden. Sobald <c>?T</c> dazukommt, wird daraus
+    /// eine echte Diagnose statt eines Wurfs.</summary>
+    public LyrValue[] AsObject => (LyrValue[])(Ref
+        ?? throw new InvalidOperationException("null object reference"));
 
     /// <summary>Stellt die Breiten-Invariante her: auf die Breite des Typs abschneiden, dann je
     /// nach Vorzeichen wieder auf 64 Bit erweitern. Ohne diesen Schritt würde <c>add i8</c> mit

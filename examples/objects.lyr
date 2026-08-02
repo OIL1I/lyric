@@ -1,0 +1,41 @@
+// objects.lyr — Komplexität: einfach
+// Zeigt: class als Reference-Typ, Feldzugriff lesend und schreibend, Objekte als Argument.
+//
+// Gate-Programm für M7/P1. Bewusst ohne Methoden, Interfaces und Exceptions — die kommen in
+// späteren Slices. `bank.lyr` ist dasselbe Thema in voller Ausbaustufe.
+
+import std.io.console { println };
+
+class Counter {
+    value: int,
+    step: int
+}
+
+// Das Argument ist die Referenz, nicht eine Kopie: die Mutation ist beim Aufrufer sichtbar.
+fn bump(c: Counter) {
+    c.value += c.step;
+}
+
+class Inner {
+    label: string
+}
+
+class Outer {
+    inner: Inner,
+    count: int
+}
+
+fn main(): int {
+    let c = Counter { value = 10, step = 5 };
+    bump(c);
+    bump(c);
+
+    // Zwei Namen, ein Objekt (Sprache.md §3.3).
+    let alias = c;
+    alias.value += 1;
+
+    let outer = Outer { inner = Inner { label = "verschachtelt" }, count = c.value };
+    println(f"{outer.inner.label}: {outer.count}");
+
+    return c.value;
+}

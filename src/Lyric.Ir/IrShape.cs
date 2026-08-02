@@ -26,6 +26,12 @@ public static class IrShape
         StoreLocal s => new[] { s.Value },
         Call k => k.Args,
         CallImport k => k.Args,
+        NewObject => Array.Empty<TempId>(),
+        LoadField f => new[] { f.Object },
+        // Reihenfolge ist Vertrag, nicht Geschmack: der Stack-Scheduler legt die Operanden in
+        // genau dieser Folge ab, und Bytecode.md §5 schreibt fest, dass bei stfld die Referenz
+        // unter dem Wert liegt. Vertauschen hier heißt vertauschte Argumente in der VM.
+        StoreField f => new[] { f.Object, f.Value },
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 
@@ -51,6 +57,9 @@ public static class IrShape
         StoreLocal => null,
         Call k => k.Dest,
         CallImport k => k.Dest,
+        NewObject n => n.Dest,
+        LoadField f => f.Dest,
+        StoreField => null,
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 

@@ -33,9 +33,13 @@ public static class Disassembler
         if (module.Start is { } start)
             sb.Append($"  start: {CalleeName(module, start)}\n");
 
+        foreach (var type in module.Types)
+            sb.Append($"  type {type.Name}({string.Join(", ", type.FieldTypes.Select(f => TypeName(module, f)))})\n");
+
         foreach (var import in module.Imports)
-            sb.Append($"  import {import.Name}({string.Join(", ", import.ParamTypes.Select(TypeName))})" +
-                      $" -> {TypeName(import.ReturnType)}\n");
+            sb.Append($"  import {import.Name}(" +
+                      $"{string.Join(", ", import.ParamTypes.Select(p => TypeName(module, p)))})" +
+                      $" -> {TypeName(module, import.ReturnType)}\n");
 
         foreach (var function in module.Functions)
         {
@@ -48,12 +52,12 @@ public static class Disassembler
 
     private static void WriteFunction(StringBuilder sb, BytecodeModule module, BytecodeFunction function)
     {
-        sb.Append($"fn {function.Name} -> {TypeName(function.ReturnType)} {{\n");
+        sb.Append($"fn {function.Name} -> {TypeName(module, function.ReturnType)} {{\n");
         sb.Append($"  params: {N(function.ParamCount)}\n");
         sb.Append($"  maxstack: {N(function.MaxStack)}\n");
         sb.Append("  slots:\n");
         for (var i = 0; i < function.SlotTypes.Count; i++)
-            sb.Append($"    l{N(i)}: {TypeName(function.SlotTypes[i])}\n");
+            sb.Append($"    l{N(i)}: {TypeName(module, function.SlotTypes[i])}\n");
 
         var instructions = CodeDecoder.Decode(function.Code);
         var blockAt = new Dictionary<int, int>();
@@ -86,6 +90,10 @@ public static class Disassembler
         Op.CondBranch => $"condbr bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
         Op.Unreachable => "unreachable",
 
+        Op.NewObject => $"newobj {TypeRefName(module, i.Immediate)}",
+        Op.LoadField => $"ldfld {FieldName(module, i.Immediate, i.Immediate2)}",
+        Op.StoreField => $"stfld {FieldName(module, i.Immediate, i.Immediate2)}",
+
         _ => $"{Mnemonic(i.Opcode)} {TypeName(i.Type!.Value)}",
     };
 
@@ -116,6 +124,22 @@ public static class Disassembler
         Op.Neg => "neg", Op.BitNot => "bitnot",
         _ => opcode.ToString().ToLowerInvariant(),
     };
+
+    private static string TypeRefName(BytecodeModule module, ulong index) =>
+        index < (ulong)module.Types.Count ? module.Types[(int)index].Name : $"ty{N(index)}";
+
+    /// <summary>Feldnamen stehen nicht im Bytecode (Bytecode.md §2). Der Disassembler zeigt deshalb
+    /// <c>Typ#index</c> — ehrlicher als ein erfundener Name, und es ist genau das, was ausgeführt
+    /// wird.</summary>
+    private static string FieldName(BytecodeModule module, ulong type, ulong field) =>
+        $"{TypeRefName(module, type)}#{N(field)}";
+
+    /// <summary>Ein Typ an einer Signaturstelle. Referenzen zeigen den Namen aus der Typ-Tabelle
+    /// statt nur den Index — der Disassembler wird gelesen, nicht ausgeführt.</summary>
+    private static string TypeName(BytecodeModule module, BytecodeType type) =>
+        type.IsRef && type.TypeIndex >= 0 && type.TypeIndex < module.Types.Count
+            ? $"&{module.Types[type.TypeIndex].Name}"
+            : type.IsRef ? $"&ty{N(type.TypeIndex)}" : TypeName(type.Tag);
 
     private static string TypeName(TypeTag tag) => tag switch
     {

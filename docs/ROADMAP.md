@@ -256,6 +256,17 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 
 **Exit**: `examples/arith.lyr` compiliert zu Bytecode, Disasm zeigt sinnvolle Instruktionen. **v0.1 Release-Tag**.
 
+> **Nachtrag (2026-08-02)**: Von den oben gelisteten IR-Instruktionen wurde nur die skalare Hälfte
+> gebaut; `LoadField`, `StoreField`, `NewStruct`, `NewClass`, `NewArray`, `MatchDispatch`, `Throw`,
+> `Catch`, `Yield`, `Resume` sowie Closure-Lifting und Coroutine-Lowering stehen aus und liegen
+> jetzt in **M7**. Begründung und Konsequenzen: Korrektur bei M7.
+>
+> `Phi` ist die eine Ausnahme: es wurde nicht vergessen, sondern **bewusst gestrichen**. Werte über
+> Blockgrenzen laufen im P4-Lowering durch (ggf. synthetische) Locals, nicht durch Temps — damit
+> braucht diese IR keine Phi-Knoten. Die Entscheidung trägt auch den Verifier (Single-Definition
+> pro Temp macht den Availability-Dataflow äquivalent zur Dominanz) und den Stack-Scheduler
+> (Stack an jeder Blockgrenze leer). Sie ist nicht nachzuholen, sondern zu erhalten.
+
 > **Korrektur (2026-07-30, während M5/P4; ratifiziert im Scope-Check 2026-08-02):** Das
 > Exit-Kriterium lautete ursprünglich „Hello-World
 > compiliert zu Bytecode". Das war aus M5s eigenen Lieferposten nie erreichbar: `examples/hello.lyr`
@@ -310,19 +321,81 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 >
 > *(Zur Ratifizierung im nächsten Scope-Check.)*
 
-### M7 — VM (full) (4–6 Wochen)
+### M7 — Objektmodell + VM (full) (14–20 Wochen)
 
-**Ziel**: Exceptions, Coroutinen, Closures, Generics-Runtime.
+**Ziel**: Alles, was kein Skalar ist. Objekte, Arrays, Interfaces, Exceptions, Closures,
+Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 
-**Lieferposten**:
-- Exception-Stack-Unwinding mit `try/catch` und `defer`-Korrektheit (defer läuft auf jedem Exit-Pfad, LIFO).
-- Coroutine-Implementierung (State-Machine oder Fiber-basiert — Entscheidung im ADR-006 dokumentieren).
-- Closure-Repräsentation: Closure = Function-Pointer + Captured-Environment-Object.
-- Generic-Dispatch: monomorphisierte Function-Instanzen pro konkretem Type-Argument-Tupel.
-- Interface-Method-Lookup über vtable.
+**Lieferposten** (Slices in Abhängigkeitsreihenfolge, jeder mit eigenem Gate-Programm):
+
+| Slice | Inhalt | Gate |
+|---|---|---|
+| P1 ✅ | Classes: Types-Sektion (Id 3), Heap-Objekte, Felder (**ohne** Methoden, s. u.) | `examples/objects.lyr` |
+| P2 | Arrays: Allokation, Index, `length` | `examples/stats.lyr` |
+| P3 | Interfaces + vtable-Dispatch | `examples/shapes.lyr` |
+| P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/bank.lyr` |
+| P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | — |
+| P6 | Closures (Lifting + Environment-Objekt) | `examples/inventory.lyr` |
+| P7 | Coroutinen (State-Machine-Lowering, ADR-006) | `examples/fibonacci.lyr` |
+| P8 | Generics-Monomorphisierung + `for-in`/`Iterator` | `examples/fizzbuzz.lyr`, `examples/stack.lyr` |
+
+- IR-Instruktionen: `NewClass`, `NewStruct`, `NewArray`, `LoadField`, `StoreField`, `LoadElem`,
+  `StoreElem`, `ArrayLen`, `CallVirt`, `Throw`, `Catch`, `Yield`, `Resume` — aus M5s Liste
+  nachgeholt (siehe Korrektur unten).
+- Bytecode-Format **1.2**: Types-Sektion (Id 3) wird geschrieben, zusammengesetzte Typ-Tags ab
+  `0x40`. Beides ist in `docs/Bytecode.md` bereits reserviert; kein Formatbruch nötig.
 - Diagnostik-Codes `LYR-VM0020..0050`.
 
-**Exit**: Programme mit `try/catch`, Coroutinen, Closures, generischen Containern laufen korrekt. **v0.5 Release-Tag**.
+**Exit**: Alle `examples/*.lyr` laufen. **v0.5 Release-Tag**.
+
+> **Offene Sprachfrage (2026-08-02, aus P1) — blockiert P3:** Methoden sind in P1 bewusst **nicht**
+> gelowert, und der Grund ist eine Lücke in `Sprache.md`, keine Zeitfrage. Die Grammatik kennt kein
+> `static`; `this` ist in jedem Methodenrumpf erlaubt; und nichts legt fest, wie
+> `Account.new(...)` — die Fabrik-Konvention aus `examples/bank.lyr`, ohne Empfänger — von
+> `acc.deposit(...)` mit Empfänger unterschieden wird. Beide binden an dasselbe `FunctionSymbol`,
+> und das kann nicht zugleich mit und ohne `this`-Parameter gelowert werden.
+>
+> Zu entscheiden **bevor P3** (Interface-Dispatch) beginnt: dort wird der Empfänger Parameter 0,
+> und die vtable-Form hängt daran. Mögliche Richtungen: ein `static`-Marker in der Grammatik; oder
+> „Methode ohne Empfänger" aus der Signatur ableiten (Rückgabetyp = eigener Typ ⇒ Fabrik) — was
+> fragil ist; oder Fabriken gar nicht als Member führen, sondern als freie Funktionen im Modul.
+
+> **Korrektur (2026-08-02, nach M6):** M7 hieß „VM (full)" und war mit **4–6 Wochen** veranschlagt
+> für Exceptions, Coroutinen, Closures und Generics-Runtime. Diese Schätzung setzte ein
+> Objektmodell voraus, das es nicht gibt — und der Grund dafür ist, dass **M5 und M6 je einen Teil
+> ihrer eigenen Lieferposten nicht geliefert haben**, ohne dass es vermerkt wurde:
+>
+> - M5 listet die IR-Instruktionen `LoadField, StoreField, NewStruct, NewClass, NewArray,
+>   MatchDispatch, Throw, Catch, Yield, Resume` sowie „Lowering AST → IR (mit **Closure-Lifting,
+>   Coroutine-State-Machine-Lowering**)". Gebaut wurde davon nichts: das IR-Typ-Universum ist bis
+>   heute `IrScalarType` und sonst nichts.
+> - M6 listet „Value-Repräsentation (tagged union mit **boxed reference types für `class`**)".
+>   Geliefert wurde die skalare Hälfte.
+> - **ADR-006 §Konsequenz** weist das Coroutine-Lowering ausdrücklich M5 zu und lässt M7 „nur noch
+>   die Runtime-Seite" — M7s Coroutinen-Posten steht damit auf einer Voraussetzung, die fehlt.
+>
+> Alle vier ursprünglichen M7-Themen brauchen Objekte: eine Closure **ist** ein
+> Environment-Objekt, eine Coroutine ist laut ADR-006 ein Struct mit `step`-Methode, ein
+> Exception-Wert ist eine Klasseninstanz, generische Container sind Klassen mit Arrays darin.
+> Keines davon ist vor dem Objektmodell baubar. M7 nimmt die fehlenden Posten deshalb auf und die
+> Schätzung steigt entsprechend.
+>
+> Warum das nicht auffiel: die Lücke tarnt sich als saubere Diagnose. `examples/bank.lyr` meldet
+> `LYR-IR0001: type 'Account' is not supported by this compiler version yet` — ordentlich
+> gerendert, mit Position, und liest sich wie eine geplante Grenze. Es ist aber ein offener
+> Lieferposten. **Konsequenz für die Arbeitsweise**: `LYR-IR0001` heißt „noch nicht gebaut" und
+> sagt nichts darüber, ob das so vorgesehen war. Am Ende jedes Meilensteins ist die Lieferposten-
+> Liste Punkt für Punkt abzuhaken, nicht das Exit-Kriterium allein.
+>
+> **Kein Scope-Zuwachs**: es kommt nichts hinzu, was nicht schon in M5, M6 oder M7 stand. Die
+> Arbeit wandert nur dorthin, wo sie tatsächlich getan wird. `docs/IDEAS.md` bleibt unberührt.
+>
+> Warum **ein** großer Meilenstein statt zweier: die acht Slices liefern je ein eigenes
+> Gate-Programm, CONTRIBUTING Rule 3 („jeder Meilenstein liefert ein Artefakt") ist damit auf
+> Slice-Ebene erfüllt. Eine Meilenstein-Grenze mitten durch das Objektmodell zu ziehen, würde die
+> Nummerierung von M8–M10 verschieben, ohne an der Arbeit etwas zu ändern.
+>
+> *(Zur Ratifizierung im nächsten Scope-Check.)*
 
 ### M8 — Stdlib (4–6 Wochen)
 
@@ -465,6 +538,8 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 **Begründung**: Ursprünglich offen bis M7 (a: State-Machine-Lowering, b: Fibern). Vorgezogen, weil das Bytecode-Format von der Wahl abhängt und in M5 designt wird: mit (a) braucht `.lyrbc` keine Coroutine-Opcodes, mit (b) müsste jede Runtime die Coroutine-Mechanik selbst mitbringen. (a) ist portabel (siehe ADR-013), GC-freundlicher und hält die VM einfach; die Komplexität liegt einmalig im Lowering statt in jeder Runtime.
 
 **Konsequenz**: Das Coroutine-Lowering ist Teil von M5 (war dort bereits als Lieferposten gelistet); M7 implementiert nur noch die Runtime-Seite der gelowerten Form. Der Fiber-Ansatz ist verworfen.
+
+> **Nachtrag (2026-08-02)**: Die *Entscheidung* — State-Machine statt Fibern — steht unverändert und hat sich bewährt: `.lyrbc` hat bis heute keine Coroutine-Opcodes, genau wie beabsichtigt. Die *Zuordnung* stimmt nicht mehr: M5 hat das Coroutine-Lowering nicht gebaut, es liegt jetzt in M7/P7 (siehe Korrektur bei M7). Damit fällt auch die Annahme, M7 sei „nur noch die Runtime-Seite" — die Runtime-Seite ist tatsächlich klein, das Lowering ist es nicht.
 
 ---
 

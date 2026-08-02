@@ -29,10 +29,12 @@ public static class CodeDecoder
             {
                 Op.Const => DecodeConst(reader, offset),
 
-                Op.LoadLocal or Op.StoreLocal or Op.Call or Op.Branch =>
+                Op.LoadLocal or Op.StoreLocal or Op.Call or Op.Branch or Op.NewObject =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode, Immediate = reader.ULeb() },
 
-                Op.CondBranch => new BytecodeInstruction
+                // ldfld/stfld tragen Typ- UND Feldindex. Der Typ ist zur Laufzeit redundant, aber
+                // ohne ihn könnte der Loader den Feldindex nicht gegen ein Layout prüfen.
+                Op.CondBranch or Op.LoadField or Op.StoreField => new BytecodeInstruction
                 {
                     Offset = offset, Opcode = opcode,
                     Immediate = reader.ULeb(), Immediate2 = reader.ULeb(),
@@ -88,6 +90,10 @@ public static class CodeDecoder
         Op.Neg or Op.Not or Op.BitNot or Op.Convert => (1, 1),
 
         Op.Call => (callArity, callReturnsValue ? 1 : 0),
+
+        Op.NewObject => (0, 1),
+        Op.LoadField => (1, 1),
+        Op.StoreField => (2, 0),
 
         Op.Return or Op.Branch or Op.Unreachable => (0, 0),
         Op.ReturnValue or Op.CondBranch => (1, 0),

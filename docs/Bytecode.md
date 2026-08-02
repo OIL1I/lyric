@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v1.1
+# Lyric — `.lyrbc` Bytecode-Format v1.2
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,8 +7,9 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **1.1**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
-> Skalare, Locals, modulinterne Calls, strukturierter Kontrollfluss.
+> **Stand**: Format-Version **1.2**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
+> (Referenz-Typen mit Feldern). Methoden noch nicht — siehe §8.
 
 ---
 
@@ -63,7 +64,7 @@ zu tolerieren — neue Minor-Versionen dürfen nur überspringbare Sektionen hin
 |---|---|---|---|
 | 1 | Capabilities | nein | `uleb128` Bitset |
 | 2 | Strings | nein | Konstantenpool, **nur Strings** |
-| 3 | Types | — | **reserviert**, wird in 1.1 nicht geschrieben |
+| 3 | Types | nein | Layouts zusammengesetzter Typen |
 | 4 | Imports | nein | Host-/Native-Funktionen |
 | 5 | Functions | nein | definierte Funktionen samt Code |
 | 6 | SourceMap | nein | optional und **strippbar**: PC → Datei/Zeile |
@@ -74,9 +75,29 @@ Fehlt eine Sektion, gilt sie als leer.
 **Warum nur Strings im Konstantenpool**: Zahlen sind als LEB128-Immediate nicht größer als ein
 Pool-Index und sparen die Indirektion. Der Pool hat damit genau eine Aufgabe.
 
-**Warum Id 3 reserviert ist**: Skalare Typen sind ein Byte (§3) und brauchen keine Tabelle.
-Zusammengesetzte Typen (struct/class/enum) brauchen später eine — die Id jetzt freizuhalten
-verhindert, dass ihre Einführung die bestehenden verschiebt.
+**Warum es die Types-Sektion gibt**: Skalare Typen sind ein Byte (§3) und brauchen keine Tabelle.
+Zusammengesetzte brauchen eine, aus zwei Gründen. Erstens **rekursive Typen**: `class Node { next:
+Node }` ist strukturell nicht endlich kodierbar, über einen Index schon. Zweitens **Größe**: das
+Layout eines Typs steht einmal da statt an jeder Instruktion, die ihn erwähnt. JVM (Constant Pool)
+und CIL (TypeDef-Tabelle) lösen es genauso.
+
+### Types (Id 3)
+
+`uleb128` Anzahl, dann je Typ:
+
+| Feld | Kodierung |
+|---|---|
+| Name | `uleb128`-Index in den String-Pool |
+| Feldzahl | `uleb128` |
+| Feldtypen | Feldzahl × Typ-Tag (§3), in Deklarationsreihenfolge |
+
+Der **Feldindex ist die Position in dieser Liste** — Feldnamen stehen nicht im Bytecode. Sie sind
+Metadaten; der Zugriff ist ein Offset. Dieselbe Entscheidung wie „Sprungziele sind Block-Indizes".
+Der Name des Typs steht nur für Diagnose und Disassembler darin.
+
+Ein Leser **muss** ablehnen: einen Feldtyp `void` (§3), und einen Typ-Index außerhalb der Tabelle.
+Rekursion über Referenzen ist dagegen ausdrücklich erlaubt — ein Typ darf sich selbst als Feldtyp
+nennen, auch vorwärts.
 
 ### Capabilities (Id 1)
 
@@ -162,8 +183,18 @@ Ein Byte.
 | `0x06` | `u16` | | `0x0D` | `string` |
 | `0x07` | `u32` | | `0x0E` | `void` |
 
-Werte ab `0x40` sind für zusammengesetzte Typen reserviert. `void` ist ausschließlich als
-Rückgabetyp gültig, nie als Slot- oder Wert-Typ.
+Zusammengesetzte Typen ab `0x40`:
+
+| Tag | Bedeutung | Folgt |
+|---|---|---|
+| `0x40` | Referenz auf einen Typ der Types-Sektion | `uleb128` Typ-Index |
+
+`void` ist ausschließlich als Rückgabetyp gültig, nie als Slot-, Feld- oder Wert-Typ.
+
+Ein Wert mit Tag `0x40` ist eine **Referenz**: Zuweisung kopiert den Verweis, nicht das Objekt.
+Wert-Semantik (`struct`, Sprache.md §3.2) bekommt später ein eigenes Tag — sie ist nicht dasselbe
+und darf nicht dasselbe Tag benutzen, sonst wäre am Bytecode nicht ablesbar, ob eine Zuweisung
+kopiert.
 
 Lyrics `int`/`uint`/`float` sind Aliasse für `i64`/`u64`/`f64` und erscheinen im Bytecode als solche.
 
@@ -293,6 +324,36 @@ Funktionen. Bei `importCount = 0` ist der Index also die Position in der Functio
 `ret`/`retval` müssen zum Rückgabetyp der Funktion passen. Jeder Block endet mit genau einer
 Instruktion aus `ret`, `retval`, `br`, `condbr`, `unreachable`.
 
+### Objekte
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x50` | `newobj` | `uleb128` type | +1 | legt eine Instanz an, Felder auf ihren Nullwert |
+| `0x51` | `ldfld` | `uleb128` type, `uleb128` field | −1 +1 | ersetzt die Referenz durch den Feldwert |
+| `0x52` | `stfld` | `uleb128` type, `uleb128` field | −2 | schreibt das Feld |
+
+**Stack-Reihenfolge bei `stfld`**: die Referenz liegt **unter** dem Wert. Also erst die Referenz
+auf den Stack legen, dann den Wert; `stfld` nimmt beide. Das ist dieselbe Reihenfolge wie in CIL
+und die einzige, die ohne Vertauschen auskommt, wenn man Ziel-Ausdruck vor Wert-Ausdruck auswertet
+— was Sprache.md §6.4 für Zuweisungen verlangt.
+
+**Warum der Typ-Index bei `ldfld`/`stfld` mitsteht**, obwohl die Referenz ihn schon kennt: eine
+Runtime muss den Feldindex **beim Laden** gegen ein Layout prüfen können (§6), nicht erst beim
+Zugriff. Ohne den Typ im Instruktionsstrom bräuchte der Validator eine Datenfluss-Analyse, um
+herauszufinden, welcher Typ an dieser Stelle auf dem Stack liegt. Der Index ist redundant zur
+Laufzeit und genau deshalb billig — er wird nach der Validierung nicht mehr gelesen.
+
+Ein Objekt trägt **kein** Typ-Tag zur Laufzeit. Der Instruktionsstrom weiß statisch, was vorliegt;
+dieselbe Entscheidung wie bei den Werten (§4). Interface-Dispatch braucht später eine Typ-Identität
+— die gehört dann an die vtable, nicht an jeden einzelnen Wert.
+
+**Nullwert eines Feldes**: Zahlen `0`, `bool` false, `char` U+0000, `string` die leere
+Zeichenkette, Referenzen die Null-Referenz. Kein Feld ist je „uninitialisiert" — `.lyrbc` ist ein
+plattformneutraler Vertrag (ADR-013), und „undefiniert wie in C" ist an keiner Stelle zulässig
+(Sprache.md §6.6). In Format 1.2 kann eine Null-Referenz allerdings nie beobachtet werden: das
+Lowering erzeugt `newobj` und die Feld-Initialisierung immer zusammen, und Optionals (`?T`) sind
+noch nicht gelowert.
+
 ---
 
 ## 6. Validierung beim Laden
@@ -305,11 +366,16 @@ Sicherheitsprüfungen laufen lassen. Ablehnungsgründe und ihre Diagnostik-Codes
 | `LYR-BC0001` | Magic fehlt — keine `.lyrbc`-Datei |
 | `LYR-BC0002` | unbekannte Major-Version |
 | `LYR-BC0003` | Datei endet mitten in einer Struktur; Sektions-Länge passt nicht zum Inhalt |
-| `LYR-BC0004` | Index zeigt ins Leere: String-Pool, Funktion, Block oder Slot |
+| `LYR-BC0004` | Index zeigt ins Leere: String-Pool, Funktion, Block, Slot, **Typ oder Feld** |
 | `LYR-BC0005` | unbekannter Opcode, unbekanntes Typ-Tag, Sektionen nicht aufsteigend |
 | `LYR-BC0006` | Stack-Disziplin: Unterlauf, Tiefe ≠ 0 an einer Blockgrenze, Tiefe > `maxStack` |
 
 Der Start-Index wird wie jeder andere Index geprüft (`LYR-BC0004`).
+
+Für `newobj`/`ldfld`/`stfld` heißt „beim Laden geprüft" konkret: der Typ-Index liegt in der
+Types-Sektion, und bei `ldfld`/`stfld` liegt der Feldindex innerhalb der Feldzahl **genau dieses**
+Typs. Danach ist ein Feldzugriff zur Laufzeit ein Array-Zugriff ohne Prüfung — das ist der ganze
+Zweck von ADR-013s „Validierung beim Load statt beim Call".
 
 Der Leser bricht beim ersten Befund ab. Anders als der IR-Verifier sammelt er nicht: bei einer
 kaputten Datei ist der zweite Befund meist Folge des ersten.
@@ -348,7 +414,7 @@ Die vollständige Datei, 46 Bytes:
 ```
 4C 59 52 42                  magic "LYRB"
 01 00                        version.major = 1
-01 00                        version.minor = 1
+02 00                        version.minor = 2
 
 01                           § Sektion 1 — Capabilities
 01                             byteLength = 1
@@ -388,11 +454,12 @@ ebenfalls konform — er erzeugt nur größeren und langsameren Code.
 
 ---
 
-## 8. Was in Format 1.1 fehlt
+## 8. Was in Format 1.2 fehlt
 
-Absichtlich, weil das Lowering es noch nicht erzeugt: zusammengesetzte Typen (struct/class/enum,
-Arrays, Tupel), Nullable, Exceptions, Coroutinen-State-Machines, Closures, generische Instanzen und
-externe Calls. Jedes davon braucht neue Opcodes oder Sektionen und damit eine neue Format-Version.
+Absichtlich, weil das Lowering es noch nicht erzeugt: `struct` (Wert-Semantik), `enum`, Arrays,
+Tupel, Nullable, Exceptions, Coroutinen-State-Machines, Closures, generische Instanzen und
+Interface-Dispatch. Jedes davon braucht neue Opcodes oder Sektionen und damit eine neue
+Format-Version — mit Ausnahme von `enum` und `struct`, die die Types-Sektion mitbenutzen können.
 
 Ebenfalls offen, aber ohne Format-Änderung nachrüstbar: die Source-Map-Sektion (Id 6 ist reserviert
 und beschrieben, wird aber noch nicht geschrieben) und Copy-Propagation im Emitter — heute erzeugt

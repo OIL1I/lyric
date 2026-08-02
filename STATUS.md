@@ -146,11 +146,63 @@ Programm, mit Begründung als Blockzitat).
     dem fehlenden Auspacken von `ImportBindingSymbol` im `TypeChecker` ging `println(42)` bis in die
     VM durch — und `LyrValue` hat kein Typ-Tag, das wäre eine stille Fehlinterpretation geworden.
 
+- [x] **M7 — P1 — Classes** (`TypeTable`, Types-Sektion, Format **1.2**): `lyric run
+  examples/objects.lyr` legt Objekte an, mutiert sie über Funktionsgrenzen und liefert 21.
+  Der erste nicht-skalare Typ im ganzen Stack — bis hierher war das IR-Typ-Universum
+  `IrScalarType` und sonst nichts.
+  - **Der Typ trägt nur seine Id, nicht sein Layout** (`IrRefType(TypeId)`). Sonst müsste
+    `IrType.Equal` strukturell vergleichen und liefe bei `class Node { next: Node }` in eine
+    Endlosschleife. So ist Gleichheit ein `int`-Vergleich und Rekursion kostenlos.
+  - **Die Id wird vor dem Layout vergeben.** Genau das macht rekursive Typen möglich: beim
+    Betreten reserviert `TypeTable.Intern` den Platz und trägt die Id ein, erst danach werden die
+    Feldtypen gelowert. Ein Selbstverweis findet die Id vor und terminiert. Dieselbe
+    Zwei-Phasen-Form wie Pass 1/2 im `ModuleLowerer`.
+  - **Feldzugriff über den Index, nicht über den Namen.** Lyric ist statisch typisiert und kennt
+    kein Monkey-Patching, also steht der Index zur Compile-Zeit fest. Namens-Lookup mit
+    Inline-Cache (CPython, Ruby) löst ein Problem, das diese Sprache nicht hat. Feldnamen stehen
+    deshalb nicht im Bytecode; der Disassembler zeigt `Typ#index`.
+  - **Feldreihenfolge kommt aus dem AST, nicht aus der Symboltabelle.** Der Index ist der Slot im
+    Objekt und muss die Deklarationsreihenfolge sein — eine Symboltabelle ist eine Map, ihre
+    Aufzählungsreihenfolge ist ein Implementierungsdetail.
+  - **Typ- und Feldindex stehen an jeder Instruktion**, obwohl das Objekt seinen Typ kennt. Nur so
+    prüft der Loader den Feldindex gegen ein Layout, ohne eine Datenfluss-Analyse zu fahren —
+    ADR-013s „Validierung beim Load statt beim Call". Zur Laufzeit ist der Feldzugriff dann ein
+    Array-Zugriff ohne jede Prüfung.
+  - **Ein Objekt ist ein `LyrValue[]` hinter `LyrValue.Ref`**, ohne Typ-Tag im Wert — konsequent
+    zur M6-Entscheidung. Kein Feld ist je uninitialisiert (§6.6). Keine Darstellungsänderung nötig:
+    `Ref` war schon da.
+  - **`BindingResult` läuft jetzt ins Lowering.** Ein Feld vom Typ einer anderen Klasse braucht den
+    aufgelösten Namen; Namensauflösung im Lowerer nachzubauen wäre eine zweite Wahrheit über
+    Sichtbarkeit und Schattierung.
+  - **Classes vor Structs** (P4): eine Referenz ist ein Maschinenwort und kopiert sich selbst, ein
+    Wert-Typ braucht eine Kopierentscheidung (Boxing+Kopie vs. Scalar Replacement mit
+    Escape-Analyse). Die trifft man, wenn das Layout-Gerüst steht.
+  - 21 neue Testfälle: 2 Golden-Fixtures (inkl. rekursivem Typ), 7 Verifier-Invarianten mit
+    Gegenprobe auf Selbstreferenz, Round-Trip und Fuzzing laufen über die neuen Fixtures mit,
+    6 E2E-Tests — darunter **der Test, der P1 von P4 trennt**: zwei Namen, ein Objekt.
+
 ## Woran wir gerade arbeiten
 
-**Nichts** — M6 ist abgeschlossen. Als nächstes steht **M7 — Coroutinen + Exceptions** an
-(ADR-006: Zustandsmaschinen-Lowering). Vorher zu klären: ob `for-in`/`Iterator` dort mitläuft,
-denn `fizzbuzz.lyr` hängt allein daran.
+**M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
+der ROADMAP). **P1 steht** (siehe unten), als nächstes **P2 — Arrays**.
+
+Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
+ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
+Closure-/Coroutine-Lowering fehlen komplett — das IR-Typ-Universum ist bis heute `IrScalarType`
+und sonst nichts. M6 lieferte die skalare Hälfte seiner Wert-Repräsentation. Alle vier
+ursprünglichen M7-Themen brauchen aber Objekte: eine Closure **ist** ein Environment-Objekt, eine
+Coroutine laut ADR-006 ein Struct mit `step`-Methode, ein Exception-Wert eine Klasseninstanz.
+
+**Warum es nicht auffiel** — und die Lehre daraus: die Lücke tarnt sich als saubere Diagnose.
+`bank.lyr` meldet `LYR-IR0001: type 'Account' is not supported by this compiler version yet`, mit
+Position, ordentlich gerendert — und liest sich wie eine geplante Grenze. `LYR-IR0001` heißt aber
+nur „noch nicht gebaut" und sagt nichts darüber, ob das so vorgesehen war. **Am Ende jedes
+Meilensteins ist die Lieferposten-Liste Punkt für Punkt abzuhaken, nicht das Exit-Kriterium
+allein.**
+
+Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat die Types-Sektion
+(Id 3) und die Typ-Tags ab `0x40` von Anfang an reserviert, und `LyrValue` hat bereits ein
+`Ref`-Feld. Das Objektmodell braucht deshalb keinen Formatbruch, nur Version 1.2.
 
 ## Scope-Check 2026-08-02 (Ergebnis)
 
@@ -171,6 +223,18 @@ denn `fizzbuzz.lyr` hängt allein daran.
 - **ROADMAP-Korrektur vom 30.07.** (M5-Exit auf `examples/arith.lyr`) formlos ratifiziert.
 
 ## Noch offen
+
+**Aus M7/P1 — bewusst offen:**
+
+- **Methoden sind nicht gelowert** (`ThisExpr` und Methodenaufrufe bleiben `LYR-IR0001`). Grund ist
+  **keine** Größe, sondern eine Lücke in `Sprache.md`: die Grammatik kennt kein `static`, `this`
+  ist in jedem Methodenrumpf erlaubt, und nichts sagt, wie `Account.new(...)` (Fabrik-Konvention,
+  ohne Empfänger) von `acc.deposit(...)` (Instanz, mit Empfänger) unterschieden wird. Beide sind
+  dasselbe `FunctionSymbol` — das kann nicht zwei Signaturen haben. **Das ist zu entscheiden, bevor
+  P3 (vtable) anfängt**, weil der Empfänger dort Parameter 0 wird.
+- **Feld-Defaults** (`balance: int = 0`) werden abgelehnt statt ignoriert. Ein weggelassenes Feld im
+  Initialisierer hätte seinen Nullwert; ob das erlaubt ist, sagt die Sema heute nicht.
+- **Structs, Enums, Interfaces, generische Klassen** bleiben `LYR-IR0001` — P3/P4/P8.
 
 **Aus M6:**
 
@@ -245,7 +309,7 @@ denn `fizzbuzz.lyr` hängt allein daran.
 
 ## Letzter relevanter Commit
 
-`M6: Source-first-Stdlib, Import-Bindung und f-Strings (Slice 2)`
+`M7: Classes — Objektmodell in IR, Bytecode 1.2 und VM (P1)`
 
 ---
 

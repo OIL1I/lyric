@@ -60,11 +60,26 @@ public class IrFunction(string Name, IrType ReturnType, int ParamCount, List<IrL
 /// Host. Wird beim Laden über <see cref="Name"/> gebunden (ADR-013, WASM-Modell).</summary>
 public record struct IrImport(string Name, IrType[] ParamTypes, IrType ReturnType);
 
+/// <summary>
+/// Das Layout eines zusammengesetzten Typs. <see cref="FieldNames"/> ist reine Diagnose — im
+/// Bytecode landen nur die Typen, und der Feldindex <b>ist</b> die Position in
+/// <see cref="FieldTypes"/>.
+///
+/// <para>Beide Listen sind gleich lang; der Verifier setzt das durch, weil ein Auseinanderlaufen
+/// sonst erst im Printer als Index-Ausnahme auffiele.</para>
+/// </summary>
+public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldNames);
+
 public class IrModule(List<IrFunction> Functions)
 {
     /// <summary>Native Funktionen, die dieses Modul aufruft — nur die tatsächlich benutzten.
     /// <c>CallImport</c> referenziert sie per Index.</summary>
     public List<IrImport> Imports { get; init; } = new();
+
+    /// <summary>Layouts der zusammengesetzten Typen. <see cref="IrRefType"/>, <c>NewObject</c>,
+    /// <c>LoadField</c> und <c>StoreField</c> referenzieren sie per <see cref="TypeId"/>; dicht
+    /// indiziert wie alle Tabellen hier.</summary>
+    public List<IrTypeDef> Types { get; init; } = new();
 
     /// <summary>Call-Ziele referenzieren per <see cref="FunctionId"/> den Index in diese Liste.
     /// Namen müssen eindeutig sein — sie werden die Symbol-Namen im Bytecode (ADR-013).</summary>

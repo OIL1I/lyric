@@ -55,12 +55,13 @@ public static class ModuleLowerer
     /// <paramref name="de"/>.</summary>
     /// <param name="verify"><c>null</c> = <see cref="VerifyByDefault"/>. Tests setzen den Wert
     /// explizit, damit ihr Ergebnis nicht von der Build-Konfiguration abhängt.</param>
-    public static IrModule? Lower(Compilation compilation, TypeResult types, DiagnosticEngine de,
-        bool? verify = null)
+    public static IrModule? Lower(Compilation compilation, BindingResult binding, TypeResult types,
+        DiagnosticEngine de, bool? verify = null)
     {
         var pending = new List<(FunctionDecl Decl, string Name)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
         var imports = new ImportTable();
+        var typeTable = new TypeTable(binding);
         FunctionId? entry = null;
 
         // Pass 1 — Funktionstabelle. Die Reihenfolge ist Modul- dann Deklarations-Reihenfolge und
@@ -104,7 +105,7 @@ public static class ModuleLowerer
         {
             try
             {
-                functions.Add(new FunctionLowerer(decl, name, types, ids, imports, NoSubstitution).Run());
+                functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable, NoSubstitution).Run());
             }
             catch (UnsupportedConstructException ex)
             {
@@ -117,7 +118,13 @@ public static class ModuleLowerer
         // Modulaufbau ist damit nicht mehr rettbar. Kein Teilergebnis zurückgeben.
         if (failed) return null;
 
-        var result = new IrModule(functions) { EntryFunction = entry, Imports = imports.Used };
+        // Types nach dem Lowering eingesammelt, nicht davor: die Tabelle enthält nur, was
+        // tatsächlich benutzt wurde — eine deklarierte, nie instanziierte Klasse gehört nicht in
+        // den Bytecode. Gleiche Regel wie bei den Imports.
+        var result = new IrModule(functions)
+        {
+            EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
+        };
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }

@@ -1,0 +1,17 @@
+// Objekte: Allokation, Feldzugriff lesend und schreibend, compound assign auf ein Feld.
+class Counter {
+    value: int,
+    step: int
+}
+
+fn bump(c: Counter): int {
+    c.value += c.step;
+    return c.value;
+}
+
+fn main(): int {
+    let c = Counter { value = 10, step = 5 };
+    let alias = c;
+    alias.value = 1;
+    return bump(c);
+}

@@ -13,7 +13,7 @@ public static class Format
     /// <summary>Eine unbekannte Major-Version wird abgelehnt, eine unbekannte Minor toleriert
     /// (neue Sektionen sind überspringbar). Bis v1.0 darf Major frei springen — ADR-013.</summary>
     public const ushort VersionMajor = 1;
-    public const ushort VersionMinor = 1;
+    public const ushort VersionMinor = 2;
 }
 
 /// <summary>
@@ -30,12 +30,13 @@ public enum SectionId : byte
     /// größer als ein Pool-Index und sparen die Indirektion.</summary>
     Strings = 2,
 
-    /// <summary>Reserviert für Layouts zusammengesetzter Typen (struct/class/enum). Wird in dieser
-    /// Version <b>nicht</b> geschrieben — skalare Typen sind ein Byte und brauchen keine Tabelle.</summary>
+    /// <summary>Layouts zusammengesetzter Typen: Name, Feldzahl, Feldtypen. Der Feldindex <b>ist</b>
+    /// die Position in der Feldliste; Feldnamen stehen nicht im Bytecode. Über den Index sind auch
+    /// rekursive Typen (<c>class Node { next: Node }</c>) kodierbar, die strukturell nicht endlich
+    /// wären.</summary>
     Types = 3,
 
-    /// <summary>Host-/Native-Funktionen mit symbolischem Namen und Signatur (ADR-013, WASM-Modell).
-    /// Heute immer leer: das Lowering kennt noch keine externen Calls.</summary>
+    /// <summary>Host-/Native-Funktionen mit symbolischem Namen und Signatur (ADR-013, WASM-Modell).</summary>
     Imports = 4,
 
     Functions = 5,
@@ -61,6 +62,11 @@ public enum TypeTag : byte
     F32 = 0x09, F64 = 0x0A,
     Bool = 0x0B, Char = 0x0C, String = 0x0D,
     Void = 0x0E,
+
+    /// <summary>Referenz auf einen Typ der Types-Sektion; ein <c>uleb128</c>-Index folgt.
+    /// Zuweisung kopiert den Verweis, nicht das Objekt. Wert-Semantik (<c>struct</c>) bekommt ein
+    /// eigenes Tag — am Bytecode muss ablesbar bleiben, ob eine Zuweisung kopiert.</summary>
+    Ref = 0x40,
 }
 
 /// <summary>
@@ -114,4 +120,18 @@ public enum Op : byte
     Branch = 0x43,      // br <uleb128 block>
     CondBranch = 0x44,  // condbr <uleb128 ifTrue> <uleb128 ifFalse>
     Unreachable = 0x45,
+
+    /// <summary><c>newobj &lt;uleb128 type&gt;</c> — legt eine Instanz an, Felder auf ihren Nullwert.</summary>
+    NewObject = 0x50,
+
+    /// <summary><c>ldfld &lt;uleb128 type&gt; &lt;uleb128 field&gt;</c> — ersetzt die Referenz durch
+    /// den Feldwert.</summary>
+    LoadField = 0x51,
+
+    /// <summary><c>stfld &lt;uleb128 type&gt; &lt;uleb128 field&gt;</c> — nimmt Referenz und Wert,
+    /// die <b>Referenz liegt unter dem Wert</b> (CIL-Reihenfolge, Bytecode.md §5).
+    ///
+    /// <para>Der Typ-Index ist zur Laufzeit redundant und steht trotzdem da: nur so prüft der
+    /// Loader den Feldindex gegen ein Layout, ohne eine Datenfluss-Analyse zu fahren.</para></summary>
+    StoreField = 0x52,
 }

@@ -35,6 +35,17 @@ internal static class BrokenIr
     public static LocalId L(int n) => new(n);
     public static BlockId B(int n) => new(n);
     public static FunctionId F(int n) => new(n);
+    public static TypeId Ty(int n) => new(n);
+    public static FieldId Fld(int n) => new(n);
+    public static IrType Ref(int n) => new IrRefType(Ty(n));
+
+    /// <summary>Ein Modul mit Typ-Tabelle. <c>Module(params …)</c> bleibt daneben bestehen, damit
+    /// die vorhandenen Tests unverändert lesen.</summary>
+    public static IrModule ModuleWithTypes(List<IrTypeDef> types, params IrFunction[] functions)
+        => new(functions.ToList()) { Types = types };
+
+    public static IrTypeDef TypeDef(string name, params (string Name, IrType Type)[] fields)
+        => new(name, fields.Select(f => f.Type).ToArray(), fields.Select(f => f.Name).ToArray());
 
     /// <summary>Nimmt eine gültige Fixture und wendet einen Defekt darauf an.</summary>
     public static IrModule Mutate(string fixture, Action<IrModule> breakIt)

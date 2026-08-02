@@ -32,6 +32,10 @@ namespace Lyric.Ir
             {
                 case (IrScalarType x, IrScalarType y):
                     return x.Kind == y.Kind;
+                case (IrRefType x, IrRefType y):
+                    return x.Type == y.Type;
+                case (IrScalarType, IrRefType) or (IrRefType, IrScalarType):
+                    return false;
                 default:
                     throw new InternalCompilationException(
                         $"ir-type: cannot compare {a.GetType().Name} with {b.GetType().Name}");
@@ -40,4 +44,15 @@ namespace Lyric.Ir
     }
 
     public sealed record IrScalarType(IrScalar Kind) : IrType;
+
+    /// <summary>
+    /// Referenz auf eine Instanz des Typs <see cref="Type"/> (Sprache.md §3.3, <c>class</c>).
+    /// Zuweisung kopiert den Verweis, nicht das Objekt.
+    ///
+    /// <para><b>Nur die Id, nicht das Layout.</b> Die Feldliste steht einmal in
+    /// <c>IrModule.Types</c>. Trüge der Typ sie selbst, müsste <see cref="IrType.Equal"/>
+    /// strukturell vergleichen — und liefe bei <c>class Node { next: Node }</c> in eine
+    /// Endlosschleife. So ist Gleichheit ein <c>int</c>-Vergleich und Rekursion kostenlos.</para>
+    /// </summary>
+    public sealed record IrRefType(TypeId Type) : IrType;
 }

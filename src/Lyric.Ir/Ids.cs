@@ -42,4 +42,24 @@
             return $"f{Value}";
         }
     }
+
+    /// <summary>Index in <c>IrModule.Types</c>. Wie alle Ids hier ist der Wert der Tabellen-Index
+    /// im späteren Bytecode, nicht nur ein Schlüssel.</summary>
+    public readonly record struct TypeId(int Value)
+    {
+        public override string ToString()
+        {
+            return $"ty{Value}";
+        }
+    }
+
+    /// <summary>Position eines Feldes im Layout seines Typs. Feldnamen stehen nicht im Bytecode —
+    /// der Zugriff ist ein Offset, der Name Metadaten.</summary>
+    public readonly record struct FieldId(int Value)
+    {
+        public override string ToString()
+        {
+            return $"#{Value}";
+        }
+    }
 }

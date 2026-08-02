@@ -1,0 +1,42 @@
+type ty0 Counter {
+  #0 value: i64
+  #1 step: i64
+}
+
+fn main.bump -> i64 {
+  params: 1
+  locals:
+    l0 c: &ty0
+  bb0:
+    t0: &ty0 = load l0
+    t1: i64 = loadfield t0, ty0#0
+    t2: &ty0 = load l0
+    t3: i64 = loadfield t2, ty0#1
+    t4: i64 = add t1, t3
+    storefield t0, ty0#0, t4
+    t5: &ty0 = load l0
+    t6: i64 = loadfield t5, ty0#0
+    ret t6
+}
+
+fn main.main -> i64 {
+  params: 0
+  locals:
+    l0 c: &ty0
+    l1 alias: &ty0
+  bb0:
+    t0: i64 = const 10
+    t1: i64 = const 5
+    t2: &ty0 = newobj ty0
+    storefield t2, ty0#0, t0
+    storefield t2, ty0#1, t1
+    store l0, t2
+    t3: &ty0 = load l0
+    store l1, t3
+    t4: &ty0 = load l1
+    t5: i64 = const 1
+    storefield t4, ty0#0, t5
+    t6: &ty0 = load l0
+    t7: i64 = call main.bump(t6)
+    ret t7
+}

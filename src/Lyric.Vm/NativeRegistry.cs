@@ -44,13 +44,16 @@ public sealed class NativeRegistry
                 throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
                     $"no native implementation for '{import.Name}'");
 
-            if (!native.ParamTypes.SequenceEqual(import.ParamTypes) ||
-                native.ReturnType != import.ReturnType)
+            // Natives sind Host-Code und nehmen nur Skalare: ein Objekt-Layout ist Sache des
+            // Moduls, nicht des Hosts. Der Tag-Vergleich genügt deshalb — und lehnt eine
+            // Referenz-Signatur automatisch ab, weil keine Native je Ref deklariert.
+            if (!native.ParamTypes.SequenceEqual(import.ParamTypes.Select(p => p.Tag)) ||
+                native.ReturnType != import.ReturnType.Tag)
                 throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
                     $"native '{import.Name}' has a different signature than the module expects");
 
             bound[i] = new BoundNative(import.ParamTypes.Count,
-                import.ReturnType != TypeTag.Void, native.Implementation);
+                import.ReturnType.Tag != TypeTag.Void, native.Implementation);
         }
 
         return bound;

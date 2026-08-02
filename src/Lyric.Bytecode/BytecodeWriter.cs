@@ -24,6 +24,10 @@ public static class BytecodeWriter
         var layouts = new List<FunctionLayout>(module.Functions.Count);
 
         // Namen zuerst internen, damit der Pool-Anfang stabil an der Funktionsreihenfolge hängt.
+        // Typnamen gehören hierher und nicht in die Types-Sektion: der String-Pool ist Sektion 2
+        // und damit lange geschrieben, bevor Sektion 3 an der Reihe wäre.
+        foreach (var type in module.Types) strings.Intern(type.Name);
+
         foreach (var function in module.Functions)
         {
             strings.Intern(function.Name);
@@ -50,6 +54,20 @@ public static class BytecodeWriter
             foreach (var value in strings.InOrder) s.String(value);
         });
 
+        // Muss vor Imports und Functions stehen — Sektions-Ids sind aufsteigend, und beide dürfen
+        // Referenztypen in ihren Signaturen nennen.
+        if (module.Types.Count > 0)
+            WriteSection(writer, SectionId.Types, s =>
+            {
+                s.ULeb(module.Types.Count);
+                foreach (var type in module.Types)
+                {
+                    s.ULeb(strings.Intern(type.Name));
+                    s.ULeb(type.FieldTypes.Length);
+                    foreach (var field in type.FieldTypes) WriteType(s, field);
+                }
+            });
+
         // Symbolisch: Name + Signatur, gebunden beim Laden (ADR-013, WASM-Modell). Keine Adressen.
         WriteSection(writer, SectionId.Imports, s =>
         {
@@ -58,8 +76,8 @@ public static class BytecodeWriter
             {
                 s.String(import.Name);
                 s.ULeb(import.ParamTypes.Length);
-                foreach (var type in import.ParamTypes) s.Tag(TagOf(type));
-                s.Tag(TagOf(import.ReturnType));
+                foreach (var type in import.ParamTypes) WriteType(s, type);
+                WriteType(s, import.ReturnType);
             }
         });
 
@@ -106,10 +124,10 @@ public static class BytecodeWriter
 
         writer.ULeb(strings.Intern(function.Name));
         writer.ULeb(function.ParamCount);
-        writer.Tag(TagOf(function.ReturnType));
+        WriteType(writer, function.ReturnType);
 
         writer.ULeb(layout.SlotTypes.Count);
-        foreach (var type in layout.SlotTypes) writer.Tag(TagOf(type));
+        foreach (var type in layout.SlotTypes) WriteType(writer, type);
 
         writer.ULeb(layout.MaxStack);
 
@@ -177,6 +195,23 @@ public static class BytecodeWriter
             case Call k:
                 code.Opcode(Op.Call);
                 code.ULeb(importCount + k.Target.Value);
+                break;
+
+            case NewObject n:
+                code.Opcode(Op.NewObject);
+                code.ULeb(n.Type.Value);
+                break;
+
+            case LoadField f:
+                code.Opcode(Op.LoadField);
+                code.ULeb(f.Type.Value);
+                code.ULeb(f.Field.Value);
+                break;
+
+            case StoreField f:
+                code.Opcode(Op.StoreField);
+                code.ULeb(f.Type.Value);
+                code.ULeb(f.Field.Value);
                 break;
 
             default:
@@ -287,6 +322,15 @@ public static class BytecodeWriter
         _ => throw new InternalCompilationException($"bytecode: unknown binop {kind}")
     };
 
+    /// <summary>Ein Typ im Bytecode: Tag, und bei zusammengesetzten der Index dahinter
+    /// (Bytecode.md §3). Einzige Schreibstelle für Typen — <c>Tag</c> allein reicht seit 1.2 nicht
+    /// mehr, und eine vergessene Stelle wäre ein um ein Byte verschobener Strom.</summary>
+    internal static void WriteType(ByteWriter w, IrType type)
+    {
+        w.Tag(TagOf(type));
+        if (type is IrRefType r) w.ULeb(r.Type.Value);
+    }
+
     internal static TypeTag TagOf(IrType type) => type switch
     {
         IrScalarType s => s.Kind switch
@@ -307,6 +351,7 @@ public static class BytecodeWriter
             IrScalar.Void => TypeTag.Void,
             _ => throw new InternalCompilationException($"bytecode: unknown scalar {s.Kind}")
         },
+        IrRefType => TypeTag.Ref,
         _ => throw new InternalCompilationException(
             $"bytecode: type not encodable: {type.GetType().Name}")
     };

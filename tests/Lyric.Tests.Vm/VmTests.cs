@@ -40,7 +40,7 @@ public class VmTests
         de.RenderText(writer);
         Assert.False(de.HasErrors, "source did not compile:\n" + writer.ToString());
 
-        var ir = ModuleLowerer.Lower(comp, types, de, verify: true);
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         Assert.NotNull(ir);
 
         var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!));
@@ -58,7 +58,49 @@ public class VmTests
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
+    /// <summary>Wie <see cref="Run"/>, aber mit Stdlib auf dem Modulpfad und den eingebauten
+    /// Natives — für Beispiele, die <c>println</c> benutzen. Die Ausgabe wird eingesammelt statt
+    /// nach <c>Console</c> geschrieben.</summary>
+    private static (LyrValue Result, string Output) RunWithStdlib(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+
+        var writer = new StringWriter();
+        de.RenderText(writer);
+        Assert.False(de.HasErrors, "source did not compile:\n" + writer.ToString());
+
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+        Assert.NotNull(ir);
+
+        var output = new StringWriter();
+        var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!));
+        var result = Interpreter.Run(module, NativeRegistry.CreateDefault(output, TextWriter.Null));
+        return (result, output.ToString());
+    }
+
     // ------------------------------------------------------------------ 1) Gate-Programm
+
+    /// <summary>Das Gate-Artefakt von M7/P1: Objekte über die gesamte Pipeline, inklusive
+    /// Referenz-Semantik über eine Funktionsgrenze und einer Klasse als Feldtyp.</summary>
+    [Fact]
+    public void Object_gate_program_computes_the_right_answer()
+    {
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), "examples", "objects.lyr"), Encoding.UTF8);
+        var (result, output) = RunWithStdlib(source);
+
+        // 10, zweimal +5 durch bump (Mutation wirkt beim Aufrufer), dann +1 über den Alias.
+        Assert.Equal(21, result.AsI64);
+        Assert.Equal("verschachtelt: 21\n", output.Replace("\r\n", "\n"));
+    }
 
     [Fact]
     public void Gate_program_computes_the_right_answer()
@@ -200,6 +242,97 @@ public class VmTests
         Assert.Equal(1, Eval("var i = 0; let now = ++i; return now;"));
     }
 
+    // ------------------------------------------------------------------ 4b) Objekte
+
+    private const string Counter = "class Counter { value: int, step: int }\n";
+
+    [Fact]
+    public void An_object_carries_its_fields()
+    {
+        Assert.Equal(10, Run(Counter +
+            "fn main(): int { let c = Counter { value = 10, step = 5 }; return c.value; }").AsI64);
+        Assert.Equal(5, Run(Counter +
+            "fn main(): int { let c = Counter { value = 10, step = 5 }; return c.step; }").AsI64);
+    }
+
+    [Fact]
+    public void A_field_can_be_assigned_and_compound_assigned()
+    {
+        Assert.Equal(3, Run(Counter +
+            "fn main(): int { let c = Counter { value = 1, step = 2 }; c.value = 3; return c.value; }").AsI64);
+        Assert.Equal(3, Run(Counter +
+            "fn main(): int { let c = Counter { value = 1, step = 2 }; c.value += c.step; return c.value; }").AsI64);
+    }
+
+    /// <summary>
+    /// <b>Der Test, der P1 von P4 (Structs) unterscheidet.</b> Eine Klasse ist ein Referenz-Typ
+    /// (Sprache.md §3.3): zwei Namen für dasselbe Objekt sehen einander. Käme später versehentlich
+    /// eine Kopie beim Zuweisen dazu, fällt genau dieser Test — und nur dieser.
+    /// </summary>
+    [Fact]
+    public void Assignment_copies_the_reference_not_the_object()
+    {
+        Assert.Equal(99, Run(Counter +
+            """
+            fn main(): int {
+                let c = Counter { value = 1, step = 0 };
+                let alias = c;
+                alias.value = 99;
+                return c.value;
+            }
+            """).AsI64);
+    }
+
+    /// <summary>Dasselbe über eine Funktionsgrenze: das Argument ist die Referenz, also wirkt die
+    /// Mutation beim Aufrufer. Ohne diesen Fall wäre „Referenz-Semantik" nur lokal gezeigt.</summary>
+    [Fact]
+    public void An_object_passed_to_a_function_is_mutated_in_place()
+    {
+        Assert.Equal(7, Run(Counter +
+            """
+            fn bump(c: Counter) {
+                c.value += c.step;
+            }
+
+            fn main(): int {
+                let c = Counter { value = 4, step = 3 };
+                bump(c);
+                return c.value;
+            }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_field_of_class_type_nests()
+    {
+        Assert.Equal(42, Run(
+            """
+            class Inner { value: int }
+            class Outer { inner: Inner }
+
+            fn main(): int {
+                let outer = Outer { inner = Inner { value = 42 } };
+                return outer.inner.value;
+            }
+            """).AsI64);
+    }
+
+    /// <summary>Zwei getrennt angelegte Objekte teilen nichts — die Gegenprobe zum Alias-Test, sonst
+    /// wäre ein globaler Speicher pro Typ von den Tests oben nicht zu unterscheiden.</summary>
+    [Fact]
+    public void Two_instances_are_independent()
+    {
+        Assert.Equal(1, Run(Counter +
+            """
+            fn main(): int {
+                let a = Counter { value = 1, step = 0 };
+                let b = Counter { value = 2, step = 0 };
+                b.value = 50;
+                return a.value;
+            }
+            """).AsI64);
+    }
+
     // ------------------------------------------------------------------ 5) Laufzeitfehler
 
     [Fact]
@@ -252,8 +385,9 @@ public class VmTests
         var de = new DiagnosticEngine(sm);
         var comp = new Compilation(sm, de);
         comp.AddModule(new Parser(sm, id, de).ParseModule());
-        var types = Semantics.Analyze(comp, comp.Resolve(), de);
-        var ir = ModuleLowerer.Lower(comp, types, de, verify: true)!;
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true)!;
 
         Assert.Null(ir.EntryFunction);
 
@@ -285,8 +419,9 @@ public class VmTests
         var de = new DiagnosticEngine(sm);
         var comp = new Compilation(sm, de);
         comp.AddModule(new Parser(sm, id, de).ParseModule());
-        var types = Semantics.Analyze(comp, comp.Resolve(), de);
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
         Assert.False(de.HasErrors);
-        return ModuleLowerer.Lower(comp, types, de, verify: true)!;
+        return ModuleLowerer.Lower(comp, binding, types, de, verify: true)!;
     }
 }

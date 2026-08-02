@@ -25,9 +25,10 @@ public static class IrPrinter
     {
         var sb = new StringBuilder();
         var ctx = CallContext.ForModule(module);
+        WriteTypes(sb, module.Types);
         for (var i = 0; i < module.Functions.Count; i++)
         {
-            if (i > 0) sb.Append('\n'); // Leerzeile zwischen Funktionen
+            if (i > 0 || module.Types.Count > 0) sb.Append('\n'); // Leerzeile zwischen Blöcken
             WriteFunction(sb, module.Functions[i], ctx);
         }
         return sb.ToString();
@@ -67,6 +68,31 @@ public static class IrPrinter
             _functions is null ? null : _functions[id.Value].ReturnType;
     }
 
+    /// <summary>
+    /// Die Typ-Tabelle als eigener Block am Kopf des Dumps. Feldnamen erscheinen <b>nur</b> hier —
+    /// im Instruktionsstrom steht der Index, weil der Index das ist, was ausgeführt wird.
+    ///
+    /// <para>Das ist auch der Grund, warum <see cref="TypeStr"/> weiterhin ohne Kontext auskommt:
+    /// wer <c>&amp;ty0</c> liest, schlägt einmal oben nach, statt dass jede Zeile den Typnamen
+    /// wiederholt. So bleibt die Regel „jede Zeile ist aus den Feldern der Instruktion allein
+    /// formatierbar" intakt.</para>
+    /// </summary>
+    private static void WriteTypes(StringBuilder sb, IReadOnlyList<IrTypeDef> types)
+    {
+        for (var i = 0; i < types.Count; i++)
+        {
+            var def = types[i];
+            if (def.FieldTypes.Length != def.FieldNames.Length)
+                throw new InternalCompilationException(
+                    $"ir-printer: type {def.Name} has {def.FieldTypes.Length} field types but {def.FieldNames.Length} names");
+
+            sb.Append($"type {new TypeId(i)} {def.Name} {{\n");
+            for (var f = 0; f < def.FieldTypes.Length; f++)
+                sb.Append($"  {new FieldId(f)} {def.FieldNames[f]}: {TypeStr(def.FieldTypes[f])}\n");
+            sb.Append("}\n");
+        }
+    }
+
     // --- Struktur ---
     private static void WriteFunction(StringBuilder sb, IrFunction func, CallContext ctx)
     {
@@ -101,6 +127,9 @@ public static class IrPrinter
         StoreLocal s => $"store {s.Local}, {s.Value}",
         Call k => CallStr(k, ctx),
         CallImport k => CallImportStr(k, ctx),
+        NewObject n => $"{n.Dest}: {TypeStr(new IrRefType(n.Type))} = newobj {n.Type}",
+        LoadField f => $"{f.Dest}: {TypeStr(f.FieldType)} = loadfield {f.Object}, {f.Type}{f.Field}",
+        StoreField f => $"storefield {f.Object}, {f.Type}{f.Field}, {f.Value}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 
@@ -140,6 +169,7 @@ public static class IrPrinter
     private static string TypeStr(IrType t) => t switch
     {
         IrScalarType s => IrNames.Scalar(s.Kind),
+        IrRefType r => $"&{r.Type}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 

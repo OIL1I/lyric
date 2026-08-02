@@ -41,6 +41,7 @@ internal sealed class FunctionLowerer
     private readonly TypeResult _types;
     private readonly IReadOnlyDictionary<FunctionSymbol, FunctionId> _functions;
     private readonly ImportTable _imports;
+    private readonly TypeTable _typeTable;
 
     /// <summary>Typargumente der Instanz, für die gelowert wird. In P4 immer leer — der Haken sitzt
     /// in <see cref="LowerType"/>, damit die Worklist-Monomorphisierung später nur die Map füllen
@@ -56,6 +57,7 @@ internal sealed class FunctionLowerer
     public FunctionLowerer(FunctionDecl decl, string name, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions,
         ImportTable imports,
+        TypeTable typeTable,
         IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution)
     {
         _decl = decl;
@@ -63,6 +65,7 @@ internal sealed class FunctionLowerer
         _types = types;
         _functions = functions;
         _imports = imports;
+        _typeTable = typeTable;
         _substitution = substitution;
         _b = new BlockBuilder(_blocks);
         _returnType = LowerDeclaredReturnType();
@@ -295,11 +298,11 @@ internal sealed class FunctionLowerer
         NullLiteralExpr e => throw NotSupported("'null' (needs a nullable IR type)", e.Span),
         LambdaExpr e => throw NotSupported("lambda (needs closure lifting)", e.Span),
         MatchExpr e => throw NotSupported("'match' as an expression", e.Span),
-        MemberExpr e => throw NotSupported($"member access '.{e.Member}'", e.Span),
+        MemberExpr e => LowerFieldRead(e),
         IndexExpr e => throw NotSupported("indexing", e.Span),
         ArrayLitExpr e => throw NotSupported("array literal", e.Span),
         TupleLitExpr e => throw NotSupported("tuple literal", e.Span),
-        StructInitExpr e => throw NotSupported("struct initializer", e.Span),
+        StructInitExpr e => LowerObjectInit(e),
         RangeExpr e => throw NotSupported("range expression", e.Span),
         ResumeExpr e => throw NotSupported("'resume'", e.Span),
         ThisExpr e => throw NotSupported("'this' (methods are not lowered yet)", e.Span),
@@ -473,6 +476,8 @@ internal sealed class FunctionLowerer
 
     private TempId LowerAssign(AssignExpr expr)
     {
+        if (expr.Target is MemberExpr member) return LowerFieldAssign(member, expr);
+
         var slot = ResolveLocalTarget(expr.Target, "assignment");
 
         if (expr.Operator is null)
@@ -495,6 +500,110 @@ internal sealed class FunctionLowerer
             current, operand, expr.Span));
         _b.Emit(new StoreLocal(slot, result, expr.Span));
         return result;
+    }
+
+    /// <summary>
+    /// <c>obj.f = v</c> und <c>obj.f += v</c>.
+    ///
+    /// <para><b>Das Objekt wird genau einmal ausgewertet.</b> Bei <c>+=</c> ist das der Unterschied
+    /// zwischen richtig und falsch, sobald der Ziel-Ausdruck Seiteneffekte hat: <c>next().f += 1</c>
+    /// darf <c>next()</c> nicht zweimal rufen. Deshalb wird die Referenz einmal in ein Temp gelowert
+    /// und für Lesen und Schreiben wiederverwendet.</para>
+    /// </summary>
+    private TempId LowerFieldAssign(MemberExpr member, AssignExpr expr)
+    {
+        var (obj, type, field, fieldType) = ResolveFieldAccess(member);
+
+        if (expr.Operator is null)
+        {
+            var assigned = LowerExpr(expr.Value);
+            _b.Emit(new StoreField(obj, type, field, assigned, expr.Span));
+            return assigned;
+        }
+
+        if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr or BinaryOp.Coalesce)
+            throw NotSupported("short-circuit or coalescing assignment", expr.Span);
+
+        if (fieldType is IrScalarType { Kind: IrScalar.String })
+            throw NotSupported("string concatenation/repetition (lowers to a call)", expr.Span);
+
+        var current = _slots.NewTemp(fieldType);
+        _b.Emit(new LoadField(current, obj, type, field, fieldType, member.Span));
+
+        var operand = LowerExpr(expr.Value);
+        var result = _slots.NewTemp(fieldType);
+        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), fieldType,
+            current, operand, expr.Span));
+        _b.Emit(new StoreField(obj, type, field, result, expr.Span));
+        return result;
+    }
+
+    // ------------------------------------------------------------------ Objekte (Sprache.md §3.3)
+
+    /// <summary>
+    /// <c>Account { owner = a, balance = b }</c> → ein <c>newobj</c> und ein <c>storefield</c> je
+    /// Feld.
+    ///
+    /// <para><b>Geschrieben wird in Deklarations-, nicht in Schreibreihenfolge.</b> Die
+    /// Initialisierer dürfen im Quelltext beliebig stehen; das Layout ist aber die Deklaration, und
+    /// nur eine feste Ordnung macht den Bytecode deterministisch (ADR-013). Die Werte werden
+    /// trotzdem in <b>Quelltext</b>-Reihenfolge ausgewertet — bei Seiteneffekten ist das die
+    /// Reihenfolge, die der Leser erwartet.</para>
+    /// </summary>
+    private TempId LowerObjectInit(StructInitExpr expr)
+    {
+        if (_types.TypeOf(expr) is not NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
+            throw NotSupported($"initializer for '{TypeFacts.Display(_types.TypeOf(expr))}' " +
+                               "(only classes are lowered)", expr.Span);
+
+        var type = _typeTable.Intern(named.Symbol);
+        var layout = _typeTable.Defs[type.Value];
+
+        // Erst alle Werte auswerten (Quelltext-Reihenfolge), dann in Layout-Reihenfolge schreiben.
+        var values = new Dictionary<string, TempId>(StringComparer.Ordinal);
+        foreach (var field in expr.Fields)
+        {
+            if (values.ContainsKey(field.Name))
+                throw Bug($"duplicate initializer for '{field.Name}' reached lowering");
+            values[field.Name] = LowerExpr(field.Value);
+        }
+
+        // Ein fehlendes Feld hätte seinen Nullwert — aber die Sema kennt heute keine Regel, die das
+        // erlaubt oder verbietet, und stillschweigend 0 einzusetzen wäre geraten. Lieber melden.
+        foreach (var name in layout.FieldNames)
+            if (!values.ContainsKey(name))
+                throw NotSupported($"initializer omits field '{name}' (field defaults are not " +
+                                   "supported by this compiler version yet)", expr.Span);
+
+        var dest = _slots.NewTemp(new IrRefType(type));
+        _b.Emit(new NewObject(dest, type, expr.Span));
+
+        for (var i = 0; i < layout.FieldNames.Length; i++)
+            _b.Emit(new StoreField(dest, type, new FieldId(i), values[layout.FieldNames[i]], expr.Span));
+
+        return dest;
+    }
+
+    private TempId LowerFieldRead(MemberExpr expr)
+    {
+        var (obj, type, field, fieldType) = ResolveFieldAccess(expr);
+        var dest = _slots.NewTemp(fieldType);
+        _b.Emit(new LoadField(dest, obj, type, field, fieldType, expr.Span));
+        return dest;
+    }
+
+    /// <summary>Gemeinsamer Teil von Lesen und Schreiben: das Objekt auswerten und Typ, Feldindex
+    /// und Feldtyp bestimmen.</summary>
+    private (TempId Object, TypeId Type, FieldId Field, IrType FieldType) ResolveFieldAccess(MemberExpr expr)
+    {
+        if (_types.TypeOf(expr.Target) is not NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
+            throw NotSupported($"member access '.{expr.Member}' on " +
+                               $"'{TypeFacts.Display(_types.TypeOf(expr.Target))}'", expr.Span);
+
+        var obj = LowerExpr(expr.Target);
+        var type = _typeTable.Intern(named.Symbol);
+        var field = _typeTable.FieldOf(named.Symbol, expr.Member, expr.Span);
+        return (obj, type, field, _typeTable.Defs[type.Value].FieldTypes[field.Value]);
     }
 
     private TempId LowerCast(CastExpr expr)
@@ -714,6 +823,12 @@ internal sealed class FunctionLowerer
                 throw NotSupported($"type parameter '{parameter.Param.Name}'", span);
             type = bound;
         }
+
+        // Eine Klasse wird zur Referenz auf ihren Tabellen-Eintrag; das Layout entsteht dabei
+        // einmalig in der TypeTable. Alles andere (Struct, Enum, Array, Tupel, …) ist weiterhin
+        // außerhalb dieses Compiler-Stands.
+        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
+            return _typeTable.RefTo(named.Symbol);
 
         if (type is not PrimitiveType)
             throw NotSupported($"type '{TypeFacts.Display(type)}'", span);

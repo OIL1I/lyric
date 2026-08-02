@@ -174,7 +174,8 @@ public static class Program
     /// eigene Kopie hatten, verdrahtete nur eine davon den <see cref="Compilation.ModuleLoader"/> —
     /// 'check' hielt jeden Stdlib-Import für opak und prüfte die Aufrufe deshalb stumm gar nicht.</para>
     /// </summary>
-    private static (Compilation? Comp, TypeResult? Types, DiagnosticEngine De) Frontend(string fpath)
+    private static (Compilation? Comp, BindingResult? Binding, TypeResult? Types, DiagnosticEngine De)
+        Frontend(string fpath)
     {
         var sm = new SourceManager();
         var de = new DiagnosticEngine(sm);
@@ -187,7 +188,7 @@ public static class Program
         {
             de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
             de.RenderText(Console.Error);
-            return (null, null, de);
+            return (null, null, null, de);
         }
 
         var comp = new Compilation(sm, de);
@@ -195,13 +196,13 @@ public static class Program
         comp.ModuleLoader = StdlibLoader.ForRoot(StdlibLoader.DefaultRoot(), sm, de);
         comp.AddModule(new Parser(sm, id, de).ParseModule());
         var binding = comp.Resolve();
-        return (comp, Semantics.Analyze(comp, binding, de), de);
+        return (comp, binding, Semantics.Analyze(comp, binding, de), de);
     }
 
     /// <summary>Quelle → IR, mit allen Diagnosen gerendert. <c>Ir == null</c> heißt: abgebrochen.</summary>
     private static (IrModule? Ir, DiagnosticEngine De) Compile(string fpath)
     {
-        var (comp, types, de) = Frontend(fpath);
+        var (comp, binding, types, de) = Frontend(fpath);
         if (comp is null) return (null, de);
 
         if (de.HasErrors)
@@ -210,7 +211,7 @@ public static class Program
             return (null, de);
         }
 
-        var ir = ModuleLowerer.Lower(comp, types!, de);
+        var ir = ModuleLowerer.Lower(comp, binding!, types!, de);
         de.RenderText(Console.Error);
         return (ir, de);
     }
@@ -225,7 +226,7 @@ public static class Program
             return 2;
         }
         var fpath = args[1];
-        var (comp, types, de) = Frontend(fpath);
+        var (comp, binding, types, de) = Frontend(fpath);
         if (comp is null) return 1;
 
         if (de.HasErrors)
@@ -236,7 +237,7 @@ public static class Program
 
         // Scope-Grenzen des Lowerings kommen als LYR-IR0001 in dieselbe DiagnosticEngine und
         // werden mit Datei/Zeile/Spalte gerendert wie jeder andere Fehler auch.
-        var ir = ModuleLowerer.Lower(comp, types!, de);
+        var ir = ModuleLowerer.Lower(comp, binding!, types!, de);
         de.RenderText(Console.Error);
         if (ir is null) return 1;
 
@@ -252,7 +253,7 @@ public static class Program
             return 2;
         }
         var fpath = args[1];
-        var (comp, _, de) = Frontend(fpath);
+        var (comp, _, _, de) = Frontend(fpath);
         if (comp is null) return 1;
 
         de.RenderText(Console.Error);

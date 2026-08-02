@@ -38,18 +38,19 @@ public static class Interpreter
         // Bindung beim Laden: fehlt ein Native, wird das Modul abgelehnt, bevor eine
         // Instruktion laeuft.
         var bound = (natives ?? new NativeRegistry()).Bind(module);
-        return Execute(prepared, start, module.Strings, bound);
+        return Execute(prepared, start, module.Strings, module.Types, bound);
     }
 
     private static LyrValue Execute(Prepared[] prepared, int startIndex,
-        IReadOnlyList<string> strings, NativeRegistry.BoundNative[] natives)
+        IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
+        NativeRegistry.BoundNative[] natives)
     {
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
 
         try
         {
-            return Loop(prepared, strings, natives, frames, ref frame);
+            return Loop(prepared, strings, types, natives, frames, ref frame);
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
@@ -62,7 +63,8 @@ public static class Interpreter
     }
 
     private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
-        NativeRegistry.BoundNative[] natives, Stack<Frame> frames, ref Frame frame)
+        IReadOnlyList<BytecodeTypeDef> types, NativeRegistry.BoundNative[] natives,
+        Stack<Frame> frames, ref Frame frame)
     {
         while (true)
         {
@@ -151,10 +153,31 @@ public static class Interpreter
                     break;
                 }
 
+                // Ein Objekt ist ein Slot-Array hinter LyrValue.Ref — kein Typ-Tag im Wert. Der
+                // Instruktionsstrom weiß statisch, was vorliegt, also ist ein Feldzugriff ein
+                // Array-Zugriff. Dass Typ- und Feldindex passen, hat der Loader geprüft (ADR-013);
+                // hier findet deshalb keine Prüfung mehr statt.
+                case Op.NewObject:
+                    frame.Push(LyrValue.FromObject(NewInstance(types[(int)instruction.Immediate])));
+                    break;
+
+                case Op.LoadField:
+                    frame.Push(frame.Pop().AsObject[(int)instruction.Immediate2]);
+                    break;
+
+                case Op.StoreField:
+                {
+                    // Bytecode.md §5: die Referenz liegt UNTER dem Wert, also kommt der Wert zuerst
+                    // herunter.
+                    var value = frame.Pop();
+                    frame.Pop().AsObject[(int)instruction.Immediate2] = value;
+                    break;
+                }
+
                 case Op.Return or Op.ReturnValue:
                 {
                     var result = instruction.Opcode == Op.ReturnValue ? frame.Pop() : default;
-                    var returnsValue = frame.Fn.Source.ReturnType != TypeTag.Void;
+                    var returnsValue = frame.Fn.Source.ReturnType.Tag != TypeTag.Void;
 
                     if (frames.Count == 0) return result;
 
@@ -176,6 +199,24 @@ public static class Interpreter
     }
 
     // ------------------------------------------------------------------ Operationen
+
+    /// <summary>
+    /// Eine frische Instanz: ein Slot je Feld, jeder auf dem Nullwert seines Typs.
+    ///
+    /// <para>Kein Feld ist je „uninitialisiert" — <c>.lyrbc</c> ist ein plattformneutraler Vertrag
+    /// (ADR-013), und „undefiniert wie in C" ist an keiner Stelle zulässig (Sprache.md §6.6). Für
+    /// Zahlen, bool und char ist der Nullwert das Nullbitmuster und damit gratis; nur
+    /// <c>string</c> braucht die leere Zeichenkette, weil <c>Ref == null</c> sonst als
+    /// Null-Referenz durchginge.</para>
+    /// </summary>
+    private static LyrValue[] NewInstance(BytecodeTypeDef type)
+    {
+        var slots = new LyrValue[type.FieldTypes.Count];
+        for (var i = 0; i < slots.Length; i++)
+            if (type.FieldTypes[i].Tag == TypeTag.String)
+                slots[i] = LyrValue.FromString(string.Empty);
+        return slots;
+    }
 
     private static LyrValue Constant(BytecodeInstruction instruction,
         IReadOnlyList<string> strings) => instruction.Type switch

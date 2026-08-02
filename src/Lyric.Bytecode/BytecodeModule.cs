@@ -17,6 +17,7 @@ public sealed class BytecodeModule
     public required ushort VersionMinor { get; init; }
     public required ulong Capabilities { get; init; }
     public required IReadOnlyList<string> Strings { get; init; }
+    public required IReadOnlyList<BytecodeTypeDef> Types { get; init; }
     public required IReadOnlyList<BytecodeImport> Imports { get; init; }
     public required IReadOnlyList<BytecodeFunction> Functions { get; init; }
 
@@ -25,24 +26,47 @@ public sealed class BytecodeModule
     public int? Start { get; init; }
 }
 
-/// <summary>Host-/Native-Funktion, per Index aus <c>call</c> referenziert (ADR-013, WASM-Modell).
-/// Heute immer leer — das Lowering kennt noch keine externen Calls.</summary>
+/// <summary>
+/// Ein Typ an einer Signaturstelle: das Tag und, bei einer Referenz, der Index in die
+/// Typ-Tabelle.
+///
+/// <para>Eigener Typ statt eines nackten <see cref="TypeTag"/>, weil ein Tag seit Format 1.2 nicht
+/// mehr für sich steht — <c>0x40</c> ohne seinen Index ist keine vollständige Typangabe. Ein Feld,
+/// das man zu lesen vergisst, wäre ein um ein Byte verschobener Strom.</para>
+/// </summary>
+public readonly record struct BytecodeType(TypeTag Tag, int TypeIndex)
+{
+    public static BytecodeType Scalar(TypeTag tag) => new(tag, -1);
+    public bool IsRef => Tag == TypeTag.Ref;
+
+    public override string ToString() => IsRef ? $"&ty{TypeIndex}" : Tag.ToString().ToLowerInvariant();
+}
+
+/// <summary>Layout eines zusammengesetzten Typs. Der Feldindex ist die Position in
+/// <see cref="FieldTypes"/>; Feldnamen stehen nicht im Bytecode.</summary>
+public sealed class BytecodeTypeDef
+{
+    public required string Name { get; init; }
+    public required IReadOnlyList<BytecodeType> FieldTypes { get; init; }
+}
+
+/// <summary>Host-/Native-Funktion, per Index aus <c>call</c> referenziert (ADR-013, WASM-Modell).</summary>
 public sealed class BytecodeImport
 {
     public required string Name { get; init; }
-    public required IReadOnlyList<TypeTag> ParamTypes { get; init; }
-    public required TypeTag ReturnType { get; init; }
+    public required IReadOnlyList<BytecodeType> ParamTypes { get; init; }
+    public required BytecodeType ReturnType { get; init; }
 }
 
 public sealed class BytecodeFunction
 {
     public required string Name { get; init; }
     public required int ParamCount { get; init; }
-    public required TypeTag ReturnType { get; init; }
+    public required BytecodeType ReturnType { get; init; }
 
     /// <summary>Typ jedes Local-Slots. Die ersten <see cref="ParamCount"/> sind die Parameter —
     /// dieselbe Konvention wie in der IR.</summary>
-    public required IReadOnlyList<TypeTag> SlotTypes { get; init; }
+    public required IReadOnlyList<BytecodeType> SlotTypes { get; init; }
 
     /// <summary>Maximale Tiefe des Operanden-Stacks. Der Emitter rechnet sie aus, damit der Loader
     /// die Frame-Größe kennt, ohne selbst analysieren zu müssen.</summary>
