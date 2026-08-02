@@ -9,7 +9,7 @@ namespace Lyric.Bytecode;
 /// Dekodierer wären derselbe Drift-Fehler wie zwei Opcode-Tabellen — einer könnte ein Immediate
 /// anders lang lesen als der andere und die Ausgabe wäre stillschweigend falsch.</para>
 /// </summary>
-internal static class CodeDecoder
+public static class CodeDecoder
 {
     public static List<BytecodeInstruction> Decode(byte[] code)
     {

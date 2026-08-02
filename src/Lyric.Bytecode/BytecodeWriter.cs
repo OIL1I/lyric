@@ -60,6 +60,10 @@ public static class BytecodeWriter
             foreach (var body in bodies) s.Raw(body);
         });
 
+        // Fehlt bei Bibliotheks-Modulen. Muss nach Functions stehen: Sektionen sind aufsteigend.
+        if (module.EntryFunction is { } entry)
+            WriteSection(writer, SectionId.Start, s => s.ULeb(entry.Value));
+
         return writer.ToArray();
     }
 

@@ -921,7 +921,7 @@ fn main(): int {
     let fib = fibonacci();
     for (i in 0..10) {
         let v = resume fib;
-        console.println(v);
+        console.println(f"{v}");
     }
     return 0;
 }
@@ -1068,6 +1068,11 @@ pub fn calculateDamage(attackerId: int, defenderId: int): int {
 ## 22. Standardbibliothek-Überblick
 
 Vollständige API-Doku entsteht in v1.0. Hier nur ein Überblick.
+
+> **`println` nimmt `string`.** Lyric hat kein Overloading, und ein generisches
+> `println<T :: [Display]>` bräuchte, dass Builtin-Typen ein Interface erfüllen — das kommt erst
+> mit M8. Zahlen gehen deshalb über einen f-String: `println(f"{v}")`. Wenn die Builtin-Konformanz
+> da ist, wird `println(v)` nachträglich legal; der Weg ist nicht verbaut.
 
 | Modul | Inhalt | Capability |
 |---|---|---|

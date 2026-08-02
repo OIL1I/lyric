@@ -13,7 +13,7 @@ public static class Format
     /// <summary>Eine unbekannte Major-Version wird abgelehnt, eine unbekannte Minor toleriert
     /// (neue Sektionen sind überspringbar). Bis v1.0 darf Major frei springen — ADR-013.</summary>
     public const ushort VersionMajor = 1;
-    public const ushort VersionMinor = 0;
+    public const ushort VersionMinor = 1;
 }
 
 /// <summary>
@@ -42,6 +42,12 @@ public enum SectionId : byte
 
     /// <summary>Optional und strippbar: PC → Datei/Zeile.</summary>
     SourceMap = 6,
+
+    /// <summary>Einstiegspunkt: <c>uleb128</c>-Index der Funktion, die eine Runtime aufruft
+    /// (WASM-Modell). Fehlt bei Bibliotheks-Modulen. Ohne diese Sektion müsste eine Runtime den
+    /// Einstieg über eine Namenskonvention raten — was ADR-013s Ziel widerspricht, dass die Spec
+    /// allein zum Implementieren reicht.</summary>
+    Start = 7,
 }
 
 /// <summary>

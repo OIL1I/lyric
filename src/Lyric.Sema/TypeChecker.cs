@@ -1971,7 +1971,31 @@ public sealed class TypeChecker
     private void CheckAssignable(Expr expr, LyrType from, LyrType to, Span span)
     {
         if (!IsAssignable(expr, from, to))
+        {
             _de.Report("LYR-SEM0001", Severity.Error, span, $"cannot assign '{TypeFacts.Display(from)}' to '{TypeFacts.Display(to)}'");
+            return;
+        }
+
+        AdaptLiteralType(expr, to);
+    }
+
+    /// <summary>
+    /// Ein untypisiertes Literal <b>ist</b> vom Zieltyp, es wird nicht dorthin konvertiert
+    /// (Sprache.md §6.5: „passt sich dem Kontext an"). Also muss die Seitentabelle das auch sagen —
+    /// sonst hält jede spätere Stufe `let x: int8 = 5` für ein `int`.
+    /// </summary>
+    /// <remarks>Ohne diesen Schritt prüft die Sema den Literal-Fit korrekt, notiert aber weiter den
+    /// Default-Typ; das Lowering erzeugt dann brav ein `const i64` und schiebt es in einen
+    /// i8-Slot. Aufgefallen ist das erst, als die VM solche Programme tatsächlich ausführte.</remarks>
+    private void AdaptLiteralType(Expr expr, LyrType to)
+    {
+        while (to is Optional optional) to = optional.Inner; // T → ?T: das Literal nimmt T an
+        if (to is not PrimitiveType target || !LiteralAdaptsTo(expr, target)) return;
+
+        _result.SetType(expr, target);
+        // '-5' ist UnaryExpr(Neg, IntLiteral 5) — beide Knoten tragen den angepassten Typ.
+        if (expr is UnaryExpr { Operator: UnaryOp.Neg } negated)
+            _result.SetType(negated.Operand, target);
     }
 
     private bool IsAssignable(Expr expr, LyrType from, LyrType to)

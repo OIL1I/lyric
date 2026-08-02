@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v1.0
+# Lyric — `.lyrbc` Bytecode-Format v1.1
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,7 +7,7 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **1.0**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **1.1**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne Calls, strukturierter Kontrollfluss.
 
 ---
@@ -63,10 +63,11 @@ zu tolerieren — neue Minor-Versionen dürfen nur überspringbare Sektionen hin
 |---|---|---|---|
 | 1 | Capabilities | nein | `uleb128` Bitset |
 | 2 | Strings | nein | Konstantenpool, **nur Strings** |
-| 3 | Types | — | **reserviert**, wird in 1.0 nicht geschrieben |
+| 3 | Types | — | **reserviert**, wird in 1.1 nicht geschrieben |
 | 4 | Imports | nein | Host-/Native-Funktionen |
 | 5 | Functions | nein | definierte Funktionen samt Code |
 | 6 | SourceMap | nein | optional und **strippbar**: PC → Datei/Zeile |
+| 7 | Start | nein | Einstiegspunkt: `uleb128`-Index der aufzurufenden Funktion |
 
 Fehlt eine Sektion, gilt sie als leer.
 
@@ -79,7 +80,7 @@ verhindert, dass ihre Einführung die bestehenden verschiebt.
 
 ### Capabilities (Id 1)
 
-Ein `uleb128`-Bitset. In Format 1.0 immer `0` = „verlangt nichts". Die Zuordnung einzelner Bits zu
+Ein `uleb128`-Bitset. In Format 1.1 immer `0` = „verlangt nichts". Die Zuordnung einzelner Bits zu
 den Capability-Stufen aus ADR-007 (`fileAccess`, `networkAccess`, `osAccess`, `hostAccess`) entsteht
 mit der Stdlib; bis dahin darf ein Leser ein Bitset ungleich 0 ablehnen.
 
@@ -103,7 +104,7 @@ entries          count × {
 ```
 
 Host-Funktionen werden **symbolisch** referenziert (Name + Signatur), nicht über Adressen; die
-Bindung an konkrete Implementierungen macht der Host beim Laden. In Format 1.0 ist die Tabelle
+Bindung an konkrete Implementierungen macht der Host beim Laden. In Format 1.1 ist die Tabelle
 immer leer — das Lowering kennt noch keine externen Calls.
 
 ### Functions (Id 5)
@@ -130,6 +131,20 @@ entries          count × {
   ihren Frame danach dimensionieren und zur Laufzeit auf Überlauf-Prüfungen verzichten.
 - `blockOffsets[i]` ist der Byte-Offset von Block `i` in `code`. Jeder Offset **muss** auf einer
   Instruktionsgrenze liegen.
+- **Block 0 ist der Einstiegsblock** der Funktion. Die Ausführung beginnt bei `blockOffsets[0]`.
+
+### Start (Id 7)
+
+```
+functionIndex    uleb128   in den gemeinsamen Indexraum: erst Imports, dann Funktionen
+```
+
+Der Einstiegspunkt des Programms — in Lyric `main` (Sprache.md §11). Eine Runtime ruft ihn ohne
+Argumente auf; sein Rückgabewert ist der Prozess-Exit-Code (die niederwertigsten 8 Bit).
+
+Fehlt die Sektion, ist das Modul eine **Bibliothek** und hat keinen Einstieg. Ohne diese Sektion
+müsste eine Runtime den Einstieg über eine Namenskonvention raten — dann wäre das Format nicht mehr
+allein aus dieser Spec implementierbar, und genau das fordert ADR-013.
 
 ---
 
@@ -294,6 +309,8 @@ Sicherheitsprüfungen laufen lassen. Ablehnungsgründe und ihre Diagnostik-Codes
 | `LYR-BC0005` | unbekannter Opcode, unbekanntes Typ-Tag, Sektionen nicht aufsteigend |
 | `LYR-BC0006` | Stack-Disziplin: Unterlauf, Tiefe ≠ 0 an einer Blockgrenze, Tiefe > `maxStack` |
 
+Der Start-Index wird wie jeder andere Index geprüft (`LYR-BC0004`).
+
 Der Leser bricht beim ersten Befund ab. Anders als der IR-Verifier sammelt er nicht: bei einer
 kaputten Datei ist der zweite Befund meist Folge des ersten.
 
@@ -331,7 +348,7 @@ Die vollständige Datei, 46 Bytes:
 ```
 4C 59 52 42                  magic "LYRB"
 01 00                        version.major = 1
-00 00                        version.minor = 0
+01 00                        version.minor = 1
 
 01                           § Sektion 1 — Capabilities
 01                             byteLength = 1
@@ -371,7 +388,7 @@ ebenfalls konform — er erzeugt nur größeren und langsameren Code.
 
 ---
 
-## 8. Was in Format 1.0 fehlt
+## 8. Was in Format 1.1 fehlt
 
 Absichtlich, weil das Lowering es noch nicht erzeugt: zusammengesetzte Typen (struct/class/enum,
 Arrays, Tupel), Nullable, Exceptions, Coroutinen-State-Machines, Closures, generische Instanzen und

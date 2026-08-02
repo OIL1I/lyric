@@ -308,6 +308,13 @@ internal sealed class FunctionLowerer
     private TempId LowerIntLiteral(IntLiteralExpr expr)
     {
         var type = TypeOfExpr(expr);
+
+        // Ein untypisiertes Ganzzahl-Literal in Float-Kontext IST ein Float-Wert, es wird nicht
+        // konvertiert (Sprache.md §6.5). `let f: float = 5;` muss also ein FloatConst werden —
+        // ein IntConst mit Float-Typ wäre malformed, und der Verifier sagt das auch.
+        if (type is IrScalarType { Kind: IrScalar.F32 or IrScalar.F64 })
+            return EmitConst(new FloatConst(expr.Value), type, expr.Span);
+
         // Die Kodierung von IntConst ist Zweierkomplement, nullerweitert auf 64 Bit. Der Parser
         // liefert die Magnitude; ein Minuszeichen ist ein eigener UnaryExpr(Neg).
         return EmitConst(new IntConst(expr.Value), type, expr.Span);

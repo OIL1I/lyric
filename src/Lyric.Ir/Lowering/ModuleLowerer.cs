@@ -60,6 +60,7 @@ public static class ModuleLowerer
     {
         var pending = new List<(FunctionDecl Decl, string Name)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
+        FunctionId? entry = null;
 
         // Pass 1 — Funktionstabelle. Die Reihenfolge ist Modul- dann Deklarations-Reihenfolge und
         // damit deterministisch: FunctionIds landen als Indizes im Bytecode (ADR-013).
@@ -72,8 +73,13 @@ public static class ModuleLowerer
                 if (function.Generics.Length > 0) continue;
                 if (module.Members.LookupLocal(function.Name) is not FunctionSymbol symbol) continue;
 
-                ids[symbol] = new FunctionId(pending.Count);
+                var id = new FunctionId(pending.Count);
+                ids[symbol] = id;
                 pending.Add((function, NameMangling.ForFunction(module, function.Name)));
+
+                // Entry-Contract (Sprache.md §11): genau ein 'main' pro Executable. Dass es
+                // eindeutig ist, hat die Sema geprüft — hier wird es nur festgehalten.
+                if (function.Name == "main" && function.Parameters.Length == 0) entry = id;
             }
         }
 
@@ -98,7 +104,7 @@ public static class ModuleLowerer
         // Modulaufbau ist damit nicht mehr rettbar. Kein Teilergebnis zurückgeben.
         if (failed) return null;
 
-        var result = new IrModule(functions);
+        var result = new IrModule(functions) { EntryFunction = entry };
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }

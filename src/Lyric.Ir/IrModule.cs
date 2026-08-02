@@ -61,4 +61,9 @@ public class IrModule(List<IrFunction> Functions)
     /// <summary>Call-Ziele referenzieren per <see cref="FunctionId"/> den Index in diese Liste.
     /// Namen müssen eindeutig sein — sie werden die Symbol-Namen im Bytecode (ADR-013).</summary>
     public List<IrFunction> Functions { get; init; } = Functions;
+
+    /// <summary>Einstiegspunkt (<c>main</c>, Sprache.md §11), oder <c>null</c> für ein reines
+    /// Bibliotheks-Modul. Wandert als Start-Sektion in den Bytecode: ohne sie müsste eine Runtime
+    /// den Einstieg über eine Namenskonvention raten.</summary>
+    public FunctionId? EntryFunction { get; set; }
 }

@@ -651,7 +651,7 @@ fn fibonacci(): Coroutine<int> {
 let co = fibonacci();
 for (i in 0..10) {
     let v = resume co;
-    println(v);
+    println(f"{v}");        // println nimmt string — Zahlen über f-String
 }
 ```
 

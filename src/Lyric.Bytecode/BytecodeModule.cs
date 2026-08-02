@@ -19,6 +19,10 @@ public sealed class BytecodeModule
     public required IReadOnlyList<string> Strings { get; init; }
     public required IReadOnlyList<BytecodeImport> Imports { get; init; }
     public required IReadOnlyList<BytecodeFunction> Functions { get; init; }
+
+    /// <summary>Index der Einstiegsfunktion im gemeinsamen Indexraum (erst Imports, dann
+    /// Funktionen), oder <c>null</c> bei einem Bibliotheks-Modul. Aus der Start-Sektion.</summary>
+    public int? Start { get; init; }
 }
 
 /// <summary>Host-/Native-Funktion, per Index aus <c>call</c> referenziert (ADR-013, WASM-Modell).

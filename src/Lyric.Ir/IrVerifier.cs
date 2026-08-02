@@ -48,6 +48,18 @@ public static class IrVerifier
             new FunctionVerifier(module, function, findings).Run();
         }
 
+        // Der Einstiegspunkt wird zur Start-Sektion im Bytecode. Ein Index ins Leere wäre dort
+        // erst beim Laden aufgefallen — also hier prüfen, wo er entsteht.
+        if (module.EntryFunction is { } entry)
+        {
+            if (entry.Value < 0 || entry.Value >= module.Functions.Count)
+                findings.Add($"entry function {entry} is out of range " +
+                             $"(module has {module.Functions.Count} function(s))");
+            else if (module.Functions[entry.Value].ParamCount != 0)
+                findings.Add($"entry function {module.Functions[entry.Value].Name} takes " +
+                             "parameters; the no-argument form is the only one lowered today");
+        }
+
         return findings;
     }
 

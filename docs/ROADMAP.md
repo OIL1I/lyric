@@ -276,12 +276,25 @@ Jeder Meilenstein hat **ein klar definiertes Exit-Kriterium** und **ein ausliefe
 - Stack-VM mit Operand-Stack und Call-Frame-Stack.
 - Implementierung aller Opcodes außer Exceptions und Coroutinen.
 - GC-Strategie: nutzt .NET GC (Werte sind .NET-Objekte, .NET kümmert sich um Tracing).
-- Stdlib-Minimum: `std.io.console.println`, `std.core.panic`, `std.fmt.format`.
+- Stdlib-Minimum: `std.io.console.println` (nimmt `string`), `std.core.panic`, plus die
+  compiler-internen f-String-Helfer (`concat`, `toString`).
 - Source-Mapping: Bytecode-PC → (FileId, Line, Col) für Runtime-Errors.
 - Diagnostik-Codes `LYR-VM0001..0020`.
 - CLI: `lyric run <file>` (Compile + Execute in einem Schritt).
 
 **Exit**: Hello-World, FizzBuzz, Fibonacci laufen. E2E-Tests: 15+ einfache Programme.
+
+> **Korrektur (2026-08-02, vor M6/Slice 1):** `std.fmt.format` ist nach **M8** verschoben. Keines
+> der drei Exit-Programme benutzt Format-Specs (`{x:N2}` steht nur in `shapes.lyr`/`stats.lyr`) —
+> eine .NET-kompatible Formatierungs-Engine mit Padding, Rundung und Spec-Grammatik ist ein
+> eigener Brocken und gehört dorthin, wo die Stdlib ohnehin ausgebaut wird. f-Strings ohne Spec
+> lowern zu einer `concat`/`toString`-Kette und brauchen kein `format`.
+>
+> Ebenfalls hier fixiert: **`println` nimmt `string`**. Lyric hat kein Overloading, und ein
+> generisches `println<T :: [Display]>` setzt Builtin-Konformanz voraus (M8). Zahlen gehen über
+> `println(f"{v}")`; die Beispiele in `Sprache.md` §8 und `Doku.md` §19 sind entsprechend korrigiert.
+>
+> *(Zur Ratifizierung im nächsten Scope-Check.)*
 
 ### M7 — VM (full) (4–6 Wochen)
 

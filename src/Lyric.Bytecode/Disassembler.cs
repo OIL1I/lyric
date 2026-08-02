@@ -30,6 +30,9 @@ public static class Disassembler
                 sb.Append($"    s{N(i)} {Quote(module.Strings[i])}\n");
         }
 
+        if (module.Start is { } start)
+            sb.Append($"  start: {CalleeName(module, start)}\n");
+
         foreach (var import in module.Imports)
             sb.Append($"  import {import.Name}({string.Join(", ", import.ParamTypes.Select(TypeName))})" +
                       $" -> {TypeName(import.ReturnType)}\n");

@@ -11,12 +11,19 @@
 
 ## Aktueller Meilenstein
 
+**M6 — VM — in Arbeit** (Slice 1 steht)
+
+`lyric run examples/arith.lyr` läuft und liefert Exit-Code **55**. Damit prüft das Projekt zum
+ersten Mal, ob ein Programm das Richtige *tut* — bis M5 konnte nur geprüft werden, ob es korrekt
+übersetzt wird. Noch ohne Stdlib: Slice 2 bringt Import-Bindung, `println` und f-Strings, und damit
+hello/fizzbuzz/fibonacci.
+
 **M5 — IR + Bytecode — abgeschlossen** (`v0.1.0`)
 
 Slices P1–P5 stehen: IR-Datentypen, Printer + Goldens, Verifier, Lowering AST → IR, Bytecode-Format
 + Writer/Reader/Disassembler. Die Pipeline läuft durch: `lyric build examples/arith.lyr` erzeugt
 `.lyrbc`, `lyric disasm` zeigt sinnvolle Instruktionen. ADR-006 und ADR-013 sind umgesetzt,
-`docs/Bytecode.md` ist normativ geschrieben. 1107 Tests grün.
+`docs/Bytecode.md` ist normativ geschrieben. 1147 Tests grün.
 
 **M5-Gate-Programm ist `examples/arith.lyr`**, nicht `hello.lyr`: letzteres braucht
 `console.println` und f-Strings, also eine Import-Tabelle mit Signaturen — und die entsteht erst mit
@@ -83,11 +90,28 @@ Programm, mit Begründung als Blockzitat).
     P4-Fixtures, Determinismus, Stack-Bilanz, Reader-Robustheit inkl. 400 Fuzzing-Läufen mit
     festem Seed, und ein Test, der `docs/Bytecode.md` gegen die Opcode-/Tag-Tabellen bindet.
 
+- [x] **M6 — Slice 1 — VM-Kern** (`Lyric.Vm/`): `LyrValue`, Frames, Interpreter, `lyric run`.
+  - **Werte ohne Typ-Tag.** Jeder Opcode trägt sein Tag im Instruktionsstrom (P5), also weiß der
+    Interpreter statisch, was auf dem Stack liegt. Ein Tag im Wert wäre eine zweite, redundante
+    Wahrheitsquelle. Zahlen liegen in einem `ulong`, nur Strings brauchen eine Referenz.
+  - **Ganzzahlen immer auf 64 Bit erweitert** (signed vorzeichen-, unsigned nullerweitert), nach
+    jeder Rechnung auf die Zielbreite normalisiert. Ohne den Schritt liefert `add i8` mit 100+100
+    die Zahl 200 statt −56.
+  - **Expliziter Frame-Stack statt .NET-Rekursion**: sonst begrenzte der CLR-Stack die
+    Lyric-Rekursion, und ein Überlauf wäre ein Prozessabbruch statt einer Diagnose (`LYR-VM0004`).
+  - **Instruktionen einmal vordekodiert**, über denselben `CodeDecoder` wie Validator und
+    Disassembler. Blocksprünge sind damit ein Array-Zugriff.
+  - **Neue Start-Sektion im Format** (Id 7, Version 1.1): der Einstiegspunkt stand nirgends im
+    Bytecode. Eine Runtime hätte `main` nur über eine Namenskonvention finden können — und eine
+    zweite Implementierung, die nur die Spec kennt, gar nicht. Das widersprach ADR-013 direkt.
+  - 40 Testfälle über die **gesamte** Pipeline (Quelle → Sema → IR → Bytecode → Ausführung):
+    Arithmetik inkl. Vorzeichen- und Breiten-Kanten, Konvertierungen mit Sättigung, Kontrollfluss,
+    Kurzschluss-Nachweis über eine sonst auslösende Division durch Null, Laufzeitfehler.
+
 ## Woran wir gerade arbeiten
 
-Als Nächstes **M6 — VM (basic)**: Value-Repräsentation, Stack-VM, alle Opcodes außer Exceptions
-und Coroutinen, Stdlib-Minimum (`println`, `panic`, `format`), Source-Mapping, `lyric run`.
-Exit: Hello-World, FizzBuzz, Fibonacci laufen.
+**M6 — Slice 2**: Import-Bindung, Mini-Stdlib, f-Strings. Design steht (siehe Entscheidungen
+unten); Exit ist dann M6s Exit-Kriterium — hello/fizzbuzz/fibonacci laufen.
 
 ## Scope-Check 2026-08-02 (Ergebnis)
 
@@ -108,6 +132,29 @@ Exit: Hello-World, FizzBuzz, Fibonacci laufen.
 - **ROADMAP-Korrektur vom 30.07.** (M5-Exit auf `examples/arith.lyr`) formlos ratifiziert.
 
 ## Noch offen
+
+**Aus M6 Slice 1 — Sprach-Semantik, die die VM entscheiden musste:**
+
+Diese vier Punkte stehen **nicht in `Sprache.md`** und gehören dort hinein. Ohne sie liefert
+dieselbe `.lyrbc`-Datei auf zwei Runtimes verschiedene Ergebnisse, und ADR-013s Versprechen einer
+zweiten Implementierung ist nichts wert:
+
+- **Ganzzahl-Überlauf wickelt um** (Zweierkomplement), auch `MinValue / -1`.
+- **Schiebebetrag** wird auf 6 Bit maskiert, danach auf die Zielbreite normalisiert.
+- **Fließkomma → Ganzzahl sättigt** statt undefiniert zu sein (WASMs `trunc_sat`), NaN → 0.
+- **Ganzzahl-Division durch Null** ist ein Laufzeitfehler; **Float-Division durch Null** ist IEEE
+  (Inf/NaN) und kein Fehler.
+
+**Entscheidungen für M6 Slice 2 (getroffen, noch nicht gebaut):**
+
+- **Stdlib-Signaturen als bodylose `fn` in `.lyr`** unter `stdlib/`. Kein neuer Mechanismus:
+  `Sprache.md` §3.1 erlaubt `( Block | ';' )`, und `BuiltinTypes.CreatePanic()` benutzt genau das
+  schon. **Zu bauen**: die Unterscheidung native Modul / User-Modul — heute rutscht ein bodyless
+  `fn` in User-Code stillschweigend durch `lyric check`.
+- **`println` nimmt `string`.** Kein Overloading in Lyric; generisch mit `Display` bräuchte
+  Builtin-Konformanz (M8). `Sprache.md` §8 und `Doku.md` §19 sind korrigiert.
+- **`std.fmt.format` nach M8 verschoben** — keines der drei Exit-Programme nutzt Format-Specs.
+- **f-Strings lowern zu einer `concat`/`toString`-Kette** (Roslyn-Modell), keine Arrays nötig.
 
 **Aus M5:**
 
@@ -175,7 +222,7 @@ Exit: Hello-World, FizzBuzz, Fibonacci laufen.
 
 ## Letzter relevanter Commit
 
-`repo: Scope-Check 2026-08-02`
+`M6: VM-Kern, lyric run, Start-Sektion (Slice 1)`
 
 ---
 

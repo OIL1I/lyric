@@ -7,6 +7,7 @@ using Lyric.Lexing;
 using Lyric.Parsing;
 using Lyric.Resolver;
 using Lyric.Sema;
+using Lyric.Vm;
 
 namespace Lyric.Cli;
 
@@ -33,8 +34,59 @@ public static class Program
             "lower" => Lower(args),
             "build" => Build(args),
             "disasm" => Disasm(args),
+            "run" => RunCmd(args),
             _ => Unknown(args[0]),
         };
+    }
+
+    /// <summary>Compiliert und führt aus. Nimmt <c>.lyr</c> (compiliert im Speicher) oder
+    /// <c>.lyrbc</c> (lädt direkt). Der Rückgabewert von <c>main</c> ist der Prozess-Exit-Code
+    /// (Sprache.md §11).</summary>
+    private static int RunCmd(string[] args)
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("run: missing file argument");
+            return 2;
+        }
+        var fpath = args[1];
+        var de = new DiagnosticEngine(new SourceManager());
+
+        byte[] bytes;
+        if (Path.GetExtension(fpath).Equals(".lyrbc", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                bytes = File.ReadAllBytes(fpath);
+            }
+            catch
+            {
+                Console.Error.WriteLine($"run: failed to read file: {fpath}");
+                return 1;
+            }
+        }
+        else
+        {
+            var pipeline = Compile(fpath);
+            if (pipeline.Ir is null) return 1;
+            bytes = BytecodeWriter.Write(pipeline.Ir);
+        }
+
+        var module = BytecodeReader.Read(bytes, de);
+        de.RenderText(Console.Error);
+        if (module is null) return 1;
+
+        try
+        {
+            // §11: Exit-Code ist 0..255. Wie jedes POSIX-System nehmen wir das niedrigste Byte.
+            return (int)(Interpreter.Run(module).AsI64 & 0xFF);
+        }
+        catch (LyricRuntimeException ex)
+        {
+            de.Report(ex.Code, Severity.Error, default, ex.Message);
+            de.RenderText(Console.Error);
+            return 1;
+        }
     }
 
     /// <summary>Compiliert nach <c>.lyrbc</c>. Ohne <c>-o</c> neben die Quelle.</summary>
@@ -308,5 +360,6 @@ public static class Program
         Console.WriteLine("  lower <file>     Print mid-IR dump (debug)");
         Console.WriteLine("  build <file> [-o <out>]  Compile to .lyrbc");
         Console.WriteLine("  disasm <file>    Disassemble a .lyrbc");
+        Console.WriteLine("  run <file>       Compile and execute (.lyr or .lyrbc)");
     }
 }

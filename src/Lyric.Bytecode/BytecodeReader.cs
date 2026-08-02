@@ -49,6 +49,7 @@ public static class BytecodeReader
         IReadOnlyList<string> strings = Array.Empty<string>();
         IReadOnlyList<BytecodeImport> imports = Array.Empty<BytecodeImport>();
         IReadOnlyList<BytecodeFunction> functions = Array.Empty<BytecodeFunction>();
+        int? start = null;
 
         var previousId = -1;
         while (!reader.AtEnd)
@@ -70,6 +71,7 @@ public static class BytecodeReader
                 case SectionId.Strings: strings = ReadStrings(payload); break;
                 case SectionId.Imports: imports = ReadImports(payload); break;
                 case SectionId.Functions: functions = ReadFunctions(payload, strings); break;
+                case SectionId.Start: start = payload.ULebAsCount(); break;
                 default: break; // unbekannt oder reserviert: überspringen, dafür ist die Länge da
             }
 
@@ -86,6 +88,7 @@ public static class BytecodeReader
             Strings = strings,
             Imports = imports,
             Functions = functions,
+            Start = start,
         };
 
         Validate(module);
@@ -168,6 +171,12 @@ public static class BytecodeReader
     /// Signaturen anderer Funktionen, Sprungziele die Blockanzahl.</summary>
     private static void Validate(BytecodeModule module)
     {
+        if (module.Start is { } start
+            && (start < 0 || start >= module.Imports.Count + module.Functions.Count))
+            throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                $"start function {start} is outside the callable index space " +
+                $"({module.Imports.Count + module.Functions.Count})");
+
         foreach (var function in module.Functions)
         {
             if (function.BlockOffsets.Count == 0)
