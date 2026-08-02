@@ -49,6 +49,23 @@ public static class Interpreter
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
 
+        try
+        {
+            return Loop(prepared, strings, frames, ref frame);
+        }
+        catch (LyricPanic panic) when (panic.CallStack.Count == 0)
+        {
+            // Der Backtrace wird hier angehängt, nicht an der Wurfstelle: eine Rechenoperation
+            // kennt ihren Aufrufer nicht, die Schleife dagegen hält den ganzen Frame-Stack.
+            var stack = new List<string> { frame.Fn.Source.Name };
+            stack.AddRange(frames.Select(f => f.Fn.Source.Name));
+            throw panic.WithCallStack(stack);
+        }
+    }
+
+    private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
+        Stack<Frame> frames, ref Frame frame)
+    {
         while (true)
         {
             var instruction = frame.Fn.Instructions[frame.Ip++];
@@ -109,7 +126,7 @@ public static class Interpreter
                 case Op.Call:
                 {
                     if (frames.Count >= MaxCallDepth)
-                        throw new LyricRuntimeException(VmDiagnostics.CallDepthExceeded,
+                        throw new LyricPanic(VmDiagnostics.CallDepthExceeded,
                             $"call depth exceeded {MaxCallDepth} frames in '{frame.Fn.Source.Name}'");
 
                     var callee = prepared[(int)instruction.Immediate];
@@ -135,12 +152,12 @@ public static class Interpreter
                 }
 
                 case Op.Unreachable:
-                    throw new LyricRuntimeException(VmDiagnostics.UnreachableExecuted,
+                    throw new LyricPanic(VmDiagnostics.UnreachableExecuted,
                         $"reached an 'unreachable' instruction in '{frame.Fn.Source.Name}' — " +
                         "the compiler proved this point cannot be reached, so this is a compiler bug");
 
                 default:
-                    throw new LyricRuntimeException(VmDiagnostics.UnreachableExecuted,
+                    throw new LyricPanic(VmDiagnostics.UnreachableExecuted,
                         $"opcode {instruction.Opcode} is not implemented");
             }
         }
@@ -178,7 +195,7 @@ public static class Interpreter
             case Op.Div or Op.Rem:
             {
                 if (rhs.Bits == 0)
-                    throw new LyricRuntimeException(VmDiagnostics.DivisionByZero,
+                    throw new LyricPanic(VmDiagnostics.DivisionByZero,
                         op == Op.Div ? "division by zero" : "remainder by zero");
 
                 if (signed)
@@ -197,25 +214,40 @@ public static class Interpreter
                 break;
             }
 
-            // Der Schiebebetrag wird auf 6 Bit maskiert (C#-Semantik auf 64 Bit); die
-            // anschließende Normalisierung schneidet auf die Zielbreite zurück.
-            case Op.Shl: result = unchecked(lhs.Bits << (int)(rhs.Bits & 63)); break;
+            // Sprache.md §6.5: der Schiebebetrag wird modulo der OPERANDENBREITE genommen, nicht
+            // modulo 64. Bei 64 zu maskieren und danach auf die Zielbreite zu normalisieren wäre
+            // eine Mischform: `1 << 9` ergäbe bei int8 dann 0, bei int64 aber 2 — dieselbe Regel
+            // mit verschiedenem Ergebnis je nach Typ.
+            case Op.Shl: result = unchecked(lhs.Bits << ShiftCount(tag, rhs.Bits)); break;
             case Op.Shr:
                 result = signed
-                    ? unchecked((ulong)(lhs.AsI64 >> (int)(rhs.Bits & 63))) // arithmetisch
-                    : lhs.Bits >> (int)(rhs.Bits & 63);                     // logisch
+                    ? unchecked((ulong)(lhs.AsI64 >> ShiftCount(tag, rhs.Bits))) // arithmetisch
+                    : lhs.Bits >> ShiftCount(tag, rhs.Bits);                     // logisch
                 break;
 
             case Op.BitAnd: result = lhs.Bits & rhs.Bits; break;
             case Op.BitOr: result = lhs.Bits | rhs.Bits; break;
             case Op.BitXor: result = lhs.Bits ^ rhs.Bits; break;
 
-            default: throw new LyricRuntimeException(VmDiagnostics.UnreachableExecuted,
+            default: throw new LyricPanic(VmDiagnostics.UnreachableExecuted,
                 $"binary opcode {op} is not implemented");
         }
 
         return LyrValue.FromBits(LyrValue.Normalize(tag, result));
     }
+
+    /// <summary>Schiebebetrag modulo Operandenbreite (Sprache.md §6.5) — dieselbe Regel wie in
+    /// C#, Java und WASM.</summary>
+    private static int ShiftCount(TypeTag tag, ulong count) =>
+        (int)(count & (ulong)(BitWidth(tag) - 1));
+
+    private static int BitWidth(TypeTag tag) => tag switch
+    {
+        TypeTag.I8 or TypeTag.U8 => 8,
+        TypeTag.I16 or TypeTag.U16 => 16,
+        TypeTag.I32 or TypeTag.U32 => 32,
+        _ => 64,
+    };
 
     private static double FloatOp(Op op, double a, double b) => op switch
     {
@@ -224,7 +256,7 @@ public static class Interpreter
         Op.Mul => a * b,
         Op.Div => a / b,   // IEEE: durch Null ergibt Inf/NaN, kein Fehler
         Op.Rem => a % b,
-        _ => throw new LyricRuntimeException(VmDiagnostics.UnreachableExecuted,
+        _ => throw new LyricPanic(VmDiagnostics.UnreachableExecuted,
             $"opcode {op} is not valid on floating point values"),
     };
 
@@ -278,7 +310,7 @@ public static class Interpreter
         Op.Neg when tag == TypeTag.F32 => LyrValue.FromF32(-operand.AsF32),
         Op.Neg => LyrValue.FromBits(LyrValue.Normalize(tag!.Value, unchecked(0UL - operand.Bits))),
         Op.BitNot => LyrValue.FromBits(LyrValue.Normalize(tag!.Value, ~operand.Bits)),
-        _ => throw new LyricRuntimeException(VmDiagnostics.UnreachableExecuted,
+        _ => throw new LyricPanic(VmDiagnostics.UnreachableExecuted,
             $"unary opcode {op} is not implemented"),
     };
 

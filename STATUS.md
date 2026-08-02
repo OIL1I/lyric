@@ -23,7 +23,7 @@ hello/fizzbuzz/fibonacci.
 Slices P1–P5 stehen: IR-Datentypen, Printer + Goldens, Verifier, Lowering AST → IR, Bytecode-Format
 + Writer/Reader/Disassembler. Die Pipeline läuft durch: `lyric build examples/arith.lyr` erzeugt
 `.lyrbc`, `lyric disasm` zeigt sinnvolle Instruktionen. ADR-006 und ADR-013 sind umgesetzt,
-`docs/Bytecode.md` ist normativ geschrieben. 1147 Tests grün.
+`docs/Bytecode.md` ist normativ geschrieben. 1151 Tests grün.
 
 **M5-Gate-Programm ist `examples/arith.lyr`**, nicht `hello.lyr`: letzteres braucht
 `console.println` und f-Strings, also eine Import-Tabelle mit Signaturen — und die entsteht erst mit
@@ -104,6 +104,13 @@ Programm, mit Begründung als Blockzitat).
   - **Neue Start-Sektion im Format** (Id 7, Version 1.1): der Einstiegspunkt stand nirgends im
     Bytecode. Eine Runtime hätte `main` nur über eine Namenskonvention finden können — und eine
     zweite Implementierung, die nur die Spec kennt, gar nicht. Das widersprach ADR-013 direkt.
+  - **Numerische Laufzeit-Semantik in `Sprache.md` §6.6 festgeschrieben**: Überlauf wickelt um,
+    Schiebebetrag modulo Operandenbreite, Fließkomma→Ganzzahl sättigt, Ganzzahl-Division durch
+    Null ist ein `panic` und Float-Division IEEE. „Undefiniert wie in C" ist an keiner Stelle
+    zulässig — `.lyrbc` ist ein plattformneutraler Vertrag (ADR-013).
+  - **Laufzeitfehler sind `panic`** (§9) mit Backtrace, kein dritter Fehlermechanismus neben
+    `panic` und typisierten Exceptions. `lyric run` beendet mit **101**, damit ein Skript einen
+    Absturz von einem regulären `return 1;` unterscheiden kann.
   - 40 Testfälle über die **gesamte** Pipeline (Quelle → Sema → IR → Bytecode → Ausführung):
     Arithmetik inkl. Vorzeichen- und Breiten-Kanten, Konvertierungen mit Sättigung, Kontrollfluss,
     Kurzschluss-Nachweis über eine sonst auslösende Division durch Null, Laufzeitfehler.
@@ -133,17 +140,6 @@ unten); Exit ist dann M6s Exit-Kriterium — hello/fizzbuzz/fibonacci laufen.
 
 ## Noch offen
 
-**Aus M6 Slice 1 — Sprach-Semantik, die die VM entscheiden musste:**
-
-Diese vier Punkte stehen **nicht in `Sprache.md`** und gehören dort hinein. Ohne sie liefert
-dieselbe `.lyrbc`-Datei auf zwei Runtimes verschiedene Ergebnisse, und ADR-013s Versprechen einer
-zweiten Implementierung ist nichts wert:
-
-- **Ganzzahl-Überlauf wickelt um** (Zweierkomplement), auch `MinValue / -1`.
-- **Schiebebetrag** wird auf 6 Bit maskiert, danach auf die Zielbreite normalisiert.
-- **Fließkomma → Ganzzahl sättigt** statt undefiniert zu sein (WASMs `trunc_sat`), NaN → 0.
-- **Ganzzahl-Division durch Null** ist ein Laufzeitfehler; **Float-Division durch Null** ist IEEE
-  (Inf/NaN) und kein Fehler.
 
 **Entscheidungen für M6 Slice 2 (getroffen, noch nicht gebaut):**
 
@@ -222,7 +218,7 @@ zweiten Implementierung ist nichts wert:
 
 ## Letzter relevanter Commit
 
-`M6: VM-Kern, lyric run, Start-Sektion (Slice 1)`
+`M6: numerische Laufzeit-Semantik in Sprache.md §6.6`
 
 ---
 

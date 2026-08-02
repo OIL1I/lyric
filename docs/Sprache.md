@@ -618,6 +618,27 @@ Die Typregeln der Operatoren (von der Sema durchgesetzt):
 - **Nullable** (§7): `T` → `?T` implizit; `?T` → `T` nur via `!`, `??` oder
   Pattern-Match. Flow-Narrowing (`if (x != null)`) siehe §7.
 
+### 6.6 Numerische Laufzeit-Semantik
+
+Diese Regeln sind **normativ**, nicht implementierungsabhängig: `.lyrbc` ist ein plattformneutraler
+Vertrag (ADR-013), und dieselbe Datei muss auf jeder Runtime dasselbe Ergebnis liefern. „Undefiniert
+wie in C" ist deshalb an keiner Stelle zulässig.
+
+| Fall | Regel |
+|---|---|
+| **Ganzzahl-Überlauf** | Wickelt im Zweierkomplement um. `int8`: `127 + 1 == -128`. Gilt auch für `MinValue / -1`, dessen Ergebnis wieder `MinValue` ist. |
+| **Schiebebetrag** | Wird **modulo der Operandenbreite** genommen. `int8`: `1 << 9` ist `1 << 1`, also `2`. Kein Fehlerfall. |
+| **`>>` bei signed** | Arithmetisch (Vorzeichen wird nachgezogen). Bei unsigned logisch. |
+| **Ganzzahl-Division/Rest durch Null** | `panic` (§9) — ein gebrochener Vertrag, nicht catchbar. |
+| **Fließkomma-Division durch Null** | IEEE 754: `±Inf` bzw. `NaN`. **Kein** Fehler. |
+| **Fließkomma → Ganzzahl (`as`)** | Schneidet Richtung Null ab und **sättigt**: außerhalb des Zielbereichs auf dessen Grenze, `NaN` auf `0`. |
+| **Ganzzahl → Ganzzahl (`as`)** | Schneidet auf die Zielbreite ab; das Vorzeichen ergibt sich aus dem Zieltyp. |
+
+Der Überlauf ist bewusst umwickelnd und nicht panickend: ohne `wrappingAdd` & Co. in der Stdlib
+wären Hashes, PRNGs und Prüfsummen sonst nicht schreibbar. Die Entscheidung gehört nach dem
+Stdlib-Ausbau erneut geprüft — der Weg „umwickeln → panic" ist später gangbar, umgekehrt wäre es
+eine Lockerung, die vorher korrekten Code still verändert.
+
 ---
 
 ## 7. Nullable und Optional-Operationen

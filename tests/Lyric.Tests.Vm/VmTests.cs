@@ -50,8 +50,10 @@ public class VmTests
     /// <summary>Kürzel: der Rumpf wird in ein `main` gepackt.</summary>
     private static long Eval(string body) => Run($"fn main(): int {{ {body} }}").AsI64;
 
-    private static LyricRuntimeException RunExpectingError(string source) =>
-        Assert.Throws<LyricRuntimeException>(() => Run(source));
+    /// <summary>Ein Programmierfehler zur Laufzeit ist ein <c>panic</c> (Sprache.md §9) — nicht
+    /// catchbar, mit Backtrace. Kein eigener VM-Fehlerweg daneben.</summary>
+    private static LyricPanic RunExpectingPanic(string source) =>
+        Assert.Throws<LyricPanic>(() => Run(source));
 
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
@@ -89,10 +91,20 @@ public class VmTests
     public void Signed_min_divided_by_minus_one_wraps()
     {
         // Zweierkomplement hat kein positives Gegenstück zu MinValue. .NET wirft hier; Lyric
-        // wickelt um wie bei jeder anderen Ganzzahl-Operation — ein Absturz wäre die schlechtere
-        // Antwort. (Steht noch nicht in Sprache.md.)
+        // wickelt um wie bei jeder anderen Ganzzahl-Operation (Sprache.md §6.6).
         Assert.Equal(long.MinValue, Eval("let m: int = -9223372036854775807 - 1; return m / -1;"));
     }
+
+    [Theory]
+    // Sprache.md §6.6: der Schiebebetrag wird modulo der OPERANDENBREITE genommen. Vorher maskierte
+    // die VM bei 64 und normalisierte auf die Zielbreite — eine Mischform, die dieselbe Regel je
+    // nach Typ verschieden ausfallen ließ: `1 << 9` ergab bei int8 0, bei int64 aber 2.
+    [InlineData("let a: int8 = 1; let s: int8 = 9; return (a << s) as int;", 2)]     // 9 mod 8 = 1
+    [InlineData("let a: int32 = 1; let s: int32 = 33; return (a << s) as int;", 2)]  // 33 mod 32 = 1
+    [InlineData("let a: int = 1; let s: int = 65; return a << s;", 2)]               // 65 mod 64 = 1
+    [InlineData("let a: int8 = 1; let s: int8 = 7; return (a << s) as int;", -128)]  // Vorzeichenbit
+    public void Shift_count_is_taken_modulo_the_operand_width(string body, long expected) =>
+        Assert.Equal(expected, Eval(body));
 
     [Fact]
     public void Narrow_integers_wrap_at_their_own_width()
@@ -158,7 +170,7 @@ public class VmTests
     public void And_short_circuits_before_evaluating_the_right_side()
     {
         // Der Beweis läuft über einen Nebeneffekt, den es sonst nicht gibt: würde die rechte Seite
-        // ausgewertet, gäbe es eine Division durch Null und damit LYR-VM0002 statt einer 7.
+        // ausgewertet, gäbe es eine Division durch Null und damit einen panic statt einer 7.
         Assert.Equal(7, Eval("var d = 0; if (false && (10 / d) > 0) { return 1; } return 7;"));
     }
 
@@ -191,16 +203,24 @@ public class VmTests
     // ------------------------------------------------------------------ 5) Laufzeitfehler
 
     [Fact]
-    public void Division_by_zero_is_a_runtime_error()
+    public void Division_by_zero_panics_with_a_backtrace()
     {
-        var ex = RunExpectingError("fn main(): int { var d = 0; return 10 / d; }");
+        // Ein gebrochener Vertrag ist ein panic (Sprache.md §9), kein eigener VM-Fehlerweg
+        // daneben — sonst gäbe es drei Fehlermechanismen statt zwei.
+        var ex = RunExpectingPanic("""
+            fn divide(a: int, b: int): int { return a / b; }
+            fn main(): int { var zero = 0; return divide(1, zero); }
+            """);
+
         Assert.Equal(VmDiagnostics.DivisionByZero, ex.Code);
+        // Innerste Funktion zuerst — der Backtrace zeigt, wo es knallte und wer dorthin führte.
+        Assert.Equal(new[] { "main.divide", "main.main" }, ex.CallStack);
     }
 
     [Fact]
-    public void Remainder_by_zero_is_a_runtime_error()
+    public void Remainder_by_zero_panics()
     {
-        var ex = RunExpectingError("fn main(): int { var d = 0; return 10 % d; }");
+        var ex = RunExpectingPanic("fn main(): int { var d = 0; return 10 % d; }");
         Assert.Equal(VmDiagnostics.DivisionByZero, ex.Code);
     }
 
@@ -217,7 +237,7 @@ public class VmTests
     {
         // Mit .NET-Rekursion im Interpreter wäre das ein StackOverflowException — und die kann
         // man in .NET nicht abfangen, der Prozess stirbt. Deshalb ein expliziter Frame-Stack.
-        var ex = RunExpectingError("""
+        var ex = RunExpectingPanic("""
             fn down(n: int): int { return down(n + 1); }
             fn main(): int { return down(0); }
             """);

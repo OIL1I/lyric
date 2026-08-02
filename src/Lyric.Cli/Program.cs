@@ -81,6 +81,16 @@ public static class Program
             // §11: Exit-Code ist 0..255. Wie jedes POSIX-System nehmen wir das niedrigste Byte.
             return (int)(Interpreter.Run(module).AsI64 & 0xFF);
         }
+        catch (LyricPanic panic)
+        {
+            // §9: ein panic druckt einen Backtrace und beendet die VM. Nicht catchbar.
+            Console.Error.WriteLine($"panic [{panic.Code}]: {panic.Message}");
+            foreach (var frame in panic.CallStack) Console.Error.WriteLine($"    in {frame}");
+
+            // 101 statt 1, damit ein Skript einen Absturz von einem regulären `return 1;`
+            // unterscheiden kann (Rusts Konvention).
+            return 101;
+        }
         catch (LyricRuntimeException ex)
         {
             de.Report(ex.Code, Severity.Error, default, ex.Message);
