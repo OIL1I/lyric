@@ -34,8 +34,10 @@ namespace Lyric.Ir
                     return x.Kind == y.Kind;
                 case (IrRefType x, IrRefType y):
                     return x.Type == y.Type;
-                case (IrScalarType, IrRefType) or (IrRefType, IrScalarType):
-                    return false;
+                case (IrArrayType x, IrArrayType y):
+                    return Equal(x.Element, y.Element);
+                case (IrScalarType or IrRefType or IrArrayType, IrScalarType or IrRefType or IrArrayType):
+                    return false; // verschiedene Sorten — vergleichbar, nur eben ungleich
                 default:
                     throw new InternalCompilationException(
                         $"ir-type: cannot compare {a.GetType().Name} with {b.GetType().Name}");
@@ -55,4 +57,15 @@ namespace Lyric.Ir
     /// Endlosschleife. So ist Gleichheit ein <c>int</c>-Vergleich und Rekursion kostenlos.</para>
     /// </summary>
     public sealed record IrRefType(TypeId Type) : IrType;
+
+    /// <summary>
+    /// Ein wachsendes Array (<c>T[]</c>, Sprache.md §4). Wie <see cref="IrRefType"/> eine Referenz:
+    /// Zuweisung teilt das Array, sie kopiert es nicht.
+    ///
+    /// <para><b>Der Elementtyp steht inline</b>, nicht als Tabellen-Index — anders als bei einer
+    /// Klasse. Das geht, weil ein Array-Typ nicht rekursiv sein kann: <c>int[][]</c> ist endlich
+    /// tief, ein <c>class Node { next: Node }</c> nicht. Wo keine Rekursion droht, ist die
+    /// Indirektion nur Kosten.</para>
+    /// </summary>
+    public sealed record IrArrayType(IrType Element) : IrType;
 }

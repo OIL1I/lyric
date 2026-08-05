@@ -339,13 +339,14 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 |---|---|---|
 | P1 ✅ | Classes: Types-Sektion (Id 3), Heap-Objekte, Felder (**ohne** Methoden, s. u.) | `examples/objects.lyr` |
 | P1b ✅ | `static`/`static let` (ADR-014), Methoden-Lowering mit Empfänger als Parameter 0 | `examples/objects.lyr` |
-| P2 | Arrays: Allokation, Index, `length` | `examples/stats.lyr` |
+| P2 | Arrays: Allokation, Literal, Index, `length`/`push`/`pop` als Intrinsics | `examples/arrays.lyr` |
+| P2b | Optionals (`?T`, `??`, `!`, Flow-Narrowing) | `examples/stack.lyr` ohne Generics |
 | P3 | Interfaces + vtable-Dispatch | `examples/shapes.lyr` |
 | P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/bank.lyr` |
 | P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | — |
 | P6 | Closures (Lifting + Environment-Objekt) | `examples/inventory.lyr` |
 | P7 | Coroutinen (State-Machine-Lowering, ADR-006) | `examples/fibonacci.lyr` |
-| P8 | Generics-Monomorphisierung + `for-in`/`Iterator` | `examples/fizzbuzz.lyr`, `examples/stack.lyr` |
+| P8 | Generics-Monomorphisierung + `for-in`/`Iterator` | `examples/fizzbuzz.lyr`, `examples/stats.lyr` |
 
 - IR-Instruktionen: `NewClass`, `NewStruct`, `NewArray`, `LoadField`, `StoreField`, `LoadElem`,
   `StoreElem`, `ArrayLen`, `CallVirt`, `Throw`, `Catch`, `Yield`, `Resume` — aus M5s Liste
@@ -355,6 +356,25 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 - Diagnostik-Codes `LYR-VM0020..0050`.
 
 **Exit**: Alle `examples/*.lyr` laufen. **v0.5 Release-Tag**.
+
+> **Korrektur (2026-08-02, vor P2):** Zwei Ergänzungen an der Slice-Tabelle, beide aus derselben
+> Prüfung — was verlangt das Gate-Programm wirklich?
+>
+> **Optionals bekommen einen eigenen Slice (P2b).** Sie fehlten in der ursprünglichen Tabelle
+> komplett, obwohl `?T` Kernsprache ist (§7, mit `??`, `!` und Flow-Narrowing) und `stack.lyr`,
+> `inventory.lyr` und `stats.lyr` alle daran hängen. Ohne eigenen Slice wären sie bis P8 blockiert
+> gewesen, ohne dass irgendwo stünde, warum.
+>
+> **P2s Gate ist nicht `stats.lyr`.** Das Programm braucht neben Arrays noch `params`-Variadics,
+> `for-in` (also `Iterator`, P8), Optionals (P2b) und eine Format-Spec (`std.fmt`, M8) — vier
+> Dinge aus vier verschiedenen Meilensteinen. Es wandert zu P8, wo das letzte davon fällt; P2
+> bekommt ein Programm, das nur aus P2-Mitteln besteht.
+>
+> **Offen und noch nicht entschieden**: ob `T[]` ein eingebauter Typ mit Intrinsics ist oder
+> tatsächlich Zucker für eine generische Stdlib-Klasse `List<T>`, wie `Doku.md` §5.2 es beschreibt.
+> P2 implementiert `.length`/`.push`/`.pop` als **Intrinsics auf dem eingebauten Typ** — die
+> dokumentierte Oberfläche stimmt, der Unterbau ist der einfachere. Eine echte `List<T>` bräuchte
+> Generics (P8) und `std.collections` (M8) und wäre auf sich selbst gebaut.
 
 > **Offene Sprachfrage (2026-08-02, aus P1) — blockiert P3:** Methoden sind in P1 bewusst **nicht**
 > gelowert, und der Grund ist eine Lücke in `Sprache.md`, keine Zeitfrage. Die Grammatik kennt kein

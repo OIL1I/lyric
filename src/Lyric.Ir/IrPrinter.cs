@@ -130,6 +130,14 @@ public static class IrPrinter
         NewObject n => $"{n.Dest}: {TypeStr(new IrRefType(n.Type))} = newobj {n.Type}",
         LoadField f => $"{f.Dest}: {TypeStr(f.FieldType)} = loadfield {f.Object}, {f.Type}{f.Field}",
         StoreField f => $"storefield {f.Object}, {f.Type}{f.Field}, {f.Value}",
+
+        NewArray a => $"{a.Dest}: {TypeStr(new IrArrayType(a.Element))} = newarr " +
+                      $"{TypeStr(a.Element)} [{string.Join(", ", a.Elements)}]",
+        LoadElem e => $"{e.Dest}: {TypeStr(e.Element)} = loadelem {e.Array}, {e.Index}",
+        StoreElem e => $"storeelem {e.Array}, {e.Index}, {e.Value}",
+        ArrayLen a => $"{a.Dest}: i64 = arraylen {a.Array}",
+        ArrayPush p => $"push {p.Array}, {p.Value}",
+        ArrayPop p => $"{p.Dest}: {TypeStr(p.Element)} = pop {p.Array}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 
@@ -170,6 +178,7 @@ public static class IrPrinter
     {
         IrScalarType s => IrNames.Scalar(s.Kind),
         IrRefType r => $"&{r.Type}",
+        IrArrayType a => $"{TypeStr(a.Element)}[]",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 

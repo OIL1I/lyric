@@ -38,6 +38,17 @@ public sealed record NewObject(TempId Dest, TypeId Type, Span Span) : IrOp(Span)
 public sealed record LoadField(TempId Dest, TempId Object, TypeId Type, FieldId Field, IrType FieldType, Span Span) : IrOp(Span);
 public sealed record StoreField(TempId Object, TypeId Type, FieldId Field, TempId Value, Span Span) : IrOp(Span);
 
+// Arrays (Sprache.md §4). Ein Element-Index ist ein LAUFZEITWERT — anders als Feld- und Typ-Indizes
+// ist er beim Laden nicht prüfbar. Eine Verletzung ist deshalb ein panic (§9) und kein
+// Ladefehler: „das Programm hat sich verrechnet" ist etwas anderes als „der Compiler hat Unsinn
+// erzeugt", und nur das Zweite gehört in die Load-Zeit-Validierung.
+public sealed record NewArray(TempId Dest, IrType Element, TempId[] Elements, Span Span) : IrOp(Span);
+public sealed record LoadElem(TempId Dest, TempId Array, TempId Index, IrType Element, Span Span) : IrOp(Span);
+public sealed record StoreElem(TempId Array, TempId Index, TempId Value, Span Span) : IrOp(Span);
+public sealed record ArrayLen(TempId Dest, TempId Array, Span Span) : IrOp(Span);
+public sealed record ArrayPush(TempId Array, TempId Value, Span Span) : IrOp(Span);
+public sealed record ArrayPop(TempId Dest, TempId Array, IrType Element, Span Span) : IrOp(Span);
+
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);

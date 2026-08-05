@@ -104,9 +104,26 @@ public static class IrVerifier
                                      $"'{def.FieldNames[f]}' references type {r.Type}, which is out " +
                                      $"of range (module has {module.Types.Count} type(s))");
                         break;
+
+                    // Ein Array-Feld trägt seinen Elementtyp inline; eine Referenz darin muss
+                    // genauso in die Tabelle zeigen wie eine direkte.
+                    case IrArrayType arr when Innermost(arr) is IrRefType inner
+                                              && (inner.Type.Value < 0 || inner.Type.Value >= module.Types.Count):
+                        findings.Add($"type {id} '{def.Name}': field {new FieldId(f)} " +
+                                     $"'{def.FieldNames[f]}' has element type {inner.Type}, which is " +
+                                     $"out of range (module has {module.Types.Count} type(s))");
+                        break;
                 }
             }
         }
+    }
+
+    /// <summary>Schält Array-Schichten ab: <c>int[][]</c> → <c>int</c>. Terminiert, weil ein
+    /// Array-Typ seinen Elementtyp inline trägt und damit endlich tief ist.</summary>
+    private static IrType Innermost(IrType type)
+    {
+        while (type is IrArrayType a) type = a.Element;
+        return type;
     }
 
     /// <summary>Wie <see cref="Verify"/>, wirft aber bei Befunden. Für Aufrufstellen im Lowering,
@@ -543,6 +560,12 @@ public static class IrVerifier
                 case NewObject n: CheckNewObject(n, block, index); break;
                 case LoadField f: CheckLoadField(f, block, index); break;
                 case StoreField f: CheckStoreField(f, block, index); break;
+                case NewArray a: CheckNewArray(a, block, index); break;
+                case LoadElem e: CheckLoadElem(e, block, index); break;
+                case StoreElem e: CheckStoreElem(e, block, index); break;
+                case ArrayLen a: CheckArrayLen(a, block, index); break;
+                case ArrayPush p: CheckArrayPush(p, block, index); break;
+                case ArrayPop p: CheckArrayPop(p, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -892,6 +915,89 @@ public static class IrVerifier
                                  $"but {f.Value} is {Show(actual)}");
     }
 
+    /// <summary>Der Array-Operand muss ein Array sein; liefert den Elementtyp, oder <c>null</c>
+    /// nach gemeldetem Befund.</summary>
+    private IrType? RequireArray(TempId array, string what, BlockId block, int index)
+    {
+        if (TypeOf(array) is IrArrayType a) return a.Element;
+
+        Report(block, index, $"{what} expects {array} to be an array, found {Show(TypeOf(array))}");
+        return null;
+    }
+
+    /// <summary>Ein Index muss <c>i64</c> sein. Nicht <b>ob</b> er in Grenzen liegt — das ist ein
+    /// Laufzeitwert und wird zur Laufzeit zum <c>panic</c> (Sprache.md §9). Der Verifier prüft die
+    /// Form, nicht das Programm.</summary>
+    private void RequireIndex(TempId index, string what, BlockId block, int at)
+    {
+        if (TypeOf(index) is IrScalarType { Kind: IrScalar.I64 }) return;
+
+        Report(block, at, $"{what} index {index} is {Show(TypeOf(index))}, expected i64");
+    }
+
+    private void CheckNewArray(NewArray a, BlockId block, int index)
+    {
+        RequireDestType(a.Dest, new IrArrayType(a.Element), "newarr", block, index);
+
+        for (var i = 0; i < a.Elements.Length; i++)
+        {
+            var actual = TypeOf(a.Elements[i]);
+            if (!IrType.Equal(a.Element, actual))
+                Report(block, index, $"newarr element {N(i)} is {Show(actual)}, " +
+                                     $"expected {Show(a.Element)}");
+        }
+    }
+
+    private void CheckLoadElem(LoadElem e, BlockId block, int index)
+    {
+        if (RequireArray(e.Array, "loadelem", block, index) is not { } element) return;
+        RequireIndex(e.Index, "loadelem", block, index);
+
+        // Wie überall: das Type-Feld an der Instruktion ist eine Kopie für den Printer, die
+        // Temp-Tabelle ist die Autorität.
+        if (!IrType.Equal(e.Element, element))
+            Report(block, index, $"loadelem yields {Show(element)} but the instruction says " +
+                                 $"{Show(e.Element)}");
+        else
+            RequireDestType(e.Dest, element, "loadelem", block, index);
+    }
+
+    private void CheckStoreElem(StoreElem e, BlockId block, int index)
+    {
+        if (RequireArray(e.Array, "storeelem", block, index) is not { } element) return;
+        RequireIndex(e.Index, "storeelem", block, index);
+
+        var actual = TypeOf(e.Value);
+        if (!IrType.Equal(element, actual))
+            Report(block, index, $"storeelem takes {Show(element)}, but {e.Value} is {Show(actual)}");
+    }
+
+    private void CheckArrayLen(ArrayLen a, BlockId block, int index)
+    {
+        if (RequireArray(a.Array, "arraylen", block, index) is null) return;
+        RequireDestType(a.Dest, new IrScalarType(IrScalar.I64), "arraylen", block, index);
+    }
+
+    private void CheckArrayPush(ArrayPush p, BlockId block, int index)
+    {
+        if (RequireArray(p.Array, "push", block, index) is not { } element) return;
+
+        var actual = TypeOf(p.Value);
+        if (!IrType.Equal(element, actual))
+            Report(block, index, $"push takes {Show(element)}, but {p.Value} is {Show(actual)}");
+    }
+
+    private void CheckArrayPop(ArrayPop p, BlockId block, int index)
+    {
+        if (RequireArray(p.Array, "pop", block, index) is not { } element) return;
+
+        if (!IrType.Equal(p.Element, element))
+            Report(block, index, $"pop yields {Show(element)} but the instruction says " +
+                                 $"{Show(p.Element)}");
+        else
+            RequireDestType(p.Dest, element, "pop", block, index);
+    }
+
     private void CheckTerminatorTypes(IrTerminator terminator, BlockId block)
         {
             switch (terminator)
@@ -1039,6 +1145,7 @@ public static class IrVerifier
         {
             IrScalarType s => IrNames.Scalar(s.Kind),
             IrRefType r => $"&{r.Type}",
+            IrArrayType a => $"{Show(a.Element)}[]",
             _ => type.ToString() ?? type.GetType().Name
         };
 

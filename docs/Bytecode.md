@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v1.2
+# Lyric — `.lyrbc` Bytecode-Format v1.3
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,9 +7,9 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **1.2**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **1.3**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
-> (Referenz-Typen mit Feldern). Methoden noch nicht — siehe §8.
+> (Referenz-Typen mit Feldern und Methoden, Empfänger als Parameter 0) und **Arrays**.
 
 ---
 
@@ -188,6 +188,12 @@ Zusammengesetzte Typen ab `0x40`:
 | Tag | Bedeutung | Folgt |
 |---|---|---|
 | `0x40` | Referenz auf einen Typ der Types-Sektion | `uleb128` Typ-Index |
+| `0x41` | Array | der Elementtyp, wieder als Typ (§3) |
+
+Der Elementtyp eines Arrays steht **inline**, nicht als Tabellen-Index: `int[][]` ist damit
+`0x41 0x41 0x04`. Das geht, weil ein Array-Typ nicht rekursiv sein kann — ein Array enthält seinen
+eigenen Elementtyp nie direkt, anders als ein `class Node { next: Node }`. Genau deshalb braucht er
+keine Tabelle.
 
 `void` ist ausschließlich als Rückgabetyp gültig, nie als Slot-, Feld- oder Wert-Typ.
 
@@ -343,6 +349,31 @@ Zugriff. Ohne den Typ im Instruktionsstrom bräuchte der Validator eine Datenflu
 herauszufinden, welcher Typ an dieser Stelle auf dem Stack liegt. Der Index ist redundant zur
 Laufzeit und genau deshalb billig — er wird nach der Validierung nicht mehr gelesen.
 
+### Arrays
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x58` | `newarr` | Elementtyp (§3) | −n +1 | nimmt `n` Werte vom Stack, legt ein Array daraus an |
+| `0x59` | `ldelem` | — | −2 +1 | Array, Index → Element |
+| `0x5A` | `stelem` | — | −3 | Array, Index, Wert |
+| `0x5B` | `arrlen` | — | −1 +1 | Länge als `i64` |
+| `0x5C` | `push` | — | −2 | hängt einen Wert an |
+| `0x5D` | `pop` | — | −1 +1 | entfernt das letzte Element und liefert es |
+
+**`newarr` nimmt die Elementzahl als Immediate** (`uleb128`, nach dem Elementtyp) und dann so viele
+Werte vom Stack, das erste Element zuunterst. Ein Literal `[3, 7, 1]` ist damit eine Instruktion und
+nicht drei `stelem` — der häufige Fall bleibt kurz.
+
+**Index-Verletzungen sind ein `panic`** (Sprache.md §9), kein undefiniertes Verhalten. Das gilt für
+`ldelem`, `stelem` und `pop` auf einem leeren Array. Anders als Typ- und Feldindizes (§6) ist ein
+Element-Index **nicht** beim Laden prüfbar — er ist ein Laufzeitwert. Das ist der Unterschied
+zwischen „der Compiler hat Unsinn erzeugt" und „das Programm hat sich verrechnet"; nur das Erste
+darf beim Laden abgefangen werden.
+
+**`T[]` wächst.** `push`/`pop` sind Teil des Formats und nicht der Stdlib, weil `Doku.md` §5.2 sie
+als Grundoperationen des Typs führt. Eine Runtime darf sie beliebig implementieren, solange die
+Länge danach stimmt.
+
 Ein Objekt trägt **kein** Typ-Tag zur Laufzeit. Der Instruktionsstrom weiß statisch, was vorliegt;
 dieselbe Entscheidung wie bei den Werten (§4). Interface-Dispatch braucht später eine Typ-Identität
 — die gehört dann an die vtable, nicht an jeden einzelnen Wert.
@@ -414,7 +445,7 @@ Die vollständige Datei, 46 Bytes:
 ```
 4C 59 52 42                  magic "LYRB"
 01 00                        version.major = 1
-02 00                        version.minor = 2
+03 00                        version.minor = 3
 
 01                           § Sektion 1 — Capabilities
 01                             byteLength = 1
@@ -454,7 +485,7 @@ ebenfalls konform — er erzeugt nur größeren und langsameren Code.
 
 ---
 
-## 8. Was in Format 1.2 fehlt
+## 8. Was in Format 1.3 fehlt
 
 Absichtlich, weil das Lowering es noch nicht erzeugt: `struct` (Wert-Semantik), `enum`, Arrays,
 Tupel, Nullable, Exceptions, Coroutinen-State-Machines, Closures, generische Instanzen und

@@ -32,6 +32,15 @@ public static class IrShape
         // genau dieser Folge ab, und Bytecode.md §5 schreibt fest, dass bei stfld die Referenz
         // unter dem Wert liegt. Vertauschen hier heißt vertauschte Argumente in der VM.
         StoreField f => new[] { f.Object, f.Value },
+
+        NewArray a => a.Elements,
+        LoadElem e => new[] { e.Array, e.Index },
+        // Reihenfolge ist Vertrag (Bytecode.md §5): Array, Index, Wert — von unten nach oben.
+        StoreElem e => new[] { e.Array, e.Index, e.Value },
+        ArrayLen a => new[] { a.Array },
+        ArrayPush p => new[] { p.Array, p.Value },
+        ArrayPop p => new[] { p.Array },
+
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 
@@ -60,6 +69,14 @@ public static class IrShape
         NewObject n => n.Dest,
         LoadField f => f.Dest,
         StoreField => null,
+
+        NewArray a => a.Dest,
+        LoadElem e => e.Dest,
+        StoreElem => null,
+        ArrayLen a => a.Dest,
+        ArrayPush => null,
+        ArrayPop p => p.Dest,
+
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 
