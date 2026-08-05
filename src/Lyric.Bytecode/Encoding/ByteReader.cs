@@ -3,7 +3,8 @@ using System.Buffers.Binary;
 namespace Lyric.Bytecode.Encoding;
 
 /// <summary>
-/// Lese-Primitiven, spiegelbildlich zu <see cref="ByteWriter"/>.
+/// Lese-Primitiven, spiegelbildlich zu <c>ByteWriter</c> (der in Lyric.Bytecode.Emit liegt —
+/// ADR-017 trennt Lese- und Schreibseite, damit die Runtime die IR nicht mitzieht).
 ///
 /// <para><b>Jede</b> Methode prüft vorher, ob genug Bytes da sind. Der Leser ist die Stelle, an der
 /// nicht vertrauenswürdige Bytes ins System kommen — er darf auf keiner Eingabe mit einer

@@ -78,15 +78,20 @@ fn main(): int {
 ```
 lyric/
 ├── src/
-│   ├── Lyric.Core/         Diagnostics, SourceManager, Span
-│   ├── Lyric.Lexing/       Tokenizer
-│   ├── Lyric.Parsing/      Recursive-descent + Pratt
-│   ├── Lyric.Sema/         Type checker, generics monomorphization
-│   ├── Lyric.Bytecode/     Bytecode format, serializer
-│   ├── Lyric.Vm/           Interpreter
-│   ├── Lyric.Stdlib/       Standard library bindings
-│   ├── Lyric.Embedding/    Host API for embedders
-│   └── Lyric.Cli/          CLI entry point
+│   ├── Lyric.Core/          Diagnostics, SourceManager, Span
+│   ├── Lyric.Lexing/        Tokenizer
+│   ├── Lyric.Parsing/       Recursive-descent + Pratt
+│   ├── Lyric.Sema/          Type checker, generics monomorphization
+│   ├── Lyric.Ir/            Typed mid-IR
+│   ├── Lyric.Bytecode/      Bytecode format — read side
+│   ├── Lyric.Bytecode.Emit/ Bytecode format — write side
+│   ├── Lyric.Vm/            Interpreter
+│   ├── Lyric.Compiler/      Pipeline: source → IR → bytes
+│   ├── Lyric.Stdlib/        Standard library bindings
+│   ├── Lyric.Embedding/     Host API for embedders
+│   ├── Lyrc/                `lyrc`  — the compiler
+│   ├── Lyrvm/               `lyrvm` — the bundled runtime
+│   └── Lyric.Cli/           `lyric` — the driver
 ├── stdlib/                 Stdlib source (.lyr files)
 ├── tests/                  xUnit test projects
 ├── examples/               Example programs
@@ -96,12 +101,34 @@ lyric/
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the M0–M10 milestone plan.
 
-## Building (once M0 is complete)
+## The three binaries
+
+Like `dotnet`/`csc` or `cargo`/`rustc`, the toolchain separates the friendly driver from the
+tools it drives. In daily use you only need `lyric`.
+
+| Binary | Role |
+|---|---|
+| `lyric` | Driver. `run`, `build`, `check`, `disasm` — compiles and executes in one step |
+| `lyrc` | Compiler. `build`, `check`, plus the `lower`/`parse`/`tokenize` debug dumps |
+| `lyrvm` | Runtime. `run`, `disasm`, `verify` on `.lyrbc` only — it does not compile |
+
+Because `.lyrbc` is a specified format ([`docs/Bytecode.md`](docs/Bytecode.md)), a third party can
+write their own runtime. Point the driver at it with `lyric run app.lyr --vm ./their-runtime`, or
+set `LYRIC_VM`. What such a runtime has to honor is the four-point runner contract in
+[`docs/Bytecode.md` §9](docs/Bytecode.md).
+
+## Building
 
 ```bash
 dotnet build
+```
+
+```bash
 dotnet test
-dotnet run --project src/Lyric.Cli -- --version
+```
+
+```bash
+dotnet run --project src/Lyric.Cli -- run examples/hello.lyr
 ```
 
 ## Why "Lyric"?

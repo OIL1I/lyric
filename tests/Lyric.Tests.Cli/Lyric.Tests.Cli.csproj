@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Die drei Binaries werden gebaut, aber NICHT hierher kopiert und nicht als Assembly
+      referenziert. Diese Tests fahren die Toolchain als Prozesse - genau so, wie ein Nutzer sie
+      benutzt. Waeren die Assemblies verlinkt, pruefte der Architektur-Test das falsche
+      Verzeichnis: die Frage ist, was neben 'lyrvm.exe' liegt, wenn man es ausliefert.
+    -->
+    <!-- Fuer die Diagnose- und Exit-Code-Konstanten: die Tests pruefen Codes, nicht Texte. -->
+    <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
+
+    <ProjectReference Include="..\..\src\Lyrc\Lyrc.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\src\Lyrvm\Lyrvm.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\src\Lyric.Cli\Lyric.Cli.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+</Project>

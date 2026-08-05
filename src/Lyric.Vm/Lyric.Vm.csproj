@@ -7,6 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      Die Runtime kennt das Format nur lesend (ADR-017). Keine Kante nach Lyric.Bytecode.Emit,
+      Lyric.Ir, Lyric.Sema oder Lyric.Parsing — 'lyrvm' waere sonst ein Compiler mit
+      Interpreter-Anhang statt einer zweiten, unabhaengigen Implementierung der Spec.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
     <ProjectReference Include="..\Lyric.Bytecode\Lyric.Bytecode.csproj" />
   </ItemGroup>
 

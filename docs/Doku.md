@@ -1117,19 +1117,76 @@ Vollständige API-Doku entsteht in v1.0. Hier nur ein Überblick.
 
 ## 23. CLI-Befehle
 
+Die Toolchain besteht aus **drei** Programmen (ADR-017). Im Alltag brauchst du nur `lyric`.
+
+### 23.1 `lyric` — der Treiber
+
+Die bequeme Oberfläche. Fasst Schritte zusammen und ist das, was du normalerweise tippst.
+
 | Befehl | Zweck |
 |---|---|
-| `lyric --version` | Compiler-Version |
-| `lyric --help` | Hilfe |
-| `lyric check <file>` | Resolve + Parse + Sema, nur Diagnosen |
-| `lyric tokenize <file>` | Lexer-Debugausgabe |
-| `lyric parse <file>` | AST-Dump |
+| `lyric run <file.lyr>` | Compile + Execute in einem Schritt |
+| `lyric run <file.lyrbc>` | Fertigen Bytecode ausführen |
 | `lyric build <file> [-o <out>]` | Compile zu `.lyrbc` |
+| `lyric check <file>` | Resolve + Sema, nur Diagnosen |
 | `lyric disasm <file.lyrbc>` | Bytecode-Disassembly |
-| `lyric run <file>` | Compile + Execute |
-| `lyric run <file.lyrbc>` | Execute Bytecode direkt |
-| `lyric test [dir]` | `@test`-Funktionen ausführen |
-| `lyric repl` | Interaktive REPL |
+| `lyric --vm <pfad>` | Runtime wählen (siehe §23.4) |
+| `lyric --version` | Toolchain-Version, Format-Version, aktive Runtime |
+| `lyric --help` | Hilfe |
+| `lyric test [dir]` | `@test`-Funktionen ausführen *(M9)* |
+| `lyric repl` | Interaktive REPL *(M9)* |
+
+### 23.2 `lyrc` — der Compiler
+
+Technisch, ein Job pro Aufruf, führt nichts aus. Hier wohnen die Debug-Ausgaben, die dich beim
+normalen Programmieren nicht interessieren.
+
+| Befehl | Zweck |
+|---|---|
+| `lyrc build <file> [-o <out>]` | Compile zu `.lyrbc` |
+| `lyrc check <file>` | Resolve + Sema |
+| `lyrc lower <file>` | Mid-IR-Dump (Debug) |
+| `lyrc parse <file>` | AST-Dump (Debug) |
+| `lyrc tokenize <file>` | Token-Stream (Debug) |
+
+### 23.3 `lyrvm` — die Runtime
+
+Kennt ausschließlich `.lyrbc`. `lyrvm run app.lyr` ist ein Fehler, keine stille Weiterleitung —
+die Runtime compiliert nicht.
+
+| Befehl | Zweck |
+|---|---|
+| `lyrvm run <file.lyrbc>` | Laden, validieren, ausführen |
+| `lyrvm disasm <file.lyrbc>` | Disassembly |
+| `lyrvm verify <file.lyrbc>` | Validieren und Importe binden, ohne auszuführen |
+
+### 23.4 Eine andere Runtime benutzen
+
+`.lyrbc` ist ein spezifiziertes Format ([`Bytecode.md`](Bytecode.md)), also darf jemand eine eigene
+Runtime schreiben. `lyric` kann sie fahren:
+
+```bash
+lyric run app.lyr --vm ./meine-runtime
+```
+
+Ohne `--vm` gilt die Umgebungsvariable `LYRIC_VM`, ohne die beides die mitgelieferte Runtime. Das
+Flag schlägt die Variable. Was eine solche Runtime erfüllen muss, steht als Runner-Vertrag in
+[`Bytecode.md` §9](Bytecode.md) — vier Punkte: Aufruf-Form, Exit-Codes, Strom-Trennung,
+`--version`.
+
+Mit der mitgelieferten Runtime läuft alles in einem Prozess; eine fremde wird als Subprozess
+gestartet und bekommt dafür bei `.lyr`-Eingabe eine temporäre `.lyrbc`-Datei.
+
+### 23.5 Exit-Codes
+
+Gleich für alle drei Programme:
+
+| Code | Bedeutung |
+|---|---|
+| `0`–`255` | Rückgabewert von `main` (§11) |
+| `101` | `panic` (§17.1) |
+| `1` | Compile-, Lade- oder IO-Fehler |
+| `2` | Falscher Aufruf |
 
 ---
 

@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
     <ProjectReference Include="..\..\src\Lyric.Bytecode\Lyric.Bytecode.csproj" />
+    <ProjectReference Include="..\..\src\Lyric.Bytecode.Emit\Lyric.Bytecode.Emit.csproj" />
     <ProjectReference Include="..\..\src\Lyric.Parsing\Lyric.Parsing.csproj" />
   </ItemGroup>
 

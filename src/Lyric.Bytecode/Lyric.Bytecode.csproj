@@ -7,7 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Lyric.Ir\Lyric.Ir.csproj" />
+    <!--
+      Die Leseseite des Formats: Format, BytecodeModule, Reader, CodeDecoder, Disassembler.
+      Haengt an NICHTS ausser Lyric.Core (ADR-017). Kommt hier je wieder eine Kante nach
+      Lyric.Ir, Lyric.Sema oder Lyric.Parsing dazu, zieht 'lyrvm' den gesamten Compiler mit und
+      ADR-013 ist nur noch eine Behauptung. tests/Lyric.Tests.Cli haelt das maschinell fest.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
   </ItemGroup>
 
 </Project>

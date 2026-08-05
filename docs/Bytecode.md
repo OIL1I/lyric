@@ -580,3 +580,90 @@ Format-Version — mit Ausnahme von `enum` und `struct`, die die Types-Sektion m
 Ebenfalls offen, aber ohne Format-Änderung nachrüstbar: die Source-Map-Sektion (Id 6 ist reserviert
 und beschrieben, wird aber noch nicht geschrieben) und Copy-Propagation im Emitter — heute erzeugt
 ein Temp mit mehreren Lesern ein `ldloc`/`stloc`-Paar, das ein Optimierer einsparen könnte.
+
+---
+
+## 9. Runner-Vertrag
+
+Dieser Abschnitt ist **normativ** und gilt für jede Runtime, die als `lyric --vm <pfad>` eingesetzt
+werden soll (ADR-017). Er ist die Antwort auf die Frage, die §1–§8 offen lassen: eine Spec sagt, was
+in der Datei steht — nicht, wie man eine Runtime *aufruft*, die sie ausführt. Ohne diesen Abschnitt
+wäre „austauschbare Runtime" eine Behauptung.
+
+Er hat vier Punkte, und die Kürze ist Absicht (siehe „Was hier bewusst fehlt").
+
+### 9.1 Aufruf
+
+```
+<vm> run <datei.lyrbc> [-- <programm-args>]
+```
+
+Der erste Parameter ist wörtlich `run`. Alles nach dem ersten `--` gehört dem Lyric-Programm, nicht
+der Runtime. Eine Runtime, die weitere Kommandos anbietet (`disasm`, `verify`, …), darf das — der
+Vertrag verlangt nur, dass `run` existiert und sich so verhält.
+
+### 9.2 Exit-Codes
+
+| Code | Bedeutung |
+|---|---|
+| `0`–`255` | Rückgabewert von `main`, maskiert mit `& 0xFF` (`Sprache.md` §11) |
+| `101` | `panic` (§9 der Sprachspec) |
+| `1` | Lade-, Validierungs- oder IO-Fehler — das Programm lief nie an |
+| `2` | Aufruf-Fehler: fehlendes Argument, unbekanntes Kommando, falsche Dateiart |
+
+`101`, `1` und `2` kollidieren mit einem Programm, das diese Werte selbst zurückgibt. Das ist
+unvermeidbar, sobald beides durch einen Byte-Kanal läuft; Rust lebt mit derselben Kollision. Wer die
+Unterscheidung braucht, liest stderr.
+
+### 9.3 Ströme
+
+- **stdout** trägt ausschließlich die Ausgabe des Lyric-Programms.
+- **stderr** trägt ausschließlich Diagnosen, Panic-Meldungen und Backtraces.
+
+Keine Vermischung in beide Richtungen. Ohne diese Trennung kann ein aufrufendes Werkzeug die
+Ausgabe eines Programms nicht von der Klage der Runtime unterscheiden.
+
+### 9.4 Versionsauskunft
+
+```
+<vm> --version
+```
+
+liefert freien Text auf stdout und Exit-Code `0`. Der Treiber reicht ihn durch und **interpretiert
+ihn nicht**. Es gibt bewusst kein maschinenlesbares Format: siehe unten.
+
+### Was hier bewusst fehlt
+
+**Kein Capability-Probe.** Der naheliegende fünfte Punkt wäre ein `<vm> --lyrbc-versions`, damit ein
+Treiber vorab sagen kann „deine Runtime spricht nur 1.4, dieses Modul ist 2.0". Er entfällt, weil
+§2 bereits verlangt, dass jede Runtime eine unbekannte Major-Version **beim Laden** ablehnt, und §6
+dasselbe für Import-Namen und -Signaturen tut. Die Fremd-Runtime liefert die präzise Meldung also
+von allein. Ein Probe wäre ein zweiter Kompatibilitäts-Mechanismus neben der Load-Zeit-Validierung —
+und der teurere, weil ihn jede Runtime nachbauen müsste.
+
+**Kein Handshake, kein Daemon, kein IPC.** Ein Lauf ist ein Prozessstart.
+
+**Keine Vorgabe zur Disassembly.** `lyric disasm` benutzt immer den mitgelieferten Disassembler,
+auch wenn eine Fremd-Runtime gewählt ist: das *Format* ist spezifiziert, seine Textdarstellung ist
+es nicht.
+
+### Konformanz prüfen
+
+Die mitgelieferte Runtime ist die Referenz-Implementierung dieses Abschnitts. Für ein gegebenes
+Modul beantwortet
+
+```
+lyrvm verify <datei.lyrbc>
+```
+
+die Frage „würde diese Runtime das Modul annehmen" — Format-Validierung (§6) und Import-Bindung,
+ohne eine Instruktion auszuführen. Eine zweite Runtime, die dasselbe Urteil fällt, ist an dieser
+Stelle konform.
+
+### Offen
+
+`-- <programm-args>` ist hier spezifiziert, aber vom aktuellen Stand **nicht einlösbar**:
+`Sprache.md` §11 kennt `fn main(args: string[])`, das IR-Lowering nimmt jedoch nur ein
+parameterloses `main` als Einstieg. Die mitgelieferte Runtime lehnt übergebene Argumente deshalb ab
+(`LYR-CLI0007`), statt sie still zu verwerfen — eine Runtime, die vorgibt, Argumente zugestellt zu
+haben, wäre schlimmer als eine, die es zugibt.

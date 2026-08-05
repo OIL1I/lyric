@@ -56,11 +56,15 @@ lyric/
 │  ├─ Lyric.Resolver/                     # Module-Auflösung, Imports
 │  ├─ Lyric.Sema/                         # Type-Checker, Generics-Monomorph
 │  ├─ Lyric.Ir/                           # Typed Mid-IR
-│  ├─ Lyric.Bytecode/                     # Bytecode-Format, Serializer
+│  ├─ Lyric.Bytecode/                     # Bytecode-Format: Leseseite (ADR-017)
+│  ├─ Lyric.Bytecode.Emit/                # Bytecode-Format: Schreibseite (ADR-017)
 │  ├─ Lyric.Vm/                           # Interpreter, Value-Repr, GC-Hook
+│  ├─ Lyric.Compiler/                     # Pipeline Quelle → IR → Bytes (ADR-017)
 │  ├─ Lyric.Stdlib/                       # Stdlib-Module (z.T. nativ)
 │  ├─ Lyric.Embedding/                    # Host-API (LangVm)
-│  └─ Lyric.Cli/                          # CLI-Executable
+│  ├─ Lyrc/                               # Executable `lyrc`  — Compiler (ADR-017)
+│  ├─ Lyrvm/                              # Executable `lyrvm` — Runtime  (ADR-017)
+│  └─ Lyric.Cli/                          # Executable `lyric` — Treiber  (ADR-017)
 ├─ stdlib/                                # Stdlib-Source (.lyr-Dateien)
 ├─ tests/
 │  ├─ Lyric.Tests.Lexing/                 # xUnit
@@ -699,6 +703,103 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 **Begründung**: Das Gegenmodell — `T[]` als Zucker für `List<T>`, wie es `Doku.md` §5.2 und `Sprache.md` §4 bis hierher beschrieben — ist das Python-Modell und war nie beabsichtigt. Es hat zwei harte Probleme. Erstens **Bootstrapping**: dispatcht `[i]` immer über ein Interface, dann braucht dessen Implementierung selbst einen indizierten Speicher — man landet zwangsläufig bei einem Primitiv darunter, also kann man es auch benennen. Zweitens **Kosten ohne Gegenwert**: jedes Array trüge Kapazitätsverwaltung mit sich, auch dort, wo nie etwas wächst. Rust (`[T; N]`/Slices primitiv, `Index`-Trait für den Rest) und C# (Arrays primitiv, Indexer für den Rest) schichten aus demselben Grund so. — Die Bindung von `[i]` an ein Interface ist **kein neuer Mechanismus**: `Sprache.md` §6.5 verlangt für `for-in` bereits einen Ausdruck, der `Iterator<T>` implementiert. Eine eingebaute Syntaxform, die an einen benannten Kontrakt bindet, ist damit schon Teil der Sprache; `Indexable<T>` wendet dieselbe Regel ein zweites Mal an. Das ist ausdrücklich **nicht** das in ADR-015 vertagte user-defined Operator-Overloading — dort geht es um beliebige Operatoren, hier um eine feste, kleine Menge von Sprach-Kontrakten. — **`T[N]` entfällt**, weil sein einziger verbleibender Zweck die Länge im Typ wäre: `int[3]` und `int[5]` würden verschiedene Typen mit eigenen Zuweisungsregeln, also viel Typsystem-Oberfläche für wenig Gewinn. Die Ergonomie-Lücke, die es hätte füllen müssen — „ein Array der Länge n mit Default-Werten" —, füllt `[0] * n` bereits, und zwar mit `n` als Laufzeitwert.
 
 **Konsequenz**: `Doku.md` §5.2 und `Sprache.md` §4 werden korrigiert; beide behaupteten bisher das Gegenteil. Aus dem Bytecode-Format fallen die in der ersten P2-Fassung specten Opcodes `push`/`pop` wieder heraus — sie gehören `List<T>`, nicht `T[]` — und dafür kommen `arrcat`/`arrrep` hinein, weil Konkatenation und Wiederholung spezifizierte Sprachsemantik sind. P2 liefert damit `newarr`, `ldelem`, `stelem`, `arrlen`, `arrcat`, `arrrep`. `Indexable<T>` selbst ist erst mit Interfaces (P3) und Generics (P8) baubar; bis dahin ist `[i]` ausschließlich auf `T[]` gültig. `examples/stack.lyr` muss auf `List<T>` umgeschrieben werden und wandert zu M8 — es benutzt heute `items: T[] = []` mit `.push`, also genau das verworfene Modell.
+
+---
+
+### ADR-017 — Drei Binaries: `lyrc`, `lyrvm`, `lyric` — plus Runner-Vertrag
+
+**Datum**: 2026-08-05. **Status**: Akzeptiert.
+
+**Entscheidung**: Die Toolchain liefert **drei** ausführbare Dateien statt einer.
+
+- **`lyrc`** — der Compiler. Technische Oberfläche, ein Job pro Aufruf: `build`, `check`, plus die
+  Debug-Dumps `tokenize`, `parse`, `lower`. Kennt die VM nicht.
+- **`lyrvm`** — die mitgelieferte Runtime. Kennt ausschließlich `.lyrbc`: `run`, `disasm`, `verify`.
+  `lyrvm run` auf einer `.lyr`-Datei ist ein Fehler, keine stille Weiterleitung.
+- **`lyric`** — der Treiber. Bequeme Oberfläche, fasst Schritte zusammen (`run` auf einer Quelle
+  compiliert und führt aus), reicht `build`/`check` durch und wählt über `--vm` die Runtime.
+
+Der Treiber bekommt **keine eigene Compile- oder Ausführungslogik**: er ruft dieselben
+Bibliotheks-Einstiege wie `lyrc` und `lyrvm`. Die Debug-Dumps bekommt er **nicht** — sie sind
+Compiler-Interna.
+
+Dazu die Abhängigkeitsregel, ohne die der Split kosmetisch wäre: **`lyrvm` referenziert nichts
+Compiler-seitiges.** Weder Lexer, Parser, Resolver, Sema, IR noch den Bytecode-*Writer*. Dafür
+zerfällt `Lyric.Bytecode` in seine zwei Richtungen: die Leseseite (Format, `BytecodeModule`, Reader,
+`CodeDecoder`, Disassembler, Encoder) hängt nur an `Lyric.Core`; die Schreibseite (`BytecodeWriter`,
+`StackScheduler`) zieht als `Lyric.Bytecode.Emit` um und hängt an `Lyric.Ir`.
+
+Schließlich der **Runner-Vertrag** (normativ in `docs/Bytecode.md`), damit „austauschbare Runtime"
+keine Behauptung ist. Er hat vier Punkte und sonst nichts:
+
+1. Aufruf: `<vm> run <datei.lyrbc> [-- <programm-args>]`
+2. Exit-Codes: Rückgabewert von `main` maskiert mit `& 0xFF`; `101` = panic; `1` = Lade-,
+   Validierungs- oder IO-Fehler; `2` = Aufruf-Fehler.
+3. Ströme: stdout ist Programmausgabe, stderr ist Diagnose und Backtrace. Keine Vermischung.
+4. `<vm> --version` liefert freien Text, den `lyric` durchreicht und nie interpretiert.
+
+Ausgewählt wird eine Runtime über `--vm <pfad>`, sonst `LYRIC_VM`, sonst die mitgelieferte — Flag
+schlägt Umgebungsvariable, dieselbe Staffelung wie beim bereits existierenden `LYRIC_STDLIB`. Mit
+der mitgelieferten VM läuft `lyric run` **in-process**; nur eine Fremd-VM wird als Subprozess
+gestartet (sie braucht dann eine materialisierte Datei statt In-Memory-Bytes).
+
+**Begründung**: Der Auslöser ist ADR-013. Wer `.lyrbc` zum spezifizierten, plattformneutralen
+Vertrag erklärt, dessen Ziel-Test lautet „jemand schreibt eine zweite Runtime, ohne den C#-Code zu
+lesen" — und muss dann auch selbst eine Runtime bauen können, die den Compiler nicht enthält. Heute
+ist das nicht der Fall: `Lyric.Bytecode` referenziert `Lyric.Ir`, das `Lyric.Sema` referenziert, und
+damit zieht `Lyric.Vm` die **gesamte** Front-End-Kette mit. Ein Binary-Split ohne diesen Schnitt
+wären drei Namen auf einem Monolithen. Gemessen am 2026-08-05 benutzen von der Leseseite genau
+**null** Dateien die IR; nur `BytecodeWriter` und `StackScheduler` tun es. Der Schnitt ist mechanisch
+— und dass er es ist, ist das Verdienst der P5-Entscheidung, `BytecodeModule` bewusst nicht als
+`IrModule` zu modellieren. — Die Trennung von Lese- und Schreibseite ist kein exotischer Zuschnitt:
+in .NET liest `System.Reflection.Metadata` und schreibt `Microsoft.CodeAnalysis`, und wer IL nur
+*ausführen* will, linkt den Emitter nicht. — Für die Dreiteilung selbst ist **nicht** `dotnet` das
+Vorbild, obwohl es der Anlass war: `dotnet` ist *ein* Binary, `dotnet build` startet kein `csc.exe`,
+sondern fährt MSBuild und führt `csc.dll` über `dotnet exec` aus. Was es tatsächlich vormacht, ist
+Treiber-Binary **plus separat aufrufbare Werkzeuge**, wobei der häufige Pfad in-process bleibt. Näher
+liegt `rustc`/`cargo`: roh und bequem als zwei Namen, wobei `cargo` nie eigene Codegen-Logik bekam.
+Der Unterschied zu Rust ist die VM — daher der dritte Name — und die Zeitskala: Cargo darf `rustc`
+als Prozess starten, weil Kompilieren in Sekunden misst; `lyric run` misst in Millisekunden, und ein
+zweiter .NET-Prozessstart (~50–70 ms) auf dem häufigsten Kommando einer Sprache für CLI-Tools und
+Game-Scripting ist der falsche Preis. Deshalb in-process als Default und Subprozess nur, wo er
+unvermeidbar ist. — Der Vertrag ist bewusst **vierzeilig**. Der naheliegende fünfte Punkt wäre ein
+Capability-Probe (`<vm> --lyrbc-versions`), damit der Treiber vorab „deine VM kann nur 1.4, dieses
+Modul ist 2.0" sagen kann. Er entfällt: ADR-013 verlangt bereits, dass jede Runtime unbekannte
+Major-Versionen **beim Laden** ablehnt, und `NativeRegistry.Bind` prüft Import-Namen *und*
+Signaturen zur selben Zeit. Die Fremd-VM liefert die präzise Meldung also von allein; ein Probe wäre
+ein zweiter Kompatibilitäts-Mechanismus neben der Load-Zeit-Validierung (Rule 2) — und der teurere,
+weil ihn jede Fremd-VM nachbauen müsste. Aus demselben Grund gibt es **kein** VM-Registry
+(`lyric vm add …`): das bedeutete persistente Konfiguration, also eine Konfigurationsdatei, also
+Projektdateien, also ein Projektsystem. Ein Pfad in einer Variablen erledigt denselben Job zustandsfrei.
+
+**Konsequenz**: Zwei neue Bibliotheken (`Lyric.Bytecode.Emit`, `Lyric.Compiler`) und zwei neue
+Executables; `Lyric.Cli` bleibt und wird zum Treiber. `Lyric.Compiler` ist dabei kein Vorgriff — M10
+verlangt `LangVm.Compile(string source)`, und das *ist* diese Bibliothek; sie entsteht hier nur
+früher. Die Exit-Code-Regel wandert als `VmHost` in `Lyric.Vm`, weil sie normativ ist (§9/§11) und
+über alle Runtimes identisch sein muss — sie gehört in die Referenz-Runtime, nicht in ein
+CLI-Projekt. — Zwei Ausführungspfade im Treiber (in-process und Subprozess) sind der Preis der
+In-Process-Entscheidung; sie werden mit derselben Beispiel-Matrix gegeneinander getestet, wobei das
+mitgelieferte `lyrvm` als per Konstruktion vertragskonformes Testdouble für „Fremd-VM" dient. Ohne
+diesen Test wäre der Zwei-Pfade-Entwurf nicht vertretbar. — Damit entsteht `tests/Lyric.Tests.Cli/`
+und tilgt die seit M6 offene Schuld „kein CLI-Test-Projekt"; sein wichtigster Fall ist der
+Architektur-Test, der die Abhängigkeitsregel maschinell festhält, weil eine zurückwandernde Kante
+sonst niemandem auffiele. — `dotnet publish` muss alle drei Apphosts in **ein** Ausgabeverzeichnis
+legen, sonst liegt die Runtime bei `--self-contained` dreifach vor. — `Doku.md` §23 und die
+Ordnerstruktur oben werden entsprechend umgeschrieben. — Offen und hier nicht gelöst: der Vertrag
+sieht `-- <programm-args>` vor, aber `fn main(args: string[])` (Sprache.md §11) ist nirgends
+verdrahtet — `ModuleLowerer` nimmt nur ein parameterloses `main` als Einstieg. Argumente werden
+deshalb vorerst mit einer Diagnose abgelehnt statt still verworfen.
+
+> **Prozess-Vermerk**: Diese Entscheidung fiel außerhalb des Scope-Check-Rituals
+> (`CONTRIBUTING` §Scope check), drei Tage nach dem Check vom 2026-08-02. Sie ist damit formal eine
+> Impuls-Planänderung. Festgehalten wird sie trotzdem als ADR und nicht stillschweigend umgesetzt,
+> weil sie den Abhängigkeitsgraphen ändert. Zwei Dinge halten die Ausnahme klein: der Split ist
+> *strukturell* (er fügt der Sprache nichts hinzu und löst einen Architekturfehler auf, den ADR-013
+> ohnehin verbietet), und er wird mit jedem weiteren Slice teurer, weil M9 mit `repl` und `test`
+> zwei Kommandos bringt, die an den Treiber gehören. Die austauschbare Fremd-VM stammt dagegen aus
+> `docs/IDEAS.md` („Native Runtime als zweite Implementierung der `.lyrbc`-Spec") und wird deshalb
+> auf das Minimum beschränkt: vier Vertragszeilen und ein Flag, kein Registry, keine
+> Konfigurationsdatei. *(Zur Ratifizierung im nächsten Scope-Check.)*
 
 ---
 

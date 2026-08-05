@@ -301,6 +301,44 @@ Programm, mit Begründung als Blockzitat).
     fehlender Empfänger beim Enum-Methodenaufruf und ein Vergleichs-`BinOp`, dessen Type-Feld den
     Operanden- statt den Ergebnistyp trug.
 
+- [x] **Toolchain-Split — drei Binaries** (ADR-017): `lyrc` (Compiler), `lyrvm` (Runtime),
+  `lyric` (Treiber). `lyric run examples/hello.lyr` verhält sich wie vorher, `lyrc build … && lyrvm
+  run …` liefert dasselbe, und `lyric run … --vm <pfad>` fährt eine fremde Runtime.
+  - **Der Anlass war ein Architekturfehler, kein Wunsch nach Namen.** `Lyric.Bytecode` referenzierte
+    `Lyric.Ir` → `Lyric.Sema`, also zog `Lyric.Vm` die **gesamte** Front-End-Kette mit. Ein
+    Binary-Split ohne diesen Schnitt wären drei Namen auf einem Monolithen gewesen — und ADR-013s
+    Ziel-Test („jemand schreibt eine zweite Runtime allein aus der Spec") eine Behauptung.
+  - **Der Schnitt war mechanisch**: von der Leseseite benutzten **null** Dateien die IR, nur
+    `BytecodeWriter` und `StackScheduler`. Beide sind nach `Lyric.Bytecode.Emit` umgezogen, die
+    Leseseite hängt jetzt allein an `Lyric.Core`. Round-Trip- und Fuzzing-Tests liefen danach
+    unverändert grün — der Beweis, dass nichts umgebaut wurde. Möglich war das nur, weil P5
+    `BytecodeModule` bewusst **nicht** als `IrModule` modelliert hat.
+  - **Ergebnis in Zahlen**: `lyrvm` liefert 4 DLLs aus (Core, Bytecode, Vm, lyrvm), der Treiber 12.
+  - **Die Exit-Code-Regel wohnt in `Lyric.Vm.VmHost`**, nicht im CLI. Sie ist normativ (§9/§11) und
+    der Runner-Vertrag verlangt sie von *jeder* Runtime — im CLI hätten `lyrvm` und `lyric` je eine
+    Kopie und damit zwei Wahrheiten über „was heißt 101". Aus demselben Grund liegen `ExitCodes`
+    und der `LYR-CLI####`-Katalog in `Lyric.Core`: dem einzigen Projekt, das alle drei teilen.
+  - **`lyric` hat keine eigene Pipeline.** Es ruft `SourceCompiler` und `VmHost` — dieselben
+    Einstiege wie `lyrc` und `lyrvm`. Genau hier saß der M6-Bug (`check` ohne `ModuleLoader`), und
+    drei Binaries sind drei neue Gelegenheiten dafür.
+  - **In-Process als Default, Subprozess nur für fremde Runtimes.** Immer zu starten wäre
+    symmetrischer, kostet aber einen zweiten .NET-Prozessstart (~50–70 ms) auf dem häufigsten
+    Kommando. Der Preis dafür sind zwei Pfade — abgesichert durch eine Test-Achse, die dieselbe
+    Beispiel-Matrix einmal in-process und einmal über `--vm` fährt, mit dem mitgelieferten `lyrvm`
+    als per Konstruktion vertragskonformem Testdouble.
+  - **Vier-Punkte-Runner-Vertrag** in `docs/Bytecode.md` §9: Aufruf-Form, Exit-Codes,
+    Strom-Trennung, `--version`. Der naheliegende fünfte Punkt — ein Capability-Probe für
+    Format-Versionen — ist gestrichen: ADR-013s Load-Zeit-Validierung beantwortet die Frage schon,
+    ein Probe wäre ein zweiter Kompatibilitäts-Mechanismus (Rule 2). Kein VM-Registry, keine
+    Konfigurationsdatei; `--vm` schlägt `LYRIC_VM` schlägt mitgeliefert — dieselbe Staffelung wie
+    beim schon existierenden `LYRIC_STDLIB`.
+  - **`tests/Lyric.Tests.Cli/` tilgt die M6-Schuld** („kein CLI-Test-Projekt"). 50 Fälle (1300
+    Tests gesamt, keine Regression), gefahren
+    als echte Prozesse. Der wichtigste ist der Architektur-Test: er prüft das
+    *Ausgabeverzeichnis* von `lyrvm`, nicht die Metadaten — die ehrliche Frage ist, was neben dem
+    Binary liegt, wenn man es ausliefert. Ohne ihn wandert die Kante innerhalb eines Meilensteins
+    zurück und es fällt niemandem auf.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -381,11 +419,21 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   bevor `Indexable<T>` kommt: der Setter dort wäre `mut fn`, und dann hängt die Frage an derselben
   Stelle nochmal.
 
+**Aus dem Toolchain-Split (ADR-017):**
+
+- **`fn main(args: string[])` ist nicht verdrahtet.** `ModuleLowerer` nimmt nur ein parameterloses
+  `main` als Einstieg, obwohl `Sprache.md` §11 beide Formen kennt. Der Runner-Vertrag sieht
+  `-- <args>` vor; übergebene Argumente werden deshalb mit `LYR-CLI0007` **abgelehnt** statt still
+  verworfen. Arrays gibt es seit P2, es fehlt also wenig — aber es ist ein eigener Posten.
+- **`dotnet publish` ist nicht konfiguriert.** Drei Apphosts müssen in *ein* Ausgabeverzeichnis,
+  sonst liegt die Runtime bei `--self-contained` dreifach vor (~210 MB statt ~70 MB je Plattform).
+  Fällig, wenn v1.0-Binaries gebaut werden.
+- **CI-Vermerk**: `.github/workflows/ci.yml` installiert `dotnet-version: '9.0.x'`, alle Projekte
+  zielen aber auf `net10.0`. Läuft heute nur, weil die Runner .NET 10 vorinstalliert haben. Nicht
+  im Rahmen dieses Slices angefasst.
+
 **Aus M6:**
 
-- **Kein CLI-Test-Projekt.** Dass `check` den `ModuleLoader` nicht verdrahtete, fiel nur beim
-  Handprobieren auf — die Sema-Tests setzen ihn selbst. Ein Test, der die Kommandos gegen die
-  Beispiele fährt, hätte das gefangen. Kandidat für M7.
 - **`std.fmt.format` nach M8** (Format-Specs `{x:N2}` in `shapes.lyr`/`stats.lyr`).
 - **Source-Map-Sektion** (Id 6) ist in der Spec beschrieben und reserviert, wird aber noch nicht
   geschrieben — Panics zeigen deshalb Funktion, nicht Zeile.
@@ -454,7 +502,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`M7: Enums und match — Bytecode 2.0 (P3b)`
+`toolchain: drei Binaries — lyrc, lyrvm, lyric (ADR-017)`
 
 ---
 

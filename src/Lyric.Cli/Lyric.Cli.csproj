@@ -1,27 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
-    <ProjectReference Include="..\Lyric.Lexing\Lyric.Lexing.csproj" />
-    <ProjectReference Include="..\Lyric.AST\Lyric.AST.csproj" />
-    <ProjectReference Include="..\Lyric.Parsing\Lyric.Parsing.csproj" />
-    <ProjectReference Include="..\Lyric.Resolver\Lyric.Resolver.csproj" />
-    <ProjectReference Include="..\Lyric.Sema\Lyric.Sema.csproj" />
-    <ProjectReference Include="..\Lyric.Ir\Lyric.Ir.csproj" />
-    <ProjectReference Include="..\Lyric.Bytecode\Lyric.Bytecode.csproj" />
-    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- Die Stdlib ist Quelltext und muss neben dem Binary liegen; ueberlebt auch dotnet publish. -->
-    <Content Include="..\..\stdlib\**\*.lyr" Link="stdlib\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>lyric</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Der Treiber (ADR-017): darf beide Seiten kennen, weil er beide fahren koennen muss.
+      Er enthaelt trotzdem keine eigene Pipeline — Lyric.Compiler und Lyric.Vm.VmHost sind
+      dieselben Einstiege, die auch lyrc und lyrvm benutzen.
+      Die Stdlib kommt als Content ueber Lyric.Compiler mit.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Bytecode\Lyric.Bytecode.csproj" />
+    <ProjectReference Include="..\Lyric.Compiler\Lyric.Compiler.csproj" />
+    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
+  </ItemGroup>
 
 </Project>

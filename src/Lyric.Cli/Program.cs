@@ -1,163 +1,214 @@
-using Lyric.AST;
 using Lyric.Bytecode;
+using Lyric.Compiler;
 using Lyric.Core;
-using Lyric.Ir;
-using Lyric.Ir.Lowering;
-using Lyric.Lexing;
-using Lyric.Parsing;
-using Lyric.Resolver;
-using Lyric.Sema;
 using Lyric.Vm;
 
 namespace Lyric.Cli;
 
+/// <summary>
+/// <c>lyric</c> — der Treiber (ADR-017).
+///
+/// <para>Die bequeme Oberflaeche: <c>run</c> auf einer Quelle compiliert und fuehrt in einem
+/// Schritt aus, <c>build</c> und <c>check</c> reichen durch, <c>--vm</c> waehlt die Runtime.</para>
+///
+/// <para><b>Dieser Treiber hat keine eigene Compile- oder Ausfuehrungslogik.</b> Er ruft
+/// <see cref="SourceCompiler"/> und <see cref="VmHost"/> — dieselben Einstiege wie <c>lyrc</c> und
+/// <c>lyrvm</c>. Der Grund steht im Projekt-Gedaechtnis: als drei Kommandos je eine eigene Kopie
+/// des Vorspanns hatten, verdrahtete nur eine den ModuleLoader, und <c>check</c> prueste stumm gar
+/// nicht. Drei Binaries sind drei neue Gelegenheiten fuer genau diesen Fehler.</para>
+///
+/// <para>Die Debug-Dumps (<c>tokenize</c>, <c>parse</c>, <c>lower</c>) gibt es hier bewusst
+/// <b>nicht</b> — sie sind Compiler-Interna und wohnen in <c>lyrc</c>.</para>
+/// </summary>
 public static class Program
 {
-    // Update this on each release tag.
-    private const string Version = "0.0.1-dev";
-
-    public static int Main(string[] args)
+    public static int Main(string[] rawArgs)
     {
-        if (args.Length == 0)
-        {
-            PrintHelp();
-            return 0;
-        }
+        var (vm, args, flagError) = VmSelection.Parse(rawArgs);
+        if (flagError is not null)
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
+                flagError, ExitCodes.Usage);
+
+        if (args.Length == 0) { PrintHelp(); return ExitCodes.Success; }
 
         return args[0] switch
         {
-            "--version" or "-v" => PrintVersion(),
-            "--help" or "-h" => HelpAndOk(),
-            "tokenize" => Tokenize(args),
-            "parse" => Parse(args),
-            "check" => CheckCmd(args),
-            "lower" => Lower(args),
+            "--version" or "-v" => Version(vm),
+            "--help" or "-h" => Help(),
+            "run" => Run(args, vm),
             "build" => Build(args),
+            "check" => Check(args),
             "disasm" => Disasm(args),
-            "run" => RunCmd(args),
-            _ => Unknown(args[0]),
+            _ => CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
+                $"unknown command: {args[0]} — try 'lyric --help'", ExitCodes.Usage),
         };
     }
 
-    /// <summary>Compiliert und führt aus. Nimmt <c>.lyr</c> (compiliert im Speicher) oder
-    /// <c>.lyrbc</c> (lädt direkt). Der Rückgabewert von <c>main</c> ist der Prozess-Exit-Code
-    /// (Sprache.md §11).</summary>
-    private static int RunCmd(string[] args)
+    /// <summary>
+    /// Compiliert bei Bedarf und fuehrt aus. Nimmt <c>.lyr</c> (compiliert im Speicher) oder
+    /// <c>.lyrbc</c> (laedt direkt).
+    ///
+    /// <para>Zwei Pfade, und das ist eine bewusste Entscheidung: mit der mitgelieferten Runtime
+    /// laeuft alles in-process, eine Fremd-Runtime bekommt einen Subprozess. Sie kann keine
+    /// In-Memory-Bytes entgegennehmen — sie braucht eine Datei, also wird bei
+    /// <c>.lyr</c>-Eingabe eine temporaere erzeugt und danach wieder entfernt.</para>
+    /// </summary>
+    private static int Run(string[] args, VmSelection vm)
     {
-        if (args.Length < 2)
-        {
-            Console.Error.WriteLine("run: missing file argument");
-            return 2;
-        }
-        var fpath = args[1];
-        var de = new DiagnosticEngine(new SourceManager());
+        var separator = Array.IndexOf(args, "--");
+        var positional = separator < 0 ? args : args[..separator];
+        var programArguments = separator < 0 ? [] : args[(separator + 1)..];
+
+        if (positional.Length < 2)
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
+                "run: missing file argument", ExitCodes.Usage);
+
+        var path = positional[1];
+
+        // Vor dem Compilieren pruefen, nicht danach: sonst kaeme die Meldung ueber eine falsch
+        // konfigurierte Runtime erst nach einem vollstaendigen Compile-Lauf.
+        if (!vm.Exists())
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.VmNotFound,
+                $"runtime not found: {vm.ExecutablePath} "
+                + $"(from --vm or {VmSelection.EnvironmentVariable})", ExitCodes.Failure);
+
+        return IsModule(path)
+            ? RunModule(path, programArguments, vm)
+            : RunSource(path, programArguments, vm);
+    }
+
+    private static int RunModule(string path, string[] programArguments, VmSelection vm)
+    {
+        if (!vm.IsBundled) return vm.RunForeign(path, programArguments, Console.Error);
+
+        if (RejectProgramArguments(programArguments) is { } rejected) return rejected;
 
         byte[] bytes;
-        if (Path.GetExtension(fpath).Equals(".lyrbc", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                bytes = File.ReadAllBytes(fpath);
-            }
-            catch
-            {
-                Console.Error.WriteLine($"run: failed to read file: {fpath}");
-                return 1;
-            }
-        }
-        else
-        {
-            var pipeline = Compile(fpath);
-            if (pipeline.Ir is null) return 1;
-            bytes = BytecodeWriter.Write(pipeline.Ir);
-        }
-
-        var module = BytecodeReader.Read(bytes, de);
-        de.RenderText(Console.Error);
-        if (module is null) return 1;
-
         try
         {
-            // §11: Exit-Code ist 0..255. Wie jedes POSIX-System nehmen wir das niedrigste Byte.
-            var natives = NativeRegistry.CreateDefault(Console.Out, Console.Error);
-            return (int)(Interpreter.Run(module, natives).AsI64 & 0xFF);
+            bytes = File.ReadAllBytes(path);
         }
-        catch (LyricPanic panic)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // §9: ein panic druckt einen Backtrace und beendet die VM. Nicht catchbar.
-            Console.Error.WriteLine($"panic [{panic.Code}]: {panic.Message}");
-            foreach (var frame in panic.CallStack) Console.Error.WriteLine($"    in {frame}");
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.FileUnreadable,
+                $"failed to read file: {path}", ExitCodes.Failure);
+        }
 
-            // 101 statt 1, damit ein Skript einen Absturz von einem regulären `return 1;`
-            // unterscheiden kann (Rusts Konvention).
-            return 101;
-        }
-        catch (LyricRuntimeException ex)
+        return VmHost.Execute(bytes, Console.Out, Console.Error);
+    }
+
+    private static int RunSource(string path, string[] programArguments, VmSelection vm)
+    {
+        var result = SourceCompiler.Compile(path);
+        if (!result.Render(Console.Error) || result.Bytes is null) return ExitCodes.Failure;
+
+        if (vm.IsBundled)
         {
-            de.Report(ex.Code, Severity.Error, default, ex.Message);
-            de.RenderText(Console.Error);
-            return 1;
+            if (RejectProgramArguments(programArguments) is { } rejected) return rejected;
+            return VmHost.Execute(result.Bytes, Console.Out, Console.Error);
+        }
+
+        // Eine Fremd-Runtime braucht eine Datei. Der Name traegt die PID, damit parallele Laeufe
+        // sich nicht gegenseitig ueberschreiben.
+        var temporary = Path.Combine(Path.GetTempPath(),
+            $"lyric-{Environment.ProcessId}-{Path.GetFileNameWithoutExtension(path)}.lyrbc");
+        try
+        {
+            File.WriteAllBytes(temporary, result.Bytes);
+            return vm.RunForeign(temporary, programArguments, Console.Error);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.OutputUnwritable,
+                $"cannot write temporary module {temporary}: {ex.Message}", ExitCodes.Failure);
+        }
+        finally
+        {
+            // Laeuft auch, wenn die Fremd-Runtime abstuerzt.
+            try { File.Delete(temporary); } catch (IOException) { /* nicht der Rede wert */ }
         }
     }
 
-    /// <summary>Compiliert nach <c>.lyrbc</c>. Ohne <c>-o</c> neben die Quelle.</summary>
     private static int Build(string[] args)
     {
         if (args.Length < 2)
-        {
-            Console.Error.WriteLine("build: missing file argument");
-            return 2;
-        }
-        var fpath = args[1];
-        var output = OutputPath(args) ?? Path.ChangeExtension(fpath, ".lyrbc");
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
+                "build: missing file argument", ExitCodes.Usage);
 
-        var pipeline = Compile(fpath);
-        if (pipeline.Ir is null) return 1;
+        var path = args[1];
+        var output = OutputPath(args) ?? Path.ChangeExtension(path, ".lyrbc");
+
+        var result = SourceCompiler.Compile(path);
+        if (!result.Render(Console.Error) || result.Bytes is null) return ExitCodes.Failure;
 
         try
         {
-            File.WriteAllBytes(output, BytecodeWriter.Write(pipeline.Ir));
+            File.WriteAllBytes(output, result.Bytes);
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Console.Error.WriteLine($"build: cannot write {output}: {ex.Message}");
-            return 1;
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.OutputUnwritable,
+                $"cannot write {output}: {ex.Message}", ExitCodes.Failure);
         }
 
         Console.Out.WriteLine($"{output}: {new FileInfo(output).Length} bytes");
-        return 0;
+        return ExitCodes.Success;
     }
 
-    /// <summary>Liest ein <c>.lyrbc</c> und druckt es lesbar. Validiert dabei vollständig —
-    /// ADR-013: ein Modul wird beim Laden geprüft, nicht beim Ausführen.</summary>
+    private static int Check(string[] args)
+    {
+        if (args.Length < 2)
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
+                "check: missing file argument", ExitCodes.Usage);
+
+        if (!SourceCompiler.Check(args[1]).Render(Console.Error)) return ExitCodes.Failure;
+        Console.Out.WriteLine($"{args[1]}: ok");
+        return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// Disassembliert — <b>immer</b> mit dem mitgelieferten Disassembler, auch wenn eine
+    /// Fremd-Runtime konfiguriert ist. Das Format ist spezifiziert, seine Textdarstellung ist es
+    /// nicht; „was steht in dieser Datei" ist deshalb keine Frage an die gewaehlte Runtime.
+    /// </summary>
     private static int Disasm(string[] args)
     {
         if (args.Length < 2)
-        {
-            Console.Error.WriteLine("disasm: missing file argument");
-            return 2;
-        }
-        var fpath = args[1];
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
+                "disasm: missing file argument", ExitCodes.Usage);
 
+        var path = args[1];
         byte[] bytes;
         try
         {
-            bytes = File.ReadAllBytes(fpath);
+            bytes = File.ReadAllBytes(path);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Console.Error.WriteLine($"disasm: failed to read file: {fpath}");
-            return 1;
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.FileUnreadable,
+                $"failed to read file: {path}", ExitCodes.Failure);
         }
 
-        var de = new DiagnosticEngine(new SourceManager());
-        var module = BytecodeReader.Read(bytes, de);
-        de.RenderText(Console.Error);
-        if (module is null) return 1;
+        var module = VmHost.Load(bytes, Console.Error);
+        if (module is null) return ExitCodes.Failure;
 
         Console.Out.Write(Disassembler.Dump(module));
-        return 0;
+        return ExitCodes.Success;
     }
+
+    /// <summary>Siehe <c>LYR-CLI0007</c>: der Runner-Vertrag sieht Programm-Argumente vor, die
+    /// Sprache loest sie noch nicht ein. Nur der In-Process-Pfad muss das hier pruefen — eine
+    /// Fremd-Runtime beantwortet die Frage selbst.</summary>
+    private static int? RejectProgramArguments(string[] programArguments) =>
+        programArguments.Length == 0
+            ? null
+            : CliDiagnostics.Fail(Console.Error, CliDiagnostics.ProgramArgumentsUnsupported,
+                "program arguments are not supported yet: 'fn main(args: string[])' is specified "
+                + "(Sprache.md §11) but not lowered — only a parameterless 'main' is an entry point",
+                ExitCodes.Usage);
+
+    private static bool IsModule(string path) =>
+        Path.GetExtension(path).Equals(".lyrbc", StringComparison.OrdinalIgnoreCase);
 
     private static string? OutputPath(string[] args)
     {
@@ -166,196 +217,34 @@ public static class Program
         return null;
     }
 
-    /// <summary>
-    /// Der gemeinsame Vorspann jedes Kommandos: lesen, parsen, auflösen, typprüfen.
-    /// <c>Comp == null</c> heißt: die Datei war nicht lesbar (Diagnose ist schon gerendert).
-    ///
-    /// <para>Bewusst <b>ein</b> Front-End für alle Kommandos: als 'run', 'lower' und 'check' je eine
-    /// eigene Kopie hatten, verdrahtete nur eine davon den <see cref="Compilation.ModuleLoader"/> —
-    /// 'check' hielt jeden Stdlib-Import für opak und prüfte die Aufrufe deshalb stumm gar nicht.</para>
-    /// </summary>
-    private static (Compilation? Comp, BindingResult? Binding, TypeResult? Types, DiagnosticEngine De)
-        Frontend(string fpath)
+    private static int Version(VmSelection vm)
     {
-        var sm = new SourceManager();
-        var de = new DiagnosticEngine(sm);
-        FileId id;
-        try
-        {
-            id = sm.AddFromDisk(fpath);
-        }
-        catch
-        {
-            de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
-            de.RenderText(Console.Error);
-            return (null, null, null, de);
-        }
-
-        var comp = new Compilation(sm, de);
-        // Source-first: die Stdlib ist gewoehnlicher Lyric-Quelltext und wird bei Bedarf geladen.
-        comp.ModuleLoader = StdlibLoader.ForRoot(StdlibLoader.DefaultRoot(), sm, de);
-        comp.AddModule(new Parser(sm, id, de).ParseModule());
-        var binding = comp.Resolve();
-        return (comp, binding, Semantics.Analyze(comp, binding, de), de);
+        Console.Out.WriteLine($"lyric {ToolchainVersion.Value} (.lyrbc "
+            + $"{Format.VersionMajor}.{Format.VersionMinor}, runtime: {vm.Display})");
+        return ExitCodes.Success;
     }
 
-    /// <summary>Quelle → IR, mit allen Diagnosen gerendert. <c>Ir == null</c> heißt: abgebrochen.</summary>
-    private static (IrModule? Ir, DiagnosticEngine De) Compile(string fpath)
-    {
-        var (comp, binding, types, de) = Frontend(fpath);
-        if (comp is null) return (null, de);
-
-        if (de.HasErrors)
-        {
-            de.RenderText(Console.Error);
-            return (null, de);
-        }
-
-        var ir = ModuleLowerer.Lower(comp, binding!, types!, de);
-        de.RenderText(Console.Error);
-        return (ir, de);
-    }
-
-    /// <summary>Debug-Ausgabe der Mid-IR (M5/P4), analog zu 'parse'. Lowert nur, wenn die Sema
-    /// fehlerfrei war — auf fehlerhaftem AST wäre jedes Lowering-Ergebnis Raten.</summary>
-    private static int Lower(string[] args)
-    {
-        if (args.Length < 2)
-        {
-            Console.Error.WriteLine("lower: missing file argument");
-            return 2;
-        }
-        var fpath = args[1];
-        var (comp, binding, types, de) = Frontend(fpath);
-        if (comp is null) return 1;
-
-        if (de.HasErrors)
-        {
-            de.RenderText(Console.Error);
-            return 1;
-        }
-
-        // Scope-Grenzen des Lowerings kommen als LYR-IR0001 in dieselbe DiagnosticEngine und
-        // werden mit Datei/Zeile/Spalte gerendert wie jeder andere Fehler auch.
-        var ir = ModuleLowerer.Lower(comp, binding!, types!, de);
-        de.RenderText(Console.Error);
-        if (ir is null) return 1;
-
-        Console.Out.Write(IrPrinter.Dump(ir));
-        return 0;
-    }
-
-    private static int CheckCmd(string[] args)
-    {
-        if (args.Length < 2)
-        {
-            Console.Error.WriteLine("check: missing file argument");
-            return 2;
-        }
-        var fpath = args[1];
-        var (comp, _, _, de) = Frontend(fpath);
-        if (comp is null) return 1;
-
-        de.RenderText(Console.Error);
-        if (de.HasErrors) return 1;
-        Console.Out.WriteLine($"{fpath}: ok");
-        return 0;
-    }
-
-    private static int Parse(string[] args)
-    {
-        if (args.Length < 2)
-        {
-            Console.Error.WriteLine("parse: missing file argument");
-            return 2;
-        }
-        var fpath = args[1];
-        var sm = new SourceManager();
-        var de = new DiagnosticEngine(sm);
-        FileId id;
-        try
-        {
-            id = sm.AddFromDisk(fpath);
-        }
-        catch
-        {
-            de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
-            de.RenderText(Console.Error);
-            return 1;
-        }
-        var module = new Parser(sm, id, de).ParseModule();
-        Console.Out.Write(AstDumper.Dump(module, sm));
-        de.RenderText(Console.Error);
-        return de.HasErrors ? 1 : 0;
-    }
-
-    private static int Tokenize(string[] args)
-    {
-        if (args.Length < 2)
-        {
-            Console.Error.WriteLine("tokenize: missing file argument");
-            return 2;
-        }
-        var fpath = args[1];
-        var sm = new SourceManager();
-        var de = new DiagnosticEngine(sm);
-        FileId id;
-        try
-        {
-            id = sm.AddFromDisk(fpath);
-        }
-        catch
-        {
-            id = FileId.None;
-            de.Report("LYR-CLI0001", Severity.Error, default, $"failed to read file: {fpath}");
-        }
-        var lex = new Lexer(sm, id, de);
-        var tl = new List<Token>();
-        Token t;
-        do
-        {
-            t = lex.Next();
-            tl.Add(t);
-        } while (t.TokenKind != TokenKind.Eof);
-        Console.Out.Write(TokenDumper.Dump(tl, sm));
-        de.RenderText(Console.Error);
-        return de.HasErrors ? 1 : 0;
-    }
-
-    private static int PrintVersion()
-    {
-        Console.WriteLine($"lyric {Version}");
-        return 0;
-    }
-
-    private static int HelpAndOk()
-    {
-        PrintHelp();
-        return 0;
-    }
-
-    private static int Unknown(string cmd)
-    {
-        Console.Error.WriteLine($"unknown command: {cmd}");
-        Console.Error.WriteLine("try 'lyric --help'");
-        return 2;
-    }
+    private static int Help() { PrintHelp(); return ExitCodes.Success; }
 
     private static void PrintHelp()
     {
-        Console.WriteLine("lyric — compiler and VM for the Lyric language");
-        Console.WriteLine();
-        Console.WriteLine("Usage: lyric <command> [args]");
-        Console.WriteLine();
-        Console.WriteLine("Commands (M0 stub — more coming):");
-        Console.WriteLine("  --version, -v    Show version");
-        Console.WriteLine("  --help, -h       Show this help");
-        Console.WriteLine("  tokenize <file>  Print token stream (debug)");
-        Console.WriteLine("  parse <file>     Print AST dump (debug)");
-        Console.WriteLine("  check <file>     Resolve + type-check (no build)");
-        Console.WriteLine("  lower <file>     Print mid-IR dump (debug)");
-        Console.WriteLine("  build <file> [-o <out>]  Compile to .lyrbc");
-        Console.WriteLine("  disasm <file>    Disassemble a .lyrbc");
-        Console.WriteLine("  run <file>       Compile and execute (.lyr or .lyrbc)");
+        Console.Out.WriteLine("lyric — the Lyric toolchain driver");
+        Console.Out.WriteLine();
+        Console.Out.WriteLine("Usage: lyric <command> <file> [options] [-- <program args>]");
+        Console.Out.WriteLine();
+        Console.Out.WriteLine("Commands:");
+        Console.Out.WriteLine("  run <file>               Compile and execute (.lyr or .lyrbc)");
+        Console.Out.WriteLine("  build <file> [-o <out>]  Compile .lyr to .lyrbc");
+        Console.Out.WriteLine("  check <file>             Resolve and type-check only");
+        Console.Out.WriteLine("  disasm <file.lyrbc>      Print a readable disassembly");
+        Console.Out.WriteLine();
+        Console.Out.WriteLine("Options:");
+        Console.Out.WriteLine("  --vm <path>              Runtime to execute with; defaults to");
+        Console.Out.WriteLine($"                           ${VmSelection.EnvironmentVariable}, then the bundled one");
+        Console.Out.WriteLine("  --version, -v            Show versions and the active runtime");
+        Console.Out.WriteLine("  --help, -h               Show this help");
+        Console.Out.WriteLine();
+        Console.Out.WriteLine("For compiler internals (tokenize, parse, lower) use 'lyrc'.");
+        Console.Out.WriteLine("To run a module without compiling, use 'lyrvm'.");
     }
 }
