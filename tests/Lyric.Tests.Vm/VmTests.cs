@@ -333,6 +333,61 @@ public class VmTests
             """).AsI64);
     }
 
+    // ------------------------------------------------------------------ 4c) Methoden (ADR-014)
+
+    private const string Acc = """
+        class Acc {
+            total: int,
+
+            static fn new(start: int): Acc { return Acc { total = start }; }
+            fn get(): int { return this.total; }
+            fn add(n: int) { this.total += n; }
+            fn addTwice(n: int) { this.add(n); this.add(n); }
+        }
+
+        """;
+
+    [Fact]
+    public void A_static_factory_constructs_and_an_instance_method_reads()
+    {
+        Assert.Equal(7, Run(Acc + "fn main(): int { return Acc.new(7).get(); }").AsI64);
+    }
+
+    /// <summary>Der Empfänger ist Parameter 0 — eine Methode mutiert dasselbe Objekt, das der
+    /// Aufrufer hält. Ohne die richtige Argument-Reihenfolge käme hier Unsinn heraus, und zwar
+    /// stiller Unsinn: beide Argumente sind Zahlen.</summary>
+    [Fact]
+    public void An_instance_method_mutates_the_receiver()
+    {
+        Assert.Equal(10, Run(Acc +
+            "fn main(): int { let a = Acc.new(7); a.add(3); return a.get(); }").AsI64);
+    }
+
+    /// <summary>Methode ruft Methode auf demselben <c>this</c>. Prüft, dass der Empfänger im
+    /// Rumpf ein gewöhnlicher Wert ist und weitergereicht werden kann.</summary>
+    [Fact]
+    public void A_method_can_call_another_method_on_this()
+    {
+        Assert.Equal(11, Run(Acc +
+            "fn main(): int { let a = Acc.new(5); a.addTwice(3); return a.get(); }").AsI64);
+    }
+
+    /// <summary>Zwei Instanzen, dieselbe Methode: der Empfänger entscheidet, nicht die Funktion.
+    /// Fällt dieser Test, teilen sich alle Instanzen versehentlich einen Zustand.</summary>
+    [Fact]
+    public void Methods_act_on_their_own_receiver()
+    {
+        Assert.Equal(1, Run(Acc +
+            """
+            fn main(): int {
+                let a = Acc.new(1);
+                let b = Acc.new(2);
+                b.add(50);
+                return a.get();
+            }
+            """).AsI64);
+    }
+
     // ------------------------------------------------------------------ 5) Laufzeitfehler
 
     [Fact]

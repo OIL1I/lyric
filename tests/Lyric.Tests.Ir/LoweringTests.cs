@@ -86,6 +86,7 @@ public class LoweringTests
     [InlineData("incdec")]          // ++/-- prä und post, compound assign
     [InlineData("objects")]         // newobj, Feld lesen/schreiben, Referenz-Semantik
     [InlineData("objects_nested")]  // Klasse als Feldtyp, plus ein rekursiver Typ
+    [InlineData("methods")]         // Empfänger als Parameter 0, static-Fabrik, 'this'
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();
@@ -466,6 +467,37 @@ public class LoweringTests
         // Der Span zeigt in die Quelldatei — genau das war vorher die raue Kante.
         Assert.True(diagnostic.Span.File.IsValid, "diagnostic has no source position");
         Assert.Contains("test.lyr:", Render(de), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ein Typ, dessen Layout an einer Scope-Grenze scheitert, darf die Typ-Tabelle nicht
+    /// beschädigen.
+    ///
+    /// <para><b>Das war ein Compiler-Absturz</b>, kein Schönheitsfehler: <c>Intern</c> trägt den
+    /// Platzhalter ein, <i>bevor</i> es die Feldtypen lowert. Warf es danach — hier am Feld-Default
+    /// —, blieb der Platzhalter stehen, und die nächste Funktion, die denselben Typ benutzt, las
+    /// ein Layout mit <c>FieldNames == null</c>. <c>examples/bank.lyr</c> beendete sich damit über
+    /// eine <c>NullReferenceException</c> statt mit einer Diagnose.</para>
+    ///
+    /// <para>Zwei Funktionen sind Pflicht: mit nur einer läuft der zweite Zugriff nie.</para>
+    /// </summary>
+    [Fact]
+    public void A_type_whose_layout_fails_reports_once_and_does_not_corrupt_the_table()
+    {
+        var (ir, de) = TryLower("""
+            class Account {
+                owner: string,
+                balance: int = 0
+            }
+
+            fn open(who: string): int { let a = Account { owner = who, balance = 1 }; return a.balance; }
+            fn main(): int { let a = Account { owner = "x", balance = 2 }; return a.balance; }
+            """);
+
+        Assert.Null(ir);
+        var diagnostic = Assert.Single(de.Diagnostics); // genau einmal, nicht je Funktion
+        Assert.Equal("LYR-IR0001", diagnostic.Code);
+        Assert.Contains("field default", diagnostic.Message, StringComparison.Ordinal);
     }
 
     [Fact]

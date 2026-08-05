@@ -92,6 +92,14 @@ public sealed class Resolver
             {
                 case FieldDecl f: DeclareMember(scope, new FieldSymbol(f.Name, f), f); break;
                 case FunctionDecl fn: DeclareMember(scope, Fn(fn), fn); break;
+
+                // 'static let' ist eine typgebundene Konstante (ADR-014). Als GlobalSymbol, weil
+                // es genau das ist — eine unveränderliche Bindung ohne Instanz; nur ihr Scope ist
+                // der Typ statt das Modul. Ein eigenes Symbol wäre ein zweiter Mechanismus für
+                // dieselbe Sache.
+                case StaticBindingDecl sb:
+                    DeclareMember(scope, new GlobalSymbol(sb.Binding.Name, Vis(sb.IsPublic), sb), sb);
+                    break;
             }
         }
     }
@@ -116,7 +124,7 @@ public sealed class Resolver
     }
 
     private static FunctionSymbol Fn(FunctionDecl fn) =>
-        new(fn.Name, Vis(fn.IsPublic), fn.IsMut, fn) { Generics = MakeGenerics(fn.Generics) };
+        new(fn.Name, Vis(fn.IsPublic), fn.IsMut, fn, fn.IsStatic) { Generics = MakeGenerics(fn.Generics) };
 
     private static GenericParamSymbol[] MakeGenerics(GenericParam[] generics)
     {

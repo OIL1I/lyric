@@ -24,9 +24,16 @@ public sealed record GenericParam(string Name, TypeNode[] Constraints, Span Span
 public sealed record Param(bool IsParams, string Name, TypeNode Type, Expr? Default, Span Span) : Node(Span);
 public sealed record ThrowsClause(TypeNode? Type, Span Span) : Node(Span); // Type == null => 'throws' ohne Typ (any Throwable)
 
+/// <param name="IsStatic">Member ohne Empfänger (ADR-014): kein <c>this</c>, nur über den Typ
+/// erreichbar. Auf Top-Level immer <c>false</c> — dort gibt es keinen Empfänger, den man weglassen
+/// könnte.</param>
 public sealed record FunctionDecl(
-    bool IsPublic, bool IsMut, string Name, GenericParam[] Generics, Param[] Parameters,
+    bool IsPublic, bool IsMut, bool IsStatic, string Name, GenericParam[] Generics, Param[] Parameters,
     TypeNode? ReturnType, ThrowsClause? Throws, Block? Body, Span Span) : Decl(Span); // Body == null => abstrakt/deklariert (';')
+
+/// <summary>Eine <c>static let</c>-Konstante im Rumpf eines struct/class (ADR-014). Erreichbar als
+/// <c>Typ.NAME</c>; syntaktisch dasselbe Binding wie ein Modul-<c>let</c>.</summary>
+public sealed record StaticBindingDecl(bool IsPublic, BindingStmt Binding, Span Span) : Decl(Span);
 
 public sealed record FieldDecl(string Name, TypeNode Type, Expr? Default, Span Span) : Decl(Span);
 

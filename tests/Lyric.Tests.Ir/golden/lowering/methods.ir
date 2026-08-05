@@ -1,0 +1,79 @@
+type ty0 Counter {
+  #0 value: i64
+}
+
+fn main.add -> i64 {
+  params: 2
+  locals:
+    l0 a: i64
+    l1 b: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = load l1
+    t2: i64 = add t0, t1
+    ret t2
+}
+
+fn main.main -> i64 {
+  params: 0
+  locals:
+    l0 c: &ty0
+  bb0:
+    t0: i64 = const 7
+    t1: &ty0 = call main.Counter.new(t0)
+    store l0, t1
+    t2: &ty0 = load l0
+    t3: i64 = const 3
+    call main.Counter.bump(t2, t3)
+    t4: &ty0 = load l0
+    t5: i64 = call main.Counter.twice(t4)
+    ret t5
+}
+
+fn main.Counter.new -> &ty0 {
+  params: 1
+  locals:
+    l0 start: i64
+  bb0:
+    t0: i64 = load l0
+    t1: &ty0 = newobj ty0
+    storefield t1, ty0#0, t0
+    ret t1
+}
+
+fn main.Counter.get -> i64 {
+  params: 1
+  locals:
+    l0 this: &ty0
+  bb0:
+    t0: &ty0 = load l0
+    t1: i64 = loadfield t0, ty0#0
+    ret t1
+}
+
+fn main.Counter.bump -> void {
+  params: 2
+  locals:
+    l0 this: &ty0
+    l1 by: i64
+  bb0:
+    t0: &ty0 = load l0
+    t1: i64 = loadfield t0, ty0#0
+    t2: i64 = load l1
+    t3: i64 = add t1, t2
+    storefield t0, ty0#0, t3
+    ret
+}
+
+fn main.Counter.twice -> i64 {
+  params: 1
+  locals:
+    l0 this: &ty0
+  bb0:
+    t0: &ty0 = load l0
+    t1: i64 = call main.Counter.get(t0)
+    t2: &ty0 = load l0
+    t3: i64 = call main.Counter.get(t2)
+    t4: i64 = call main.add(t1, t3)
+    ret t4
+}

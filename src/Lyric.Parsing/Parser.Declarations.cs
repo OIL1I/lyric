@@ -132,7 +132,7 @@ public sealed partial class Parser
 
     // --- Functions (§3.1) ---
 
-    private FunctionDecl ParseFunctionDecl(bool isPublic, Span start)
+    private FunctionDecl ParseFunctionDecl(bool isPublic, Span start, bool isStatic = false)
     {
         var isMut = _buffer.Match(TokenKind.Mut);
         _buffer.Expect(TokenKind.Fn, "LYR-PAR0032", $"expected 'fn', got {_buffer.Current.TokenKind}");
@@ -167,7 +167,7 @@ public sealed partial class Parser
             end = _buffer.Expect(TokenKind.Semicolon, "LYR-PAR0016", "expected '{' or ';' to end function").Span;
         }
 
-        return new FunctionDecl(isPublic, isMut, name, generics, parameters, returnType, throws, body,
+        return new FunctionDecl(isPublic, isMut, isStatic, name, generics, parameters, returnType, throws, body,
             Span.Union(start, end));
     }
 
@@ -219,8 +219,12 @@ public sealed partial class Parser
             if (_buffer.Position == before) { _buffer.Advance(); continue; } // Fortschritt erzwingen
 
             if (_buffer.Check(TokenKind.RBrace)) break;
-            if (member is FunctionDecl { Body: not null })
-                _buffer.Match(TokenKind.Comma); // optional nach Block-Body
+
+            // Das ',' trennt Member. Nach etwas, das schon selbst geschlossen ist — ein Block-Body
+            // endet auf '}', ein 'static let' auf ';' — ist es optional; nur Felder brauchen es
+            // zwingend, sonst wäre `a: int b: int` eine gültige Zeile.
+            if (member is FunctionDecl { Body: not null } or StaticBindingDecl)
+                _buffer.Match(TokenKind.Comma);
             else
                 _buffer.Expect(TokenKind.Comma, "LYR-PAR0029", "expected ',' between members");
         }
@@ -230,13 +234,30 @@ public sealed partial class Parser
     private Decl ParseTypeMember()
     {
         var start = _buffer.Current.Span;
-        // Methode: 'fn' / 'mut fn' / 'pub fn' / 'pub mut fn'. Sonst Feld.
-        if (_buffer.Check(TokenKind.Fn) || _buffer.Check(TokenKind.Mut)
-            || (_buffer.Check(TokenKind.Pub) && _buffer.Peek(1).TokenKind is TokenKind.Fn or TokenKind.Mut))
+
+        // Member-Formen: [pub] [static] [mut] fn …  |  [pub] static let …  |  Feld.
+        // 'static' steht vor 'mut', damit die Reihenfolge eindeutig ist — 'mut static fn' gibt es
+        // nicht. Sema lehnt die Kombination ohnehin ab (ADR-014: ein static-Member hat keinen
+        // Empfänger, den 'mut' betreffen könnte).
+        var isPublic = _buffer.Check(TokenKind.Pub)
+                       && _buffer.Peek(1).TokenKind is TokenKind.Fn or TokenKind.Mut or TokenKind.Static
+            ? _buffer.Match(TokenKind.Pub)
+            : false;
+
+        if (_buffer.Check(TokenKind.Static))
         {
-            var isPublic = _buffer.Match(TokenKind.Pub);
-            return ParseFunctionDecl(isPublic, start);
+            _buffer.Advance();
+            if (_buffer.Check(TokenKind.Let) || _buffer.Check(TokenKind.Var))
+            {
+                var binding = ParseBinding();
+                return new StaticBindingDecl(isPublic, binding, Span.Union(start, binding.Span));
+            }
+            return ParseFunctionDecl(isPublic, start, isStatic: true);
         }
+
+        if (_buffer.Check(TokenKind.Fn) || _buffer.Check(TokenKind.Mut))
+            return ParseFunctionDecl(isPublic, start);
+
         return ParseField();
     }
 

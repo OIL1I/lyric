@@ -67,7 +67,7 @@ public class SilentSkipTests
     /// Member-Ziel ist ein Typ- oder Modulname legitim, und beide Formen müssen weiter durchgehen.
     /// Genau daran scheitert der naheliegende Fix „melde es einfach am Erzeuger".</summary>
     [Theory]
-    [InlineData("class P {\n  hp: int,\n  fn make(): P { return P { hp = 1 }; }\n}\nfn main(): int { return P.make().hp; }")]
+    [InlineData("class P {\n  hp: int,\n  static fn make(): P { return P { hp = 1 }; }\n}\nfn main(): int { return P.make().hp; }")]
     [InlineData("import std.io.console;\nfn main(): int { console.println(\"hi\"); return 0; }")]
     public void A_type_or_module_as_a_member_target_stays_legal(string source)
     {

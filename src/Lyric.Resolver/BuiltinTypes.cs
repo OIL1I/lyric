@@ -41,7 +41,7 @@ public static class BuiltinTypes
     private static TypeSymbol CreateThrowable()
     {
         var message = new FunctionDecl(
-            IsPublic: true, IsMut: false, Name: "message", Generics: [], Parameters: [],
+            IsPublic: true, IsMut: false, IsStatic: false, Name: "message", Generics: [], Parameters: [],
             ReturnType: new NamedType(["string"], [], default), Throws: null, Body: null, Span: default);
         var decl = new InterfaceDecl(IsPublic: true, Name: "Throwable", Generics: [], Members: [message], Span: default);
         var members = new SymbolTable();
@@ -54,7 +54,7 @@ public static class BuiltinTypes
     private static FunctionSymbol CreatePanic()
     {
         var decl = new FunctionDecl(
-            IsPublic: true, IsMut: false, Name: "panic", Generics: [],
+            IsPublic: true, IsMut: false, IsStatic: false, Name: "panic", Generics: [],
             Parameters: [new Param(IsParams: false, Name: "message",
                 Type: new NamedType(["string"], [], default), Default: null, Span: default)],
             ReturnType: null, Throws: null, Body: null, Span: default);

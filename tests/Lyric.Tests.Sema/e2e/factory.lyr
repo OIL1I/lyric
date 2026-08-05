@@ -2,7 +2,7 @@ class Enemy {
     name: string,
     hp: int,
 
-    fn make(n: string): Enemy {
+    static fn make(n: string): Enemy {
         return Enemy { name = n, hp = 100 };
     }
 }

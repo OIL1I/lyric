@@ -43,6 +43,10 @@ internal sealed class FunctionLowerer
     private readonly ImportTable _imports;
     private readonly TypeTable _typeTable;
 
+    /// <summary>Slot des Empfängers (immer 0), oder <c>null</c> bei freier bzw. static-Funktion.</summary>
+    private readonly LocalId? _thisSlot;
+    private readonly IrType? _thisType;
+
     /// <summary>Typargumente der Instanz, für die gelowert wird. In P4 immer leer — der Haken sitzt
     /// in <see cref="LowerType"/>, damit die Worklist-Monomorphisierung später nur die Map füllen
     /// muss und nicht den ganzen Ausdrucks-Pfad umbauen.</summary>
@@ -58,7 +62,8 @@ internal sealed class FunctionLowerer
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions,
         ImportTable imports,
         TypeTable typeTable,
-        IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution)
+        IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution,
+        TypeSymbol? receiver = null)
     {
         _decl = decl;
         _name = name;
@@ -69,6 +74,15 @@ internal sealed class FunctionLowerer
         _substitution = substitution;
         _b = new BlockBuilder(_blocks);
         _returnType = LowerDeclaredReturnType();
+
+        // Der Empfänger ist Parameter 0 und wird VOR den deklarierten Parametern belegt — die
+        // Parameter-Konvention der IR ist positionsbasiert, ein späterer Slot wäre ein
+        // Falsch-Slot-Read in der VM. Denselben Weg geht CIL mit 'this'.
+        if (receiver is not null)
+        {
+            _thisSlot = _slots.Declare("this", _typeTable.RefTo(receiver));
+            _thisType = _typeTable.RefTo(receiver);
+        }
 
         // Parameter-Konvention: die ersten ParamCount Locals SIND die Parameter, in Reihenfolge.
         // Ohne sie trägt die IR nirgends Parameter-Typen und ein Call wäre nicht typprüfbar.
@@ -99,7 +113,10 @@ internal sealed class FunctionLowerer
                 : new Unreachable(_decl.Body.Span));
         }
 
-        return new IrFunction(_name, _returnType, _decl.Parameters.Length,
+        // Der Empfänger zählt als Parameter — er belegt Slot 0 und wird an der Aufrufstelle als
+        // Argument 0 übergeben. Ohne ihn hier wäre die Parameter-Konvention verletzt, und der
+        // Verifier meldet genau das ("call passes 2 arg(s), expected 1").
+        return new IrFunction(_name, _returnType, _decl.Parameters.Length + (_thisSlot is null ? 0 : 1),
             _slots.Locals, _slots.Temps, _blocks) { Entry = new BlockId(0) };
     }
 
@@ -305,7 +322,7 @@ internal sealed class FunctionLowerer
         StructInitExpr e => LowerObjectInit(e),
         RangeExpr e => throw NotSupported("range expression", e.Span),
         ResumeExpr e => throw NotSupported("'resume'", e.Span),
-        ThisExpr e => throw NotSupported("'this' (methods are not lowered yet)", e.Span),
+        ThisExpr e => LowerThis(e),
         AtIdentifierExpr e => throw NotSupported($"attribute '{e.Name}'", e.Span),
         ErrorExpr e => throw Bug($"error expression reached lowering at {e.Span}"),
 
@@ -538,6 +555,18 @@ internal sealed class FunctionLowerer
         return result;
     }
 
+    /// <summary><c>this</c> ist der Slot 0. Dass er existiert, hat die Sema geprüft
+    /// (<c>LYR-SEM0008</c> in einer static-Methode) — hier ist ein fehlender Slot ein Bug.</summary>
+    private TempId LowerThis(ThisExpr expr)
+    {
+        if (_thisSlot is not { } slot || _thisType is not { } type)
+            throw Bug($"'this' reached lowering outside an instance method at {expr.Span}");
+
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new LoadLocal(dest, slot, type, expr.Span));
+        return dest;
+    }
+
     // ------------------------------------------------------------------ Objekte (Sprache.md §3.3)
 
     /// <summary>
@@ -596,6 +625,13 @@ internal sealed class FunctionLowerer
     /// und Feldtyp bestimmen.</summary>
     private (TempId Object, TypeId Type, FieldId Field, IrType FieldType) ResolveFieldAccess(MemberExpr expr)
     {
+        // 'P.ZERO' ist keine Feld-, sondern eine Konstanten-Lesung. Sie hängt an derselben Lücke
+        // wie ein Modul-'let': Konstanten werden noch nirgends gelowert. Das hier zu benennen ist
+        // ehrlicher als eine Meldung über einen Member-Zugriff auf '<?>'.
+        if (_types.RefOf(expr) is GlobalSymbol)
+            throw NotSupported($"reading the constant '{expr.Member}' " +
+                               "(constants are not lowered yet, module-level 'let' neither)", expr.Span);
+
         if (_types.TypeOf(expr.Target) is not NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
             throw NotSupported($"member access '.{expr.Member}' on " +
                                $"'{TypeFacts.Display(_types.TypeOf(expr.Target))}'", expr.Span);
@@ -623,35 +659,64 @@ internal sealed class FunctionLowerer
 
     private TempId? LowerCall(CallExpr expr)
     {
-        if (expr.Callee is not IdentifierExpr callee)
-            throw NotSupported("call target (only module-level functions)", expr.Callee.Span);
+        // Der Empfänger ist Parameter 0 (ADR-014). Bei `p.get()` wird 'p' also zum ersten Argument;
+        // bei `P.new(…)` gibt es keinen, und der Aufruf ist ein gewöhnlicher Call. Beide Formen
+        // laufen danach durch denselben Pfad — der Unterschied steckt allein in der Argumentliste.
+        TempId? receiver = null;
+        string calleeName;
+        Symbol? bound;
+
+        switch (expr.Callee)
+        {
+            case MemberExpr member
+                when _types.TypeOf(member.Target) is NamedRef { Symbol.Kind: TypeSymbolKind.Class }:
+                calleeName = member.Member;
+                bound = _types.RefOf(member);
+                receiver = LowerExpr(member.Target);
+                break;
+
+            case MemberExpr member: // Typ- oder Modul-Ziel: P.new(…), console.println(…)
+                calleeName = member.Member;
+                bound = _types.RefOf(member);
+                break;
+
+            case IdentifierExpr callee:
+                calleeName = callee.Name;
+                bound = _types.RefOf(callee);
+                break;
+
+            default:
+                throw NotSupported("call target (only functions and methods)", expr.Callee.Span);
+        }
 
         // Ein selektiver Import bindet über ein ImportBindingSymbol; das eigentliche Ziel liegt
         // darunter. Ohne das Auspacken sieht `import std.io.console { println };` anders aus als
         // ein Aufruf im selben Modul, obwohl es dieselbe Funktion ist.
-        var bound = _types.RefOf(callee) is ImportBindingSymbol binding
-            ? binding.Target
-            : _types.RefOf(callee);
+        if (bound is ImportBindingSymbol binding) bound = binding.Target;
 
         if (bound is not FunctionSymbol symbol)
-            throw NotSupported($"call to '{callee.Name}' (not a module-level function)", expr.Span);
+            throw NotSupported($"call to '{calleeName}' (not a function or method)", expr.Span);
 
         // Nativ hinterlegt (Stdlib): eigener Instruktionstyp, eigener Indexraum.
         if (_imports.IsNative(symbol))
             return LowerImportCall(_imports.Intern(symbol), expr.Arguments, expr.Span);
 
         if (!_functions.TryGetValue(symbol, out var target))
-            throw NotSupported($"call to '{callee.Name}' (external, generic or bodiless)", expr.Span);
+            throw NotSupported($"call to '{calleeName}' (external, generic or bodiless)", expr.Span);
 
         // Default-Argumente und 'params' würden hier Argumente materialisieren müssen; solange das
         // fehlt, ist eine Arity-Abweichung kein IR-Bug, sondern eine Lücke im Lowering.
         if (symbol.Declaration is FunctionDecl declaration
             && declaration.Parameters.Length != expr.Arguments.Length)
-            throw NotSupported($"call to '{callee.Name}' with default or variadic arguments", expr.Span);
+            throw NotSupported($"call to '{calleeName}' with default or variadic arguments", expr.Span);
 
-        var args = new TempId[expr.Arguments.Length];
+        // Der Empfänger steht vorn — die Reihenfolge ist die Parameter-Konvention der IR und
+        // muss zu der passen, in der FunctionLowerer die Slots angelegt hat.
+        var offset = receiver is null ? 0 : 1;
+        var args = new TempId[expr.Arguments.Length + offset];
+        if (receiver is { } self) args[0] = self;
         for (var i = 0; i < expr.Arguments.Length; i++)
-            args[i] = LowerExpr(expr.Arguments[i]);
+            args[i + offset] = LowerExpr(expr.Arguments[i]);
 
         var returnType = TypeOfExpr(expr);
         if (IsVoid(returnType))
@@ -837,18 +902,12 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>Der Rückgabetyp kommt aus dem syntaktischen <see cref="TypeNode"/>, weil die Sema
-    /// ihn nicht in <see cref="TypeResult"/> ablegt. Builtins sind laut <c>Types.cs</c>
-    /// <see cref="NamedType"/> mit einelementigem Pfad — mehr braucht P4 nicht.</summary>
-    private IrType LowerDeclaredReturnType()
-    {
-        if (_decl.ReturnType is null) return VoidType;
-
-        if (_decl.ReturnType is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
-            && TypeFacts.FromBuiltinName(named.Path[0]) is { } primitive)
-            return TypeLowering.Lower(primitive);
-
-        throw NotSupported("non-primitive return type", _decl.ReturnType.Span);
-    }
+    /// ihn nicht in <see cref="TypeResult"/> ablegt. Die Auflösung liegt in der
+    /// <see cref="TypeTable"/> — dieselbe Stelle, die auch Feld- und Parametertypen auflöst, damit
+    /// eine Fabrik <c>static fn new(): P</c> denselben Typ liefert wie ein Feld vom Typ
+    /// <c>P</c>.</summary>
+    private IrType LowerDeclaredReturnType() =>
+        _decl.ReturnType is null ? VoidType : _typeTable.Lower(_decl.ReturnType);
 
     /// <summary>Scope-Grenze: gültiges Lyric, für das der Backend-Teil noch fehlt. Wird von
     /// <see cref="ModuleLowerer"/> zu einer <c>LYR-IR0001</c>-Diagnose mit Datei/Zeile/Spalte —

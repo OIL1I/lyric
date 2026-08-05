@@ -27,6 +27,8 @@ internal sealed class TypeTable
 {
     private readonly Dictionary<TypeSymbol, TypeId> _assigned = new(ReferenceEqualityComparer.Instance);
     private readonly List<IrTypeDef> _defs = new();
+    private readonly Dictionary<TypeSymbol, UnsupportedConstructException> _failed =
+        new(ReferenceEqualityComparer.Instance);
     private readonly BindingResult _binding;
 
     /// <param name="binding">Der Resolver hat jeden <c>NamedType</c> bereits an sein Symbol
@@ -42,6 +44,14 @@ internal sealed class TypeTable
 
     public TypeId Intern(TypeSymbol symbol)
     {
+        // Ein Typ, dessen Layout schon einmal gescheitert ist, scheitert wieder — mit derselben
+        // Meldung. Ohne das bliebe der Platzhalter aus dem ersten Versuch stehen, und der zweite
+        // Aufrufer läse ein Layout mit FieldNames == null: eine NullReferenceException im Compiler
+        // statt einer Diagnose. Genau das passierte bei `examples/bank.lyr`, dessen Account einen
+        // Feld-Default hat.
+        if (_failed.TryGetValue(symbol, out var failure))
+            throw new UnsupportedConstructException(failure.Message, failure.Span);
+
         if (_assigned.TryGetValue(symbol, out var existing)) return existing;
 
         if (symbol.Kind != TypeSymbolKind.Class)
@@ -66,23 +76,35 @@ internal sealed class TypeTable
         _assigned[symbol] = id;
         _defs.Add(default);
 
-        var fields = decl.Members.OfType<FieldDecl>().ToArray();
-        var names = new string[fields.Length];
-        var types = new IrType[fields.Length];
-
-        for (var i = 0; i < fields.Length; i++)
+        try
         {
-            if (fields[i].Default is not null)
-                throw new UnsupportedConstructException(
-                    "a field default is not supported by this compiler version yet",
-                    fields[i].Span);
+            var fields = decl.Members.OfType<FieldDecl>().ToArray();
+            var names = new string[fields.Length];
+            var types = new IrType[fields.Length];
 
-            names[i] = fields[i].Name;
-            types[i] = Lower(fields[i].Type, fields[i].Span);
+            for (var i = 0; i < fields.Length; i++)
+            {
+                if (fields[i].Default is not null)
+                    throw new UnsupportedConstructException(
+                        "a field default is not supported by this compiler version yet",
+                        fields[i].Span);
+
+                names[i] = fields[i].Name;
+                types[i] = Lower(fields[i].Type, fields[i].Span);
+            }
+
+            _defs[id.Value] = new IrTypeDef(symbol.Name, types, names);
+            return id;
         }
-
-        _defs[id.Value] = new IrTypeDef(symbol.Name, types, names);
-        return id;
+        catch (UnsupportedConstructException ex)
+        {
+            // Die Id NICHT zurückgeben: zwischenzeitlich kann ein Feldtyp weitere Typen interniert
+            // haben, deren Ids sonst verschöben. Stattdessen den Fehlschlag merken — das Modul wird
+            // ohnehin verworfen (ModuleLowerer liefert null), die Tabelle muss nur konsistent
+            // bleiben, bis alle Funktionen ihre Diagnose abgesetzt haben.
+            _failed[symbol] = ex;
+            throw;
+        }
     }
 
     /// <summary>Findet den Feldindex. Der Name existiert nur hier und in der Diagnose; im Bytecode
@@ -106,9 +128,11 @@ internal sealed class TypeTable
     };
 
     /// <summary>
-    /// Der Typ eines deklarierten Feldes. Ein Feld, dessen Typ wieder eine Klasse ist, interniert
-    /// diese rekursiv — das terminiert, weil <see cref="Intern"/> die Id vor dem Layout vergibt.
+    /// Ein syntaktisch geschriebener Typ (Feld, Parameter, Rückgabetyp). Ein Klassentyp interniert
+    /// rekursiv — das terminiert, weil <see cref="Intern"/> die Id vor dem Layout vergibt.
     /// </summary>
+    public IrType Lower(TypeNode node) => Lower(node, node.Span);
+
     private IrType Lower(TypeNode node, Core.Span span)
     {
         if (node is NamedType { TypeArguments.Length: 0 } named)

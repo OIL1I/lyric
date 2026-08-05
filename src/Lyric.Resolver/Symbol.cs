@@ -66,13 +66,20 @@ public sealed class FunctionSymbol : Symbol
 {
     public Visibility Visibility { get; }
     public bool IsMut { get; }
+
+    /// <summary>Member ohne Empfänger (ADR-014): kein <c>this</c>, nur über den Typ erreichbar.
+    /// Bei freien Funktionen immer <c>false</c>.</summary>
+    public bool IsStatic { get; }
+
     public GenericParamSymbol[] Generics { get; set; } = [];
 
-    public FunctionSymbol(string name, Visibility visibility, bool isMut, Node? declaration)
+    public FunctionSymbol(string name, Visibility visibility, bool isMut, Node? declaration,
+        bool isStatic = false)
         : base(name, declaration)
     {
         Visibility = visibility;
         IsMut = isMut;
+        IsStatic = isStatic;
     }
 }
 

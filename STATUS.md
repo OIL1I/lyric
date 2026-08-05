@@ -204,6 +204,33 @@ Programm, mit Begründung als Blockzitat).
     stumm ab, meldet der Compiler *gar nichts* und der Test fällt. Dazu die Gegenprobe, dass
     `P.make()` und `console.println(…)` legal bleiben — daran scheitert der naive Fix.
 
+- [x] **M7 — P1b — `static` und Methoden-Lowering** (ADR-014): `examples/objects.lyr` konstruiert
+  über `Counter.new(5)` und ruft Instanzmethoden — Exit 21 wie vorher, jetzt über Fabrik und
+  Methoden statt über nackte Feldzugriffe.
+  - **Der Empfänger ist Parameter 0**, dieselbe Konvention wie CIL. Damit ist der Unterschied
+    zwischen Instanz- und `static`-Methode allein die Parameterliste, und P3 muss für die vtable
+    nur noch entscheiden, *welche* Funktion gerufen wird — nicht, wie sie aussieht.
+  - **`this` ist ein Keyword-Ausdruck, kein Symbol**, deshalb hält der Lowerer seinen Slot direkt
+    (`SlotAllocator.Declare`) statt über die Symbol-Map zu gehen.
+  - **Namensmangling `<modul>.<Typ>.<methode>`** — ohne den Typnamen fielen `Account.get` und
+    `Player.get` zusammen, und der Verifier lehnt doppelte Funktionsnamen ab.
+  - **`static let` parst und typprüft, lowert aber nicht.** Es hängt an derselben Lücke wie ein
+    Modul-`let`: Konstanten werden nirgends gelowert. Die Meldung sagt das jetzt auch, statt über
+    einen Member-Zugriff auf `<?>` zu klagen.
+  - **Ein Compiler-Absturz gefunden und behoben**: `TypeTable.Intern` trägt den Platzhalter ein,
+    *bevor* es die Feldtypen lowert. Warf es danach — bei `bank.lyr` am Feld-Default `balance:
+    int = 0` —, blieb der Platzhalter stehen, und die nächste Funktion las ein Layout mit
+    `FieldNames == null`. `lyric run examples/bank.lyr` endete in einer Access Violation statt in
+    einer Diagnose. Fehlgeschlagene Typen werden jetzt gemerkt und werfen erneut; Scope-Grenzen
+    werden pro (Position, Text) nur einmal gemeldet.
+  - **Eine Regel aus ADR-014 wieder zurückgenommen**: das Verbot von `mut` an Klassen-Methoden.
+    `Doku.md` §10.2 führt den Marker ausdrücklich als Lesbarkeits-Konvention, und Interfaces
+    deklarieren `mut fn`, das implementierende Klassen erfüllen müssen — das Verbot hätte die
+    Konformanz gebrochen. Korrektur steht im ADR.
+  - 16 neue Tests: Golden-Fixture `methods`, 8 Sema-Regeln inkl. der Gegenprobe zu `mut`,
+    4 E2E-Tests (Fabrik, Mutation über den Empfänger, Methode ruft Methode, zwei Instanzen
+    getrennt) und der Regressionstest für den Absturz.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -224,8 +251,7 @@ festgehalten:
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-Als nächstes: **`static`/`static let`** umsetzen (entblockt das Methoden-Lowering und damit P3),
-dann **P2 — Arrays**.
+**P1b steht** — als nächstes **P2 — Arrays** (Gate: `examples/stats.lyr`).
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
@@ -265,16 +291,14 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Noch offen
 
-**Aus M7/P1 — bewusst offen:**
+**Aus M7/P1+P1b — bewusst offen:**
 
-- **Methoden sind nicht gelowert** (`ThisExpr` und Methodenaufrufe bleiben `LYR-IR0001`). Grund ist
-  **keine** Größe, sondern eine Lücke in `Sprache.md`: die Grammatik kennt kein `static`, `this`
-  ist in jedem Methodenrumpf erlaubt, und nichts sagt, wie `Account.new(...)` (Fabrik-Konvention,
-  ohne Empfänger) von `acc.deposit(...)` (Instanz, mit Empfänger) unterschieden wird. Beide sind
-  dasselbe `FunctionSymbol` — das kann nicht zwei Signaturen haben. **Das ist zu entscheiden, bevor
-  P3 (vtable) anfängt**, weil der Empfänger dort Parameter 0 wird.
+- **Konstanten lowern nicht** — weder `static let` noch ein Modul-`let`. Beide typprüfen sauber und
+  scheitern erst im Lowering (`LYR-IR0001`). Braucht entweder eine Globals-Sektion im Bytecode oder
+  Konstanten-Inlining; das ist eine eigene Entscheidung, kein Nachziehen.
 - **Feld-Defaults** (`balance: int = 0`) werden abgelehnt statt ignoriert. Ein weggelassenes Feld im
-  Initialisierer hätte seinen Nullwert; ob das erlaubt ist, sagt die Sema heute nicht.
+  Initialisierer hätte seinen Nullwert; ob das erlaubt ist, sagt die Sema heute nicht. `bank.lyr`
+  hängt daran.
 - **Structs, Enums, Interfaces, generische Klassen** bleiben `LYR-IR0001` — P3/P4/P8.
 
 **Aus M6:**
@@ -350,7 +374,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`M7: Classes — Objektmodell in IR, Bytecode 1.2 und VM (P1)`
+`M7: static-Member und Methoden-Lowering (P1b)`
 
 ---
 

@@ -449,20 +449,28 @@ Default-Konstruktor wird automatisch aus den Feldern generiert:
 let p = Player { name = "alice", hp = 100 };
 ```
 
-Für komplexere Konstruktion: statische `new`-Methode (kein Keyword, nur Konvention):
+Für komplexere Konstruktion: eine `static`-Fabrik. Der Name `new` ist kein Keyword, nur Konvention —
+`static` dagegen ist Pflicht, sonst wäre es eine Instanzmethode und bräuchte ein Objekt:
 
 ```lyr
 pub class Enemy {
     name: string,
     hp: int,
 
-    fn new(level: int): Enemy {
-        return Enemy { name = f"goblin-{level}", hp = 10 * level };
+    static let BASE_HP: int = 10;
+
+    static fn new(level: int): Enemy {
+        return Enemy { name = f"goblin-{level}", hp = Enemy.BASE_HP * level };
     }
 }
 
 let e = Enemy.new(5);
 ```
+
+`static let` gibt einem Typ Konstanten, die zu ihm gehören: `Enemy.BASE_HP` statt eines
+Modul-`let` mit sprechendem Präfix. Mehrere Fabriken sind kein Problem — sie brauchen nur
+verschiedene Namen (`Enemy.new`, `Enemy.fromSave`), weil Lyric in v1 kein Overloading hat
+(ADR-015).
 
 ---
 

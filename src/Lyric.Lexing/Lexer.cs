@@ -68,6 +68,7 @@ public sealed class Lexer
 
         { "fn", TokenKind.Fn },
         { "mut", TokenKind.Mut },
+        { "static", TokenKind.Static },
         { "let", TokenKind.Let },
         { "var", TokenKind.Var },
         { "params", TokenKind.Params },

@@ -188,7 +188,7 @@ Sichtbarkeit: `pub` exportiert, Default = modul-privat.
 ### 3.1 Funktionen
 
 ```ebnf
-FunctionDecl    = [ 'pub' ] [ 'mut' ] 'fn' IDENTIFIER [ GenericParams ]
+FunctionDecl    = [ 'pub' ] [ 'static' ] [ 'mut' ] 'fn' IDENTIFIER [ GenericParams ]
                   '(' [ ParamList ] ')' [ ':' TypeExpr ]
                   [ 'throws' [ TypeExpr ] ]
                   ( Block | ';' ) .
@@ -202,6 +202,12 @@ Param           = [ 'params' ] IDENTIFIER ':' TypeExpr [ '=' Expr ] .
 Regeln (Sema):
 
 - `mut` ist nur als Methoden-Marker erlaubt (Struct-Receiver-Mutation). Free `fn` darf kein `mut` haben.
+- `static` ist nur im Rumpf von `struct`/`class` erlaubt (ADR-014). Ein `static`-Member hat **keinen
+  Empfänger**: `this` ist darin ungültig (`LYR-SEM0008`), und er ist ausschließlich über den Typ
+  erreichbar. Ohne Marker gilt das Gegenteil — Instanz-Member, `this` gebunden, nur über einen Wert
+  erreichbar. Beide Kreuzformen sind `LYR-SEM0055`.
+- `static mut fn` ist ein Fehler (`LYR-SEM0054`): es gibt keinen Empfänger, über den `mut` sprechen
+  könnte. `mut` an einer Klassen-Methode bleibt erlaubt — siehe `Doku.md` §10.2.
 - `params` ist nur am **letzten** Parameter erlaubt und erfordert einen Array-Typ.
 - Default-Werte sind nur an Trailing-Parametern erlaubt.
 - `throws` ohne Typ: kann jeden `Throwable` werfen. `throws SomeError`: wirft nur diesen Typ (oder Subtypen).
@@ -215,7 +221,8 @@ StructDecl      = [ 'pub' ] 'struct' IDENTIFIER [ GenericParams ]
                   '{' [ StructBody ] '}' .
 InterfaceList   = '[' TypeExpr { ',' TypeExpr } ']' .
 StructBody      = { StructMember [ ',' ] } .                (* Trenner-Regel siehe unten *)
-StructMember    = Field | FunctionDecl .
+StructMember    = Field | FunctionDecl | StaticBinding .
+StaticBinding   = [ 'pub' ] 'static' BindingStmt .    (* nur let; Typ-gebundene Konstante, ADR-014 *)
 Field           = IDENTIFIER ':' TypeExpr [ '=' Expr ] .
 ```
 
@@ -251,7 +258,7 @@ ClassDecl       = [ 'pub' ] 'class' IDENTIFIER [ GenericParams ]
                   [ '::' InterfaceList ]
                   '{' [ ClassBody ] '}' .
 ClassBody       = { ClassMember [ ',' ] } .                (* Trenner-Regel wie StructBody §3.2 *)
-ClassMember     = Field | FunctionDecl .
+ClassMember     = Field | FunctionDecl | StaticBinding .   (* StaticBinding siehe §3.2 *)
 ```
 
 Beispiel:
@@ -273,22 +280,25 @@ pub class Player :: [Damageable, Serializable] {
 
 **Semantik**: Bei `let b = a;` wird die Referenz geteilt. `b.takeDamage(10)` wirkt auf dasselbe Objekt wie `a`.
 
-**Konstruktion**: Default-Konstruktor wird automatisch erzeugt aus den Feldern. Custom-Konstruktion via `new`-Methode (Konvention, keine Sprach-Magie):
+**Konstruktion**: Default-Konstruktor wird automatisch erzeugt aus den Feldern. Custom-Konstruktion via `static`-Fabrik (Konvention, keine Sprach-Magie):
 
 ```lyr
 pub class Enemy {
     name: string,
     hp: int,
 
-    fn new(name: string): Enemy {
-        return Enemy { name = name, hp = 100 };
+    static let MAX_HP: int = 100;
+
+    static fn new(name: string): Enemy {
+        return Enemy { name = name, hp = Enemy.MAX_HP };
     }
 }
 
 let e = Enemy.new("goblin");
 ```
 
-`new` ist kein Keyword — nur Konvention für Fabrik-Methoden.
+`new` ist kein Keyword — nur Konvention für Fabrik-Methoden. Das `static` ist dagegen Pflicht: ohne
+es wäre `new` eine Instanzmethode und bräuchte einen Empfänger (§3.1, ADR-014).
 
 ### 3.4 Enums
 

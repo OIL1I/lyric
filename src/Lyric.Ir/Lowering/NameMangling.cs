@@ -20,4 +20,10 @@ internal static class NameMangling
 {
     public static string ForFunction(ModuleSymbol module, string functionName) =>
         $"{module.FullName}.{functionName}";
+
+    /// <summary>Eine Methode: <c>&lt;modul&gt;.&lt;Typ&gt;.&lt;methode&gt;</c>. Der Typname muss
+    /// hinein, sonst kollidieren <c>Account.get</c> und <c>Player.get</c> — und der Verifier lehnt
+    /// doppelte Funktionsnamen ab, weil sie ein stiller Falsch-Call wären.</summary>
+    public static string ForMethod(ModuleSymbol module, string typeName, string methodName) =>
+        $"{module.FullName}.{typeName}.{methodName}";
 }

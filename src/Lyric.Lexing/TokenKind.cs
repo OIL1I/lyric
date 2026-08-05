@@ -31,6 +31,10 @@ public enum TokenKind
     // Function / binding
     Fn,
     Mut,
+
+    /// <summary>Member ohne Empfänger (ADR-014). Nur im Rumpf von struct/class erlaubt.</summary>
+    Static,
+
     Let,
     Var,
     Params,

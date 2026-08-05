@@ -112,11 +112,59 @@ public sealed class TypeChecker
         var thisType = SelfType(ts);
         var isInterface = ts.Kind == TypeSymbolKind.Interface;
         foreach (var m in members)
-            if (m is FunctionDecl fn)
+        {
+            if (m is StaticBindingDecl sb)
             {
-                if (!isInterface) RequireBody(fn, module);
-                CheckFunction(fn, ts.Members, thisType);
+                CheckStaticBinding(sb, ts);
+                continue;
             }
+
+            if (m is not FunctionDecl fn) continue;
+            if (!isInterface) RequireBody(fn, module);
+            CheckMemberModifiers(fn);
+
+            // Der Kern von ADR-014: ein static-Member hat keinen Empfänger, also ist 'this' dort
+            // nicht gebunden — CheckExpr meldet es dann als LYR-SEM0008.
+            CheckFunction(fn, ts.Members, fn.IsStatic ? null : thisType);
+        }
+    }
+
+    /// <summary>
+    /// <c>static mut fn</c> ist ein Fehler: <c>mut</c> spricht über den Empfänger, und ein
+    /// static-Member hat keinen (ADR-014).
+    ///
+    /// <para><b>`mut` an einer Klassen-Methode bleibt erlaubt.</b> Es setzt dort zwar nichts durch —
+    /// eine Referenz ist ohnehin durch jede Bindung mutierbar —, aber `Doku.md` §10.2 führt es
+    /// ausdrücklich als Lesbarkeits-Konvention, und Interfaces deklarieren `mut fn`, das
+    /// implementierende Klassen erfüllen müssen. Ein Verbot hätte beides gebrochen.</para>
+    /// </summary>
+    private void CheckMemberModifiers(FunctionDecl fn)
+    {
+        if (fn.IsStatic && fn.IsMut)
+            _de.Report("LYR-SEM0054", Severity.Error, fn.Span,
+                $"'{fn.Name}' is static and cannot be 'mut' — a static member has no receiver");
+    }
+
+    /// <summary>Eine <c>static let</c>-Konstante. Ihr Initialisierer wird im Typ-Scope geprüft,
+    /// aber ohne <c>this</c> — es gibt keine Instanz, auf die er sich beziehen könnte.</summary>
+    private void CheckStaticBinding(StaticBindingDecl sb, TypeSymbol ts)
+    {
+        var outerThis = _currentThis;
+        _currentThis = null;
+
+        var declared = sb.Binding.Type is { } t ? ResolveType(t, ts.Members) : null;
+        var init = sb.Binding.Initializer is { } e ? CheckExpr(e, ts.Members, declared) : null;
+
+        if (declared is null && init is null)
+            _de.Report("LYR-SEM0010", Severity.Error, sb.Span,
+                $"'{sb.Binding.Name}' needs a type or an initializer");
+        else if (declared is not null && init is not null)
+            CheckAssignable(sb.Binding.Initializer!, init, declared, sb.Span);
+
+        if (ts.Members.LookupLocal(sb.Binding.Name) is GlobalSymbol gs)
+            _globals[gs] = declared ?? init ?? LyrType.Error;
+
+        _currentThis = outerThis;
     }
 
     private void CheckEnumMethods(EnumDecl e, ModuleSymbol module)
@@ -1056,7 +1104,17 @@ public sealed class TypeChecker
             return own switch
             {
                 FieldSymbol fs => (FieldType(fs), fs),
+
+                // ADR-014: ein static-Member gehört dem Typ, nicht der Instanz. Vorher ging beides,
+                // und `p.new()` auf einer Instanz war so gültig wie `P.new()`.
+                FunctionSymbol { IsStatic: true } fn => (Report(span, "LYR-SEM0055",
+                    $"'{fn.Name}' is static — call it on the type: '{ts.Name}.{member}(…)'"), fn),
+
                 FunctionSymbol fn => (FnTypeOf(fn), fn),
+
+                GlobalSymbol g => (Report(span, "LYR-SEM0055",
+                    $"'{member}' is a static constant — read it from the type: '{ts.Name}.{member}'"), g),
+
                 _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null)
             };
         if (ExtensionMember(ts, member, span) is { } ext) return (FnTypeOf(ext), ext);
@@ -1137,8 +1195,19 @@ public sealed class TypeChecker
     private (LyrType, Symbol?) MemberOfType(TypeSymbol ts, string member, Span span) =>
         ts.Members.LookupLocal(member) switch
         {
-            FunctionSymbol fn => (FnTypeOf(fn), fn),                 // statische Methode / Factory (Point.new)
+            // ADR-014: ohne 'static' braucht die Methode einen Empfänger. Vorher lief `P.getHp()`
+            // durch und hätte beim Lowering einen Feldzugriff ohne Objekt erzeugt.
+            FunctionSymbol { IsStatic: false } fn => (Report(span, "LYR-SEM0055",
+                $"'{fn.Name}' is an instance method and needs a receiver — " +
+                $"call it on a value, or declare it 'static fn {member}(…)'"), fn),
+
+            FunctionSymbol fn => (FnTypeOf(fn), fn),                 // static fn (z. B. die Fabrik Point.new)
+            GlobalSymbol g => (_globals.TryGetValue(g, out var t) ? t : LyrType.Error, g), // static let
             EnumVariantSymbol ev => (VariantConstructorType(ev, ts, span), ev),
+
+            FieldSymbol => (Report(span, "LYR-SEM0055",
+                $"'{member}' is a field of '{ts.Name}' and belongs to an instance, not to the type"), null),
+
             _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no static member '{member}'"), null)
         };
 

@@ -1,0 +1,35 @@
+// Methoden (ADR-014): der Empfaenger ist Parameter 0, genau wie in CIL. Der Unterschied zwischen
+// Instanz- und static-Methode steckt damit allein in der Parameterliste — was P3s vtable-Frage auf
+// "welche Funktion" reduziert statt "wie sieht sie aus".
+class Counter {
+    value: int,
+
+    // Fabrik: kein Empfaenger, deshalb 'static'. Ohne den Marker braeuchte sie ein Objekt, das es
+    // an dieser Stelle noch gar nicht gibt.
+    static fn new(start: int): Counter {
+        return Counter { value = start };
+    }
+
+    fn get(): int {
+        return this.value;
+    }
+
+    fn bump(by: int) {
+        this.value += by;
+    }
+
+    // this als Argument weiterreichen: der Empfaenger ist ein gewoehnlicher Wert.
+    fn twice(): int {
+        return add(this.get(), this.get());
+    }
+}
+
+fn add(a: int, b: int): int {
+    return a + b;
+}
+
+fn main(): int {
+    let c = Counter.new(7);
+    c.bump(3);
+    return c.twice();
+}

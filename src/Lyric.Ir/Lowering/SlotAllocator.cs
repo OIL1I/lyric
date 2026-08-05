@@ -36,6 +36,16 @@ internal sealed class SlotAllocator
         return id;
     }
 
+    /// <summary>Benannter Slot ohne Sema-Symbol. Für den Empfänger einer Methode: <c>this</c> ist
+    /// ein Keyword-Ausdruck, kein deklarierter Parameter, hat also kein Symbol zum Nachschlagen —
+    /// der Lowerer hält seinen Slot direkt.</summary>
+    public LocalId Declare(string name, IrType type)
+    {
+        var id = new LocalId(_locals.Count);
+        _locals.Add(new IrLocal(id, name, type));
+        return id;
+    }
+
     /// <summary>Slot ohne Quell-Symbol — Träger für Werte, die über Blockgrenzen fließen
     /// (if-Ausdruck, <c>&amp;&amp;</c>, <c>||</c>). Der Zähler ist global über alle Arten, damit die
     /// Namen deterministisch sind: Golden-Snapshots vergleichen sie.</summary>

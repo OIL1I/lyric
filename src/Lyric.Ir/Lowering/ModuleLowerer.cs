@@ -58,7 +58,9 @@ public static class ModuleLowerer
     public static IrModule? Lower(Compilation compilation, BindingResult binding, TypeResult types,
         DiagnosticEngine de, bool? verify = null)
     {
-        var pending = new List<(FunctionDecl Decl, string Name)>();
+        // Receiver == null: freie Funktion oder 'static fn'. Sonst der Typ, dessen Instanz als
+        // Parameter 0 übergeben wird (ADR-014).
+        var pending = new List<(FunctionDecl Decl, string Name, TypeSymbol? Receiver)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
         var imports = new ImportTable();
         var typeTable = new TypeTable(binding);
@@ -89,27 +91,55 @@ public static class ModuleLowerer
 
                 var id = new FunctionId(pending.Count);
                 ids[symbol] = id;
-                pending.Add((function, NameMangling.ForFunction(module, function.Name)));
+                pending.Add((function, NameMangling.ForFunction(module, function.Name), null));
 
                 // Entry-Contract (Sprache.md §11): genau ein 'main' pro Executable. Dass es
                 // eindeutig ist, hat die Sema geprüft — hier wird es nur festgehalten.
                 if (function.Name == "main" && function.Parameters.Length == 0) entry = id;
+            }
+
+            // Methoden sind gewöhnliche Funktionen mit dem Empfänger als Parameter 0 — dieselbe
+            // Konvention wie CIL. Der Unterschied zwischen Instanz- und static-Methode ist damit
+            // allein die Parameterliste, und P3 muss für die vtable nur noch entscheiden, WELCHE
+            // Funktion gerufen wird, nicht wie sie aussieht.
+            foreach (var decl in compilation.AstOf(module).Declarations)
+            {
+                if (decl is not ClassDecl cls) continue;
+                if (cls.Generics.Length > 0) continue;
+                if (module.Members.LookupLocal(cls.Name) is not TypeSymbol type) continue;
+
+                foreach (var member in cls.Members)
+                {
+                    if (member is not FunctionDecl method) continue;
+                    if (method.Generics.Length > 0 || method.Body is null) continue;
+                    if (type.Members.LookupLocal(method.Name) is not FunctionSymbol symbol) continue;
+
+                    ids[symbol] = new FunctionId(pending.Count);
+                    pending.Add((method, NameMangling.ForMethod(module, cls.Name, method.Name),
+                        method.IsStatic ? null : type));
+                }
             }
         }
 
         // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
         var functions = new List<IrFunction>(pending.Count);
+        var reported = new HashSet<(Span Span, string Message)>();
         var failed = false;
-        foreach (var (decl, name) in pending)
+        foreach (var (decl, name, receiver) in pending)
         {
             try
             {
-                functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable, NoSubstitution).Run());
+                functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable,
+                    NoSubstitution, receiver).Run());
             }
             catch (UnsupportedConstructException ex)
             {
-                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+                // Eine Scope-Grenze im Layout eines Typs trifft jede Funktion, die ihn benutzt —
+                // gemeldet werden soll sie einmal. Der Nutzer soll alle FEHLENDEN KONSTRUKTE seines
+                // Programms sehen, nicht jede Stelle, an der dasselbe fehlt.
+                if (reported.Add((ex.Span, ex.Message)))
+                    de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
                 failed = true;
             }
         }

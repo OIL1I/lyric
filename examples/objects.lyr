@@ -1,19 +1,33 @@
 // objects.lyr — Komplexität: einfach
-// Zeigt: class als Reference-Typ, Feldzugriff lesend und schreibend, Objekte als Argument.
+// Zeigt: class als Reference-Typ, Feldzugriff, Methoden, `static`-Fabrik.
 //
-// Gate-Programm für M7/P1. Bewusst ohne Methoden, Interfaces und Exceptions — die kommen in
+// Gate-Programm für M7/P1 und P1b. Bewusst ohne Interfaces und Exceptions — die kommen in
 // späteren Slices. `bank.lyr` ist dasselbe Thema in voller Ausbaustufe.
 
 import std.io.console { println };
 
 class Counter {
     value: int,
-    step: int
+    step: int,
+
+    // Fabrik: kein Empfänger, deshalb `static` (ADR-014). Der Name `new` ist nur Konvention.
+    static fn new(step: int): Counter {
+        return Counter { value = 0, step = step };
+    }
+
+    // Instanzmethode: `this` ist der Empfänger und wird als Parameter 0 übergeben.
+    fn advance() {
+        this.value += this.step;
+    }
+
+    fn get(): int {
+        return this.value;
+    }
 }
 
 // Das Argument ist die Referenz, nicht eine Kopie: die Mutation ist beim Aufrufer sichtbar.
 fn bump(c: Counter) {
-    c.value += c.step;
+    c.advance();
 }
 
 class Inner {
@@ -26,7 +40,8 @@ class Outer {
 }
 
 fn main(): int {
-    let c = Counter { value = 10, step = 5 };
+    let c = Counter.new(5);
+    c.value = 10;
     bump(c);
     bump(c);
 
@@ -34,8 +49,8 @@ fn main(): int {
     let alias = c;
     alias.value += 1;
 
-    let outer = Outer { inner = Inner { label = "verschachtelt" }, count = c.value };
+    let outer = Outer { inner = Inner { label = "verschachtelt" }, count = c.get() };
     println(f"{outer.inner.label}: {outer.count}");
 
-    return c.value;
+    return c.get();
 }
