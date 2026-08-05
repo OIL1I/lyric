@@ -59,6 +59,14 @@ public sealed record OptSome(TempId Dest, TempId Value, IrType Inner, Span Span)
 public sealed record OptIsSome(TempId Dest, TempId Option, Span Span) : IrOp(Span);
 public sealed record OptGet(TempId Dest, TempId Option, IrType Inner, Span Span) : IrOp(Span);
 
+// Enums (Sprache.md §3.4). 'match' steht NICHT hier: es liest das Tag und verzweigt darueber wie
+// jede andere Fallunterscheidung. Nach der Verzweigung engt EnumAs auf die Variante ein, und der
+// Feldzugriff darauf ist ein gewoehnliches LoadField mit ihrem Layout — dieselbe Arbeitsteilung
+// wie optissome/optget.
+public sealed record NewVariant(TempId Dest, TypeId Variant, TypeId Enum, TempId[] Fields, Span Span) : IrOp(Span);
+public sealed record EnumTag(TempId Dest, TempId Value, Span Span) : IrOp(Span);
+public sealed record EnumAs(TempId Dest, TempId Value, TypeId Variant, Span Span) : IrOp(Span);
+
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);

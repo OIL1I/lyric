@@ -46,6 +46,10 @@ public static class IrShape
         OptIsSome i => new[] { i.Option },
         OptGet g => new[] { g.Option },
 
+        NewVariant v => v.Fields,
+        EnumTag t => new[] { t.Value },
+        EnumAs a => new[] { a.Value },
+
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 
@@ -86,6 +90,10 @@ public static class IrShape
         OptSome s => s.Dest,
         OptIsSome i => i.Dest,
         OptGet g => g.Dest,
+
+        NewVariant v => v.Dest,
+        EnumTag t => t.Dest,
+        EnumAs a => a.Dest,
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };

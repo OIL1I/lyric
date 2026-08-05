@@ -143,6 +143,11 @@ public static class IrPrinter
         OptSome s => $"{s.Dest}: {TypeStr(new IrOptionalType(s.Inner))} = optsome {s.Value}",
         OptIsSome i => $"{i.Dest}: bool = optissome {i.Option}",
         OptGet g => $"{g.Dest}: {TypeStr(g.Inner)} = optget {g.Option}",
+
+        NewVariant v => $"{v.Dest}: {TypeStr(new IrEnumType(v.Enum))} = newvariant {v.Variant}" +
+                        $" [{string.Join(", ", v.Fields)}]",
+        EnumTag t => $"{t.Dest}: i64 = enumtag {t.Value}",
+        EnumAs a => $"{a.Dest}: {TypeStr(new IrRefType(a.Variant))} = enumas {a.Value}, {a.Variant}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 
@@ -185,6 +190,7 @@ public static class IrPrinter
         IrRefType r => $"&{r.Type}",
         IrArrayType a => $"{TypeStr(a.Element)}[]",
         IrOptionalType o => $"?{TypeStr(o.Inner)}",
+        IrEnumType e => $"enum {e.Type}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 

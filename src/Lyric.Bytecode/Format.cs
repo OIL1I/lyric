@@ -12,8 +12,12 @@ public static class Format
 
     /// <summary>Eine unbekannte Major-Version wird abgelehnt, eine unbekannte Minor toleriert
     /// (neue Sektionen sind überspringbar). Bis v1.0 darf Major frei springen — ADR-013.</summary>
-    public const ushort VersionMajor = 1;
-    public const ushort VersionMinor = 4;
+    /// <remarks>Auf 2.0 gehoben, weil die Types-Sektion für Enums ihre <b>Form</b> ändert (ein
+    /// Eintrag trägt jetzt ein Kind-Byte). §2 erlaubt einer neuen Minor nur überspringbare
+    /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
+    /// ausdrücklich.</remarks>
+    public const ushort VersionMajor = 2;
+    public const ushort VersionMinor = 0;
 }
 
 /// <summary>
@@ -76,6 +80,19 @@ public enum TypeTag : byte
     /// <summary>Optional (<c>?T</c>); der innere Typ folgt inline. <b>Nicht schachtelbar</b> —
     /// <c>??T</c> gibt es nicht, sonst wäre „kein Wert" mehrdeutig.</summary>
     Optional = 0x42,
+
+    /// <summary>Enum; ein <c>uleb128</c>-Index auf einen Enum-Eintrag der Types-Sektion folgt.
+    /// Anders als Array und Optional über einen Index, weil ein Enum wie eine Klasse eine
+    /// Deklaration hat und rekursiv sein darf.</summary>
+    Enum = 0x43,
+}
+
+/// <summary>Art eines Types-Eintrags. Varianten eines Enums sind selbst
+/// <see cref="Layout"/>-Einträge — der Enum nennt nur ihre Indizes.</summary>
+public enum TypeKind : byte
+{
+    Layout = 0,
+    Enum = 1,
 }
 
 /// <summary>
@@ -169,4 +186,16 @@ public enum Op : byte
     OptSome = 0x61,   // optsome <innerType>
     OptIsSome = 0x62, // optissome
     OptGet = 0x63,    // optget — Force-Unwrap 'expr!', panickt bei "kein Wert"
+
+    /// <summary>
+    /// Enums (Sprache.md §3.4). <c>match</c> hat <b>keinen</b> Opcode: es liest mit
+    /// <see cref="EnumTag"/> das Tag und verzweigt darüber wie jede andere Fallunterscheidung.
+    /// Eine Sprungtabelle wäre eine Optimierung, keine Semantik.
+    ///
+    /// <para>Dieselbe Form wie beim Optional — <c>optissome</c> prüft, <c>optget</c> löst ein;
+    /// hier prüft <c>enumtag</c> und <c>enumas</c> löst ein.</para>
+    /// </summary>
+    NewVariant = 0x68, // newvariant <uleb128 variantType>
+    EnumTag = 0x69,    // enumtag
+    EnumAs = 0x6A,     // enumas <uleb128 variantType> — panickt bei falschem Tag
 }

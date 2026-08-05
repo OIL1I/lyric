@@ -341,7 +341,8 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 | P1b ✅ | `static`/`static let` (ADR-014), Methoden-Lowering mit Empfänger als Parameter 0 | `examples/objects.lyr` |
 | P2 ✅ | Arrays: Literal, `[x]*n`, `xs+ys`, Index, `length` (ADR-016) | `examples/arrays.lyr` |
 | P2b ✅ | Optionals (`?T`, `??`, `!`, Flow-Narrowing) | `examples/optionals.lyr` |
-| P3 | Interfaces + vtable-Dispatch | `examples/shapes.lyr` |
+| P3b | Enums (Unit-/Tuple-/Struct-Varianten) + `match` | `examples/shapes.lyr` ohne `for-in`/`std.math` |
+| P3 | Interfaces + vtable-Dispatch (**nach** P3b) | eigenes Programm mit Interface |
 | P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/bank.lyr` |
 | P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | — |
 | P6 | Closures (Lifting + Environment-Objekt) | `examples/inventory.lyr` |
@@ -375,6 +376,18 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > P2 implementiert `.length`/`.push`/`.pop` als **Intrinsics auf dem eingebauten Typ** — die
 > dokumentierte Oberfläche stimmt, der Unterbau ist der einfachere. Eine echte `List<T>` bräuchte
 > Generics (P8) und `std.collections` (M8) und wäre auf sich selbst gebaut.
+
+> **Korrektur (2026-08-02, vor P3):** Enums und `match` bekommen einen eigenen Slice (**P3b**), und
+> er läuft **vor** P3. Sie fehlten in der Tabelle komplett — dieselbe Lücke wie zuvor bei den
+> Optionals. Beides ist Kernsprache (§3.4, §6.2 samt Exhaustivitäts-Prüfung `LYR-SEM0050`, die die
+> Sema längst beherrscht) und beides ist teuer: Varianten brauchen ein Tag im Wert, `match` braucht
+> Pattern-Dekomposition und einen Dispatch.
+>
+> Aufgefallen ist es wieder am Gate: `examples/shapes.lyr` war P3 (Interfaces) zugeordnet und
+> **enthält kein einziges Interface** — es ist ein Enum-Programm mit `match`. Es wandert zu P3b;
+> P3 bekommt ein Programm, das tatsächlich über einen Interface-Typ dispatcht. Interfaces selbst
+> sind in der Sema fertig (Konformanz, Default-Methoden, `extend`, Orphan-Rule), P3 ist deshalb
+> reiner Dispatch: vtable in der Types-Sektion und ein `callvirt`.
 
 > **Offene Sprachfrage (2026-08-02, aus P1) — blockiert P3:** Methoden sind in P1 bewusst **nicht**
 > gelowert, und der Grund ist eine Lücke in `Sprache.md`, keine Zeitfrage. Die Grammatik kennt kein

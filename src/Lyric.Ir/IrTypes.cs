@@ -38,8 +38,10 @@ namespace Lyric.Ir
                     return Equal(x.Element, y.Element);
                 case (IrOptionalType x, IrOptionalType y):
                     return Equal(x.Inner, y.Inner);
-                case (IrScalarType or IrRefType or IrArrayType or IrOptionalType,
-                      IrScalarType or IrRefType or IrArrayType or IrOptionalType):
+                case (IrEnumType x, IrEnumType y):
+                    return x.Type == y.Type;
+                case (IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType,
+                      IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType):
                     return false; // verschiedene Sorten — vergleichbar, nur eben ungleich
                 default:
                     throw new InternalCompilationException(
@@ -80,4 +82,15 @@ namespace Lyric.Ir
     /// unterscheidet „kein Wert" an der leeren Referenz, und die kann nur eine Ebene tragen.</para>
     /// </summary>
     public sealed record IrOptionalType(IrType Inner) : IrType;
+
+    /// <summary>
+    /// Ein Enum (Sprache.md §3.4). Wie <see cref="IrRefType"/> über eine <see cref="TypeId"/> und
+    /// nicht inline: ein Enum hat eine Deklaration und darf rekursiv sein
+    /// (<c>enum Tree { Leaf, Node(Tree, Tree) }</c>).
+    ///
+    /// <para>Ein Wert dieses Typs ist zur Laufzeit die Instanz <b>einer</b> Variante; welcher,
+    /// steht in deren Slot 0. Jede Variante hat ihr eigenes Layout — siehe
+    /// <c>docs/Bytecode.md</c> §2.</para>
+    /// </summary>
+    public sealed record IrEnumType(TypeId Type) : IrType;
 }

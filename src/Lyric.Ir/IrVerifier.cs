@@ -88,6 +88,24 @@ public static class IrVerifier
                 continue;
             }
 
+            // Ein Enum-Eintrag traegt keine eigenen Felder — seine Varianten tun das. Jede muss ein
+            // Layout sein und darf nicht selbst wieder ein Enum sein.
+            for (var v = 0; v < def.Variants.Length; v++)
+            {
+                var variant = def.Variants[v];
+                if (variant.Value < 0 || variant.Value >= module.Types.Count)
+                    findings.Add($"enum {id} '{def.Name}': variant {v} references type {variant}, " +
+                                 $"which is out of range (module has {module.Types.Count} type(s))");
+                else if (module.Types[variant.Value].IsEnum)
+                    findings.Add($"enum {id} '{def.Name}': variant {v} is itself an enum");
+                else if (module.Types[variant.Value].FieldTypes.Length == 0)
+                    findings.Add($"enum {id} '{def.Name}': variant {v} has no tag slot");
+            }
+
+            if (def.IsEnum && def.FieldTypes.Length > 0)
+                findings.Add($"enum {id} '{def.Name}' must not have fields of its own; " +
+                             "its variants carry them");
+
             for (var f = 0; f < def.FieldTypes.Length; f++)
             {
                 switch (def.FieldTypes[f])
@@ -570,6 +588,9 @@ public static class IrVerifier
                 case OptSome s: CheckOptSome(s, block, index); break;
                 case OptIsSome i: CheckOptIsSome(i, block, index); break;
                 case OptGet g: CheckOptGet(g, block, index); break;
+                case NewVariant v: CheckNewVariant(v, block, index); break;
+                case EnumTag t: CheckEnumTag(t, block, index); break;
+                case EnumAs a: CheckEnumAs(a, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -1062,6 +1083,85 @@ public static class IrVerifier
             RequireDestType(g.Dest, option.Inner, "optget", block, index);
     }
 
+    /// <summary>
+    /// Eine Variante gehört zu genau einem Enum. Das zu prüfen ist der Kern der Enum-Invarianten:
+    /// <c>enumas</c> auf eine fremde Variante wäre ein Feldzugriff mit dem falschen Layout, und die
+    /// Load-Zeit-Validierung könnte ihn nicht abfangen — sie sieht nur, dass beide Indizes gültig
+    /// sind.
+    /// </summary>
+    private int VariantIndexIn(TypeId enumType, TypeId variant)
+    {
+        if (enumType.Value < 0 || enumType.Value >= _module.Types.Count) return -1;
+        return Array.IndexOf(_module.Types[enumType.Value].Variants, variant);
+    }
+
+    private void CheckNewVariant(NewVariant v, BlockId block, int index)
+    {
+        if (ResolveType(v.Enum, "newvariant", block, index) is not { } enumDef) return;
+        if (ResolveType(v.Variant, "newvariant", block, index) is not { } layout) return;
+
+        if (!enumDef.IsEnum)
+        {
+            Report(block, index, $"newvariant names type {v.Enum} '{enumDef.Name}', which is not an enum");
+            return;
+        }
+
+        if (VariantIndexIn(v.Enum, v.Variant) < 0)
+        {
+            Report(block, index, $"variant {v.Variant} '{layout.Name}' does not belong to enum " +
+                                 $"{v.Enum} '{enumDef.Name}'");
+            return;
+        }
+
+        // Slot 0 ist das Tag und wird von der Instruktion selbst gesetzt — die Argumente sind die
+        // Nutzfelder ab Slot 1.
+        var payload = layout.FieldTypes.Length - 1;
+        if (v.Fields.Length != payload)
+        {
+            Report(block, index, $"newvariant {v.Variant} '{layout.Name}' takes {N(payload)} " +
+                                 $"field(s), got {N(v.Fields.Length)}");
+            return;
+        }
+
+        for (var i = 0; i < v.Fields.Length; i++)
+        {
+            var actual = TypeOf(v.Fields[i]);
+            if (!IrType.Equal(layout.FieldTypes[i + 1], actual))
+                Report(block, index, $"newvariant field {N(i)} is {Show(actual)}, " +
+                                     $"expected {Show(layout.FieldTypes[i + 1])}");
+        }
+
+        RequireDestType(v.Dest, new IrEnumType(v.Enum), "newvariant", block, index);
+    }
+
+    private void CheckEnumTag(EnumTag t, BlockId block, int index)
+    {
+        if (TypeOf(t.Value) is not IrEnumType)
+            Report(block, index, $"enumtag expects an enum, found {Show(TypeOf(t.Value))}");
+        else
+            RequireDestType(t.Dest, new IrScalarType(IrScalar.I64), "enumtag", block, index);
+    }
+
+    private void CheckEnumAs(EnumAs a, BlockId block, int index)
+    {
+        if (TypeOf(a.Value) is not IrEnumType source)
+        {
+            Report(block, index, $"enumas expects an enum, found {Show(TypeOf(a.Value))}");
+            return;
+        }
+
+        if (ResolveType(a.Variant, "enumas", block, index) is null) return;
+
+        if (VariantIndexIn(source.Type, a.Variant) < 0)
+        {
+            Report(block, index, $"enumas narrows to variant {a.Variant}, which does not belong to " +
+                                 $"enum {source.Type}");
+            return;
+        }
+
+        RequireDestType(a.Dest, new IrRefType(a.Variant), "enumas", block, index);
+    }
+
     private void CheckTerminatorTypes(IrTerminator terminator, BlockId block)
         {
             switch (terminator)
@@ -1211,6 +1311,7 @@ public static class IrVerifier
             IrRefType r => $"&{r.Type}",
             IrArrayType a => $"{Show(a.Element)}[]",
             IrOptionalType o => $"?{Show(o.Inner)}",
+            IrEnumType e => $"enum {e.Type}",
             _ => type.ToString() ?? type.GetType().Name
         };
 

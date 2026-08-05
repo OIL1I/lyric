@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v1.4
+# Lyric — `.lyrbc` Bytecode-Format v2.0
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,9 +7,9 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **1.4**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **2.0**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
-> (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays** und **Optionals**.
+> (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals** und **Enums**.
 
 ---
 
@@ -85,19 +85,43 @@ und CIL (TypeDef-Tabelle) lösen es genauso.
 
 `uleb128` Anzahl, dann je Typ:
 
-| Feld | Kodierung |
-|---|---|
-| Name | `uleb128`-Index in den String-Pool |
-| Feldzahl | `uleb128` |
-| Feldtypen | Feldzahl × Typ-Tag (§3), in Deklarationsreihenfolge |
+```
+nameIndex        uleb128   Index in den String-Pool
+kind             u8        0 = Layout, 1 = Enum
+```
 
-Der **Feldindex ist die Position in dieser Liste** — Feldnamen stehen nicht im Bytecode. Sie sind
+**kind 0 — Layout** (class, struct, und jede einzelne Enum-Variante):
+
+```
+fieldCount       uleb128
+fieldTypes       fieldCount × Typ (§3), in Deklarationsreihenfolge
+```
+
+**kind 1 — Enum**: nennt seine Varianten, jede davon ein eigener Layout-Eintrag.
+
+```
+variantCount     uleb128
+variantTypes     variantCount × uleb128   Index in diese Tabelle
+```
+
+Der **Feldindex ist die Position in der Feldliste** — Feldnamen stehen nicht im Bytecode. Sie sind
 Metadaten; der Zugriff ist ein Offset. Dieselbe Entscheidung wie „Sprungziele sind Block-Indizes".
 Der Name des Typs steht nur für Diagnose und Disassembler darin.
 
-Ein Leser **muss** ablehnen: einen Feldtyp `void` (§3), und einen Typ-Index außerhalb der Tabelle.
-Rekursion über Referenzen ist dagegen ausdrücklich erlaubt — ein Typ darf sich selbst als Feldtyp
-nennen, auch vorwärts.
+Ein Leser **muss** ablehnen: einen Feldtyp `void` (§3), einen Typ-Index außerhalb der Tabelle, und
+einen Enum, dessen Variante kein Layout ist. Rekursion über Referenzen ist dagegen ausdrücklich
+erlaubt — ein Typ darf sich selbst als Feldtyp nennen, auch vorwärts.
+
+**Warum jede Variante ein eigener Typ ist**: Varianten haben verschiedene Felder — `Circle(float)`
+trägt eine Zahl, `Triangle { a, b, c }` drei. Ein gemeinsames Layout müsste entweder den Payload
+boxen (eine Allokation mehr und ein Slot ohne festen Typ) oder auf Maximalgröße auslegen (Slot 1
+wäre je nach Variante ein anderer Typ). Beides bricht die Regel, dass jedes Feld genau einen Typ
+hat. Mit einem Layout pro Variante bleibt sie intakt — und `match` ist ohnehin der Ort, an dem die
+Variante bekannt wird, also steht der richtige Typ genau dort zur Verfügung. Rust schichtet aus
+demselben Grund so.
+
+**Slot 0 jeder Variante ist ihr Tag**: der `i64`-Index der Variante in der `variantTypes`-Liste
+ihres Enums, 0-basiert in Deklarationsreihenfolge. Die Nutzfelder beginnen bei Slot 1.
 
 ### Capabilities (Id 1)
 
@@ -190,6 +214,7 @@ Zusammengesetzte Typen ab `0x40`:
 | `0x40` | Referenz auf einen Typ der Types-Sektion | `uleb128` Typ-Index |
 | `0x41` | Array | der Elementtyp, wieder als Typ (§3) |
 | `0x42` | Optional (`?T`) | der innere Typ, wieder als Typ (§3) |
+| `0x43` | Enum | `uleb128` Index eines Enum-Eintrags der Types-Sektion |
 
 Der Elementtyp eines Arrays steht **inline**, nicht als Tabellen-Index: `int[][]` ist damit
 `0x41 0x41 0x04`. Das geht, weil ein Array-Typ nicht rekursiv sein kann — ein Array enthält seinen
@@ -350,6 +375,27 @@ Zugriff. Ohne den Typ im Instruktionsstrom bräuchte der Validator eine Datenflu
 herauszufinden, welcher Typ an dieser Stelle auf dem Stack liegt. Der Index ist redundant zur
 Laufzeit und genau deshalb billig — er wird nach der Validierung nicht mehr gelesen.
 
+### Enums
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x68` | `newvariant` | `uleb128` variantType | −n +1 | legt eine Variante an; `n` = ihre Nutzfeldzahl |
+| `0x69` | `enumtag` | — | −1 +1 | Tag der Variante als `i64` |
+| `0x6A` | `enumas` | `uleb128` variantType | −1 +1 | engt auf eine Variante ein; **`panic`** bei falschem Tag |
+
+`newvariant` nimmt die Nutzfelder vom Stack (das erste zuunterst) und setzt Slot 0 selbst auf den
+Tag — der Compiler muss ihn nicht mitschicken, er steht im Typ.
+
+**`match` hat keinen eigenen Opcode.** Es liest mit `enumtag` das Tag und verzweigt darüber wie
+jede andere Fallunterscheidung; ein Sprungtabellen-Opcode wäre eine Optimierung, keine Semantik.
+Nach der Verzweigung ist die Variante bekannt, und `enumas` macht daraus einen Wert ihres Typs —
+danach ist der Feldzugriff ein gewöhnliches `ldfld` mit dem Layout der Variante.
+
+Das ist dieselbe Form wie beim Optional: `optissome` prüft, `optget` löst ein. Hier prüft `enumtag`
+und `enumas` löst ein. Beide Einlösungen können nicht scheitern, wenn der Compiler den Beweis
+geführt hat — `enumas` panickt trotzdem bei falschem Tag, weil `.lyrbc` auch aus fremder Quelle
+kommen kann.
+
 ### Optionals
 
 | Opcode | Mnemonic | Operanden | Stack | Wirkung |
@@ -483,8 +529,8 @@ Die vollständige Datei, 46 Bytes:
 
 ```
 4C 59 52 42                  magic "LYRB"
-01 00                        version.major = 1
-04 00                        version.minor = 4
+02 00                        version.major = 2
+00 00                        version.minor = 0
 
 01                           § Sektion 1 — Capabilities
 01                             byteLength = 1
@@ -524,7 +570,7 @@ ebenfalls konform — er erzeugt nur größeren und langsameren Code.
 
 ---
 
-## 8. Was in Format 1.4 fehlt
+## 8. Was in Format 2.0 fehlt
 
 Absichtlich, weil das Lowering es noch nicht erzeugt: `struct` (Wert-Semantik), `enum`, Arrays,
 Tupel, Nullable, Exceptions, Coroutinen-State-Machines, Closures, generische Instanzen und

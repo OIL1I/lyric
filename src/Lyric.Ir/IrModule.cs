@@ -68,7 +68,19 @@ public record struct IrImport(string Name, IrType[] ParamTypes, IrType ReturnTyp
 /// <para>Beide Listen sind gleich lang; der Verifier setzt das durch, weil ein Auseinanderlaufen
 /// sonst erst im Printer als Index-Ausnahme auffiele.</para>
 /// </summary>
-public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldNames);
+public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldNames)
+{
+    /// <summary>
+    /// Die Varianten, wenn dieser Eintrag ein <b>Enum</b> ist — sonst leer. Jede Variante ist
+    /// selbst ein Eintrag mit eigenem Layout (Bytecode.md §2); der Enum nennt nur ihre Ids.
+    ///
+    /// <para><b>Slot 0 jeder Variante ist ihr Tag</b>, der Index in dieser Liste. Die Nutzfelder
+    /// beginnen bei Slot 1.</para>
+    /// </summary>
+    public TypeId[] Variants { get; init; } = [];
+
+    public bool IsEnum => Variants.Length > 0;
+}
 
 public class IrModule(List<IrFunction> Functions)
 {
