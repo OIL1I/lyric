@@ -339,6 +339,52 @@ Programm, mit Begründung als Blockzitat).
     Binary liegt, wenn man es ausliefert. Ohne ihn wandert die Kante innerhalb eines Meilensteins
     zurück und es fällt niemandem auf.
 
+- [x] **Toolchain-Optionen und Fortschrittsausgabe**: `--json`, `--quiet`, `--verbose`,
+  `--progress`, `lyrc --stdlib`, `lyrvm info`, `disasm --function`. 1329 Tests grün.
+  - **Eine Options-Schicht in `Lyric.Core`, kein Parser je Binary.** `--json` dreimal zu parsen
+    hieße, dass `lyrc check --json` JSON liefert und `lyric check --json` still Klartext — derselbe
+    Fehler wie beim dreifach kopierten Compiler-Vorspann in M6, nur eine Ebene tiefer.
+  - **`TerminalOutput` ist der einzige Schreiber auf stderr.** Fortschrittszeile *und* Diagnosen
+    laufen durch ihn, weil eine Diagnose sonst mitten in eine stehende Zeile schreibt — und zwar
+    nur manchmal. Deshalb fällt auch die Entscheidung Text-oder-JSON genau dort und nirgends sonst.
+  - **`RenderJson` hatte 13 Tests und null Aufrufer.** Vollständig implementiert, vollständig
+    getestet, aus keinem Binary erreichbar — seit M0, das „Text- und JSON-Output" als Lieferposten
+    listete. Jetzt angeschlossen.
+  - **Zig ist das Vorbild für die Haltung, nicht für die Mechanik.** Übernommen: stderr,
+    TTY-Erkennung, rückstandsloses Löschen. Verworfen: der Baum (bildet parallele Arbeit ab, die
+    Lyric nach ADR-010 nicht hat) und der Render-Thread (sechs Phasenwechsel brauchen keine
+    Synchronisation). Die **Verzögerungsschwelle** von 120 ms kommt von Cargo: bei einem
+    40-Zeilen-Programm blitzte die Zeile sonst auf und wäre wieder weg.
+  - **`lower` und `verify` sind getrennte Phasen**, über `Lower(verify: false)` plus eigenem
+    `VerifyOrThrow`. Keine Verhaltensänderung — `VerifyByDefault` entscheidet weiter. Grund:
+    STATUS behauptete seit M5, der Verifier sei ~90 % der Lowering-Zeit, und dafür gab es keine
+    Quelle. **Die Messung sagt etwas anderes**: in Debug sind es ~50 % (49 ms lower / 52 ms
+    verify bei `hello.lyr`), und ein guter Teil beider Zahlen ist JIT-Aufwärmen. Die alte
+    Behauptung ist damit widerlegt, aber nicht sauber ersetzt — ein Release-Profil steht aus.
+  - **Der Modul-Lader misst sich selbst.** `Compilation.Resolve` lädt intern, die Grenze
+    Load/Resolve ist von außen nicht beobachtbar; statt `Lyric.Resolver` dafür aufzubohren, zieht
+    die Delegat-Hülle ihre Dauer von der Resolve-Zeit ab. Dieselbe Naht trägt später ADR-012s
+    Source-Root.
+  - **`lyrvm info` ist das Werkzeug für den *zweiten* Implementierer**, nicht für den Alltag:
+    `--json` macht „stimmt mein Reader mit deinem über die Tabellen überein" zu einem Diff.
+    Vorbild sind `objdump -h` / `wasm-objdump -h`, nicht der Disassembler.
+
+- [x] **Spec-Bug: Start-Index stand im falschen Indexraum** (gefunden durch `lyrvm info`).
+  `docs/Bytecode.md` §Start (Id 7) legt den Einstiegs-Index in den **gemeinsamen** Raum (erst
+  Importe, dann Funktionen) — denselben, den `call` benutzt. Der Writer schrieb die nackte
+  `FunctionId`.
+  - **Reader-Validierung und Disassembler folgten der Spec, Writer und Interpreter einander.**
+    `lyrvm disasm examples/hello.lyrbc` zeigte deshalb `start: std.string.fromInt` statt `main`.
+  - **Warum es 1300 Tests überstanden hat**: ohne Importe fallen beide Lesarten zusammen, und
+    `arith.lyr` — das Gate-Programm der Bytecode-Tests — hat keine. Der Round-Trip schrieb und las
+    mit derselben falschen Lesart, blieb also in sich konsistent. Sichtbar war es nur an einer
+    Disassembler-Zeile, die niemand gelesen hat.
+  - **Genau der Schaden, gegen den ADR-013 geschrieben ist**: eine spec-treue Fremd-Runtime wäre
+    bei `hello.lyr` in einen Import gesprungen. Kein Format-Bump — die Spec war immer richtig, der
+    Writer war falsch.
+  - Regressionstest fährt bewusst ein Programm **mit** Importen und sagt das auch im Assert; ohne
+    sie ist er wertlos.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -431,6 +477,12 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 - **CI-Vermerk**: `.github/workflows/ci.yml` installiert `dotnet-version: '9.0.x'`, alle Projekte
   zielen aber auf `net10.0`. Läuft heute nur, weil die Runner .NET 10 vorinstalliert haben. Nicht
   im Rahmen dieses Slices angefasst.
+- **Verifier-Anteil neu zu messen**, im Release-Profil. Die Debug-Zahlen aus `--verbose` sind von
+  JIT-Aufwärmen durchsetzt (`read` allein 9 ms für eine 8-Zeilen-Datei) und taugen nur als
+  Größenordnung.
+- **Sektions-Byte-Größen fehlen in `lyrvm info`**: `BytecodeModule` behält sie nicht, der Reader
+  verwirft sie nach dem Parsen. Sie nachzurüsten hieße, das Modell um Herkunftsdaten zu erweitern
+  — eigene Entscheidung, kein Nebenprodukt.
 
 **Aus M6:**
 
@@ -502,7 +554,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`toolchain: drei Binaries — lyrc, lyrvm, lyric (ADR-017)`
+`toolchain: gemeinsame Optionen, Fortschrittsausgabe, lyrvm info`
 
 ---
 

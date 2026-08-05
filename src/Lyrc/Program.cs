@@ -19,31 +19,40 @@ namespace Lyric.Cli.Compiler;
 /// </summary>
 public static class Program
 {
-    public static int Main(string[] args)
+    public static int Main(string[] rawArgs)
     {
+        var (options, args, optionError) = ToolOptions.Parse(rawArgs);
+        if (optionError is not null)
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
+                optionError, ExitCodes.Usage);
+
+        using var terminal = new TerminalOutput(Console.Out, Console.Error, options);
+
         if (args.Length == 0) { PrintHelp(); return ExitCodes.Success; }
 
         return args[0] switch
         {
-            "--version" or "-v" => Version(),
+            "--version" or "-v" => Version(terminal),
             "--help" or "-h" => Help(),
-            "build" => WithFile(args, "build", Build),
-            "check" => WithFile(args, "check", Check),
-            "lower" => WithFile(args, "lower", Lower),
-            "parse" => WithFile(args, "parse", Parse),
-            "tokenize" => WithFile(args, "tokenize", Tokenize),
+            "build" => WithFile(args, "build", terminal, Build),
+            "check" => WithFile(args, "check", terminal, Check),
+            "lower" => WithFile(args, "lower", terminal, Lower),
+            "parse" => WithFile(args, "parse", terminal, Parse),
+            "tokenize" => WithFile(args, "tokenize", terminal, Tokenize),
             _ => CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
                 $"unknown command: {args[0]} — try 'lyrc --help'", ExitCodes.Usage),
         };
     }
 
     /// <summary>Compiliert nach <c>.lyrbc</c>. Ohne <c>-o</c> neben die Quelle.</summary>
-    private static int Build(string path, string[] args)
+    private static int Build(string path, string[] args, TerminalOutput terminal)
     {
-        var output = OutputPath(args) ?? Path.ChangeExtension(path, ".lyrbc");
+        var output = Flag(args, "-o") ?? Flag(args, "--output")
+            ?? Path.ChangeExtension(path, ".lyrbc");
 
-        var result = SourceCompiler.Compile(path);
-        if (!result.Render(Console.Error) || result.Bytes is null) return ExitCodes.Failure;
+        var result = SourceCompiler.Compile(path, Options(args, terminal));
+        terminal.Render(result.Diagnostics);
+        if (!result.Ok || result.Bytes is null) return ExitCodes.Failure;
 
         try
         {
@@ -55,44 +64,48 @@ public static class Program
                 $"cannot write {output}: {ex.Message}", ExitCodes.Failure);
         }
 
-        Console.Out.WriteLine($"{output}: {new FileInfo(output).Length} bytes");
+        terminal.Info($"{output}: {new FileInfo(output).Length} bytes");
         return ExitCodes.Success;
     }
 
     /// <summary>Resolve + Sema, sonst nichts. Kein Lowering, keine Datei erzeugt.</summary>
-    private static int Check(string path, string[] args)
+    private static int Check(string path, string[] args, TerminalOutput terminal)
     {
-        if (!SourceCompiler.Check(path).Render(Console.Error)) return ExitCodes.Failure;
-        Console.Out.WriteLine($"{path}: ok");
+        var result = SourceCompiler.Check(path, Options(args, terminal));
+        terminal.Render(result.Diagnostics);
+        if (!result.Ok) return ExitCodes.Failure;
+
+        terminal.Info($"{path}: ok");
         return ExitCodes.Success;
     }
 
     /// <summary>Debug-Ausgabe der Mid-IR. Lowert nur, wenn die Sema fehlerfrei war — auf
     /// fehlerhaftem AST waere jedes Lowering-Ergebnis Raten.</summary>
-    private static int Lower(string path, string[] args)
+    private static int Lower(string path, string[] args, TerminalOutput terminal)
     {
-        var result = SourceCompiler.Lower(path);
-        if (!result.Render(Console.Error) || result.Ir is null) return ExitCodes.Failure;
+        var result = SourceCompiler.Lower(path, Options(args, terminal));
+        terminal.Render(result.Diagnostics);
+        if (!result.Ok || result.Ir is null) return ExitCodes.Failure;
 
-        Console.Out.Write(IrPrinter.Dump(result.Ir));
+        terminal.Payload(IrPrinter.Dump(result.Ir));
         return ExitCodes.Success;
     }
 
-    private static int Parse(string path, string[] args)
+    private static int Parse(string path, string[] args, TerminalOutput terminal)
     {
         var (sources, diagnostics, id) = SourceCompiler.Read(path);
-        if (!id.IsValid) { diagnostics.RenderText(Console.Error); return ExitCodes.Failure; }
+        if (!id.IsValid) { terminal.Render(diagnostics); return ExitCodes.Failure; }
 
         var module = new Parsing.Parser(sources, id, diagnostics).ParseModule();
-        Console.Out.Write(AstDumper.Dump(module, sources));
-        diagnostics.RenderText(Console.Error);
+        terminal.Payload(AstDumper.Dump(module, sources));
+        terminal.Render(diagnostics);
         return diagnostics.HasErrors ? ExitCodes.Failure : ExitCodes.Success;
     }
 
-    private static int Tokenize(string path, string[] args)
+    private static int Tokenize(string path, string[] args, TerminalOutput terminal)
     {
         var (sources, diagnostics, id) = SourceCompiler.Read(path);
-        if (!id.IsValid) { diagnostics.RenderText(Console.Error); return ExitCodes.Failure; }
+        if (!id.IsValid) { terminal.Render(diagnostics); return ExitCodes.Failure; }
 
         var lexer = new Lexer(sources, id, diagnostics);
         var tokens = new List<Token>();
@@ -103,31 +116,40 @@ public static class Program
             tokens.Add(token);
         } while (token.TokenKind != TokenKind.Eof);
 
-        Console.Out.Write(TokenDumper.Dump(tokens, sources));
-        diagnostics.RenderText(Console.Error);
+        terminal.Payload(TokenDumper.Dump(tokens, sources));
+        terminal.Render(diagnostics);
         return diagnostics.HasErrors ? ExitCodes.Failure : ExitCodes.Success;
     }
 
+    /// <summary>Was der Compiler ausser der Datei braucht. <c>--stdlib</c> schlaegt
+    /// <c>LYRIC_STDLIB</c> — dieselbe Staffelung wie <c>--vm</c>/<c>LYRIC_VM</c> im Treiber.</summary>
+    private static CompilerOptions Options(string[] args, TerminalOutput terminal) => new()
+    {
+        StdlibRoot = Flag(args, "--stdlib"),
+        Progress = terminal,
+    };
+
     /// <summary>Jedes Kommando hier nimmt genau eine Pflicht-Datei. Die Pruefung einmal statt
     /// fuenfmal — die alte CLI hatte sie kopiert, mit fuenf leicht verschiedenen Meldungen.</summary>
-    private static int WithFile(string[] args, string command, Func<string, string[], int> run)
+    private static int WithFile(string[] args, string command, TerminalOutput terminal,
+        Func<string, string[], TerminalOutput, int> run)
     {
         if (args.Length < 2)
             return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
                 $"{command}: missing file argument", ExitCodes.Usage);
-        return run(args[1], args);
+        return run(args[1], args, terminal);
     }
 
-    private static string? OutputPath(string[] args)
+    private static string? Flag(string[] args, string name)
     {
         for (var i = 2; i < args.Length - 1; i++)
-            if (args[i] is "-o" or "--output") return args[i + 1];
+            if (args[i] == name) return args[i + 1];
         return null;
     }
 
-    private static int Version()
+    private static int Version(TerminalOutput terminal)
     {
-        Console.Out.WriteLine($"lyrc {ToolchainVersion.Value}");
+        terminal.Payload($"lyrc {ToolchainVersion.Value}\n");
         return ExitCodes.Success;
     }
 
@@ -147,6 +169,11 @@ public static class Program
         Console.Out.WriteLine("  tokenize <file>          Print the token stream (debug)");
         Console.Out.WriteLine();
         Console.Out.WriteLine("Options:");
+        Console.Out.WriteLine("  --stdlib <dir>           Where the stdlib lives (beats $LYRIC_STDLIB)");
+        Console.Out.WriteLine("  --json                   Diagnostics as JSON on stderr");
+        Console.Out.WriteLine("  --quiet, -q              Suppress success messages");
+        Console.Out.WriteLine("  --verbose                Print a per-phase timing breakdown");
+        Console.Out.WriteLine("  --progress <mode>        auto (default), never or always");
         Console.Out.WriteLine("  --version, -v            Show the toolchain version");
         Console.Out.WriteLine("  --help, -h               Show this help");
         Console.Out.WriteLine();

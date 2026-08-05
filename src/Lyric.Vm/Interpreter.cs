@@ -32,13 +32,23 @@ public static class Interpreter
             throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
                 "module has no start section — it is a library, not a program");
 
+        // Start indiziert den gemeinsamen Raum (erst Imports, dann Funktionen), 'prepared' nur die
+        // definierten Funktionen — siehe Bytecode.md §Start (Id 7). Ein Einstieg im Import-Bereich
+        // waere ein Modul, dessen main eine Host-Funktion ist; der Loader laesst das durch, die
+        // Runtime kann es nicht ausfuehren.
+        var entry = start - module.Imports.Count;
+        if (entry < 0)
+            throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
+                $"start index {start} points into the import table — an entry point must be a "
+                + "function defined in this module");
+
         var prepared = new Prepared[module.Functions.Count];
         for (var i = 0; i < prepared.Length; i++) prepared[i] = Prepared.From(module.Functions[i]);
 
         // Bindung beim Laden: fehlt ein Native, wird das Modul abgelehnt, bevor eine
         // Instruktion laeuft.
         var bound = (natives ?? new NativeRegistry()).Bind(module);
-        return Execute(prepared, start, module.Strings, module.Types, bound);
+        return Execute(prepared, entry, module.Strings, module.Types, bound);
     }
 
     private static LyrValue Execute(Prepared[] prepared, int startIndex,

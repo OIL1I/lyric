@@ -47,7 +47,25 @@ public static class Toolchain
     public static ToolResult Lyrvm(params string[] args) => Run(LyrvmPath, args);
     public static ToolResult Lyric(params string[] args) => Run(LyricPath, args);
 
-    public static ToolResult Run(string executable, params string[] args)
+    /// <summary>
+    /// Wie <see cref="Run(string, string[])"/>, aber mit Umgebungsvariablen fuer <b>nur diesen</b>
+    /// Kindprozess.
+    ///
+    /// <para>Nicht <c>Environment.SetEnvironmentVariable</c> im Testprozess: xUnit faehrt
+    /// Testklassen parallel, und eine gesetzte Variable wirkte dann auf jeden gleichzeitig
+    /// gestarteten Compiler mit. Genau daran ist dieses Projekt beim ersten Gesamtlauf haengen
+    /// geblieben — isoliert gruen, zusammen rot. Geteilter veraenderlicher Zustand zwischen Tests
+    /// ist die Ursache, ein Collection-Attribut waere nur das Pflaster.</para>
+    /// </summary>
+    public static ToolResult RunWithEnvironment(string executable,
+        IReadOnlyDictionary<string, string?> environment, params string[] args) =>
+        Run(executable, environment, args);
+
+    public static ToolResult Run(string executable, params string[] args) =>
+        Run(executable, null, args);
+
+    private static ToolResult Run(string executable,
+        IReadOnlyDictionary<string, string?>? environment, string[] args)
     {
         var info = new ProcessStartInfo(executable)
         {
@@ -57,6 +75,8 @@ public static class Toolchain
             WorkingDirectory = RepositoryRoot,
         };
         foreach (var argument in args) info.ArgumentList.Add(argument);
+        if (environment is not null)
+            foreach (var (key, value) in environment) info.Environment[key] = value;
 
         using var process = Process.Start(info)
                             ?? throw new InvalidOperationException($"could not start {executable}");

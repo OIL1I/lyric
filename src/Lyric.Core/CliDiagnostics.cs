@@ -43,6 +43,10 @@ public static class CliDiagnostics
     /// <summary>Die Ausgabedatei liess sich nicht schreiben.</summary>
     public const string OutputUnwritable = "LYR-CLI0008";
 
+    /// <summary>Eine per <c>--function</c> benannte Funktion steht nicht im Modul. Bewusst ein
+    /// Fehler statt leerer Ausgabe: leer sieht aus wie „die Funktion ist leer".</summary>
+    public const string UnknownFunction = "LYR-CLI0009";
+
     /// <summary>Meldet eine positionslose CLI-Diagnose und rendert sie sofort — CLI-Fehler haengen
     /// an keinem Quelltext-Span, es gibt also nichts zu sammeln oder zu sortieren.</summary>
     public static int Fail(TextWriter error, string code, string message, int exitCode)

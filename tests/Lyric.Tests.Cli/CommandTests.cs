@@ -89,36 +89,23 @@ public sealed class CommandTests
     [Fact]
     public void Foreign_vm_can_be_selected_through_the_environment()
     {
-        var previous = Environment.GetEnvironmentVariable("LYRIC_VM");
-        try
-        {
-            Environment.SetEnvironmentVariable("LYRIC_VM", Toolchain.LyrvmPath);
-            var result = Toolchain.Lyric("run", Toolchain.Example("arith.lyr"));
-            Assert.Equal(55, result.ExitCode);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("LYRIC_VM", previous);
-        }
+        var result = Toolchain.RunWithEnvironment(Toolchain.LyricPath,
+            new Dictionary<string, string?> { ["LYRIC_VM"] = Toolchain.LyrvmPath },
+            "run", Toolchain.Example("arith.lyr"));
+
+        Assert.Equal(55, result.ExitCode);
     }
 
     [Fact]
     public void Flag_beats_environment_variable()
     {
-        var previous = Environment.GetEnvironmentVariable("LYRIC_VM");
-        try
-        {
-            // Die Variable zeigt ins Leere, das Flag auf die echte Runtime. Laeuft es trotzdem,
-            // hat das Flag gewonnen — die Staffelung aus ADR-017.
-            Environment.SetEnvironmentVariable("LYRIC_VM", "/nonexistent/runtime");
-            var result = Toolchain.Lyric(
-                "run", Toolchain.Example("arith.lyr"), "--vm", Toolchain.LyrvmPath);
-            Assert.Equal(55, result.ExitCode);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("LYRIC_VM", previous);
-        }
+        // Die Variable zeigt ins Leere, das Flag auf die echte Runtime. Laeuft es trotzdem,
+        // hat das Flag gewonnen — die Staffelung aus ADR-017.
+        var result = Toolchain.RunWithEnvironment(Toolchain.LyricPath,
+            new Dictionary<string, string?> { ["LYRIC_VM"] = "/nonexistent/runtime" },
+            "run", Toolchain.Example("arith.lyr"), "--vm", Toolchain.LyrvmPath);
+
+        Assert.Equal(55, result.ExitCode);
     }
 
     [Fact]

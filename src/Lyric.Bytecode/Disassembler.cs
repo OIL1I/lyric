@@ -16,7 +16,29 @@ namespace Lyric.Bytecode;
 /// </summary>
 public static class Disassembler
 {
-    public static string Dump(BytecodeModule module)
+    /// <summary>
+    /// Disassembliert das ganze Modul, oder mit <paramref name="onlyFunction"/> nur eine Funktion
+    /// samt Modulkopf.
+    ///
+    /// <para>Der Kopf bleibt auch beim Filtern stehen: die Instruktionen einer Funktion verweisen
+    /// per Index auf Strings, Typen und Importe, und ohne die Tabellen davor ist die Ausgabe nicht
+    /// lesbar.</para>
+    ///
+    /// <para>Ein unbekannter Name liefert <c>null</c> — der Aufrufer macht daraus eine Diagnose.
+    /// Eine leere Ausgabe waere die schlechtere Antwort: sie sieht aus wie „die Funktion ist
+    /// leer".</para>
+    /// </summary>
+    public static string? Dump(BytecodeModule module, string? onlyFunction)
+    {
+        if (onlyFunction is null) return Dump(module);
+        return module.Functions.Any(f => f.Name == onlyFunction)
+            ? Render(module, filter: onlyFunction)
+            : null;
+    }
+
+    public static string Dump(BytecodeModule module) => Render(module, filter: null);
+
+    private static string Render(BytecodeModule module, string? filter)
     {
         var sb = new StringBuilder();
 
@@ -45,6 +67,7 @@ public static class Disassembler
 
         foreach (var function in module.Functions)
         {
+            if (filter is not null && function.Name != filter) continue;
             sb.Append('\n');
             WriteFunction(sb, module, function);
         }

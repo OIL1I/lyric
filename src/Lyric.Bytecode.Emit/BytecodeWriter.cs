@@ -98,8 +98,15 @@ public static class BytecodeWriter
         });
 
         // Fehlt bei Bibliotheks-Modulen. Muss nach Functions stehen: Sektionen sind aufsteigend.
+        //
+        // Der Index laeuft in den GEMEINSAMEN Raum (erst Imports, dann Funktionen) — derselbe, den
+        // 'call' benutzt. Bytecode.md §Start (Id 7) sagt das seit jeher; der Writer schrieb bis
+        // 2026-08-05 die nackte FunctionId. Aufgefallen ist es nie, weil beide Lesarten
+        // zusammenfallen, sobald ein Modul keine Importe hat: examples/arith.lyr lief korrekt,
+        // examples/hello.lyr haette eine spec-treue Fremd-Runtime in einen Import springen lassen.
         if (module.EntryFunction is { } entry)
-            WriteSection(writer, SectionId.Start, s => s.ULeb(entry.Value));
+            WriteSection(writer, SectionId.Start,
+                s => s.ULeb(module.Imports.Count + entry.Value));
 
         return writer.ToArray();
     }

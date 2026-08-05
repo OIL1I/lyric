@@ -24,21 +24,28 @@ public static class Program
 {
     public static int Main(string[] rawArgs)
     {
-        var (vm, args, flagError) = VmSelection.Parse(rawArgs);
+        var (options, withoutOptions, optionError) = ToolOptions.Parse(rawArgs);
+        if (optionError is not null)
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
+                optionError, ExitCodes.Usage);
+
+        var (vm, args, flagError) = VmSelection.Parse(withoutOptions);
         if (flagError is not null)
             return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
                 flagError, ExitCodes.Usage);
+
+        using var terminal = new TerminalOutput(Console.Out, Console.Error, options);
 
         if (args.Length == 0) { PrintHelp(); return ExitCodes.Success; }
 
         return args[0] switch
         {
-            "--version" or "-v" => Version(vm),
+            "--version" or "-v" => Version(vm, terminal),
             "--help" or "-h" => Help(),
-            "run" => Run(args, vm),
-            "build" => Build(args),
-            "check" => Check(args),
-            "disasm" => Disasm(args),
+            "run" => Run(args, vm, terminal),
+            "build" => Build(args, terminal),
+            "check" => Check(args, terminal),
+            "disasm" => Disasm(args, terminal),
             _ => CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
                 $"unknown command: {args[0]} — try 'lyric --help'", ExitCodes.Usage),
         };
@@ -53,7 +60,7 @@ public static class Program
     /// In-Memory-Bytes entgegennehmen — sie braucht eine Datei, also wird bei
     /// <c>.lyr</c>-Eingabe eine temporaere erzeugt und danach wieder entfernt.</para>
     /// </summary>
-    private static int Run(string[] args, VmSelection vm)
+    private static int Run(string[] args, VmSelection vm, TerminalOutput terminal)
     {
         var separator = Array.IndexOf(args, "--");
         var positional = separator < 0 ? args : args[..separator];
@@ -73,13 +80,16 @@ public static class Program
                 + $"(from --vm or {VmSelection.EnvironmentVariable})", ExitCodes.Failure);
 
         return IsModule(path)
-            ? RunModule(path, programArguments, vm)
-            : RunSource(path, programArguments, vm);
+            ? RunModule(path, programArguments, vm, terminal)
+            : RunSource(path, programArguments, vm, terminal);
     }
 
-    private static int RunModule(string path, string[] programArguments, VmSelection vm)
+    private static int RunModule(string path, string[] programArguments, VmSelection vm,
+        TerminalOutput terminal)
     {
-        if (!vm.IsBundled) return vm.RunForeign(path, programArguments, Console.Error);
+        // Vor jedem Uebergang an fremden Code: die Zeile muss weg. Danach schreibt entweder ein
+        // Subprozess oder der Interpreter auf dieselben Stroeme.
+        if (!vm.IsBundled) { terminal.Finish(); return vm.RunForeign(path, programArguments, Console.Error); }
 
         if (RejectProgramArguments(programArguments) is { } rejected) return rejected;
 
@@ -94,17 +104,21 @@ public static class Program
                 $"failed to read file: {path}", ExitCodes.Failure);
         }
 
+        terminal.Finish();
         return VmHost.Execute(bytes, Console.Out, Console.Error);
     }
 
-    private static int RunSource(string path, string[] programArguments, VmSelection vm)
+    private static int RunSource(string path, string[] programArguments, VmSelection vm,
+        TerminalOutput terminal)
     {
-        var result = SourceCompiler.Compile(path);
-        if (!result.Render(Console.Error) || result.Bytes is null) return ExitCodes.Failure;
+        var result = SourceCompiler.Compile(path, new CompilerOptions { Progress = terminal });
+        terminal.Render(result.Diagnostics);
+        if (!result.Ok || result.Bytes is null) return ExitCodes.Failure;
 
         if (vm.IsBundled)
         {
             if (RejectProgramArguments(programArguments) is { } rejected) return rejected;
+            terminal.Finish();
             return VmHost.Execute(result.Bytes, Console.Out, Console.Error);
         }
 
@@ -115,6 +129,7 @@ public static class Program
         try
         {
             File.WriteAllBytes(temporary, result.Bytes);
+            terminal.Finish();
             return vm.RunForeign(temporary, programArguments, Console.Error);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -129,7 +144,7 @@ public static class Program
         }
     }
 
-    private static int Build(string[] args)
+    private static int Build(string[] args, TerminalOutput terminal)
     {
         if (args.Length < 2)
             return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
@@ -138,8 +153,9 @@ public static class Program
         var path = args[1];
         var output = OutputPath(args) ?? Path.ChangeExtension(path, ".lyrbc");
 
-        var result = SourceCompiler.Compile(path);
-        if (!result.Render(Console.Error) || result.Bytes is null) return ExitCodes.Failure;
+        var result = SourceCompiler.Compile(path, new CompilerOptions { Progress = terminal });
+        terminal.Render(result.Diagnostics);
+        if (!result.Ok || result.Bytes is null) return ExitCodes.Failure;
 
         try
         {
@@ -151,18 +167,20 @@ public static class Program
                 $"cannot write {output}: {ex.Message}", ExitCodes.Failure);
         }
 
-        Console.Out.WriteLine($"{output}: {new FileInfo(output).Length} bytes");
+        terminal.Info($"{output}: {new FileInfo(output).Length} bytes");
         return ExitCodes.Success;
     }
 
-    private static int Check(string[] args)
+    private static int Check(string[] args, TerminalOutput terminal)
     {
         if (args.Length < 2)
             return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
                 "check: missing file argument", ExitCodes.Usage);
 
-        if (!SourceCompiler.Check(args[1]).Render(Console.Error)) return ExitCodes.Failure;
-        Console.Out.WriteLine($"{args[1]}: ok");
+        var result = SourceCompiler.Check(args[1], new CompilerOptions { Progress = terminal });
+        terminal.Render(result.Diagnostics);
+        if (!result.Ok) return ExitCodes.Failure;
+        terminal.Info($"{args[1]}: ok");
         return ExitCodes.Success;
     }
 
@@ -171,7 +189,7 @@ public static class Program
     /// Fremd-Runtime konfiguriert ist. Das Format ist spezifiziert, seine Textdarstellung ist es
     /// nicht; „was steht in dieser Datei" ist deshalb keine Frage an die gewaehlte Runtime.
     /// </summary>
-    private static int Disasm(string[] args)
+    private static int Disasm(string[] args, TerminalOutput terminal)
     {
         if (args.Length < 2)
             return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
@@ -192,7 +210,7 @@ public static class Program
         var module = VmHost.Load(bytes, Console.Error);
         if (module is null) return ExitCodes.Failure;
 
-        Console.Out.Write(Disassembler.Dump(module));
+        terminal.Payload(Disassembler.Dump(module));
         return ExitCodes.Success;
     }
 
@@ -217,10 +235,10 @@ public static class Program
         return null;
     }
 
-    private static int Version(VmSelection vm)
+    private static int Version(VmSelection vm, TerminalOutput terminal)
     {
-        Console.Out.WriteLine($"lyric {ToolchainVersion.Value} (.lyrbc "
-            + $"{Format.VersionMajor}.{Format.VersionMinor}, runtime: {vm.Display})");
+        terminal.Payload($"lyric {ToolchainVersion.Value} (.lyrbc "
+            + $"{Format.VersionMajor}.{Format.VersionMinor}, runtime: {vm.Display})\n");
         return ExitCodes.Success;
     }
 

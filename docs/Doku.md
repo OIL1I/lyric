@@ -1148,6 +1148,7 @@ normalen Programmieren nicht interessieren.
 | `lyrc lower <file>` | Mid-IR-Dump (Debug) |
 | `lyrc parse <file>` | AST-Dump (Debug) |
 | `lyrc tokenize <file>` | Token-Stream (Debug) |
+| `lyrc --stdlib <dir>` | Wo die Stdlib liegt; schlägt `LYRIC_STDLIB` |
 
 ### 23.3 `lyrvm` — die Runtime
 
@@ -1159,6 +1160,8 @@ die Runtime compiliert nicht.
 | `lyrvm run <file.lyrbc>` | Laden, validieren, ausführen |
 | `lyrvm disasm <file.lyrbc>` | Disassembly |
 | `lyrvm verify <file.lyrbc>` | Validieren und Importe binden, ohne auszuführen |
+| `lyrvm info <file.lyrbc>` | Kopfdaten, Tabellen-Zähler, Funktions-Übersicht |
+| `lyrvm disasm --function <name>` | Nur eine Funktion disassemblieren |
 
 ### 23.4 Eine andere Runtime benutzen
 
@@ -1177,7 +1180,39 @@ Flag schlägt die Variable. Was eine solche Runtime erfüllen muss, steht als Ru
 Mit der mitgelieferten Runtime läuft alles in einem Prozess; eine fremde wird als Subprozess
 gestartet und bekommt dafür bei `.lyr`-Eingabe eine temporäre `.lyrbc`-Datei.
 
-### 23.5 Exit-Codes
+### 23.5 Gemeinsame Optionen
+
+Diese versteht **jedes** der drei Programme gleich:
+
+| Option | Wirkung |
+|---|---|
+| `--json` | Diagnosen als JSON auf stderr (bei `lyrvm info` auch die Ausgabe selbst) |
+| `--quiet`, `-q` | Unterdrückt Erfolgs-Meldungen. Diagnosen und angeforderte Dumps bleiben |
+| `--verbose` | Zeitaufschlüsselung je Phase auf stderr |
+| `--progress auto\|never\|always` | Fortschrittsanzeige; `auto` ist Default |
+
+**Fortschritt** erscheint nur, wenn stderr ein Terminal ist *und* der Lauf länger als ~120 ms
+dauert. Ein schneller Lauf sagt nichts — es gab nichts zu melden. Er landet nie auf stdout und ist
+verschwunden, bevor ein Lyric-Programm seine erste Zeile schreibt.
+
+`--verbose` ersetzt die Live-Zeile durch eine Tabelle und funktioniert auch ohne Terminal:
+
+```
+  read     hello.lyr                                9.2 ms
+  parse    hello.lyr                               61.2 ms
+  load     std.string, std.io.console               5.3 ms
+  resolve  3 modules                               20.4 ms
+  check    3 modules                               54.7 ms
+  lower    1 function                              49.2 ms
+  verify   1 function                              51.7 ms
+  emit     1 function                              33.7 ms
+  -----------------------------------------------------
+           total                                  353.4 ms
+```
+
+> `-v` ist **nicht** die Kurzform von `--verbose` — es ist `--version`. Die hat es zuerst gegeben.
+
+### 23.6 Exit-Codes
 
 Gleich für alle drei Programme:
 
