@@ -41,6 +41,11 @@ public static class IrShape
         ArrayConcat c => new[] { c.Left, c.Right },
         ArrayRepeat r => new[] { r.Array, r.Count },
 
+        OptNone => Array.Empty<TempId>(),
+        OptSome s => new[] { s.Value },
+        OptIsSome i => new[] { i.Option },
+        OptGet g => new[] { g.Option },
+
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
 
@@ -76,6 +81,11 @@ public static class IrShape
         ArrayLen a => a.Dest,
         ArrayConcat c => c.Dest,
         ArrayRepeat r => r.Dest,
+
+        OptNone n => n.Dest,
+        OptSome s => s.Dest,
+        OptIsSome i => i.Dest,
+        OptGet g => g.Dest,
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };

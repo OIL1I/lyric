@@ -138,6 +138,11 @@ public static class IrPrinter
         ArrayLen a => $"{a.Dest}: i64 = arraylen {a.Array}",
         ArrayConcat c => $"{c.Dest}: {TypeStr(new IrArrayType(c.Element))} = arrcat {c.Left}, {c.Right}",
         ArrayRepeat r => $"{r.Dest}: {TypeStr(new IrArrayType(r.Element))} = arrrep {r.Array}, {r.Count}",
+
+        OptNone n => $"{n.Dest}: {TypeStr(new IrOptionalType(n.Inner))} = optnone",
+        OptSome s => $"{s.Dest}: {TypeStr(new IrOptionalType(s.Inner))} = optsome {s.Value}",
+        OptIsSome i => $"{i.Dest}: bool = optissome {i.Option}",
+        OptGet g => $"{g.Dest}: {TypeStr(g.Inner)} = optget {g.Option}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 
@@ -179,6 +184,7 @@ public static class IrPrinter
         IrScalarType s => IrNames.Scalar(s.Kind),
         IrRefType r => $"&{r.Type}",
         IrArrayType a => $"{TypeStr(a.Element)}[]",
+        IrOptionalType o => $"?{TypeStr(o.Inner)}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 

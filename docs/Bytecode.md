@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v1.3
+# Lyric — `.lyrbc` Bytecode-Format v1.4
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,9 +7,9 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **1.3**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **1.4**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
-> (Referenz-Typen mit Feldern und Methoden, Empfänger als Parameter 0) und **Arrays**.
+> (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays** und **Optionals**.
 
 ---
 
@@ -189,6 +189,7 @@ Zusammengesetzte Typen ab `0x40`:
 |---|---|---|
 | `0x40` | Referenz auf einen Typ der Types-Sektion | `uleb128` Typ-Index |
 | `0x41` | Array | der Elementtyp, wieder als Typ (§3) |
+| `0x42` | Optional (`?T`) | der innere Typ, wieder als Typ (§3) |
 
 Der Elementtyp eines Arrays steht **inline**, nicht als Tabellen-Index: `int[][]` ist damit
 `0x41 0x41 0x04`. Das geht, weil ein Array-Typ nicht rekursiv sein kann — ein Array enthält seinen
@@ -349,6 +350,26 @@ Zugriff. Ohne den Typ im Instruktionsstrom bräuchte der Validator eine Datenflu
 herauszufinden, welcher Typ an dieser Stelle auf dem Stack liegt. Der Index ist redundant zur
 Laufzeit und genau deshalb billig — er wird nach der Validierung nicht mehr gelesen.
 
+### Optionals
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x60` | `optnone` | innerer Typ (§3) | +1 | legt „kein Wert" ab |
+| `0x61` | `optsome` | innerer Typ (§3) | −1 +1 | verpackt den obersten Wert |
+| `0x62` | `optissome` | — | −1 +1 | `bool`: liegt ein Wert vor? |
+| `0x63` | `optget` | — | −1 +1 | packt aus; **`panic`**, wenn kein Wert |
+
+`??`, `??=` und `?.` haben **keine** eigenen Opcodes. Sie werten ihre rechte Seite bzw. den
+Member-Zugriff nur bedingt aus und lowern deshalb zu Verzweigungen über `optissome` — genau wie
+`&&` und `||`. Ein Opcode dafür müsste einen unausgewerteten Ausdruck transportieren, und das kann
+eine Stack-Maschine nicht.
+
+`optget` bildet den Force-Unwrap `expr!` ab (Sprache.md §7).
+
+**Ein Optional ist nicht schachtelbar**: `??T` gibt es nicht. Ein Leser **muss** einen inneren Typ
+mit Tag `0x42` ablehnen. Ohne diese Regel wäre „kein Wert" mehrdeutig — die Darstellung unten
+könnte die Ebenen nicht unterscheiden.
+
 ### Arrays
 
 | Opcode | Mnemonic | Operanden | Stack | Wirkung |
@@ -377,6 +398,20 @@ Wachsende Container (`List<T>`) sind gewöhnliche Klassen der Stdlib und brauche
 Eigenes: sie halten ein `T[]` und kopieren um.
 
 `arrrep` mit Anzahl `0` liefert ein leeres Array; eine negative Anzahl ist ein `panic`.
+
+### Darstellung eines Optionals
+
+Diese Spec schreibt Runtimes normalerweise keine Datenstrukturen vor. Hier tut sie es, weil die
+Wahl beobachtbar ist: `optissome` muss auf **jeder** Runtime dasselbe liefern.
+
+Ein Wert ist genau dann „kein Wert", wenn seine **Referenz leer** ist. Für `?string`, `?T[]` und
+`?Klasse` fällt das mit der natürlichen Darstellung zusammen — die Referenz ist der Wert. Für
+`?int`, `?bool` und `?char` gibt es keine freien Bitmuster: jedes `i64` ist eine gültige Zahl. Eine
+Runtime **muss** deshalb einen von Nutzdaten unterscheidbaren Marker führen, der „hat einen Wert"
+bedeutet, und den Zahlenwert daneben halten.
+
+Was sie ausdrücklich **nicht** darf: ein Bitmuster als „null" reservieren. `?int` muss alle
+2⁶⁴ `int`-Werte tragen können — sonst wäre `-1` je nach Runtime mal ein Wert und mal keiner.
 
 Ein Objekt trägt **kein** Typ-Tag zur Laufzeit. Der Instruktionsstrom weiß statisch, was vorliegt;
 dieselbe Entscheidung wie bei den Werten (§4). Interface-Dispatch braucht später eine Typ-Identität
@@ -449,7 +484,7 @@ Die vollständige Datei, 46 Bytes:
 ```
 4C 59 52 42                  magic "LYRB"
 01 00                        version.major = 1
-03 00                        version.minor = 3
+04 00                        version.minor = 4
 
 01                           § Sektion 1 — Capabilities
 01                             byteLength = 1
@@ -489,7 +524,7 @@ ebenfalls konform — er erzeugt nur größeren und langsameren Code.
 
 ---
 
-## 8. Was in Format 1.3 fehlt
+## 8. Was in Format 1.4 fehlt
 
 Absichtlich, weil das Lowering es noch nicht erzeugt: `struct` (Wert-Semantik), `enum`, Arrays,
 Tupel, Nullable, Exceptions, Coroutinen-State-Machines, Closures, generische Instanzen und

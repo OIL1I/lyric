@@ -52,6 +52,13 @@ public sealed record ArrayLen(TempId Dest, TempId Array, Span Span) : IrOp(Span)
 public sealed record ArrayConcat(TempId Dest, TempId Left, TempId Right, IrType Element, Span Span) : IrOp(Span);
 public sealed record ArrayRepeat(TempId Dest, TempId Array, TempId Count, IrType Element, Span Span) : IrOp(Span);
 
+// Optionals (Sprache.md §7). '??', '??=' und '?.' stehen NICHT hier: sie werten ihre rechte Seite
+// nur bedingt aus und lowern zu Verzweigungen ueber OptIsSome — wie && und ||.
+public sealed record OptNone(TempId Dest, IrType Inner, Span Span) : IrOp(Span);
+public sealed record OptSome(TempId Dest, TempId Value, IrType Inner, Span Span) : IrOp(Span);
+public sealed record OptIsSome(TempId Dest, TempId Option, Span Span) : IrOp(Span);
+public sealed record OptGet(TempId Dest, TempId Option, IrType Inner, Span Span) : IrOp(Span);
+
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);

@@ -566,6 +566,10 @@ public static class IrVerifier
                 case ArrayLen a: CheckArrayLen(a, block, index); break;
                 case ArrayConcat c: CheckArrayConcat(c, block, index); break;
                 case ArrayRepeat r: CheckArrayRepeat(r, block, index); break;
+                case OptNone n: CheckOptNone(n, block, index); break;
+                case OptSome s: CheckOptSome(s, block, index); break;
+                case OptIsSome i: CheckOptIsSome(i, block, index); break;
+                case OptGet g: CheckOptGet(g, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -1008,6 +1012,56 @@ public static class IrVerifier
             RequireDestType(r.Dest, new IrArrayType(element), "arrrep", block, index);
     }
 
+    /// <summary>Ein Optional ist nicht schachtelbar (Bytecode.md §5): <c>??T</c> wäre in der
+    /// Laufzeit-Darstellung nicht von <c>?T</c> unterscheidbar.</summary>
+    private bool RequireNotOptional(IrType inner, string what, BlockId block, int index)
+    {
+        if (inner is not IrOptionalType) return true;
+
+        Report(block, index, $"{what} of {Show(inner)} — optionals do not nest");
+        return false;
+    }
+
+    private void CheckOptNone(OptNone n, BlockId block, int index)
+    {
+        if (!RequireNotOptional(n.Inner, "optnone", block, index)) return;
+        RequireDestType(n.Dest, new IrOptionalType(n.Inner), "optnone", block, index);
+    }
+
+    private void CheckOptSome(OptSome s, BlockId block, int index)
+    {
+        if (!RequireNotOptional(s.Inner, "optsome", block, index)) return;
+
+        var actual = TypeOf(s.Value);
+        if (!IrType.Equal(s.Inner, actual))
+            Report(block, index, $"optsome wraps {Show(actual)} but the instruction says {Show(s.Inner)}");
+        else
+            RequireDestType(s.Dest, new IrOptionalType(s.Inner), "optsome", block, index);
+    }
+
+    private void CheckOptIsSome(OptIsSome i, BlockId block, int index)
+    {
+        if (TypeOf(i.Option) is not IrOptionalType)
+            Report(block, index, $"optissome expects an optional, found {Show(TypeOf(i.Option))}");
+        else
+            RequireDestType(i.Dest, new IrScalarType(IrScalar.Bool), "optissome", block, index);
+    }
+
+    private void CheckOptGet(OptGet g, BlockId block, int index)
+    {
+        if (TypeOf(g.Option) is not IrOptionalType option)
+        {
+            Report(block, index, $"optget expects an optional, found {Show(TypeOf(g.Option))}");
+            return;
+        }
+
+        if (!IrType.Equal(g.Inner, option.Inner))
+            Report(block, index, $"optget yields {Show(option.Inner)} but the instruction says " +
+                                 $"{Show(g.Inner)}");
+        else
+            RequireDestType(g.Dest, option.Inner, "optget", block, index);
+    }
+
     private void CheckTerminatorTypes(IrTerminator terminator, BlockId block)
         {
             switch (terminator)
@@ -1156,6 +1210,7 @@ public static class IrVerifier
             IrScalarType s => IrNames.Scalar(s.Kind),
             IrRefType r => $"&{r.Type}",
             IrArrayType a => $"{Show(a.Element)}[]",
+            IrOptionalType o => $"?{Show(o.Inner)}",
             _ => type.ToString() ?? type.GetType().Name
         };
 

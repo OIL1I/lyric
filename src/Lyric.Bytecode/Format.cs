@@ -13,7 +13,7 @@ public static class Format
     /// <summary>Eine unbekannte Major-Version wird abgelehnt, eine unbekannte Minor toleriert
     /// (neue Sektionen sind überspringbar). Bis v1.0 darf Major frei springen — ADR-013.</summary>
     public const ushort VersionMajor = 1;
-    public const ushort VersionMinor = 3;
+    public const ushort VersionMinor = 4;
 }
 
 /// <summary>
@@ -72,6 +72,10 @@ public enum TypeTag : byte
     /// Tabellen-Index. Möglich, weil ein Array-Typ nicht rekursiv sein kann — <c>int[][]</c> ist
     /// endlich tief, <c>class Node { next: Node }</c> nicht.</summary>
     Array = 0x41,
+
+    /// <summary>Optional (<c>?T</c>); der innere Typ folgt inline. <b>Nicht schachtelbar</b> —
+    /// <c>??T</c> gibt es nicht, sonst wäre „kein Wert" mehrdeutig.</summary>
+    Optional = 0x42,
 }
 
 /// <summary>
@@ -154,4 +158,15 @@ public enum Op : byte
     /// <c>T[]</c> wächst nicht (ADR-016).</summary>
     ArrayConcat = 0x5C,
     ArrayRepeat = 0x5D,
+
+    /// <summary>
+    /// Optionals (Sprache.md §7). <c>??</c>, <c>??=</c> und <c>?.</c> haben <b>keine</b> eigenen
+    /// Opcodes: sie werten ihre rechte Seite nur bedingt aus und lowern deshalb zu Verzweigungen
+    /// über <see cref="OptIsSome"/> — wie <c>&amp;&amp;</c> und <c>||</c>. Ein Opcode müsste einen
+    /// unausgewerteten Ausdruck transportieren, und das kann eine Stack-Maschine nicht.
+    /// </summary>
+    OptNone = 0x60,   // optnone <innerType>
+    OptSome = 0x61,   // optsome <innerType>
+    OptIsSome = 0x62, // optissome
+    OptGet = 0x63,    // optget — Force-Unwrap 'expr!', panickt bei "kein Wert"
 }

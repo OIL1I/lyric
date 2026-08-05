@@ -36,7 +36,10 @@ namespace Lyric.Ir
                     return x.Type == y.Type;
                 case (IrArrayType x, IrArrayType y):
                     return Equal(x.Element, y.Element);
-                case (IrScalarType or IrRefType or IrArrayType, IrScalarType or IrRefType or IrArrayType):
+                case (IrOptionalType x, IrOptionalType y):
+                    return Equal(x.Inner, y.Inner);
+                case (IrScalarType or IrRefType or IrArrayType or IrOptionalType,
+                      IrScalarType or IrRefType or IrArrayType or IrOptionalType):
                     return false; // verschiedene Sorten — vergleichbar, nur eben ungleich
                 default:
                     throw new InternalCompilationException(
@@ -68,4 +71,13 @@ namespace Lyric.Ir
     /// Indirektion nur Kosten.</para>
     /// </summary>
     public sealed record IrArrayType(IrType Element) : IrType;
+
+    /// <summary>
+    /// <c>?T</c> (Sprache.md §7). Wie beim Array steht der innere Typ inline — auch ein Optional
+    /// kann nicht rekursiv sein.
+    ///
+    /// <para><b>Nicht schachtelbar</b>: <c>??T</c> gibt es nicht. Die Laufzeit-Darstellung
+    /// unterscheidet „kein Wert" an der leeren Referenz, und die kann nur eine Ebene tragen.</para>
+    /// </summary>
+    public sealed record IrOptionalType(IrType Inner) : IrType;
 }
