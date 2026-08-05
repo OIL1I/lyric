@@ -38,6 +38,11 @@ public static class VmDiagnostics
 
     /// <summary>Force-Unwrap (<c>expr!</c>) auf einem <c>?T</c> ohne Wert (Sprache.md §7).</summary>
     public const string NullDereference = "LYR-VM0007";
+
+    /// <summary><c>enumas</c> auf eine Variante, die der Wert nicht ist. Der Compiler beweist das
+    /// über <c>match</c>; die Prüfung bleibt, weil ein <c>.lyrbc</c> auch aus fremder Quelle
+    /// kommen kann.</summary>
+    public const string WrongVariant = "LYR-VM0008";
 }
 
 /// <summary>

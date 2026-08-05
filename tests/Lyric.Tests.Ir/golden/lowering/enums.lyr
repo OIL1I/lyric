@@ -1,0 +1,26 @@
+// Enums (Sprache.md 3.4). Jede Variante ist ein eigener Typ mit eigenem Layout; Slot 0 ist ihr
+// Tag, die Nutzfelder folgen ab Slot 1.
+//
+// 'match' hat keine eigene Instruktion: es liest mit enumtag das Tag und verzweigt darueber wie
+// jede andere Fallunterscheidung. Nach der Verzweigung engt enumas ein — und der Feldzugriff
+// darauf ist ein gewoehnliches loadfield mit dem Layout der Variante.
+enum Shape {
+    Circle(int),
+    Rect { w: int, h: int },
+    Empty;
+
+    fn area(): int {
+        return match (this) {
+            Circle(r) => r * r * 3,
+            Rect { w, h } => w * h,
+            Empty => 0,
+        };
+    }
+}
+
+fn main(): int {
+    let a = Shape.Circle(2);
+    let b: Shape = Shape.Rect { w = 3, h = 4 };
+    let c = Shape.Empty;
+    return a.area() + b.area() + c.area();
+}

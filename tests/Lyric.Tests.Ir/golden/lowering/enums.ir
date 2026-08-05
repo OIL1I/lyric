@@ -1,0 +1,92 @@
+type ty0 Shape {
+}
+type ty1 Shape.Circle {
+  #0 $tag: i64
+  #1 0: i64
+}
+type ty2 Shape.Rect {
+  #0 $tag: i64
+  #1 w: i64
+  #2 h: i64
+}
+type ty3 Shape.Empty {
+  #0 $tag: i64
+}
+
+fn main.main -> i64 {
+  params: 0
+  locals:
+    l0 a: enum ty0
+    l1 b: enum ty0
+    l2 c: enum ty0
+  bb0:
+    t0: i64 = const 2
+    t1: enum ty0 = newvariant ty1 [t0]
+    store l0, t1
+    t2: i64 = const 3
+    t3: i64 = const 4
+    t4: enum ty0 = newvariant ty2 [t2, t3]
+    store l1, t4
+    t5: enum ty0 = newvariant ty3 []
+    store l2, t5
+    t6: enum ty0 = load l0
+    t7: i64 = call main.Shape.area(t6)
+    t8: enum ty0 = load l1
+    t9: i64 = call main.Shape.area(t8)
+    t10: i64 = add t7, t9
+    t11: enum ty0 = load l2
+    t12: i64 = call main.Shape.area(t11)
+    t13: i64 = add t10, t12
+    ret t13
+}
+
+fn main.Shape.area -> i64 {
+  params: 1
+  locals:
+    l0 this: enum ty0
+    l1 $match0: i64
+    l2 r: i64
+    l3 w: i64
+    l4 h: i64
+  bb0:
+    t0: enum ty0 = load l0
+    t1: i64 = enumtag t0
+    t2: i64 = const 0
+    t3: bool = eq t1, t2
+    condbr t3 -> bb2, bb3
+  bb1:
+    t20: i64 = load l1
+    ret t20
+  bb2:
+    t4: &ty1 = enumas t0, ty1
+    t5: i64 = loadfield t4, ty1#1
+    store l2, t5
+    t6: i64 = load l2
+    t7: i64 = load l2
+    t8: i64 = mul t6, t7
+    t9: i64 = const 3
+    t10: i64 = mul t8, t9
+    store l1, t10
+    br bb1
+  bb3:
+    t11: i64 = const 1
+    t12: bool = eq t1, t11
+    condbr t12 -> bb4, bb5
+  bb4:
+    t13: &ty2 = enumas t0, ty2
+    t14: i64 = loadfield t13, ty2#1
+    store l3, t14
+    t15: i64 = loadfield t13, ty2#2
+    store l4, t15
+    t16: i64 = load l3
+    t17: i64 = load l4
+    t18: i64 = mul t16, t17
+    store l1, t18
+    br bb1
+  bb5:
+    br bb6
+  bb6:
+    t19: i64 = const 0
+    store l1, t19
+    br bb1
+}

@@ -1,0 +1,47 @@
+// enums.lyr — Komplexität: mittel
+// Zeigt: enum mit Unit-, Tuple- und Struct-Varianten, Methoden, `match` als Ausdruck und Statement.
+//
+// Gate-Programm für M7/P3b. `shapes.lyr` ist dasselbe Thema in voller Ausbaustufe — es braucht
+// zusätzlich `for-in` (P8) und `std.math` (M8).
+
+import std.io.console { println };
+
+pub enum Shape {
+    Circle(int),
+    Rect { w: int, h: int },
+    Empty;
+
+    // Jede Variante hat ihr eigenes Layout; welches vorliegt, entscheidet das Tag. `match` liest
+    // es und engt danach ein — der Feldzugriff ist dann ein gewöhnlicher Feldzugriff.
+    fn area(): int {
+        return match (this) {
+            Circle(r) => r * r * 3,
+            Rect { w, h } => w * h,
+            Empty => 0,
+        };
+    }
+
+    fn name(): string {
+        return match (this) {
+            Circle(r) => "Kreis",
+            Rect { w, h } => "Rechteck",
+            Empty => "Leer",
+        };
+    }
+}
+
+fn describe(s: Shape) {
+    println(f"{s.name()}: Flaeche = {s.area()}");
+}
+
+fn main(): int {
+    let circle = Shape.Circle(2);
+    let rect: Shape = Shape.Rect { w = 3, h = 4 };
+    let empty = Shape.Empty;
+
+    describe(circle);
+    describe(rect);
+    describe(empty);
+
+    return circle.area() + rect.area() + empty.area();
+}

@@ -29,6 +29,8 @@ internal sealed class TypeTable
     private readonly List<IrTypeDef> _defs = new();
     private readonly Dictionary<TypeSymbol, UnsupportedConstructException> _failed =
         new(ReferenceEqualityComparer.Instance);
+    /// <summary>Variantennamen je Enum-Eintrag — nur fürs Lowering, im Bytecode steht der Index.</summary>
+    private readonly Dictionary<int, string[]> _variantNames = new();
     private readonly BindingResult _binding;
 
     /// <param name="binding">Der Resolver hat jeden <c>NamedType</c> bereits an sein Symbol
@@ -42,6 +44,32 @@ internal sealed class TypeTable
     /// (Sprache.md §3.3).</summary>
     public IrRefType RefTo(TypeSymbol symbol) => new(Intern(symbol));
 
+    /// <summary>Der Typ eines Enum-Wertes: eine Referenz auf den Enum-Eintrag, nicht auf eine
+    /// Variante. Welche Variante vorliegt, steht zur Laufzeit in ihrem Slot 0.</summary>
+    public IrEnumType EnumOf(TypeSymbol symbol) => new(Intern(symbol));
+
+    /// <summary>Der Types-Index einer Variante. Sie ist ein eigener Layout-Eintrag (ADR-016s
+    /// Nachbar-Entscheidung, Bytecode.md §2); ihr Slot 0 ist das Tag.</summary>
+    public TypeId VariantOf(TypeSymbol enumSymbol, string variantName, Core.Span span)
+    {
+        var id = Intern(enumSymbol);
+        var index = Array.IndexOf(_variantNames[id.Value], variantName);
+        if (index >= 0) return _defs[id.Value].Variants[index];
+
+        throw new UnsupportedConstructException(
+            $"'{enumSymbol.Name}' has no variant '{variantName}'", span);
+    }
+
+    /// <summary>Die Tag-Nummer einer Variante — ihr Index in der Deklarationsreihenfolge.</summary>
+    public int TagOf(TypeSymbol enumSymbol, string variantName, Core.Span span)
+    {
+        var index = Array.IndexOf(_variantNames[Intern(enumSymbol).Value], variantName);
+        if (index >= 0) return index;
+
+        throw new UnsupportedConstructException(
+            $"'{enumSymbol.Name}' has no variant '{variantName}'", span);
+    }
+
     public TypeId Intern(TypeSymbol symbol)
     {
         // Ein Typ, dessen Layout schon einmal gescheitert ist, scheitert wieder — mit derselben
@@ -53,6 +81,8 @@ internal sealed class TypeTable
             throw new UnsupportedConstructException(failure.Message, failure.Span);
 
         if (_assigned.TryGetValue(symbol, out var existing)) return existing;
+
+        if (symbol.Kind == TypeSymbolKind.Enum) return InternEnum(symbol);
 
         if (symbol.Kind != TypeSymbolKind.Class)
             throw new UnsupportedConstructException(
@@ -107,6 +137,74 @@ internal sealed class TypeTable
         }
     }
 
+    /// <summary>
+    /// Ein Enum wird zu <b>einem</b> Enum-Eintrag plus <b>je einem Layout-Eintrag pro Variante</b>
+    /// (Bytecode.md §2). Slot 0 jeder Variante ist ihr Tag; die Nutzfelder folgen ab Slot 1.
+    ///
+    /// <para>Wie bei einer Klasse wird die Id <b>vor</b> den Varianten vergeben — ein Enum darf
+    /// sich über eine Variante selbst nennen (<c>enum Tree { Leaf, Node(Tree, Tree) }</c>), und
+    /// ohne die vorgezogene Id liefe das in eine Endlosschleife.</para>
+    /// </summary>
+    private TypeId InternEnum(TypeSymbol symbol)
+    {
+        if (symbol.Generics.Length > 0)
+            throw new UnsupportedConstructException(
+                $"generic enum '{symbol.Name}' is not supported by this compiler version yet",
+                SpanOf(symbol));
+
+        if (symbol.Declaration is not EnumDecl decl)
+            throw new UnsupportedConstructException(
+                $"enum '{symbol.Name}' has no declaration to read its variants from", SpanOf(symbol));
+
+        var id = new TypeId(_defs.Count);
+        _assigned[symbol] = id;
+        _defs.Add(default);
+        _variantNames[id.Value] = decl.Variants.Select(v => v.Name).ToArray();
+
+        try
+        {
+            var variants = new TypeId[decl.Variants.Length];
+            for (var i = 0; i < decl.Variants.Length; i++)
+                variants[i] = InternVariant(symbol, decl.Variants[i]);
+
+            _defs[id.Value] = new IrTypeDef(symbol.Name, [], []) { Variants = variants };
+            return id;
+        }
+        catch (UnsupportedConstructException ex)
+        {
+            _failed[symbol] = ex;
+            throw;
+        }
+    }
+
+    private TypeId InternVariant(TypeSymbol owner, EnumVariant variant)
+    {
+        // Slot 0 ist das Tag. Es steht im Layout, damit der Feldzugriff nach dem 'enumas' ein
+        // gewoehnliches ldfld bleibt — die Variante ist dann eine ganz normale Klasse.
+        var names = new List<string> { "$tag" };
+        var types = new List<IrType> { new IrScalarType(IrScalar.I64) };
+
+        if (variant.TupleFields is { } tuple)
+            for (var i = 0; i < tuple.Length; i++)
+            {
+                names.Add(i.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                types.Add(Lower(tuple[i], tuple[i].Span));
+            }
+        else if (variant.StructFields is { } fields)
+            foreach (var field in fields)
+            {
+                if (field.Default is not null)
+                    throw new UnsupportedConstructException(
+                        "a field default is not supported by this compiler version yet", field.Span);
+                names.Add(field.Name);
+                types.Add(Lower(field.Type, field.Span));
+            }
+
+        var id = new TypeId(_defs.Count);
+        _defs.Add(new IrTypeDef($"{owner.Name}.{variant.Name}", types.ToArray(), names.ToArray()));
+        return id;
+    }
+
     /// <summary>Findet den Feldindex. Der Name existiert nur hier und in der Diagnose; im Bytecode
     /// steht ausschließlich die Position.</summary>
     public FieldId FieldOf(TypeSymbol symbol, string name, Core.Span span)
@@ -157,6 +255,7 @@ internal sealed class TypeTable
 
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Enum } enumType) return EnumOf(enumType);
             if (bound is TypeSymbol type) return RefTo(type);
         }
 

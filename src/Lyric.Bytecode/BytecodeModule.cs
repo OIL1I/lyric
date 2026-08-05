@@ -39,7 +39,9 @@ public sealed class BytecodeModule
 public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
 {
     public static BytecodeType Scalar(TypeTag tag) => new(tag, -1);
-    public bool IsRef => Tag == TypeTag.Ref;
+    /// <summary>Trägt einen Index in die Types-Tabelle: Referenz auf eine Klasse oder auf ein
+    /// Enum. Beide werden beim Laden gegen dieselbe Tabelle geprüft.</summary>
+    public bool IsRef => Tag is TypeTag.Ref or TypeTag.Enum;
     public bool IsArray => Tag == TypeTag.Array;
     public bool IsOptional => Tag == TypeTag.Optional;
 
@@ -50,6 +52,7 @@ public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
     public override string ToString() => Tag switch
     {
         TypeTag.Ref => $"&ty{TypeIndex}",
+        TypeTag.Enum => $"enum ty{TypeIndex}",
         TypeTag.Array => $"{Element?.ToString() ?? "?"}[]",
         TypeTag.Optional => $"?{Element?.ToString() ?? "?"}",
         _ => Tag.ToString().ToLowerInvariant(),
@@ -62,6 +65,12 @@ public sealed class BytecodeTypeDef
 {
     public required string Name { get; init; }
     public required IReadOnlyList<BytecodeType> FieldTypes { get; init; }
+
+    /// <summary>Die Varianten, wenn dies ein <b>Enum</b>-Eintrag ist — sonst leer. Jede Variante ist
+    /// selbst ein Layout-Eintrag; Slot 0 darin ist ihr Tag, der Index in dieser Liste.</summary>
+    public IReadOnlyList<int> Variants { get; init; } = [];
+
+    public bool IsEnum => Variants.Count > 0;
 }
 
 /// <summary>Host-/Native-Funktion, per Index aus <c>call</c> referenziert (ADR-013, WASM-Modell).</summary>

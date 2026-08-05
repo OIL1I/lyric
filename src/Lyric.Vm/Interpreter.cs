@@ -257,6 +257,35 @@ public static class Interpreter
                     break;
                 }
 
+                // Enums: eine Variante ist ein gewoehnliches Objekt, dessen Slot 0 ihr Tag traegt.
+                // Der Feldzugriff danach ist ein normales ldfld — deshalb braucht ein Enum keine
+                // eigene Wertdarstellung.
+                case Op.NewVariant:
+                {
+                    var layout = types[(int)instruction.Immediate];
+                    var slots = new LyrValue[layout.FieldTypes.Count];
+                    for (var i = slots.Length - 1; i >= 1; i--) slots[i] = frame.Pop();
+                    slots[0] = LyrValue.FromI64(TagOf(types, (int)instruction.Immediate));
+                    frame.Push(LyrValue.FromObject(slots));
+                    break;
+                }
+
+                case Op.EnumTag:
+                    frame.Push(frame.Pop().AsObject[0]);
+                    break;
+
+                case Op.EnumAs:
+                {
+                    var value = frame.Pop();
+                    var expected = TagOf(types, (int)instruction.Immediate);
+                    if (value.AsObject[0].AsI64 != expected)
+                        throw new LyricPanic(VmDiagnostics.WrongVariant,
+                            $"expected variant '{types[(int)instruction.Immediate].Name}' " +
+                            $"in '{frame.Fn.Source.Name}', found tag {value.AsObject[0].AsI64}");
+                    frame.Push(value);
+                    break;
+                }
+
                 case Op.Return or Op.ReturnValue:
                 {
                     var result = instruction.Opcode == Op.ReturnValue ? frame.Pop() : default;
@@ -304,6 +333,22 @@ public static class Interpreter
 
         throw new LyricPanic(VmDiagnostics.IndexOutOfRange,
             $"index {index} is outside an array of length {length} in '{frame.Fn.Source.Name}'");
+    }
+
+    /// <summary>Das Tag einer Variante: ihr Index in der Variantenliste ihres Enums
+    /// (Bytecode.md §2). Beim Laden gesucht statt im Bytecode mitgeführt — es ist redundant, und
+    /// eine zweite Quelle könnte driften.</summary>
+    private static long TagOf(IReadOnlyList<BytecodeTypeDef> types, int variant)
+    {
+        for (var i = 0; i < types.Count; i++)
+        {
+            var variants = types[i].Variants;
+            for (var at = 0; at < variants.Count; at++)
+                if (variants[at] == variant) return at;
+        }
+
+        throw new LyricRuntimeException(VmDiagnostics.WrongVariant,
+            $"type '{types[variant].Name}' is not a variant of any enum");
     }
 
     private static LyrValue[] NewInstance(BytecodeTypeDef type)

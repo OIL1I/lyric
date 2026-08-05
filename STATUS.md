@@ -277,6 +277,30 @@ Programm, mit Begründung als Blockzitat).
   - 15 neue Tests, darunter der Kurzschluss-Nachweis für `??` über eine sonst auslösende Division
     durch Null und die drei `?int`-Randwerte (0, −1, 1).
 
+- [x] **M7 — P3b — Enums und `match`** (Format **2.0**): `lyric run examples/enums.lyr` liefert 24.
+  Unit-, Tuple- und Struct-Varianten, Methoden auf Enums, `match` als Ausdruck und Statement.
+  - **Jede Variante ist ein eigener Typ** mit eigenem Layout, Slot 0 ist ihr Tag. Die Alternativen
+    scheitern beide an der Regel, dass jedes Feld genau einen Typ hat: ein geboxter Payload braucht
+    einen Slot ohne festen Typ, ein flaches Maximal-Layout gäbe Slot 1 je nach Variante einen
+    anderen. Rust schichtet aus demselben Grund so.
+  - **Nur drei Instruktionen**: `newvariant`, `enumtag`, `enumas`. `match` bekommt keinen Opcode —
+    es verzweigt über das Tag wie jede andere Fallunterscheidung, und der Feldzugriff nach dem
+    `enumas` ist ein gewöhnliches `ldfld`. Dieselbe Arbeitsteilung wie `optissome`/`optget`.
+  - **Der letzte match-Arm wird nicht geprüft**: die Sema hat Exhaustivität bewiesen
+    (`LYR-SEM0050`), ein Vergleich dort erzeugte einen unerreichbaren Block — und den lehnt der
+    Verifier ab.
+  - **Format 2.0, nicht 1.5.** Die Types-Sektion ändert ihre *Form* (Kind-Byte je Eintrag). §2
+    erlaubt einer neuen Minor nur überspringbare Ergänzungen; ADR-013 deckt den Major-Bruch vor
+    v1.0 ausdrücklich. Die Alternative wäre eine Minor-Nummer gewesen, die die eigene Regel bricht.
+  - **Muster-Bindungen laufen über die Sema-Symbole**, nicht über eine eigene Namensmap — sonst
+    gäbe es eine zweite Wahrheit über Scoping.
+  - Der Verifier bekam die Kern-Invariante: **eine Variante gehört zu genau einem Enum**. Ein
+    `enumas` auf eine fremde Variante wäre ein Feldzugriff mit falschem Layout, und die
+    Load-Zeit-Validierung sähe nur, dass beide Indizes für sich gültig sind.
+  - 9 neue Tests, dazu die Golden-Fixture. Der Verifier hat beim Bauen zwei echte Fehler gefangen:
+    fehlender Empfänger beim Enum-Methodenaufruf und ein Vergleichs-`BinOp`, dessen Type-Feld den
+    Operanden- statt den Ergebnistyp trug.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -297,7 +321,7 @@ festgehalten:
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-**P2b steht** — als nächstes **P3 — Interfaces + vtable-Dispatch**.
+**P3b steht** — als nächstes **P3 — Interfaces + vtable-Dispatch**.
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
@@ -430,7 +454,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`M7: Optionals — Bytecode 1.4 (P2b)`
+`M7: Enums und match — Bytecode 2.0 (P3b)`
 
 ---
 

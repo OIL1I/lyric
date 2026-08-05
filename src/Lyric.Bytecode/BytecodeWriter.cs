@@ -63,6 +63,16 @@ public static class BytecodeWriter
                 foreach (var type in module.Types)
                 {
                     s.ULeb(strings.Intern(type.Name));
+                    s.U8((byte)(type.IsEnum ? TypeKind.Enum : TypeKind.Layout));
+
+                    if (type.IsEnum)
+                    {
+                        // Ein Enum traegt keine eigenen Felder — seine Varianten tun das.
+                        s.ULeb(type.Variants.Length);
+                        foreach (var variant in type.Variants) s.ULeb(variant.Value);
+                        continue;
+                    }
+
                     s.ULeb(type.FieldTypes.Length);
                     foreach (var field in type.FieldTypes) WriteType(s, field);
                 }
@@ -233,6 +243,18 @@ public static class BytecodeWriter
             case OptIsSome: code.Opcode(Op.OptIsSome); break;
             case OptGet: code.Opcode(Op.OptGet); break;
 
+            case NewVariant v:
+                code.Opcode(Op.NewVariant);
+                code.ULeb(v.Variant.Value);
+                break;
+
+            case EnumTag: code.Opcode(Op.EnumTag); break;
+
+            case EnumAs a:
+                code.Opcode(Op.EnumAs);
+                code.ULeb(a.Variant.Value);
+                break;
+
             case LoadElem: code.Opcode(Op.LoadElem); break;
             case StoreElem: code.Opcode(Op.StoreElem); break;
             case ArrayLen: code.Opcode(Op.ArrayLen); break;
@@ -357,6 +379,7 @@ public static class BytecodeWriter
         // Der Elementtyp steht inline und rekursiv — int[][] ist 0x41 0x41 0x04.
         if (type is IrArrayType a) WriteType(w, a.Element);
         if (type is IrOptionalType o) WriteType(w, o.Inner);
+        if (type is IrEnumType e) w.ULeb(e.Type.Value);
     }
 
     internal static TypeTag TagOf(IrType type) => type switch
@@ -382,6 +405,7 @@ public static class BytecodeWriter
         IrRefType => TypeTag.Ref,
         IrArrayType => TypeTag.Array,
         IrOptionalType => TypeTag.Optional,
+        IrEnumType => TypeTag.Enum,
         _ => throw new InternalCompilationException(
             $"bytecode: type not encodable: {type.GetType().Name}")
     };

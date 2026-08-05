@@ -89,6 +89,7 @@ public class LoweringTests
     [InlineData("methods")]         // Empfänger als Parameter 0, static-Fabrik, 'this'
     [InlineData("arrays")]          // Literal, [x]*n, xs+ys, Index lesend/schreibend, .length
     [InlineData("optionals")]       // null, ??, !, Flow-Narrowing
+    [InlineData("enums")]           // Varianten, match, Tag-Dispatch, Pattern-Dekomposition
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();
@@ -446,7 +447,9 @@ public class LoweringTests
     // Helfer — die Meldung nennt genau den fehlenden, statt „f-Strings gehen nicht" zu behaupten.
     // Beim ersten Loch ist das der Wandler, noch vor dem concat.
     [InlineData("fn f(): string { return f\"n={1}\"; }", "std.string.fromInt")]
-    [InlineData("fn f(n: int): int { return match (n) { 0 => 1, _ => 2 }; }", "'match'")]
+    // 'match' über einen Enum lowert seit P3b; über einen Skalar braucht es Literal-Muster, und
+    // die sind eine eigene Ausbaustufe.
+    [InlineData("fn f(n: int): int { return match (n) { 0 => 1, _ => 2 }; }", "is not an enum")]
     [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "'for-in'")]
     public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
         AssertNotSupported(source, expected);

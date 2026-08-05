@@ -29,7 +29,8 @@ public static class CodeDecoder
             {
                 Op.Const => DecodeConst(reader, offset),
 
-                Op.LoadLocal or Op.StoreLocal or Op.Call or Op.Branch or Op.NewObject =>
+                Op.LoadLocal or Op.StoreLocal or Op.Call or Op.Branch or Op.NewObject or
+                Op.NewVariant or Op.EnumAs =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode, Immediate = reader.ULeb() },
 
                 // ldfld/stfld tragen Typ- UND Feldindex. Der Typ ist zur Laufzeit redundant, aber
@@ -50,7 +51,7 @@ public static class CodeDecoder
                 // ihr Elementtyp steht in der Temp-Tabelle bzw. am Array selbst.
                 Op.Not or Op.Pop or Op.Return or Op.ReturnValue or Op.Unreachable or
                 Op.LoadElem or Op.StoreElem or Op.ArrayLen or Op.ArrayConcat or Op.ArrayRepeat or
-                Op.OptIsSome or Op.OptGet =>
+                Op.OptIsSome or Op.OptGet or Op.EnumTag =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode },
 
                 // newarr trägt den Elementtyp (ggf. verschachtelt) und dann die Elementzahl.
@@ -122,7 +123,7 @@ public static class CodeDecoder
     /// <paramref name="callArity"/> und <paramref name="callReturnsValue"/> gelten nur für
     /// <c>call</c> und kommen aus der Signatur der Callee.</summary>
     public static (int Pops, int Pushes) StackEffect(BytecodeInstruction instruction,
-        int callArity, bool callReturnsValue) => instruction.Opcode switch
+        int callArity, bool callReturnsValue, int variantArity = 0) => instruction.Opcode switch
     {
         Op.Const or Op.LoadLocal => (0, 1),
         Op.StoreLocal or Op.Pop => (1, 0),
@@ -149,6 +150,11 @@ public static class CodeDecoder
 
         Op.OptNone => (0, 1),
         Op.OptSome or Op.OptIsSome or Op.OptGet => (1, 1),
+
+        // newvariant nimmt die Nutzfelder der Variante — wie viele, steht in der Types-Sektion.
+        // Deshalb reicht der Aufrufer sie herein, genau wie bei 'call'.
+        Op.NewVariant => (variantArity, 1),
+        Op.EnumTag or Op.EnumAs => (1, 1),
 
         Op.Return or Op.Branch or Op.Unreachable => (0, 0),
         Op.ReturnValue or Op.CondBranch => (1, 0),

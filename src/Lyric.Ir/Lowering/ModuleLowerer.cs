@@ -104,18 +104,25 @@ public static class ModuleLowerer
             // Funktion gerufen wird, nicht wie sie aussieht.
             foreach (var decl in compilation.AstOf(module).Declarations)
             {
-                if (decl is not ClassDecl cls) continue;
-                if (cls.Generics.Length > 0) continue;
-                if (module.Members.LookupLocal(cls.Name) is not TypeSymbol type) continue;
+                // Klassen und Enums tragen beide Methoden; für das Lowering sind sie derselbe Fall
+                // (Empfänger als Parameter 0), nur die Member-Liste steckt woanders im AST.
+                var (typeName, members) = decl switch
+                {
+                    ClassDecl c when c.Generics.Length == 0 => (c.Name, c.Members),
+                    EnumDecl e when e.Generics.Length == 0 => (e.Name, e.Methods.Cast<Decl>().ToArray()),
+                    _ => (null, null),
+                };
+                if (typeName is null || members is null) continue;
+                if (module.Members.LookupLocal(typeName) is not TypeSymbol type) continue;
 
-                foreach (var member in cls.Members)
+                foreach (var member in members)
                 {
                     if (member is not FunctionDecl method) continue;
                     if (method.Generics.Length > 0 || method.Body is null) continue;
                     if (type.Members.LookupLocal(method.Name) is not FunctionSymbol symbol) continue;
 
                     ids[symbol] = new FunctionId(pending.Count);
-                    pending.Add((method, NameMangling.ForMethod(module, cls.Name, method.Name),
+                    pending.Add((method, NameMangling.ForMethod(module, typeName, method.Name),
                         method.IsStatic ? null : type));
                 }
             }

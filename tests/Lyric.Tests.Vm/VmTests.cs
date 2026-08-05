@@ -495,6 +495,67 @@ public class VmTests
         Assert.NotEmpty(panic.CallStack);
     }
 
+    // ------------------------------------------------------------------ 4f) Enums (§3.4)
+
+    private const string ShapeEnum = """
+        enum Shape {
+            Circle(int),
+            Rect { w: int, h: int },
+            Empty;
+
+            fn area(): int {
+                return match (this) {
+                    Circle(r) => r * r,
+                    Rect { w, h } => w * h,
+                    Empty => 0,
+                };
+            }
+        }
+
+        """;
+
+    [Theory]
+    [InlineData("return Shape.Circle(5).area();", 25)]                       // Tuple-Variante
+    [InlineData("let s: Shape = Shape.Rect { w = 3, h = 4 }; return s.area();", 12)] // Struct-Variante
+    [InlineData("return Shape.Empty.area();", 0)]                            // Unit-Variante
+    public void Enum_variants_dispatch_through_match(string body, long expected) =>
+        Assert.Equal(expected, Run(ShapeEnum + $"fn wrap(): int {{ {body} }}\nfn main(): int {{ return wrap(); }}").AsI64);
+
+    /// <summary>Jede Variante trägt ihre eigenen Felder — der Payload der einen darf beim Lesen der
+    /// anderen nicht durchschlagen. Das ist die Invariante hinter „ein Layout pro Variante".</summary>
+    [Fact]
+    public void Variants_keep_their_own_payload()
+    {
+        Assert.Equal(37, Run(ShapeEnum +
+            """
+            fn main(): int {
+                let a = Shape.Circle(5);
+                let b: Shape = Shape.Rect { w = 3, h = 4 };
+                return a.area() + b.area();
+            }
+            """).AsI64);
+    }
+
+    /// <summary><c>match</c> als <b>Statement</b> — derselbe Code wie beim Ausdruck, nur ohne
+    /// Ergebnis-Slot.</summary>
+    [Fact]
+    public void Match_works_as_a_statement()
+    {
+        Assert.Equal(9, Run(ShapeEnum +
+            """
+            fn main(): int {
+                var total = 0;
+                let s = Shape.Circle(3);
+                match (s) {
+                    Circle(r) => { total = r * r; },
+                    Rect { w, h } => { total = 1; },
+                    Empty => { total = 2; },
+                }
+                return total;
+            }
+            """).AsI64);
+    }
+
     // ------------------------------------------------------------------ 5) Laufzeitfehler
 
     [Fact]

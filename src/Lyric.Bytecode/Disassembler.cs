@@ -34,7 +34,9 @@ public static class Disassembler
             sb.Append($"  start: {CalleeName(module, start)}\n");
 
         foreach (var type in module.Types)
-            sb.Append($"  type {type.Name}({string.Join(", ", type.FieldTypes.Select(f => TypeName(module, f)))})\n");
+            sb.Append(type.IsEnum
+                ? $"  enum {type.Name} {{{string.Join(", ", type.Variants.Select(v => TypeRefName(module, (ulong)v)))}}}\n"
+                : $"  type {type.Name}({string.Join(", ", type.FieldTypes.Select(f => TypeName(module, f)))})\n");
 
         foreach (var import in module.Imports)
             sb.Append($"  import {import.Name}(" +
@@ -89,6 +91,10 @@ public static class Disassembler
         Op.Branch => $"br bb{N(i.Immediate)}",
         Op.CondBranch => $"condbr bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
         Op.Unreachable => "unreachable",
+
+        Op.NewVariant => $"newvariant {TypeRefName(module, i.Immediate)}",
+        Op.EnumTag => "enumtag",
+        Op.EnumAs => $"enumas {TypeRefName(module, i.Immediate)}",
 
         Op.OptNone => "optnone",
         Op.OptSome => "optsome",

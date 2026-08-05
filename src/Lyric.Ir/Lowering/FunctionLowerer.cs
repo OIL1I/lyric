@@ -80,8 +80,12 @@ internal sealed class FunctionLowerer
         // Falsch-Slot-Read in der VM. Denselben Weg geht CIL mit 'this'.
         if (receiver is not null)
         {
-            _thisSlot = _slots.Declare("this", _typeTable.RefTo(receiver));
-            _thisType = _typeTable.RefTo(receiver);
+            // Ein Enum-Empfänger ist der Enum-Typ, nicht eine seiner Varianten — welche vorliegt,
+            // entscheidet erst das 'match' im Rumpf.
+            _thisType = receiver.Kind == TypeSymbolKind.Enum
+                ? _typeTable.EnumOf(receiver)
+                : _typeTable.RefTo(receiver);
+            _thisSlot = _slots.Declare("this", _thisType);
         }
 
         // Parameter-Konvention: die ersten ParamCount Locals SIND die Parameter, in Reihenfolge.
@@ -147,7 +151,7 @@ internal sealed class FunctionLowerer
             case ContinueStmt s: return LowerContinue(s);
 
             case ForInStmt s: throw NotSupported("'for-in' (needs Iterator)", s.Span);
-            case MatchStmt s: throw NotSupported("'match'", s.Span);
+            case MatchStmt s: LowerMatch(s.Scrutinee, s.Arms, null, s.Span); return true;
             case TryStmt s: throw NotSupported("'try'/'catch'", s.Span);
             case ThrowStmt s: throw NotSupported("'throw'", s.Span);
             case DeferStmt s: throw NotSupported("'defer'", s.Span);
@@ -314,7 +318,8 @@ internal sealed class FunctionLowerer
 
         NullLiteralExpr e => LowerNull(e),
         LambdaExpr e => throw NotSupported("lambda (needs closure lifting)", e.Span),
-        MatchExpr e => throw NotSupported("'match' as an expression", e.Span),
+        MatchExpr e => LowerMatch(e.Scrutinee, e.Arms, TypeOfExpr(e), e.Span)
+                       ?? throw Bug($"match expression produced no value at {e.Span}"),
         MemberExpr e => LowerFieldRead(e),
         IndexExpr e => LowerIndexRead(e),
         ArrayLitExpr e => LowerArrayLiteral(e),
@@ -635,6 +640,211 @@ internal sealed class FunctionLowerer
         return result;
     }
 
+    // ------------------------------------------------------------------ Enums (§3.4)
+
+    /// <summary>Der Enum-Typ, zu dem ein Wert gehört — oder eine Scope-Grenze.</summary>
+    private (TypeSymbol Symbol, IrEnumType Type) RequireEnum(Expr expr)
+    {
+        if (_types.TypeOf(expr) is not NamedRef { Symbol.Kind: TypeSymbolKind.Enum } named)
+            throw NotSupported($"'{TypeFacts.Display(_types.TypeOf(expr))}' is not an enum", expr.Span);
+
+        return (named.Symbol, _typeTable.EnumOf(named.Symbol));
+    }
+
+    /// <summary><c>Shape.Circle(2.0)</c> und <c>Shape.Empty</c> — eine Tuple- bzw. Unit-Variante.
+    /// Die Struct-Form <c>Triangle { a = … }</c> läuft über <see cref="LowerObjectInit"/>.</summary>
+    private TempId LowerVariantCall(MemberExpr callee, Expr[] arguments, Span span)
+    {
+        var (symbol, type) = (RefEnumSymbol(callee.Target, callee.Span), (IrEnumType?)null);
+        var enumType = _typeTable.EnumOf(symbol);
+        var variant = _typeTable.VariantOf(symbol, callee.Member, span);
+
+        var fields = new TempId[arguments.Length];
+        for (var i = 0; i < arguments.Length; i++) fields[i] = LowerExpr(arguments[i]);
+
+        var dest = _slots.NewTemp(enumType);
+        _b.Emit(new NewVariant(dest, variant, enumType.Type, fields, span));
+        return dest;
+    }
+
+    /// <summary><c>Shape.Tri { a = 3, b = 4 }</c>. Wie beim Objekt-Literal wird in
+    /// <b>Layout</b>-Reihenfolge geschrieben, ausgewertet aber in Quelltext-Reihenfolge — nur dass
+    /// Slot 0 das Tag ist und die Nutzfelder bei 1 beginnen.</summary>
+    private TempId LowerStructVariant(StructInitExpr expr, TypeSymbol owner)
+    {
+        var variantName = expr.Path[^1];
+        var variant = _typeTable.VariantOf(owner, variantName, expr.Span);
+        var layout = _typeTable.Defs[variant.Value];
+        var enumType = _typeTable.EnumOf(owner);
+
+        var values = new Dictionary<string, TempId>(StringComparer.Ordinal);
+        foreach (var field in expr.Fields) values[field.Name] = LowerExpr(field.Value);
+
+        var fields = new TempId[layout.FieldNames.Length - 1];
+        for (var i = 1; i < layout.FieldNames.Length; i++)
+        {
+            if (!values.TryGetValue(layout.FieldNames[i], out var value))
+                throw NotSupported($"initializer omits field '{layout.FieldNames[i]}'", expr.Span);
+            fields[i - 1] = value;
+        }
+
+        var dest = _slots.NewTemp(enumType);
+        _b.Emit(new NewVariant(dest, variant, enumType.Type, fields, expr.Span));
+        return dest;
+    }
+
+    private TypeSymbol RefEnumSymbol(Expr target, Span span)
+    {
+        var bound = _types.RefOf(target);
+        if (bound is ImportBindingSymbol import) bound = import.Target;
+        if (bound is TypeSymbol { Kind: TypeSymbolKind.Enum } symbol) return symbol;
+
+        throw NotSupported("variant construction on something that is not an enum", span);
+    }
+
+    /// <summary>
+    /// <c>match</c> als Ausdruck und als Statement — derselbe Code, nur der Ergebnis-Slot fehlt im
+    /// Statement-Fall.
+    ///
+    /// <para><b>Kein Sprungtabellen-Opcode.</b> Gelesen wird das Tag, verglichen wird mit einer
+    /// Konstante, verzweigt wird wie überall sonst. Eine Sprungtabelle wäre eine Optimierung —
+    /// die Semantik ist eine Kette von Vergleichen, und die Exhaustivität hat die Sema bereits
+    /// bewiesen (<c>LYR-SEM0050</c>), weshalb der letzte Arm ohne Fallback auskommt.</para>
+    /// </summary>
+    private TempId? LowerMatch(Expr scrutinee, MatchArm[] arms, IrType? resultType, Span span)
+    {
+        var (symbol, enumType) = RequireEnum(scrutinee);
+        var value = LowerExpr(scrutinee);
+        var slot = resultType is null ? (LocalId?)null : _slots.DeclareSynthetic("match", resultType);
+
+        var tag = _slots.NewTemp(new IrScalarType(IrScalar.I64));
+        _b.Emit(new EnumTag(tag, value, span));
+
+        var merge = _b.NewBlock();
+        var reachesMerge = false;
+
+        for (var i = 0; i < arms.Length; i++)
+        {
+            var arm = arms[i];
+            if (arm.Guard is not null) throw NotSupported("a match guard", arm.Span);
+
+            var body = _b.NewBlock();
+            // Der letzte Arm braucht keine Prüfung: die Sema hat Exhaustivität bewiesen. Ein
+            // Vergleich hier wäre ein unerreichbarer else-Block, und den lehnt der Verifier ab.
+            if (i < arms.Length - 1)
+            {
+                var next = _b.NewBlock();
+                var expected = EmitConst(new IntConst((ulong)TagOfPattern(symbol, arm.Pattern)),
+                    new IrScalarType(IrScalar.I64), arm.Span);
+                // Das Type-Feld eines Vergleichs ist sein ERGEBNIS-Typ (bool); den Operandentyp
+                // schlägt der Emitter in der Temp-Tabelle nach, weil signed/unsigned verschiedene
+                // Opcodes sind.
+                var matches = _slots.NewTemp(BoolType);
+                _b.Emit(new BinOp(matches, IrBinKind.Eq, BoolType, tag, expected, arm.Span));
+                _b.Seal(new CondBranch(matches, body, next, arm.Span));
+                _b.SwitchTo(body);
+                if (LowerArm(arm, symbol, value, slot, resultType)) { _b.Seal(new Branch(merge, arm.Span)); reachesMerge = true; }
+                _b.SwitchTo(next);
+            }
+            else
+            {
+                _b.Seal(new Branch(body, arm.Span));
+                _b.SwitchTo(body);
+                if (LowerArm(arm, symbol, value, slot, resultType)) { _b.Seal(new Branch(merge, arm.Span)); reachesMerge = true; }
+            }
+        }
+
+        if (!reachesMerge) throw NotSupported("a match where no arm falls through", span);
+
+        _b.SwitchTo(merge);
+        if (slot is not { } result || resultType is null) return null;
+
+        var dest = _slots.NewTemp(resultType);
+        _b.Emit(new LoadLocal(dest, result, resultType, span));
+        return dest;
+    }
+
+    /// <summary>Bindet die Felder der Variante und lowert den Rumpf. Liefert „fällt durch".</summary>
+    private bool LowerArm(MatchArm arm, TypeSymbol symbol, TempId value, LocalId? slot, IrType? resultType)
+    {
+        BindPatternFields(arm.Pattern, symbol, value);
+
+        if (arm.Body is Expr expr)
+        {
+            var produced = resultType is null ? LowerExprOrVoid(expr) : LowerExprAs(expr, resultType);
+            if (slot is { } target && produced is { } v) _b.Emit(new StoreLocal(target, v, arm.Span));
+            return true;
+        }
+
+        return LowerStatements((Block)arm.Body);
+    }
+
+    /// <summary>Der Tag, auf den ein Muster passt. Eine Unit-Variante parst als
+    /// <see cref="BindingPattern"/> — ob sie eine Bindung oder eine Variante ist, weiß erst die
+    /// Sema, und die hat es entschieden.</summary>
+    private int TagOfPattern(TypeSymbol symbol, Pattern pattern) => pattern switch
+    {
+        VariantPattern v => _typeTable.TagOf(symbol, v.Path[^1], v.Span),
+        BindingPattern b when _types.RefOf(pattern) is EnumVariantSymbol
+            => _typeTable.TagOf(symbol, b.Name, b.Span),
+        WildcardPattern => throw NotSupported("'_' anywhere but in the last arm", pattern.Span),
+        _ => throw NotSupported($"a {pattern.GetType().Name} in a match over an enum", pattern.Span),
+    };
+
+    /// <summary>Zerlegt eine Variante: <c>enumas</c> engt ein, danach ist jedes Feld ein
+    /// gewöhnliches <c>ldfld</c> mit dem Layout der Variante.</summary>
+    private void BindPatternFields(Pattern pattern, TypeSymbol symbol, TempId value)
+    {
+        if (pattern is not VariantPattern variant) return;
+        if (variant.TupleElements is null && variant.StructFields is null) return;
+
+        var variantType = _typeTable.VariantOf(symbol, variant.Path[^1], variant.Span);
+        var narrowed = _slots.NewTemp(new IrRefType(variantType));
+        _b.Emit(new EnumAs(narrowed, value, variantType, variant.Span));
+
+        var layout = _typeTable.Defs[variantType.Value];
+
+        if (variant.TupleElements is { } elements)
+            for (var i = 0; i < elements.Length; i++)
+                BindOne(elements[i], narrowed, variantType, new FieldId(i + 1), layout.FieldTypes[i + 1]);
+
+        if (variant.StructFields is { } fields)
+            foreach (var field in fields)
+            {
+                var index = Array.IndexOf(layout.FieldNames, field.Name);
+                if (index < 0) throw NotSupported($"unknown field '{field.Name}' in a pattern", field.Span);
+
+                // Kurzform `{ a, b }`: kein Untermuster, der Feldname IST die Bindung. Die Sema
+                // hat sie an ein LocalSymbol gebunden — an den FieldPattern-Knoten selbst.
+                BindOne(field.Pattern ?? (Node)field, narrowed, variantType,
+                    new FieldId(index), layout.FieldTypes[index], field.Name, field.Span);
+            }
+    }
+
+    private void BindOne(Node? sub, TempId obj, TypeId variantType, FieldId field, IrType type,
+        string? shorthandName = null, Span shorthandSpan = default)
+    {
+        // Nur Bindungen und '_' — verschachtelte Muster brauchen rekursive Dekomposition und sind
+        // eine eigene Ausbaustufe.
+        if (sub is null or WildcardPattern) return;
+
+        var name = sub is BindingPattern binding ? binding.Name : shorthandName;
+        if (name is null)
+            throw NotSupported($"a nested {sub.GetType().Name} in a pattern", sub.Span);
+
+        // Die Sema hat der Muster-Bindung schon ein LocalSymbol gegeben — über dasselbe Symbol
+        // findet LowerIdentifier den Slot später wieder. Ein eigener Namensraum hier wäre eine
+        // zweite Wahrheit über Scoping.
+        if (_types.RefOf(sub) is not LocalSymbol local)
+            throw Bug($"pattern binding '{name}' was not bound by the type checker");
+
+        var span = sub.Span == default ? shorthandSpan : sub.Span;
+        var slot = _slots.DeclareFor(local, type);
+        var loaded = _slots.NewTemp(type);
+        _b.Emit(new LoadField(loaded, obj, variantType, field, type, span));
+        _b.Emit(new StoreLocal(slot, loaded, span));
+    }
+
     // ------------------------------------------------------------------ Optionals (§7)
 
     /// <summary>
@@ -813,6 +1023,11 @@ internal sealed class FunctionLowerer
     /// </summary>
     private TempId LowerObjectInit(StructInitExpr expr)
     {
+        // 'Shape.Tri { a = 3, b = 4 }' — eine Struct-Variante. Sieht aus wie ein Objekt-Literal,
+        // ist aber eine Varianten-Konstruktion und geht deshalb über newvariant.
+        if (_types.TypeOf(expr) is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } owner)
+            return LowerStructVariant(expr, owner.Symbol);
+
         if (_types.TypeOf(expr) is not NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
             throw NotSupported($"initializer for '{TypeFacts.Display(_types.TypeOf(expr))}' " +
                                "(only classes are lowered)", expr.Span);
@@ -847,6 +1062,11 @@ internal sealed class FunctionLowerer
 
     private TempId LowerFieldRead(MemberExpr expr)
     {
+        // 'Shape.Empty' — eine Unit-Variante. Sie sieht aus wie ein Member-Zugriff, ist aber eine
+        // Konstruktion ohne Argumente.
+        if (_types.RefOf(expr) is EnumVariantSymbol)
+            return LowerVariantCall(expr, [], expr.Span);
+
         // '.length' auf einem Array ist eingebaut (ADR-016), kein Feld und keine Methode.
         if (expr.Member == "length" && TypeOfExpr(expr.Target) is IrArrayType)
             return LowerArrayLength(expr);
@@ -905,11 +1125,16 @@ internal sealed class FunctionLowerer
         switch (expr.Callee)
         {
             case MemberExpr member
-                when _types.TypeOf(member.Target) is NamedRef { Symbol.Kind: TypeSymbolKind.Class }:
+                when _types.TypeOf(member.Target) is NamedRef
+                     { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Enum }:
                 calleeName = member.Member;
                 bound = _types.RefOf(member);
                 receiver = LowerExpr(member.Target);
                 break;
+
+            // Shape.Circle(2.0) — eine Tuple-Variante. Kein Call, sondern eine Konstruktion.
+            case MemberExpr member when _types.RefOf(member) is EnumVariantSymbol:
+                return LowerVariantCall(member, expr.Arguments, expr.Span);
 
             case MemberExpr member: // Typ- oder Modul-Ziel: P.new(…), console.println(…)
                 calleeName = member.Member;
@@ -1130,6 +1355,9 @@ internal sealed class FunctionLowerer
         // außerhalb dieses Compiler-Stands.
         if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
             return _typeTable.RefTo(named.Symbol);
+
+        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } enumType)
+            return _typeTable.EnumOf(enumType.Symbol);
 
         // T[] mit fester Länge (ADR-016). Der Elementtyp steht inline; T[N] gibt es nicht mehr.
         if (type is ArrayOf array)

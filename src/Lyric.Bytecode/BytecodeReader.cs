@@ -111,7 +111,7 @@ public static class BytecodeReader
     private static BytecodeType ReadType(ByteReader payload)
     {
         var tag = payload.Tag();
-        if (tag == TypeTag.Ref) return new BytecodeType(tag, payload.ULebAsCount());
+        if (tag is TypeTag.Ref or TypeTag.Enum) return new BytecodeType(tag, payload.ULebAsCount());
         // Der Elementtyp steht inline und rekursiv (Bytecode.md §3).
         if (tag is TypeTag.Array or TypeTag.Optional)
         {
@@ -143,6 +143,23 @@ public static class BytecodeReader
             if (nameIndex >= strings.Count)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                     $"type {i}: name index {nameIndex} is outside the string pool ({strings.Count})");
+
+            var kind = payload.U8();
+            if (kind > (byte)TypeKind.Enum)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"type {i}: unknown kind {kind}");
+
+            if (kind == (byte)TypeKind.Enum)
+            {
+                var variantCount = payload.ULebAsCount();
+                var variants = new List<int>(Math.Min(variantCount, 1024));
+                for (var v = 0; v < variantCount; v++) variants.Add(payload.ULebAsCount());
+                types.Add(new BytecodeTypeDef
+                {
+                    Name = strings[nameIndex], FieldTypes = [], Variants = variants,
+                });
+                continue;
+            }
 
             var fieldCount = payload.ULebAsCount();
             var fields = new List<BytecodeType>(Math.Min(fieldCount, 1024));
@@ -274,8 +291,24 @@ public static class BytecodeReader
         }
 
         for (var i = 0; i < module.Types.Count; i++)
+        {
             for (var f = 0; f < module.Types[i].FieldTypes.Count; f++)
                 Check(module.Types[i].FieldTypes[f], $"type '{module.Types[i].Name}' field {f}");
+
+            // Eine Variante muss ein Layout sein und einen Tag-Slot haben — sonst laesen ldfld
+            // und enumas gegen ein Layout, das es nicht gibt.
+            foreach (var variant in module.Types[i].Variants)
+            {
+                if (variant < 0 || variant >= module.Types.Count)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"enum '{module.Types[i].Name}': variant index {variant} is outside " +
+                        $"{module.Types.Count} type(s)");
+
+                if (module.Types[variant].IsEnum || module.Types[variant].FieldTypes.Count == 0)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                        $"enum '{module.Types[i].Name}': variant {variant} is not a layout with a tag slot");
+            }
+        }
 
         foreach (var import in module.Imports)
         {
@@ -319,7 +352,7 @@ public static class BytecodeReader
 
                 // ADR-013s Kern: Typ- und Feldindex werden hier geprüft, damit der Feldzugriff zur
                 // Laufzeit ein Array-Zugriff ohne Prüfung sein darf.
-                case Op.NewObject or Op.LoadField or Op.StoreField
+                case Op.NewObject or Op.LoadField or Op.StoreField or Op.NewVariant or Op.EnumAs
                     when instruction.Immediate >= (ulong)module.Types.Count:
                     throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                         $"function '{function.Name}' at {instruction.Offset}: type index " +
@@ -362,7 +395,14 @@ public static class BytecodeReader
             {
                 var instruction = instructions[i];
                 var (arity, returnsValue) = CalleeShape(module, instruction);
-                var (pops, pushes) = CodeDecoder.StackEffect(instruction, arity, returnsValue);
+
+                // newvariant nimmt die Nutzfelder seiner Variante; Slot 0 ist das Tag und wird
+                // nicht vom Stack genommen.
+                var variantArity = instruction.Opcode == Op.NewVariant
+                    ? module.Types[(int)instruction.Immediate].FieldTypes.Count - 1
+                    : 0;
+
+                var (pops, pushes) = CodeDecoder.StackEffect(instruction, arity, returnsValue, variantArity);
 
                 if (depth < pops)
                     throw new MalformedBytecodeException(BytecodeDiagnostics.StackDiscipline,
