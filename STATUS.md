@@ -214,7 +214,10 @@ Programm, mit Begründung als Blockzitat).
     (`SlotAllocator.Declare`) statt über die Symbol-Map zu gehen.
   - **Namensmangling `<modul>.<Typ>.<methode>`** — ohne den Typnamen fielen `Account.get` und
     `Player.get` zusammen, und der Verifier lehnt doppelte Funktionsnamen ab.
-  - **`static let` parst und typprüft, lowert aber nicht.** Es hängt an derselben Lücke wie ein
+  - **`static let` parst nicht.** *(Richtigstellung 2026-08-06: hier stand „parst und typprüft,
+    lowert aber nicht" — das war falsch. Der Parser kennt `static fn`, aber kein `static` vor einem
+    `BindingStmt`, obwohl ADR-014 und `Sprache.md` §3.2 es festschreiben.)* Ursprünglicher Text:
+    Es hängt an derselben Lücke wie ein Modul-`let`. Es hängt an derselben Lücke wie ein
     Modul-`let`: Konstanten werden nirgends gelowert. Die Meldung sagt das jetzt auch, statt über
     einen Member-Zugriff auf `<?>` zu klagen.
   - **Ein Compiler-Absturz gefunden und behoben**: `TypeTable.Intern` trägt den Platzhalter ein,
@@ -264,7 +267,9 @@ Programm, mit Begründung als Blockzitat).
     diktiert: `optissome` muss überall dasselbe liefern. Verboten ist ausdrücklich, ein Bitmuster
     als null zu reservieren — `?int` muss alle 2⁶⁴ Werte tragen, sonst wäre `-1` je nach Runtime
     mal ein Wert und mal keiner. Drei Tests halten genau das fest.
-  - **`??`, `??=` und `?.` bekommen keine Opcodes.** Sie werten ihre rechte Seite nur bedingt aus
+  - **`??` bekommt keinen Opcode.** *(Richtigstellung 2026-08-06: hier standen auch `??=` und
+    `?.`, aber die lowern bis heute nicht — `LYR-IR0001`. Die Begründung unten gilt für alle drei,
+    gebaut ist nur `??`.)* Sie werten ihre rechte Seite nur bedingt aus
     und lowern zu Verzweigungen über `optissome` — wie `&&` und `||`. Ein Opcode müsste einen
     unausgewerteten Ausdruck transportieren, und das kann eine Stack-Maschine nicht.
   - **`x != null` ist kein Vergleich**, sondern `optissome`. Ein echter Vergleich bräuchte einen
@@ -575,6 +580,14 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   schwer zu begründen, weil `T[]` jetzt genauso ein Referenztyp ist wie eine Klasse. Zu klären,
   bevor `Indexable<T>` kommt: der Setter dort wäre `mut fn`, und dann hängt die Frage an derselben
   Stelle nochmal.
+
+**Lieferposten-Inventur 2026-08-06** (Details als Blockzitat vor M8 in der ROADMAP,
+Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/Lowering gefahren,
+**12 laufen durch**. Was **keinem Slice gehoert**: `static let` (scheitert im **Parser**), Attribute
+an Deklarationen (`@test` hat keine Grammatik — betrifft M9), `fn main(args)` (erzeugt **stumm** ein
+Bibliotheks-Modul), `match` ueber Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`,
+Default-Argumente, `params`, `extend`, Tupel. Die Restliste von M7 ist deshalb nicht P6/P7/P8,
+sondern **P5b** (Kernsprach-Lucken), P6, P7, P8 und **P9** (`extend`).
 
 **Aus P5 — bewusst offen und wichtig:**
 

@@ -461,6 +461,74 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 >
 > *(Zur Ratifizierung im nächsten Scope-Check.)*
 
+
+> **Lieferposten-Inventur (2026-08-06, nach P5).** Jedes Konstrukt aus `Sprache.md` wurde durch
+> Parser, Sema und Lowering gefahren — 38 Fälle, davon laufen **12** bis zur IR durch. Das Ergebnis
+> ist nicht die Zahl, sondern **was keinem Slice gehört**.
+>
+> **A — hat einen Slice, alles in Ordnung** (kein Handlungsbedarf):
+> Closures, Lambda-Block, Funktionstyp → **P6**. Coroutinen/`yield`/`resume` → **P7**.
+> Generische Funktionen und Klassen, `for-in` über Range und Array → **P8**.
+> `f"{x:N2}"`-Format-Specs → **M8** (`std.fmt`, so schon vermerkt).
+>
+> **B — gehört keinem Slice.** Das ist die eigentliche Ausbeute:
+>
+> | Konstrukt | `Sprache.md` | Stufe, an der es scheitert |
+> |---|---|---|
+> | `static let` (typgebundene Konstante) | §3.2, ADR-014 | **Parser** — `LYR-PAR0016` |
+> | `@test` und jedes andere Attribut an einer Deklaration | §10.1 | **Parser** — §2.3 hat keinen Attribut-Slot |
+> | `fn main(args: string[])` | §11 | **Lowering, stumm** — erzeugt ein Bibliotheks-Modul ohne Start-Sektion |
+> | `match` über Nicht-Enums (Literale, `\|`, Ranges, Guards, Tupel) | §5, §6.3 | Lowering — „'int' is not an enum" |
+> | `?.` (Optional-Chaining) | §7 | Lowering |
+> | `??=` (Coalescing-Assign) | §7 | Lowering |
+> | `string + string`, `string * int` | §6.5 | Lowering |
+> | `panic(msg)` | §9 | Lowering — `std.core.panic` fehlt |
+> | Default-Argumente | §3.1 | Lowering |
+> | `params`-Variadics | §3.1 | Lowering |
+> | `extend`-Blöcke | §3.6 | Lowering |
+> | Tupel als Typ und Wert | §4 | Lowering |
+> | Modul-`let` / Konstanten | §2.3 | Lowering (war bekannt) |
+>
+> **C — drei Stellen, an denen STATUS/ROADMAP etwas Falsches behaupten.** Das ist der ernste Teil,
+> weil genau diese Sätze die Inventur bisher verhindert haben:
+>
+> 1. STATUS zu **P1b**: „`static let` parst und typprüft, lowert aber nicht." Es **parst nicht**.
+>    Der Parser kennt `static fn`, aber kein `static` vor einem `BindingStmt` — obwohl ADR-014 und
+>    §3.2 es beide festschreiben.
+> 2. STATUS zu **P2b**: „`??`, `??=` und `?.` … lowern zu Verzweigungen über `optissome`." Nur `??`
+>    tut das. `??=` und `?.` sind `LYR-IR0001`.
+> 3. STATUS zu **P3b**: „`match` als Ausdruck und Statement". Nur über **Enums**. `match (5)`,
+>    `match ("a")` und `match (true)` scheitern alle — dabei ist die Exhaustivitätsprüfung dafür
+>    seit M4 da.
+>
+> **Warum es wieder passiert ist.** Dieselbe Mechanik wie bei den Gates (viermal) und bei M5/M6:
+> ein Slice wird an seinem Gate-Programm gemessen, und das Gate benutzt nur einen Teil dessen, was
+> der Slice laut Titel liefert. `optionals.lyr` benutzt kein `?.`, `enums.lyr` kein `match (5)`.
+> Der Slice gilt als fertig, der Rest verschwindet — und `LYR-IR0001` sieht dabei aus wie eine
+> geplante Grenze.
+>
+> **Konsequenz, konkret.** Die Restliste von M7 ist nicht P6/P7/P8, sondern:
+>
+> | Slice | Inhalt |
+> |---|---|
+> | **P5b** | Die Lücken aus B, soweit sie Kernsprache sind: `match` über Nicht-Enums, `?.`, `??=`, `string +`/`*`, Default-Argumente, `params`, Tupel, `panic`, `static let` (inkl. Parser), `main(args)` |
+> | P6 | Closures |
+> | P7 | Coroutinen |
+> | P8 | Generics + `for-in`/`Iterator` |
+> | **P9** | `extend`-Lowering — hat bis heute in keiner Slice-Tabelle gestanden |
+>
+> Und für M9: **`@test` hat keine Grammatik.** §2.3 sieht an einer Deklaration kein Attribut vor,
+> §10.1 verspricht es. `lyric test` kann nichts sammeln, wofür es keine Syntax gibt — das ist vor
+> M9 zu klären, nicht in M9.
+>
+> **Regel daraus, in derselben Reihe wie die Gate-Regel:** ein Slice ist fertig, wenn seine
+> Lieferposten Punkt für Punkt abgehakt sind — nicht, wenn sein Gate läuft. Diese Inventur ist am
+> Ende jedes Meilensteins zu wiederholen; das Skript dafür ist trivial (jedes Konstrukt aus
+> `Sprache.md` durch `lyrc parse`/`check`/`lower`).
+>
+> *(Zur Ratifizierung im nächsten Scope-Check.)*
+
+
 ### M8 — Stdlib (4–6 Wochen)
 
 **Ziel**: Alle 14 Stdlib-Module produktiv.
