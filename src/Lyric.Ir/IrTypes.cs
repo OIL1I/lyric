@@ -42,10 +42,12 @@ namespace Lyric.Ir
                     return x.Type == y.Type;
                 case (IrInterfaceType x, IrInterfaceType y):
                     return x.Type == y.Type;
+                case (IrStructType x, IrStructType y):
+                    return x.Type == y.Type;
                 case (IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
-                          or IrInterfaceType,
+                          or IrInterfaceType or IrStructType,
                       IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
-                          or IrInterfaceType):
+                          or IrInterfaceType or IrStructType):
                     return false; // verschiedene Sorten — vergleichbar, nur eben ungleich
                 default:
                     throw new InternalCompilationException(
@@ -113,4 +115,22 @@ namespace Lyric.Ir
 /// Mehrzahl ohne Interface.</para>
 /// </summary>
 public sealed record IrInterfaceType(TypeId Type) : IrType;
+
+/// <summary>
+/// Ein <c>struct</c>: dasselbe Layout wie <see cref="IrRefType"/>, aber <b>Wert-Semantik</b>
+/// (Sprache.md §3.2). Zuweisung kopiert.
+///
+/// <para>Wie bei einer Klasse traegt der Typ nur seine Id. Das ist hier sogar zwingend: ein
+/// struct darf sich nicht selbst enthalten — es waere unendlich gross —, und die Sema lehnt das
+/// als <c>LYR-SEM0056</c> ab. Der Verzicht auf strukturellen Vergleich ist trotzdem derselbe
+/// Gewinn wie bei P1.</para>
+///
+/// <para><b>Zur Laufzeit dasselbe Slot-Array wie ein Klassenobjekt.</b> Der Unterschied steckt
+/// nicht in der Darstellung, sondern in den Instruktionen: an jedem Bindepunkt steht ein
+/// <c>structcopy</c>. Die Alternative — Struct-Felder in die Slots des Umgebenden einbetten, wie
+/// C# und Rust es tun — braucht Feldzugriffe ueber Teilbereiche und damit ein anderes
+/// Layout-Modell; sie ist eine spaetere, formatneutrale Optimierung (Scalar Replacement), keine
+/// Voraussetzung fuer Korrektheit.</para>
+/// </summary>
+public sealed record IrStructType(TypeId Type) : IrType;
 }

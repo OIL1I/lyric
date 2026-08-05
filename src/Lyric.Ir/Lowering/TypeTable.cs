@@ -51,6 +51,14 @@ internal sealed class TypeTable
     /// <summary>Der Typ eines ueber ein Interface angesprochenen Wertes (Lyrics <c>dyn</c>).</summary>
     public IrInterfaceType InterfaceOf(TypeSymbol symbol) => new(Intern(symbol));
 
+    /// <summary>Der Typ eines <c>struct</c>-Wertes: dasselbe Layout wie eine Klasse, aber
+    /// Wert-Semantik (Sprache.md §3.2).</summary>
+    public IrStructType StructOf(TypeSymbol symbol) => new(Intern(symbol));
+
+    /// <summary>Ist dieser Tabellen-Eintrag ein Wert-Typ? Das Lowering fragt das, um zu
+    /// entscheiden, ob an einem Bindepunkt ein <c>structcopy</c> noetig ist.</summary>
+    public bool IsStruct(TypeId id) => _defs[id.Value].IsStruct;
+
     /// <summary>
     /// Der Methoden-Slot eines Interfaces. Der <b>Index</b> ist der Vertrag, nicht der Name: er
     /// steht zur Compile-Zeit fest, weil Lyric statisch typisiert ist und kein Monkey-Patching
@@ -114,7 +122,7 @@ internal sealed class TypeTable
         if (symbol.Kind == TypeSymbolKind.Enum) return InternEnum(symbol);
         if (symbol.Kind == TypeSymbolKind.Interface) return InternInterface(symbol);
 
-        if (symbol.Kind != TypeSymbolKind.Class)
+        if (symbol.Kind is not (TypeSymbolKind.Class or TypeSymbolKind.Struct))
             throw new UnsupportedConstructException(
                 $"type '{symbol.Name}' ({Describe(symbol.Kind)}) is not supported by this compiler version yet",
                 SpanOf(symbol));
@@ -124,9 +132,18 @@ internal sealed class TypeTable
                 $"generic type '{symbol.Name}' is not supported by this compiler version yet",
                 SpanOf(symbol));
 
-        if (symbol.Declaration is not ClassDecl decl)
+        // Klasse und struct teilen sich das gesamte Layout-Verfahren; sie unterscheiden sich
+        // ausschliesslich in der Bindungs-Semantik, und die steckt im Lowering, nicht hier.
+        var members = symbol.Declaration switch
+        {
+            ClassDecl c => c.Members,
+            StructDecl v => v.Members,
+            _ => null,
+        };
+
+        if (members is null)
             throw new UnsupportedConstructException(
-                $"class '{symbol.Name}' has no declaration to read a layout from",
+                $"type '{symbol.Name}' has no declaration to read a layout from",
                 SpanOf(symbol));
 
         // Platz reservieren UND Id eintragen, bevor die Feldtypen gelowert werden — siehe
@@ -138,7 +155,7 @@ internal sealed class TypeTable
 
         try
         {
-            var fields = decl.Members.OfType<FieldDecl>().ToArray();
+            var fields = members.OfType<FieldDecl>().ToArray();
             var names = new string[fields.Length];
             var types = new IrType[fields.Length];
 
@@ -153,7 +170,10 @@ internal sealed class TypeTable
                 types[i] = Lower(fields[i].Type, fields[i].Span);
             }
 
-            _defs[id.Value] = new IrTypeDef(symbol.Name, types, names);
+            _defs[id.Value] = new IrTypeDef(symbol.Name, types, names)
+            {
+                IsStruct = symbol.Kind == TypeSymbolKind.Struct,
+            };
             return id;
         }
         catch (UnsupportedConstructException ex)
@@ -286,6 +306,7 @@ internal sealed class TypeTable
     public IrType Lower(LyrType type, Core.Span span) => type switch
     {
         NamedRef { Symbol.Kind: TypeSymbolKind.Class } n => RefTo(n.Symbol),
+        NamedRef { Symbol.Kind: TypeSymbolKind.Struct } n => StructOf(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Enum } n => EnumOf(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Interface } n => InterfaceOf(n.Symbol),
         _ => TypeLowering.Lower(type)
@@ -323,6 +344,7 @@ internal sealed class TypeTable
             if (bound is ImportBindingSymbol import) bound = import.Target;
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Enum } enumType) return EnumOf(enumType);
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Interface } iface) return InterfaceOf(iface);
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Struct } value) return StructOf(value);
             if (bound is TypeSymbol type) return RefTo(type);
         }
 
@@ -334,7 +356,6 @@ internal sealed class TypeTable
 
     private static string Describe(TypeSymbolKind kind) => kind switch
     {
-        TypeSymbolKind.Struct => "a struct; only classes are lowered",
         TypeSymbolKind.Enum => "an enum",
         TypeSymbolKind.Alias => "a type alias",
         _ => "not a class"

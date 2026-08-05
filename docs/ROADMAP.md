@@ -347,8 +347,8 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 | P2b ✅ | Optionals (`?T`, `??`, `!`, Flow-Narrowing) | `examples/optionals.lyr` |
 | P3b ✅ | Enums (Unit-/Tuple-/Struct-Varianten) + `match` | `examples/enums.lyr` |
 | P3 ✅ | Interfaces + vtable-Dispatch (**nach** P3b) | `examples/interfaces.lyr` |
-| P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/bank.lyr` |
-| P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | — |
+| P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/vectors.lyr` |
+| P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | `examples/bank.lyr` |
 | P6 | Closures (Lifting + Environment-Objekt) | `examples/inventory.lyr` |
 | P7 | Coroutinen (State-Machine-Lowering, ADR-006) | `examples/fibonacci.lyr` |
 | P8 | Generics-Monomorphisierung + `for-in`/`Iterator` | `examples/fizzbuzz.lyr`, `examples/stats.lyr` |
@@ -394,6 +394,23 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > P3 bekommt ein Programm, das tatsächlich über einen Interface-Typ dispatcht. Interfaces selbst
 > sind in der Sema fertig (Konformanz, Default-Methoden, `extend`, Orphan-Rule), P3 ist deshalb
 > reiner Dispatch: vtable in der Types-Sektion und ein `callvirt`.
+
+> **Korrektur (2026-08-05, vor P4):** P4s Gate war `examples/bank.lyr`. Das Programm enthält
+> **kein einziges `struct`** — es zeigt `Throwable`, `throws`, `try`/`catch` mit typed catch und
+> `defer`. Das ist die Liste von **P5**, Zeile für Zeile. Seine drei heutigen Blocker sind
+> Feld-Defaults (ein eigener offener Posten), Exceptions und `defer`; Wert-Semantik kommt darin
+> nirgends vor.
+>
+> Es wandert zu P5 und ist dort ein gutes Gate. P4 bekommt `examples/vectors.lyr`: Zuweisung
+> kopiert, Parameter kopiert, `struct` im `struct` kopiert mit, Methoden-Mutation bleibt lokal.
+>
+> **Das ist das vierte Mal**: M5 an `hello.lyr`, M6 an FizzBuzz/Fibonacci, P2 an `stats.lyr`,
+> P3 an `shapes.lyr` (das kein Interface enthielt). Das Muster ist immer dasselbe — ein Gate wird
+> nach *Komplexität* ausgewählt statt nach den Sprachmitteln, die der Slice liefert. **Die Regel,
+> die daraus folgt: ein Gate muss das Schlüsselwort enthalten, um das der Slice geht.** Bei P4
+> hätte ein `grep struct examples/bank.lyr` gereicht.
+>
+> *(Zur Ratifizierung im nächsten Scope-Check.)*
 
 > **Offene Sprachfrage (2026-08-02, aus P1) — blockiert P3:** Methoden sind in P1 bewusst **nicht**
 > gelowert, und der Grund ist eine Lücke in `Sprache.md`, keine Zeitfrage. Die Grammatik kennt kein

@@ -91,6 +91,7 @@ public class LoweringTests
     [InlineData("optionals")]       // null, ??, !, Flow-Narrowing
     [InlineData("enums")]           // Varianten, match, Tag-Dispatch, Pattern-Dekomposition
     [InlineData("interfaces")]      // mkiface, callvirt, vtable-Zeilen, Default vs. Ueberschreibung
+    [InlineData("structs")]         // structcopy an den Bindepunkten, verschachtelter Wert-Typ
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();

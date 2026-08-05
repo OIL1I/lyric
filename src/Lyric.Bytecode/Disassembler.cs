@@ -58,6 +58,8 @@ public static class Disassembler
         foreach (var type in module.Types)
             sb.Append(type.IsInterface
                 ? $"  interface {type.Name} {{{string.Join(", ", type.MethodSlots)}}}\n"
+                : type.IsStruct
+                ? $"  struct {type.Name}({string.Join(", ", type.FieldTypes.Select(f => TypeName(module, f)))})\n"
                 : type.IsEnum
                 ? $"  enum {type.Name} {{{string.Join(", ", type.Variants.Select(v => TypeRefName(module, (ulong)v)))}}}\n"
                 : $"  type {type.Name}({string.Join(", ", type.FieldTypes.Select(f => TypeName(module, f)))})\n");
@@ -124,6 +126,7 @@ public static class Disassembler
         Op.Unreachable => "unreachable",
 
         Op.NewVariant => $"newvariant {TypeRefName(module, i.Immediate)}",
+        Op.StructCopy => $"structcopy {TypeRefName(module, i.Immediate)}",
         Op.MakeInterface => $"mkiface {TypeRefName(module, i.Immediate)} -> " +
                             $"{TypeRefName(module, i.Immediate2)}",
         Op.CallVirt => $"callvirt {SlotName(module, i.Immediate, i.Immediate2)}",

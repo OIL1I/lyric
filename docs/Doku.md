@@ -569,10 +569,30 @@ pub struct Vector3 :: [Equatable] {
 }
 
 let a = Vector3 { x = 1.0, y = 0.0, z = 0.0 };
-let b = a;             // KOPIE
+var b = a;             // KOPIE
 b.x = 99.0;            // ändert nicht a
 console.println(a.x);  // 1.0
 ```
+
+Kopiert wird an **jedem Bindepunkt**: Initialisierung, Zuweisung, Argument, Rückgabe, Feld- und
+Elementzuweisung. Ein `struct` als Feld eines anderen `struct` wird mitkopiert.
+
+Kopiert wird der **Wert, nicht die Welt dahinter**: ein Feld vom Typ `class` oder `T[]` trägt eine
+Referenz, und die bleibt geteilt.
+
+```lyr
+class Cell { n: int }
+struct Holder { cell: Cell }
+
+let shared = Cell { n = 1 };
+let a = Holder { cell = shared };
+var b = a;
+b.cell.n = 99;         // dasselbe Cell-Objekt
+console.println(f"{shared.n}");   // 99
+```
+
+Ein `struct` darf sich **nicht** selbst enthalten — es wäre unendlich groß (`LYR-SEM0056`). Für
+rekursive Daten nimm eine `class`.
 
 ### 12.2 Class-Beispiel (Game-Entity)
 

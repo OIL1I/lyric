@@ -79,6 +79,9 @@ public sealed class BytecodeTypeDef
     /// Host-Bindung im Bytecode.</summary>
     public IReadOnlyList<string> MethodSlots { get; init; } = [];
 
+    /// <summary>Wert-Semantik? Layout wie eine Klasse, aber jede Bindung kopiert.</summary>
+    public bool IsStruct { get; init; }
+
     public bool IsEnum => Variants.Count > 0;
 
     public bool IsInterface => MethodSlots.Count > 0;

@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v2.1
+# Lyric — `.lyrbc` Bytecode-Format v2.2
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,10 +7,10 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **2.1**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **2.2**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
 > (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals**,
-> **Enums** und **Interfaces mit vtable-Dispatch**.
+> **Enums**, **Interfaces mit vtable-Dispatch** und **Structs mit Wert-Semantik**.
 
 ---
 
@@ -89,7 +89,7 @@ und CIL (TypeDef-Tabelle) lösen es genauso.
 
 ```
 nameIndex        uleb128   Index in den String-Pool
-kind             u8        0 = Layout, 1 = Enum, 2 = Interface
+kind             u8        0 = Layout, 1 = Enum, 2 = Interface, 3 = Struct
 ```
 
 **kind 0 — Layout** (class, struct, und jede einzelne Enum-Variante):
@@ -124,6 +124,26 @@ demselben Grund so.
 
 **Slot 0 jeder Variante ist ihr Tag**: der `i64`-Index der Variante in der `variantTypes`-Liste
 ihres Enums, 0-basiert in Deklarationsreihenfolge. Die Nutzfelder beginnen bei Slot 1.
+
+**kind 3 — Struct**: dasselbe Feld-Layout wie kind 0, aber **Wert-Semantik**.
+
+```
+fieldCount       uleb128
+fieldTypes       fieldCount × Typ (§3), in Deklarationsreihenfolge
+```
+
+Ein Struct-Wert ist zur Laufzeit **dieselbe Slot-Folge** wie ein Klassenobjekt; `ldfld` und
+`stfld` arbeiten unverändert darauf. Der Unterschied steckt allein in den **Bindepunkten**: wo ein
+Struct-Wert eine neue Heimat bekommt, steht ein `structcopy` (§5).
+
+Ein eigener Kind-Wert statt nur eines anderen Typ-Tags an der Verwendungsstelle: „ist dieser Typ
+ein Wert-Typ" ist eine Eigenschaft der **Deklaration**, und der Loader muss `structcopy` dagegen
+prüfen können.
+
+Ein Struct darf sich **nicht** — auch nicht über Umwege — selbst als Feld enthalten: es wäre
+unendlich groß. Ein Leser darf das ablehnen; der Lyric-Compiler tut es schon in der Sema
+(`LYR-SEM0056`). Über eine `class`, ein `T[]` oder ein Interface ist Rekursion dagegen erlaubt —
+das sind Referenzen.
 
 **kind 2 — Interface**: nennt statt Feldern die Namen seiner Methoden-Slots.
 
@@ -265,6 +285,7 @@ Zusammengesetzte Typen ab `0x40`:
 | `0x42` | Optional (`?T`) | der innere Typ, wieder als Typ (§3) |
 | `0x43` | Enum | `uleb128` Index eines Enum-Eintrags der Types-Sektion |
 | `0x44` | Interface (`dyn`) | `uleb128` Index eines Interface-Eintrags der Types-Sektion |
+| `0x45` | Struct (Wert-Semantik) | `uleb128` Index eines Struct-Eintrags der Types-Sektion |
 
 Ein Wert mit Tag `0x44` traegt neben der Referenz seinen konkreten Typindex — siehe
 §5 „Darstellung eines Interface-Wertes".
@@ -277,9 +298,8 @@ keine Tabelle.
 `void` ist ausschließlich als Rückgabetyp gültig, nie als Slot-, Feld- oder Wert-Typ.
 
 Ein Wert mit Tag `0x40` ist eine **Referenz**: Zuweisung kopiert den Verweis, nicht das Objekt.
-Wert-Semantik (`struct`, Sprache.md §3.2) bekommt später ein eigenes Tag — sie ist nicht dasselbe
-und darf nicht dasselbe Tag benutzen, sonst wäre am Bytecode nicht ablesbar, ob eine Zuweisung
-kopiert.
+Ein Wert mit Tag `0x45` ist ein **Wert-Typ**: dieselbe Slot-Folge, aber jede Bindung kopiert. Zwei
+Tags und nicht eines, damit am Bytecode ablesbar bleibt, ob eine Zuweisung kopiert.
 
 Lyrics `int`/`uint`/`float` sind Aliasse für `i64`/`u64`/`f64` und erscheinen im Bytecode als solche.
 
@@ -467,6 +487,31 @@ Empfänger.
 **Es gibt keinen Downcast.** `Sprache.md` §6.5 lässt `as` ausschließlich zwischen Numerik zu; ein
 Interface-Wert kann nicht zurück auf seine Klasse geprüft werden. Deshalb braucht er auch keine
 Laufzeit-Typprüfung und keinen Fehlerfall.
+
+### Structs
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x72` | `structcopy` | `uleb128` structType | −1 +1 | legt eine unabhängige Kopie eines Struct-Wertes ab |
+
+**Es gibt kein `newstruct`.** Ein Struct-Wert wird mit `newobj` erzeugt wie ein Klassenobjekt —
+zur Laufzeit ist es dieselbe Slot-Folge. Die gesamte Wert-Semantik steckt in `structcopy` und
+darin, **wo** ein Compiler es setzt.
+
+**Die Kopie ist rekursiv über verschachtelte Structs und flach über alles andere.** Ein Feld vom
+Typ `class`, `T[]` oder `dyn` trägt eine Referenz, und die wird *geteilt*: kopiert wird der Wert,
+nicht die Welt dahinter (`Sprache.md` §3.2). Ein Feld vom Typ `struct` ist dagegen selbst ein Wert
+und muss mitkopiert werden — sonst sähe man eine Änderung an `a.inner.x` auch bei `b`. Die
+Rekursion terminiert ohne Zyklen-Erkennung, weil ein Struct sich nicht selbst enthalten kann.
+
+**Wo ein Compiler `structcopy` setzen muss**: an jedem Punkt, an dem ein Struct-Wert aus einer
+bestehenden Stelle in eine neue gebunden wird — Initialisierung, Zuweisung, Argument, Rückgabe,
+Feld- und Elementzuweisung. Ein frisch erzeugter Wert (`newobj`, Rückgabe eines Aufrufs) braucht
+es nicht: er hat noch keinen anderen Besitzer.
+
+Ein `structcopy` auf einem Typ, der **kein** Struct-Eintrag ist, muss ein Leser ablehnen. Es wäre
+kein Fehler, den die Laufzeit bemerkt — sie kopierte klaglos ein Slot-Array, das geteilt gehört,
+und die Semantik bräche still.
 
 ### Darstellung eines Interface-Wertes
 

@@ -30,7 +30,7 @@ public static class CodeDecoder
                 Op.Const => DecodeConst(reader, offset),
 
                 Op.LoadLocal or Op.StoreLocal or Op.Call or Op.Branch or Op.NewObject or
-                Op.NewVariant or Op.EnumAs =>
+                Op.NewVariant or Op.EnumAs or Op.StructCopy =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode, Immediate = reader.ULeb() },
 
                 // ldfld/stfld tragen Typ- UND Feldindex. Der Typ ist zur Laufzeit redundant, aber
@@ -112,7 +112,7 @@ public static class CodeDecoder
         switch (tag)
         {
             // Tragen einen uleb128-Tabellenindex hinter sich.
-            case TypeTag.Ref or TypeTag.Enum or TypeTag.Interface:
+            case TypeTag.Ref or TypeTag.Enum or TypeTag.Interface or TypeTag.Struct:
                 reader.ULeb();
                 return;
 
@@ -193,6 +193,8 @@ public static class CodeDecoder
 
         // mkiface hebt einen Wert auf sein Interface: einer runter, einer rauf.
         Op.MakeInterface => (1, 1),
+        // structcopy ebenso: Original runter, Kopie rauf.
+        Op.StructCopy => (1, 1),
         // callvirt nimmt den Empfaenger plus die Argumente — wie viele, weiss nur der Aufrufer aus
         // der Signatur des Interface-Slots. Deshalb reicht er sie herein, genau wie bei 'call'.
         Op.CallVirt => (callArity, callReturnsValue ? 1 : 0),

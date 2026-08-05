@@ -34,7 +34,11 @@ public sealed record CallImport(TempId? Dest, ImportId Target, TempId[] Args, Sp
 // Namens-Lookup mit Inline-Cache (CPython, Ruby) löst ein Problem, das diese Sprache nicht hat.
 // Der Typ steht an jeder der drei Instruktionen, obwohl das Objekt ihn kennt — nur so kann der
 // Bytecode-Leser den Feldindex beim Laden gegen ein Layout prüfen, ohne Datenfluss-Analyse.
-public sealed record NewObject(TempId Dest, TypeId Type, Span Span) : IrOp(Span);
+/// <param name="Result">Ob dieser Typ als Referenz oder als Wert gebunden wird — Kopie fuer den
+/// Printer, die Temp-Tabelle bleibt die Autoritaet. Ohne sie druckte der Dump fuer ein struct
+/// <c>&amp;ty0</c> statt <c>val ty0</c>: eine Zeile, die etwas anderes behauptet als das, was
+/// ausgefuehrt wird, und beim Suchen eines Kopier-Bugs genau in die Irre fuehrt.</param>
+public sealed record NewObject(TempId Dest, TypeId Type, IrType Result, Span Span) : IrOp(Span);
 public sealed record LoadField(TempId Dest, TempId Object, TypeId Type, FieldId Field, IrType FieldType, Span Span) : IrOp(Span);
 public sealed record StoreField(TempId Object, TypeId Type, FieldId Field, TempId Value, Span Span) : IrOp(Span);
 
@@ -84,6 +88,11 @@ public sealed record MakeInterface(TempId Dest, TempId Value, TypeId Concrete, T
 /// die man nach ihrem Rueckgabetyp fragen koennte.</param>
 public sealed record CallVirt(TempId? Dest, TypeId Interface, int Slot, TempId[] Args,
     IrType ReturnType, Span Span) : IrOp(Span);
+
+// Structs (P4). Die Wert-Semantik steckt vollstaendig in dieser einen Instruktion: das Lowering
+// setzt sie an jeden Bindepunkt, an dem ein Struct-Wert aus einer bestehenden Stelle gelesen wird.
+// Ein frisch gebauter Wert (newobj, Call-Ergebnis) braucht sie nicht — er gehoert noch niemandem.
+public sealed record StructCopy(TempId Dest, TempId Value, TypeId Type, Span Span) : IrOp(Span);
 
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return

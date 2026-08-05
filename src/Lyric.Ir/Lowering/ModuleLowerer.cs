@@ -109,6 +109,7 @@ public static class ModuleLowerer
                 var (typeName, members) = decl switch
                 {
                     ClassDecl c when c.Generics.Length == 0 => (c.Name, c.Members),
+                    StructDecl v when v.Generics.Length == 0 => (v.Name, v.Members),
                     EnumDecl e when e.Generics.Length == 0 => (e.Name, e.Methods.Cast<Decl>().ToArray()),
                     // Default-Methoden eines Interfaces sind gewoehnliche Funktionen mit dem
                     // Empfaenger als Parameter 0 — nur dass dessen statischer Typ das Interface
@@ -200,7 +201,8 @@ public static class ModuleLowerer
         if (interfaces.Count == 0) return impls;
 
         foreach (var (type, typeId) in interned
-                     .Where(t => t.Symbol.Kind is TypeSymbolKind.Class or TypeSymbolKind.Enum)
+                     .Where(t => t.Symbol.Kind is TypeSymbolKind.Class or TypeSymbolKind.Struct
+                                 or TypeSymbolKind.Enum)
                      .OrderBy(t => t.Id.Value))
         {
             foreach (var (iface, ifaceId) in interfaces.OrderBy(t => t.Id.Value))

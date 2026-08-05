@@ -97,7 +97,8 @@ public static class IrPrinter
                 continue;
             }
 
-            sb.Append($"type {new TypeId(i)} {def.Name} {{\n");
+            // "struct" statt "type", damit am Dump ablesbar ist, ob eine Bindung kopiert.
+            sb.Append($"{(def.IsStruct ? "struct" : "type")} {new TypeId(i)} {def.Name} {{\n");
             for (var f = 0; f < def.FieldTypes.Length; f++)
                 sb.Append($"  {new FieldId(f)} {def.FieldNames[f]}: {TypeStr(def.FieldTypes[f])}\n");
             sb.Append("}\n");
@@ -148,7 +149,7 @@ public static class IrPrinter
         StoreLocal s => $"store {s.Local}, {s.Value}",
         Call k => CallStr(k, ctx),
         CallImport k => CallImportStr(k, ctx),
-        NewObject n => $"{n.Dest}: {TypeStr(new IrRefType(n.Type))} = newobj {n.Type}",
+        NewObject n => $"{n.Dest}: {TypeStr(n.Result)} = newobj {n.Type}",
         LoadField f => $"{f.Dest}: {TypeStr(f.FieldType)} = loadfield {f.Object}, {f.Type}{f.Field}",
         StoreField f => $"storefield {f.Object}, {f.Type}{f.Field}, {f.Value}",
 
@@ -173,6 +174,7 @@ public static class IrPrinter
         MakeInterface m => $"{m.Dest}: {TypeStr(new IrInterfaceType(m.Interface))} = mkiface " +
                            $"{m.Value}, {m.Concrete}",
         CallVirt c => CallVirtStr(c),
+        StructCopy c => $"{c.Dest}: {TypeStr(new IrStructType(c.Type))} = structcopy {c.Value}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 
@@ -228,6 +230,7 @@ public static class IrPrinter
         IrOptionalType o => $"?{TypeStr(o.Inner)}",
         IrEnumType e => $"enum {e.Type}",
         IrInterfaceType i => $"dyn {i.Type}",
+        IrStructType v => $"val {v.Type}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 

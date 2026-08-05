@@ -231,7 +231,7 @@ public class VerifierTests
         AssertFinding(
             WithPoint(
                 new List<IrTemp> { new(T(0), Ref(9)) },
-                new List<IrOp> { new NewObject(T(0), Ty(9), Sp) }),
+                new List<IrOp> { new NewObject(T(0), Ty(9), new IrRefType(Ty(9)), Sp) }),
             "newobj references type ty9 which is out of range");
 
     [Fact]
@@ -241,7 +241,7 @@ public class VerifierTests
                 new List<IrTemp> { new(T(0), Ref(0)), new(T(1), I32) },
                 new List<IrOp>
                 {
-                    new NewObject(T(0), Ty(0), Sp),
+                    new NewObject(T(0), Ty(0), new IrRefType(Ty(0)), Sp),
                     new LoadField(T(1), T(0), Ty(0), Fld(3), I32, Sp),
                 }),
             "loadfield references field #3 of type ty0 'P', which has 1 field(s)");
@@ -253,7 +253,7 @@ public class VerifierTests
                 new List<IrTemp> { new(T(0), Ref(0)), new(T(1), Str) },
                 new List<IrOp>
                 {
-                    new NewObject(T(0), Ty(0), Sp),
+                    new NewObject(T(0), Ty(0), new IrRefType(Ty(0)), Sp),
                     new Const(T(1), Str, new StringConst("nope"), Sp),
                     new StoreField(T(0), Ty(0), Fld(0), T(1), Sp),
                 }),
@@ -274,7 +274,7 @@ public class VerifierTests
                     new Const(T(0), I32, new IntConst(0), Sp),
                     new LoadField(T(1), T(0), Ty(0), Fld(0), I32, Sp),
                 }),
-            "loadfield expects t0 to be a reference to type ty0, found i32");
+            "loadfield expects t0 to hold type ty0, found i32");
 
     [Fact]
     public void A_void_field_is_reported() =>

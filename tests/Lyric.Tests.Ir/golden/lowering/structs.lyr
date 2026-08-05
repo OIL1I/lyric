@@ -1,0 +1,27 @@
+struct P {
+    x: int,
+    y: int,
+
+    fn sum(): int { return this.x + this.y; }
+
+    mut fn shift(by: int) { this.x += by; }
+}
+
+struct Line {
+    a: P,
+    b: P,
+}
+
+fn take(p: P): int { return p.sum(); }
+
+fn main(): int {
+    let one = P { x = 1, y = 2 };
+    var two = one;
+    two.shift(10);
+
+    let line = Line { a = one, b = two };
+    var moved = line;
+    moved.a.x = 99;
+
+    return take(one) + line.a.x + moved.a.x;
+}

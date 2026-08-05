@@ -65,6 +65,7 @@ public static class BytecodeWriter
                     s.ULeb(strings.Intern(type.Name));
                     s.U8((byte)(type.IsEnum ? TypeKind.Enum
                         : type.IsInterface ? TypeKind.Interface
+                        : type.IsStruct ? TypeKind.Struct
                         : TypeKind.Layout));
 
                     if (type.IsInterface)
@@ -302,6 +303,11 @@ public static class BytecodeWriter
                 code.ULeb(c.Slot);
                 break;
 
+            case StructCopy c:
+                code.Opcode(Op.StructCopy);
+                code.ULeb(c.Type.Value);
+                break;
+
             case EnumAs a:
                 code.Opcode(Op.EnumAs);
                 code.ULeb(a.Variant.Value);
@@ -433,6 +439,7 @@ public static class BytecodeWriter
         if (type is IrOptionalType o) WriteType(w, o.Inner);
         if (type is IrEnumType e) w.ULeb(e.Type.Value);
         if (type is IrInterfaceType i) w.ULeb(i.Type.Value);
+        if (type is IrStructType v) w.ULeb(v.Type.Value);
     }
 
     internal static TypeTag TagOf(IrType type) => type switch
@@ -460,6 +467,7 @@ public static class BytecodeWriter
         IrOptionalType => TypeTag.Optional,
         IrEnumType => TypeTag.Enum,
         IrInterfaceType => TypeTag.Interface,
+        IrStructType => TypeTag.Struct,
         _ => throw new InternalCompilationException(
             $"bytecode: type not encodable: {type.GetType().Name}")
     };

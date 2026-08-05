@@ -52,6 +52,18 @@ internal sealed class FunctionLowerer
     /// muss und nicht den ganzen Ausdrucks-Pfad umbauen.</summary>
     private readonly IReadOnlyDictionary<GenericParamSymbol, LyrType> _substitution;
 
+    /// <summary>
+    /// Temps, die einen <b>frisch gebauten</b> Wert halten — Ergebnis eines <c>newobj</c> oder
+    /// eines Aufrufs.
+    ///
+    /// <para>Nur fuer Structs relevant, und dort die Grenze zwischen richtig und verschwenderisch:
+    /// ein Wert, den niemand sonst haelt, muss beim Binden nicht kopiert werden. Ohne diese
+    /// Unterscheidung bekaeme jedes <c>let p = P { … };</c> ein <c>structcopy</c> direkt hinter
+    /// sein <c>newobj</c> — korrekt, aber offensichtlich sinnlos, und in jeder Disassembly zu
+    /// sehen.</para>
+    /// </summary>
+    private readonly HashSet<TempId> _fresh = new();
+
     private readonly SlotAllocator _slots = new();
     private readonly List<IrBlock> _blocks = new();
     private readonly BlockBuilder _b;
@@ -89,6 +101,10 @@ internal sealed class FunctionLowerer
             {
                 TypeSymbolKind.Enum => _typeTable.EnumOf(receiver),
                 TypeSymbolKind.Interface => _typeTable.InterfaceOf(receiver),
+                // Der Empfaenger einer struct-Methode ist der Wert selbst. Dass er eine Kopie ist,
+                // hat der Aufrufer erledigt — 'mut fn' mutiert damit nur diese Kopie, genau wie
+                // Sprache.md §3.2 es beschreibt.
+                TypeSymbolKind.Struct => _typeTable.StructOf(receiver),
                 _ => _typeTable.RefTo(receiver),
             };
             _thisSlot = _slots.Declare("this", _thisType);
@@ -928,9 +944,22 @@ internal sealed class FunctionLowerer
         var target = to is IrOptionalType outer ? outer.Inner : to;
         var source = from is IrOptionalType inner ? inner.Inner : from;
 
+        // Wert-Semantik (Sprache.md §3.2). Der Bindepunkt ist die Stelle, an der ein struct-Wert
+        // eine neue Heimat bekommt — genau dort wird kopiert, und nur dort. Ein frisch gebauter
+        // Wert braucht es nicht: er hat noch keinen anderen Besitzer, von dem er sich loesen
+        // muesste.
+        if (target is IrStructType value_ && from is not IrOptionalType && !_fresh.Contains(value))
+            value = CopyStructValue(value, value_, span);
+
         if (target is IrInterfaceType iface && source is not IrInterfaceType
             && from is not IrOptionalType)
         {
+            // Auch der Weg hinter ein Interface ist ein Bindepunkt: ein struct wird dabei
+            // kopiert, sonst teilte der Interface-Wert das Slot-Array mit seiner Quelle und eine
+            // Mutation ueber das Interface schluege auf das Original durch.
+            if (source is IrStructType boxed && !_fresh.Contains(value))
+                value = CopyStructValue(value, boxed, span);
+
             value = MakeInterfaceValue(value, source, iface, span);
             from = iface;
         }
@@ -942,6 +971,21 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
+    /// <summary>
+    /// Legt eine unabhaengige Kopie eines struct-Wertes an.
+    ///
+    /// <para>Die Kopie ist zur Laufzeit rekursiv ueber verschachtelte Structs und flach ueber
+    /// alles andere: ein Feld vom Typ <c>class</c> oder <c>T[]</c> traegt eine Referenz, und die
+    /// wird geteilt. Kopiert wird der Wert, nicht die Welt dahinter.</para>
+    /// </summary>
+    private TempId CopyStructValue(TempId value, IrStructType type, Span span)
+    {
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new StructCopy(dest, value, type.Type, span));
+        _fresh.Add(dest);
+        return dest;
+    }
+
     /// <summary>Hebt eine Objektreferenz auf ihren Interface-Typ.</summary>
     private TempId MakeInterfaceValue(TempId value, IrType concrete, IrInterfaceType iface,
         Span span)
@@ -949,9 +993,11 @@ internal sealed class FunctionLowerer
         var concreteId = concrete switch
         {
             IrRefType r => r.Type,
+            IrStructType v => v.Type,
             IrEnumType e => e.Type,
             _ => throw NotSupported(
-                "a value of this type cannot be used through an interface (only classes and enums)",
+                "a value of this type cannot be used through an interface "
+                + "(only classes, structs and enums)",
                 span),
         };
 
@@ -1077,9 +1123,10 @@ internal sealed class FunctionLowerer
         if (_types.TypeOf(expr) is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } owner)
             return LowerStructVariant(expr, owner.Symbol);
 
-        if (_types.TypeOf(expr) is not NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
+        if (_types.TypeOf(expr) is not NamedRef
+            { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } named)
             throw NotSupported($"initializer for '{TypeFacts.Display(_types.TypeOf(expr))}' " +
-                               "(only classes are lowered)", expr.Span);
+                               "(only classes and structs are lowered)", expr.Span);
 
         var type = _typeTable.Intern(named.Symbol);
         var layout = _typeTable.Defs[type.Value];
@@ -1105,12 +1152,19 @@ internal sealed class FunctionLowerer
                 throw NotSupported($"initializer omits field '{name}' (field defaults are not " +
                                    "supported by this compiler version yet)", expr.Span);
 
-        var dest = _slots.NewTemp(new IrRefType(type));
-        _b.Emit(new NewObject(dest, type, expr.Span));
+        // Ein struct-Wert ist zur Laufzeit dasselbe Slot-Array wie ein Klassenobjekt — 'newobj'
+        // taugt fuer beides. Der Unterschied steckt allein in den Bindepunkten.
+        IrType result = _typeTable.IsStruct(type)
+            ? new IrStructType(type)
+            : new IrRefType(type);
+        var dest = _slots.NewTemp(result);
+        _b.Emit(new NewObject(dest, type, result, expr.Span));
 
         for (var i = 0; i < layout.FieldNames.Length; i++)
             _b.Emit(new StoreField(dest, type, new FieldId(i), values[layout.FieldNames[i]], expr.Span));
 
+        // Frisch gebaut: dieser Wert gehoert noch niemandem, eine Kopie beim Binden waere Ballast.
+        _fresh.Add(dest);
         return dest;
     }
 
@@ -1142,7 +1196,8 @@ internal sealed class FunctionLowerer
             throw NotSupported($"reading the constant '{expr.Member}' " +
                                "(constants are not lowered yet, module-level 'let' neither)", expr.Span);
 
-        if (_types.TypeOf(expr.Target) is not NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
+        if (_types.TypeOf(expr.Target) is not NamedRef
+            { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } named)
             throw NotSupported($"member access '.{expr.Member}' on " +
                                $"'{TypeFacts.Display(_types.TypeOf(expr.Target))}'", expr.Span);
 
@@ -1187,7 +1242,8 @@ internal sealed class FunctionLowerer
 
             case MemberExpr member
                 when _types.TypeOf(member.Target) is NamedRef
-                     { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Enum }:
+                     { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct
+                         or TypeSymbolKind.Enum }:
                 calleeName = member.Member;
                 bound = _types.RefOf(member);
                 receiver = LowerExpr(member.Target);
@@ -1249,6 +1305,7 @@ internal sealed class FunctionLowerer
 
         var dest = _slots.NewTemp(returnType);
         _b.Emit(new Call(dest, target, args, expr.Span));
+        _fresh.Add(dest);
         return dest;
     }
 
@@ -1262,20 +1319,25 @@ internal sealed class FunctionLowerer
     /// </summary>
     private TempId LowerArgument(Expr argument, FunctionSymbol callee, int index)
     {
-        if (callee.Declaration is FunctionDecl decl && index < decl.Parameters.Length)
+        if (callee.Declaration is not FunctionDecl decl || index >= decl.Parameters.Length)
+            return LowerExpr(argument);
+
+        // Nur das Lowern des Parametertyps wird abgeschirmt — ein Typ, den dieser Compiler-Stand
+        // nicht kennt, meldet ohnehin gleich die Funktion selbst, und hier doppelt zu klagen waere
+        // Laerm. Die Coercion steht BEWUSST ausserhalb: als sie mit im try lag, verschluckte der
+        // catch ein fehlendes 'mkiface' und machte aus einer Diagnose malformed IR — der Fehler
+        // tauchte dann als Verifier-Befund tief im Aufrufer auf.
+        IrType expected;
+        try
         {
-            try
-            {
-                return LowerExprAs(argument, _typeTable.Lower(decl.Parameters[index].Type));
-            }
-            catch (UnsupportedConstructException)
-            {
-                // Ein Parametertyp, den das Lowering nicht kennt: das meldet ohnehin gleich der
-                // Aufruf selbst oder die Funktion beim eigenen Lowern. Hier nicht doppelt klagen.
-            }
+            expected = _typeTable.Lower(decl.Parameters[index].Type);
+        }
+        catch (UnsupportedConstructException)
+        {
+            return LowerExpr(argument);
         }
 
-        return LowerExpr(argument);
+        return LowerExprAs(argument, expected);
     }
 
     /// <summary>
@@ -1480,6 +1542,9 @@ internal sealed class FunctionLowerer
         // außerhalb dieses Compiler-Stands.
         if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
             return _typeTable.RefTo(named.Symbol);
+
+        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Struct } valueType)
+            return _typeTable.StructOf(valueType.Symbol);
 
         if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } enumType)
             return _typeTable.EnumOf(enumType.Symbol);

@@ -164,6 +164,12 @@ public static class Interpreter
                     break;
                 }
 
+                // Wert-Semantik (Sprache.md §3.2). Der Compiler hat entschieden, WO kopiert wird;
+                // hier wird nur noch kopiert.
+                case Op.StructCopy:
+                    frame.Push(CopyStruct(frame.Pop(), types, (int)instruction.Immediate));
+                    break;
+
                 // Ein Interface-Wert ist ein Fat Pointer: dasselbe Objekt, plus der konkrete
                 // Typindex in den ungenutzten Bits. Keine Allokation, keine Layout-Aenderung —
                 // und ein Objekt, das nie ueber ein Interface laeuft, zahlt gar nichts.
@@ -403,6 +409,35 @@ public static class Interpreter
 
         throw new LyricRuntimeException(VmDiagnostics.WrongVariant,
             $"type '{types[variant].Name}' is not a variant of any enum");
+    }
+
+    /// <summary>
+    /// Eine unabhaengige Kopie eines <c>struct</c>-Wertes.
+    ///
+    /// <para><b>Rekursiv ueber verschachtelte Structs, flach ueber alles andere.</b> Ein Feld vom
+    /// Typ <c>class</c>, <c>T[]</c> oder <c>dyn</c> traegt eine Referenz, und die wird
+    /// <i>geteilt</i>: kopiert wird der Wert, nicht die Welt dahinter. Ein Feld vom Typ
+    /// <c>struct</c> ist dagegen selbst ein Wert und muss mitkopiert werden, sonst saehe man die
+    /// Aenderung an <c>a.inner.x</c> auch bei <c>b</c>.</para>
+    ///
+    /// <para>Die Rekursion terminiert ohne Zyklen-Erkennung, weil ein struct sich nicht selbst
+    /// enthalten kann — es waere unendlich gross, und die Sema lehnt es als <c>LYR-SEM0056</c> ab.
+    /// Genau deshalb ist diese Pruefung dort keine Bequemlichkeit.</para>
+    /// </summary>
+    private static LyrValue CopyStruct(LyrValue value, IReadOnlyList<BytecodeTypeDef> types,
+        int typeIndex)
+    {
+        if (value.Ref is not LyrValue[] source) return value;
+
+        var type = types[typeIndex];
+        var copy = new LyrValue[source.Length];
+        System.Array.Copy(source, copy, source.Length);
+
+        for (var i = 0; i < type.FieldTypes.Count && i < copy.Length; i++)
+            if (type.FieldTypes[i].Tag == TypeTag.Struct)
+                copy[i] = CopyStruct(copy[i], types, type.FieldTypes[i].TypeIndex);
+
+        return LyrValue.FromObject(copy);
     }
 
     private static LyrValue[] NewInstance(BytecodeTypeDef type)

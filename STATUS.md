@@ -427,6 +427,47 @@ Programm, mit Begründung als Blockzitat).
     Lehre ist dieselbe wie bei den totalen Funktionen in der IR: ein `default`, der nichts tut,
     ist stiller falscher Code. `SkipType` ist jetzt total mit `default`-Wurf.
 
+- [x] **M7 — P4 — Structs mit Wert-Semantik** (Format **2.2**): `lyric run examples/vectors.lyr`
+  liefert 115. Zuweisung kopiert, Parameter kopiert, `struct` im `struct` kopiert mit.
+  - **Ein struct-Wert ist zur Laufzeit dasselbe Slot-Array wie ein Klassenobjekt.** `newobj`,
+    `ldfld` und `stfld` bleiben unverändert; es gibt kein `newstruct`. Die gesamte Wert-Semantik
+    steckt in **einer** Instruktion — `structcopy` — und darin, **wo** das Lowering sie setzt.
+  - **Explizit statt implizit.** Ein Kopieren im `stloc` hätte dessen Bedeutung an den Typ des
+    Ziel-Slots gehängt und den Opcode polymorph gemacht — gegen die Regel aus P5/ADR-013. Explizit
+    ist es in jeder Disassembly sichtbar; dieselbe Entscheidung wie bei `mkiface`.
+  - **Kopiert wird an Bindepunkten, nicht bei Reads.** Ein frisch gebauter Wert (`newobj`,
+    Call-Ergebnis) braucht keine Kopie — er gehört noch niemandem. Ein `HashSet<TempId>` im
+    Lowerer hält das fest; ohne die Unterscheidung bekäme jedes `let p = P { … };` ein
+    `structcopy` direkt hinter sein `newobj`.
+  - **Die Kopie ist rekursiv über Structs, flach über alles andere.** Ein Feld vom Typ `class`
+    oder `T[]` trägt eine Referenz, und die wird geteilt: kopiert wird der Wert, nicht die Welt
+    dahinter. Die Rekursion braucht **keine** Zyklen-Erkennung — siehe der Sema-Befund unten.
+  - **Boxed statt eingebettet.** C# und Rust legen Struct-Felder inline in den umgebenden Speicher.
+    Das bräuchte Feldzugriffe über Teilbereiche und damit ein anderes Layout-Modell — Scalar
+    Replacement ist eine spätere, **formatneutrale** Optimierung, keine Voraussetzung für
+    Korrektheit. Dieselbe Trennung wie beim Stack-Scheduler in P5.
+  - **Format 2.2**: ein Kind-Wert (`3 = Struct`), ein Typ-Tag (`0x45`), ein Opcode. Der Tag war
+    seit der Einführung von `0x40` vorgesehen — „am Bytecode muss ablesbar bleiben, ob eine
+    Zuweisung kopiert".
+  - 13 E2E-Tests plus Golden-Fixture. Jeder prüft, **was am Original nicht passiert ist** — ein
+    Test, der nur liest, bliebe auch grün, wenn ein struct sich wie eine class verhielte.
+
+- [x] **Sema-Lücke: `struct Node { next: Node }` ging durch.** Ein Wert-Typ, der sich selbst
+  enthält, ist unendlich groß; Rust meldet „recursive type has infinite size", C# CS0523.
+  - Bis P4 fiel es nicht auf, weil Structs gar nicht gelowert wurden — der Compiler kam nie an den
+    Punkt, an dem er ein Layout hätte bauen müssen. **Ohne die Prüfung liefe `TypeTable` in eine
+    Endlosschleife**: bei einer Klasse terminiert sie über die vorab vergebene Id, ein Wert-Typ
+    braucht sein Layout dagegen vollständig.
+  - `LYR-SEM0056` benennt den **Zyklus**, nicht nur seine Existenz (`A -> B -> A`). Die Kette
+    bricht an jeder Referenz: `class`, `T[]` und Interface sind erlaubt, mit Gegenprobe im Test.
+
+- [x] **Ein eigener Fehler beim Bauen, wert notiert zu werden**: `LowerArgument` hatte die
+  Coercion mit im `try`, dessen `catch` eigentlich nur einen unbekannten *Parametertyp*
+  abschirmen sollte. Damit verschluckte es ein fehlendes `mkiface` und machte aus einer Diagnose
+  **malformed IR** — der Fehler tauchte als Verifier-Befund tief im Aufrufer auf. Ein `catch`, der
+  mehr umschließt als er soll, ist genau die Sorte stiller Fehler, gegen die dieses Projekt sonst
+  totale Funktionen mit `default`-Wurf einsetzt.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -447,7 +488,7 @@ festgehalten:
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-**P3 steht** — als nächstes **P4 — Structs (Wert-Semantik, Copy-on-Assign)**, Gate `examples/bank.lyr`.
+**P4 steht** — als nächstes **P5 — Exceptions + `defer`**, Gate `examples/bank.lyr`.
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
@@ -495,8 +536,8 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 - **Feld-Defaults** (`balance: int = 0`) werden abgelehnt statt ignoriert. Ein weggelassenes Feld im
   Initialisierer hätte seinen Nullwert; ob das erlaubt ist, sagt die Sema heute nicht. `bank.lyr`
   hängt daran.
-- **Structs und generische Klassen** bleiben `LYR-IR0001` — P4/P8. Enums (P3b) und Interfaces
-  (P3) lowern inzwischen.
+- **Generische Klassen** bleiben `LYR-IR0001` — P8. Enums (P3b), Interfaces (P3) und Structs (P4)
+  lowern inzwischen.
 
 **Aus P2 — eine offene Ungleichbehandlung:**
 
@@ -507,6 +548,14 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   schwer zu begründen, weil `T[]` jetzt genauso ein Referenztyp ist wie eine Klasse. Zu klären,
   bevor `Indexable<T>` kommt: der Setter dort wäre `mut fn`, und dann hängt die Frage an derselben
   Stelle nochmal.
+
+**Aus P4 — bewusst offen:**
+
+- **Struct-Feldzuweisung über eine immutable Bindung.** `fn f(p: P) { p.x = 9; }` ist
+  `LYR-SEM0019`, aber `p.shift(9)` mit `mut fn` geht durch — obwohl beides denselben Effekt auf
+  dieselbe Kopie hat. `Sprache.md` §6.4 verlangt für ein struct-Feld eine `mut fn`; die Asymmetrie
+  ist damit gedeckt, wirkt aber willkürlich, sobald der Empfänger ohnehin eine Kopie ist.
+- **Kein Scalar Replacement.** Jede Kopie allokiert. Formatneutral nachrüstbar.
 
 **Aus P3 — eigene Befunde, nicht behoben:**
 
@@ -606,7 +655,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`M7: Interfaces und vtable-Dispatch - Bytecode 2.1 (P3)`
+`M7: Structs mit Wert-Semantik - Bytecode 2.2 (P4)`
 
 ---
 

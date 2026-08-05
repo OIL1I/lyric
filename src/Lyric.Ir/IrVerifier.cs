@@ -665,6 +665,7 @@ public static class IrVerifier
                 case EnumAs a: CheckEnumAs(a, block, index); break;
                 case MakeInterface m: CheckMakeInterface(m, block, index); break;
                 case CallVirt c: CheckCallVirt(c, block, index); break;
+                case StructCopy c: CheckStructCopy(c, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -950,6 +951,7 @@ public static class IrVerifier
         var concrete = TypeOf(m.Value) switch
         {
             IrRefType r => (TypeId?)r.Type,
+            IrStructType v => v.Type,
             IrEnumType e => e.Type,
             _ => null,
         };
@@ -957,7 +959,7 @@ public static class IrVerifier
         if (concrete is null)
         {
             Report(block, index,
-                $"mkiface expects a class or enum value, found {Show(TypeOf(m.Value))}");
+                $"mkiface expects a class, struct or enum value, found {Show(TypeOf(m.Value))}");
             return;
         }
 
@@ -1032,6 +1034,35 @@ public static class IrVerifier
         if (c.Dest is { } dest) RequireDestType(dest, c.ReturnType, "callvirt", block, index);
     }
 
+    /// <summary>
+    /// <c>structcopy</c>: Quelle und Ziel sind derselbe Wert-Typ, und der Eintrag ist wirklich
+    /// einer.
+    ///
+    /// <para>Ein <c>structcopy</c> auf einer Klasse waere kein Fehler, den die Laufzeit bemerkt —
+    /// sie kopierte einfach ein Slot-Array, das eigentlich geteilt gehoert. Ein stiller
+    /// Semantikbruch also, und genau deshalb steht die Pruefung hier.</para>
+    /// </summary>
+    private void CheckStructCopy(StructCopy c, BlockId block, int index)
+    {
+        if (ResolveType(c.Type, "structcopy", block, index) is not { } layout) return;
+
+        if (!layout.IsStruct)
+        {
+            Report(block, index, $"structcopy targets type {c.Type} ({layout.Name}), which is a " +
+                                 "reference type — copying it would break sharing");
+            return;
+        }
+
+        if (TypeOf(c.Value) is not IrStructType source || source.Type != c.Type)
+        {
+            Report(block, index, $"structcopy declares type {c.Type} but its operand is " +
+                                 $"{Show(TypeOf(c.Value))}");
+            return;
+        }
+
+        RequireDestType(c.Dest, new IrStructType(c.Type), "structcopy", block, index);
+    }
+
     private IrTypeDef? ResolveType(TypeId type, string what, BlockId block, int index)
     {
         if (type.Value >= 0 && type.Value < _module.Types.Count) return _module.Types[type.Value];
@@ -1066,20 +1097,40 @@ public static class IrVerifier
     /// Instruktionsstrom macht die Feldindex-Prüfung beim Laden ohne Datenfluss-Analyse möglich.
     /// Genau deshalb muss der Verifier hier durchsetzen, dass die beiden nicht auseinanderlaufen —
     /// sonst prüft der Bytecode-Leser später gegen das falsche Layout.</summary>
+    /// <summary>
+    /// Der Operand haelt ein Objekt dieses Layouts — eine Klasse <b>oder</b> ein struct.
+    ///
+    /// <para>Beide sind zur Laufzeit dasselbe Slot-Array; der Feldzugriff ist derselbe
+    /// Array-Zugriff. Der Unterschied zwischen Wert- und Referenz-Semantik steckt nicht im
+    /// Zugriff, sondern in den Bindepunkten (<c>structcopy</c>) — <c>ldfld</c> und <c>stfld</c>
+    /// duerfen deshalb beides akzeptieren.</para>
+    /// </summary>
     private bool RequireObject(TempId obj, TypeId type, string what, BlockId block, int index)
     {
         var actual = TypeOf(obj);
         if (actual is IrRefType r && r.Type == type) return true;
+        if (actual is IrStructType v && v.Type == type) return true;
 
-        Report(block, index, $"{what} expects {obj} to be a reference to type {type}, " +
-                             $"found {Show(actual)}");
+        Report(block, index, $"{what} expects {obj} to hold type {type}, found {Show(actual)}");
         return false;
     }
+
+    /// <summary>Wie ein Layout an einem Wert aussieht: als Referenz oder als Wert-Typ. Die
+    /// Types-Tabelle entscheidet, nicht der Aufrufer — zwei Meinungen darueber waeren ein
+    /// <c>structcopy</c> auf einer Klasse oder eine geteilte Struct-Instanz.</summary>
+    private IrType LayoutTypeOf(TypeId type) =>
+        _module.Types[type.Value].IsStruct ? new IrStructType(type) : new IrRefType(type);
 
     private void CheckNewObject(NewObject n, BlockId block, int index)
     {
         if (ResolveType(n.Type, "newobj", block, index) is null) return;
-        RequireDestType(n.Dest, new IrRefType(n.Type), "newobj", block, index);
+
+        var expected = LayoutTypeOf(n.Type);
+        if (!IrType.Equal(n.Result, expected))
+            Report(block, index, $"newobj of {n.Type} yields {Show(expected)} " +
+                                 $"but the instruction says {Show(n.Result)}");
+
+        RequireDestType(n.Dest, expected, "newobj", block, index);
     }
 
     private void CheckLoadField(LoadField f, BlockId block, int index)
@@ -1483,6 +1534,7 @@ public static class IrVerifier
             IrOptionalType o => $"?{Show(o.Inner)}",
             IrEnumType e => $"enum {e.Type}",
         IrInterfaceType i => $"dyn {i.Type}",
+        IrStructType v => $"val {v.Type}",
             _ => type.ToString() ?? type.GetType().Name
         };
 

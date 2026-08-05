@@ -1,0 +1,65 @@
+// Gate-Programm fuer M7/P4 — Structs mit Wert-Semantik.
+//
+// Der Kern ist, was NICHT passiert: 'b = a' kopiert, also aendert 'b.x = 99' niemals 'a.x'.
+// Genau darin unterscheidet sich ein struct von einer class, und sonst in nichts.
+import std.io.console;
+
+pub struct Vector2 {
+    x: int,
+    y: int,
+
+    static fn zero(): Vector2 {
+        return Vector2 { x = 0, y = 0 };
+    }
+
+    fn plus(other: Vector2): Vector2 {
+        return Vector2 { x = this.x + other.x, y = this.y + other.y };
+    }
+
+    fn sum(): int {
+        return this.x + this.y;
+    }
+
+    // Mutiert den Empfaenger — und weil der Empfaenger eine Kopie ist, sieht der Aufrufer
+    // davon nichts, wenn er den Wert vorher weitergegeben hat.
+    mut fn scale(factor: int) {
+        this.x *= factor;
+        this.y *= factor;
+    }
+}
+
+// Ein struct als Feld eines anderen struct: die Kopie muss bis hier durchgreifen.
+pub struct Segment {
+    from: Vector2,
+    to: Vector2,
+}
+
+// Der Parameter ist eine Kopie. Was hier passiert, bleibt hier.
+fn shrink(v: Vector2): int {
+    v.scale(0);
+    return v.sum();
+}
+
+fn main(): int {
+    let a = Vector2 { x = 3, y = 4 };
+
+    // 1) Zuweisung kopiert.
+    var b = a;
+    b.x = 99;
+    console.println(f"a.x={a.x} b.x={b.x}");
+
+    // 2) Der Parameter kopiert — 'a' ueberlebt unveraendert.
+    let shrunk = shrink(a);
+    console.println(f"shrunk={shrunk} a.sum={a.sum()}");
+
+    // 3) Ein struct im struct kopiert mit.
+    let line = Segment { from = a, to = Vector2.zero() };
+    var moved = line;
+    moved.from.x = 42;
+    console.println(f"line.from.x={line.from.x} moved.from.x={moved.from.x}");
+
+    // 4) Rechnen ohne Nebenwirkung.
+    let c = a.plus(Vector2 { x = 1, y = 1 });
+
+    return a.sum() + b.x + c.sum();
+}

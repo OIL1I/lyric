@@ -82,7 +82,11 @@ public sealed class TypeChecker
         switch (decl)
         {
             case FunctionDecl fn: RequireBody(fn, module); CheckFunction(fn, module.Members, thisType: null); break;
-            case StructDecl s: CheckMethods(s.Name, s.Members, module); CheckTypeConformance(s.Name, s.Interfaces, module); break;
+            case StructDecl s:
+                CheckStructIsFinite(s, module);
+                CheckMethods(s.Name, s.Members, module);
+                CheckTypeConformance(s.Name, s.Interfaces, module);
+                break;
             case ClassDecl c: CheckMethods(c.Name, c.Members, module); CheckTypeConformance(c.Name, c.Interfaces, module); break;
             case EnumDecl e: CheckEnumMethods(e, module); CheckTypeConformance(e.Name, e.Interfaces, module); break;
             case InterfaceDecl i: CheckMethods(i.Name, i.Members, module); break;
@@ -2133,6 +2137,64 @@ public sealed class TypeChecker
         // '-5' ist UnaryExpr(Neg, IntLiteral 5) — beide Knoten tragen den angepassten Typ.
         if (expr is UnaryExpr { Operator: UnaryOp.Neg } negated)
             _result.SetType(negated.Operand, target);
+    }
+
+
+    /// <summary>
+    /// Ein <c>struct</c> darf sich nicht — auch nicht über Umwege — selbst als Feld enthalten.
+    ///
+    /// <para>Für einen Referenztyp ist <c>class Node { next: Node }</c> völlig in Ordnung: ein Feld
+    /// hält einen Verweis, und der ist ein Maschinenwort. Ein Wert-Typ enthält seine Felder
+    /// dagegen <b>der Größe nach</b>; ein struct, das sich selbst enthält, wäre unendlich groß.
+    /// Rust meldet das als „recursive type has infinite size", C# als CS0523.</para>
+    ///
+    /// <para>Bis P4 fiel es nicht auf, weil Structs gar nicht gelowert wurden — der Compiler kam
+    /// nie an den Punkt, an dem er ein Layout hätte bauen müssen. Ohne diese Prüfung würde
+    /// <see cref="Lyric.Ir.Lowering.TypeTable"/> hier in eine Endlosschleife laufen: bei Klassen
+    /// terminiert sie über die vorab vergebene Id, aber ein Wert-Typ braucht sein Layout
+    /// vollständig, bevor er fertig ist.</para>
+    ///
+    /// <para>Der Ausweg für den Nutzer ist derselbe wie in Rust und C#: eine Indirektion, also
+    /// <c>class</c> oder <c>?T</c>… — Letzteres reicht hier allerdings nicht, weil <c>?Struct</c>
+    /// den Wert weiterhin der Größe nach hält. In v1 bleibt <c>class</c>.</para>
+    /// </summary>
+    private void CheckStructIsFinite(StructDecl decl, ModuleSymbol module)
+    {
+        if (module.Members.LookupLocal(decl.Name) is not TypeSymbol self) return;
+
+        // Der Pfad wird mitgeführt, damit die Meldung den Zyklus benennt statt nur seine
+        // Existenz — bei 'A enthält B enthält A' ist das der Unterschied zwischen einer
+        // brauchbaren und einer ratlos machenden Diagnose.
+        var path = new List<string> { decl.Name };
+        if (FindStructCycle(self, self, new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance), path))
+            _de.Report("LYR-SEM0056", Severity.Error, decl.Span,
+                $"struct '{decl.Name}' contains itself ({string.Join(" -> ", path)}) and would have "
+                + "infinite size; use a 'class' for the recursive part");
+    }
+
+    private bool FindStructCycle(TypeSymbol root, TypeSymbol current,
+        HashSet<TypeSymbol> visited, List<string> path)
+    {
+        if (!visited.Add(current)) return false;
+        if (current.Declaration is not StructDecl decl) return false;
+
+        foreach (var field in decl.Members.OfType<FieldDecl>())
+        {
+            // Nur direkt gehaltene Structs zählen. Ein Array ist eine Referenz (ADR-016), eine
+            // Klasse ebenso — beide brechen die Kette.
+            if (field.Type is not NamedType named) continue;
+
+            var bound = _binding.Resolve(named);
+            if (bound is ImportBindingSymbol import) bound = import.Target;
+            if (bound is not TypeSymbol { Kind: TypeSymbolKind.Struct } nested) continue;
+
+            path.Add(nested.Name);
+            if (ReferenceEquals(nested, root) || FindStructCycle(root, nested, visited, path))
+                return true;
+            path.RemoveAt(path.Count - 1);
+        }
+
+        return false;
     }
 
     private bool IsAssignable(Expr expr, LyrType from, LyrType to)

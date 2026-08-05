@@ -90,6 +90,11 @@ public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldN
     /// </summary>
     public string[] MethodSlots { get; init; } = [];
 
+    /// <summary>Wert-Semantik? Ein <c>struct</c> hat dasselbe Feld-Layout wie eine Klasse; der
+    /// Unterschied ist, dass jede Bindung kopiert. Ein eigenes Flag statt eines eigenen
+    /// Eintragstyps, weil sich am Layout selbst nichts aendert.</summary>
+    public bool IsStruct { get; init; }
+
     public bool IsEnum => Variants.Length > 0;
 
     public bool IsInterface => MethodSlots.Length > 0;

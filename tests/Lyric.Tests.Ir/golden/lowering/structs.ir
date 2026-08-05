@@ -1,0 +1,94 @@
+struct ty0 P {
+  #0 x: i64
+  #1 y: i64
+}
+struct ty1 Line {
+  #0 a: val ty0
+  #1 b: val ty0
+}
+
+fn main.take -> i64 {
+  params: 1
+  locals:
+    l0 p: val ty0
+  bb0:
+    t0: val ty0 = load l0
+    t1: i64 = call main.P.sum(t0)
+    ret t1
+}
+
+fn main.main -> i64 {
+  params: 0
+  locals:
+    l0 one: val ty0
+    l1 two: val ty0
+    l2 line: val ty1
+    l3 moved: val ty1
+  bb0:
+    t0: i64 = const 1
+    t1: i64 = const 2
+    t2: val ty0 = newobj ty0
+    storefield t2, ty0#0, t0
+    storefield t2, ty0#1, t1
+    store l0, t2
+    t3: val ty0 = load l0
+    t4: val ty0 = structcopy t3
+    store l1, t4
+    t5: val ty0 = load l1
+    t6: i64 = const 10
+    call main.P.shift(t5, t6)
+    t7: val ty0 = load l0
+    t8: val ty0 = structcopy t7
+    t9: val ty0 = load l1
+    t10: val ty0 = structcopy t9
+    t11: val ty1 = newobj ty1
+    storefield t11, ty1#0, t8
+    storefield t11, ty1#1, t10
+    store l2, t11
+    t12: val ty1 = load l2
+    t13: val ty1 = structcopy t12
+    store l3, t13
+    t14: val ty1 = load l3
+    t15: val ty0 = loadfield t14, ty1#0
+    t16: i64 = const 99
+    storefield t15, ty0#0, t16
+    t17: val ty0 = load l0
+    t18: val ty0 = structcopy t17
+    t19: i64 = call main.take(t18)
+    t20: val ty1 = load l2
+    t21: val ty0 = loadfield t20, ty1#0
+    t22: i64 = loadfield t21, ty0#0
+    t23: i64 = add t19, t22
+    t24: val ty1 = load l3
+    t25: val ty0 = loadfield t24, ty1#0
+    t26: i64 = loadfield t25, ty0#0
+    t27: i64 = add t23, t26
+    ret t27
+}
+
+fn main.P.sum -> i64 {
+  params: 1
+  locals:
+    l0 this: val ty0
+  bb0:
+    t0: val ty0 = load l0
+    t1: i64 = loadfield t0, ty0#0
+    t2: val ty0 = load l0
+    t3: i64 = loadfield t2, ty0#1
+    t4: i64 = add t1, t3
+    ret t4
+}
+
+fn main.P.shift -> void {
+  params: 2
+  locals:
+    l0 this: val ty0
+    l1 by: i64
+  bb0:
+    t0: val ty0 = load l0
+    t1: i64 = loadfield t0, ty0#0
+    t2: i64 = load l1
+    t3: i64 = add t1, t2
+    storefield t0, ty0#0, t3
+    ret
+}

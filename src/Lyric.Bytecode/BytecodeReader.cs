@@ -117,7 +117,7 @@ public static class BytecodeReader
         // Ref, Enum und Interface tragen ihren Tabellen-Index dahinter — anders als Array und
         // Optional, deren Elementtyp inline steht. Eine hier vergessene Tag-Art ist ein um
         // Bytes verschobener Strom, kein sauberer Fehler.
-        if (tag is TypeTag.Ref or TypeTag.Enum or TypeTag.Interface)
+        if (tag is TypeTag.Ref or TypeTag.Enum or TypeTag.Interface or TypeTag.Struct)
             return new BytecodeType(tag, payload.ULebAsCount());
         // Der Elementtyp steht inline und rekursiv (Bytecode.md §3).
         if (tag is TypeTag.Array or TypeTag.Optional)
@@ -152,7 +152,7 @@ public static class BytecodeReader
                     $"type {i}: name index {nameIndex} is outside the string pool ({strings.Count})");
 
             var kind = payload.U8();
-            if (kind > (byte)TypeKind.Interface)
+            if (kind > (byte)TypeKind.Struct)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                     $"type {i}: unknown kind {kind}");
 
@@ -172,6 +172,8 @@ public static class BytecodeReader
                 });
                 continue;
             }
+
+            var isStruct = kind == (byte)TypeKind.Struct;
 
             if (kind == (byte)TypeKind.Enum)
             {
@@ -197,7 +199,10 @@ public static class BytecodeReader
                 fields.Add(type);
             }
 
-            types.Add(new BytecodeTypeDef { Name = strings[nameIndex], FieldTypes = fields });
+            types.Add(new BytecodeTypeDef
+            {
+                Name = strings[nameIndex], FieldTypes = fields, IsStruct = isStruct,
+            });
         }
 
         return types;
@@ -399,7 +404,7 @@ public static class BytecodeReader
                 // ADR-013s Kern: Typ- und Feldindex werden hier geprüft, damit der Feldzugriff zur
                 // Laufzeit ein Array-Zugriff ohne Prüfung sein darf.
                 case Op.NewObject or Op.LoadField or Op.StoreField or Op.NewVariant or Op.EnumAs
-                    or Op.MakeInterface or Op.CallVirt
+                    or Op.MakeInterface or Op.CallVirt or Op.StructCopy
                     when instruction.Immediate >= (ulong)module.Types.Count:
                     throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                         $"function '{function.Name}' at {instruction.Offset}: type index " +
@@ -443,6 +448,13 @@ public static class BytecodeReader
                         $"function '{function.Name}' at {instruction.Offset}: callvirt slot " +
                         $"{instruction.Immediate2} is outside interface " +
                         $"'{module.Types[(int)instruction.Immediate].Name}'");
+
+                // Ein structcopy auf einem Referenztyp waere ein stiller Semantikbruch: die
+                // Laufzeit kopierte klaglos ein Slot-Array, das geteilt gehoert.
+                case Op.StructCopy when !module.Types[(int)instruction.Immediate].IsStruct:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: structcopy targets " +
+                        $"'{module.Types[(int)instruction.Immediate].Name}', which is not a struct");
 
                 case Op.Branch when instruction.Immediate >= (ulong)function.BlockOffsets.Count:
                 case Op.CondBranch when instruction.Immediate >= (ulong)function.BlockOffsets.Count

@@ -17,7 +17,7 @@ public static class Format
     /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
     /// ausdrücklich.</remarks>
     public const ushort VersionMajor = 2;
-    public const ushort VersionMinor = 1;
+    public const ushort VersionMinor = 2;
 }
 
 /// <summary>
@@ -104,6 +104,15 @@ public enum TypeTag : byte
     /// Siehe §4 „Darstellung eines Interface-Wertes".</para>
     /// </summary>
     Interface = 0x44,
+
+    /// <summary>
+    /// <c>struct</c> — <b>Wert-Semantik</b>; ein <c>uleb128</c>-Index auf einen Struct-Eintrag der
+    /// Types-Sektion folgt.
+    ///
+    /// <para>Eigenes Tag neben <see cref="Ref"/>, weil am Bytecode ablesbar bleiben muss, ob eine
+    /// Zuweisung kopiert. Das war schon bei der Einfuehrung von <c>0x40</c> so vorgesehen.</para>
+    /// </summary>
+    Struct = 0x45,
 }
 
 /// <summary>Art eines Types-Eintrags. Varianten eines Enums sind selbst
@@ -117,6 +126,15 @@ public enum TypeKind : byte
     /// <b>Index</b> in dieser Liste ist der Slot, auf den <c>callvirt</c> zeigt. Die Namen stehen
     /// nur fuer Disassembler und Diagnose darin.</summary>
     Interface = 2,
+
+    /// <summary>
+    /// Ein <c>struct</c>: dasselbe Feld-Layout wie <see cref="Layout"/>, aber <b>Wert-Semantik</b>.
+    ///
+    /// <para>Eigener Kind-Wert und nicht bloss ein anderes Typ-Tag an der Verwendungsstelle: der
+    /// Loader muss <c>structcopy</c> gegen den Eintrag pruefen koennen, und „ist dieser Typ ein
+    /// Wert-Typ" ist eine Eigenschaft der Deklaration, nicht der Verwendung.</para>
+    /// </summary>
+    Struct = 3,
 }
 
 /// <summary>
@@ -239,4 +257,19 @@ public enum Op : byte
     /// Implementierung des Slots am konkreten Typ des Empfaengers. Der Empfaenger liegt zuunterst
     /// wie bei jedem Methodenaufruf (Parameter 0, ADR-014).</summary>
     CallVirt = 0x71,
+
+    // --- Structs (Format 2.2) ----------------------------------------------------------------
+
+    /// <summary><c>structcopy &lt;uleb128 structType&gt;</c> — nimmt einen Struct-Wert und legt
+    /// eine <b>unabhaengige Kopie</b> davon ab.
+    ///
+    /// <para>Die Kopie ist rekursiv ueber verschachtelte Structs und flach ueber alles andere: ein
+    /// Feld vom Typ <c>class</c> oder <c>T[]</c> traegt eine Referenz, und die wird geteilt, nicht
+    /// dupliziert (Sprache.md §3.2 — kopiert wird der Wert, nicht die Welt dahinter).</para>
+    ///
+    /// <para><b>Warum eine eigene Instruktion</b> und nicht ein implizites Kopieren im
+    /// <c>stloc</c>: sonst haenge die Bedeutung von <c>stloc</c> am Typ seines Ziel-Slots, und der
+    /// Opcode waere polymorph. Explizit ist es in der Disassembly sichtbar und beim Lesen des
+    /// Formats eindeutig — dieselbe Entscheidung wie bei <c>mkiface</c>.</para></summary>
+    StructCopy = 0x72,
 }

@@ -51,6 +51,7 @@ public static class IrShape
         EnumAs a => new[] { a.Value },
 
         MakeInterface m => new[] { m.Value },
+        StructCopy c => new[] { c.Value },
         // Der Empfaenger ist Arg 0 und liegt damit zuunterst — dieselbe Konvention wie bei Call
         // (ADR-014). CallVirt braucht keine Sonderbehandlung.
         CallVirt c => c.Args,
@@ -101,6 +102,7 @@ public static class IrShape
         EnumAs a => a.Dest,
 
         MakeInterface m => m.Dest,
+        StructCopy c => c.Dest,
         CallVirt c => c.Dest,
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
