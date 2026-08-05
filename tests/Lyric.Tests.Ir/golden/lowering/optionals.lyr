@@ -1,0 +1,27 @@
+// Optionals (Sprache.md 7). "kein Wert" ist eine leere Referenz — einheitlich fuer alle ?T.
+//
+// '??' hat bewusst keine eigene Instruktion: seine rechte Seite wird nur ausgewertet, wenn links
+// nichts steht, also lowert es zu Verzweigungen ueber optissome — wie && und ||.
+fn find(x: int): ?int {
+    if (x > 0) {
+        return x;   // T -> ?T ist implizit (6.5), das optsome setzt der Lowerer
+    }
+    return null;
+}
+
+fn main(): int {
+    let a = find(7) ?? 0;
+    let forced = find(5)!;      // optget; panickt, wenn nichts da ist
+
+    var total = a + forced;
+
+    // Flow-Narrowing: im then-Zweig hat 'maybe' den Typ int, der SLOT haelt aber weiter ?int.
+    // Das optget beim Lesen loest genau diese Einengung ein — und kann nie panicken, weil die
+    // Sema null schon ausgeschlossen hat.
+    let maybe = find(3);
+    if (maybe != null) {
+        total += maybe;
+    }
+
+    return total;
+}

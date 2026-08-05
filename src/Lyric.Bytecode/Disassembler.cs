@@ -90,6 +90,11 @@ public static class Disassembler
         Op.CondBranch => $"condbr bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
         Op.Unreachable => "unreachable",
 
+        Op.OptNone => "optnone",
+        Op.OptSome => "optsome",
+        Op.OptIsSome => "optissome",
+        Op.OptGet => "optget",
+
         Op.NewArray => $"newarr {N(i.Immediate)}",
         Op.LoadElem => "ldelem",
         Op.StoreElem => "stelem",
@@ -145,6 +150,7 @@ public static class Disassembler
     /// statt nur den Index — der Disassembler wird gelesen, nicht ausgeführt.</summary>
     private static string TypeName(BytecodeModule module, BytecodeType type) =>
         type.IsArray && type.Element is { } el ? $"{TypeName(module, el)}[]"
+        : type.IsOptional && type.Element is { } opt ? $"?{TypeName(module, opt)}"
         : type.IsRef && type.TypeIndex >= 0 && type.TypeIndex < module.Types.Count
             ? $"&{module.Types[type.TypeIndex].Name}"
         : type.IsRef ? $"&ty{N(type.TypeIndex)}"

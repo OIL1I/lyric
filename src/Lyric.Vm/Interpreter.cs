@@ -232,6 +232,31 @@ public static class Interpreter
                     break;
                 }
 
+                // Optionals: "kein Wert" ist eine leere Referenz (Bytecode.md §5). Fuer ?string,
+                // ?T[] und ?Klasse faellt das mit der natuerlichen Darstellung zusammen; nur
+                // Skalare brauchen den Marker, den LyrValue.Some setzt.
+                case Op.OptNone:
+                    frame.Push(LyrValue.None);
+                    break;
+
+                case Op.OptSome:
+                    frame.Push(LyrValue.Some(frame.Pop()));
+                    break;
+
+                case Op.OptIsSome:
+                    frame.Push(LyrValue.FromBool(frame.Pop().IsSome));
+                    break;
+
+                case Op.OptGet:
+                {
+                    var option = frame.Pop();
+                    if (!option.IsSome)
+                        throw new LyricPanic(VmDiagnostics.NullDereference,
+                            $"force-unwrapped a '?T' that had no value in '{frame.Fn.Source.Name}'");
+                    frame.Push(option.Unwrap());
+                    break;
+                }
+
                 case Op.Return or Op.ReturnValue:
                 {
                     var result = instruction.Opcode == Op.ReturnValue ? frame.Pop() : default;

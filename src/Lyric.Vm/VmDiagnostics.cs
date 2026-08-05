@@ -35,6 +35,9 @@ public static class VmDiagnostics
     /// <summary>Element-Index außerhalb der Array-Grenzen. Anders als Typ- und Feldindizes ist er
     /// ein Laufzeitwert und beim Laden nicht prüfbar (ADR-016) — also ein <c>panic</c> (§9).</summary>
     public const string IndexOutOfRange = "LYR-VM0006";
+
+    /// <summary>Force-Unwrap (<c>expr!</c>) auf einem <c>?T</c> ohne Wert (Sprache.md §7).</summary>
+    public const string NullDereference = "LYR-VM0007";
 }
 
 /// <summary>

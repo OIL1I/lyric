@@ -49,11 +49,15 @@ public static class CodeDecoder
                 // gültig, ein Tag wäre reine Redundanz. Die Array-Opcodes tragen ebenfalls keins:
                 // ihr Elementtyp steht in der Temp-Tabelle bzw. am Array selbst.
                 Op.Not or Op.Pop or Op.Return or Op.ReturnValue or Op.Unreachable or
-                Op.LoadElem or Op.StoreElem or Op.ArrayLen or Op.ArrayConcat or Op.ArrayRepeat =>
+                Op.LoadElem or Op.StoreElem or Op.ArrayLen or Op.ArrayConcat or Op.ArrayRepeat or
+                Op.OptIsSome or Op.OptGet =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode },
 
                 // newarr trägt den Elementtyp (ggf. verschachtelt) und dann die Elementzahl.
                 Op.NewArray => DecodeNewArray(reader, offset),
+
+                // optnone/optsome tragen nur den inneren Typ; der Dekodierer ueberspringt ihn.
+                Op.OptNone or Op.OptSome => DecodeWithType(reader, offset, opcode),
 
                 _ => new BytecodeInstruction { Offset = offset, Opcode = opcode, Type = reader.Tag() },
             });
@@ -78,16 +82,23 @@ public static class CodeDecoder
         };
     }
 
+    /// <summary>Eine Instruktion, die nur einen Typ trägt (<c>optnone</c>, <c>optsome</c>).</summary>
+    private static BytecodeInstruction DecodeWithType(ByteReader reader, int offset, Op opcode)
+    {
+        SkipType(reader, offset);
+        return new BytecodeInstruction { Offset = offset, Opcode = opcode };
+    }
+
     /// <summary>Überspringt einen Typ im Strom: ein Tag, dann bei <c>Ref</c> ein Index und bei
-    /// <c>Array</c> rekursiv der Elementtyp.</summary>
+    /// <c>Array</c>/<c>Optional</c> rekursiv der innere Typ.</summary>
     private static void SkipType(ByteReader reader, int offset)
     {
         var tag = reader.Tag();
         if (tag == TypeTag.Ref) reader.ULeb();
-        else if (tag == TypeTag.Array) SkipType(reader, offset);
+        else if (tag is TypeTag.Array or TypeTag.Optional) SkipType(reader, offset);
         else if (tag == TypeTag.Void)
             throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
-                $"array of void at code offset {offset}");
+                $"composite type over void at code offset {offset}");
     }
 
     private static BytecodeInstruction DecodeConst(ByteReader reader, int offset)
@@ -135,6 +146,9 @@ public static class CodeDecoder
         Op.StoreElem => (3, 0),
         Op.ArrayLen => (1, 1),
         Op.ArrayConcat or Op.ArrayRepeat => (2, 1),
+
+        Op.OptNone => (0, 1),
+        Op.OptSome or Op.OptIsSome or Op.OptGet => (1, 1),
 
         Op.Return or Op.Branch or Op.Unreachable => (0, 0),
         Op.ReturnValue or Op.CondBranch => (1, 0),

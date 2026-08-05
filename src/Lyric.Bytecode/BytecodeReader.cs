@@ -113,7 +113,17 @@ public static class BytecodeReader
         var tag = payload.Tag();
         if (tag == TypeTag.Ref) return new BytecodeType(tag, payload.ULebAsCount());
         // Der Elementtyp steht inline und rekursiv (Bytecode.md §3).
-        if (tag == TypeTag.Array) return new BytecodeType(tag, -1) { Element = ReadType(payload) };
+        if (tag is TypeTag.Array or TypeTag.Optional)
+        {
+            var inner = ReadType(payload);
+            // ??T gibt es nicht: die Laufzeit-Darstellung unterscheidet "kein Wert" an der leeren
+            // Referenz, und die kann nur eine Ebene tragen (Bytecode.md §5).
+            if (tag == TypeTag.Optional && inner.Tag == TypeTag.Optional)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    "nested optional '??T' — optionals do not nest");
+
+            return new BytecodeType(tag, -1) { Element = inner };
+        }
         return BytecodeType.Scalar(tag);
     }
 
@@ -256,7 +266,7 @@ public static class BytecodeReader
         {
             // Ein Array-Typ trägt seinen Elementtyp inline; eine Referenz darin muss genauso in
             // die Tabelle zeigen wie eine direkte.
-            while (type.IsArray && type.Element is { } inner) type = inner;
+            while ((type.IsArray || type.IsOptional) && type.Element is { } inner) type = inner;
 
             if (type.IsRef && (type.TypeIndex < 0 || type.TypeIndex >= module.Types.Count))
                 throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,

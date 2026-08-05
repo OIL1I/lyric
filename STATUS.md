@@ -253,6 +253,30 @@ Programm, mit Begründung als Blockzitat).
   - 22 neue Tests: Golden-Fixture `arrays`, 10 E2E-Fälle, Referenz-Semantik, „Konkatenation lässt
     ihre Operanden in Ruhe", vier Bounds-Panics und die negative Wiederholung.
 
+- [x] **M7 — P2b — Optionals** (Format **1.4**): `lyric run examples/optionals.lyr` liefert 200.
+  `?T`, `null`, `??`, `!` und Flow-Narrowing laufen bis in die VM.
+  - **„Kein Wert" ist eine leere Referenz — einheitlich.** `LyrValue` hat `Bits` *und* `Ref`; für
+    `?string`, `?T[]` und `?Klasse` fällt das mit der natürlichen Darstellung zusammen. Nur Skalare
+    brauchen einen Marker, weil es bei `?int` kein freies Bitmuster gibt: ein global geteiltes
+    Sentinel-Objekt sagt „hat einen Wert", die Zahl bleibt in `Bits`. Kein Boxing, keine
+    Allokation, keine Änderung an `LyrValue`.
+  - **Die Spec schreibt das ausnahmsweise vor**, obwohl sie Runtimes sonst keine Datenstrukturen
+    diktiert: `optissome` muss überall dasselbe liefern. Verboten ist ausdrücklich, ein Bitmuster
+    als null zu reservieren — `?int` muss alle 2⁶⁴ Werte tragen, sonst wäre `-1` je nach Runtime
+    mal ein Wert und mal keiner. Drei Tests halten genau das fest.
+  - **`??`, `??=` und `?.` bekommen keine Opcodes.** Sie werten ihre rechte Seite nur bedingt aus
+    und lowern zu Verzweigungen über `optissome` — wie `&&` und `||`. Ein Opcode müsste einen
+    unausgewerteten Ausdruck transportieren, und das kann eine Stack-Maschine nicht.
+  - **`x != null` ist kein Vergleich**, sondern `optissome`. Ein echter Vergleich bräuchte einen
+    `null`-Wert auf dem Stack, und den gibt es nicht — „kein Wert" ist eine leere Referenz, kein
+    Operand.
+  - **Flow-Narrowing wird beim Lesen eingelöst**: nach `if (x != null)` sagt die Sema für `x` den
+    Typ `T`, der Slot hält aber weiter `?T` — die Einengung ist eine Aussage über den
+    Kontrollfluss, nicht über den Speicher. Der Lowerer packt genau dort aus, wo die Sema `T`
+    erwartet. Das `optget` kann nie panicken: es materialisiert einen schon geführten Beweis.
+  - 15 neue Tests, darunter der Kurzschluss-Nachweis für `??` über eine sonst auslösende Division
+    durch Null und die drei `?int`-Randwerte (0, −1, 1).
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -273,7 +297,7 @@ festgehalten:
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-**P2 steht** — als nächstes **P2b — Optionals** (`?T`, `??`, `!`, Flow-Narrowing).
+**P2b steht** — als nächstes **P3 — Interfaces + vtable-Dispatch**.
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
@@ -406,7 +430,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`M7: Arrays — ADR-016, Bytecode 1.3 (P2)`
+`M7: Optionals — Bytecode 1.4 (P2b)`
 
 ---
 

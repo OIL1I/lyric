@@ -339,8 +339,8 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 |---|---|---|
 | P1 ✅ | Classes: Types-Sektion (Id 3), Heap-Objekte, Felder (**ohne** Methoden, s. u.) | `examples/objects.lyr` |
 | P1b ✅ | `static`/`static let` (ADR-014), Methoden-Lowering mit Empfänger als Parameter 0 | `examples/objects.lyr` |
-| P2 | Arrays: Allokation, Literal, Index, `length`/`push`/`pop` als Intrinsics | `examples/arrays.lyr` |
-| P2b | Optionals (`?T`, `??`, `!`, Flow-Narrowing) | `examples/stack.lyr` ohne Generics |
+| P2 ✅ | Arrays: Literal, `[x]*n`, `xs+ys`, Index, `length` (ADR-016) | `examples/arrays.lyr` |
+| P2b ✅ | Optionals (`?T`, `??`, `!`, Flow-Narrowing) | `examples/optionals.lyr` |
 | P3 | Interfaces + vtable-Dispatch | `examples/shapes.lyr` |
 | P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/bank.lyr` |
 | P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | — |

@@ -42,6 +42,30 @@ public readonly struct LyrValue
     /// Lebenszeit kümmert sich der .NET-GC (ADR-002).</summary>
     public static LyrValue FromObject(LyrValue[] fields) => new(0, fields);
 
+    /// <summary>
+    /// Marker für „dieses Optional hat einen Wert", wenn der Wert selbst keine Referenz ist.
+    ///
+    /// <para>Ein Objekt statt eines Bitmusters, weil es bei <c>?int</c> kein freies gibt: jedes
+    /// <c>i64</c> ist eine gültige Zahl. Ein reserviertes Muster hieße, dass ein bestimmter Wert
+    /// je nach Runtime mal ein Wert und mal keiner wäre — Bytecode.md §5 verbietet das
+    /// ausdrücklich. Global geteilt, also kostet „some" keine Allokation.</para>
+    /// </summary>
+    private static readonly object SomeMarker = new();
+
+    /// <summary>„Kein Wert" ist eine leere Referenz — einheitlich für alle <c>?T</c>.</summary>
+    public static LyrValue None => default;
+
+    /// <summary>Verpackt einen Wert. Ist er selbst eine Referenz, trägt sie sich selbst; sonst
+    /// markiert <see cref="SomeMarker"/> die Anwesenheit und die Zahl bleibt in <see cref="Bits"/>.</summary>
+    public static LyrValue Some(LyrValue value) =>
+        value.Ref is not null ? value : new(value.Bits, SomeMarker);
+
+    public bool IsSome => Ref is not null;
+
+    /// <summary>Packt aus. Das Gegenstück zu <see cref="Some"/>: der Marker verschwindet, eine
+    /// echte Referenz bleibt stehen.</summary>
+    public LyrValue Unwrap() => ReferenceEquals(Ref, SomeMarker) ? FromBits(Bits) : this;
+
     public long AsI64 => (long)Bits;
     public ulong AsU64 => Bits;
     public bool AsBool => Bits != 0;

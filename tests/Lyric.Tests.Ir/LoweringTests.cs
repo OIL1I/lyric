@@ -88,6 +88,7 @@ public class LoweringTests
     [InlineData("objects_nested")]  // Klasse als Feldtyp, plus ein rekursiver Typ
     [InlineData("methods")]         // Empfänger als Parameter 0, static-Fabrik, 'this'
     [InlineData("arrays")]          // Literal, [x]*n, xs+ys, Index lesend/schreibend, .length
+    [InlineData("optionals")]       // null, ??, !, Flow-Narrowing
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();
@@ -435,7 +436,6 @@ public class LoweringTests
     [Theory]
     [InlineData("fn f(): int { let g = (x: int) => x + 1; return g(1); }", "type 'fn(int) -> int'")]
     [InlineData("fn f(): int { let t = (1, 2); return 0; }", "type '(int, int)'")]
-    [InlineData("fn f(n: ?int): int { return n ?? 0; }", "type '?int'")]
     public void Non_scalar_types_are_reported_by_name(string source, string expected) =>
         AssertNotSupported(source, expected);
 

@@ -147,6 +147,9 @@ internal sealed class TypeTable
             return new IrArrayType(Lower(array.Element, array.Element.Span));
         }
 
+        if (node is NullableType option)
+            return new IrOptionalType(Lower(option.Inner, option.Inner.Span));
+
         if (node is NamedType { TypeArguments.Length: 0 } named)
         {
             if (TypeFacts.FromBuiltinName(named.Path[^1]) is { } primitive)

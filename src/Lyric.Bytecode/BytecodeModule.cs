@@ -41,15 +41,17 @@ public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
     public static BytecodeType Scalar(TypeTag tag) => new(tag, -1);
     public bool IsRef => Tag == TypeTag.Ref;
     public bool IsArray => Tag == TypeTag.Array;
+    public bool IsOptional => Tag == TypeTag.Optional;
 
-    /// <summary>Elementtyp, wenn <see cref="IsArray"/>. Inline statt über einen Tabellen-Index,
-    /// weil ein Array-Typ nicht rekursiv sein kann (ADR-016).</summary>
+    /// <summary>Innerer Typ, wenn <see cref="IsArray"/> oder <see cref="IsOptional"/>. Inline statt
+    /// über einen Tabellen-Index, weil keiner von beiden rekursiv sein kann (ADR-016).</summary>
     public BytecodeType? Element { get; init; }
 
     public override string ToString() => Tag switch
     {
         TypeTag.Ref => $"&ty{TypeIndex}",
         TypeTag.Array => $"{Element?.ToString() ?? "?"}[]",
+        TypeTag.Optional => $"?{Element?.ToString() ?? "?"}",
         _ => Tag.ToString().ToLowerInvariant(),
     };
 }

@@ -1,0 +1,67 @@
+fn main.find -> ?i64 {
+  params: 1
+  locals:
+    l0 x: i64
+  bb0:
+    t0: i64 = load l0
+    t1: i64 = const 0
+    t2: bool = gt t0, t1
+    condbr t2 -> bb1, bb2
+  bb1:
+    t3: i64 = load l0
+    t4: ?i64 = optsome t3
+    ret t4
+  bb2:
+    t5: ?i64 = optnone
+    ret t5
+}
+
+fn main.main -> i64 {
+  params: 0
+  locals:
+    l0 a: i64
+    l1 $coalesce0: i64
+    l2 forced: i64
+    l3 total: i64
+    l4 maybe: ?i64
+  bb0:
+    t0: i64 = const 7
+    t1: ?i64 = call main.find(t0)
+    t2: bool = optissome t1
+    condbr t2 -> bb1, bb2
+  bb1:
+    t3: i64 = optget t1
+    store l1, t3
+    br bb3
+  bb2:
+    t4: i64 = const 0
+    store l1, t4
+    br bb3
+  bb3:
+    t5: i64 = load l1
+    store l0, t5
+    t6: i64 = const 5
+    t7: ?i64 = call main.find(t6)
+    t8: i64 = optget t7
+    store l2, t8
+    t9: i64 = load l0
+    t10: i64 = load l2
+    t11: i64 = add t9, t10
+    store l3, t11
+    t12: i64 = const 3
+    t13: ?i64 = call main.find(t12)
+    store l4, t13
+    t14: ?i64 = load l4
+    t15: bool = optissome t14
+    condbr t15 -> bb4, bb5
+  bb4:
+    t16: i64 = load l3
+    t17: ?i64 = load l4
+    t18: i64 = optget t17
+    t19: i64 = add t16, t18
+    store l3, t19
+    br bb5
+  bb5:
+    t20: i64 = load l3
+    ret t20
+}

@@ -442,6 +442,59 @@ public class VmTests
         Assert.Equal(VmDiagnostics.IndexOutOfRange, panic.Code);
     }
 
+    // ------------------------------------------------------------------ 4e) Optionals (§7)
+
+    private const string Find = "fn find(x: int): ?int { if (x > 0) { return x; } return null; }\n";
+
+    [Theory]
+    [InlineData("return find(7) ?? 0;", 7)]
+    [InlineData("return find(-1) ?? 100;", 100)]     // rechte Seite nur bei "kein Wert"
+    [InlineData("return find(7)!;", 7)]
+    [InlineData("let m = find(3); if (m != null) { return m; } return 0;", 3)]   // Narrowing
+    [InlineData("let m = find(-1); if (m == null) { return 42; } return 0;", 42)]
+    [InlineData("let m = find(-1); if (m != null) { return m; } return 0;", 0)]
+    public void Optionals_behave(string body, long expected) =>
+        Assert.Equal(expected,
+            Run(Find + $"fn wrap(): int {{ {body} }}\nfn main(): int {{ return wrap(); }}").AsI64);
+
+    /// <summary>
+    /// Der Kern der Darstellungsentscheidung: <c>?int</c> muss <b>alle</b> <c>int</c>-Werte tragen
+    /// können. Wäre irgendein Bitmuster als „null" reserviert — 0 oder −1 sind die üblichen
+    /// Kandidaten —, wäre genau dieser Wert je nach Runtime mal ein Wert und mal keiner.
+    /// Bytecode.md §5 verbietet das, dieser Test hält es fest.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(1)]
+    public void An_optional_int_can_carry_every_int(long value)
+    {
+        var source = $"fn wrap(): ?int {{ return {value}; }}\n" +
+                     "fn main(): int { let x = wrap(); if (x != null) { return 1; } return 0; }";
+        Assert.Equal(1, Run(source).AsI64);
+        Assert.Equal(value, Run($"fn wrap(): ?int {{ return {value}; }}\n" +
+                                "fn main(): int { return wrap()!; }").AsI64);
+    }
+
+    /// <summary>Die rechte Seite von <c>??</c> wird <b>nicht</b> ausgewertet, wenn links ein Wert
+    /// steht — sonst wäre es kein Kurzschluss. Nachgewiesen über eine Division durch Null, die
+    /// sonst panickt.</summary>
+    [Fact]
+    public void Coalescing_does_not_evaluate_its_right_side_when_there_is_a_value()
+    {
+        Assert.Equal(7, Run(Find + "fn boom(): int { return 1 / 0; }\n" +
+                            "fn wrap(): int { return find(7) ?? boom(); }\n" +
+                            "fn main(): int { return wrap(); }").AsI64);
+    }
+
+    [Fact]
+    public void Force_unwrapping_nothing_panics()
+    {
+        var panic = RunExpectingPanic(Find + "fn main(): int { return find(-1)!; }");
+        Assert.Equal(VmDiagnostics.NullDereference, panic.Code);
+        Assert.NotEmpty(panic.CallStack);
+    }
+
     // ------------------------------------------------------------------ 5) Laufzeitfehler
 
     [Fact]

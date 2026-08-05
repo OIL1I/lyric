@@ -169,7 +169,7 @@ internal sealed class FunctionLowerer
         // Ohne Initializer bleibt der Slot ungeschrieben: die Definite-Assignment-Analyse hat
         // bewiesen, dass jeder Read eine Zuweisung sieht.
         if (binding.Initializer is not null)
-            _b.Emit(new StoreLocal(slot, LowerExpr(binding.Initializer), binding.Span));
+            _b.Emit(new StoreLocal(slot, LowerExprAs(binding.Initializer, type), binding.Span));
 
         return true;
     }
@@ -182,7 +182,7 @@ internal sealed class FunctionLowerer
             return false;
         }
 
-        _b.Seal(new Return(LowerExpr(stmt.Value), stmt.Span));
+        _b.Seal(new Return(LowerExprAs(stmt.Value, _returnType), stmt.Span));
         return false;
     }
 
@@ -312,7 +312,7 @@ internal sealed class FunctionLowerer
 
         InterpolatedStringExpr e => LowerInterpolatedString(e),
 
-        NullLiteralExpr e => throw NotSupported("'null' (needs a nullable IR type)", e.Span),
+        NullLiteralExpr e => LowerNull(e),
         LambdaExpr e => throw NotSupported("lambda (needs closure lifting)", e.Span),
         MatchExpr e => throw NotSupported("'match' as an expression", e.Span),
         MemberExpr e => LowerFieldRead(e),
@@ -363,6 +363,21 @@ internal sealed class FunctionLowerer
         var type = _slots.TypeOfLocal(slot);
         var dest = _slots.NewTemp(type);
         _b.Emit(new LoadLocal(dest, slot, type, expr.Span));
+
+        // Flow-Narrowing (§7): nach `if (x != null)` sagt die Sema für x den Typ T, der SLOT hält
+        // aber weiter ?T — die Einengung ist eine Aussage über den Kontrollfluss, keine über den
+        // Speicher. Genau hier wird sie eingelöst: der Lowerer packt aus, wo die Sema T erwartet.
+        //
+        // Dass das sicher ist, hat die Sema bewiesen — sie engt nur ein, wo sie null ausgeschlossen
+        // hat. Das optget kann deshalb nie panicken; es ist die Materialisierung eines schon
+        // geführten Beweises.
+        if (type is IrOptionalType option && TypeOfExpr(expr) is not IrOptionalType)
+        {
+            var narrowed = _slots.NewTemp(option.Inner);
+            _b.Emit(new OptGet(narrowed, dest, option.Inner, expr.Span));
+            return narrowed;
+        }
+
         return dest;
     }
 
@@ -383,7 +398,7 @@ internal sealed class FunctionLowerer
     {
         PostfixOp.Inc => LowerIncDec(expr.Operand, increment: true, yieldOldValue: true, expr.Span),
         PostfixOp.Dec => LowerIncDec(expr.Operand, increment: false, yieldOldValue: true, expr.Span),
-        PostfixOp.ForceUnwrap => throw NotSupported("force-unwrap '!'", expr.Span),
+        PostfixOp.ForceUnwrap => LowerForceUnwrap(expr.Operand, expr.Span),
         _ => throw Bug($"unhandled postfix operator {expr.Operator}")
     };
 
@@ -411,7 +426,9 @@ internal sealed class FunctionLowerer
         if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
             return LowerShortCircuit(expr);
         if (expr.Operator is BinaryOp.Coalesce)
-            throw NotSupported("'??' (needs a nullable IR type)", expr.Span);
+            return LowerCoalesce(expr);
+        if (TryLowerNullTest(expr) is { } nullTest)
+            return nullTest;
 
         var kind = IrBinKindExtensions.FromAst(expr.Operator);
         var lhs = LowerExpr(expr.Left);
@@ -616,6 +633,122 @@ internal sealed class FunctionLowerer
             current, operand, expr.Span));
         _b.Emit(new StoreElem(array, index, result, expr.Span));
         return result;
+    }
+
+    // ------------------------------------------------------------------ Optionals (§7)
+
+    /// <summary>
+    /// Ein Ausdruck an einer Position mit <b>erwartetem Typ</b>. Zwei Dinge passieren nur hier:
+    /// <c>null</c> bekommt seinen Typ (es hat keinen eigenen — die Sema gibt ihm <c>NullType</c>),
+    /// und ein <c>T</c> wird zu <c>?T</c> verpackt, weil §6.5 die Richtung implizit erlaubt.
+    /// </summary>
+    private TempId LowerExprAs(Expr expr, IrType expected)
+    {
+        if (expr is NullLiteralExpr)
+        {
+            if (expected is not IrOptionalType option)
+                throw NotSupported("'null' outside an optional context", expr.Span);
+
+            var none = _slots.NewTemp(expected);
+            _b.Emit(new OptNone(none, option.Inner, expr.Span));
+            return none;
+        }
+
+        return Coerce(LowerExpr(expr), TypeOfExpr(expr), expected, expr.Span);
+    }
+
+    /// <summary>Ein <c>null</c> ohne erwarteten Typ. Sollte nie vorkommen — jede Position, an der
+    /// <c>null</c> gültig ist, kennt ihren Zieltyp und geht über <see cref="LowerExprAs"/>.</summary>
+    private TempId LowerNull(NullLiteralExpr expr) =>
+        throw NotSupported("'null' in a position without an expected type", expr.Span);
+
+    /// <summary>
+    /// <c>x != null</c> und <c>x == null</c> sind <b>keine</b> Vergleiche, sondern die Frage nach
+    /// der Anwesenheit eines Wertes — genau das, was <c>optissome</c> beantwortet. Ein echter
+    /// Vergleich würde einen <c>null</c>-Wert auf den Stack verlangen, und den gibt es nicht:
+    /// „kein Wert" ist eine leere Referenz, kein Operand.
+    /// </summary>
+    private TempId? TryLowerNullTest(BinaryExpr expr)
+    {
+        if (expr.Operator is not (BinaryOp.Eq or BinaryOp.Ne)) return null;
+
+        var (option, _) = expr.Right is NullLiteralExpr ? (expr.Left, expr.Right)
+            : expr.Left is NullLiteralExpr ? (expr.Right, expr.Left)
+            : (null, null);
+        if (option is null) return null;
+
+        var value = LowerExpr(option);
+        if (TypeOfExpr(option) is not IrOptionalType) throw NotSupported("null test on a non-optional", expr.Span);
+
+        var isSome = _slots.NewTemp(BoolType);
+        _b.Emit(new OptIsSome(isSome, value, expr.Span));
+        if (expr.Operator is BinaryOp.Ne) return isSome;
+
+        // '== null' ist die Verneinung. 'not' ist der einzige Opcode ohne Typ-Tag — nur bool.
+        var isNone = _slots.NewTemp(BoolType);
+        _b.Emit(new UnOp(isNone, IrUnKind.Not, BoolType, isSome, expr.Span));
+        return isNone;
+    }
+
+    /// <summary>Verpackt einen Wert, wenn die Position ein Optional erwartet und der Wert keins ist
+    /// — <c>T</c> → <c>?T</c> ist implizit (Sprache.md §6.5).</summary>
+    private TempId Coerce(TempId value, IrType from, IrType to, Span span)
+    {
+        if (to is not IrOptionalType option || from is IrOptionalType) return value;
+
+        var dest = _slots.NewTemp(to);
+        _b.Emit(new OptSome(dest, value, option.Inner, span));
+        return dest;
+    }
+
+    private TempId LowerForceUnwrap(Expr operand, Span span)
+    {
+        var value = LowerExpr(operand);
+        if (TypeOfExpr(operand) is not IrOptionalType option)
+            throw NotSupported("'!' on a non-optional", span);
+
+        var dest = _slots.NewTemp(option.Inner);
+        _b.Emit(new OptGet(dest, value, option.Inner, span));
+        return dest;
+    }
+
+    /// <summary>
+    /// <c>a ?? b</c> — die rechte Seite wird <b>nur</b> ausgewertet, wenn links kein Wert steht.
+    /// Deshalb Verzweigung statt Instruktion, genau wie bei <c>&amp;&amp;</c> und <c>||</c>: eine
+    /// Stack-Maschine kann keinen unausgewerteten Ausdruck transportieren.
+    /// </summary>
+    private TempId LowerCoalesce(BinaryExpr expr)
+    {
+        var type = TypeOfExpr(expr);
+        var slot = _slots.DeclareSynthetic("coalesce", type);
+
+        var option = LowerExpr(expr.Left);
+        if (TypeOfExpr(expr.Left) is not IrOptionalType left)
+            throw NotSupported("'??' on a non-optional", expr.Span);
+
+        var test = _slots.NewTemp(BoolType);
+        _b.Emit(new OptIsSome(test, option, expr.Span));
+
+        var whenSome = _b.NewBlock();
+        var whenNone = _b.NewBlock();
+        var merge = _b.NewBlock();
+        _b.Seal(new CondBranch(test, whenSome, whenNone, expr.Span));
+
+        _b.SwitchTo(whenSome);
+        var unwrapped = _slots.NewTemp(left.Inner);
+        _b.Emit(new OptGet(unwrapped, option, left.Inner, expr.Span));
+        _b.Emit(new StoreLocal(slot, Coerce(unwrapped, left.Inner, type, expr.Span), expr.Span));
+        _b.Seal(new Branch(merge, expr.Span));
+
+        _b.SwitchTo(whenNone);
+        var fallback = LowerExpr(expr.Right);
+        _b.Emit(new StoreLocal(slot, Coerce(fallback, TypeOfExpr(expr.Right), type, expr.Span), expr.Span));
+        _b.Seal(new Branch(merge, expr.Span));
+
+        _b.SwitchTo(merge);
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new LoadLocal(dest, slot, type, expr.Span));
+        return dest;
     }
 
     // ------------------------------------------------------------------ Arrays (ADR-016)
@@ -1001,6 +1134,16 @@ internal sealed class FunctionLowerer
         // T[] mit fester Länge (ADR-016). Der Elementtyp steht inline; T[N] gibt es nicht mehr.
         if (type is ArrayOf array)
             return new IrArrayType(LowerType(array.Element, span));
+
+        // ?T (Sprache.md §7). Nicht schachtelbar — die Sema kollabiert ??T bereits, hier ist es
+        // trotzdem eine Grenze statt einer stillen Annahme.
+        if (type is Optional optional)
+        {
+            var inner = LowerType(optional.Inner, span);
+            if (inner is IrOptionalType)
+                throw NotSupported("a nested optional '??T' (optionals do not nest)", span);
+            return new IrOptionalType(inner);
+        }
 
         if (type is not PrimitiveType)
             throw NotSupported($"type '{TypeFacts.Display(type)}'", span);
