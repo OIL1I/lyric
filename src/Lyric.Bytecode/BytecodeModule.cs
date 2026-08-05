@@ -25,6 +25,9 @@ public sealed class BytecodeModule
     /// benutzt.</summary>
     public IReadOnlyList<BytecodeImpl> Impls { get; init; } = [];
 
+    /// <summary>Die geschuetzten Regionen aus der Handlers-Sektion, innerste zuerst.</summary>
+    public IReadOnlyList<BytecodeHandler> Handlers { get; init; } = [];
+
     /// <summary>Index der Einstiegsfunktion im gemeinsamen Indexraum (erst Imports, dann
     /// Funktionen), oder <c>null</c> bei einem Bibliotheks-Modul. Aus der Start-Sektion.</summary>
     public int? Start { get; init; }
@@ -85,6 +88,29 @@ public sealed class BytecodeTypeDef
     public bool IsEnum => Variants.Count > 0;
 
     public bool IsInterface => MethodSlots.Count > 0;
+}
+
+/// <summary>Eine geschuetzte Region einer Funktion. Bereiche sind <b>Block-Indizes</b>
+/// <c>[Start, End)</c>, nicht Byte-Offsets — dieselbe Entscheidung wie bei den Sprungzielen.</summary>
+public sealed class BytecodeHandler
+{
+    public required int Function { get; init; }
+    public required int Start { get; init; }
+    public required int End { get; init; }
+
+    /// <summary>0 = catch, 1 = finally.</summary>
+    public required int Kind { get; init; }
+
+    /// <summary>Der gefangene Typ, oder <c>-1</c> fuer catch-all bzw. finally.</summary>
+    public required int CatchType { get; init; }
+
+    public required int Handler { get; init; }
+
+    /// <summary>Slot fuer den gefangenen Wert, oder <c>-1</c>. Ueber einen Slot statt ueber den
+    /// Stack, damit die Blockgrenzen-Invariante intakt bleibt.</summary>
+    public required int Slot { get; init; }
+
+    public bool IsFinally => Kind == 1;
 }
 
 /// <summary>Eine vtable-Zeile: Klasse erfuellt Interface, Slot fuer Slot mit einer Funktion aus dem

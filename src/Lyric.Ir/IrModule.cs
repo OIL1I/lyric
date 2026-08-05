@@ -35,6 +35,35 @@ public class IrBlock(BlockId Id, List<IrOp> Insts)
 /// „auf jedem Pfad verfügbar" gleichbedeutend mit „die Definition dominiert den Use" ist.</item>
 /// </list>
 /// </summary>
+/// <summary>Was eine geschuetzte Region tut, wenn es in ihr knallt.</summary>
+public enum IrHandlerKind
+{
+    /// <summary>Faengt einen Typ (oder alles, wenn <c>CatchType</c> fehlt) und fuehrt weiter.</summary>
+    Catch,
+
+    /// <summary>Laeuft beim Abwickeln und gibt danach ab — der Traeger von <c>defer</c>.</summary>
+    Finally,
+}
+
+/// <summary>
+/// Eine geschuetzte Region: die Bloecke <c>[Start, End)</c> sind abgedeckt.
+///
+/// <para><b>Block-Indizes statt Byte-Bereichen</b>, dieselbe Entscheidung wie bei den Sprungzielen
+/// (P5/ADR-013): ein Bereich prueft man mit zwei Vergleichen gegen die Blockzahl, statt
+/// Byte-Offsets gegen Instruktionsgrenzen zu verifizieren.</para>
+///
+/// <para><b>Der gefangene Wert landet in <see cref="Slot"/>, nicht auf dem Stack.</b> CIL schiebt
+/// ihn beim Betreten des Handlers auf den Operanden-Stack — das ginge hier nicht, weil der Stack an
+/// jeder Blockgrenze leer ist (Bytecode.md §4). Ueber einen Slot bleibt die Invariante intakt und
+/// der Handler-Block faengt an wie jeder andere.</para>
+/// </summary>
+/// <param name="CatchType">Der gefangene Typ, oder <c>null</c> fuer catch-all. Bei
+/// <see cref="IrHandlerKind.Finally"/> immer <c>null</c>.</param>
+/// <param name="Slot">Wohin der gefangene Wert geht. Bei <c>finally</c> und bei <c>catch (_)</c>
+/// ohne Bindung <c>null</c>.</param>
+public record struct IrHandler(BlockId Start, BlockId End, IrHandlerKind Kind,
+    TypeId? CatchType, BlockId Handler, LocalId? Slot);
+
 public class IrFunction(string Name, IrType ReturnType, int ParamCount, List<IrLocal> Locals, List<IrTemp> Temps, List<IrBlock> Blocks)
 {
     public string Name { get; init; } = Name;
@@ -51,6 +80,15 @@ public class IrFunction(string Name, IrType ReturnType, int ParamCount, List<IrL
     /// <summary>Autorität für den Typ jedes Temps. Die <c>Type</c>-Felder auf den Instruktionen
     /// sind Kopien für den Printer; weichen sie hiervon ab, ist das ein Bug.</summary>
     public List<IrTemp> Temps { get; init; } = Temps;
+
+    /// <summary>
+    /// Die geschuetzten Regionen dieser Funktion, <b>innerste zuerst</b>.
+    ///
+    /// <para>Die Reihenfolge ist der Vertrag: beim Abwickeln nimmt die Runtime den ersten Eintrag,
+    /// dessen Bereich den Fehlerort deckt und dessen Typ passt. Bei geschachtelten try-Bloecken
+    /// entscheidet damit die Liste, nicht eine Bereichsgroessen-Rechnung.</para>
+    /// </summary>
+    public List<IrHandler> Handlers { get; init; } = new();
 
     public List<IrBlock> Blocks { get; init; } = Blocks;
     public BlockId Entry { get; set; }

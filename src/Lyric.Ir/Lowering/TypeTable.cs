@@ -161,11 +161,9 @@ internal sealed class TypeTable
 
             for (var i = 0; i < fields.Length; i++)
             {
-                if (fields[i].Default is not null)
-                    throw new UnsupportedConstructException(
-                        "a field default is not supported by this compiler version yet",
-                        fields[i].Span);
-
+                // Ein Feld-Default gehoert NICHT ins Layout: er ist ein Ausdruck, kein Typ, und
+                // wird an der Konstruktionsstelle ausgewertet — dort, wo auch die explizit
+                // angegebenen Werte entstehen. Im Bytecode steht davon nichts.
                 names[i] = fields[i].Name;
                 types[i] = Lower(fields[i].Type, fields[i].Span);
             }

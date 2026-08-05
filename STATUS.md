@@ -427,6 +427,32 @@ Programm, mit Begründung als Blockzitat).
     Lehre ist dieselbe wie bei den totalen Funktionen in der IR: ein `default`, der nichts tut,
     ist stiller falscher Code. `SkipType` ist jetzt total mit `default`-Wurf.
 
+- [x] **M7 — P5 — Exceptions und `defer`** (Format **2.3**): `lyric run examples/bank.lyr` fängt
+  `InsufficientFunds` mit typed catch und lässt den `defer` beim Scope-Exit laufen.
+  - **Handler-Tabelle statt expliziter Verzweigungen.** Der glückliche Pfad kostet damit nichts —
+    das ist der Grund, warum jede ernsthafte VM es so macht. Die Regionen sind **Block-Bereiche**,
+    keine Byte-Bereiche: dieselbe Entscheidung wie bei den Sprungzielen, und aus demselben Grund
+    (zwei Vergleiche gegen die Blockzahl statt Byte-Offsets gegen Instruktionsgrenzen).
+  - **Der gefangene Wert geht in einen Slot, nicht auf den Stack.** CIL schiebt ihn beim Betreten
+    des Handlers auf den Operanden-Stack; das ginge hier nicht, weil der Stack an jeder
+    Blockgrenze leer ist und ein Handler-Block eine Blockgrenze ist. Über einen Slot bleibt die
+    Invariante intakt — dieselbe Rücksicht wie bei `mkiface`/`callvirt`.
+  - **Der Typvergleich ist Gleichheit, kein Untertyp-Test** — und das ist eine Eigenschaft dieser
+    Sprache: ADR-003 verbietet Inheritance, eine Klasse ist genau ihr Typ. Deshalb reicht der
+    **statische** Typ an der Wurfstelle, und `throw` trägt ihn als Immediate. Wäre der Wert
+    interface-typisiert, trägt der Fat Pointer ihn (P3). In C# oder Java bräuchte man dafür ein
+    Typ-Tag im Objekt.
+  - **`defer` registriert nichts zur Laufzeit.** Welche Rümpfe fällig sind, steht zur Compile-Zeit
+    fest, also setzt das Lowering sie direkt an jeden Ausgang — Fall-through, `return`, `throw`.
+    Gos Laufzeit-Stack bräuchte Closures (P6) und kostete auf jedem Pfad etwas. Der Preis ist
+    Code-Duplikation je Ausgang.
+  - **Der Rückgabewert wird vor den defer-Rümpfen ausgewertet.** Go hält es genauso: ein `defer`
+    darf nicht mehr ändern, was `return` schon bestimmt hat. Ein Test hält das fest.
+  - **Feld-Defaults nachgeliefert** (offen seit P1b): der Default ist ein *Ausdruck* und wird an
+    der Konstruktionsstelle ausgewertet, nicht im Layout abgelegt. Ohne ihn lief das Gate nicht.
+  - 13 E2E-Tests. Der wichtigste ist die Gegenprobe „ohne Wurf wird nicht gefangen" — ohne sie
+    bestünde die ganze Reihe auch, wenn immer gefangen würde.
+
 - [x] **M7 — P4 — Structs mit Wert-Semantik** (Format **2.2**): `lyric run examples/vectors.lyr`
   liefert 115. Zuweisung kopiert, Parameter kopiert, `struct` im `struct` kopiert mit.
   - **Ein struct-Wert ist zur Laufzeit dasselbe Slot-Array wie ein Klassenobjekt.** `newobj`,
@@ -488,7 +514,8 @@ festgehalten:
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-**P4 steht** — als nächstes **P5 — Exceptions + `defer`**, Gate `examples/bank.lyr`.
+**P5 steht** — als nächstes **P6 — Closures (Lifting + Environment-Objekt)**, Gate
+`examples/inventory.lyr`.
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
@@ -548,6 +575,16 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   schwer zu begründen, weil `T[]` jetzt genauso ein Referenztyp ist wie eine Klasse. Zu klären,
   bevor `Indexable<T>` kommt: der Setter dort wäre `mut fn`, und dann hängt die Frage an derselben
   Stelle nochmal.
+
+**Aus P5 — bewusst offen und wichtig:**
+
+- **`defer` läuft NICHT beim Abwickeln.** `Sprache.md` §5 verlangt „läuft auf jedem Scope-Exit
+  (auch bei Exception)". Die normalen Pfade sind vollständig; der Exception-Pfad bräuchte eine
+  `finally`-Region über den Scope. Der Träger dafür steht bereits (`IrHandlerKind.Finally`,
+  `endfinally`, Format-Sektion, Verifier-Regeln) — es fehlt das Erzeugen im Lowering und das
+  Abarbeiten im Unwinder. **Das ist eine echte Lücke gegen die Spec, kein Aufschub aus Bequemlichkeit.**
+- **`catch (e)` ohne Typ** ist `LYR-IR0001`: der Slot bräuchte den `Throwable`-Typ als Interface,
+  und das hängt an der Builtin-Konformanz (M8). `catch (_)` und `catch (e: T)` gehen.
 
 **Aus P4 — bewusst offen:**
 
@@ -655,7 +692,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`M7: Structs mit Wert-Semantik - Bytecode 2.2 (P4)`
+`M7: Exceptions und defer - Bytecode 2.3 (P5)`
 
 ---
 

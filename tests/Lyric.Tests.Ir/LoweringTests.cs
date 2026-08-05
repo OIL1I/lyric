@@ -489,20 +489,22 @@ public class LoweringTests
     [Fact]
     public void A_type_whose_layout_fails_reports_once_and_does_not_corrupt_the_table()
     {
+        // Ausloeser muss im LAYOUT scheitern, nicht an der Konstruktionsstelle — sonst prueft der
+        // Test die Dedup nach Span statt die nach Typ. Frueher war es ein Feld-Default; der laeuft
+        // seit P5 durch, also jetzt ein Tupel-Feld, das das Lowering noch nicht kennt.
         var (ir, de) = TryLower("""
             class Account {
                 owner: string,
-                balance: int = 0
+                pair: (int, int)
             }
 
-            fn open(who: string): int { let a = Account { owner = who, balance = 1 }; return a.balance; }
-            fn main(): int { let a = Account { owner = "x", balance = 2 }; return a.balance; }
+            fn open(who: string): int { let a = Account { owner = who, pair = (1, 2) }; return 0; }
+            fn main(): int { let a = Account { owner = "x", pair = (3, 4) }; return 0; }
             """);
 
         Assert.Null(ir);
         var diagnostic = Assert.Single(de.Diagnostics); // genau einmal, nicht je Funktion
         Assert.Equal("LYR-IR0001", diagnostic.Code);
-        Assert.Contains("field default", diagnostic.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -123,6 +123,18 @@ public static class IrPrinter
         sb.Append("  locals:\n");
         foreach (var loc in func.Locals)
             sb.Append($"    {loc.Id} {loc.Name}: {TypeStr(loc.Type)}\n");
+        // Die geschuetzten Regionen stehen vor den Bloecken: beim Lesen eines Unwind-Bugs will man
+        // zuerst wissen, welcher Bereich von wem abgedeckt ist.
+        if (func.Handlers.Count > 0)
+        {
+            sb.Append("  handlers:\n");
+            foreach (var h in func.Handlers)
+                sb.Append($"    [{h.Start}, {h.End}) " +
+                          (h.Kind == IrHandlerKind.Finally
+                              ? $"finally -> {h.Handler}\n"
+                              : $"catch {(h.CatchType is { } t ? t.ToString() : "*")} " +
+                                $"-> {h.Handler}{(h.Slot is { } s2 ? $" into {s2}" : "")}\n"));
+        }
         foreach (var block in func.Blocks)
             WriteBlock(sb, block, ctx);
         sb.Append("}\n");
@@ -218,6 +230,8 @@ public static class IrPrinter
         Branch b => $"br {b.Target}",
         CondBranch c => $"condbr {c.Cond} -> {c.IfTrue}, {c.IfFalse}",
         Unreachable => "unreachable",
+        Throw t => $"throw {t.Value}{(t.Concrete is { } c ? $", {c}" : "")}",
+        EndFinally => "endfinally",
         _ => throw new InternalCompilationException($"ir-printer: unhandled terminator {term.GetType().Name}")
     };
 

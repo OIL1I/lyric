@@ -127,7 +127,8 @@ internal sealed class FunctionLowerer
     {
         if (_decl.Body is null) throw Bug("function has no body");
 
-        if (LowerStatements(_decl.Body))
+        // Der Funktionsrumpf ist selbst ein Scope mit eigenen defers.
+        if (LowerScope(_decl.Body))
         {
             // Der Kontrollfluss ist aus dem Body gelaufen. Bei void ist das der Normalfall und
             // braucht das implizite 'ret'. Bei non-void hat die Return-Coverage der Sema
@@ -143,7 +144,10 @@ internal sealed class FunctionLowerer
         // Argument 0 übergeben. Ohne ihn hier wäre die Parameter-Konvention verletzt, und der
         // Verifier meldet genau das ("call passes 2 arg(s), expected 1").
         return new IrFunction(_name, _returnType, _decl.Parameters.Length + (_thisSlot is null ? 0 : 1),
-            _slots.Locals, _slots.Temps, _blocks) { Entry = new BlockId(0) };
+            _slots.Locals, _slots.Temps, _blocks)
+        {
+            Entry = new BlockId(0), Handlers = _handlers,
+        };
     }
 
     // ------------------------------------------------------------------ Statements
@@ -162,7 +166,9 @@ internal sealed class FunctionLowerer
     {
         switch (stmt)
         {
-            case Block b: return LowerStatements(b);
+            // Ein geschachtelter Block ist ein eigener Scope — seine defers laufen an
+            // seinem Ende, nicht erst am Funktionsende (Sprache.md §5).
+            case Block b: return LowerScope(b);
             case BindingStmt b: return LowerBinding(b);
             case ExprStmt e: LowerExprOrVoid(e.Expr); return true;
             case IfStmt s: return LowerIf(s);
@@ -174,14 +180,168 @@ internal sealed class FunctionLowerer
 
             case ForInStmt s: throw NotSupported("'for-in' (needs Iterator)", s.Span);
             case MatchStmt s: LowerMatch(s.Scrutinee, s.Arms, null, s.Span); return true;
-            case TryStmt s: throw NotSupported("'try'/'catch'", s.Span);
-            case ThrowStmt s: throw NotSupported("'throw'", s.Span);
-            case DeferStmt s: throw NotSupported("'defer'", s.Span);
+            case TryStmt s: return LowerTry(s);
+            case ThrowStmt s: return LowerThrow(s);
+            // 'defer' registriert nur — die Rumpfe setzt LowerScope an die Ausgaenge.
+            case DeferStmt s: _defers.Peek().Add(s); return true;
             case YieldStmt s: throw NotSupported("'yield' (coroutine state machine)", s.Span);
             case ErrorStmt s: throw Bug($"error statement reached lowering at {s.Span}");
 
             default: throw Bug($"unhandled statement {stmt.GetType().Name}");
         }
+    }
+
+
+    // ------------------------------------------------------------------ Exceptions und defer
+
+    /// <summary>
+    /// Die pro Scope aufgelaufenen <c>defer</c>-Statements, aeusserster Scope zuunterst.
+    ///
+    /// <para><c>defer</c> registriert nichts zur Laufzeit: welche Rumpfe faellig sind, steht zur
+    /// Compile-Zeit fest, also setzt das Lowering sie direkt an jeden Ausgang. Ein Laufzeit-Stack
+    /// (Gos Modell) braeuchte Closures — die gibt es erst in P6 — und kostete auf jedem Pfad
+    /// etwas, auch dort, wo nichts zu tun ist. Der Preis ist Code-Duplikation je Ausgang.</para>
+    /// </summary>
+    private readonly Stack<List<DeferStmt>> _defers = new();
+
+    /// <summary>
+    /// Die geschuetzten Regionen dieser Funktion, in Entstehungsreihenfolge.
+    ///
+    /// <para>Die ist bereits <b>innerste zuerst</b>: ein inneres <c>try</c> wird vollstaendig
+    /// gelowert, bevor das aeussere seinen Handler antraegt. Genau diese Reihenfolge ist der
+    /// Vertrag beim Abwickeln.</para>
+    /// </summary>
+    private readonly List<IrHandler> _handlers = new();
+
+    private bool LowerThrow(ThrowStmt stmt)
+    {
+        // Ein throw verlaesst den Scope — die faelligen defer-Rumpfe laufen davor. Sie laufen
+        // AUSSERDEM ueber die finally-Region beim Abwickeln, aber nur, wenn der Wurf aus einer
+        // tieferen Ebene kommt; ein throw im eigenen Scope wird hier direkt bedient.
+        EmitAllPendingDefers();
+
+        var value = LowerExpr(stmt.Value);
+
+        // Bei einem Klassentyp steht der konkrete Typ hier fest (ADR-003: keine Inheritance);
+        // bei einem Interface-Wert traegt ihn der Fat Pointer, und die Runtime liest ihn dort.
+        var concrete = TypeOfExpr(stmt.Value) switch
+        {
+            IrRefType r => (TypeId?)r.Type,
+            _ => null,
+        };
+
+        _b.Seal(new Throw(value, concrete, stmt.Span));
+        return false;
+    }
+
+    /// <summary>
+    /// <c>try { … } catch (e: T) { … }</c>.
+    ///
+    /// <para>Der Rumpf belegt einen <b>zusammenhaengenden Blockbereich</b>. Das ist keine Annahme,
+    /// sondern eine Folge davon, wie <see cref="BlockBuilder"/> Ids vergibt: alles, was waehrend
+    /// des Rumpfes entsteht, liegt dazwischen — auch verschachtelte Konstrukte. Die Handler
+    /// entstehen danach und liegen damit ausserhalb ihres eigenen Bereichs.</para>
+    ///
+    /// <para>Der gefangene Wert geht in einen <b>Slot</b>, nicht auf den Stack: an einer
+    /// Blockgrenze ist der Stack leer (Bytecode.md §4), und ein Handler-Block ist eine
+    /// Blockgrenze. CIL schiebt den Wert dort auf den Stack und kann sich das leisten, weil es
+    /// diese Invariante nicht hat.</para>
+    /// </summary>
+    private bool LowerTry(TryStmt stmt)
+    {
+        // Eigener Block fuer den Rumpf: der Bereich muss an einer Blockgrenze anfangen, sonst
+        // deckte er auch Code vor dem 'try' ab.
+        var start = _b.NewBlock();
+        _b.Seal(new Branch(start, stmt.Span));
+        _b.SwitchTo(start);
+
+        var bodyFallsThrough = LowerScope(stmt.Body);
+        var bodyLast = _b.CurrentId;
+        var end = new BlockId(_blocks.Count);
+
+        var merge = _b.NewBlock();
+        if (bodyFallsThrough) _b.SealBlock(bodyLast, new Branch(merge, stmt.Span));
+
+        foreach (var clause in stmt.Catches)
+        {
+            var handler = _b.NewBlock();
+            _b.SwitchTo(handler);
+
+            LocalId? slot = null;
+            TypeId? caught = null;
+
+            if (clause.BindingType is { } declared)
+            {
+                // Ueber das gebundene Symbol, nicht ueber den TypeNode: die Sema legt die
+                // Auflegung eines catch-Typs in ihre eigene Tabelle (BindRef auf dem
+                // CatchClause), nicht in die des Resolvers. Den TypeNode hier noch einmal
+                // aufzuloesen waere eine zweite Wahrheit ueber Sichtbarkeit.
+                var symbol = _types.RefOf(clause) as LocalSymbol
+                    ?? throw Bug($"catch binding at {clause.Span} was not bound by the type checker");
+
+                var type = LowerType(symbol.Type, declared.Span);
+                caught = type switch
+                {
+                    IrRefType r => r.Type,
+                    IrInterfaceType i => i.Type,
+                    _ => throw NotSupported(
+                        "catching a non-class type (only classes and interfaces are throwable)",
+                        clause.Span),
+                };
+
+                slot = _slots.DeclareFor(symbol, type);
+            }
+            else if (clause.BindingName is { } anyName)
+            {
+                // 'catch (e)' ohne Typ faengt jeden Throwable. Ein Slot dafuer braeuchte den
+                // Throwable-Typ als Interface, und das haengt an derselben Luecke wie die
+                // Builtin-Konformanz — sie kommt mit der Stdlib (M8).
+                throw NotSupported(
+                    $"'catch ({anyName})' without a type (an untyped catch binding needs the " +
+                    "Throwable interface, which arrives with the stdlib in M8)", clause.Span);
+            }
+
+            var handlerFallsThrough = LowerScope(clause.Body);
+            if (handlerFallsThrough) _b.Seal(new Branch(merge, clause.Span));
+
+            _handlers.Add(new IrHandler(start, end, IrHandlerKind.Catch, caught, handler, slot));
+        }
+
+        _b.SwitchTo(merge);
+        return true;
+    }
+
+    /// <summary>
+    /// Ein Scope mit eigenen <c>defer</c>s: Rumpf lowern, danach die registrierten Rumpfe in
+    /// <b>LIFO</b>-Reihenfolge (Sprache.md §5).
+    /// </summary>
+    private bool LowerScope(Block block)
+    {
+        _defers.Push(new List<DeferStmt>());
+        try
+        {
+            var fallsThrough = LowerStatements(block);
+            if (fallsThrough) EmitDefers(_defers.Peek());
+            return fallsThrough;
+        }
+        finally
+        {
+            _defers.Pop();
+        }
+    }
+
+    /// <summary>LIFO: zuletzt registriert laeuft zuerst.</summary>
+    private void EmitDefers(List<DeferStmt> pending)
+    {
+        for (var i = pending.Count - 1; i >= 0; i--) LowerStmt(pending[i].Body);
+    }
+
+    /// <summary>Alle offenen <c>defer</c>s, innerste zuerst — vor einem <c>return</c> oder
+    /// <c>throw</c>, das mehrere Scopes auf einmal verlaesst. Ein <c>Stack&lt;T&gt;</c> zaehlt von
+    /// oben auf, die Reihenfolge stimmt also von selbst.</summary>
+    private void EmitAllPendingDefers()
+    {
+        foreach (var scope in _defers) EmitDefers(scope);
     }
 
     private bool LowerBinding(BindingStmt binding)
@@ -202,13 +362,11 @@ internal sealed class FunctionLowerer
 
     private bool LowerReturn(ReturnStmt stmt)
     {
-        if (stmt.Value is null)
-        {
-            _b.Seal(new Return(null, stmt.Span));
-            return false;
-        }
-
-        _b.Seal(new Return(LowerExprAs(stmt.Value, _returnType), stmt.Span));
+        // Der Rueckgabewert wird VOR den defer-Rumpfen ausgewertet: 'defer' darf den Wert nicht
+        // mehr aendern, den 'return' bereits bestimmt hat (Go haelt es genauso).
+        var returned = stmt.Value is null ? null : (TempId?)LowerExprAs(stmt.Value, _returnType);
+        EmitAllPendingDefers();
+        _b.Seal(new Return(returned, stmt.Span));
         return false;
     }
 
@@ -1145,12 +1303,36 @@ internal sealed class FunctionLowerer
                 : LowerExpr(field.Value);
         }
 
-        // Ein fehlendes Feld hätte seinen Nullwert — aber die Sema kennt heute keine Regel, die das
-        // erlaubt oder verbietet, und stillschweigend 0 einzusetzen wäre geraten. Lieber melden.
+        // Ein weggelassenes Feld bekommt seinen Default — ausgewertet HIER, an der
+        // Konstruktionsstelle, nicht einmal beim Typ. Ein Default ist ein Ausdruck; ihn im Layout
+        // abzulegen hiesse, einen Ausdruck in eine Typtabelle zu schreiben.
+        //
+        // Ohne Default bleibt es beim Fehler: ein stillschweigender Nullwert waere geraten, und
+        // die Sema kennt keine Regel, die das erlaubt.
+        var declaredFields = named.Symbol.Declaration switch
+        {
+            ClassDecl c => c.Members.OfType<FieldDecl>().ToArray(),
+            StructDecl v => v.Members.OfType<FieldDecl>().ToArray(),
+            _ => [],
+        };
+
+        foreach (var field in declaredFields)
+        {
+            if (values.ContainsKey(field.Name)) continue;
+
+            if (field.Default is null)
+                throw NotSupported($"initializer omits field '{field.Name}', which has no default",
+                    expr.Span);
+
+            var index = Array.IndexOf(layout.FieldNames, field.Name);
+            values[field.Name] = index >= 0
+                ? LowerExprAs(field.Default, layout.FieldTypes[index])
+                : LowerExpr(field.Default);
+        }
+
         foreach (var name in layout.FieldNames)
             if (!values.ContainsKey(name))
-                throw NotSupported($"initializer omits field '{name}' (field defaults are not " +
-                                   "supported by this compiler version yet)", expr.Span);
+                throw Bug($"field '{name}' of '{named.Symbol.Name}' has neither a value nor a default");
 
         // Ein struct-Wert ist zur Laufzeit dasselbe Slot-Array wie ein Klassenobjekt — 'newobj'
         // taugt fuer beides. Der Unterschied steckt allein in den Bindepunkten.

@@ -99,3 +99,24 @@ public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Va
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);
 public sealed record CondBranch(TempId Cond, BlockId IfTrue, BlockId IfFalse, Span Span) : IrTerminator(Span);
 public sealed record Unreachable(Span Span) : IrTerminator(Span);
+
+// Exceptions (P5). 'throw' ist ein Terminator, kein Op: nach ihm laeuft in diesem Block nichts
+// mehr, und das strukturell festzuhalten ist dieselbe Entscheidung wie bei 'return'.
+/// <param name="Concrete">Der konkrete Typ des geworfenen Wertes, oder <c>null</c>, wenn er erst
+/// zur Laufzeit feststeht (der Wert ist interface-typisiert und traegt ihn als Fat Pointer mit).
+///
+/// <para>Dass der statische Typ hier ueberhaupt reicht, ist eine Folge von ADR-003: Lyric hat
+/// <b>keine Inheritance</b>. Eine Klasse ist genau ihr Typ, es gibt keine Untertypen — also ist
+/// der Typ an der Wurfstelle derselbe, den ein <c>catch</c> vergleicht. In C# oder Java waere das
+/// falsch und man braeuchte ein Tag im Objekt.</para></param>
+public sealed record Throw(TempId Value, TypeId? Concrete, Span Span) : IrTerminator(Span);
+
+/// <summary>
+/// Ende einer <c>finally</c>-Region: die Abwicklung geht dort weiter, wo sie unterbrochen wurde.
+///
+/// <para><b>Lyric hat kein <c>finally</c></b> (ADR-009) — diese Region entsteht ausschliesslich aus
+/// <c>defer</c>. Auf Bytecode-Ebene braucht „laeuft auch beim Abwickeln" aber genau diesen
+/// Mechanismus; die Sprache bleibt bei einem Schluesselwort, das Format bekommt den Traeger dafuer.
+/// </para>
+/// </summary>
+public sealed record EndFinally(Span Span) : IrTerminator(Span);

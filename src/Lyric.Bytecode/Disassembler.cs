@@ -131,6 +131,8 @@ public static class Disassembler
                             $"{TypeRefName(module, i.Immediate2)}",
         Op.CallVirt => $"callvirt {SlotName(module, i.Immediate, i.Immediate2)}",
         Op.EnumTag => "enumtag",
+        Op.Throw => "throw",
+        Op.EndFinally => "endfinally",
         Op.EnumAs => $"enumas {TypeRefName(module, i.Immediate)}",
 
         Op.OptNone => "optnone",

@@ -272,9 +272,64 @@ public static class IrVerifier
         public void Run()
         {
             if (!CheckTables()) return;
+            if (!CheckHandlers()) return;
             if (!CheckCfgShape()) return;
             ComputeReachabilityAndAvailability();
             CheckInstructions();
+        }
+
+        /// <summary>
+        /// Die geschuetzten Regionen. Laeuft <b>vor</b> der CFG-Pruefung, weil die Reachability
+        /// sie als Wurzeln benutzt — ein Bereich ins Leere wuerde dort sonst danebengreifen.
+        /// </summary>
+        private bool CheckHandlers()
+        {
+            var ok = true;
+            var count = _fn.Blocks.Count;
+
+            for (var i = 0; i < _fn.Handlers.Count; i++)
+            {
+                var h = _fn.Handlers[i];
+                var where = $"handler #{i}";
+
+                if (h.Start.Value < 0 || h.End.Value > count || h.Start.Value >= h.End.Value)
+                {
+                    Report($"{where}: protected range [{h.Start}, {h.End}) is not a valid " +
+                           $"block range (function has {count} block(s))");
+                    ok = false;
+                    continue;
+                }
+
+                if (h.Handler.Value < 0 || h.Handler.Value >= count)
+                {
+                    Report($"{where}: handler block {h.Handler} is out of range");
+                    ok = false;
+                    continue;
+                }
+
+                // Ein Handler, der sich selbst schuetzt, waere eine Endlosschleife beim Abwickeln:
+                // sein eigener Wurf faende wieder ihn.
+                if (h.Handler.Value >= h.Start.Value && h.Handler.Value < h.End.Value)
+                {
+                    Report($"{where}: handler block {h.Handler} lies inside its own protected " +
+                           $"range [{h.Start}, {h.End}) — unwinding would not terminate");
+                    ok = false;
+                }
+
+                if (h.Kind == IrHandlerKind.Finally && (h.CatchType is not null || h.Slot is not null))
+                {
+                    Report($"{where}: a finally region catches nothing and binds nothing");
+                    ok = false;
+                }
+
+                if (h.Slot is { } slot && (slot.Value < 0 || slot.Value >= _fn.Locals.Count))
+                {
+                    Report($"{where}: binds into slot {slot}, which is outside the local table");
+                    ok = false;
+                }
+            }
+
+            return ok;
         }
 
         // ------------------------------------------------------------------ Phase 0: Tabellen
@@ -480,6 +535,17 @@ public static class IrVerifier
 
             _reachable.Add(_fn.Entry);
             stack.Push((_fn.Entry, 0));
+
+            // Handler-Bloecke sind zusaetzliche Wurzeln. Sie haben im CFG keinen Praedecessor —
+            // erreicht werden sie ueber die Handler-Tabelle beim Abwickeln, nicht ueber einen
+            // Sprung. Ohne sie hier zu verankern meldete der Verifier jeden catch-Block als
+            // unerreichbar, und die Regel „unerreichbare Bloecke sind ein Fehler" (P4) wuerde
+            // Exceptions unmoeglich machen statt sie zu pruefen.
+            foreach (var handler in _fn.Handlers)
+            {
+                if (handler.Handler.Value < 0 || handler.Handler.Value >= _fn.Blocks.Count) continue;
+                if (_reachable.Add(handler.Handler)) stack.Push((handler.Handler, 0));
+            }
 
             while (stack.Count > 0)
             {
@@ -1406,6 +1472,16 @@ public static class IrVerifier
                         ReportTerm(block, $"condition {c.Cond} is {Show(TypeOf(c.Cond))}, must be bool");
                     break;
 
+                // Nur Throwable-Typen sind werfbar (Sprache.md §9) — geprueft hat das die Sema.
+                // Hier bleibt die Form: ein Wert, der ueberhaupt ein Objekt ist. Ein Skalar zu
+                // werfen waere ein Lowering-Bug, kein User-Fehler.
+                case Throw t when TypeOf(t.Value) is not (IrRefType or IrInterfaceType):
+                    ReportTerm(block, $"throws {t.Value} ({Show(TypeOf(t.Value))}); " +
+                                      "only class and interface values are throwable");
+                    break;
+
+                case Throw:
+                case EndFinally:
                 case Branch:
                 case Unreachable:
                     break; // keine Typ-Bedingungen

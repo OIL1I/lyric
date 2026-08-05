@@ -348,7 +348,7 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 | P3b ✅ | Enums (Unit-/Tuple-/Struct-Varianten) + `match` | `examples/enums.lyr` |
 | P3 ✅ | Interfaces + vtable-Dispatch (**nach** P3b) | `examples/interfaces.lyr` |
 | P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/vectors.lyr` |
-| P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | `examples/bank.lyr` |
+| P5 ✅ | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | `examples/bank.lyr` |
 | P6 | Closures (Lifting + Environment-Objekt) | `examples/inventory.lyr` |
 | P7 | Coroutinen (State-Machine-Lowering, ADR-006) | `examples/fibonacci.lyr` |
 | P8 | Generics-Monomorphisierung + `for-in`/`Iterator` | `examples/fizzbuzz.lyr`, `examples/stats.lyr` |

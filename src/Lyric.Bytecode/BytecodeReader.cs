@@ -52,6 +52,7 @@ public static class BytecodeReader
         IReadOnlyList<BytecodeFunction> functions = Array.Empty<BytecodeFunction>();
         int? start = null;
         IReadOnlyList<BytecodeImpl> impls = Array.Empty<BytecodeImpl>();
+        IReadOnlyList<BytecodeHandler> handlers = Array.Empty<BytecodeHandler>();
 
         var previousId = -1;
         while (!reader.AtEnd)
@@ -76,6 +77,7 @@ public static class BytecodeReader
                 case SectionId.Functions: functions = ReadFunctions(payload, strings); break;
                 case SectionId.Start: start = payload.ULebAsCount(); break;
                 case SectionId.Impls: impls = ReadImpls(payload); break;
+                case SectionId.Handlers: handlers = ReadHandlers(payload); break;
                 default: break; // unbekannt oder reserviert: überspringen, dafür ist die Länge da
             }
 
@@ -95,6 +97,7 @@ public static class BytecodeReader
             Functions = functions,
             Start = start,
             Impls = impls,
+            Handlers = handlers,
         };
 
         Validate(module);
@@ -293,6 +296,37 @@ public static class BytecodeReader
         return impls;
     }
 
+    /// <summary>Die Handlers-Sektion: je Zeile Funktion, Blockbereich, Art, Typ, Handler, Slot.</summary>
+    private static IReadOnlyList<BytecodeHandler> ReadHandlers(ByteReader payload)
+    {
+        var count = payload.ULebAsCount();
+        var handlers = new List<BytecodeHandler>(Math.Min(count, 4096));
+
+        for (var i = 0; i < count; i++)
+        {
+            var function = payload.ULebAsCount();
+            var start = payload.ULebAsCount();
+            var end = payload.ULebAsCount();
+            var kind = payload.U8();
+            var catchType = payload.ULebAsCount();
+            var handler = payload.ULebAsCount();
+            var slot = payload.ULebAsCount();
+
+            if (kind > 1)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"handler {i}: unknown kind {kind}");
+
+            handlers.Add(new BytecodeHandler
+            {
+                Function = function, Start = start, End = end, Kind = kind,
+                // 0 heisst "keiner"; der echte Index steht um eins erhoeht im Strom.
+                CatchType = catchType - 1, Handler = handler, Slot = slot - 1,
+            });
+        }
+
+        return handlers;
+    }
+
     /// <summary>Prüfungen, die erst gehen, wenn alles gelesen ist — Call-Ziele brauchen die
     /// Signaturen anderer Funktionen, Sprungziele die Blockanzahl.</summary>
     private static void Validate(BytecodeModule module)
@@ -305,6 +339,7 @@ public static class BytecodeReader
 
         ValidateTypeReferences(module);
         ValidateImpls(module);
+        ValidateHandlers(module);
 
         foreach (var function in module.Functions)
         {
@@ -508,6 +543,53 @@ public static class BytecodeReader
                     throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                         $"impl row for '{module.Types[impl.Type].Name}' :: '{iface.Name}' " +
                         $"targets {method}, which is outside {callable} callable(s)");
+        }
+    }
+
+    /// <summary>
+    /// Die geschuetzten Regionen (ADR-013: geprueft beim Laden). Danach darf das Abwickeln zur
+    /// Laufzeit ohne Pruefung durch die Tabelle laufen.
+    /// </summary>
+    private static void ValidateHandlers(BytecodeModule module)
+    {
+        foreach (var h in module.Handlers)
+        {
+            if (h.Function < 0 || h.Function >= module.Functions.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"handler names function {h.Function}, which is outside " +
+                    $"{module.Functions.Count} function(s)");
+
+            var blocks = module.Functions[h.Function].BlockOffsets.Count;
+            if (h.Start < 0 || h.End > blocks || h.Start >= h.End)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"handler in '{module.Functions[h.Function].Name}': protected range " +
+                    $"[{h.Start}, {h.End}) is not valid for {blocks} block(s)");
+
+            if (h.Handler < 0 || h.Handler >= blocks)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"handler in '{module.Functions[h.Function].Name}': handler block " +
+                    $"{h.Handler} is outside {blocks} block(s)");
+
+            // Ein Handler in seinem eigenen Bereich waere eine Endlosschleife beim Abwickeln.
+            if (h.Handler >= h.Start && h.Handler < h.End)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"handler in '{module.Functions[h.Function].Name}': handler block " +
+                    $"{h.Handler} lies inside its own protected range — unwinding would not terminate");
+
+            if (h.CatchType >= module.Types.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"handler in '{module.Functions[h.Function].Name}': catch type {h.CatchType} " +
+                    $"is outside {module.Types.Count} type(s)");
+
+            if (h.Slot >= module.Functions[h.Function].SlotTypes.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"handler in '{module.Functions[h.Function].Name}': binds into slot {h.Slot}, " +
+                    "which is outside the slot table");
+
+            if (h.IsFinally && (h.CatchType >= 0 || h.Slot >= 0))
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"handler in '{module.Functions[h.Function].Name}': a finally region catches " +
+                    "nothing and binds nothing");
         }
     }
 

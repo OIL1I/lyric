@@ -17,7 +17,7 @@ public static class Format
     /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
     /// ausdrücklich.</remarks>
     public const ushort VersionMajor = 2;
-    public const ushort VersionMinor = 2;
+    public const ushort VersionMinor = 3;
 }
 
 /// <summary>
@@ -64,6 +64,15 @@ public enum SectionId : byte
     /// Erweiterung, fuer die der Mechanismus da ist.</para>
     /// </summary>
     Impls = 8,
+
+    /// <summary>
+    /// Geschuetzte Regionen je Funktion: welcher Blockbereich von welchem Handler abgedeckt ist.
+    ///
+    /// <para>Eigene Sektion und <b>kein</b> Feld im Funktions-Eintrag: §2 erlaubt einer neuen Minor
+    /// nur ueberspringbare Ergaenzungen, und ein zusaetzliches Feld im Funktionskopf waere eine
+    /// Formaenderung. Dieselbe Ueberlegung wie bei Impls.</para>
+    /// </summary>
+    Handlers = 9,
 }
 
 /// <summary>
@@ -272,4 +281,18 @@ public enum Op : byte
     /// Opcode waere polymorph. Explizit ist es in der Disassembly sichtbar und beim Lesen des
     /// Formats eindeutig — dieselbe Entscheidung wie bei <c>mkiface</c>.</para></summary>
     StructCopy = 0x72,
+
+    // --- Exceptions (Format 2.3) -------------------------------------------------------------
+
+    /// <summary><c>throw</c> — nimmt den Wert vom Stack und beginnt das Abwickeln. Terminator:
+    /// nach ihm laeuft im Block nichts mehr.</summary>
+    Throw = 0x73,
+
+    /// <summary><c>endfinally</c> — Ende einer <c>finally</c>-Region; die Abwicklung geht dort
+    /// weiter, wo sie unterbrochen wurde. Terminator.
+    ///
+    /// <para>Lyric selbst hat kein <c>finally</c> (ADR-009); diese Region entsteht ausschliesslich
+    /// aus <c>defer</c>. Das Format braucht den Traeger trotzdem, weil „laeuft auch beim
+    /// Abwickeln" anders nicht ausdrueckbar ist.</para></summary>
+    EndFinally = 0x74,
 }

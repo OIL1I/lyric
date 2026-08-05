@@ -48,6 +48,15 @@ public static class VmDiagnostics
     /// unerreichbar — der Loader prueft jedes <c>mkiface</c> gegen die Impls-Sektion (ADR-013).
     /// Erreichbar nur, wenn ein Host ein Modul unter Umgehung des Readers zusammensetzt.</summary>
     public const string NoImplementation = "LYR-VM0009";
+
+    /// <summary>Eine Exception hat den Einstiegspunkt verlassen, ohne gefangen zu werden.
+    ///
+    /// <para>Statisch sollte das nicht vorkommen: die Sema erzwingt, dass ein Aufruf einer
+    /// <c>throws</c>-Funktion entweder selbst deklariert wird oder von einem <c>try</c> umgeben
+    /// ist, und <c>main</c> darf laut Entry-Contract (§11) nichts deklarieren. Erreichbar bleibt
+    /// es ueber ein von Hand gebautes Modul — und dann ist es ein Abbruch wie ein panic.</para>
+    /// </summary>
+    public const string UncaughtException = "LYR-VM0010";
 }
 
 /// <summary>

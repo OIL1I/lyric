@@ -65,6 +65,8 @@ public static class IrShape
         Branch => Array.Empty<TempId>(),
         CondBranch c => new[] { c.Cond },
         Unreachable => Array.Empty<TempId>(),
+        Throw t => new[] { t.Value },
+        EndFinally => Array.Empty<TempId>(),
         _ => throw new InternalCompilationException(
             $"ir: unhandled terminator {terminator.GetType().Name}")
     };
@@ -113,7 +115,10 @@ public static class IrShape
         Return => Array.Empty<BlockId>(),
         Branch b => new[] { b.Target },
         CondBranch c => new[] { c.IfTrue, c.IfFalse },
-        Unreachable => Array.Empty<BlockId>(),
+        // Throw und EndFinally haben keine Nachfolger IM CFG — wohin es weitergeht, entscheidet
+        // die Handler-Tabelle, nicht der Kontrollfluss des Blocks. Der Verifier behandelt
+        // Handler-Bloecke deshalb gesondert als erreichbar.
+        Unreachable or Throw or EndFinally => Array.Empty<BlockId>(),
         _ => throw new InternalCompilationException(
             $"ir: unhandled terminator {terminator.GetType().Name}")
     };

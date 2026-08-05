@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v2.2
+# Lyric — `.lyrbc` Bytecode-Format v2.3
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,10 +7,11 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **2.2**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **2.3**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
 > (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals**,
-> **Enums**, **Interfaces mit vtable-Dispatch** und **Structs mit Wert-Semantik**.
+> **Enums**, **Interfaces mit vtable-Dispatch**, **Structs mit Wert-Semantik** und
+> **Exceptions** (`throw`/`try`/`catch`).
 
 ---
 
@@ -71,6 +72,7 @@ zu tolerieren — neue Minor-Versionen dürfen nur überspringbare Sektionen hin
 | 6 | SourceMap | nein | optional und **strippbar**: PC → Datei/Zeile |
 | 7 | Start | nein | Einstiegspunkt: `uleb128`-Index der aufzurufenden Funktion |
 | 8 | Impls | nein | Interface-Implementierungen (vtables) |
+| 9 | Handlers | nein | geschützte Regionen je Funktion |
 
 Fehlt eine Sektion, gilt sie als leer.
 
@@ -259,6 +261,43 @@ weil `callvirt` seinen Empfänger vom Stack holen muss, *bevor* die Zielfunktion
 Eigene Sektion und **kein** Feld im Klassen-Eintrag: §2 erlaubt einer neuen Minor nur überspringbare
 Ergänzungen. Ein zusätzliches Feld im Layout-Eintrag wäre eine Formänderung wie bei den Enums (die
 2.0 erzwang); eine neue Sektions-Id ist genau die Erweiterung, für die der Mechanismus da ist.
+
+---
+
+### Handlers (Id 9)
+
+Die **geschützten Regionen**: welcher Blockbereich einer Funktion von welchem Handler abgedeckt ist.
+
+```
+handlerCount     uleb128
+handlerCount mal:
+  function       uleb128   Index in die Functions-Sektion
+  startBlock     uleb128   erster geschützter Block
+  endBlock       uleb128   erster NICHT mehr geschützter Block
+  kind           u8        0 = catch, 1 = finally
+  catchType      uleb128   0 = fängt alles; sonst Typ-Index + 1
+  handlerBlock   uleb128   wohin gesprungen wird
+  slot           uleb128   0 = bindet nichts; sonst Slot-Index + 1
+```
+
+**Block-Indizes, keine Byte-Bereiche** — dieselbe Entscheidung wie bei den Sprungzielen: einen
+Bereich prüft man mit zwei Vergleichen gegen die Blockzahl, statt Byte-Offsets gegen
+Instruktionsgrenzen zu verifizieren.
+
+**Die Reihenfolge ist der Vertrag: innerste Region zuerst.** Beim Abwickeln nimmt eine Runtime den
+ersten Eintrag, dessen Bereich den Fehlerort deckt und dessen Typ passt. Bei geschachtelten
+`try`-Blöcken entscheidet damit die Liste, nicht eine Rechnung über Bereichsgrößen.
+
+**Der gefangene Wert geht in einen Slot, nicht auf den Stack.** CIL schiebt ihn beim Betreten des
+Handlers auf den Operanden-Stack; das ginge hier nicht, weil der Stack an jeder Blockgrenze leer ist
+(§4) und ein Handler-Block eine Blockgrenze ist. Über einen Slot bleibt die Invariante intakt.
+
+Eine Runtime **muss** ablehnen: einen Bereich außerhalb der Blockzahl, `startBlock >= endBlock`,
+einen Handler-Block **innerhalb seines eigenen Bereichs** (das Abwickeln terminierte nicht), einen
+Typ- oder Slot-Index außerhalb seiner Tabelle, und eine `finally`-Region mit Typ oder Slot.
+
+**Beim Sprung in einen Handler ist der Operanden-Stack zu leeren.** Der abgebrochene Ausdruck kann
+Zwischenwerte hinterlassen haben.
 
 ---
 
@@ -512,6 +551,32 @@ es nicht: er hat noch keinen anderen Besitzer.
 Ein `structcopy` auf einem Typ, der **kein** Struct-Eintrag ist, muss ein Leser ablehnen. Es wäre
 kein Fehler, den die Laufzeit bemerkt — sie kopierte klaglos ein Slot-Array, das geteilt gehört,
 und die Semantik bräche still.
+
+### Exceptions
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x73` | `throw` | `uleb128` concreteType | −1 +0 | beginnt das Abwickeln; **Terminator** |
+| `0x74` | `endfinally` | — | −0 +0 | Ende einer `finally`-Region; **Terminator** |
+
+`throw` trägt den **konkreten Typ** des geworfenen Wertes als `Typ-Index + 1`, oder `0` für „steht
+erst zur Laufzeit fest" — dann ist der Wert interface-typisiert und führt seinen Typ als Fat Pointer
+mit (§Darstellung eines Interface-Wertes).
+
+**Dass der statische Typ überhaupt reicht, ist eine Eigenschaft dieser Sprache**: Lyric hat keine
+Inheritance (ADR-003). Eine Klasse ist genau ihr Typ, es gibt keine Untertypen — also ist der Typ an
+der Wurfstelle derselbe, den ein `catch` vergleicht, und der **Typvergleich beim Abwickeln ist
+Gleichheit**, kein Untertyp-Test. In C# oder Java wäre das falsch und man bräuchte ein Typ-Tag im
+Objekt.
+
+`endfinally` gibt die Abwicklung dorthin zurück, wo sie unterbrochen wurde. **Lyric selbst hat kein
+`finally`** (ADR-009) — eine solche Region entsteht ausschließlich aus `defer`. Das Format braucht
+den Träger trotzdem, weil „läuft auch beim Abwickeln" anders nicht ausdrückbar ist; die *Sprache*
+bleibt bei einem Schlüsselwort.
+
+Verlässt eine Exception den Einstiegspunkt, ohne gefangen zu werden, bricht die Runtime ab wie bei
+einem `panic` (§9 der Sprachspec). Statisch sollte das nicht vorkommen — die Sema erzwingt, dass ein
+Aufruf einer `throws`-Funktion deklariert oder umgeben wird, und `main` darf nichts deklarieren.
 
 ### Darstellung eines Interface-Wertes
 

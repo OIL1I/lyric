@@ -30,7 +30,7 @@ public static class CodeDecoder
                 Op.Const => DecodeConst(reader, offset),
 
                 Op.LoadLocal or Op.StoreLocal or Op.Call or Op.Branch or Op.NewObject or
-                Op.NewVariant or Op.EnumAs or Op.StructCopy =>
+                Op.NewVariant or Op.EnumAs or Op.StructCopy or Op.Throw =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode, Immediate = reader.ULeb() },
 
                 // ldfld/stfld tragen Typ- UND Feldindex. Der Typ ist zur Laufzeit redundant, aber
@@ -53,6 +53,7 @@ public static class CodeDecoder
                 // gültig, ein Tag wäre reine Redundanz. Die Array-Opcodes tragen ebenfalls keins:
                 // ihr Elementtyp steht in der Temp-Tabelle bzw. am Array selbst.
                 Op.Not or Op.Pop or Op.Return or Op.ReturnValue or Op.Unreachable or
+                Op.EndFinally or
                 Op.LoadElem or Op.StoreElem or Op.ArrayLen or Op.ArrayConcat or Op.ArrayRepeat or
                 Op.OptIsSome or Op.OptGet or Op.EnumTag =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode },
@@ -199,7 +200,9 @@ public static class CodeDecoder
         // der Signatur des Interface-Slots. Deshalb reicht er sie herein, genau wie bei 'call'.
         Op.CallVirt => (callArity, callReturnsValue ? 1 : 0),
 
-        Op.Return or Op.Branch or Op.Unreachable => (0, 0),
+        Op.Return or Op.Branch or Op.Unreachable or Op.EndFinally => (0, 0),
+        // throw nimmt den Wert und gibt nichts zurueck — der Block endet hier.
+        Op.Throw => (1, 0),
         Op.ReturnValue or Op.CondBranch => (1, 0),
 
         _ => throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,

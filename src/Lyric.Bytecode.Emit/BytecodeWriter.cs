@@ -142,6 +142,30 @@ public static class BytecodeWriter
             });
 
 
+        // Geschuetzte Regionen. Ganz zuletzt: Sektions-Ids steigen strikt, Handlers (9) liegt
+        // hinter Impls (8).
+        var handlers = module.Functions
+            .SelectMany((fn, index) => fn.Handlers.Select(h => (Function: index, Handler: h)))
+            .ToList();
+
+        if (handlers.Count > 0)
+            WriteSection(writer, SectionId.Handlers, s =>
+            {
+                s.ULeb(handlers.Count);
+                foreach (var (function, h) in handlers)
+                {
+                    s.ULeb(function);
+                    s.ULeb(h.Start.Value);
+                    s.ULeb(h.End.Value);
+                    s.U8((byte)(h.Kind == IrHandlerKind.Finally ? 1 : 0));
+                    // -1 als "kein Typ"/"kein Slot": im Strom als uleb128 0, der echte Index +1.
+                    // Ein eigenes Praesenz-Byte waere ein Byte mehr fuer dieselbe Aussage.
+                    s.ULeb(h.CatchType is { } t ? (ulong)(t.Value + 1) : 0UL);
+                    s.ULeb(h.Handler.Value);
+                    s.ULeb(h.Slot is { } slot ? (ulong)(slot.Value + 1) : 0UL);
+                }
+            });
+
         return writer.ToArray();
     }
 
@@ -346,6 +370,16 @@ public static class BytecodeWriter
                 break;
             case Unreachable:
                 code.Opcode(Op.Unreachable);
+                break;
+
+            case Throw t:
+                code.Opcode(Op.Throw);
+                // 0 = "steht erst zur Laufzeit fest"; der echte Index steht um eins erhoeht.
+                code.ULeb(t.Concrete is { } thrown ? (ulong)(thrown.Value + 1) : 0UL);
+                break;
+
+            case EndFinally:
+                code.Opcode(Op.EndFinally);
                 break;
             default:
                 throw new InternalCompilationException(

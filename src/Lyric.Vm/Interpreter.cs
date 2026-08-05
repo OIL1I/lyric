@@ -43,7 +43,9 @@ public static class Interpreter
                 + "function defined in this module");
 
         var prepared = new Prepared[module.Functions.Count];
-        for (var i = 0; i < prepared.Length; i++) prepared[i] = Prepared.From(module.Functions[i]);
+        for (var i = 0; i < prepared.Length; i++)
+            prepared[i] = Prepared.From(module.Functions[i],
+                module.Handlers.Where(h => h.Function == i).ToArray());
 
         // Bindung beim Laden: fehlt ein Native, wird das Modul abgelehnt, bevor eine
         // Instruktion laeuft.
@@ -161,6 +163,20 @@ public static class Interpreter
 
                     frames.Push(frame);
                     frame = next;
+                    break;
+                }
+
+                case Op.Throw:
+                {
+                    // 0 heisst "steht erst zur Laufzeit fest" — dann ist der Wert ein Fat Pointer
+                    // und traegt seinen konkreten Typ selbst (P3).
+                    var thrown = frame.Pop();
+                    var declared = (int)instruction.Immediate - 1;
+                    var type = declared >= 0 ? declared : thrown.ConcreteType;
+
+                    if (!Unwind(prepared, frames, ref frame, thrown, type))
+                        throw new LyricPanic(VmDiagnostics.UncaughtException,
+                            $"uncaught exception of type '{TypeName(types, type)}'");
                     break;
                 }
 
@@ -440,6 +456,57 @@ public static class Interpreter
         return LyrValue.FromObject(copy);
     }
 
+    /// <summary>
+    /// Sucht den Handler fuer einen geworfenen Wert und setzt den Kontrollfluss dorthin.
+    ///
+    /// <para>Von innen nach aussen: erst die Handler des aktuellen Frames, dann — nach dem
+    /// Verwerfen des Frames — die des Aufrufers. <see cref="IrFunction.Handlers"/> steht bereits
+    /// innerste-zuerst, also gewinnt der erste passende Eintrag; eine Bereichsgroessen-Rechnung
+    /// braucht es nicht.</para>
+    ///
+    /// <para><b>Typvergleich ist Gleichheit</b>, kein Untertyp-Test. Lyric hat keine Inheritance
+    /// (ADR-003): eine Klasse ist genau ihr Typ. Ein catch-all (<c>CatchType &lt; 0</c>) faengt
+    /// alles.</para>
+    ///
+    /// <para>Liefert <c>false</c>, wenn kein Frame einen Handler hat — dann verlaesst die
+    /// Exception den Einstiegspunkt.</para>
+    /// </summary>
+    private static bool Unwind(Prepared[] prepared, Stack<Frame> frames, ref Frame frame,
+        LyrValue thrown, int type)
+    {
+        while (true)
+        {
+            // Der Zeiger steht schon hinter der werfenden Instruktion; der Block davor ist der,
+            // in dem geworfen wurde.
+            var at = Math.Max(0, frame.Ip - 1);
+            var block = frame.Fn.BlockOfInstruction.Length > at
+                ? frame.Fn.BlockOfInstruction[at]
+                : -1;
+
+            foreach (var handler in frame.Fn.Handlers)
+            {
+                if (block < handler.Start || block >= handler.End) continue;
+                if (handler.IsFinally) continue;   // finally kommt mit defer (offen, s. STATUS)
+                if (handler.CatchType >= 0 && handler.CatchType != type) continue;
+
+                if (handler.Slot >= 0) frame.Slots[handler.Slot] = thrown;
+
+                // Der Stack ist an jeder Blockgrenze leer (Bytecode.md §4) — beim Sprung in den
+                // Handler muss er das auch sein, sonst blieben Zwischenwerte des abgebrochenen
+                // Ausdrucks liegen.
+                frame.ClearStack();
+                frame.Ip = frame.Fn.BlockStart[handler.Handler];
+                return true;
+            }
+
+            if (frames.Count == 0) return false;
+            frame = frames.Pop();
+        }
+    }
+
+    private static string TypeName(IReadOnlyList<BytecodeTypeDef> types, int index) =>
+        index >= 0 && index < types.Count ? types[index].Name : $"ty{index}";
+
     private static LyrValue[] NewInstance(BytecodeTypeDef type)
     {
         var slots = new LyrValue[type.FieldTypes.Count];
@@ -667,7 +734,17 @@ public static class Interpreter
         public required BytecodeInstruction[] Instructions { get; init; }
         public required int[] BlockStart { get; init; }
 
-        public static Prepared From(BytecodeFunction function)
+        /// <summary>Die geschuetzten Regionen dieser Funktion, innerste zuerst.</summary>
+        public BytecodeHandler[] Handlers { get; init; } = [];
+
+        /// <summary>Zu welchem Block gehoert die Instruktion an Index <c>i</c>?
+        ///
+        /// <para>Handler-Bereiche sind Block-Bereiche, der Frame kennt aber nur seinen
+        /// Instruktionszeiger. Die Zuordnung einmal beim Laden zu bauen macht die Handler-Suche
+        /// zu einem Array-Zugriff statt einer Suche in der Block-Offset-Tabelle.</para></summary>
+        public int[] BlockOfInstruction { get; init; } = [];
+
+        public static Prepared From(BytecodeFunction function, BytecodeHandler[] handlers)
         {
             var instructions = CodeDecoder.Decode(function.Code).ToArray();
             var indexByOffset = new Dictionary<int, int>(instructions.Length);
@@ -677,9 +754,19 @@ public static class Interpreter
             for (var b = 0; b < blockStart.Length; b++)
                 blockStart[b] = indexByOffset[function.BlockOffsets[b]];
 
+            // Umkehrung der Block-Tabelle: jede Instruktion bekommt ihren Block. Einmal beim
+            // Laden, damit die Handler-Suche zur Laufzeit ein Array-Zugriff ist.
+            var blockOf = new int[instructions.Length];
+            for (var b = 0; b < blockStart.Length; b++)
+            {
+                var upTo = b + 1 < blockStart.Length ? blockStart[b + 1] : instructions.Length;
+                for (var i = blockStart[b]; i < upTo; i++) blockOf[i] = b;
+            }
+
             return new Prepared
             {
                 Source = function, Instructions = instructions, BlockStart = blockStart,
+                Handlers = handlers, BlockOfInstruction = blockOf,
             };
         }
     }
@@ -704,6 +791,11 @@ public static class Interpreter
 
         public void Push(LyrValue value) => Stack[Sp++] = value;
         public LyrValue Pop() => Stack[--Sp];
+
+        /// <summary>Leert den Operanden-Stack. Beim Sprung in einen Handler noetig: der
+        /// abgebrochene Ausdruck kann Zwischenwerte hinterlassen haben, und ein Handler-Block
+        /// faengt wie jeder Block mit leerem Stack an.</summary>
+        public void ClearStack() => Sp = 0;
 
         /// <summary>Liest ohne zu entnehmen; <paramref name="depth"/> 0 ist das oberste Element.
         /// Gebraucht von <c>callvirt</c>, das seinen Empfaenger unter den Argumenten findet.</summary>
