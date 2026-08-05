@@ -35,7 +35,10 @@ public static class CodeDecoder
 
                 // ldfld/stfld tragen Typ- UND Feldindex. Der Typ ist zur Laufzeit redundant, aber
                 // ohne ihn könnte der Loader den Feldindex nicht gegen ein Layout prüfen.
-                Op.CondBranch or Op.LoadField or Op.StoreField => new BytecodeInstruction
+                // mkiface traegt konkreten Typ UND Interface, callvirt Interface UND Slot —
+                // beide zwei uleb128, dieselbe Form wie ldfld.
+                Op.CondBranch or Op.LoadField or Op.StoreField or Op.MakeInterface
+                    or Op.CallVirt => new BytecodeInstruction
                 {
                     Offset = offset, Opcode = opcode,
                     Immediate = reader.ULeb(), Immediate2 = reader.ULeb(),
@@ -92,14 +95,46 @@ public static class CodeDecoder
 
     /// <summary>Überspringt einen Typ im Strom: ein Tag, dann bei <c>Ref</c> ein Index und bei
     /// <c>Array</c>/<c>Optional</c> rekursiv der innere Typ.</summary>
+    /// <summary>
+    /// Ueberspringt einen inline kodierten Typ im Instruktionsstrom.
+    ///
+    /// <para><b>Total ueber alle Tags</b>, und das ist keine Stilfrage. Die erste Fassung war eine
+    /// <c>else if</c>-Kette, die jedes nicht genannte Tag stillschweigend als Skalar behandelte —
+    /// also den Index nicht las, den es traegt. Ein <c>?Enum</c> desynchronisierte damit den Strom
+    /// und meldete sich viele Bytes spaeter als „unknown opcode 0x00": ein Fehler, der nichts mehr
+    /// ueber seine Ursache sagt. Gefunden am 2026-08-05 beim Bau der Interfaces, vorhanden seit
+    /// P3b. Der <c>default</c>-Wurf sorgt dafuer, dass die naechste Tag-Art beim Uebersehen laut
+    /// wird statt still falsch.</para>
+    /// </summary>
     private static void SkipType(ByteReader reader, int offset)
     {
         var tag = reader.Tag();
-        if (tag == TypeTag.Ref) reader.ULeb();
-        else if (tag is TypeTag.Array or TypeTag.Optional) SkipType(reader, offset);
-        else if (tag == TypeTag.Void)
-            throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
-                $"composite type over void at code offset {offset}");
+        switch (tag)
+        {
+            // Tragen einen uleb128-Tabellenindex hinter sich.
+            case TypeTag.Ref or TypeTag.Enum or TypeTag.Interface:
+                reader.ULeb();
+                return;
+
+            // Tragen ihren inneren Typ inline.
+            case TypeTag.Array or TypeTag.Optional:
+                SkipType(reader, offset);
+                return;
+
+            case TypeTag.Void:
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"composite type over void at code offset {offset}");
+
+            case TypeTag.I8 or TypeTag.I16 or TypeTag.I32 or TypeTag.I64
+                or TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64
+                or TypeTag.F32 or TypeTag.F64
+                or TypeTag.Bool or TypeTag.Char or TypeTag.String:
+                return; // Skalare stehen fuer sich
+
+            default:
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"unknown type tag 0x{(byte)tag:X2} at code offset {offset}");
+        }
     }
 
     private static BytecodeInstruction DecodeConst(ByteReader reader, int offset)
@@ -155,6 +190,12 @@ public static class CodeDecoder
         // Deshalb reicht der Aufrufer sie herein, genau wie bei 'call'.
         Op.NewVariant => (variantArity, 1),
         Op.EnumTag or Op.EnumAs => (1, 1),
+
+        // mkiface hebt einen Wert auf sein Interface: einer runter, einer rauf.
+        Op.MakeInterface => (1, 1),
+        // callvirt nimmt den Empfaenger plus die Argumente — wie viele, weiss nur der Aufrufer aus
+        // der Signatur des Interface-Slots. Deshalb reicht er sie herein, genau wie bei 'call'.
+        Op.CallVirt => (callArity, callReturnsValue ? 1 : 0),
 
         Op.Return or Op.Branch or Op.Unreachable => (0, 0),
         Op.ReturnValue or Op.CondBranch => (1, 0),

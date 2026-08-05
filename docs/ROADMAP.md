@@ -346,7 +346,7 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 | P2 ✅ | Arrays: Literal, `[x]*n`, `xs+ys`, Index, `length` (ADR-016) | `examples/arrays.lyr` |
 | P2b ✅ | Optionals (`?T`, `??`, `!`, Flow-Narrowing) | `examples/optionals.lyr` |
 | P3b ✅ | Enums (Unit-/Tuple-/Struct-Varianten) + `match` | `examples/enums.lyr` |
-| P3 | Interfaces + vtable-Dispatch (**nach** P3b) | eigenes Programm mit Interface |
+| P3 ✅ | Interfaces + vtable-Dispatch (**nach** P3b) | `examples/interfaces.lyr` |
 | P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/bank.lyr` |
 | P5 | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | — |
 | P6 | Closures (Lifting + Environment-Objekt) | `examples/inventory.lyr` |
@@ -358,6 +358,8 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
   nachgeholt (siehe Korrektur unten).
 - Bytecode-Format **1.2**: Types-Sektion (Id 3) wird geschrieben, zusammengesetzte Typ-Tags ab
   `0x40`. Beides ist in `docs/Bytecode.md` bereits reserviert; kein Formatbruch nötig.
+  Stand nach P3: **2.1** (Enums erzwangen 2.0, Interfaces ergänzen additiv Kind 2, Sektion 8 und
+  zwei Opcodes).
 - Diagnostik-Codes `LYR-VM0020..0050`.
 
 **Exit**: Alle `examples/*.lyr` laufen. **v0.5 Release-Tag**.

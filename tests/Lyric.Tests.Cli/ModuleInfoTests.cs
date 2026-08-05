@@ -61,7 +61,7 @@ public sealed class ModuleInfoTests
         var format = document.RootElement.GetProperty("format");
 
         Assert.Equal(2, format.GetProperty("major").GetInt32());
-        Assert.Equal(0, format.GetProperty("minor").GetInt32());
+        Assert.Equal(1, format.GetProperty("minor").GetInt32());
     }
 
     [Fact]

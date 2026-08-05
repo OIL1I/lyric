@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v2.0
+# Lyric — `.lyrbc` Bytecode-Format v2.1
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,9 +7,10 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **2.0**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **2.1**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
-> (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals** und **Enums**.
+> (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals**,
+> **Enums** und **Interfaces mit vtable-Dispatch**.
 
 ---
 
@@ -69,6 +70,7 @@ zu tolerieren — neue Minor-Versionen dürfen nur überspringbare Sektionen hin
 | 5 | Functions | nein | definierte Funktionen samt Code |
 | 6 | SourceMap | nein | optional und **strippbar**: PC → Datei/Zeile |
 | 7 | Start | nein | Einstiegspunkt: `uleb128`-Index der aufzurufenden Funktion |
+| 8 | Impls | nein | Interface-Implementierungen (vtables) |
 
 Fehlt eine Sektion, gilt sie als leer.
 
@@ -87,7 +89,7 @@ und CIL (TypeDef-Tabelle) lösen es genauso.
 
 ```
 nameIndex        uleb128   Index in den String-Pool
-kind             u8        0 = Layout, 1 = Enum
+kind             u8        0 = Layout, 1 = Enum, 2 = Interface
 ```
 
 **kind 0 — Layout** (class, struct, und jede einzelne Enum-Variante):
@@ -122,6 +124,21 @@ demselben Grund so.
 
 **Slot 0 jeder Variante ist ihr Tag**: der `i64`-Index der Variante in der `variantTypes`-Liste
 ihres Enums, 0-basiert in Deklarationsreihenfolge. Die Nutzfelder beginnen bei Slot 1.
+
+**kind 2 — Interface**: nennt statt Feldern die Namen seiner Methoden-Slots.
+
+```
+slotCount        uleb128   mindestens 1
+slotNames        slotCount × String
+```
+
+Der **Index** in dieser Liste ist der Slot, auf den `callvirt` zeigt. Die Namen stehen — anders als
+Feldnamen — tatsächlich im Bytecode, weil ein Disassembler sonst nur `ty3#1` zeigen könnte und eine
+Runtime beim Binden von Host-Implementierungen keinen Anhaltspunkt hätte.
+
+`slotCount` muss mindestens 1 sein: auf einem Interface ohne Methoden gäbe es nichts zu
+dispatchen. Ein Interface darf links in keiner Impls-Zeile stehen — Interfaces implementieren
+keine Interfaces.
 
 ### Capabilities (Id 1)
 
@@ -193,6 +210,38 @@ allein aus dieser Spec implementierbar, und genau das fordert ADR-013.
 
 ---
 
+### Impls (Id 8)
+
+Die **vtables**: welche Funktion erfüllt welchen Methoden-Slot welches Interfaces für welchen Typ.
+
+```
+implCount        uleb128
+implCount mal:
+  typeIndex      uleb128   der implementierende Typ (Klasse oder Enum)
+  interfaceIndex uleb128   ein Interface-Eintrag
+  methodCount    uleb128   muss gleich slotCount des Interfaces sein
+  methods        methodCount uleb128, je ein Index in den gemeinsamen
+                 Aufruf-Indexraum (erst Imports, dann Funktionen)
+```
+
+Eine Zeile je (Typ, Interface)-Paar; dasselbe Paar zweimal ist ein Fehler, weil der Dispatch sonst
+mehrdeutig wäre. Ein Typ, der nicht Klasse oder Enum ist, darf links nicht stehen — Interfaces
+implementieren keine Interfaces.
+
+**Die Auflösungsreihenfolge steckt bereits in den Zeilen.** `Sprache.md` §3.5 gibt „eigenes Member
+vor Interface-Default" vor; der Compiler löst das auf und trägt die gewonnene Funktion ein. Eine
+Runtime sucht nichts — sie liest einen Index.
+
+Alle Implementierungen desselben Slots haben dieselbe Signatur. Eine Runtime darf sich darauf
+verlassen und die Argumentzahl aus *irgendeiner* Zeile des Interfaces ableiten; sie muss das sogar,
+weil `callvirt` seinen Empfänger vom Stack holen muss, *bevor* die Zielfunktion feststeht.
+
+Eigene Sektion und **kein** Feld im Klassen-Eintrag: §2 erlaubt einer neuen Minor nur überspringbare
+Ergänzungen. Ein zusätzliches Feld im Layout-Eintrag wäre eine Formänderung wie bei den Enums (die
+2.0 erzwang); eine neue Sektions-Id ist genau die Erweiterung, für die der Mechanismus da ist.
+
+---
+
 ## 3. Typ-Tags
 
 Ein Byte.
@@ -215,6 +264,10 @@ Zusammengesetzte Typen ab `0x40`:
 | `0x41` | Array | der Elementtyp, wieder als Typ (§3) |
 | `0x42` | Optional (`?T`) | der innere Typ, wieder als Typ (§3) |
 | `0x43` | Enum | `uleb128` Index eines Enum-Eintrags der Types-Sektion |
+| `0x44` | Interface (`dyn`) | `uleb128` Index eines Interface-Eintrags der Types-Sektion |
+
+Ein Wert mit Tag `0x44` traegt neben der Referenz seinen konkreten Typindex — siehe
+§5 „Darstellung eines Interface-Wertes".
 
 Der Elementtyp eines Arrays steht **inline**, nicht als Tabellen-Index: `int[][]` ist damit
 `0x41 0x41 0x04`. Das geht, weil ein Array-Typ nicht rekursiv sein kann — ein Array enthält seinen
@@ -395,6 +448,42 @@ Das ist dieselbe Form wie beim Optional: `optissome` prüft, `optget` löst ein.
 und `enumas` löst ein. Beide Einlösungen können nicht scheitern, wenn der Compiler den Beweis
 geführt hat — `enumas` panickt trotzdem bei falschem Tag, weil `.lyrbc` auch aus fremder Quelle
 kommen kann.
+
+### Interfaces
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x70` | `mkiface` | `uleb128` concreteType, `uleb128` interfaceType | −1 +1 | hebt eine Objektreferenz auf ihren Interface-Typ |
+| `0x71` | `callvirt` | `uleb128` interfaceType, `uleb128` slot | −n +0/1 | ruft die Implementierung des Slots am konkreten Typ des Empfängers |
+
+`mkiface` trägt **beide** Indizes, obwohl eine Runtime nur den konkreten braucht: so prüft der
+Loader die Implementierungs-Beziehung gegen die Impls-Sektion, ohne eine Datenflussanalyse zu
+fahren. Dieselbe Begründung wie beim Typ- und Feldindex am `ldfld` (§6).
+
+`callvirt` erwartet den Empfänger als **Argument 0**, also zuunterst — dieselbe Konvention wie bei
+jedem Methodenaufruf (`Sprache.md` ADR-014). `n` ist die Argumentzahl des Slots einschließlich
+Empfänger.
+
+**Es gibt keinen Downcast.** `Sprache.md` §6.5 lässt `as` ausschließlich zwischen Numerik zu; ein
+Interface-Wert kann nicht zurück auf seine Klasse geprüft werden. Deshalb braucht er auch keine
+Laufzeit-Typprüfung und keinen Fehlerfall.
+
+### Darstellung eines Interface-Wertes
+
+Diese Spec schreibt Runtimes sonst keine Datenstrukturen vor. Hier tut sie es, aus demselben Grund
+wie bei den Optionals: das beobachtbare Verhalten muss überall gleich sein.
+
+Ein Wert vom Tag `0x44` trägt **zwei** Dinge: die Objektreferenz und den **Index seines konkreten
+Typs** in der Types-Sektion. Wie eine Runtime das ablegt, ist ihre Sache — als Paar, als zwei
+Register, als Zeiger auf einen Deskriptor.
+
+**Verboten ist**, den konkreten Typ aus dem Objekt selbst zu lesen. Ein Objekt trägt in diesem
+Format kein Typ-Tag (§Objekte), und ein `mkiface` ist die einzige Stelle, an der der Typ bekannt
+ist. Eine Runtime, die stattdessen ein Tag ins Objekt schriebe, verschöbe jeden Feldindex und wäre
+nicht mehr formatkonform.
+
+Die Referenzimplementierung nutzt dafür die bei einer Referenz ohnehin ungenutzten Zahl-Bits ihres
+Wert-Typs — ein Fat Pointer, wie Rusts `dyn Trait`. Das ist eine Empfehlung, keine Vorschrift.
 
 ### Optionals
 

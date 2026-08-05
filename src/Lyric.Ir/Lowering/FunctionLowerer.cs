@@ -82,9 +82,15 @@ internal sealed class FunctionLowerer
         {
             // Ein Enum-Empfänger ist der Enum-Typ, nicht eine seiner Varianten — welche vorliegt,
             // entscheidet erst das 'match' im Rumpf.
-            _thisType = receiver.Kind == TypeSymbolKind.Enum
-                ? _typeTable.EnumOf(receiver)
-                : _typeTable.RefTo(receiver);
+            // In einer Interface-Default-Methode ist 'this' der Interface-Typ selbst — welche
+            // Implementierung dahintersteckt, weiss erst die Laufzeit. Ein 'this.foo()' darin wird
+            // damit zu einem callvirt, und das ist die richtige Antwort.
+            _thisType = receiver.Kind switch
+            {
+                TypeSymbolKind.Enum => _typeTable.EnumOf(receiver),
+                TypeSymbolKind.Interface => _typeTable.InterfaceOf(receiver),
+                _ => _typeTable.RefTo(receiver),
+            };
             _thisSlot = _slots.Declare("this", _thisType);
         }
 
@@ -537,7 +543,9 @@ internal sealed class FunctionLowerer
 
         if (expr.Operator is null)
         {
-            var value = LowerExpr(expr.Value);
+            // Der Slot-Typ ist die erwartete Form — sonst landete bei 'var d: Damageable; d = p;'
+            // eine nackte Klassenreferenz in einem Interface-Slot.
+            var value = LowerExprAs(expr.Value, _slots.TypeOfLocal(slot));
             _b.Emit(new StoreLocal(slot, value, expr.Span));
             return value;
         }
@@ -571,7 +579,7 @@ internal sealed class FunctionLowerer
 
         if (expr.Operator is null)
         {
-            var assigned = LowerExpr(expr.Value);
+            var assigned = LowerExprAs(expr.Value, fieldType);
             _b.Emit(new StoreField(obj, type, field, assigned, expr.Span));
             return assigned;
         }
@@ -900,14 +908,55 @@ internal sealed class FunctionLowerer
         return isNone;
     }
 
-    /// <summary>Verpackt einen Wert, wenn die Position ein Optional erwartet und der Wert keins ist
-    /// — <c>T</c> → <c>?T</c> ist implizit (Sprache.md §6.5).</summary>
+    /// <summary>
+    /// Passt einen Wert an den Typ an, den seine Position erwartet. Zwei implizite Uebergaenge
+    /// kennt die Sprache, und beide werden hier materialisiert:
+    ///
+    /// <para><c>T</c> → <c>?T</c> ist implizit (Sprache.md §6.5) und wird zu <c>optsome</c>.</para>
+    ///
+    /// <para>Ein Klassen- oder Enum-Wert → sein Interface wird zu <c>mkiface</c>: der Interface-Wert
+    /// ist ein Fat Pointer, der den konkreten Typ mitfuehrt, und der steht genau hier zur
+    /// Compile-Zeit fest. Spaeter — am <c>callvirt</c> — weiss niemand mehr, welche Klasse es war,
+    /// weil ein Objekt kein Typ-Tag traegt (M6/P1).</para>
+    ///
+    /// <para>Die Reihenfolge ist nicht beliebig: bei <c>?SomeInterface</c> muss erst das Interface
+    /// entstehen und dann das Optional darum, sonst verpackte man eine Klassenreferenz und
+    /// <c>optget</c> lieferte etwas, worauf kein <c>callvirt</c> laufen kann.</para>
+    /// </summary>
     private TempId Coerce(TempId value, IrType from, IrType to, Span span)
     {
+        var target = to is IrOptionalType outer ? outer.Inner : to;
+        var source = from is IrOptionalType inner ? inner.Inner : from;
+
+        if (target is IrInterfaceType iface && source is not IrInterfaceType
+            && from is not IrOptionalType)
+        {
+            value = MakeInterfaceValue(value, source, iface, span);
+            from = iface;
+        }
+
         if (to is not IrOptionalType option || from is IrOptionalType) return value;
 
         var dest = _slots.NewTemp(to);
         _b.Emit(new OptSome(dest, value, option.Inner, span));
+        return dest;
+    }
+
+    /// <summary>Hebt eine Objektreferenz auf ihren Interface-Typ.</summary>
+    private TempId MakeInterfaceValue(TempId value, IrType concrete, IrInterfaceType iface,
+        Span span)
+    {
+        var concreteId = concrete switch
+        {
+            IrRefType r => r.Type,
+            IrEnumType e => e.Type,
+            _ => throw NotSupported(
+                "a value of this type cannot be used through an interface (only classes and enums)",
+                span),
+        };
+
+        var dest = _slots.NewTemp(iface);
+        _b.Emit(new MakeInterface(dest, value, concreteId, iface.Type, span));
         return dest;
     }
 
@@ -1041,7 +1090,12 @@ internal sealed class FunctionLowerer
         {
             if (values.ContainsKey(field.Name))
                 throw Bug($"duplicate initializer for '{field.Name}' reached lowering");
-            values[field.Name] = LowerExpr(field.Value);
+            // An den deklarierten Feldtyp anpassen: ein Feld vom Typ eines Interfaces nimmt eine
+            // Klasse nur als Fat Pointer auf.
+            var fieldIndex = Array.IndexOf(layout.FieldNames, field.Name);
+            values[field.Name] = fieldIndex >= 0
+                ? LowerExprAs(field.Value, layout.FieldTypes[fieldIndex])
+                : LowerExpr(field.Value);
         }
 
         // Ein fehlendes Feld hätte seinen Nullwert — aber die Sema kennt heute keine Regel, die das
@@ -1124,6 +1178,13 @@ internal sealed class FunctionLowerer
 
         switch (expr.Callee)
         {
+            // Empfaenger ist ein Interface-Wert: welche Implementierung laeuft, steht erst zur
+            // Laufzeit fest. Das ist der einzige dynamische Dispatch der Sprache.
+            case MemberExpr member
+                when _types.TypeOf(member.Target) is NamedRef
+                     { Symbol.Kind: TypeSymbolKind.Interface } iface:
+                return LowerVirtualCall(member, iface.Symbol, expr);
+
             case MemberExpr member
                 when _types.TypeOf(member.Target) is NamedRef
                      { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Enum }:
@@ -1177,7 +1238,7 @@ internal sealed class FunctionLowerer
         var args = new TempId[expr.Arguments.Length + offset];
         if (receiver is { } self) args[0] = self;
         for (var i = 0; i < expr.Arguments.Length; i++)
-            args[i + offset] = LowerExpr(expr.Arguments[i]);
+            args[i + offset] = LowerArgument(expr.Arguments[i], symbol, i);
 
         var returnType = TypeOfExpr(expr);
         if (IsVoid(returnType))
@@ -1188,6 +1249,70 @@ internal sealed class FunctionLowerer
 
         var dest = _slots.NewTemp(returnType);
         _b.Emit(new Call(dest, target, args, expr.Span));
+        return dest;
+    }
+
+    /// <summary>
+    /// Ein Argument, angepasst an den <b>deklarierten</b> Parametertyp.
+    ///
+    /// <para>Ohne diesen Schritt bliebe eine Klasse eine Klasse, auch wenn der Parameter ein
+    /// Interface ist — und der Aufgerufene bekaeme eine nackte Referenz statt eines Fat Pointers.
+    /// Der Verifier faengt das, aber als Typ-Mismatch tief im Callee statt als das, was es ist:
+    /// eine fehlende Coercion am Aufrufort.</para>
+    /// </summary>
+    private TempId LowerArgument(Expr argument, FunctionSymbol callee, int index)
+    {
+        if (callee.Declaration is FunctionDecl decl && index < decl.Parameters.Length)
+        {
+            try
+            {
+                return LowerExprAs(argument, _typeTable.Lower(decl.Parameters[index].Type));
+            }
+            catch (UnsupportedConstructException)
+            {
+                // Ein Parametertyp, den das Lowering nicht kennt: das meldet ohnehin gleich der
+                // Aufruf selbst oder die Funktion beim eigenen Lowern. Hier nicht doppelt klagen.
+            }
+        }
+
+        return LowerExpr(argument);
+    }
+
+    /// <summary>
+    /// Der dynamische Aufruf. Der Empfaenger ist ein Interface-Wert und traegt seinen konkreten
+    /// Typ mit sich; die Runtime schlaegt damit in der vtable nach.
+    ///
+    /// <para>Der Slot statt des Namens ist dieselbe Entscheidung wie beim Feldindex (P1): Lyric ist
+    /// statisch typisiert und kennt kein Monkey-Patching, also steht die Position zur Compile-Zeit
+    /// fest. Ein Namens-Lookup mit Inline-Cache loeste ein Problem, das diese Sprache nicht hat.</para>
+    /// </summary>
+    private TempId? LowerVirtualCall(MemberExpr member, TypeSymbol iface, CallExpr expr)
+    {
+        var interfaceType = _typeTable.InterfaceOf(iface);
+        var slot = _typeTable.SlotOf(iface, member.Member, member.Span);
+
+        var args = new TempId[expr.Arguments.Length + 1];
+        args[0] = LowerExpr(member.Target);
+
+        // Die Signatur steht am Interface, nicht an einer Implementierung — sie ist der Vertrag.
+        var declaration = iface.Members.LookupLocal(member.Member) is FunctionSymbol method
+            ? method.Declaration as FunctionDecl
+            : null;
+
+        for (var i = 0; i < expr.Arguments.Length; i++)
+            args[i + 1] = declaration is not null && i < declaration.Parameters.Length
+                ? LowerExprAs(expr.Arguments[i], _typeTable.Lower(declaration.Parameters[i].Type))
+                : LowerExpr(expr.Arguments[i]);
+
+        var returnType = TypeOfExpr(expr);
+        if (IsVoid(returnType))
+        {
+            _b.Emit(new CallVirt(null, interfaceType.Type, slot, args, returnType, expr.Span));
+            return null;
+        }
+
+        var dest = _slots.NewTemp(returnType);
+        _b.Emit(new CallVirt(dest, interfaceType.Type, slot, args, returnType, expr.Span));
         return dest;
     }
 
@@ -1358,6 +1483,11 @@ internal sealed class FunctionLowerer
 
         if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } enumType)
             return _typeTable.EnumOf(enumType.Symbol);
+
+        // Ein Interface als Werttyp: Lyrics 'dyn'. Zur Laufzeit ein Fat Pointer aus Objekt und
+        // konkretem Typindex — siehe IrInterfaceType.
+        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Interface } interfaceType)
+            return _typeTable.InterfaceOf(interfaceType.Symbol);
 
         // T[] mit fester Länge (ADR-016). Der Elementtyp steht inline; T[N] gibt es nicht mehr.
         if (type is ArrayOf array)

@@ -63,7 +63,20 @@ public static class BytecodeWriter
                 foreach (var type in module.Types)
                 {
                     s.ULeb(strings.Intern(type.Name));
-                    s.U8((byte)(type.IsEnum ? TypeKind.Enum : TypeKind.Layout));
+                    s.U8((byte)(type.IsEnum ? TypeKind.Enum
+                        : type.IsInterface ? TypeKind.Interface
+                        : TypeKind.Layout));
+
+                    if (type.IsInterface)
+                    {
+                        // Ein Interface traegt keine Felder, sondern Slot-Namen. Sie stehen im
+                        // Bytecode — anders als Feldnamen —, weil ein Disassembler sonst nur
+                        // 'ty3#1' zeigen koennte und eine Fremd-Runtime beim Binden von
+                        // Host-Implementierungen keinen Anhaltspunkt haette.
+                        s.ULeb(type.MethodSlots.Length);
+                        foreach (var slot in type.MethodSlots) s.String(slot);
+                        continue;
+                    }
 
                     if (type.IsEnum)
                     {
@@ -107,6 +120,26 @@ public static class BytecodeWriter
         if (module.EntryFunction is { } entry)
             WriteSection(writer, SectionId.Start,
                 s => s.ULeb(module.Imports.Count + entry.Value));
+
+        // Interface-Implementierungen. Ganz zuletzt, weil Sektions-Ids strikt aufsteigen
+        // muessen und Impls (8) hinter Start (7) liegt.
+        if (module.Impls.Count > 0)
+            WriteSection(writer, SectionId.Impls, s =>
+            {
+                s.ULeb(module.Impls.Count);
+                foreach (var impl in module.Impls)
+                {
+                    s.ULeb(impl.Type.Value);
+                    s.ULeb(impl.Interface.Value);
+                    s.ULeb(impl.Methods.Length);
+                    // Funktionsindex im GEMEINSAMEN Raum (erst Imports, dann Funktionen) — wie
+                    // bei 'call' und bei der Start-Sektion. Ein Import als vtable-Eintrag ist
+                    // damit ausdrueckbar; ob eine Runtime das zulaesst, ist ihre Sache.
+                    foreach (var method in impl.Methods)
+                        s.ULeb(module.Imports.Count + method.Value);
+                }
+            });
+
 
         return writer.ToArray();
     }
@@ -257,6 +290,18 @@ public static class BytecodeWriter
 
             case EnumTag: code.Opcode(Op.EnumTag); break;
 
+            case MakeInterface m:
+                code.Opcode(Op.MakeInterface);
+                code.ULeb(m.Concrete.Value);
+                code.ULeb(m.Interface.Value);
+                break;
+
+            case CallVirt c:
+                code.Opcode(Op.CallVirt);
+                code.ULeb(c.Interface.Value);
+                code.ULeb(c.Slot);
+                break;
+
             case EnumAs a:
                 code.Opcode(Op.EnumAs);
                 code.ULeb(a.Variant.Value);
@@ -387,6 +432,7 @@ public static class BytecodeWriter
         if (type is IrArrayType a) WriteType(w, a.Element);
         if (type is IrOptionalType o) WriteType(w, o.Inner);
         if (type is IrEnumType e) w.ULeb(e.Type.Value);
+        if (type is IrInterfaceType i) w.ULeb(i.Type.Value);
     }
 
     internal static TypeTag TagOf(IrType type) => type switch
@@ -413,6 +459,7 @@ public static class BytecodeWriter
         IrArrayType => TypeTag.Array,
         IrOptionalType => TypeTag.Optional,
         IrEnumType => TypeTag.Enum,
+        IrInterfaceType => TypeTag.Interface,
         _ => throw new InternalCompilationException(
             $"bytecode: type not encodable: {type.GetType().Name}")
     };

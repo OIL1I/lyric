@@ -1,0 +1,86 @@
+// Gate-Programm fuer M7/P3 — Interfaces und vtable-Dispatch.
+//
+// Der Kern ist 'hit': sie kennt nur 'Damageable' und weiss nicht, ob ein Player oder eine Wall
+// vor ihr steht. Welche 'takeDamage' laeuft, entscheidet erst die Laufzeit — das ist der einzige
+// dynamische Dispatch der Sprache.
+import std.io.console;
+
+pub interface Damageable {
+    mut fn takeDamage(amount: int);
+    fn getHp(): int;
+
+    // Default-Methode: wer sie nicht ueberschreibt, erbt sie. Das 'this.getHp()' darin ist selbst
+    // ein virtueller Aufruf — in einer Default-Methode ist 'this' der Interface-Typ.
+    fn isAlive(): bool {
+        return this.getHp() > 0;
+    }
+}
+
+pub class Player :: [Damageable] {
+    hp: int,
+
+    static fn new(hp: int): Player {
+        return Player { hp = hp };
+    }
+
+    mut fn takeDamage(amount: int) {
+        this.hp -= amount;
+        if (this.hp < 0) { this.hp = 0; }
+    }
+
+    fn getHp(): int {
+        return this.hp;
+    }
+}
+
+pub class Wall :: [Damageable] {
+    hp: int,
+
+    static fn new(hp: int): Wall {
+        return Wall { hp = hp };
+    }
+
+    // Eine Wall steckt die Haelfte weg.
+    mut fn takeDamage(amount: int) {
+        this.hp -= amount / 2;
+        if (this.hp < 0) { this.hp = 0; }
+    }
+
+    fn getHp(): int {
+        return this.hp;
+    }
+
+    // Ueberschreibt den Default: eine Wall gilt erst unter 10 hp als zerstoert.
+    fn isAlive(): bool {
+        return this.hp > 10;
+    }
+}
+
+// Kennt nur den Vertrag, nie die Klasse.
+fn hit(target: Damageable, amount: int): int {
+    target.takeDamage(amount);
+    return target.getHp();
+}
+
+fn describe(target: Damageable): string {
+    if (target.isAlive()) { return "alive"; }
+    return "down";
+}
+
+fn main(): int {
+    let player = Player.new(100);
+    let wall = Wall.new(100);
+
+    // Derselbe Aufruf, zwei Implementierungen: 100-40 = 60 und 100-20 = 80.
+    let playerHp = hit(player, 40);
+    let wallHp = hit(wall, 40);
+
+    console.println(f"player: {playerHp}, wall: {wallHp}");
+
+    // Default-Methode gegen Ueberschreibung: ein Player mit 5 hp lebt, eine Wall mit 5 nicht.
+    let weak = Player.new(5);
+    let rubble = Wall.new(5);
+    console.println(f"weak player: {describe(weak)}, rubble: {describe(rubble)}");
+
+    return playerHp + wallHp;
+}

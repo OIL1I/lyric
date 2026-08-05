@@ -43,6 +43,11 @@ public static class VmDiagnostics
     /// über <c>match</c>; die Prüfung bleibt, weil ein <c>.lyrbc</c> auch aus fremder Quelle
     /// kommen kann.</summary>
     public const string WrongVariant = "LYR-VM0008";
+
+    /// <summary>Kein vtable-Eintrag fuer (konkreter Typ, Interface, Slot). Im regulaeren Weg
+    /// unerreichbar — der Loader prueft jedes <c>mkiface</c> gegen die Impls-Sektion (ADR-013).
+    /// Erreichbar nur, wenn ein Host ein Modul unter Umgehung des Readers zusammensetzt.</summary>
+    public const string NoImplementation = "LYR-VM0009";
 }
 
 /// <summary>

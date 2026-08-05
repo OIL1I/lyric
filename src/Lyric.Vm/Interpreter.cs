@@ -48,19 +48,20 @@ public static class Interpreter
         // Bindung beim Laden: fehlt ein Native, wird das Modul abgelehnt, bevor eine
         // Instruktion laeuft.
         var bound = (natives ?? new NativeRegistry()).Bind(module);
-        return Execute(prepared, entry, module.Strings, module.Types, bound);
+        return Execute(prepared, entry, module.Strings, module.Types,
+            DispatchTable.Build(module), bound);
     }
 
     private static LyrValue Execute(Prepared[] prepared, int startIndex,
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
-        NativeRegistry.BoundNative[] natives)
+        DispatchTable dispatch, NativeRegistry.BoundNative[] natives)
     {
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
 
         try
         {
-            return Loop(prepared, strings, types, natives, frames, ref frame);
+            return Loop(prepared, strings, types, dispatch, natives, frames, ref frame);
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
@@ -73,8 +74,8 @@ public static class Interpreter
     }
 
     private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
-        IReadOnlyList<BytecodeTypeDef> types, NativeRegistry.BoundNative[] natives,
-        Stack<Frame> frames, ref Frame frame)
+        IReadOnlyList<BytecodeTypeDef> types, DispatchTable dispatch,
+        NativeRegistry.BoundNative[] natives, Stack<Frame> frames, ref Frame frame)
     {
         while (true)
         {
@@ -156,6 +157,49 @@ public static class Interpreter
                     var callee = prepared[index - natives.Length];
                     var next = Frame.For(callee);
                     // Argumente liegen in Aufrufreihenfolge auf dem Stack, das erste zuunterst.
+                    for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();
+
+                    frames.Push(frame);
+                    frame = next;
+                    break;
+                }
+
+                // Ein Interface-Wert ist ein Fat Pointer: dasselbe Objekt, plus der konkrete
+                // Typindex in den ungenutzten Bits. Keine Allokation, keine Layout-Aenderung —
+                // und ein Objekt, das nie ueber ein Interface laeuft, zahlt gar nichts.
+                case Op.MakeInterface:
+                    frame.Push(LyrValue.FromInterface(frame.Pop(), (int)instruction.Immediate));
+                    break;
+
+                // Der einzige dynamische Dispatch der Sprache. Empfaenger ist Argument 0 und liegt
+                // zuunterst; sein mitgefuehrter Typ waehlt die Zeile, das Immediate den Slot.
+                case Op.CallVirt:
+                {
+                    var iface = (int)instruction.Immediate;
+                    var slot = (int)instruction.Immediate2;
+
+                    // Der Empfaenger liegt unter den Argumenten. Ihn zu erreichen, bevor die
+                    // Zielfunktion feststeht, geht nur ueber die vorab bekannte Arity.
+                    var receiver = frame.Peek(dispatch.ArityOf(iface, slot) - 1);
+                    var index = dispatch.Resolve(receiver.ConcreteType, iface, slot);
+
+                    if (index < natives.Length)
+                    {
+                        var native = natives[index];
+                        var args = new LyrValue[native.Arity];
+                        for (var i = native.Arity - 1; i >= 0; i--) args[i] = frame.Pop();
+
+                        var produced = native.Implementation(args);
+                        if (native.ReturnsValue) frame.Push(produced);
+                        break;
+                    }
+
+                    if (frames.Count >= MaxCallDepth)
+                        throw new LyricPanic(VmDiagnostics.CallDepthExceeded,
+                            $"call depth exceeded {MaxCallDepth} frames in '{frame.Fn.Source.Name}'");
+
+                    var callee = prepared[index - natives.Length];
+                    var next = Frame.For(callee);
                     for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();
 
                     frames.Push(frame);
@@ -625,5 +669,9 @@ public static class Interpreter
 
         public void Push(LyrValue value) => Stack[Sp++] = value;
         public LyrValue Pop() => Stack[--Sp];
+
+        /// <summary>Liest ohne zu entnehmen; <paramref name="depth"/> 0 ist das oberste Element.
+        /// Gebraucht von <c>callvirt</c>, das seinen Empfaenger unter den Argumenten findet.</summary>
+        public LyrValue Peek(int depth) => Stack[Sp - 1 - depth];
     }
 }

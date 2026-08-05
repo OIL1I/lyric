@@ -52,6 +52,28 @@ public readonly struct LyrValue
     /// </summary>
     private static readonly object SomeMarker = new();
 
+    /// <summary>
+    /// Ein Wert, der über ein Interface angesprochen wird: ein <b>Fat Pointer</b> aus dem Objekt
+    /// (<see cref="Ref"/>) und dem Index seines konkreten Typs (<see cref="Bits"/>).
+    ///
+    /// <para>Das ist die Antwort auf ein Problem, das M6 und P1 geschaffen haben: ein Objekt trägt
+    /// <b>kein</b> Typ-Tag, also kann ein <c>callvirt</c> die konkrete Klasse nicht aus dem Objekt
+    /// zurückgewinnen. Sie an den Wert zu heften kostet nichts — <c>Bits</c> ist bei einer
+    /// Referenz ohnehin ungenutzt —, während ein Tag in Slot 0 jeden Feldindex verschoben und
+    /// jedes Objekt ein Wort gekostet hätte, auch die Mehrzahl ohne Interface. Rust macht es mit
+    /// <c>dyn Trait</c> genauso.</para>
+    ///
+    /// <para>Ein <c>?SomeInterface</c> ist damit ebenfalls unproblematisch: der Fat Pointer trägt
+    /// eine echte Referenz, also reicht sie wie bei jedem anderen Referenztyp als
+    /// Anwesenheits-Marker.</para>
+    /// </summary>
+    public static LyrValue FromInterface(LyrValue instance, int concreteType) =>
+        new((ulong)(uint)concreteType, instance.Ref);
+
+    /// <summary>Der konkrete Typindex eines Interface-Wertes — das, worüber <c>callvirt</c>
+    /// nachschlägt.</summary>
+    public int ConcreteType => (int)(uint)Bits;
+
     /// <summary>„Kein Wert" ist eine leere Referenz — einheitlich für alle <c>?T</c>.</summary>
     public static LyrValue None => default;
 

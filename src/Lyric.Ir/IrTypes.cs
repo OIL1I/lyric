@@ -40,8 +40,12 @@ namespace Lyric.Ir
                     return Equal(x.Inner, y.Inner);
                 case (IrEnumType x, IrEnumType y):
                     return x.Type == y.Type;
-                case (IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType,
-                      IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType):
+                case (IrInterfaceType x, IrInterfaceType y):
+                    return x.Type == y.Type;
+                case (IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
+                          or IrInterfaceType,
+                      IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
+                          or IrInterfaceType):
                     return false; // verschiedene Sorten — vergleichbar, nur eben ungleich
                 default:
                     throw new InternalCompilationException(
@@ -93,4 +97,20 @@ namespace Lyric.Ir
     /// <c>docs/Bytecode.md</c> §2.</para>
     /// </summary>
     public sealed record IrEnumType(TypeId Type) : IrType;
+
+/// <summary>
+/// Ein Wert, der ueber ein Interface angesprochen wird — Lyrics <c>dyn Trait</c>.
+///
+/// <para>Traegt wie <see cref="IrRefType"/> nur seine Id, nicht seine Methodenliste: sonst muesste
+/// <c>IrType.Equal</c> strukturell vergleichen und liefe bei einem Interface, das sich selbst in
+/// einer Signatur nennt, in eine Endlosschleife.</para>
+///
+/// <para><b>Zur Laufzeit ist das kein blosser Zeiger</b>, sondern ein Fat Pointer aus Objekt und
+/// konkretem Typindex — <c>LyrValue</c> hat beide Felder ohnehin, und bei einer Referenz ist
+/// <c>Bits</c> heute ungenutzt. Deshalb kostet ein Interface-Wert keine Allokation, und ein Objekt,
+/// das nie ueber ein Interface laeuft, zahlt gar nichts. Die Alternative — ein Typ-Tag in Slot 0
+/// jedes Objekts — haette jeden Feldindex verschoben und jedes Objekt ein Wort gekostet, auch die
+/// Mehrzahl ohne Interface.</para>
+/// </summary>
+public sealed record IrInterfaceType(TypeId Type) : IrType;
 }

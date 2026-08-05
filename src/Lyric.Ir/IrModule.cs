@@ -79,8 +79,32 @@ public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldN
     /// </summary>
     public TypeId[] Variants { get; init; } = [];
 
+    /// <summary>
+    /// Die Methoden-Slots, wenn dieser Eintrag ein <b>Interface</b> ist — sonst leer. Der
+    /// <b>Index</b> in dieser Liste ist der Slot, auf den <c>CallVirt</c> zeigt; die Namen stehen
+    /// nur fuer Disassembler und Diagnose darin.
+    ///
+    /// <para>Die Reihenfolge kommt aus der Deklaration, nicht aus einer Symboltabelle — genau wie
+    /// bei den Feldern einer Klasse, und aus demselben Grund: der Slot ist ein Vertrag, die
+    /// Aufzaehlungsreihenfolge einer Map ist ein Implementierungsdetail.</para>
+    /// </summary>
+    public string[] MethodSlots { get; init; } = [];
+
     public bool IsEnum => Variants.Length > 0;
+
+    public bool IsInterface => MethodSlots.Length > 0;
 }
+
+/// <summary>
+/// Eine vtable-Zeile: Klasse <paramref name="Type"/> erfuellt Interface
+/// <paramref name="Interface"/>, und zwar Slot fuer Slot mit <paramref name="Methods"/>.
+///
+/// <para>Ein Eintrag je (Klasse, Interface)-Paar. <c>Methods</c> ist so lang wie die Slot-Liste des
+/// Interfaces; ein Default-Methoden-Slot traegt die Funktion des Interfaces selbst, ein
+/// ueberschriebener die der Klasse — die Aufloesungsreihenfolge (eigenes Member vor Default) faellt
+/// im Lowering, nicht zur Laufzeit.</para>
+/// </summary>
+public record struct IrImpl(TypeId Type, TypeId Interface, FunctionId[] Methods);
 
 public class IrModule(List<IrFunction> Functions)
 {
@@ -92,6 +116,11 @@ public class IrModule(List<IrFunction> Functions)
     /// <c>LoadField</c> und <c>StoreField</c> referenzieren sie per <see cref="TypeId"/>; dicht
     /// indiziert wie alle Tabellen hier.</summary>
     public List<IrTypeDef> Types { get; init; } = new();
+
+    /// <summary>Die vtable-Zeilen. Landen als Impls-Sektion im Bytecode; die Runtime baut daraus
+    /// beim Laden ihre Dispatch-Tabelle, damit <c>callvirt</c> ein Nachschlagen und kein Suchen
+    /// ist.</summary>
+    public List<IrImpl> Impls { get; init; } = new();
 
     /// <summary>Call-Ziele referenzieren per <see cref="FunctionId"/> den Index in diese Liste.
     /// Namen müssen eindeutig sein — sie werden die Symbol-Namen im Bytecode (ADR-013).</summary>

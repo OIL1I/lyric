@@ -8,8 +8,13 @@ namespace Lyric.Sema;
 /// implementiert er ein bestimmtes, ist ein Typ werfbar (§9)? Genutzt vom
 /// <see cref="TypeChecker"/> (Constraints, throw/catch/throws) und vom
 /// <see cref="ExceptionAnalyzer"/> (Propagation). Extend-Merge kommt in M4-4 dazu.
+///
+/// <para><b>Public seit P3</b>: das IR-Lowering braucht dieselbe Frage, um die vtable-Zeilen zu
+/// bauen. Sie dort nachzubauen waere eine zweite Wahrheit darueber, wann ein Typ ein Interface
+/// erfuellt — und die beiden Antworten muessten exakt uebereinstimmen, sonst dispatcht die Runtime
+/// auf etwas, das die Sema nie geprueft hat.</para>
 /// </summary>
-internal static class Conformance
+public static class Conformance
 {
     /// <summary>Löst einen Constraint-/Interface-TypeNode zum Interface-Symbol auf (oder null).</summary>
     public static TypeSymbol? InterfaceOf(TypeNode node, BindingResult binding)

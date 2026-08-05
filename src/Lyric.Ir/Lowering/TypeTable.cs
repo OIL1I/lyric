@@ -48,6 +48,35 @@ internal sealed class TypeTable
     /// Variante. Welche Variante vorliegt, steht zur Laufzeit in ihrem Slot 0.</summary>
     public IrEnumType EnumOf(TypeSymbol symbol) => new(Intern(symbol));
 
+    /// <summary>Der Typ eines ueber ein Interface angesprochenen Wertes (Lyrics <c>dyn</c>).</summary>
+    public IrInterfaceType InterfaceOf(TypeSymbol symbol) => new(Intern(symbol));
+
+    /// <summary>
+    /// Der Methoden-Slot eines Interfaces. Der <b>Index</b> ist der Vertrag, nicht der Name: er
+    /// steht zur Compile-Zeit fest, weil Lyric statisch typisiert ist und kein Monkey-Patching
+    /// kennt. Genau wie beim Feldindex einer Klasse.
+    /// </summary>
+    public int SlotOf(TypeSymbol interfaceSymbol, string method, Core.Span span)
+    {
+        var def = _defs[Intern(interfaceSymbol).Value];
+        var index = Array.IndexOf(def.MethodSlots, method);
+        if (index >= 0) return index;
+
+        throw new UnsupportedConstructException(
+            $"interface '{interfaceSymbol.Name}' has no method '{method}'", span);
+    }
+
+    /// <summary>Die Slot-Namen eines Interfaces, in Deklarationsreihenfolge. Der
+    /// <see cref="ModuleLowerer"/> braucht sie, um die vtable-Zeilen zu fuellen.</summary>
+    public string[] MethodSlotsOf(TypeId id) => _defs[id.Value].MethodSlots;
+
+    /// <summary>Alle bisher internierten Typen mit ihrem Symbol — die Grundlage der Impl-Tabelle.
+    /// Nur was interniert wurde, steht im Bytecode, und nur dafuer braucht es vtable-Zeilen.</summary>
+    public IEnumerable<(TypeSymbol Symbol, TypeId Id)> Interned =>
+        _assigned.Select(pair => (pair.Key, pair.Value));
+
+    public bool IsInterface(TypeId id) => _defs[id.Value].IsInterface;
+
     /// <summary>Der Types-Index einer Variante. Sie ist ein eigener Layout-Eintrag (ADR-016s
     /// Nachbar-Entscheidung, Bytecode.md §2); ihr Slot 0 ist das Tag.</summary>
     public TypeId VariantOf(TypeSymbol enumSymbol, string variantName, Core.Span span)
@@ -83,6 +112,7 @@ internal sealed class TypeTable
         if (_assigned.TryGetValue(symbol, out var existing)) return existing;
 
         if (symbol.Kind == TypeSymbolKind.Enum) return InternEnum(symbol);
+        if (symbol.Kind == TypeSymbolKind.Interface) return InternInterface(symbol);
 
         if (symbol.Kind != TypeSymbolKind.Class)
             throw new UnsupportedConstructException(
@@ -177,6 +207,40 @@ internal sealed class TypeTable
         }
     }
 
+    /// <summary>
+    /// Ein Interface wird zu einem Eintrag <b>ohne Felder</b>, der nur seine Methoden-Slots
+    /// benennt. Die Reihenfolge kommt aus der Deklaration, nicht aus der Symboltabelle: der Slot
+    /// ist ein Vertrag, die Aufzaehlungsreihenfolge einer Map ist ein Implementierungsdetail —
+    /// dieselbe Regel wie bei den Feldern einer Klasse.
+    ///
+    /// <para>Aufgenommen werden <b>alle</b> deklarierten Methoden, abstrakte wie Default. Ein
+    /// Default belegt einen Slot, weil eine Klasse ihn ueberschreiben darf; ohne Slot waere er
+    /// nicht ueberschreibbar.</para>
+    /// </summary>
+    private TypeId InternInterface(TypeSymbol symbol)
+    {
+        if (symbol.Generics.Length > 0)
+            throw new UnsupportedConstructException(
+                $"generic interface '{symbol.Name}' is not supported by this compiler version yet",
+                SpanOf(symbol));
+
+        if (symbol.Declaration is not InterfaceDecl decl)
+            throw new UnsupportedConstructException(
+                $"interface '{symbol.Name}' has no declaration to read its methods from",
+                SpanOf(symbol));
+
+        var slots = decl.Members.OfType<FunctionDecl>().Select(m => m.Name).ToArray();
+        if (slots.Length == 0)
+            throw new UnsupportedConstructException(
+                $"interface '{symbol.Name}' declares no methods; an empty interface has nothing "
+                + "to dispatch on", SpanOf(symbol));
+
+        var id = new TypeId(_defs.Count);
+        _assigned[symbol] = id;
+        _defs.Add(new IrTypeDef(symbol.Name, [], []) { MethodSlots = slots });
+        return id;
+    }
+
     private TypeId InternVariant(TypeSymbol owner, EnumVariant variant)
     {
         // Slot 0 ist das Tag. Es steht im Layout, damit der Feldzugriff nach dem 'enumas' ein
@@ -222,6 +286,8 @@ internal sealed class TypeTable
     public IrType Lower(LyrType type, Core.Span span) => type switch
     {
         NamedRef { Symbol.Kind: TypeSymbolKind.Class } n => RefTo(n.Symbol),
+        NamedRef { Symbol.Kind: TypeSymbolKind.Enum } n => EnumOf(n.Symbol),
+        NamedRef { Symbol.Kind: TypeSymbolKind.Interface } n => InterfaceOf(n.Symbol),
         _ => TypeLowering.Lower(type)
     };
 
@@ -256,6 +322,7 @@ internal sealed class TypeTable
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Enum } enumType) return EnumOf(enumType);
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Interface } iface) return InterfaceOf(iface);
             if (bound is TypeSymbol type) return RefTo(type);
         }
 
@@ -269,7 +336,6 @@ internal sealed class TypeTable
     {
         TypeSymbolKind.Struct => "a struct; only classes are lowered",
         TypeSymbolKind.Enum => "an enum",
-        TypeSymbolKind.Interface => "an interface",
         TypeSymbolKind.Alias => "a type alias",
         _ => "not a class"
     };

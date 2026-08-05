@@ -21,6 +21,10 @@ public sealed class BytecodeModule
     public required IReadOnlyList<BytecodeImport> Imports { get; init; }
     public required IReadOnlyList<BytecodeFunction> Functions { get; init; }
 
+    /// <summary>Die vtable-Zeilen aus der Impls-Sektion. Leer, wenn das Modul keine Interfaces
+    /// benutzt.</summary>
+    public IReadOnlyList<BytecodeImpl> Impls { get; init; } = [];
+
     /// <summary>Index der Einstiegsfunktion im gemeinsamen Indexraum (erst Imports, dann
     /// Funktionen), oder <c>null</c> bei einem Bibliotheks-Modul. Aus der Start-Sektion.</summary>
     public int? Start { get; init; }
@@ -70,7 +74,23 @@ public sealed class BytecodeTypeDef
     /// selbst ein Layout-Eintrag; Slot 0 darin ist ihr Tag, der Index in dieser Liste.</summary>
     public IReadOnlyList<int> Variants { get; init; } = [];
 
+    /// <summary>Die Methoden-Slots, wenn dies ein <b>Interface</b>-Eintrag ist — sonst leer. Der
+    /// Index ist der Slot, auf den <c>callvirt</c> zeigt; die Namen stehen fuer Disassembler und
+    /// Host-Bindung im Bytecode.</summary>
+    public IReadOnlyList<string> MethodSlots { get; init; } = [];
+
     public bool IsEnum => Variants.Count > 0;
+
+    public bool IsInterface => MethodSlots.Count > 0;
+}
+
+/// <summary>Eine vtable-Zeile: Klasse erfuellt Interface, Slot fuer Slot mit einer Funktion aus dem
+/// gemeinsamen Indexraum (erst Imports, dann Funktionen).</summary>
+public sealed class BytecodeImpl
+{
+    public required int Type { get; init; }
+    public required int Interface { get; init; }
+    public required IReadOnlyList<int> Methods { get; init; }
 }
 
 /// <summary>Host-/Native-Funktion, per Index aus <c>call</c> referenziert (ADR-013, WASM-Modell).</summary>

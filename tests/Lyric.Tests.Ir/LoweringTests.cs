@@ -90,6 +90,7 @@ public class LoweringTests
     [InlineData("arrays")]          // Literal, [x]*n, xs+ys, Index lesend/schreibend, .length
     [InlineData("optionals")]       // null, ??, !, Flow-Narrowing
     [InlineData("enums")]           // Varianten, match, Tag-Dispatch, Pattern-Dekomposition
+    [InlineData("interfaces")]      // mkiface, callvirt, vtable-Zeilen, Default vs. Ueberschreibung
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();

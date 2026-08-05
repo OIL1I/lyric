@@ -1,0 +1,23 @@
+interface Sized {
+    fn size(): int;
+    fn doubled(): int { return this.size() * 2; }
+}
+
+class Small :: [Sized] {
+    n: int,
+    fn size(): int { return this.n; }
+}
+
+class Big :: [Sized] {
+    n: int,
+    fn size(): int { return this.n * 100; }
+    fn doubled(): int { return 0; }
+}
+
+fn measure(s: Sized): int {
+    return s.size() + s.doubled();
+}
+
+fn main(): int {
+    return measure(Small { n = 3 }) + measure(Big { n = 7 });
+}

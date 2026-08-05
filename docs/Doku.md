@@ -642,8 +642,21 @@ pub class Wall :: [Damageable] {
 ```
 
 - Interfaces deklarieren nur Methoden-Signaturen (mit optionalem Body als Default).
-- Nominales Subtyping: `class X :: [I]` erklärt Konformität explizit.
-- Dynamic Dispatch via Interface-Referenz: `let xs: Damageable[] = [player, wall];`.
+- Nominales Subtyping: `class X :: [I]` erklärt Konformität explizit. Ein Wert darf überall
+  stehen, wo eines seiner deklarierten Interfaces erwartet wird — die Umkehrung gibt es nicht,
+  einen Downcast kennt die Sprache nicht.
+- **Dynamic Dispatch**: welche Implementierung läuft, entscheidet der Wert, nicht der deklarierte
+  Typ. Auch `this` in einer Default-Methode dispatcht virtuell.
+
+```lyr
+fn hit(target: Damageable, amount: int): int {
+    target.takeDamage(amount);   // Player oder Wall — steht erst zur Laufzeit fest
+    return target.getHp();
+}
+```
+
+Auch Enums dürfen Interfaces implementieren. Ein `Damageable[]` braucht dagegen noch Generics
+(P8).
 
 ---
 

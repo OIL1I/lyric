@@ -51,6 +51,7 @@ public static class BytecodeReader
         IReadOnlyList<BytecodeImport> imports = Array.Empty<BytecodeImport>();
         IReadOnlyList<BytecodeFunction> functions = Array.Empty<BytecodeFunction>();
         int? start = null;
+        IReadOnlyList<BytecodeImpl> impls = Array.Empty<BytecodeImpl>();
 
         var previousId = -1;
         while (!reader.AtEnd)
@@ -74,6 +75,7 @@ public static class BytecodeReader
                 case SectionId.Imports: imports = ReadImports(payload); break;
                 case SectionId.Functions: functions = ReadFunctions(payload, strings); break;
                 case SectionId.Start: start = payload.ULebAsCount(); break;
+                case SectionId.Impls: impls = ReadImpls(payload); break;
                 default: break; // unbekannt oder reserviert: überspringen, dafür ist die Länge da
             }
 
@@ -92,6 +94,7 @@ public static class BytecodeReader
             Imports = imports,
             Functions = functions,
             Start = start,
+            Impls = impls,
         };
 
         Validate(module);
@@ -111,7 +114,11 @@ public static class BytecodeReader
     private static BytecodeType ReadType(ByteReader payload)
     {
         var tag = payload.Tag();
-        if (tag is TypeTag.Ref or TypeTag.Enum) return new BytecodeType(tag, payload.ULebAsCount());
+        // Ref, Enum und Interface tragen ihren Tabellen-Index dahinter — anders als Array und
+        // Optional, deren Elementtyp inline steht. Eine hier vergessene Tag-Art ist ein um
+        // Bytes verschobener Strom, kein sauberer Fehler.
+        if (tag is TypeTag.Ref or TypeTag.Enum or TypeTag.Interface)
+            return new BytecodeType(tag, payload.ULebAsCount());
         // Der Elementtyp steht inline und rekursiv (Bytecode.md §3).
         if (tag is TypeTag.Array or TypeTag.Optional)
         {
@@ -145,9 +152,26 @@ public static class BytecodeReader
                     $"type {i}: name index {nameIndex} is outside the string pool ({strings.Count})");
 
             var kind = payload.U8();
-            if (kind > (byte)TypeKind.Enum)
+            if (kind > (byte)TypeKind.Interface)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                     $"type {i}: unknown kind {kind}");
+
+            if (kind == (byte)TypeKind.Interface)
+            {
+                var slotCount = payload.ULebAsCount();
+                if (slotCount == 0)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                        $"interface '{strings[nameIndex]}' declares no methods; there would be "
+                        + "nothing to dispatch on");
+
+                var slots = new List<string>(Math.Min(slotCount, 1024));
+                for (var m = 0; m < slotCount; m++) slots.Add(payload.String());
+                types.Add(new BytecodeTypeDef
+                {
+                    Name = strings[nameIndex], FieldTypes = [], MethodSlots = slots,
+                });
+                continue;
+            }
 
             if (kind == (byte)TypeKind.Enum)
             {
@@ -243,6 +267,27 @@ public static class BytecodeReader
         return functions;
     }
 
+    /// <summary>
+    /// Die Impls-Sektion: je Zeile Klasse, Interface, Slot-Anzahl, Funktionsindizes.
+    /// </summary>
+    private static IReadOnlyList<BytecodeImpl> ReadImpls(ByteReader payload)
+    {
+        var count = payload.ULebAsCount();
+        var impls = new List<BytecodeImpl>(Math.Min(count, 4096));
+
+        for (var i = 0; i < count; i++)
+        {
+            var type = payload.ULebAsCount();
+            var iface = payload.ULebAsCount();
+            var slotCount = payload.ULebAsCount();
+            var methods = new List<int>(Math.Min(slotCount, 1024));
+            for (var m = 0; m < slotCount; m++) methods.Add(payload.ULebAsCount());
+            impls.Add(new BytecodeImpl { Type = type, Interface = iface, Methods = methods });
+        }
+
+        return impls;
+    }
+
     /// <summary>Prüfungen, die erst gehen, wenn alles gelesen ist — Call-Ziele brauchen die
     /// Signaturen anderer Funktionen, Sprungziele die Blockanzahl.</summary>
     private static void Validate(BytecodeModule module)
@@ -254,6 +299,7 @@ public static class BytecodeReader
                 $"({module.Imports.Count + module.Functions.Count})");
 
         ValidateTypeReferences(module);
+        ValidateImpls(module);
 
         foreach (var function in module.Functions)
         {
@@ -353,6 +399,7 @@ public static class BytecodeReader
                 // ADR-013s Kern: Typ- und Feldindex werden hier geprüft, damit der Feldzugriff zur
                 // Laufzeit ein Array-Zugriff ohne Prüfung sein darf.
                 case Op.NewObject or Op.LoadField or Op.StoreField or Op.NewVariant or Op.EnumAs
+                    or Op.MakeInterface or Op.CallVirt
                     when instruction.Immediate >= (ulong)module.Types.Count:
                     throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                         $"function '{function.Name}' at {instruction.Offset}: type index " +
@@ -366,6 +413,37 @@ public static class BytecodeReader
                         $"'{module.Types[(int)instruction.Immediate].Name}' " +
                         $"({module.Types[(int)instruction.Immediate].FieldTypes.Count} field(s))");
 
+                // mkiface: das zweite Immediate ist das Interface, und es muss eines sein — mit
+                // einer Impl-Zeile fuer genau dieses Paar. Ohne die Pruefung entstuende ein
+                // Interface-Wert, dessen Dispatch spaeter ins Leere liefe.
+                case Op.MakeInterface
+                    when instruction.Immediate2 >= (ulong)module.Types.Count
+                         || !module.Types[(int)instruction.Immediate2].IsInterface:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: mkiface target " +
+                        $"{instruction.Immediate2} is not an interface");
+
+                case Op.MakeInterface
+                    when !module.Impls.Any(i => i.Type == (int)instruction.Immediate
+                                                && i.Interface == (int)instruction.Immediate2):
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: " +
+                        $"'{module.Types[(int)instruction.Immediate].Name}' has no impl row for " +
+                        $"'{module.Types[(int)instruction.Immediate2].Name}'");
+
+                case Op.CallVirt when !module.Types[(int)instruction.Immediate].IsInterface:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: callvirt target " +
+                        $"{instruction.Immediate} is not an interface");
+
+                case Op.CallVirt
+                    when instruction.Immediate2 >=
+                         (ulong)module.Types[(int)instruction.Immediate].MethodSlots.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: callvirt slot " +
+                        $"{instruction.Immediate2} is outside interface " +
+                        $"'{module.Types[(int)instruction.Immediate].Name}'");
+
                 case Op.Branch when instruction.Immediate >= (ulong)function.BlockOffsets.Count:
                 case Op.CondBranch when instruction.Immediate >= (ulong)function.BlockOffsets.Count
                                         || instruction.Immediate2 >= (ulong)function.BlockOffsets.Count:
@@ -373,6 +451,51 @@ public static class BytecodeReader
                         $"function '{function.Name}' at {instruction.Offset}: branch target is outside " +
                         $"{function.BlockOffsets.Count} block(s)");
             }
+        }
+    }
+
+    /// <summary>
+    /// Die vtable-Zeilen (ADR-013: geprueft beim Laden, nicht beim Aufruf). Danach darf
+    /// <c>callvirt</c> ein Array-Zugriff ohne Pruefung sein.
+    /// </summary>
+    private static void ValidateImpls(BytecodeModule module)
+    {
+        var callable = module.Imports.Count + module.Functions.Count;
+        var seen = new HashSet<(int, int)>();
+
+        foreach (var impl in module.Impls)
+        {
+            if (impl.Type < 0 || impl.Type >= module.Types.Count
+                || impl.Interface < 0 || impl.Interface >= module.Types.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"impl row references type {impl.Type}/{impl.Interface} outside " +
+                    $"{module.Types.Count} type(s)");
+
+            var iface = module.Types[impl.Interface];
+            if (!iface.IsInterface)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"impl row names '{iface.Name}' as an interface, but it is not one");
+
+            if (module.Types[impl.Type].IsInterface)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"impl row makes interface '{module.Types[impl.Type].Name}' implement " +
+                    $"'{iface.Name}'; interfaces do not implement interfaces");
+
+            if (!seen.Add((impl.Type, impl.Interface)))
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"duplicate impl row for '{module.Types[impl.Type].Name}' :: '{iface.Name}'");
+
+            if (impl.Methods.Count != iface.MethodSlots.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"impl row for '{module.Types[impl.Type].Name}' :: '{iface.Name}' has " +
+                    $"{impl.Methods.Count} method(s) but the interface declares " +
+                    $"{iface.MethodSlots.Count} slot(s)");
+
+            foreach (var method in impl.Methods)
+                if (method < 0 || method >= callable)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"impl row for '{module.Types[impl.Type].Name}' :: '{iface.Name}' " +
+                        $"targets {method}, which is outside {callable} callable(s)");
         }
     }
 
@@ -429,6 +552,27 @@ public static class BytecodeReader
     private static (int Arity, bool ReturnsValue) CalleeShape(BytecodeModule module,
         BytecodeInstruction instruction)
     {
+        // callvirt: die Signatur steht am Interface-Slot. Welche Implementierung laeuft, ist
+        // dynamisch — aber alle haben dieselbe Form, sonst waere die Konformanz verletzt. Also
+        // reicht irgendeine Impl-Zeile fuer dieses Interface, um Arity und Rueckgabe zu kennen.
+        if (instruction.Opcode == Op.CallVirt)
+        {
+            var iface = (int)instruction.Immediate;
+            var slot = (int)instruction.Immediate2;
+            var row = module.Impls.FirstOrDefault(i => i.Interface == iface);
+            if (row is null || slot >= row.Methods.Count) return (0, false);
+
+            var target = row.Methods[slot];
+            if (target < module.Imports.Count)
+            {
+                var native = module.Imports[target];
+                return (native.ParamTypes.Count, native.ReturnType.Tag != TypeTag.Void);
+            }
+
+            var implementation = module.Functions[target - module.Imports.Count];
+            return (implementation.ParamCount, implementation.ReturnType.Tag != TypeTag.Void);
+        }
+
         if (instruction.Opcode != Op.Call) return (0, false);
 
         // Gemeinsamer Indexraum: erst Imports, dann definierte Funktionen (WASM-Modell).

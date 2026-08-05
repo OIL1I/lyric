@@ -385,6 +385,48 @@ Programm, mit Begründung als Blockzitat).
   - Regressionstest fährt bewusst ein Programm **mit** Importen und sagt das auch im Assert; ohne
     sie ist er wertlos.
 
+- [x] **M7 — P3 — Interfaces + vtable-Dispatch** (Format **2.1**): `lyric run
+  examples/interfaces.lyr` liefert 140. Dieselbe Aufrufstelle erreicht zwei Implementierungen —
+  der erste und einzige dynamische Dispatch der Sprache.
+  - **Ein Interface-Wert ist ein Fat Pointer**, kein Zeiger: Objekt plus konkreter Typindex. Das
+    war erzwungen, nicht gewählt — ein Objekt trägt seit M6/P1 **kein Typ-Tag**, also kann
+    `callvirt` die konkrete Klasse nicht aus dem Objekt zurückgewinnen. `LyrValue` hat `Bits` und
+    `Ref`, und bei einer Referenz ist `Bits` ungenutzt; der Typ passt also kostenlos hinein.
+    Dieselbe Trickkiste wie bei P2b, wo `Ref` als Anwesenheits-Marker diente. Die Alternative — ein
+    Tag in Slot 0 jedes Objekts — hätte **jeden Feldindex verschoben** und jedes Objekt ein Wort
+    gekostet, auch die Mehrzahl ohne Interface. Rusts `dyn Trait` schichtet genauso.
+  - **Zwei Instruktionen**, dieselbe Arbeitsteilung wie `optissome`/`optget` und
+    `enumtag`/`enumas`: `mkiface` materialisiert die Darstellung dort, wo der konkrete Typ noch
+    statisch bekannt ist, `callvirt` konsumiert sie. `mkiface` trägt **beide** Indizes, obwohl die
+    Runtime nur den konkreten braucht — so prüft der Loader die Implementierungs-Beziehung ohne
+    Datenflussanalyse (ADR-013, wie Typ- und Feldindex am `ldfld`).
+  - **Die Auflösungsreihenfolge fällt im Lowering, nicht zur Laufzeit.** Sprache.md §3.5 sagt
+    „eigenes Member vor Interface-Default"; der Compiler löst das auf und schreibt die gewonnene
+    Funktion in die vtable-Zeile. Die Runtime sucht nichts, sie liest einen Index.
+  - **Interface-Default-Methoden sind gewöhnliche Funktionen mit dem Interface als Empfängertyp.**
+    Damit wird `this.foo()` in einem Default selbst zu einem `callvirt` — und das ist richtig:
+    welche Implementierung läuft, weiß erst die Laufzeit. Der Golden-Snapshot zeigt es direkt.
+  - **Format 2.1, nicht 3.0.** Interfaces ergänzen nur: ein dritter Wert für das schon vorhandene
+    Kind-Byte, eine neue Sektion (Impls, Id 8), ein neues Typ-Tag, zwei Opcodes. Keine
+    Sektions-*Form* ändert sich — genau die Grenze, an der 2.0 nötig war.
+  - **Eine Sema-Lücke geschlossen**: `IsAssignable` kannte kein nominales Subtyping, obwohl
+    `Doku.md` §13 es ausdrücklich beschreibt. `hit(player, 40)` war schlicht ein Typfehler. Die
+    Frage beantwortet jetzt `Conformance` — dieselbe Stelle wie Konformanz-Check und Lowering;
+    drei Antworten auf „erfüllt T das Interface I" wären drei Gelegenheiten, dass die Runtime auf
+    etwas dispatcht, das nie geprüft wurde.
+  - 10 E2E-Tests plus Golden-Fixture. Jeder Test führt **zwei** Implementierungen — mit nur einer
+    bliebe er auch dann grün, wenn der Dispatch statisch an die erstbeste Funktion bände.
+
+- [x] **Bug aus P3b: `?Enum` desynchronisierte den Instruktionsstrom.** Gefunden beim Bau der
+  Interfaces, vorhanden seit Format 2.0.
+  - `CodeDecoder.SkipType` war eine `else if`-Kette, die jedes **nicht genannte** Tag stillschweigend
+    als Skalar behandelte — also den `uleb128`-Index nicht las, den `Enum` (und jetzt `Interface`)
+    hinter sich trägt. Der Strom verschob sich, und der Fehler meldete sich viele Bytes später als
+    „unknown opcode 0x00": eine Meldung, die nichts mehr über ihre Ursache sagt.
+  - **Kein Test hat es berührt**, weil kein Beispiel und kein Testfall `?Enum` benutzte. Die
+    Lehre ist dieselbe wie bei den totalen Funktionen in der IR: ein `default`, der nichts tut,
+    ist stiller falscher Code. `SkipType` ist jetzt total mit `default`-Wurf.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -405,7 +447,7 @@ festgehalten:
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-**P3b steht** — als nächstes **P3 — Interfaces + vtable-Dispatch**.
+**P3 steht** — als nächstes **P4 — Structs (Wert-Semantik, Copy-on-Assign)**, Gate `examples/bank.lyr`.
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
@@ -453,7 +495,8 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 - **Feld-Defaults** (`balance: int = 0`) werden abgelehnt statt ignoriert. Ein weggelassenes Feld im
   Initialisierer hätte seinen Nullwert; ob das erlaubt ist, sagt die Sema heute nicht. `bank.lyr`
   hängt daran.
-- **Structs, Enums, Interfaces, generische Klassen** bleiben `LYR-IR0001` — P3/P4/P8.
+- **Structs und generische Klassen** bleiben `LYR-IR0001` — P4/P8. Enums (P3b) und Interfaces
+  (P3) lowern inzwischen.
 
 **Aus P2 — eine offene Ungleichbehandlung:**
 
@@ -464,6 +507,15 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   schwer zu begründen, weil `T[]` jetzt genauso ein Referenztyp ist wie eine Klasse. Zu klären,
   bevor `Indexable<T>` kommt: der Setter dort wäre `mut fn`, und dann hängt die Frage an derselben
   Stelle nochmal.
+
+**Aus P3 — eigene Befunde, nicht behoben:**
+
+- **Parser: `StructInit` rechts von `=` im Statement-Kontext.** `s = Small { n = 5 };` scheitert
+  mit `LYR-PAR0016`, obwohl `Sprache.md` §6.2 den Ausdruck „in jeder Wert-Position" erlaubt — die
+  Mehrdeutigkeits-Sperre gilt dort nur dem **Anfang** eines `ExprStmt`, greift aber auf die ganze
+  Zuweisung durch. Umgehung ist eine Fabrik; ein E2E-Test hält den Fall fest.
+- **Kein `Damageable[]`** — ein Array über einen Interface-Typ typt, aber die Elementkonvertierung
+  läuft noch nicht durch `Coerce`. Hängt ohnehin an Generics (P8).
 
 **Aus dem Toolchain-Split (ADR-017):**
 
@@ -554,7 +606,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`toolchain: gemeinsame Optionen, Fortschrittsausgabe, lyrvm info`
+`M7: Interfaces und vtable-Dispatch - Bytecode 2.1 (P3)`
 
 ---
 

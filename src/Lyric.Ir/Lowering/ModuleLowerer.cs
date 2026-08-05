@@ -110,6 +110,12 @@ public static class ModuleLowerer
                 {
                     ClassDecl c when c.Generics.Length == 0 => (c.Name, c.Members),
                     EnumDecl e when e.Generics.Length == 0 => (e.Name, e.Methods.Cast<Decl>().ToArray()),
+                    // Default-Methoden eines Interfaces sind gewoehnliche Funktionen mit dem
+                    // Empfaenger als Parameter 0 — nur dass dessen statischer Typ das Interface
+                    // selbst ist. Ein 'this.foo()' darin wird damit zu einem callvirt, und das ist
+                    // richtig: welche Implementierung laeuft, steht erst zur Laufzeit fest.
+                    // Abstrakte Methoden (ohne Rumpf) fallen unten durch die Body-Pruefung.
+                    InterfaceDecl i when i.Generics.Length == 0 => (i.Name, i.Members.Cast<Decl>().ToArray()),
                     _ => (null, null),
                 };
                 if (typeName is null || members is null) continue;
@@ -161,8 +167,79 @@ public static class ModuleLowerer
         var result = new IrModule(functions)
         {
             EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
+            Impls = BuildImpls(typeTable, binding, ids, de, ref failed),
         };
+        if (failed) return null;
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }
+
+    /// <summary>
+    /// Die vtable-Zeilen: fuer jede internierte Klasse und jedes internierte Interface, das sie
+    /// implementiert, Slot fuer Slot die Zielfunktion.
+    ///
+    /// <para><b>Nach</b> dem Lowering, weil erst dann feststeht, welche Typen ueberhaupt im
+    /// Bytecode landen — dieselbe Regel wie bei Types und Imports: eine deklarierte, nie benutzte
+    /// Klasse gehoert nicht hinein. Interfaces sind zu diesem Zeitpunkt bereits interniert, weil
+    /// jedes <c>mkiface</c> und <c>callvirt</c> ihre Id schon beim Lowern gebraucht hat.</para>
+    ///
+    /// <para><b>Die Aufloesungsreihenfolge faellt hier, nicht zur Laufzeit</b> (Sprache.md §3.5:
+    /// eigenes Member vor Interface-Default). Der Dispatch findet damit einen fertigen
+    /// Funktionsindex vor und muss nichts suchen.</para>
+    ///
+    /// <para>Deterministisch sortiert: die Zeilen landen als Sektion im Bytecode, und ADR-013
+    /// verlangt byte-identischen Output bei gleichem Input. Die Aufzaehlungsreihenfolge eines
+    /// Dictionary erfuellt das nicht.</para>
+    /// </summary>
+    private static List<IrImpl> BuildImpls(TypeTable typeTable, BindingResult binding,
+        Dictionary<FunctionSymbol, FunctionId> ids, DiagnosticEngine de, ref bool failed)
+    {
+        var impls = new List<IrImpl>();
+        var interned = typeTable.Interned.ToList();
+        var interfaces = interned.Where(t => t.Symbol.Kind == TypeSymbolKind.Interface).ToList();
+        if (interfaces.Count == 0) return impls;
+
+        foreach (var (type, typeId) in interned
+                     .Where(t => t.Symbol.Kind is TypeSymbolKind.Class or TypeSymbolKind.Enum)
+                     .OrderBy(t => t.Id.Value))
+        {
+            foreach (var (iface, ifaceId) in interfaces.OrderBy(t => t.Id.Value))
+            {
+                if (!Conformance.Implements(type, iface, binding)) continue;
+
+                var slots = typeTable.MethodSlotsOf(ifaceId);
+                var methods = new FunctionId[slots.Length];
+                var complete = true;
+
+                for (var i = 0; i < slots.Length; i++)
+                {
+                    // Eigenes Member schlaegt Default — Sprache.md §3.5.
+                    var target = Resolve(type, slots[i], ids) ?? Resolve(iface, slots[i], ids);
+                    if (target is { } id) { methods[i] = id; continue; }
+
+                    // Die Sema hat Konformanz bereits geprueft (LYR-SEM). Fehlt hier trotzdem
+                    // etwas, ist es eine Lowering-Luecke — etwa eine generische oder rumpflose
+                    // Implementierung, die Pass 1 uebersprungen hat.
+                    de.Report(LoweringDiagnostics.NotSupported, Severity.Error,
+                        type.Declaration?.Span ?? default,
+                        $"'{type.Name}' implements '{iface.Name}', but its '{slots[i]}' is not "
+                        + "lowerable by this compiler version yet (generic or bodiless)");
+                    complete = false;
+                    break;
+                }
+
+                if (complete) impls.Add(new IrImpl(typeId, ifaceId, methods));
+                else failed = true;
+            }
+        }
+
+        return impls;
+    }
+
+    private static FunctionId? Resolve(TypeSymbol owner, string method,
+        Dictionary<FunctionSymbol, FunctionId> ids) =>
+        owner.Members.LookupLocal(method) is FunctionSymbol symbol
+        && ids.TryGetValue(symbol, out var id)
+            ? id
+            : null;
 }

@@ -38,6 +38,7 @@ public static class IrVerifier
         var seenNames = new HashSet<string>(StringComparer.Ordinal);
 
         VerifyTypes(module, findings);
+        VerifyImpls(module, findings);
 
         foreach (var function in module.Functions)
         {
@@ -148,6 +149,77 @@ public static class IrVerifier
     /// die von wohlgeformter IR ausgehen dürfen.</summary>
     /// <remarks>Bewusst <b>ohne</b> IR-Dump in der Nachricht: <see cref="IrPrinter"/> wirft selbst
     /// bei fehlendem Terminator und würde damit genau den Befund verdecken, den wir melden wollen.</remarks>
+    /// <summary>
+    /// Die Impl-Tabelle: jede Zeile nennt existierende Typen, ihr Interface ist wirklich eines,
+    /// ihre Klasse ist keines, die Zeile hat genau so viele Eintraege wie das Interface Slots,
+    /// jede Zielfunktion existiert und nimmt einen Empfaenger — und es gibt kein Paar zweimal.
+    ///
+    /// <para>Diese Zeilen werden im Bytecode zur vtable. Ein Fehler darin ist ein Aufruf der
+    /// falschen Funktion mit den richtigen Argumenten — die Sorte Bug, die weit weg von ihrer
+    /// Ursache auffaellt. Deshalb hier und nicht erst im Reader.</para>
+    /// </summary>
+    private static void VerifyImpls(IrModule module, List<string> findings)
+    {
+        var seen = new HashSet<(int Type, int Interface)>();
+
+        for (var i = 0; i < module.Impls.Count; i++)
+        {
+            var impl = module.Impls[i];
+            var where = $"impl #{i} ({impl.Type} :: {impl.Interface})";
+
+            if (impl.Type.Value < 0 || impl.Type.Value >= module.Types.Count
+                || impl.Interface.Value < 0 || impl.Interface.Value >= module.Types.Count)
+            {
+                findings.Add($"{where}: references a type outside the table " +
+                             $"(module has {module.Types.Count} type(s))");
+                continue;
+            }
+
+            var iface = module.Types[impl.Interface.Value];
+            if (!iface.IsInterface)
+            {
+                findings.Add($"{where}: {iface.Name} is not an interface");
+                continue;
+            }
+
+            if (module.Types[impl.Type.Value].IsInterface)
+            {
+                findings.Add($"{where}: an interface cannot implement another interface");
+                continue;
+            }
+
+            if (!seen.Add((impl.Type.Value, impl.Interface.Value)))
+            {
+                findings.Add($"{where}: duplicate impl row — the dispatch would be ambiguous");
+                continue;
+            }
+
+            if (impl.Methods.Length != iface.MethodSlots.Length)
+            {
+                findings.Add($"{where}: has {impl.Methods.Length} method(s) but {iface.Name} " +
+                             $"declares {iface.MethodSlots.Length} slot(s)");
+                continue;
+            }
+
+            for (var slot = 0; slot < impl.Methods.Length; slot++)
+            {
+                var target = impl.Methods[slot];
+                if (target.Value < 0 || target.Value >= module.Functions.Count)
+                {
+                    findings.Add($"{where}: slot {slot} ({iface.MethodSlots[slot]}) targets " +
+                                 $"{target}, which is out of range");
+                    continue;
+                }
+
+                // Der Empfaenger ist Parameter 0 (ADR-014). Eine Zielfunktion ohne Parameter
+                // koennte ihn nicht entgegennehmen — das waere ein 'static' in einer vtable.
+                if (module.Functions[target.Value].ParamCount == 0)
+                    findings.Add($"{where}: slot {slot} ({iface.MethodSlots[slot]}) targets " +
+                                 $"{module.Functions[target.Value].Name}, which takes no receiver");
+            }
+        }
+    }
+
     public static void VerifyOrThrow(IrModule module)
     {
         var findings = Verify(module);
@@ -591,6 +663,8 @@ public static class IrVerifier
                 case NewVariant v: CheckNewVariant(v, block, index); break;
                 case EnumTag t: CheckEnumTag(t, block, index); break;
                 case EnumAs a: CheckEnumAs(a, block, index); break;
+                case MakeInterface m: CheckMakeInterface(m, block, index); break;
+                case CallVirt c: CheckCallVirt(c, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -862,6 +936,102 @@ public static class IrVerifier
     /// <summary>Löst eine <see cref="TypeId"/> gegen die Modul-Tabelle auf. <c>null</c> heißt: der
     /// Index zeigt ins Leere und wurde bereits gemeldet — der Aufrufer bricht dann ab, statt mit
     /// einem Ersatz-Layout weiterzuprüfen und Folgebefunde zu erzeugen.</summary>
+    /// <summary>
+    /// <c>mkiface</c>: die Quelle ist eine Klassen- oder Enum-Referenz, das Ziel ein
+    /// Interface-Eintrag, und es <b>gibt eine vtable-Zeile fuer genau dieses Paar</b>.
+    ///
+    /// <para>Die letzte Bedingung ist die eigentliche Invariante. Ohne sie entstuende ein
+    /// Interface-Wert, dessen konkreter Typ das Interface gar nicht erfuellt — und der Dispatch
+    /// liefe erst beim Aufruf ins Leere, mit einem Fehler, der nichts mehr ueber die Ursache sagt.
+    /// Dieselbe Rolle, die bei Enums „eine Variante gehoert zu genau einem Enum" spielt.</para>
+    /// </summary>
+    private void CheckMakeInterface(MakeInterface m, BlockId block, int index)
+    {
+        var concrete = TypeOf(m.Value) switch
+        {
+            IrRefType r => (TypeId?)r.Type,
+            IrEnumType e => e.Type,
+            _ => null,
+        };
+
+        if (concrete is null)
+        {
+            Report(block, index,
+                $"mkiface expects a class or enum value, found {Show(TypeOf(m.Value))}");
+            return;
+        }
+
+        if (concrete.Value != m.Concrete)
+        {
+            Report(block, index, $"mkiface declares concrete type {m.Concrete} but its operand is " +
+                                 $"{Show(TypeOf(m.Value))}");
+            return;
+        }
+
+        if (ResolveType(m.Concrete, "mkiface", block, index) is null) return;
+        if (ResolveType(m.Interface, "mkiface", block, index) is not { } iface) return;
+
+        if (!iface.IsInterface)
+        {
+            Report(block, index, $"mkiface targets type {m.Interface} ({iface.Name}), " +
+                                 "which is not an interface");
+            return;
+        }
+
+        if (!_module.Impls.Any(i => i.Type == m.Concrete && i.Interface == m.Interface))
+        {
+            Report(block, index, $"mkiface lifts type {m.Concrete} to interface {m.Interface} " +
+                                 $"({iface.Name}), but no impl row says it implements it");
+            return;
+        }
+
+        RequireDestType(m.Dest, new IrInterfaceType(m.Interface), "mkiface", block, index);
+    }
+
+    /// <summary>
+    /// <c>callvirt</c>: der Empfaenger (Arg 0) ist ein Wert genau dieses Interfaces, und der Slot
+    /// liegt in dessen Methodenliste.
+    ///
+    /// <para>Die Argumenttypen werden <b>nicht</b> gegen eine Zielfunktion geprueft — es gibt
+    /// keine: welche laeuft, entscheidet die Laufzeit. Die Signatur steht am Interface, und dass
+    /// alle Implementierungen sie erfuellen, hat die Sema geprueft (Konformanz). Was der Verifier
+    /// hier haelt, ist die Form; die Kongruenz der vtable-Zeilen prueft
+    /// <see cref="CheckImpls"/>.</para>
+    /// </summary>
+    private void CheckCallVirt(CallVirt c, BlockId block, int index)
+    {
+        if (c.Args.Length == 0)
+        {
+            Report(block, index, "callvirt has no receiver (argument 0 is the interface value)");
+            return;
+        }
+
+        if (ResolveType(c.Interface, "callvirt", block, index) is not { } iface) return;
+
+        if (!iface.IsInterface)
+        {
+            Report(block, index, $"callvirt targets type {c.Interface} ({iface.Name}), " +
+                                 "which is not an interface");
+            return;
+        }
+
+        if (c.Slot < 0 || c.Slot >= iface.MethodSlots.Length)
+        {
+            Report(block, index, $"callvirt slot {N(c.Slot)} is out of range for interface " +
+                                 $"{c.Interface} ({iface.Name} has {N(iface.MethodSlots.Length)} slot(s))");
+            return;
+        }
+
+        if (TypeOf(c.Args[0]) is not IrInterfaceType receiver || receiver.Type != c.Interface)
+        {
+            Report(block, index, $"callvirt receiver is {Show(TypeOf(c.Args[0]))}, " +
+                                 $"expected interface {c.Interface}");
+            return;
+        }
+
+        if (c.Dest is { } dest) RequireDestType(dest, c.ReturnType, "callvirt", block, index);
+    }
+
     private IrTypeDef? ResolveType(TypeId type, string what, BlockId block, int index)
     {
         if (type.Value >= 0 && type.Value < _module.Types.Count) return _module.Types[type.Value];
@@ -1312,6 +1482,7 @@ public static class IrVerifier
             IrArrayType a => $"{Show(a.Element)}[]",
             IrOptionalType o => $"?{Show(o.Inner)}",
             IrEnumType e => $"enum {e.Type}",
+        IrInterfaceType i => $"dyn {i.Type}",
             _ => type.ToString() ?? type.GetType().Name
         };
 

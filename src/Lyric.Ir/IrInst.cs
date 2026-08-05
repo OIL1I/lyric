@@ -67,6 +67,24 @@ public sealed record NewVariant(TempId Dest, TypeId Variant, TypeId Enum, TempId
 public sealed record EnumTag(TempId Dest, TempId Value, Span Span) : IrOp(Span);
 public sealed record EnumAs(TempId Dest, TempId Value, TypeId Variant, Span Span) : IrOp(Span);
 
+// Interfaces (P3). Dieselbe Arbeitsteilung wie bei Optionals und Enums: eine Instruktion
+// materialisiert die Darstellung, eine konsumiert sie. MakeInterface heftet den konkreten Typ an
+// eine Objektreferenz (er steht zur Compile-Zeit fest), CallVirt holt daran seine Zielfunktion.
+// Ein 'downcast' gibt es bewusst nicht — Sprache.md kennt keinen, und ohne ihn braucht der
+// Interface-Wert keine Laufzeit-Typpruefung.
+public sealed record MakeInterface(TempId Dest, TempId Value, TypeId Concrete, TypeId Interface,
+    Span Span) : IrOp(Span);
+
+/// <param name="Slot">Index in die Methoden-Slots des Interfaces — nicht sein Name. Wie beim
+/// Feldindex steht er zur Compile-Zeit fest, weil Lyric statisch typisiert ist und kein
+/// Monkey-Patching kennt.</param>
+/// <param name="ReturnType">Kopie fuer den Printer; die Temp-Tabelle bleibt die Autoritaet, und
+/// dass beide uebereinstimmen, prueft der Verifier. Ohne sie liesse sich eine callvirt-Zeile nicht
+/// aus der Instruktion allein formatieren — anders als bei <c>Call</c> gibt es keine Zielfunktion,
+/// die man nach ihrem Rueckgabetyp fragen koennte.</param>
+public sealed record CallVirt(TempId? Dest, TypeId Interface, int Slot, TempId[] Args,
+    IrType ReturnType, Span Span) : IrOp(Span);
+
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);

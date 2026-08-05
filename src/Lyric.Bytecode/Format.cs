@@ -17,7 +17,7 @@ public static class Format
     /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
     /// ausdrücklich.</remarks>
     public const ushort VersionMajor = 2;
-    public const ushort VersionMinor = 0;
+    public const ushort VersionMinor = 1;
 }
 
 /// <summary>
@@ -53,6 +53,17 @@ public enum SectionId : byte
     /// Einstieg über eine Namenskonvention raten — was ADR-013s Ziel widerspricht, dass die Spec
     /// allein zum Implementieren reicht.</summary>
     Start = 7,
+
+    /// <summary>
+    /// Interface-Implementierungen: welche Funktion erfuellt welchen Methoden-Slot welches
+    /// Interfaces fuer welche Klasse. Die vtable-Zeilen, aus denen <c>callvirt</c> sein Ziel holt.
+    ///
+    /// <para>Eigene Sektion und <b>nicht</b> ein Feld im Klassen-Eintrag: §2 erlaubt einer neuen
+    /// Minor nur ueberspringbare Ergaenzungen. Ein zusaetzliches Feld im Layout-Eintrag waere eine
+    /// Formaenderung wie bei Enums (die 2.0 erzwang); eine neue Sektions-Id ist genau die
+    /// Erweiterung, fuer die der Mechanismus da ist.</para>
+    /// </summary>
+    Impls = 8,
 }
 
 /// <summary>
@@ -85,6 +96,14 @@ public enum TypeTag : byte
     /// Anders als Array und Optional über einen Index, weil ein Enum wie eine Klasse eine
     /// Deklaration hat und rekursiv sein darf.</summary>
     Enum = 0x43,
+
+    /// <summary>
+    /// Interface-Typ (<c>dyn</c>); ein <c>uleb128</c>-Index auf einen Interface-Eintrag folgt.
+    ///
+    /// <para>Ein Wert dieses Typs ist ein <b>Fat Pointer</b>: Objekt plus konkreter Typindex.
+    /// Siehe §4 „Darstellung eines Interface-Wertes".</para>
+    /// </summary>
+    Interface = 0x44,
 }
 
 /// <summary>Art eines Types-Eintrags. Varianten eines Enums sind selbst
@@ -93,6 +112,11 @@ public enum TypeKind : byte
 {
     Layout = 0,
     Enum = 1,
+
+    /// <summary>Ein Interface. Traegt keine Felder, sondern die Namen seiner Methoden-Slots — der
+    /// <b>Index</b> in dieser Liste ist der Slot, auf den <c>callvirt</c> zeigt. Die Namen stehen
+    /// nur fuer Disassembler und Diagnose darin.</summary>
+    Interface = 2,
 }
 
 /// <summary>
@@ -198,4 +222,21 @@ public enum Op : byte
     NewVariant = 0x68, // newvariant <uleb128 variantType>
     EnumTag = 0x69,    // enumtag
     EnumAs = 0x6A,     // enumas <uleb128 variantType> — panickt bei falschem Tag
+
+    // --- Interfaces (Format 2.1) -------------------------------------------------------------
+
+    /// <summary><c>mkiface &lt;uleb128 concreteType&gt; &lt;uleb128 interfaceType&gt;</c> — hebt
+    /// eine Objektreferenz auf ihren Interface-Typ. Der konkrete Typ steht zur Compile-Zeit fest;
+    /// die Instruktion heftet ihn an den Wert, damit <c>callvirt</c> ihn spaeter findet.
+    ///
+    /// <para>Beide Indizes stehen dran, obwohl die Runtime nur den ersten braucht: so prueft der
+    /// Loader die Implementierungs-Beziehung gegen die Impls-Sektion, ohne eine Datenflussanalyse
+    /// zu fahren — ADR-013s „Validierung beim Load statt beim Call", dieselbe Begruendung wie beim
+    /// Typ- und Feldindex am <c>ldfld</c>.</para></summary>
+    MakeInterface = 0x70,
+
+    /// <summary><c>callvirt &lt;uleb128 interfaceType&gt; &lt;uleb128 slot&gt;</c> — ruft die
+    /// Implementierung des Slots am konkreten Typ des Empfaengers. Der Empfaenger liegt zuunterst
+    /// wie bei jedem Methodenaufruf (Parameter 0, ADR-014).</summary>
+    CallVirt = 0x71,
 }

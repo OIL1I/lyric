@@ -56,9 +56,17 @@ public static class Disassembler
             sb.Append($"  start: {CalleeName(module, start)}\n");
 
         foreach (var type in module.Types)
-            sb.Append(type.IsEnum
+            sb.Append(type.IsInterface
+                ? $"  interface {type.Name} {{{string.Join(", ", type.MethodSlots)}}}\n"
+                : type.IsEnum
                 ? $"  enum {type.Name} {{{string.Join(", ", type.Variants.Select(v => TypeRefName(module, (ulong)v)))}}}\n"
                 : $"  type {type.Name}({string.Join(", ", type.FieldTypes.Select(f => TypeName(module, f)))})\n");
+
+        // Die vtable-Zeilen. Sie stehen beim Kopf, weil callvirt sie braucht, um lesbar zu sein.
+        foreach (var impl in module.Impls)
+            sb.Append($"  impl {TypeRefName(module, (ulong)impl.Type)} :: " +
+                      $"{TypeRefName(module, (ulong)impl.Interface)} [" +
+                      $"{string.Join(", ", impl.Methods.Select(m => CalleeName(module, m)))}]\n");
 
         foreach (var import in module.Imports)
             sb.Append($"  import {import.Name}(" +
@@ -116,6 +124,9 @@ public static class Disassembler
         Op.Unreachable => "unreachable",
 
         Op.NewVariant => $"newvariant {TypeRefName(module, i.Immediate)}",
+        Op.MakeInterface => $"mkiface {TypeRefName(module, i.Immediate)} -> " +
+                            $"{TypeRefName(module, i.Immediate2)}",
+        Op.CallVirt => $"callvirt {SlotName(module, i.Immediate, i.Immediate2)}",
         Op.EnumTag => "enumtag",
         Op.EnumAs => $"enumas {TypeRefName(module, i.Immediate)}",
 
@@ -165,6 +176,20 @@ public static class Disassembler
         Op.Neg => "neg", Op.BitNot => "bitnot",
         _ => opcode.ToString().ToLowerInvariant(),
     };
+
+    /// <summary>Zeigt <c>Interface#slot (name)</c>. Der Slot ist das, was ausgefuehrt wird; der
+    /// Name steht daneben, weil er im Bytecode ohnehin vorliegt und die Zeile ohne ihn kaum
+    /// lesbar waere.</summary>
+    private static string SlotName(BytecodeModule module, ulong iface, ulong slot)
+    {
+        var name = TypeRefName(module, iface);
+        if (iface >= (ulong)module.Types.Count) return $"{name}#{N(slot)}";
+
+        var slots = module.Types[(int)iface].MethodSlots;
+        return slot < (ulong)slots.Count
+            ? $"{name}#{N(slot)} ({slots[(int)slot]})"
+            : $"{name}#{N(slot)}";
+    }
 
     private static string TypeRefName(BytecodeModule module, ulong index) =>
         index < (ulong)module.Types.Count ? module.Types[(int)index].Name : $"ty{N(index)}";

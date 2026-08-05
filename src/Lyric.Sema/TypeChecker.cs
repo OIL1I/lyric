@@ -2144,7 +2144,38 @@ public sealed class TypeChecker
             return from is NullType || IsAssignable(expr, from, inner.Inner);
         if (from is NullType) return false;
         if (to is PrimitiveType pt && LiteralAdaptsTo(expr, pt)) return true; // ②a Literal-Fit
+        if (ImplementsInterface(from, to)) return true;   // T -> I, wenn T :: [I] (§3.5)
         return false;
+    }
+
+    /// <summary>
+    /// Nominales Subtyping: ein Wert darf ueberall stehen, wo eines seiner deklarierten Interfaces
+    /// erwartet wird (<c>Doku.md</c> §13, <c>Sprache.md</c> §3.5).
+    ///
+    /// <para>Nur in <b>diese</b> Richtung. Der Rueckweg — Interface auf Klasse — waere ein
+    /// Downcast, und den kennt die Sprache nicht: <c>Sprache.md</c> §6.5 laesst <c>as</c>
+    /// ausschliesslich zwischen Numerik zu. Deshalb braucht ein Interface-Wert auch keine
+    /// Laufzeit-Typpruefung.</para>
+    ///
+    /// <para>Die Frage selbst beantwortet <see cref="Conformance"/> — dieselbe Stelle, die auch
+    /// der Konformanz-Check und das IR-Lowering fragen. Drei Antworten auf „erfuellt T das
+    /// Interface I" waeren drei Gelegenheiten, dass die Runtime auf etwas dispatcht, das nie
+    /// geprueft wurde.</para>
+    /// </summary>
+    private bool ImplementsInterface(LyrType from, LyrType to)
+    {
+        if (to is not NamedRef { Symbol.Kind: TypeSymbolKind.Interface } target) return false;
+
+        return from switch
+        {
+            NamedRef source => Conformance.Implements(source.Symbol, target.Symbol, _binding),
+            GenericInstance instance =>
+                Conformance.Implements(instance.Definition, target.Symbol, _binding),
+            TypeParamType parameter => parameter.Param.Constraints.Any(c =>
+                Conformance.InterfaceOf(c, _binding) is { } it
+                && ReferenceEquals(it, target.Symbol)),
+            _ => false,
+        };
     }
 
     private static bool LiteralAdaptsTo(Expr expr, PrimitiveType target)

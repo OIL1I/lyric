@@ -26,6 +26,7 @@ public static class IrPrinter
         var sb = new StringBuilder();
         var ctx = CallContext.ForModule(module);
         WriteTypes(sb, module.Types);
+        WriteImpls(sb, module.Impls);
         for (var i = 0; i < module.Functions.Count; i++)
         {
             if (i > 0 || module.Types.Count > 0) sb.Append('\n'); // Leerzeile zwischen Blöcken
@@ -86,11 +87,31 @@ public static class IrPrinter
                 throw new InternalCompilationException(
                     $"ir-printer: type {def.Name} has {def.FieldTypes.Length} field types but {def.FieldNames.Length} names");
 
+            if (def.IsInterface)
+            {
+                // Ein Interface hat keine Felder, sondern Slots. Der Index ist der Vertrag.
+                sb.Append($"interface {new TypeId(i)} {def.Name} {{\n");
+                for (var m = 0; m < def.MethodSlots.Length; m++)
+                    sb.Append($"  #{m.ToString(CultureInfo.InvariantCulture)} {def.MethodSlots[m]}\n");
+                sb.Append("}\n");
+                continue;
+            }
+
             sb.Append($"type {new TypeId(i)} {def.Name} {{\n");
             for (var f = 0; f < def.FieldTypes.Length; f++)
                 sb.Append($"  {new FieldId(f)} {def.FieldNames[f]}: {TypeStr(def.FieldTypes[f])}\n");
             sb.Append("}\n");
         }
+    }
+
+    /// <summary>Die vtable-Zeilen. Sie stehen als eigener Block da, weil sie zu keinem einzelnen
+    /// Typ gehoeren, sondern zu einem Paar — und weil man beim Suchen eines Dispatch-Bugs genau
+    /// diese Zuordnung sehen will.</summary>
+    private static void WriteImpls(StringBuilder sb, IReadOnlyList<IrImpl> impls)
+    {
+        foreach (var impl in impls)
+            sb.Append($"impl {impl.Type} :: {impl.Interface} " +
+                      $"[{string.Join(", ", impl.Methods)}]\n");
     }
 
     // --- Struktur ---
@@ -148,8 +169,23 @@ public static class IrPrinter
                         $" [{string.Join(", ", v.Fields)}]",
         EnumTag t => $"{t.Dest}: i64 = enumtag {t.Value}",
         EnumAs a => $"{a.Dest}: {TypeStr(new IrRefType(a.Variant))} = enumas {a.Value}, {a.Variant}",
+
+        MakeInterface m => $"{m.Dest}: {TypeStr(new IrInterfaceType(m.Interface))} = mkiface " +
+                           $"{m.Value}, {m.Concrete}",
+        CallVirt c => CallVirtStr(c),
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
+
+    /// <summary>Zeigt Interface und Slot, nicht einen Methodennamen: der Slot ist das, was im
+    /// Bytecode steht, und beim Suchen eines Dispatch-Bugs will man genau ihn sehen.</summary>
+    private static string CallVirtStr(CallVirt c)
+    {
+        var args = string.Join(", ", c.Args);
+        var target = $"{c.Interface}#{c.Slot.ToString(CultureInfo.InvariantCulture)}";
+        return c.Dest is { } dest
+            ? $"{dest}: {TypeStr(c.ReturnType)} = callvirt {target}({args})"
+            : $"callvirt {target}({args})";
+    }
 
     private static string CallStr(Call k, CallContext ctx)
     {
@@ -191,6 +227,7 @@ public static class IrPrinter
         IrArrayType a => $"{TypeStr(a.Element)}[]",
         IrOptionalType o => $"?{TypeStr(o.Inner)}",
         IrEnumType e => $"enum {e.Type}",
+        IrInterfaceType i => $"dyn {i.Type}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 
