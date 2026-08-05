@@ -1,0 +1,38 @@
+// arrays.lyr — Komplexität: einfach
+// Zeigt: T[] als echtes Array, Literal, Wiederholung, Konkatenation, Index, .length.
+//
+// Gate-Programm für M7/P2. Bewusst mit `while` statt `for-in`: die Schleife über einen Container
+// braucht das `Iterator`-Interface und kommt erst in P8. `stats.lyr` ist dasselbe Thema in voller
+// Ausbaustufe — es braucht zusätzlich Optionals, `params` und Format-Specs.
+
+import std.io.console { println };
+
+// Die Länge eines Arrays steht bei der Erzeugung fest (ADR-016). Wachsen kann nur
+// `std.collections.List<T>`, und das gibt es erst mit der Stdlib.
+fn sum(xs: int[]): int {
+    var total = 0;
+    var i = 0;
+    while (i < xs.length) {
+        total += xs[i];
+        i += 1;
+    }
+    return total;
+}
+
+// `[0] * n` ist das Default-Array: n Elemente, alle 0 — n darf ein Laufzeitwert sein.
+fn zeros(n: int): int[] {
+    return [0] * n;
+}
+
+fn main(): int {
+    let xs = [3, 7, 1, 9, 4];
+    println(f"Summe von {xs.length} Werten: {sum(xs)}");
+
+    // Konkatenation liefert ein NEUES Array; xs bleibt unverändert.
+    var padded = xs + zeros(3);
+    padded[5] = 100;
+    padded[6] += 20;
+
+    println(f"Nach dem Auffuellen: {padded.length} Werte, Summe {sum(padded)}");
+    return sum(padded);
+}

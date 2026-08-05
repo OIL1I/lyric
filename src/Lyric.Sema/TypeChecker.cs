@@ -938,6 +938,12 @@ public sealed class TypeChecker
         }
 
         var baseType = mem.IsOptional && targetType is Optional opt ? opt.Inner : targetType;
+
+        // 'length' auf T[] ist eingebaut, keine Bibliotheks-Methode: T[] ist ein echtes Array
+        // (ADR-016), und seine Länge ist eine Eigenschaft des Wertes. Wachsende Container bringen
+        // ihre Member über Indexable/Iterator mit, sobald es Generics gibt.
+        if (baseType is ArrayOf && mem.Member == "length") return LyrType.Int;
+
         if (InstanceMemberOf(baseType, mem, mem.Span) is { } mt)
             return mem.IsOptional ? new Optional(mt) : mt;
         if (targetType.IsError) return LyrType.Error;

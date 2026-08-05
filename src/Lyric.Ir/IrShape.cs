@@ -38,8 +38,8 @@ public static class IrShape
         // Reihenfolge ist Vertrag (Bytecode.md §5): Array, Index, Wert — von unten nach oben.
         StoreElem e => new[] { e.Array, e.Index, e.Value },
         ArrayLen a => new[] { a.Array },
-        ArrayPush p => new[] { p.Array, p.Value },
-        ArrayPop p => new[] { p.Array },
+        ArrayConcat c => new[] { c.Left, c.Right },
+        ArrayRepeat r => new[] { r.Array, r.Count },
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };
@@ -74,8 +74,8 @@ public static class IrShape
         LoadElem e => e.Dest,
         StoreElem => null,
         ArrayLen a => a.Dest,
-        ArrayPush => null,
-        ArrayPop p => p.Dest,
+        ArrayConcat c => c.Dest,
+        ArrayRepeat r => r.Dest,
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
     };

@@ -13,7 +13,7 @@ public static class Format
     /// <summary>Eine unbekannte Major-Version wird abgelehnt, eine unbekannte Minor toleriert
     /// (neue Sektionen sind überspringbar). Bis v1.0 darf Major frei springen — ADR-013.</summary>
     public const ushort VersionMajor = 1;
-    public const ushort VersionMinor = 2;
+    public const ushort VersionMinor = 3;
 }
 
 /// <summary>
@@ -67,6 +67,11 @@ public enum TypeTag : byte
     /// Zuweisung kopiert den Verweis, nicht das Objekt. Wert-Semantik (<c>struct</c>) bekommt ein
     /// eigenes Tag — am Bytecode muss ablesbar bleiben, ob eine Zuweisung kopiert.</summary>
     Ref = 0x40,
+
+    /// <summary>Array; der Elementtyp folgt <b>inline</b> als weiterer Typ, nicht als
+    /// Tabellen-Index. Möglich, weil ein Array-Typ nicht rekursiv sein kann — <c>int[][]</c> ist
+    /// endlich tief, <c>class Node { next: Node }</c> nicht.</summary>
+    Array = 0x41,
 }
 
 /// <summary>
@@ -134,4 +139,19 @@ public enum Op : byte
     /// <para>Der Typ-Index ist zur Laufzeit redundant und steht trotzdem da: nur so prüft der
     /// Loader den Feldindex gegen ein Layout, ohne eine Datenfluss-Analyse zu fahren.</para></summary>
     StoreField = 0x52,
+
+    /// <summary><c>newarr &lt;elementType&gt; &lt;uleb128 count&gt;</c> — nimmt <c>count</c> Werte
+    /// vom Stack, das erste Element zuunterst. Ein Literal ist damit eine Instruktion, nicht
+    /// <c>count</c> Stores.</summary>
+    NewArray = 0x58,
+
+    LoadElem = 0x59,  // ldelem  — Array, Index -> Element
+    StoreElem = 0x5A, // stelem  — Array, Index, Wert (Referenz zuunterst)
+    ArrayLen = 0x5B,  // arrlen  — Laenge als i64
+
+    /// <summary><c>arrcat</c> / <c>arrrep</c> bilden <c>xs + ys</c> und <c>xs * n</c> ab
+    /// (Sprache.md §6.5) — eingebaute Sprachsemantik. Beide liefern ein <b>neues</b> Array:
+    /// <c>T[]</c> wächst nicht (ADR-016).</summary>
+    ArrayConcat = 0x5C,
+    ArrayRepeat = 0x5D,
 }

@@ -410,7 +410,7 @@ TypeAtom        = BuiltinType
                 | TupleType .
 FunctionType    = 'fn' '(' [ TypeExpr { ',' TypeExpr } ] ')' '->' TypeExpr .
 TupleType       = '(' TypeExpr ',' TypeExpr { ',' TypeExpr } ')' .   (* arity >= 2, keine Obergrenze *)
-TypeSuffix      = '[' [ IntLit ] ']' .                          (* T[] oder T[N] *)
+TypeSuffix      = '[' ']' .                                     (* T[] — die Laenge steht im Wert, nicht im Typ (ADR-016) *)
 
 BuiltinType     = 'int' | 'uint' | 'float'
                 | 'int8' | 'int16' | 'int32' | 'int64'
@@ -432,8 +432,7 @@ BuiltinType     = 'int' | 'uint' | 'float'
 | `string` | UTF-8 Fat-Pointer `{ data, length }`, immutable |
 | `void` | nur als Rückgabetyp |
 | `?T` | nullable, äquivalent `Option<T>` |
-| `T[]` | dynamisches Array (= `List<T>`-Slice) |
-| `T[N]` | Fix-Size-Array mit Compile-Time-Länge N |
+| `T[]` | Array; Länge steht bei der Erzeugung fest (ADR-016). Wachsende Container: `std.collections.List<T>` |
 | `(A, B)`, `(A, B, C)`, … | Tupel (arity ≥ 2, keine Obergrenze) |
 | `fn(A, B) -> R` | Funktionstyp / Closure-Slot |
 

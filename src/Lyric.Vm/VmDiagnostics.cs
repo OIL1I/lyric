@@ -31,6 +31,10 @@ public static class VmDiagnostics
 
     /// <summary>Das Modul verlangt Imports, aber die Runtime bindet noch keine.</summary>
     public const string ImportsNotBound = "LYR-VM0005";
+
+    /// <summary>Element-Index außerhalb der Array-Grenzen. Anders als Typ- und Feldindizes ist er
+    /// ein Laufzeitwert und beim Laden nicht prüfbar (ADR-016) — also ein <c>panic</c> (§9).</summary>
+    public const string IndexOutOfRange = "LYR-VM0006";
 }
 
 /// <summary>

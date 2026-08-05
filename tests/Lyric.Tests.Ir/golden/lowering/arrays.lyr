@@ -1,0 +1,30 @@
+// Arrays (ADR-016): T[] ist ein echtes Array, die Laenge steht bei der Erzeugung fest.
+// Gebaut wird es aus dem Literal, aus [x] * n und aus xs + ys — alle drei liefern ein NEUES Array.
+fn build(n: int): int[] {
+    return [0] * n;
+}
+
+fn sum(xs: int[]): int {
+    var total = 0;
+    var i = 0;
+    while (i < xs.length) {
+        total += xs[i];
+        i += 1;
+    }
+    return total;
+}
+
+fn main(): int {
+    let xs = [3, 7, 1];
+    let zeros = build(2);
+
+    // Element-Zuweisung, auch zusammengesetzt: Array und Index werden je einmal ausgewertet.
+    // 'var', weil Sprache.md 6.4 fuer den Index-Operator ein mutables Ziel verlangt — anders als
+    // bei einem Klassen-Feld, das durch jede Bindung schreibbar ist. Beides sind Referenztypen;
+    // die Ungleichbehandlung ist offen (siehe STATUS.md).
+    var ys = xs + zeros;
+    ys[3] = 10;
+    ys[4] += 5;
+
+    return sum(ys);
+}

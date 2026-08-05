@@ -87,6 +87,7 @@ public class LoweringTests
     [InlineData("objects")]         // newobj, Feld lesen/schreiben, Referenz-Semantik
     [InlineData("objects_nested")]  // Klasse als Feldtyp, plus ein rekursiver Typ
     [InlineData("methods")]         // Empfänger als Parameter 0, static-Fabrik, 'this'
+    [InlineData("arrays")]          // Literal, [x]*n, xs+ys, Index lesend/schreibend, .length
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();
@@ -428,11 +429,10 @@ public class LoweringTests
 
     // ------------------------------------------------------------------ 3) Scope-Grenzen
 
-    // Die IR kennt heute nur Skalare. Ein nicht-skalarer Typ ist deshalb die ERSTE Grenze, auf
-    // die man läuft — noch vor dem Ausdruck, der ihn benutzt. Die Meldung benennt den Lyric-Typ,
-    // nicht den Ausdruck: das ist die fundamentalere Aussage.
+    // Ein Typ, den die IR nicht kennt, ist die ERSTE Grenze, auf die man läuft — noch vor dem
+    // Ausdruck, der ihn benutzt. Die Meldung benennt den Lyric-Typ, nicht den Ausdruck: das ist
+    // die fundamentalere Aussage. (Arrays gehören seit P2 nicht mehr dazu.)
     [Theory]
-    [InlineData("fn f(): int { let xs = [1, 2, 3]; return xs[0]; }", "type 'int[]'")]
     [InlineData("fn f(): int { let g = (x: int) => x + 1; return g(1); }", "type 'fn(int) -> int'")]
     [InlineData("fn f(): int { let t = (1, 2); return 0; }", "type '(int, int)'")]
     [InlineData("fn f(n: ?int): int { return n ?? 0; }", "type '?int'")]
@@ -517,7 +517,7 @@ public class LoweringTests
         // Eine Meldung pro Aufruf wäre Schikane: wer drei nicht unterstützte Konstrukte benutzt,
         // soll sie in einem Durchlauf sehen. Deshalb sammelt das Lowering pro Funktion weiter.
         var (ir, de) = TryLower("""
-            fn a(): int { let xs = [1, 2]; return xs[0]; }
+            fn a(): int { let g = (x: int) => x + 1; return g(1); }
             fn b(): int { var s = 0; for (i in 0..3) { s += i; } return s; }
             fn c(): int { let t = (1, 2); return 0; }
             """);

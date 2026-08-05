@@ -190,7 +190,20 @@ let user: ?User        = findUser(id);         // nullable
 let fn: fn(int) -> int = (x) => x * 2;         // Funktionstyp
 ```
 
-`T[]` ist genau genommen `List<T>` mit syntaktischem Zucker — du kannst `.length`, `.push(v)`, `.pop()` etc. drauf aufrufen.
+`T[]` ist ein **echtes Array**: die Länge steht bei der Erzeugung fest und ändert sich nicht mehr
+(ADR-016). Du kannst indizieren (`xs[0]`) und `.length` lesen.
+
+Gebaut wird es auf drei Arten — alle drei erzeugen ein neues Array:
+
+```lyr
+let a = [3, 7, 1];      // Literal
+let b = [0] * n;        // n Elemente, alle 0 — n darf ein Laufzeitwert sein
+let c = a + [9];        // Konkatenation
+```
+
+Wenn du etwas brauchst, das **wächst**, nimm `std.collections.List<T>`. Es hält intern ein `T[]`,
+kopiert bei Bedarf um und kann `.push(v)`/`.pop()`. Der Index-Operator funktioniert dort genauso —
+`List<T>` implementiert das `Indexable<T>`-Interface, an das `[i]` für alles außer `T[]` bindet.
 
 ### 5.3 Type-Aliases
 

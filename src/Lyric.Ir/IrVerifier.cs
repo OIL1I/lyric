@@ -564,8 +564,8 @@ public static class IrVerifier
                 case LoadElem e: CheckLoadElem(e, block, index); break;
                 case StoreElem e: CheckStoreElem(e, block, index); break;
                 case ArrayLen a: CheckArrayLen(a, block, index); break;
-                case ArrayPush p: CheckArrayPush(p, block, index); break;
-                case ArrayPop p: CheckArrayPop(p, block, index); break;
+                case ArrayConcat c: CheckArrayConcat(c, block, index); break;
+                case ArrayRepeat r: CheckArrayRepeat(r, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -978,24 +978,34 @@ public static class IrVerifier
         RequireDestType(a.Dest, new IrScalarType(IrScalar.I64), "arraylen", block, index);
     }
 
-    private void CheckArrayPush(ArrayPush p, BlockId block, int index)
+    private void CheckArrayConcat(ArrayConcat c, BlockId block, int index)
     {
-        if (RequireArray(p.Array, "push", block, index) is not { } element) return;
+        if (RequireArray(c.Left, "arrcat", block, index) is not { } left) return;
+        if (RequireArray(c.Right, "arrcat", block, index) is not { } right) return;
 
-        var actual = TypeOf(p.Value);
-        if (!IrType.Equal(element, actual))
-            Report(block, index, $"push takes {Show(element)}, but {p.Value} is {Show(actual)}");
+        if (!IrType.Equal(left, right))
+        {
+            Report(block, index, $"arrcat joins {Show(left)}[] and {Show(right)}[]");
+            return;
+        }
+
+        if (!IrType.Equal(c.Element, left))
+            Report(block, index, $"arrcat yields {Show(left)}[] but the instruction says " +
+                                 $"{Show(c.Element)}[]");
+        else
+            RequireDestType(c.Dest, new IrArrayType(left), "arrcat", block, index);
     }
 
-    private void CheckArrayPop(ArrayPop p, BlockId block, int index)
+    private void CheckArrayRepeat(ArrayRepeat r, BlockId block, int index)
     {
-        if (RequireArray(p.Array, "pop", block, index) is not { } element) return;
+        if (RequireArray(r.Array, "arrrep", block, index) is not { } element) return;
+        RequireIndex(r.Count, "arrrep", block, index);
 
-        if (!IrType.Equal(p.Element, element))
-            Report(block, index, $"pop yields {Show(element)} but the instruction says " +
-                                 $"{Show(p.Element)}");
+        if (!IrType.Equal(r.Element, element))
+            Report(block, index, $"arrrep yields {Show(element)}[] but the instruction says " +
+                                 $"{Show(r.Element)}[]");
         else
-            RequireDestType(p.Dest, element, "pop", block, index);
+            RequireDestType(r.Dest, new IrArrayType(element), "arrrep", block, index);
     }
 
     private void CheckTerminatorTypes(IrTerminator terminator, BlockId block)

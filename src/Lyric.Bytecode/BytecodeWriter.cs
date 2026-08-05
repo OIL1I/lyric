@@ -214,6 +214,18 @@ public static class BytecodeWriter
                 code.ULeb(f.Field.Value);
                 break;
 
+            case NewArray a:
+                code.Opcode(Op.NewArray);
+                WriteType(code, a.Element);
+                code.ULeb(a.Elements.Length);
+                break;
+
+            case LoadElem: code.Opcode(Op.LoadElem); break;
+            case StoreElem: code.Opcode(Op.StoreElem); break;
+            case ArrayLen: code.Opcode(Op.ArrayLen); break;
+            case ArrayConcat: code.Opcode(Op.ArrayConcat); break;
+            case ArrayRepeat: code.Opcode(Op.ArrayRepeat); break;
+
             default:
                 throw new InternalCompilationException($"bytecode: unhandled op {op.GetType().Name}");
         }
@@ -329,6 +341,8 @@ public static class BytecodeWriter
     {
         w.Tag(TagOf(type));
         if (type is IrRefType r) w.ULeb(r.Type.Value);
+        // Der Elementtyp steht inline und rekursiv — int[][] ist 0x41 0x41 0x04.
+        if (type is IrArrayType a) WriteType(w, a.Element);
     }
 
     internal static TypeTag TagOf(IrType type) => type switch
@@ -352,6 +366,7 @@ public static class BytecodeWriter
             _ => throw new InternalCompilationException($"bytecode: unknown scalar {s.Kind}")
         },
         IrRefType => TypeTag.Ref,
+        IrArrayType => TypeTag.Array,
         _ => throw new InternalCompilationException(
             $"bytecode: type not encodable: {type.GetType().Name}")
     };

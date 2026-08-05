@@ -1,0 +1,80 @@
+fn main.build -> i64[] {
+  params: 1
+  locals:
+    l0 n: i64
+  bb0:
+    t0: i64 = const 0
+    t1: i64[] = newarr i64 [t0]
+    t2: i64 = load l0
+    t3: i64[] = arrrep t1, t2
+    ret t3
+}
+
+fn main.sum -> i64 {
+  params: 1
+  locals:
+    l0 xs: i64[]
+    l1 total: i64
+    l2 i: i64
+  bb0:
+    t0: i64 = const 0
+    store l1, t0
+    t1: i64 = const 0
+    store l2, t1
+    br bb1
+  bb1:
+    t2: i64 = load l2
+    t3: i64[] = load l0
+    t4: i64 = arraylen t3
+    t5: bool = lt t2, t4
+    condbr t5 -> bb2, bb3
+  bb2:
+    t6: i64 = load l1
+    t7: i64[] = load l0
+    t8: i64 = load l2
+    t9: i64 = loadelem t7, t8
+    t10: i64 = add t6, t9
+    store l1, t10
+    t11: i64 = load l2
+    t12: i64 = const 1
+    t13: i64 = add t11, t12
+    store l2, t13
+    br bb1
+  bb3:
+    t14: i64 = load l1
+    ret t14
+}
+
+fn main.main -> i64 {
+  params: 0
+  locals:
+    l0 xs: i64[]
+    l1 zeros: i64[]
+    l2 ys: i64[]
+  bb0:
+    t0: i64 = const 3
+    t1: i64 = const 7
+    t2: i64 = const 1
+    t3: i64[] = newarr i64 [t0, t1, t2]
+    store l0, t3
+    t4: i64 = const 2
+    t5: i64[] = call main.build(t4)
+    store l1, t5
+    t6: i64[] = load l0
+    t7: i64[] = load l1
+    t8: i64[] = arrcat t6, t7
+    store l2, t8
+    t9: i64[] = load l2
+    t10: i64 = const 3
+    t11: i64 = const 10
+    storeelem t9, t10, t11
+    t12: i64[] = load l2
+    t13: i64 = const 4
+    t14: i64 = loadelem t12, t13
+    t15: i64 = const 5
+    t16: i64 = add t14, t15
+    storeelem t12, t13, t16
+    t17: i64[] = load l2
+    t18: i64 = call main.sum(t17)
+    ret t18
+}

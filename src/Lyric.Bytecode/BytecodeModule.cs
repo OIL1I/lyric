@@ -34,12 +34,24 @@ public sealed class BytecodeModule
 /// mehr für sich steht — <c>0x40</c> ohne seinen Index ist keine vollständige Typangabe. Ein Feld,
 /// das man zu lesen vergisst, wäre ein um ein Byte verschobener Strom.</para>
 /// </summary>
-public readonly record struct BytecodeType(TypeTag Tag, int TypeIndex)
+/// <remarks>Ein <c>record class</c>, kein <c>struct</c>: <see cref="Element"/> ist wieder ein
+/// <see cref="BytecodeType"/>, und ein Struct darf sich nicht selbst enthalten.</remarks>
+public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
 {
     public static BytecodeType Scalar(TypeTag tag) => new(tag, -1);
     public bool IsRef => Tag == TypeTag.Ref;
+    public bool IsArray => Tag == TypeTag.Array;
 
-    public override string ToString() => IsRef ? $"&ty{TypeIndex}" : Tag.ToString().ToLowerInvariant();
+    /// <summary>Elementtyp, wenn <see cref="IsArray"/>. Inline statt über einen Tabellen-Index,
+    /// weil ein Array-Typ nicht rekursiv sein kann (ADR-016).</summary>
+    public BytecodeType? Element { get; init; }
+
+    public override string ToString() => Tag switch
+    {
+        TypeTag.Ref => $"&ty{TypeIndex}",
+        TypeTag.Array => $"{Element?.ToString() ?? "?"}[]",
+        _ => Tag.ToString().ToLowerInvariant(),
+    };
 }
 
 /// <summary>Layout eines zusammengesetzten Typs. Der Feldindex ist die Position in

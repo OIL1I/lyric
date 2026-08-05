@@ -135,6 +135,18 @@ internal sealed class TypeTable
 
     private IrType Lower(TypeNode node, Core.Span span)
     {
+        // T[] (ADR-016). Eine Size im Typ gibt es nicht mehr — T[N] ist aus v1 gestrichen, die
+        // Länge ist eine Eigenschaft des Wertes.
+        if (node is ArrayType array)
+        {
+            if (array.Size is not null)
+                throw new UnsupportedConstructException(
+                    "a length in the array type ('T[N]') does not exist; the length belongs to the " +
+                    "value — use 'T[]' and build it with '[x] * n'", node.Span);
+
+            return new IrArrayType(Lower(array.Element, array.Element.Span));
+        }
+
         if (node is NamedType { TypeArguments.Length: 0 } named)
         {
             if (TypeFacts.FromBuiltinName(named.Path[^1]) is { } primitive)

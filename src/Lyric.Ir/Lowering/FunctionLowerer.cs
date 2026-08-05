@@ -316,8 +316,8 @@ internal sealed class FunctionLowerer
         LambdaExpr e => throw NotSupported("lambda (needs closure lifting)", e.Span),
         MatchExpr e => throw NotSupported("'match' as an expression", e.Span),
         MemberExpr e => LowerFieldRead(e),
-        IndexExpr e => throw NotSupported("indexing", e.Span),
-        ArrayLitExpr e => throw NotSupported("array literal", e.Span),
+        IndexExpr e => LowerIndexRead(e),
+        ArrayLitExpr e => LowerArrayLiteral(e),
         TupleLitExpr e => throw NotSupported("tuple literal", e.Span),
         StructInitExpr e => LowerObjectInit(e),
         RangeExpr e => throw NotSupported("range expression", e.Span),
@@ -418,6 +418,21 @@ internal sealed class FunctionLowerer
         var rhs = LowerExpr(expr.Right);
         var type = TypeOfExpr(expr);
 
+        // xs + ys und xs * n sind eingebaute Sprachsemantik (Sprache.md §6.5), aber KEIN BinOp:
+        // der add-Opcode bliebe sonst polymorph und müsste zur Laufzeit Typ-Dispatch machen —
+        // dieselbe Begründung wie bei string + string, nur mit eigener Instruktion statt Call.
+        if (type is IrArrayType result)
+        {
+            var built = _slots.NewTemp(type);
+            _b.Emit(kind switch
+            {
+                IrBinKind.Add => new ArrayConcat(built, lhs, rhs, result.Element, expr.Span),
+                IrBinKind.Mul => new ArrayRepeat(built, lhs, rhs, result.Element, expr.Span),
+                _ => throw NotSupported($"'{IrNames.Bin(kind)}' on arrays", expr.Span),
+            });
+            return built;
+        }
+
         // Sprache.md §6.5 überlädt '+' und '*' für string; das ist eingebaute Semantik, aber KEIN
         // BinOp — sonst wäre der add-Opcode polymorph und müsste zur Laufzeit Typ-Dispatch machen
         // (gegen ADR-013). Es lowert zu einem Call, und der braucht ein Ziel, das es noch nicht gibt.
@@ -494,6 +509,7 @@ internal sealed class FunctionLowerer
     private TempId LowerAssign(AssignExpr expr)
     {
         if (expr.Target is MemberExpr member) return LowerFieldAssign(member, expr);
+        if (expr.Target is IndexExpr indexed) return LowerElementAssign(indexed, expr);
 
         var slot = ResolveLocalTarget(expr.Target, "assignment");
 
@@ -567,6 +583,89 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
+    /// <summary>
+    /// <c>xs[i] = v</c> und <c>xs[i] += v</c>.
+    ///
+    /// <para>Array <b>und</b> Index werden genau einmal ausgewertet — bei <c>+=</c> ist das der
+    /// Unterschied zwischen richtig und falsch, sobald einer von beiden Seiteneffekte hat:
+    /// <c>xs[next()] += 1</c> darf <c>next()</c> nicht zweimal rufen.</para>
+    /// </summary>
+    private TempId LowerElementAssign(IndexExpr indexed, AssignExpr expr)
+    {
+        var (array, index, element) = ResolveIndexAccess(indexed);
+
+        if (expr.Operator is null)
+        {
+            var assigned = LowerExpr(expr.Value);
+            _b.Emit(new StoreElem(array, index, assigned, expr.Span));
+            return assigned;
+        }
+
+        if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr or BinaryOp.Coalesce)
+            throw NotSupported("short-circuit or coalescing assignment", expr.Span);
+
+        if (element is IrScalarType { Kind: IrScalar.String } or IrArrayType)
+            throw NotSupported("compound assignment on strings or arrays (lowers to a call)", expr.Span);
+
+        var current = _slots.NewTemp(element);
+        _b.Emit(new LoadElem(current, array, index, element, indexed.Span));
+
+        var operand = LowerExpr(expr.Value);
+        var result = _slots.NewTemp(element);
+        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), element,
+            current, operand, expr.Span));
+        _b.Emit(new StoreElem(array, index, result, expr.Span));
+        return result;
+    }
+
+    // ------------------------------------------------------------------ Arrays (ADR-016)
+
+    /// <summary><c>[a, b, c]</c> — eine Instruktion, nicht drei Stores. Die Werte liegen beim
+    /// <c>newarr</c> in Quelltext-Reihenfolge auf dem Stack.</summary>
+    private TempId LowerArrayLiteral(ArrayLitExpr expr)
+    {
+        if (TypeOfExpr(expr) is not IrArrayType type)
+            throw NotSupported("array literal of a non-array type", expr.Span);
+
+        var elements = new TempId[expr.Elements.Length];
+        for (var i = 0; i < expr.Elements.Length; i++) elements[i] = LowerExpr(expr.Elements[i]);
+
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new NewArray(dest, type.Element, elements, expr.Span));
+        return dest;
+    }
+
+    private TempId LowerIndexRead(IndexExpr expr)
+    {
+        var (array, index, element) = ResolveIndexAccess(expr);
+        var dest = _slots.NewTemp(element);
+        _b.Emit(new LoadElem(dest, array, index, element, expr.Span));
+        return dest;
+    }
+
+    /// <summary>Gemeinsamer Teil von Lesen und Schreiben. <c>[i]</c> ist heute nur auf <c>T[]</c>
+    /// gültig; für alles andere sieht ADR-016 das <c>Indexable&lt;T&gt;</c>-Interface vor, das
+    /// Interfaces (P3) und Generics (P8) voraussetzt.</summary>
+    private (TempId Array, TempId Index, IrType Element) ResolveIndexAccess(IndexExpr expr)
+    {
+        if (TypeOfExpr(expr.Target) is not IrArrayType array)
+            throw NotSupported($"indexing a '{TypeFacts.Display(_types.TypeOf(expr.Target))}' " +
+                               "(only arrays; other containers need the Indexable interface)",
+                expr.Span);
+
+        var target = LowerExpr(expr.Target);
+        var index = LowerExpr(expr.Index);
+        return (target, index, array.Element);
+    }
+
+    private TempId LowerArrayLength(MemberExpr expr)
+    {
+        var array = LowerExpr(expr.Target);
+        var dest = _slots.NewTemp(new IrScalarType(IrScalar.I64));
+        _b.Emit(new ArrayLen(dest, array, expr.Span));
+        return dest;
+    }
+
     // ------------------------------------------------------------------ Objekte (Sprache.md §3.3)
 
     /// <summary>
@@ -615,6 +714,10 @@ internal sealed class FunctionLowerer
 
     private TempId LowerFieldRead(MemberExpr expr)
     {
+        // '.length' auf einem Array ist eingebaut (ADR-016), kein Feld und keine Methode.
+        if (expr.Member == "length" && TypeOfExpr(expr.Target) is IrArrayType)
+            return LowerArrayLength(expr);
+
         var (obj, type, field, fieldType) = ResolveFieldAccess(expr);
         var dest = _slots.NewTemp(fieldType);
         _b.Emit(new LoadField(dest, obj, type, field, fieldType, expr.Span));
@@ -894,6 +997,10 @@ internal sealed class FunctionLowerer
         // außerhalb dieses Compiler-Stands.
         if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
             return _typeTable.RefTo(named.Symbol);
+
+        // T[] mit fester Länge (ADR-016). Der Elementtyp steht inline; T[N] gibt es nicht mehr.
+        if (type is ArrayOf array)
+            return new IrArrayType(LowerType(array.Element, span));
 
         if (type is not PrimitiveType)
             throw NotSupported($"type '{TypeFacts.Display(type)}'", span);

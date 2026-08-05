@@ -136,8 +136,8 @@ public static class IrPrinter
         LoadElem e => $"{e.Dest}: {TypeStr(e.Element)} = loadelem {e.Array}, {e.Index}",
         StoreElem e => $"storeelem {e.Array}, {e.Index}, {e.Value}",
         ArrayLen a => $"{a.Dest}: i64 = arraylen {a.Array}",
-        ArrayPush p => $"push {p.Array}, {p.Value}",
-        ArrayPop p => $"{p.Dest}: {TypeStr(p.Element)} = pop {p.Array}",
+        ArrayConcat c => $"{c.Dest}: {TypeStr(new IrArrayType(c.Element))} = arrcat {c.Left}, {c.Right}",
+        ArrayRepeat r => $"{r.Dest}: {TypeStr(new IrArrayType(r.Element))} = arrrep {r.Array}, {r.Count}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 

@@ -174,6 +174,64 @@ public static class Interpreter
                     break;
                 }
 
+                // Arrays: dieselbe Darstellung wie Objekte (LyrValue[] hinter Ref) — ein Objekt ist
+                // ein Array mit Namen für seine Slots. Der Index ist hier aber ein LAUFZEITWERT und
+                // deshalb, anders als ein Feldindex, zur Laufzeit zu prüfen: ADR-013 lässt beim
+                // Laden nur prüfen, was der Compiler festgelegt hat.
+                case Op.NewArray:
+                {
+                    var elements = new LyrValue[(int)instruction.Immediate];
+                    for (var i = elements.Length - 1; i >= 0; i--) elements[i] = frame.Pop();
+                    frame.Push(LyrValue.FromObject(elements));
+                    break;
+                }
+
+                case Op.LoadElem:
+                {
+                    var at = frame.Pop().AsI64;
+                    var array = frame.Pop().AsObject;
+                    frame.Push(array[CheckedIndex(at, array.Length, frame)]);
+                    break;
+                }
+
+                case Op.StoreElem:
+                {
+                    var value = frame.Pop();
+                    var at = frame.Pop().AsI64;
+                    var array = frame.Pop().AsObject;
+                    array[CheckedIndex(at, array.Length, frame)] = value;
+                    break;
+                }
+
+                case Op.ArrayLen:
+                    frame.Push(LyrValue.FromI64(frame.Pop().AsObject.Length));
+                    break;
+
+                case Op.ArrayConcat:
+                {
+                    var right = frame.Pop().AsObject;
+                    var left = frame.Pop().AsObject;
+                    var joined = new LyrValue[left.Length + right.Length];
+                    left.CopyTo(joined, 0);
+                    right.CopyTo(joined, left.Length);
+                    frame.Push(LyrValue.FromObject(joined));
+                    break;
+                }
+
+                case Op.ArrayRepeat:
+                {
+                    var count = frame.Pop().AsI64;
+                    var source = frame.Pop().AsObject;
+                    if (count < 0)
+                        throw new LyricPanic(VmDiagnostics.IndexOutOfRange,
+                            $"array repetition count {count} is negative");
+
+                    var repeated = new LyrValue[source.Length * count];
+                    for (var i = 0; i < count; i++) source.CopyTo(repeated, i * source.Length);
+                    frame.Push(LyrValue.FromObject(repeated));
+                    break;
+                }
+
                 case Op.Return or Op.ReturnValue:
                 {
                     var result = instruction.Opcode == Op.ReturnValue ? frame.Pop() : default;
@@ -209,6 +267,20 @@ public static class Interpreter
     /// <c>string</c> braucht die leere Zeichenkette, weil <c>Ref == null</c> sonst als
     /// Null-Referenz durchginge.</para>
     /// </summary>
+    /// <summary>
+    /// Ein Element-Index ist ein Laufzeitwert und deshalb hier zu prüfen — anders als Typ- und
+    /// Feldindizes, die der Loader erledigt hat (ADR-013). Eine Verletzung ist ein
+    /// <c>panic</c> (Sprache.md §9): das Programm hat sich verrechnet, der Compiler hat nichts
+    /// falsch gemacht.
+    /// </summary>
+    private static int CheckedIndex(long index, int length, Frame frame)
+    {
+        if (index >= 0 && index < length) return (int)index;
+
+        throw new LyricPanic(VmDiagnostics.IndexOutOfRange,
+            $"index {index} is outside an array of length {length} in '{frame.Fn.Source.Name}'");
+    }
+
     private static LyrValue[] NewInstance(BytecodeTypeDef type)
     {
         var slots = new LyrValue[type.FieldTypes.Count];

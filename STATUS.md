@@ -231,6 +231,28 @@ Programm, mit Begründung als Blockzitat).
     4 E2E-Tests (Fabrik, Mutation über den Empfänger, Methode ruft Methode, zwei Instanzen
     getrennt) und der Regressionstest für den Absturz.
 
+- [x] **M7 — P2 — Arrays** (ADR-016, Format **1.3**): `lyric run examples/arrays.lyr` liefert 144.
+  - **`T[]` ist ein echtes Array**, kein Zucker für `List<T>`. Die Länge steht bei der Erzeugung
+    fest. Das war eine Kurskorrektur mittendrin: `Doku.md` §5.2 und `Sprache.md` §4 behaupteten das
+    Gegenteil (Python-Modell), und die erste P2-Fassung hatte `push`/`pop` schon als Opcodes. Beide
+    sind wieder raus — sie gehören `List<T>`.
+  - **Das Bootstrapping-Argument** entschied es: dispatchte `[i]` immer über ein Interface, bräuchte
+    dessen Implementierung selbst indizierten Speicher. Also ist `T[]` primitiv und `[i]` darauf
+    direkt `ldelem`/`stelem`; alles andere bindet später an `Indexable<T>` — dieselbe Regel, die
+    `for-in` schon für `Iterator<T>` benutzt, kein neuer Mechanismus.
+  - **`T[N]` ist aus v1 gestrichen.** Sein einziger Zweck wäre die Länge im Typ gewesen — und die
+    Ergonomie-Lücke („Array der Länge n mit Defaults") füllt `[0] * n` bereits, mit `n` als
+    Laufzeitwert. Das steht seit jeher in `Sprache.md` §6.5 und war nur nie gelowert.
+  - **`arrcat`/`arrrep` statt `push`/`pop`**: `xs + ys` und `xs * n` sind spezifizierte
+    Sprachsemantik (§6.5), beide liefern ein neues Array.
+  - **Der Elementtyp steht inline**, nicht als Tabellen-Index wie bei einer Klasse — ein Array-Typ
+    kann nicht rekursiv sein, also ist die Indirektion nur Kosten. `int[][]` ist `0x41 0x41 0x04`.
+  - **Bounds-Verletzung ist ein `panic`** (`LYR-VM0006`). Ein Element-Index ist ein Laufzeitwert und
+    beim Laden nicht prüfbar — anders als Typ- und Feldindizes. Der Verifier prüft deshalb nur die
+    Form des Index (`i64`), nicht seinen Wert.
+  - 22 neue Tests: Golden-Fixture `arrays`, 10 E2E-Fälle, Referenz-Semantik, „Konkatenation lässt
+    ihre Operanden in Ruhe", vier Bounds-Panics und die negative Wiederholung.
+
 ## Woran wir gerade arbeiten
 
 **M7 — Objektmodell + VM (full)**, neu zugeschnitten (14–20 Wochen, acht Slices P1–P8; Tabelle in
@@ -251,7 +273,7 @@ festgehalten:
   (nachrüstbar ohne Bruch), und seine Kosten landen genau auf den vier Stellen, die Lyric ohnehin
   schwerfallen — untypisierte Literale, Default-Argumente, Lambda-Inferenz, `extend`.
 
-**P1b steht** — als nächstes **P2 — Arrays** (Gate: `examples/stats.lyr`).
+**P2 steht** — als nächstes **P2b — Optionals** (`?T`, `??`, `!`, Flow-Narrowing).
 
 Anlass des Neuschnitts: M5 und M6 haben je einen Teil ihrer eigenen Lieferposten nicht geliefert,
 ohne Vermerk. M5s IR-Instruktionen `NewClass`/`LoadField`/`Throw`/`Yield`/… und das
@@ -300,6 +322,16 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   Initialisierer hätte seinen Nullwert; ob das erlaubt ist, sagt die Sema heute nicht. `bank.lyr`
   hängt daran.
 - **Structs, Enums, Interfaces, generische Klassen** bleiben `LYR-IR0001` — P3/P4/P8.
+
+**Aus P2 — eine offene Ungleichbehandlung:**
+
+- `let p = P { hp = 1 }; p.hp = 9;` ist **erlaubt** (Klassenfeld durch eine `let`-Bindung), aber
+  `let xs = [1,2]; xs[0] = 9;` ist **`LYR-SEM0019`**. Beides sind Referenztypen, beide mutieren
+  durch einen geteilten Verweis. `Sprache.md` §6.4 unterscheidet sie ausdrücklich („Container muss
+  mut sein" vs. „`class`-Feld"), die Regel ist also nicht versehentlich — aber sie ist seit ADR-016
+  schwer zu begründen, weil `T[]` jetzt genauso ein Referenztyp ist wie eine Klasse. Zu klären,
+  bevor `Indexable<T>` kommt: der Setter dort wäre `mut fn`, und dann hängt die Frage an derselben
+  Stelle nochmal.
 
 **Aus M6:**
 
@@ -374,7 +406,7 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 ## Letzter relevanter Commit
 
-`M7: static-Member und Methoden-Lowering (P1b)`
+`M7: Arrays — ADR-016, Bytecode 1.3 (P2)`
 
 ---
 

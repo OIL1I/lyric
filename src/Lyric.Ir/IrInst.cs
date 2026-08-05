@@ -46,8 +46,11 @@ public sealed record NewArray(TempId Dest, IrType Element, TempId[] Elements, Sp
 public sealed record LoadElem(TempId Dest, TempId Array, TempId Index, IrType Element, Span Span) : IrOp(Span);
 public sealed record StoreElem(TempId Array, TempId Index, TempId Value, Span Span) : IrOp(Span);
 public sealed record ArrayLen(TempId Dest, TempId Array, Span Span) : IrOp(Span);
-public sealed record ArrayPush(TempId Array, TempId Value, Span Span) : IrOp(Span);
-public sealed record ArrayPop(TempId Dest, TempId Array, IrType Element, Span Span) : IrOp(Span);
+
+// xs + ys und xs * n (Sprache.md §6.5) — eingebaute Sprachsemantik, keine Bibliothek. Beide
+// liefern ein NEUES Array: T[] waechst nicht (ADR-016).
+public sealed record ArrayConcat(TempId Dest, TempId Left, TempId Right, IrType Element, Span Span) : IrOp(Span);
+public sealed record ArrayRepeat(TempId Dest, TempId Array, TempId Count, IrType Element, Span Span) : IrOp(Span);
 
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return

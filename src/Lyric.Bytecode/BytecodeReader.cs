@@ -111,7 +111,10 @@ public static class BytecodeReader
     private static BytecodeType ReadType(ByteReader payload)
     {
         var tag = payload.Tag();
-        return tag == TypeTag.Ref ? new BytecodeType(tag, payload.ULebAsCount()) : BytecodeType.Scalar(tag);
+        if (tag == TypeTag.Ref) return new BytecodeType(tag, payload.ULebAsCount());
+        // Der Elementtyp steht inline und rekursiv (Bytecode.md §3).
+        if (tag == TypeTag.Array) return new BytecodeType(tag, -1) { Element = ReadType(payload) };
+        return BytecodeType.Scalar(tag);
     }
 
     /// <summary>
@@ -251,6 +254,10 @@ public static class BytecodeReader
     {
         void Check(BytecodeType type, string where)
         {
+            // Ein Array-Typ trägt seinen Elementtyp inline; eine Referenz darin muss genauso in
+            // die Tabelle zeigen wie eine direkte.
+            while (type.IsArray && type.Element is { } inner) type = inner;
+
             if (type.IsRef && (type.TypeIndex < 0 || type.TypeIndex >= module.Types.Count))
                 throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                     $"{where}: type index {type.TypeIndex} is outside {module.Types.Count} type(s)");

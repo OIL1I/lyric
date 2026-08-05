@@ -90,6 +90,13 @@ public static class Disassembler
         Op.CondBranch => $"condbr bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
         Op.Unreachable => "unreachable",
 
+        Op.NewArray => $"newarr {N(i.Immediate)}",
+        Op.LoadElem => "ldelem",
+        Op.StoreElem => "stelem",
+        Op.ArrayLen => "arrlen",
+        Op.ArrayConcat => "arrcat",
+        Op.ArrayRepeat => "arrrep",
+
         Op.NewObject => $"newobj {TypeRefName(module, i.Immediate)}",
         Op.LoadField => $"ldfld {FieldName(module, i.Immediate, i.Immediate2)}",
         Op.StoreField => $"stfld {FieldName(module, i.Immediate, i.Immediate2)}",
@@ -137,9 +144,11 @@ public static class Disassembler
     /// <summary>Ein Typ an einer Signaturstelle. Referenzen zeigen den Namen aus der Typ-Tabelle
     /// statt nur den Index — der Disassembler wird gelesen, nicht ausgeführt.</summary>
     private static string TypeName(BytecodeModule module, BytecodeType type) =>
-        type.IsRef && type.TypeIndex >= 0 && type.TypeIndex < module.Types.Count
+        type.IsArray && type.Element is { } el ? $"{TypeName(module, el)}[]"
+        : type.IsRef && type.TypeIndex >= 0 && type.TypeIndex < module.Types.Count
             ? $"&{module.Types[type.TypeIndex].Name}"
-            : type.IsRef ? $"&ty{N(type.TypeIndex)}" : TypeName(type.Tag);
+        : type.IsRef ? $"&ty{N(type.TypeIndex)}"
+        : TypeName(type.Tag);
 
     private static string TypeName(TypeTag tag) => tag switch
     {

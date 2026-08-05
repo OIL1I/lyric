@@ -388,6 +388,60 @@ public class VmTests
             """).AsI64);
     }
 
+    // ------------------------------------------------------------------ 4d) Arrays (ADR-016)
+
+    [Theory]
+    [InlineData("let xs = [3, 7, 1]; return xs[1];", 7)]
+    [InlineData("let xs = [3, 7, 1]; return xs.length;", 3)]
+    [InlineData("let xs = [0] * 4; return xs.length;", 4)]        // Default-Array
+    [InlineData("let n = 5; let xs = [0] * n; return xs.length;", 5)]  // Laenge zur Laufzeit
+    [InlineData("let xs = [0] * 0; return xs.length;", 0)]        // leeres Array ist gueltig
+    [InlineData("let xs = [1, 2] + [3]; return xs[2];", 3)]
+    [InlineData("let xs = [1, 2] + [3]; return xs.length;", 3)]
+    [InlineData("let xs = [7] * 3; return xs[0] + xs[1] + xs[2];", 21)]
+    [InlineData("var xs = [1, 2, 3]; xs[1] = 9; return xs[1];", 9)]
+    [InlineData("var xs = [1, 2, 3]; xs[1] += 9; return xs[1];", 11)]
+    public void Arrays_behave(string body, long expected) => Assert.Equal(expected, Eval(body));
+
+    /// <summary>Konkatenation liefert ein <b>neues</b> Array — <c>T[]</c> wächst nicht, also darf
+    /// der Operand nicht mitverändert werden.</summary>
+    [Fact]
+    public void Concatenation_leaves_its_operands_alone()
+    {
+        Assert.Equal(2, Eval("let xs = [1, 2]; let ys = xs + [3]; return xs.length;"));
+    }
+
+    /// <summary>Ein Array ist eine Referenz (wie eine Klasse): zwei Namen, ein Speicher.</summary>
+    [Fact]
+    public void An_array_is_a_reference()
+    {
+        Assert.Equal(9, Eval("var xs = [1, 2]; var ys = xs; ys[0] = 9; return xs[0];"));
+    }
+
+    /// <summary>
+    /// Ein Element-Index ist ein <b>Laufzeitwert</b> — anders als Typ- und Feldindizes kann der
+    /// Loader ihn nicht prüfen (ADR-013/ADR-016). Eine Verletzung ist deshalb ein <c>panic</c>
+    /// (§9) mit Backtrace, kein Ladefehler und erst recht kein stiller Speicherzugriff.
+    /// </summary>
+    [Theory]
+    [InlineData("let xs = [1, 2]; return xs[2];")]
+    [InlineData("let xs = [1, 2]; return xs[-1];")]
+    [InlineData("let xs = [0] * 0; return xs[0];")]
+    [InlineData("var xs = [1, 2]; xs[5] = 0; return 0;")]
+    public void An_index_outside_the_array_panics(string body)
+    {
+        var panic = RunExpectingPanic($"fn main(): int {{ {body} }}");
+        Assert.Equal(VmDiagnostics.IndexOutOfRange, panic.Code);
+        Assert.NotEmpty(panic.CallStack);
+    }
+
+    [Fact]
+    public void A_negative_repetition_count_panics()
+    {
+        var panic = RunExpectingPanic("fn main(): int { let n = -1; let xs = [0] * n; return 0; }");
+        Assert.Equal(VmDiagnostics.IndexOutOfRange, panic.Code);
+    }
+
     // ------------------------------------------------------------------ 5) Laufzeitfehler
 
     [Fact]

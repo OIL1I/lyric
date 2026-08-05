@@ -46,15 +46,48 @@ public static class CodeDecoder
                 },
 
                 // Not trägt als einziger arithmetisch/logischer Opcode kein Tag: nur bool ist
-                // gültig, ein Tag wäre reine Redundanz.
-                Op.Not or Op.Pop or Op.Return or Op.ReturnValue or Op.Unreachable =>
+                // gültig, ein Tag wäre reine Redundanz. Die Array-Opcodes tragen ebenfalls keins:
+                // ihr Elementtyp steht in der Temp-Tabelle bzw. am Array selbst.
+                Op.Not or Op.Pop or Op.Return or Op.ReturnValue or Op.Unreachable or
+                Op.LoadElem or Op.StoreElem or Op.ArrayLen or Op.ArrayConcat or Op.ArrayRepeat =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode },
+
+                // newarr trägt den Elementtyp (ggf. verschachtelt) und dann die Elementzahl.
+                Op.NewArray => DecodeNewArray(reader, offset),
 
                 _ => new BytecodeInstruction { Offset = offset, Opcode = opcode, Type = reader.Tag() },
             });
         }
 
         return instructions;
+    }
+
+    /// <summary>Der Elementtyp eines <c>newarr</c> wird übersprungen, nicht ausgewertet: der
+    /// Dekodierer muss den Strom nur korrekt abschreiten. Wer den Typ braucht — der Disassembler —
+    /// liest ihn über <see cref="SkipType"/> hinaus selbst.</summary>
+    private static BytecodeInstruction DecodeNewArray(ByteReader reader, int offset)
+    {
+        var start = reader.Position;
+        SkipType(reader, offset);
+        var typeLength = reader.Position - start;
+
+        return new BytecodeInstruction
+        {
+            Offset = offset, Opcode = Op.NewArray,
+            Immediate = reader.ULeb(), Immediate2 = (ulong)typeLength,
+        };
+    }
+
+    /// <summary>Überspringt einen Typ im Strom: ein Tag, dann bei <c>Ref</c> ein Index und bei
+    /// <c>Array</c> rekursiv der Elementtyp.</summary>
+    private static void SkipType(ByteReader reader, int offset)
+    {
+        var tag = reader.Tag();
+        if (tag == TypeTag.Ref) reader.ULeb();
+        else if (tag == TypeTag.Array) SkipType(reader, offset);
+        else if (tag == TypeTag.Void)
+            throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                $"array of void at code offset {offset}");
     }
 
     private static BytecodeInstruction DecodeConst(ByteReader reader, int offset)
@@ -94,6 +127,14 @@ public static class CodeDecoder
         Op.NewObject => (0, 1),
         Op.LoadField => (1, 1),
         Op.StoreField => (2, 0),
+
+        // newarr nimmt so viele Werte, wie sein Immediate sagt — die einzige Instruktion mit
+        // variabler Stack-Wirkung außer 'call'.
+        Op.NewArray => ((int)instruction.Immediate, 1),
+        Op.LoadElem => (2, 1),
+        Op.StoreElem => (3, 0),
+        Op.ArrayLen => (1, 1),
+        Op.ArrayConcat or Op.ArrayRepeat => (2, 1),
 
         Op.Return or Op.Branch or Op.Unreachable => (0, 0),
         Op.ReturnValue or Op.CondBranch => (1, 0),

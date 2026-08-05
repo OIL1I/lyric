@@ -357,8 +357,8 @@ Laufzeit und genau deshalb billig — er wird nach der Validierung nicht mehr ge
 | `0x59` | `ldelem` | — | −2 +1 | Array, Index → Element |
 | `0x5A` | `stelem` | — | −3 | Array, Index, Wert |
 | `0x5B` | `arrlen` | — | −1 +1 | Länge als `i64` |
-| `0x5C` | `push` | — | −2 | hängt einen Wert an |
-| `0x5D` | `pop` | — | −1 +1 | entfernt das letzte Element und liefert es |
+| `0x5C` | `arrcat` | — | −2 +1 | Konkatenation zweier Arrays → neues Array |
+| `0x5D` | `arrrep` | — | −2 +1 | Array, Anzahl → neues Array, so oft wiederholt |
 
 **`newarr` nimmt die Elementzahl als Immediate** (`uleb128`, nach dem Elementtyp) und dann so viele
 Werte vom Stack, das erste Element zuunterst. Ein Literal `[3, 7, 1]` ist damit eine Instruktion und
@@ -370,9 +370,13 @@ Element-Index **nicht** beim Laden prüfbar — er ist ein Laufzeitwert. Das ist
 zwischen „der Compiler hat Unsinn erzeugt" und „das Programm hat sich verrechnet"; nur das Erste
 darf beim Laden abgefangen werden.
 
-**`T[]` wächst.** `push`/`pop` sind Teil des Formats und nicht der Stdlib, weil `Doku.md` §5.2 sie
-als Grundoperationen des Typs führt. Eine Runtime darf sie beliebig implementieren, solange die
-Länge danach stimmt.
+**`T[]` wächst nicht** (ADR-016). Die Länge steht bei der Erzeugung fest. `arrcat` und `arrrep`
+liefern deshalb jeweils ein **neues** Array und ändern ihre Operanden nicht — sie bilden `xs + ys`
+bzw. `xs * n` aus Sprache.md §6.5 ab, und das ist eingebaute Sprachsemantik, keine Bibliothek.
+Wachsende Container (`List<T>`) sind gewöhnliche Klassen der Stdlib und brauchen im Format nichts
+Eigenes: sie halten ein `T[]` und kopieren um.
+
+`arrrep` mit Anzahl `0` liefert ein leeres Array; eine negative Anzahl ist ein `panic`.
 
 Ein Objekt trägt **kein** Typ-Tag zur Laufzeit. Der Instruktionsstrom weiß statisch, was vorliegt;
 dieselbe Entscheidung wie bei den Werten (§4). Interface-Dispatch braucht später eine Typ-Identität
