@@ -234,8 +234,129 @@ internal sealed class FunctionLowerer
         }
     }
 
+    /// <summary>
+    /// Der Lowerer fuer den <b>Rumpf einer Coroutine</b> (Sprache.md §8).
+    ///
+    /// <para>Er sieht aus wie eine gewoehnliche Funktion mit einem Parameter — dem Zustandsobjekt
+    /// — und dem Yield-Typ als Rueckgabe. Genau das ist er auch: <c>resume</c> ist ein
+    /// gewoehnlicher Aufruf. Die Coroutine steckt allein darin, WO die Variablen liegen und dass
+    /// der erste Block ein Sprungverteiler ist.</para>
+    /// </summary>
+    public static FunctionLowerer ForCoroutineBody(FunctionDecl decl, string name, TypeId state,
+        IrType yieldType, TypeSymbol? receiver, TypeResult types,
+        IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas) =>
+        new(decl, name, state, yieldType, receiver, types, functions, imports, typeTable, globals,
+            lambdas);
+
+    private FunctionLowerer(FunctionDecl decl, string name, TypeId state, IrType yieldType,
+        TypeSymbol? receiver, TypeResult types,
+        IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas)
+    {
+        _decl = decl;
+        _name = name;
+        _types = types;
+        _functions = functions;
+        _imports = imports;
+        _typeTable = typeTable;
+        _globals = globals;
+        _lambdas = lambdas;
+        _receiver = receiver;
+        _substitution = ModuleLowerer.NoSubstitution;
+        _b = new BlockBuilder(_blocks);
+        _coroutineState = state;
+        _returnType = yieldType;
+
+        // Slot 0 haelt das Zustandsobjekt. Es ist das einzige, was in einem Frame-Slot liegt —
+        // alles andere muss den naechsten 'yield' ueberleben und wohnt deshalb darin.
+        _stateSlot = _slots.Declare("<state>", new IrRefType(state));
+
+        // Feld 0 ist der Wiedereintrittspunkt. Er gehoert keinem Symbol, deshalb steht er hier
+        // und nicht in _stateFields.
+        _stateTypes.Add(new IrScalarType(IrScalar.I32));
+        _stateNames.Add("<resume>");
+
+        // 'this' und die Parameter ueberleben den ersten 'yield' genauso wie jedes Local — die
+        // Fabrik hat sie beim Erzeugen hineingeschrieben.
+        if (receiver is not null)
+        {
+            _thisType = _typeTable.RefTo(receiver);
+            _capturedThisField = _stateTypes.Count;
+            _stateTypes.Add(_thisType);
+            _stateNames.Add("this");
+        }
+
+        foreach (var p in decl.Parameters)
+        {
+            if (_types.RefOf(p) is not ParameterSymbol ps)
+                throw Bug($"parameter '{p.Name}' was not bound by the type checker");
+            DeclareStateField(ps, p.Name, LowerType(ps.Type, p.Span));
+        }
+    }
+
     /// <summary>Feldindex des gefangenen <c>this</c> im Environment, falls gefangen.</summary>
     private readonly int? _capturedThisField;
+
+    // ------------------------------------------------------------------ Coroutinen (Sprache.md §8)
+
+    /// <summary>
+    /// Der Zustandstyp, wenn hier ein <b>Coroutine-Rumpf</b> gelowert wird — sonst <c>null</c>.
+    ///
+    /// <para>Im Coroutine-Modus liegen Parameter und Locals nicht in Frame-Slots, sondern in
+    /// Feldern dieses Objekts: ein Frame endet bei jedem <c>yield</c>, das Objekt nicht. Slot 0
+    /// ist der Wiedereintrittspunkt.</para>
+    /// </summary>
+    private readonly TypeId? _coroutineState;
+
+    /// <summary>Der Slot, der das Zustandsobjekt haelt — Parameter 0 im Coroutine-Modus.</summary>
+    private LocalId _stateSlot;
+
+    /// <summary>Symbol zu Feldindex im Zustandsobjekt. Waechst waehrend des Lowerings; das Layout
+    /// wird danach nachgetragen (siehe <see cref="TypeTable.CompleteCoroutineState"/>).</summary>
+    private readonly Dictionary<Symbol, int> _stateFields = new(ReferenceEqualityComparer.Instance);
+
+    private readonly List<IrType> _stateTypes = new();
+    private readonly List<string> _stateNames = new();
+
+    /// <summary>Die Bloecke, an denen ein <c>resume</c> wieder einsteigt — Index n gehoert zum
+    /// n-ten <c>yield</c>. Der Sprungverteiler entsteht daraus, wenn alle bekannt sind.</summary>
+    private readonly List<BlockId> _resumePoints = new();
+
+    private bool InCoroutine => _coroutineState is not null;
+
+    /// <summary>Legt ein Feld im Zustandsobjekt an und liefert seinen Index.</summary>
+    private int DeclareStateField(Symbol symbol, string name, IrType type)
+    {
+        var index = _stateTypes.Count;
+        _stateTypes.Add(type);
+        _stateNames.Add(name);
+        _stateFields[symbol] = index;
+        return index;
+    }
+
+    /// <summary>Das Zustandsobjekt selbst — es liegt in einem gewoehnlichen Slot, weil es sich
+    /// waehrend eines Laufs nicht aendert.</summary>
+    private TempId LoadState(Core.Span span)
+    {
+        var type = _slots.TypeOfLocal(_stateSlot);
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new LoadLocal(dest, _stateSlot, type, span));
+        return dest;
+    }
+
+    private TempId LoadStateField(int field, Core.Span span)
+    {
+        var type = _stateTypes[field];
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new LoadField(dest, LoadState(span), _coroutineState!.Value, new FieldId(field),
+            type, span));
+        return dest;
+    }
+
+    private void StoreStateField(int field, TempId value, Core.Span span) =>
+        _b.Emit(new StoreField(LoadState(span), _coroutineState!.Value, new FieldId(field), value,
+            span));
 
     // ------------------------------------------------------------------ Closures (ADR-018)
 
@@ -394,6 +515,7 @@ internal sealed class FunctionLowerer
         // Ausdrucks-Fall ist der haeufige und braucht kein 'return' im Quelltext — hier wird es
         // eingesetzt.
         if (_lambda is not null) return RunLambda();
+        if (InCoroutine) return RunCoroutineBody();
 
         if (_decl!.Body is null) throw Bug("function has no body");
 
@@ -418,6 +540,73 @@ internal sealed class FunctionLowerer
         {
             Entry = new BlockId(0), Handlers = _handlers,
         };
+    }
+
+    /// <summary>
+    /// Der Rumpf einer Coroutine: der geschriebene Code, umgeben von einem Sprungverteiler.
+    /// </summary>
+    private IrFunction RunCoroutineBody()
+    {
+        var body = _decl!.Body ?? throw Bug("coroutine has no body");
+
+        var start = _b.NewBlock();
+        _b.SwitchTo(start);
+
+        if (LowerScope(body))
+        {
+            // Der Rumpf ist durchgelaufen: die Coroutine ist fertig. -1 merkt sich das, und
+            // 'resume' liest es (Sprache.md §8) — der Wert selbst wird nie benutzt.
+            var i32 = new IrScalarType(IrScalar.I32);
+            var done = _slots.NewTemp(i32);
+            // -1 als Zweierkomplement in 32 Bit: der Verifier prueft, dass der Wert in die
+            // deklarierte Breite passt.
+            _b.Emit(new Const(done, i32, new IntConst(unchecked((ulong)(uint)-1)), body.Span));
+            StoreStateField(0, done, body.Span);
+
+            _b.Seal(IsVoid(_returnType)
+                ? new Return(null, body.Span)
+                : new Return(ZeroOf(_returnType, body.Span), body.Span));
+        }
+
+        var dispatch = BuildResumeDispatch(start, body.Span);
+        _typeTable.CompleteCoroutineState(_coroutineState!.Value,
+            _stateTypes.ToArray(), _stateNames.ToArray());
+
+        // Ein Parameter: das Zustandsobjekt. Alles andere steckt darin.
+        return new IrFunction(_name, _returnType, 1, _slots.Locals, _slots.Temps, _blocks)
+        {
+            Entry = dispatch, Handlers = _handlers,
+        };
+    }
+
+    /// <summary>
+    /// Der Wert, den eine <b>durchgelaufene</b> Coroutine formal zurueckgibt.
+    ///
+    /// <para>Er ist nie beobachtbar — <c>resume</c> liest den Zustand, bevor es ruft, und wirft
+    /// bei -1 (Sprache.md §8). Der Rumpf muss trotzdem etwas zurueckgeben, weil er eine
+    /// gewoehnliche Funktion ist und der Verifier keinen Pfad ohne <c>ret</c> durchlaesst.</para>
+    ///
+    /// <para>Nur Skalare: fuer einen Referenz- oder Enum-Yield-Typ gaebe es hier keinen
+    /// natuerlichen Wert, und einen zu erfinden hiesse, einen Nullwert in die Sprache zu tragen,
+    /// den sie nicht hat. Die saubere Loesung ist ein optionaler Rueckgabetyp fuer die
+    /// Rumpf-Funktion; sie gehoert zu <c>resume</c> und damit in den naechsten Slice.</para>
+    /// </summary>
+    private TempId ZeroOf(IrType type, Core.Span span)
+    {
+        if (type is not IrScalarType scalar)
+            throw NotSupported(
+                "a coroutine yielding a non-scalar type (the state machine needs a value for the "
+                + "path where the body runs out)", span);
+
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new Const(dest, type, scalar.Kind switch
+        {
+            IrScalar.F32 or IrScalar.F64 => new FloatConst(0.0),
+            IrScalar.Bool => new BoolConst(false),
+            IrScalar.String => new StringConst(""),
+            _ => new IntConst(0),
+        }, span));
+        return dest;
     }
 
     /// <summary>
@@ -502,7 +691,7 @@ internal sealed class FunctionLowerer
             case ThrowStmt s: return LowerThrow(s);
             // 'defer' registriert nur — die Rumpfe setzt LowerScope an die Ausgaenge.
             case DeferStmt s: _defers.Peek().Add(s); return true;
-            case YieldStmt s: throw NotSupported("'yield' (coroutine state machine)", s.Span);
+            case YieldStmt s: return LowerYield(s);
             case ErrorStmt s: throw Bug($"error statement reached lowering at {s.Span}");
 
             default: throw Bug($"unhandled statement {stmt.GetType().Name}");
@@ -727,6 +916,18 @@ internal sealed class FunctionLowerer
 
         var type = LowerType(local.Type, binding.Span);
 
+        // In einer Coroutine ueberlebt JEDE lokale Variable den naechsten 'yield' — also liegt
+        // keine in einem Frame-Slot. Konservativ: es wird nicht geprueft, ob ein Local wirklich
+        // ueber ein 'yield' hinweg lebt. Die Lebendigkeitsanalyse waere eine Optimierung, die nur
+        // Objektgroesse spart, und ihre Fehler faenden erst zur Laufzeit auf.
+        if (InCoroutine)
+        {
+            var field = DeclareStateField(local, binding.Name, type);
+            if (binding.Initializer is not null)
+                StoreStateField(field, LowerExprAs(binding.Initializer, type), binding.Span);
+            return true;
+        }
+
         // Ein gefangenes 'var' lebt in einer Zelle (ADR-018) — der Slot haelt dann die Zelle, und
         // sie muss existieren, BEVOR irgendjemand hineinschreibt. Deshalb steht das newobj hier
         // und nicht bei der ersten Zuweisung: ein 'var n: int;' ohne Initialisierer wird spaeter
@@ -943,6 +1144,10 @@ internal sealed class FunctionLowerer
         // Ein Modul-'let' hat keinen Frame-Slot, sondern einen globalen.
         if (TryLowerGlobalIdentifier(expr) is { } global) return global;
 
+        // In einer Coroutine liegt jede Variable im Zustandsobjekt.
+        if (InCoroutine && _stateFields.TryGetValue(symbol, out var stateField))
+            return Narrow(expr, LoadStateField(stateField, expr.Span), _stateTypes[stateField]);
+
         // In einem angehobenen Lambda liegt ein gefangenes Symbol im Environment, nicht in einem
         // Slot. Erst Slots fragen: ein gleichnamiges lokales Symbol IST ein anderes Symbol, und
         // die Referenzgleichheit haelt beide auseinander.
@@ -1149,6 +1354,9 @@ internal sealed class FunctionLowerer
         if (expr.Target is MemberExpr member) return LowerFieldAssign(member, expr);
         if (expr.Target is IndexExpr indexed) return LowerElementAssign(indexed, expr);
 
+        if (TryStateField(expr.Target, out var stateField))
+            return LowerStateAssign(expr, stateField);
+
         if (TryCapturedCell(expr.Target, out var cell, out var cellType, out var cellValueType))
             return LowerCapturedAssign(expr, cell, cellType, cellValueType);
 
@@ -1176,6 +1384,117 @@ internal sealed class FunctionLowerer
         _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), type,
             current, operand, expr.Span));
         StoreValue(slot, result, expr.Span);
+        return result;
+    }
+
+    /// <summary>
+    /// <c>yield x</c> — der Punkt, an dem die Coroutine aufhoert und spaeter wieder anfaengt.
+    ///
+    /// <para>Drei Schritte: den Wiedereintrittspunkt ins Zustandsobjekt schreiben, den Wert
+    /// zurueckgeben, und den Block DANACH als Ziel merken. Was danach steht, laeuft erst beim
+    /// naechsten <c>resume</c> — deshalb ist der Rumpf einer Coroutine kein durchgehender
+    /// Kontrollfluss mehr, sondern eine Menge von Einstiegspunkten.</para>
+    ///
+    /// <para>Der Wiedereintrittspunkt wird <b>vor</b> dem Verlassen geschrieben und nicht danach:
+    /// es gibt kein Danach. Ein <c>ret</c> beendet den Frame; das Objekt ist das Einzige, was
+    /// bleibt.</para>
+    /// </summary>
+    private bool LowerYield(YieldStmt stmt)
+    {
+        if (!InCoroutine) throw Bug("'yield' outside a coroutine body reached the lowerer");
+
+        // Der naechste Einstiegspunkt hat die Nummer n+1: 0 ist "noch nicht gestartet".
+        var point = _resumePoints.Count + 1;
+
+        var marker = _slots.NewTemp(new IrScalarType(IrScalar.I32));
+        _b.Emit(new Const(marker, new IrScalarType(IrScalar.I32), new IntConst((ulong)point), stmt.Span));
+        StoreStateField(0, marker, stmt.Span);
+
+        var value = stmt.Value is null
+            ? null
+            : (TempId?)LowerExprAs(stmt.Value, _returnType);
+
+        _b.Seal(new Return(value, stmt.Span));
+
+        // Hier geht es beim naechsten 'resume' weiter.
+        var continuation = _b.NewBlock();
+        _resumePoints.Add(continuation);
+        _b.SwitchTo(continuation);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Der erste Block einer Coroutine: springt dorthin, wo sie aufgehoert hat.
+    ///
+    /// <para>Er entsteht <b>zuletzt</b> — vorher sind die Einstiegspunkte nicht bekannt. Dass er
+    /// trotzdem der erste ist, sagt <see cref="IrFunction.Entry"/>; die IR nummeriert Bloecke, sie
+    /// ordnet sie nicht.</para>
+    ///
+    /// <para>Eine Kette von Vergleichen und keine Sprungtabelle: die IR hat keinen
+    /// <c>switch</c>-Terminator, und ihn allein hierfuer einzufuehren waere ein Opcode fuer einen
+    /// einzigen Anwendungsfall. Bei den Groessenordnungen, um die es geht — ein Vergleich je
+    /// <c>yield</c> im Quelltext —, ist der Unterschied nicht messbar.</para>
+    /// </summary>
+    private BlockId BuildResumeDispatch(BlockId start, Core.Span span)
+    {
+        var dispatch = _b.NewBlock();
+        _b.SwitchTo(dispatch);
+
+        var i32 = new IrScalarType(IrScalar.I32);
+        var current = LoadStateField(0, span);
+
+        for (var i = 0; i < _resumePoints.Count; i++)
+        {
+            var wanted = _slots.NewTemp(i32);
+            _b.Emit(new Const(wanted, i32, new IntConst((ulong)(i + 1)), span));
+
+            var matches = _slots.NewTemp(BoolType);
+            _b.Emit(new BinOp(matches, IrBinKind.Eq, i32, current, wanted, span));
+
+            var next = _b.NewBlock();
+            _b.Seal(new CondBranch(matches, _resumePoints[i], next, span));
+            _b.SwitchTo(next);
+        }
+
+        // Kein Treffer heisst "noch nicht gestartet" — der Rumpf beginnt von vorn. Der Fall
+        // "durchgelaufen" gehoert nicht hierher: ihn faengt 'resume' ab, bevor es ruft.
+        _b.Seal(new Branch(start, span));
+        return dispatch;
+    }
+
+    /// <summary>Zeigt dieses Zuweisungsziel auf eine Variable im Zustandsobjekt?</summary>
+    private bool TryStateField(Expr target, out int field)
+    {
+        field = -1;
+        if (!InCoroutine || target is not IdentifierExpr identifier) return false;
+        if (_types.RefOf(identifier) is not { } symbol) return false;
+        return _stateFields.TryGetValue(symbol, out field);
+    }
+
+    /// <summary>Zuweisung an eine Variable im Zustandsobjekt — dieselben drei Formen wie beim
+    /// Slot-Pfad, nur dass gelesen und geschrieben wird, wo die Variable den <c>yield</c>
+    /// ueberlebt.</summary>
+    private TempId LowerStateAssign(AssignExpr expr, int field)
+    {
+        var type = _stateTypes[field];
+
+        if (expr.Operator is null)
+        {
+            var assigned = LowerExprAs(expr.Value, type);
+            StoreStateField(field, assigned, expr.Span);
+            return assigned;
+        }
+
+        if (expr.Operator is BinaryOp.Coalesce or BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
+            throw NotSupported($"'{expr.Operator}=' on a coroutine local", expr.Span);
+
+        var current = LoadStateField(field, expr.Target.Span);
+        var operand = LowerExpr(expr.Value);
+        var result = _slots.NewTemp(type);
+        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), type,
+            current, operand, expr.Span));
+        StoreStateField(field, result, expr.Span);
         return result;
     }
 
