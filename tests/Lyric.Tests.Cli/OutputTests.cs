@@ -201,11 +201,12 @@ public sealed class OutputTests
     public void Options_after_the_separator_belong_to_the_program()
     {
         // '--quiet' hinter '--' ist ein Argument des Lyric-Programms, keine Option der Toolchain.
-        // Erkennbar daran, dass es die Programm-Argument-Ablehnung ausloest statt still zu wirken.
+        // Erkennbar daran, dass die Ausgabe von hello.lyr NICHT unterdrueckt wird — waere es als
+        // Option gelesen worden, bliebe sie aus.
         var result = Toolchain.Lyric("run", Toolchain.Example("hello.lyr"), "--", "--quiet");
 
-        Assert.Equal(ExitCodes.Usage, result.ExitCode);
-        Assert.Contains(CliDiagnostics.ProgramArgumentsUnsupported, result.Err);
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Contains("Hello, Lyric!", result.Out);
     }
 
     // ---------------------------------------------------------------- lyrc --stdlib

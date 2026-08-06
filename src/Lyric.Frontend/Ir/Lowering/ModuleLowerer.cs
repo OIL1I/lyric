@@ -106,18 +106,19 @@ public static class ModuleLowerer
 
                 if (function.Parameters.Length == 0) { entry = id; continue; }
 
-                // §11 kennt auch 'fn main(args: string[])'. Das Lowering kann es nicht: die
-                // Runtime müsste beim Start ein Array bauen und übergeben, und der Runner-Vertrag
-                // (Bytecode.md §9) lehnt Programm-Argumente bis dahin ohnehin ab.
-                //
-                // Gemeldet statt übersprungen: bis 2026-08-06 fiel dieses main einfach durch die
-                // Bedingung, das Modul bekam keine Start-Sektion, und der Compiler meldete
-                // NICHTS. Ein Programm, das sauber übersetzt und dann als "Bibliothek" nicht
-                // startet, ist die schlechteste aller Antworten — LYR-IR0001 heißt "noch nicht
-                // gebaut", und genau das ist es.
+                // §11 kennt zwei Formen: 'fn main(): int' und 'fn main(args: string[]): int'. Die
+                // zweite bekommt ihr Array von der Runtime; welche Form vorliegt, liest diese aus
+                // der Signatur des Einstiegs — die Funktionstabelle traegt sie ohnehin, also
+                // braucht das Format dafuer kein Flag.
+                if (function.Parameters is [{ Type: ArrayType { Element: NamedType arg, Size: null } }]
+                    && arg.Path[^1] == "string")
+                {
+                    entry = id;
+                    continue;
+                }
+
                 de.Report(LoweringDiagnostics.NotSupported, Severity.Error, function.Span,
-                    "'fn main(args: string[])' is specified (Sprache.md §11) but not lowered yet; "
-                    + "use a parameterless 'main' until program arguments arrive");
+                    "'main' takes either no parameters or exactly one 'string[]' (Sprache.md §11)");
                 failed = true;
             }
 

@@ -591,13 +591,29 @@ public class LoweringTests
     /// und dann als „Bibliothek" nicht startet, ist die schlechteste aller Antworten.</para>
     /// </summary>
     [Fact]
-    public void Main_with_arguments_is_reported_not_silently_skipped()
+    public void Main_with_arguments_is_an_entry_point()
     {
+        // Bis 2026-08-06 war das eine Scope-Grenze, davor fiel es sogar STILL durch und erzeugte
+        // ein Bibliotheksmodul. Jetzt ist es die zweite Einstiegsform aus §11.
         var (ir, de) = TryLower("fn main(args: string[]): int { return args.length; }");
 
-        Assert.Null(ir);
-        var diagnostic = Assert.Single(de.Diagnostics);
-        Assert.Equal("LYR-IR0001", diagnostic.Code);
-        Assert.Contains("main(args: string[])", diagnostic.Message, StringComparison.Ordinal);
+        Assert.False(de.HasErrors);
+        Assert.NotNull(ir!.EntryFunction);
+        Assert.Equal(1, ir.Functions[ir.EntryFunction!.Value.Value].ParamCount);
+    }
+
+    // Die Gegenprobe zu §11 — 'fn main(n: int)' — steht in der Sema-Suite: sie faengt es schon
+    // mit LYR-SEM0021, das Lowering kaeme gar nicht mehr dran. Der Fallback dort ist Verteidigung
+    // in der Tiefe und bleibt ungetestet, weil er unerreichbar ist.
+
+    [Fact]
+    public void A_module_without_a_main_is_a_library()
+    {
+        // Kein Fehler: eingebetteter Code hat kein 'main', der Host ruft einzelne Funktionen.
+        var (ir, de) = TryLower("pub fn onStart(): int { return 0; }");
+
+        Assert.False(de.HasErrors);
+        Assert.NotNull(ir);
+        Assert.Null(ir!.EntryFunction);
     }
 }

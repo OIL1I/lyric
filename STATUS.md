@@ -371,6 +371,24 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **`fn main(args: string[])` und einstiegslose Module** (Sprache.md §11, Bytecode.md §9).
+  1550 Tests gruen; `examples/greet.lyr` und `examples/embedded.lyr` sind die Belege.
+  - **Kein Format-Bump.** Welche Einstiegsform vorliegt, steht in der **Signatur** — die
+    Funktionstabelle traegt Parameterzahl und -typen ohnehin. Ein Flag in der Start-Sektion waere
+    eine zweite Wahrheit ueber dieselbe Frage gewesen.
+  - Ein parameterloses `main` **ignoriert** uebergebene Argumente. Kein Fehler: dieselbe Freiheit
+    hat jede Shell. Bis hierher lehnte die Runtime ab, weil sie sie nicht zustellen konnte.
+  - **Ein Modul ohne `main` ist eine Bibliothek** — das ging schon, war aber nirgends als
+    gewollter Fall festgehalten. `build` und `verify` akzeptieren es, `run` meldet `LYR-VM0001`,
+    `info` zeigt `entry (library - no start section)`. Genau das braucht ein Host, der `onStart`
+    und `onUpdate` selbst ruft; die Host-API kommt in M10, das **Format** stand nie im Weg, weil
+    die Start-Sektion seit jeher optional ist.
+  - **Drei Tests haben ihre Aufgabe erfuellt und wurden umgedreht.** Sie hielten fest, dass die
+    Grenze *gemeldet* wird statt still zu sein — nachdem sie 2026-08-06 einmal still war und ein
+    Programm klaglos zur Bibliothek machte. Jetzt gibt es die Grenze nicht mehr.
+  - Die Gegenprobe (`fn main(n: int)`) faengt die **Sema** mit `LYR-SEM0021`; der Fallback im
+    Lowering ist Verteidigung in der Tiefe und unerreichbar.
+
 - [x] **Aufraeum-Sweep: `NamedRef`/`GenericInstance` und `ErrorType`**. 1538 Tests gruen.
   - **`TypeFacts.SymbolOf`/`KindOf`** beantworten „welches Symbol steckt dahinter" **einmal**. Ein
     benannter Typ tritt in zwei Formen auf — `NamedRef` fuer `Box`, `GenericInstance` fuer

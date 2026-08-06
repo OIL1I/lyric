@@ -25,14 +25,20 @@ public static class VmHost
     /// verbietet die Vermischung, weil ein aufrufendes Werkzeug sonst die Ausgabe eines
     /// Lyric-Programms nicht von der Klage der Runtime trennen kann.</para>
     /// </summary>
-    public static int Execute(BytecodeModule module, TextWriter output, TextWriter error)
+    public static int Execute(BytecodeModule module, TextWriter output, TextWriter error) =>
+        Execute(module, [], output, error);
+
+    /// <param name="arguments">Die Programm-Argumente aus dem Runner-Vertrag (Bytecode.md §9) —
+    /// alles nach dem ersten <c>--</c>.</param>
+    public static int Execute(BytecodeModule module, IReadOnlyList<string> arguments,
+        TextWriter output, TextWriter error)
     {
         try
         {
             var natives = NativeRegistry.CreateDefault(output, error);
 
             // §11: Exit-Code ist 0..255. Wie jedes POSIX-System nehmen wir das niedrigste Byte.
-            return (int)(Interpreter.Run(module, natives).AsI64 & 0xFF);
+            return (int)(Interpreter.Run(module, arguments, natives).AsI64 & 0xFF);
         }
         catch (LyricPanic panic)
         {

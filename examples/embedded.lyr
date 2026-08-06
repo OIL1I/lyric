@@ -1,0 +1,16 @@
+// Ein Modul OHNE Einstiegspunkt — gueltiger Bytecode, aber kein Programm.
+//
+// Das ist der Normalfall fuer eingebetteten Code: ein Host laedt das Modul und ruft daraus
+// einzelne Funktionen, ohne dass es je ein 'main' gaebe. 'lyric run' darauf ist deshalb ein
+// Fehler (LYR-VM0001), 'lyrc build' und 'lyrvm verify' sind es nicht.
+//
+// Die Host-API dafuer kommt in M10; das Bytecode-Format steht dem nicht im Weg, weil die
+// Start-Sektion seit jeher optional ist.
+
+pub fn onStart(): int {
+    return 0;
+}
+
+pub fn onUpdate(frame: int): int {
+    return frame + 1;
+}

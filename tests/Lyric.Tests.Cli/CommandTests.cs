@@ -30,6 +30,7 @@ public sealed class CommandTests
         { "closures.lyr", 83 },
         { "generator.lyr", 40 },
         { "fizzbuzz.lyr", 0 },
+        { "greet.lyr", 0 },
     };
 
     [Theory]
@@ -80,6 +81,58 @@ public sealed class CommandTests
     /// immer ein Werkzeug. Der Test ist damit nicht gestrichen, sondern <b>gegenstandslos</b>;
     /// was er absicherte, kann nicht mehr auseinanderlaufen.
     /// </summary>
+    [Fact]
+    public void Program_arguments_reach_a_main_that_asks_for_them()
+    {
+        // Punkt 4 des Runner-Vertrags (Bytecode.md §9): alles nach dem ersten '--' gehoert dem
+        // Programm. greet.lyr gibt ihre Zahl zurueck.
+        var result = Toolchain.Lyric("run", Toolchain.Example("greet.lyr"), "--", "Welt", "Lyric");
+
+        Assert.Equal(2, result.ExitCode);
+        Assert.Contains("hallo, Welt", result.Out);
+        Assert.Contains("hallo, Lyric", result.Out);
+    }
+
+    [Fact]
+    public void A_parameterless_main_ignores_program_arguments()
+    {
+        // Kein Fehler — dieselbe Freiheit, die jede Shell hat. Vorher lehnte die Runtime hier ab,
+        // weil sie Argumente ueberhaupt nicht zustellen konnte.
+        var result = Toolchain.Lyric("run", Toolchain.Example("arith.lyr"), "--", "ignoriert");
+
+        Assert.Equal(55, result.ExitCode);
+    }
+
+    [Fact]
+    public void A_module_without_a_main_builds_but_does_not_run()
+    {
+        // Der Embedding-Fall: gueltiger Bytecode, aber kein Programm. Ein Host laedt so etwas und
+        // ruft einzelne Funktionen daraus — 'run' ist dafuer die falsche Frage, und die Antwort
+        // muss das sagen statt still nichts zu tun.
+        using var module = Toolchain.Temp(".lyrbc");
+
+        var build = Toolchain.Lyrc("build", Toolchain.Example("embedded.lyr"), "-o", module.Path);
+        Assert.Equal(ExitCodes.Success, build.ExitCode);
+
+        Assert.Equal(ExitCodes.Success, Toolchain.Lyrvm("verify", module.Path).ExitCode);
+
+        var run = Toolchain.Lyrvm("run", module.Path);
+        Assert.NotEqual(ExitCodes.Success, run.ExitCode);
+        Assert.Contains("library", run.Err);
+    }
+
+    [Fact]
+    public void Info_names_a_library_as_such() =>
+        // Was ein Host zuerst wissen will: hat dieses Modul einen Einstieg?
+        Assert.Contains("library", Toolchain.Lyrvm("info", BuildLibrary()).Out);
+
+    private static string BuildLibrary()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"lib-{Guid.NewGuid():N}.lyrbc");
+        Toolchain.Lyrc("build", Toolchain.Example("embedded.lyr"), "-o", path);
+        return path;
+    }
+
     [Fact]
     public void Foreign_vm_can_be_selected_through_the_environment()
     {

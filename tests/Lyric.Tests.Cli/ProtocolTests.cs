@@ -116,16 +116,17 @@ public sealed class ProtocolTests
     }
 
     [Fact]
-    public void Program_arguments_are_rejected_rather_than_silently_dropped()
+    public void Program_arguments_reach_the_program()
     {
-        // Der Vertrag sieht '-- <args>' vor, die Sprache loest es noch nicht ein
-        // (Sprache.md §11 kennt main(args: string[]), ModuleLowerer nimmt nur das parameterlose
-        // main). Still verwerfen waere der Fehler aus der M7-Korrektur in der anderen Richtung:
-        // die Toolchain taeuschte vor, Argumente zugestellt zu haben.
-        var result = Toolchain.Lyric("run", Toolchain.Example("hello.lyr"), "--", "a", "b");
+        // Punkt 4 des Vertrags ist eingeloest: alles nach '--' gehoert dem Programm. Ein
+        // parameterloses 'main' ignoriert es — kein Fehler, dieselbe Freiheit hat jede Shell.
+        // (Bis 2026-08-06 lehnte die Runtime hier ab, weil sie Argumente nicht zustellen konnte.)
+        var ignored = Toolchain.Lyric("run", Toolchain.Example("hello.lyr"), "--", "a", "b");
+        Assert.Equal(ExitCodes.Success, ignored.ExitCode);
 
-        Assert.Equal(ExitCodes.Usage, result.ExitCode);
-        Assert.Contains(CliDiagnostics.ProgramArgumentsUnsupported, result.Err);
+        // Und ein 'main(args: string[])' bekommt sie wirklich.
+        var received = Toolchain.Lyric("run", Toolchain.Example("greet.lyr"), "--", "a", "b");
+        Assert.Equal(2, received.ExitCode);
     }
 
     [Fact]

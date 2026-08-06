@@ -44,15 +44,10 @@ public static class Program
 
     private static int Run(byte[] bytes, string[] args, TerminalOutput terminal)
     {
-        // Der Vertrag sieht `-- <args>` vor, die Sprache loest es noch nicht ein: ModuleLowerer
-        // nimmt nur ein parameterloses `main` als Einstieg (Sprache.md §11 kennt auch
-        // `main(args: string[])`). Ablehnen statt still verwerfen — sonst taeuscht die Runtime
-        // vor, Argumente zugestellt zu haben.
-        if (ProgramArguments(args) is { Length: > 0 })
-            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.ProgramArgumentsUnsupported,
-                "program arguments are not supported yet: 'fn main(args: string[])' is specified "
-                + "(Sprache.md §11) but not lowered — only a parameterless 'main' is an entry point",
-                ExitCodes.Usage);
+        // Punkt 4 des Runner-Vertrags (Bytecode.md §9): alles nach dem ersten '--' gehoert dem
+        // Programm. Ein parameterloses 'main' ignoriert es — das ist kein Fehler, sondern
+        // dieselbe Freiheit, die jede Shell hat.
+        var programArguments = ProgramArguments(args);
 
         terminal.BeginPhase(Phase.Read, Path.GetFileName(args[1]));
         var module = VmHost.Load(bytes, Console.Error);
@@ -62,7 +57,7 @@ public static class Program
         // Die Anzeige muss weg, BEVOR die erste Instruktion laeuft — sonst landet die erste
         // Ausgabe des Programms neben einer halben Fortschrittszeile.
         terminal.Finish();
-        return VmHost.Execute(module, Console.Out, Console.Error);
+        return VmHost.Execute(module, programArguments, Console.Out, Console.Error);
     }
 
     /// <summary>Laedt vollstaendig — ADR-013 prueft beim Laden, nicht beim Ausfuehren — und druckt

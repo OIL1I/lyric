@@ -70,9 +70,21 @@ public static class IrVerifier
             if (entry.Value < 0 || entry.Value >= module.Functions.Count)
                 findings.Add($"entry function {entry} is out of range " +
                              $"(module has {module.Functions.Count} function(s))");
-            else if (module.Functions[entry.Value].ParamCount != 0)
-                findings.Add($"entry function {module.Functions[entry.Value].Name} takes " +
-                             "parameters; the no-argument form is the only one lowered today");
+            else if (module.Functions[entry.Value] is { ParamCount: > 1 } tooMany)
+            {
+                findings.Add($"entry function {tooMany.Name} takes {tooMany.ParamCount} " +
+                             "parameters; §11 allows none or one 'string[]'");
+            }
+            else if (module.Functions[entry.Value] is { ParamCount: 1 } withArgs
+                     && withArgs.Locals[0].Type is not IrArrayType
+                     { Element: IrScalarType { Kind: IrScalar.String } })
+            {
+                // Die Runtime baut genau EINE Sorte Argument. Faende sie hier etwas anderes,
+                // schriebe sie ein string[] in einen Slot, der etwas anderes erwartet — und das
+                // faellt erst zur Laufzeit auf, als falsch gelesener Wert.
+                findings.Add($"entry function {withArgs.Name} takes " +
+                             $"a parameter that is not 'string[]'; §11 allows only that");
+            }
         }
 
         return findings;

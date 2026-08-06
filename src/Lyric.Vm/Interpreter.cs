@@ -26,7 +26,14 @@ public static class Interpreter
     private const int MaxCallDepth = 1024;
 
     /// <summary>Führt die Start-Funktion aus und liefert ihren Rückgabewert.</summary>
-    public static LyrValue Run(BytecodeModule module, NativeRegistry? natives = null)
+    public static LyrValue Run(BytecodeModule module, NativeRegistry? natives = null) =>
+        Run(module, [], natives);
+
+    /// <param name="arguments">Die Argumente des Programms (Bytecode.md §9). Sie landen im
+    /// <c>string[]</c>, das ein <c>fn main(args: string[])</c> bekommt; ein parameterloses
+    /// <c>main</c> ignoriert sie.</param>
+    public static LyrValue Run(BytecodeModule module, IReadOnlyList<string> arguments,
+        NativeRegistry? natives = null)
     {
         if (module.Start is not { } start)
             throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
@@ -64,15 +71,40 @@ public static class Interpreter
             Execute(prepared, init - module.Imports.Count, module.Strings, module.Types,
                 dispatch, bound, globals);
 
-        return Execute(prepared, entry, module.Strings, module.Types, dispatch, bound, globals);
+        // §11 kennt zwei Einstiegsformen. WELCHE vorliegt, steht in der Signatur — die
+        // Funktionstabelle traegt sie ohnehin, also braucht die Start-Sektion dafuer kein Flag.
+        //
+        // Der Loader hat bereits geprueft, dass ein Parameter ein 'string[]' ist; hier wird nur
+        // noch gezaehlt.
+        LyrValue[] entryArgs = module.Functions[entry].ParamCount == 0
+            ? []
+            : [ArgumentArray(arguments)];
+
+        return Execute(prepared, entry, module.Strings, module.Types, dispatch, bound, globals,
+            entryArgs);
+    }
+
+    /// <summary>Die Programm-Argumente als Lyric-<c>string[]</c> — dieselbe Darstellung wie jedes
+    /// andere Array (ein <c>LyrValue[]</c> hinter einer Referenz).</summary>
+    private static LyrValue ArgumentArray(IReadOnlyList<string> arguments)
+    {
+        var values = new LyrValue[arguments.Count];
+        for (var i = 0; i < arguments.Count; i++) values[i] = LyrValue.FromString(arguments[i]);
+        return LyrValue.FromObject(values);
     }
 
     private static LyrValue Execute(Prepared[] prepared, int startIndex,
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
-        DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals)
+        DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals,
+        LyrValue[]? entryArguments = null)
     {
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
+
+        // Der Einstieg bekommt seine Argumente in die Parameter-Slots gelegt — dieselbe
+        // Konvention wie bei jedem anderen Aufruf, nur dass hier kein Aufrufer sie schiebt.
+        if (entryArguments is not null)
+            for (var i = 0; i < entryArguments.Length; i++) frame.Slots[i] = entryArguments[i];
 
         try
         {

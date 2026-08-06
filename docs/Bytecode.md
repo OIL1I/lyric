@@ -944,10 +944,31 @@ die Frage „würde diese Runtime das Modul annehmen" — Format-Validierung (§
 ohne eine Instruktion auszuführen. Eine zweite Runtime, die dasselbe Urteil fällt, ist an dieser
 Stelle konform.
 
-### Offen
+### Programm-Argumente
 
-`-- <programm-args>` ist hier spezifiziert, aber vom aktuellen Stand **nicht einlösbar**:
-`Sprache.md` §11 kennt `fn main(args: string[])`, das IR-Lowering nimmt jedoch nur ein
-parameterloses `main` als Einstieg. Die mitgelieferte Runtime lehnt übergebene Argumente deshalb ab
-(`LYR-CLI0007`), statt sie still zu verwerfen — eine Runtime, die vorgibt, Argumente zugestellt zu
-haben, wäre schlimmer als eine, die es zugibt.
+Alles nach dem ersten `--` gehört dem Lyric-Programm. Eine Runtime stellt es dem Einstiegspunkt
+zu, **wenn** dessen Signatur es verlangt:
+
+| Einstieg | was die Runtime tut |
+|---|---|
+| `fn main(): int` | die Argumente werden ignoriert — kein Fehler, dieselbe Freiheit hat jede Shell |
+| `fn main(args: string[]): int` | die Runtime baut ein `string[]` und legt es in Parameter-Slot 0 |
+
+**Welche Form vorliegt, steht in der Signatur** und nicht in der Start-Sektion: die
+Funktionstabelle trägt Parameterzahl und -typen ohnehin, ein Flag daneben wäre eine zweite
+Wahrheit über dieselbe Frage.
+
+Ein Leser **muss** ablehnen: einen Einstieg mit mehr als einem Parameter, und einen mit einem
+Parameter, der nicht `string[]` ist. Sonst schriebe die Runtime ein Array in einen Slot, der etwas
+anderes erwartet — und das fällt erst zur Laufzeit auf, als falsch gelesener Wert.
+
+### Module ohne Einstiegspunkt
+
+Ein Modul **ohne** Start-Sektion ist eine **Bibliothek**: gültiger Bytecode, aber kein Programm.
+`run` darauf ist ein Fehler (`LYR-VM0001`), `verify` und `info` sind es nicht — `info` zeigt
+`entry (library - no start section)`.
+
+Das ist kein Randfall, sondern der Normalfall für eingebetteten Code: ein Host lädt ein Modul und
+ruft daraus einzelne Funktionen (`onStart`, `onUpdate`), ohne dass es je ein `main` gäbe. Die
+Host-API dafür kommt in M10; das **Format** stellt sich hier nicht in den Weg, weil die
+Start-Sektion seit jeher optional ist.
