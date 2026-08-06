@@ -266,6 +266,20 @@ if (user != null) {
     console.println(user.name);
 }
 
+// Das gilt auch in einer Schleife und hinter '&&':
+while (user != null) {
+    console.println(user.name);
+    user = next();
+}
+
+if (user != null && user.name != "") { … }   // rechts von '&&' ist user schon ein User
+
+// Nach einer Zuweisung ist die Einengung weg — sie galt fuer den Wert, der geprueft wurde:
+if (user != null) {
+    user = findUser(other);
+    // console.println(user.name);   // Fehler: user ist wieder ?User
+}
+
 // 2) Optional-Chaining: Ergebnis ist ?string
 let maybeName: ?string = user?.name;
 

@@ -420,7 +420,7 @@ public sealed class TypeChecker
             case Block b: CheckBlock(b, scope); break;
             case BindingStmt bnd: CheckBinding(bnd, scope); break;
             case IfStmt f: CheckIf(f, scope); break;
-            case WhileStmt w: CheckCondition(w.Condition, scope); CheckBlock(w.Body, scope); break;
+            case WhileStmt w: CheckWhile(w, scope); break;
             case DoWhileStmt d: CheckBlock(d.Body, scope); CheckCondition(d.Condition, scope); break;
             case ForInStmt fo: CheckForIn(fo, scope); break;
             case ReturnStmt r:
@@ -633,22 +633,79 @@ public sealed class TypeChecker
         else if (f.Else is not null && Flow.AlwaysReturns(f.Else, _result)) Apply(thenFacts);
     }
 
+    /// <summary>
+    /// <c>while (x != null) { … }</c> — im Rumpf ist x kein <c>?T</c> mehr (§7).
+    ///
+    /// <para><b>Warum das sicher ist</b>, obwohl eine Schleife ihre Variable veraendern kann:
+    /// die Bedingung wird vor JEDEM Durchlauf neu geprueft, gilt also am Rumpfanfang immer — und
+    /// eine Zuweisung im Rumpf hebt das Narrowing ab dieser Stelle auf (siehe
+    /// <c>CheckAssign</c>). Beide Haelften zusammen machen den Fall so sicher wie das
+    /// <c>if</c>-Aequivalent.</para>
+    ///
+    /// <para><c>do-while</c> bekommt das bewusst <b>nicht</b>: dort laeuft der Rumpf vor der
+    /// ersten Pruefung, die Bedingung sagt am Rumpfanfang also nichts.</para>
+    /// </summary>
+    private void CheckWhile(WhileStmt w, SymbolTable scope)
+    {
+        CheckCondition(w.Condition, scope);
+
+        var (thenFacts, _) = NarrowingFacts(w.Condition);
+        var snapshot = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
+
+        Apply(thenFacts);
+        CheckBlock(w.Body, scope);
+        _narrowed = snapshot;
+    }
+
     private void Apply(Dictionary<Symbol, LyrType> facts)
     {
         foreach (var (sym, type) in facts) _narrowed[sym] = type;
     }
 
+    /// <summary>
+    /// Was eine Bedingung ueber Nullable-Variablen beweist — getrennt fuer den wahren und den
+    /// falschen Ausgang (§7).
+    ///
+    /// <para>Zusammengesetzte Bedingungen zaehlen mit: bei <c>a &amp;&amp; b</c> gilt im
+    /// then-Zweig, was BEIDE Seiten beweisen — der Zweig laeuft nur, wenn beide wahr sind. Fuer
+    /// den else-Zweig gilt dagegen nichts: er wird erreicht, sobald EINE Seite falsch ist, und
+    /// welche das war, weiss niemand. Bei <c>||</c> genau umgekehrt.</para>
+    ///
+    /// <para>Diese Asymmetrie ist der Grund, warum die beiden Richtungen getrennt gesammelt
+    /// werden und nicht als ein Faktum mit Vorzeichen: sie verhalten sich verschieden.</para>
+    /// </summary>
     private (Dictionary<Symbol, LyrType> then, Dictionary<Symbol, LyrType> els) NarrowingFacts(Expr cond)
     {
         var then = new Dictionary<Symbol, LyrType>(ReferenceEqualityComparer.Instance);
         var els = new Dictionary<Symbol, LyrType>(ReferenceEqualityComparer.Instance);
+
+        if (cond is BinaryExpr { Operator: BinaryOp.LogicalAnd or BinaryOp.LogicalOr } logical)
+        {
+            var (leftThen, leftElse) = NarrowingFacts(logical.Left);
+            var (rightThen, rightElse) = NarrowingFacts(logical.Right);
+
+            if (logical.Operator == BinaryOp.LogicalAnd)
+            {
+                foreach (var (sym, type) in leftThen) then[sym] = type;
+                foreach (var (sym, type) in rightThen) then[sym] = type;
+            }
+            else
+            {
+                foreach (var (sym, type) in leftElse) els[sym] = type;
+                foreach (var (sym, type) in rightElse) els[sym] = type;
+            }
+
+            return (then, els);
+        }
+
         if (cond is BinaryExpr { Operator: BinaryOp.Ne or BinaryOp.Eq } b
             && NullCompared(b) is { } id
-            && _result.RefOf(id) is { } sym
-            && DeclaredType(sym) is Optional opt)
+            && _result.RefOf(id) is { } sym2
+            && DeclaredType(sym2) is Optional opt)
         {
-            (b.Operator == BinaryOp.Ne ? then : els)[sym] = opt.Inner;
+            (b.Operator == BinaryOp.Ne ? then : els)[sym2] = opt.Inner;
         }
+
         return (then, els);
     }
 
@@ -844,7 +901,27 @@ public sealed class TypeChecker
     private LyrType CheckBinary(BinaryExpr b, SymbolTable scope)
     {
         var l = CheckExpr(b.Left, scope);
-        var r = CheckExpr(b.Right, scope);
+
+        // Kurzschluss (§6.1): die rechte Seite laeuft nur, wenn die linke wahr ist — bei '||' nur,
+        // wenn sie falsch ist. Also gilt beim Pruefen der rechten Seite, was die linke bewiesen
+        // hat: 'x != null && x > 0' ist wohlgeformt, weil x im zweiten Teil kein '?int' mehr ist.
+        //
+        // Dieselbe Regel, die das Lowering seit M6 als Kontrollfluss abbildet — hier wird sie nur
+        // auch fuer die Typen eingeloest.
+        LyrType r;
+        if (b.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
+        {
+            var (thenFacts, elseFacts) = NarrowingFacts(b.Left);
+            var snapshot = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
+            Apply(b.Operator == BinaryOp.LogicalAnd ? thenFacts : elseFacts);
+            r = CheckExpr(b.Right, scope);
+            _narrowed = snapshot;
+        }
+        else
+        {
+            r = CheckExpr(b.Right, scope);
+        }
+
         if (l.IsError || r.IsError) return LyrType.Error;
 
         switch (b.Operator)

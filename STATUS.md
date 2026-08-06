@@ -371,6 +371,24 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **Flow-Narrowing: `while` und `&&`** (Sprache.md §7). Gefunden beim Bau der Iteratoren:
+  `while (v != null) { … v … }` lehnte ab, `if` nicht.
+  - **`while` wendete gar keine Fakten an** — die Zeile rief `NarrowingFacts` schlicht nicht.
+  - **`NarrowingFacts` kannte genau eine Form**: die gesamte Bedingung als `x != null`. Deshalb
+    scheiterte `if (x != null && x > 0)`.
+  - **Warum `while` sicher ist**, obwohl eine Schleife ihre Variable aendern kann: die Bedingung
+    wird vor JEDEM Durchlauf neu geprueft, gilt am Rumpfanfang also immer — und eine Zuweisung
+    hebt die Einengung ab dieser Stelle auf. Diese zweite Haelfte gab es bereits; sie zu pruefen
+    war der erste Schritt der Analyse, weil ohne sie auch das `if` unsicher gewesen waere.
+  - **`do-while` bleibt aussen vor**: dort laeuft der Rumpf vor der ersten Pruefung.
+  - **`&&` und `||` sind asymmetrisch**: `&&` beweist im then-Zweig beide Seiten, sagt im else
+    nichts (eine der beiden war falsch, welche weiss niemand); `||` genau umgekehrt. Deshalb
+    werden beide Richtungen getrennt gesammelt.
+  - 12 Tests, jeder Fall doppelt — einmal erlaubt, einmal abgelehnt. Eine Regel, die nur die
+    erlaubten Faelle prueft, bliebe auch gruen, wenn sie ausnahmslos alles einengte, und genau das
+    waere der gefaehrliche Fehler: hinter jedem Narrowing erzeugt das Lowering ein ungeprueftes
+    `optget`.
+
 - [x] **P8 — Generics und `for-in`** (Sprache.md §5, §12): `examples/fizzbuzz.lyr` laeuft, 1503
   Tests gruen.
   - **Monomorphisierung**: pro Typargument-Tupel eine eigene Funktion und ein eigener
