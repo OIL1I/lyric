@@ -28,6 +28,7 @@ public sealed class CommandTests
         { "vectors.lyr", 115 },
         { "constants.lyr", 140 },
         { "closures.lyr", 83 },
+        { "generator.lyr", 40 },
     };
 
     [Theory]

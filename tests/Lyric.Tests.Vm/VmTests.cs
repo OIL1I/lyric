@@ -1016,4 +1016,65 @@ public class VmTests
     [Fact]
     public void A_parenthesized_type_is_the_type_itself() =>
         Assert.Equal(7, Run("fn main(): int { let a: (int) = 7; return a; }").AsI64);
+
+    // ------------------------------------------------------------------ P7: Coroutinen
+
+    /// <summary>Wie <see cref="Run"/>, aber mit Stdlib: der Sprungverteiler einer Coroutine ruft
+    /// <c>std.core.coroutineEnded</c>, und den bindet erst der Modulpfad.</summary>
+    private static LyrValue Coroutine(string source) => RunWithStdlib(source).Result;
+
+    private static LyricPanic PanicFromCoroutine(string source) =>
+        Assert.Throws<LyricPanic>(() => RunWithStdlib(source));
+
+    [Fact]
+    public void A_coroutine_resumes_where_it_left_off() =>
+        // Der Kern von §8: 'n' ueberlebt das 'yield'. Ohne erhaltenen Zustand kaeme dreimal die 0.
+        Assert.Equal(2, Coroutine("""
+            fn counter(): Coroutine<int> { var n = 0; while (true) { yield n; n += 1; } }
+            fn main(): int { let c = counter(); resume c; resume c; return resume c; }
+            """).AsI64);
+
+    [Fact]
+    public void Each_yield_is_its_own_resume_point() =>
+        Assert.Equal(30, Coroutine("""
+            fn three(): Coroutine<int> { yield 10; yield 20; yield 30; }
+            fn main(): int { let t = three(); let a = resume t; let b = resume t; return a + b; }
+            """).AsI64);
+
+    [Fact]
+    public void Two_coroutines_of_the_same_kind_have_separate_state() =>
+        // Die Gegenprobe: der Zustand haengt am WERT, nicht an der Funktion. Bei geteiltem
+        // Zustand stuende hier 3.
+        Assert.Equal(2, Coroutine("""
+            fn counter(): Coroutine<int> { var n = 0; while (true) { yield n; n += 1; } }
+            fn main(): int {
+                let a = counter();
+                let b = counter();
+                resume a; resume a;
+                resume b;
+                return resume a;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void A_coroutine_parameter_survives_the_first_yield() =>
+        // Parameter liegen im Zustandsobjekt wie jedes Local — die Fabrik schreibt sie beim
+        // Erzeugen hinein.
+        Assert.Equal(14, Coroutine("""
+            fn steps(by: int): Coroutine<int> { var n = 0; while (true) { yield n; n += by; } }
+            fn main(): int { let s = steps(7); resume s; resume s; return resume s; }
+            """).AsI64);
+
+    [Fact]
+    public void Resuming_a_finished_coroutine_is_an_error()
+    {
+        // §8: der resume, bei dem der Rumpf auslaeuft, hat keinen Wert zu liefern und meldet
+        // sich. Bis Throwable-Typen aus der Stdlib kommen (M8) als Panic.
+        var panic = PanicFromCoroutine("""
+            fn two(): Coroutine<int> { yield 1; yield 2; }
+            fn main(): int { let c = two(); resume c; resume c; return resume c; }
+            """);
+
+        Assert.Contains("already finished", panic.Message);
+    }
 }

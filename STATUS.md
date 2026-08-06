@@ -371,6 +371,33 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **P7 — Coroutinen** (Sprache.md §8): `examples/generator.lyr` -> **40**, 1483 Tests gruen.
+  - **Kein VM-Eingriff, kein neuer Opcode, kein Format-Bump.** Der Rumpf wird zu einem
+    Zustandsautomaten: Parameter und Locals liegen in Feldern eines Objekts statt in Frame-Slots
+    (ein Frame endet bei jedem `yield`, das Objekt nicht), `yield` schreibt den
+    Wiedereintrittspunkt und kehrt zurueck, ein Sprungverteiler springt beim naechsten `resume`
+    dorthin. C#, Kotlin und Python machen es genauso; Lua braucht fuer sein maechtigeres Modell
+    separate Stacks in der Runtime, und die Sema-Regel „`yield` nur im Rumpf" ist seit M4 die
+    Entscheidung dagegen.
+  - **Eine Coroutine IST ein Funktionswert ohne Parameter.** Das war der Fund, der den Entwurf
+    vereinfacht hat: `IrCoroutineType` trug erst die TypeId des Zustandsobjekts — unmoeglich, denn
+    `let c = counter();` hat den Typ `Coroutine<int>`, und dort ist nicht mehr sichtbar, WELCHE
+    Coroutine ihn erzeugt hat. Welche Rumpf-Funktion laeuft, kann nur der **Wert** wissen. Also
+    ist er ein Fat Pointer aus Zustandsobjekt und Rumpf-Index — eine Closure (ADR-018) —, und
+    `resume` ist ein `callind`. **P7 erbt P6 vollstaendig.**
+  - **Der `resume`, bei dem der Rumpf auslaeuft, wirft selbst.** Er hat keinen Wert zu liefern;
+    einen zu erfinden hiesse, der Sprache einen Nullwert zu geben, den sie nicht hat. Python
+    meldet dort StopIteration, aus demselben Grund. Damit fiel auch die Zwischen-Grenze weg, dass
+    eine Coroutine nur Skalare liefern darf.
+  - **Zwei Annahmen widerlegt**: `IrFunction.Entry` ist **nicht** frei waehlbar (der Verifier
+    verlangt den ersten Block — der Verteiler bekommt `bb0` reserviert und wird spaeter gefuellt),
+    und `BinOp.Type` traegt bei einem Vergleich den Ergebnis-Typ.
+  - **Abweichung von §8, bewusst**: ein `resume` auf eine beendete Coroutine ist ein **Panic**,
+    kein fangbarer `CoroutineEndedError`. Der braeuchte einen Throwable-Typ aus der Stdlib (M8);
+    die Meldung sagt dasselbe.
+  - Konservativ: **alle** Locals wandern ins Zustandsobjekt, ohne Lebendigkeitsanalyse. Die spart
+    nur Objektgroesse, und ihre Fehler faenden erst zur Laufzeit auf.
+
 - [x] **ADR-019 — `lyric` ist ein Dispatcher, kein zweiter Compiler**. 1473 Tests gruen.
   - **Die Begruendung von ADR-017 hielt der Messung nicht stand.** Dort lief die Runtime
     in-process, weil das „~50–70 ms" Prozessstart spare. Gemessen: **283 ms in-process gegen
