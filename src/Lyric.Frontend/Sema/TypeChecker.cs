@@ -2315,16 +2315,27 @@ public sealed class TypeChecker
     /// </summary>
     private bool ImplementsInterface(LyrType from, LyrType to)
     {
-        if (to is not NamedRef { Symbol.Kind: TypeSymbolKind.Interface } target) return false;
+        // Das Ziel kann ein generisches Interface sein ('Src<int>') — dann ist es eine
+        // GenericInstance und keine NamedRef. Ohne diesen Fall waere jede Zuweisung an ein
+        // generisches Interface ein Typfehler, und 'Iterator<T>' unbenutzbar.
+        var target = to switch
+        {
+            NamedRef { Symbol.Kind: TypeSymbolKind.Interface } named => named.Symbol,
+            GenericInstance { Definition.Kind: TypeSymbolKind.Interface } instance
+                => instance.Definition,
+            _ => null,
+        };
+
+        if (target is null) return false;
 
         return from switch
         {
-            NamedRef source => Conformance.Implements(source.Symbol, target.Symbol, _binding),
+            NamedRef source => Conformance.Implements(source.Symbol, target, _binding),
             GenericInstance instance =>
-                Conformance.Implements(instance.Definition, target.Symbol, _binding),
+                Conformance.Implements(instance.Definition, target, _binding),
             TypeParamType parameter => parameter.Param.Constraints.Any(c =>
                 Conformance.InterfaceOf(c, _binding) is { } it
-                && ReferenceEquals(it, target.Symbol)),
+                && ReferenceEquals(it, target)),
             _ => false,
         };
     }

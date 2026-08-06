@@ -1136,4 +1136,15 @@ public class VmTests
             struct Pair<T> { a: T, b: T, fn first(): T { return this.a; } }
             fn main(): int { let p = Pair<int> { a = 5, b = 3 }; return p.first(); }
             """).AsI64);
+
+    [Fact]
+    public void A_generic_interface_dispatches_dynamically() =>
+        // Der Baustein, auf dem 'Iterator<T>' aufsetzt: Konformanz zu einem generischen Interface,
+        // Zuweisung an dessen Typ, und ein callvirt darueber.
+        Assert.Equal(7, Run("""
+            interface Src<T> { fn next(): ?T; }
+            class Ones :: [Src<int>] { fn next(): ?int { return 7; } }
+            fn take(s: Src<int>): int { return s.next() ?? 0; }
+            fn main(): int { let o = Ones { }; return take(o); }
+            """).AsI64);
 }

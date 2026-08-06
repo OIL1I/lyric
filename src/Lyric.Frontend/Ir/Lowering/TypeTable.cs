@@ -53,6 +53,10 @@ internal sealed class TypeTable
     /// </summary>
     private readonly Dictionary<string, TypeId> _instances = new(StringComparer.Ordinal);
 
+    /// <summary>Symbol und Id jeder Instanz — fuer die Impl-Tabelle, die wissen muss, welche
+    /// Klasse welches Interface erfuellt (auch wenn beide Instanzen sind).</summary>
+    private readonly List<(TypeSymbol Symbol, TypeId Id)> _instanceSymbols = new();
+
     /// <summary>
     /// Die Typargumente, die gerade eingesetzt werden, waehrend das Layout einer Instanz entsteht.
     ///
@@ -173,7 +177,7 @@ internal sealed class TypeTable
     /// <summary>Alle bisher internierten Typen mit ihrem Symbol — die Grundlage der Impl-Tabelle.
     /// Nur was interniert wurde, steht im Bytecode, und nur dafuer braucht es vtable-Zeilen.</summary>
     public IEnumerable<(TypeSymbol Symbol, TypeId Id)> Interned =>
-        _assigned.Select(pair => (pair.Key, pair.Value));
+        _assigned.Select(pair => (pair.Key, pair.Value)).Concat(_instanceSymbols);
 
     public bool IsInterface(TypeId id) => _defs[id.Value].IsInterface;
 
@@ -230,6 +234,25 @@ internal sealed class TypeTable
             _substitutions.Push(mapping);
             try
             {
+                // Interface und Enum haben eigene Eintragsformen (Methoden-Slots bzw. Varianten)
+                // und kein Feld-Layout. Sie muessen deshalb ihre eigenen Pfade nehmen — nur die
+                // Substitution ist gemeinsam.
+                if (symbol.Kind == TypeSymbolKind.Interface)
+                {
+                    var id = InternInterface(symbol, instanceName);
+                    _instances[instanceName] = id;
+                    _instanceSymbols.Add((symbol, id));
+                    return id;
+                }
+
+                if (symbol.Kind == TypeSymbolKind.Enum)
+                {
+                    var id = InternEnum(symbol);
+                    _instances[instanceName] = id;
+                    _instanceSymbols.Add((symbol, id));
+                    return id;
+                }
+
                 return InternLayout(symbol, instanceName, _instances);
             }
             finally
@@ -300,7 +323,8 @@ internal sealed class TypeTable
         // Klassen-Doku. Der Platzhalter wird unten überschrieben; sichtbar wird er nie, weil
         // Lower(field) nur die Id braucht, nicht das Layout.
         var id = new TypeId(_defs.Count);
-        if (registry is null) _assigned[symbol] = id; else registry[name] = id;
+        if (registry is null) _assigned[symbol] = id;
+        else { registry[name] = id; _instanceSymbols.Add((symbol, id)); }
         _defs.Add(default);
 
         try
@@ -385,13 +409,13 @@ internal sealed class TypeTable
     /// Default belegt einen Slot, weil eine Klasse ihn ueberschreiben darf; ohne Slot waere er
     /// nicht ueberschreibbar.</para>
     /// </summary>
-    private TypeId InternInterface(TypeSymbol symbol)
-    {
-        if (symbol.Generics.Length > 0)
-            throw new UnsupportedConstructException(
-                $"generic interface '{symbol.Name}' is not supported by this compiler version yet",
-                SpanOf(symbol));
+    private TypeId InternInterface(TypeSymbol symbol) => InternInterface(symbol, symbol.Name);
 
+    /// <param name="name">Bei einer Instanz der volle Name (<c>Iterator&lt;int&gt;</c>) — er steht
+    /// in Disassembly und Diagnosen, und zwei Instanzen desselben Interfaces sollen dort
+    /// unterscheidbar sein.</param>
+    private TypeId InternInterface(TypeSymbol symbol, string name)
+    {
         if (symbol.Declaration is not InterfaceDecl decl)
             throw new UnsupportedConstructException(
                 $"interface '{symbol.Name}' has no declaration to read its methods from",
@@ -404,8 +428,13 @@ internal sealed class TypeTable
                 + "to dispatch on", SpanOf(symbol));
 
         var id = new TypeId(_defs.Count);
-        _assigned[symbol] = id;
-        _defs.Add(new IrTypeDef(symbol.Name, [], []) { MethodSlots = slots });
+
+        // Ein generisches Interface hat pro Instanz einen eigenen Eintrag; nur das
+        // nicht-generische traegt sich unter seinem Symbol ein. Sonst bekaeme
+        // 'Iterator<string>' die Id von 'Iterator<int>'.
+        if (symbol.Generics.Length == 0) _assigned[symbol] = id;
+
+        _defs.Add(new IrTypeDef(name, [], []) { MethodSlots = slots });
         return id;
     }
 

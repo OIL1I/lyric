@@ -2674,6 +2674,14 @@ internal sealed class FunctionLowerer
                      { Symbol.Kind: TypeSymbolKind.Interface } iface:
                 return LowerVirtualCall(member, iface.Symbol, expr);
 
+            // Ein generisches Interface als Empfaenger ('Iterator<int>'): derselbe dynamische
+            // Dispatch, nur dass die Slot-Tabelle an der INSTANZ haengt — 'Iterator<int>' und
+            // 'Iterator<string>' sind verschiedene Eintraege.
+            case MemberExpr member
+                when SubstituteType(_types.TypeOf(member.Target)) is GenericInstance
+                     { Definition.Kind: TypeSymbolKind.Interface } genericIface:
+                return LowerVirtualCall(member, genericIface, expr);
+
             case MemberExpr member
                 when _types.TypeOf(member.Target) is NamedRef
                      { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct
@@ -2909,10 +2917,24 @@ internal sealed class FunctionLowerer
     /// statisch typisiert und kennt kein Monkey-Patching, also steht die Position zur Compile-Zeit
     /// fest. Ein Namens-Lookup mit Inline-Cache loeste ein Problem, das diese Sprache nicht hat.</para>
     /// </summary>
-    private TempId? LowerVirtualCall(MemberExpr member, TypeSymbol iface, CallExpr expr)
+    private TempId? LowerVirtualCall(MemberExpr member, GenericInstance instance, CallExpr expr) =>
+        LowerVirtualCall(member, instance.Definition, expr,
+            _typeTable.Intern(instance.Definition, instance.Arguments));
+
+    private TempId? LowerVirtualCall(MemberExpr member, TypeSymbol iface, CallExpr expr,
+        TypeId? instanceType = null)
     {
-        var interfaceType = _typeTable.InterfaceOf(iface);
-        var slot = _typeTable.SlotOf(iface, member.Member, member.Span);
+        // Bei einem generischen Interface haengt die Slot-Tabelle an der INSTANZ; der Slot-INDEX
+        // ist derselbe, weil er aus der Deklaration kommt und fuer alle Instanzen gilt.
+        var interfaceId = instanceType ?? _typeTable.InterfaceOf(iface).Type;
+
+        // Den Slot aus dem Eintrag DIESER Instanz lesen: ueber das Symbol zu gehen wuerde
+        // 'Src' ohne Typargumente internieren, und das hat keinen Eintrag.
+        var slots = _typeTable.MethodSlotsOf(interfaceId);
+        var slot = Array.IndexOf(slots, member.Member);
+        if (slot < 0)
+            throw NotSupported($"interface '{iface.Name}' has no method '{member.Member}'",
+                member.Span);
 
         var args = new TempId[expr.Arguments.Length + 1];
         args[0] = LowerExpr(member.Target);
@@ -2930,12 +2952,12 @@ internal sealed class FunctionLowerer
         var returnType = TypeOfExpr(expr);
         if (IsVoid(returnType))
         {
-            _b.Emit(new CallVirt(null, interfaceType.Type, slot, args, returnType, expr.Span));
+            _b.Emit(new CallVirt(null, interfaceId, slot, args, returnType, expr.Span));
             return null;
         }
 
         var dest = _slots.NewTemp(returnType);
-        _b.Emit(new CallVirt(dest, interfaceType.Type, slot, args, returnType, expr.Span));
+        _b.Emit(new CallVirt(dest, interfaceId, slot, args, returnType, expr.Span));
         return dest;
     }
 
