@@ -49,22 +49,21 @@ Die vier Regeln, gegen die jede Designentscheidung geprüft wird:
 lyric/
 ├─ Lyric.sln                              # .NET Solution
 ├─ src/
-│  ├─ Lyric.Core/                         # Diagnostics, SourceManager, Span
-│  ├─ Lyric.Lexing/                       # Tokenizer
-│  ├─ Lyric.Parsing/                      # Recursive-descent + Pratt
-│  ├─ Lyric.Ast/                          # AST-Typen, Dumper
-│  ├─ Lyric.Resolver/                     # Module-Auflösung, Imports
-│  ├─ Lyric.Sema/                         # Type-Checker, Generics-Monomorph
-│  ├─ Lyric.Ir/                           # Typed Mid-IR
-│  ├─ Lyric.Bytecode/                     # Bytecode-Format: Leseseite (ADR-017)
-│  ├─ Lyric.Bytecode.Emit/                # Bytecode-Format: Schreibseite (ADR-017)
-│  ├─ Lyric.Vm/                           # Interpreter, Value-Repr, GC-Hook
-│  ├─ Lyric.Compiler/                     # Pipeline Quelle → IR → Bytes (ADR-017)
-│  ├─ Lyric.Stdlib/                       # Stdlib-Module (z.T. nativ)
-│  ├─ Lyric.Embedding/                    # Host-API (LangVm)
-│  ├─ Lyrc/                               # Executable `lyrc`  — Compiler (ADR-017)
-│  ├─ Lyrvm/                              # Executable `lyrvm` — Runtime  (ADR-017)
-│  └─ Lyric.Cli/                          # Executable `lyric` — Treiber  (ADR-017)
+│  ├─ Lyric.Core/          → lyrcore.dll  # Diagnostics, SourceManager, Span
+│  │  └─ Bytecode/                        #   Bytecode-Format: Leseseite (ADR-017)
+│  ├─ Lyric.Frontend/      → lyrfe.dll    # Alles zwischen Quelltext und Bytes:
+│  │  ├─ Lexing/                          #   Tokenizer
+│  │  ├─ AST/                             #   AST-Typen, Dumper
+│  │  ├─ Parsing/                         #   Recursive-descent + Pratt
+│  │  ├─ Resolver/                        #   Module-Auflösung, Imports
+│  │  ├─ Sema/                            #   Type-Checker, Generics-Monomorph
+│  │  ├─ Ir/                              #   Typed Mid-IR
+│  │  ├─ Emit/                            #   Bytecode-Format: Schreibseite (ADR-017)
+│  │  └─ Compiler/                        #   Pipeline Quelle → IR → Bytes (ADR-017)
+│  ├─ Lyric.Vm/           → lyrrt.dll     # Interpreter, Value-Repr, GC-Hook
+│  ├─ Lyrc/               → lyrc.exe      # Compiler (ADR-017)
+│  ├─ Lyrvm/              → lyrvm.exe     # Runtime  (ADR-017)
+│  └─ Lyric.Cli/          → lyric.exe     # Treiber  (ADR-017)
 ├─ stdlib/                                # Stdlib-Source (.lyr-Dateien)
 ├─ tests/
 │  ├─ Lyric.Tests.Lexing/                 # xUnit
@@ -907,6 +906,39 @@ deshalb vorerst mit einer Diagnose abgelehnt statt still verworfen.
 > `docs/IDEAS.md` („Native Runtime als zweite Implementierung der `.lyrbc`-Spec") und wird deshalb
 > auf das Minimum beschränkt: vier Vertragszeilen und ein Flag, kein Registry, keine
 > Konfigurationsdatei. *(Zur Ratifizierung im nächsten Scope-Check.)*
+
+### Nachtrag 2026-08-06: drei Assemblies statt elf
+
+Die Konsequenz oben nennt „zwei neue Bibliotheken" — und ließ damit offen, wie viele es am Ende
+sind. Es waren elf, und alle elf lagen im Auslieferungsordner. Für eine Toolchain, die jemand
+herunterlädt, ist das keine Architektur, sondern eine Zumutung: elf Dateinamen, die eine
+Projektgliederung verraten, die den Benutzer nichts angeht.
+
+Ausgeliefert werden jetzt **drei**, und die Schnitte liegen exakt auf der Kante, die dieses ADR
+zieht:
+
+| Assembly | Inhalt | Wer bekommt sie |
+|---|---|---|
+| `lyrcore.dll` | Diagnostik, Quelltextverwaltung, **Leseseite** des Formats | alle drei |
+| `lyrfe.dll` | Lexer, Parser, Resolver, Sema, IR, **Schreibseite**, Pipeline | `lyrc`, `lyric` |
+| `lyrrt.dll` | der Interpreter | `lyrvm`, `lyric` |
+
+**Warum das Format-Lesen zu `lyrcore` gehört und nicht zur VM.** Es ist der gemeinsame *Vertrag*
+und keine Runtime-Eigenschaft: `lyrvm info` liest ein Modul, ohne es auszuführen, `lyric disasm`
+auch, und der Bytecode-Writer braucht dieselben Op-Codes und Typ-Tags. Läge es bei der VM, zöge
+jeder Compiler-Build den Interpreter mit — die *Gegen*richtung dieses ADRs, und sie fällt genauso
+auf.
+
+**Was das kostet, ehrlich**: die feinen Kanten *innerhalb* des Frontends sind ab jetzt Konvention
+statt Compilerfehler. Der Parser könnte die Sema rufen. Was bleibt — und was dieses ADR wirklich
+behauptet — ist die große Kante: eine Runtime bekommt nichts vom Compiler zu sehen, ein Compiler
+keinen Interpreter. Die wird weiterhin durch Assembly-Grenzen erzwungen.
+
+**Der Architektur-Test wird dadurch schärfer.** Vorher eine Verbotsliste aus acht Dateinamen, die
+bei jedem neuen Projekt hätte wachsen müssen — was niemand tat. Jetzt ein Gleichheitsvergleich:
+„neben `lyrvm.exe` liegen genau `lyrcore.dll`, `lyrrt.dll`, `lyrvm.dll`". Das fällt auch über eine
+Kante, die auf keiner Verbotsliste steht — und über **Build-Leichen**: beim Umbau lagen in `bin/`
+noch die DLLs der elf alten Projektnamen, und die Verbotsliste hätte sie durchgewinkt.
 
 ---
 

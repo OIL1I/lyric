@@ -343,6 +343,37 @@ Programm, mit Begründung als Blockzitat).
     Binary liegt, wenn man es ausliefert. Ohne ihn wandert die Kante innerhalb eines Meilensteins
     zurück und es fällt niemandem auf.
 
+- [x] **Auslieferung: drei Assemblies, ein Ordner, ein Kommando**. `dotnet msbuild
+  build/publish.proj` legt alle drei Binaries nach `artifacts/publish/`. Der Ordner hatte 24
+  Eintraege und hat jetzt **13**; 1451 Tests gruen.
+  - **Elf Bibliotheks-DLLs wurden drei.** `lyrcore` (Diagnostik + Leseseite des Formats), `lyrfe`
+    (alles zwischen Quelltext und Bytes), `lyrrt` (der Interpreter). Elf Dateinamen im
+    Auslieferungsordner verrieten eine Projektgliederung, die den Benutzer nichts angeht.
+  - **Die Schnitte liegen auf der ADR-017-Kante**, deshalb wird die Aussage schaerfer statt
+    schwaecher: nicht mehr „diese acht Dateien duerfen nicht dabei sein", sondern „es sind genau
+    diese drei". Die Verbotsliste haette bei jedem neuen Projekt wachsen muessen — was niemand tat.
+  - **Das Format-Lesen liegt bei `lyrcore`, nicht bei der VM.** Es ist der gemeinsame *Vertrag*:
+    `lyrvm info` liest, ohne auszufuehren, und der Bytecode-Writer braucht dieselben Op-Codes.
+    Laege es bei der Runtime, zoege jeder Compiler-Build den Interpreter mit — die Gegenrichtung
+    von ADR-017.
+  - **Was es kostet, ehrlich**: die feinen Kanten *innerhalb* des Frontends sind ab jetzt
+    Konvention statt Compilerfehler. Der Parser koennte die Sema rufen. Die grosse Kante bleibt
+    erzwungen, und nur die behauptet ADR-017.
+  - **Zwei Funde nebenbei.** Erstens: in `bin/` lagen noch die DLLs der elf alten Projektnamen,
+    und der Architektur-Test haette sie durchgewinkt — er verglich gegen eine Verbotsliste. Jetzt
+    ist es ein Gleichheitsvergleich ueber alles, was `lyr*` heisst. Zweitens: **die CI baute mit
+    `dotnet-version: 9.0.x` bei `net10.0`-Projekten.** Das kann seit dem TFM-Wechsel nie gelaufen
+    sein.
+  - **`Directory.Build.props`** ersetzt vierzehnmal wortgleiches Boilerplate; `tests/` erbt es und
+    ergaenzt die vier PackageReferences, die neunmal dastanden. Release baut jetzt ohne Symbole
+    und ohne `.deps.json` (der Host laedt dann app-lokal — es gibt kein NuGet-Paket im
+    Auslieferungspfad). Die `.runtimeconfig.json` bleibt: ohne sie startet nichts.
+  - **Die Version steht zweimal** — als C#-Konstante und als MSBuild-`<Version>`, weil MSBuild
+    keine C#-Konstante lesen kann. Statt die Doppelung wegzudiskutieren, vergleicht ein Test sie
+    gegen das erzeugte Assembly-Attribut.
+  - Das Publish-Verzeichnis wird **vorher geleert**. Genau der Fehler, der in `bin/` schon
+    passiert war: ein Ordner, der ueber Umbauten hinweg waechst, liefert Leichen mit.
+
 - [x] **Toolchain-Optionen und Fortschrittsausgabe**: `--json`, `--quiet`, `--verbose`,
   `--progress`, `lyrc --stdlib`, `lyrvm info`, `disasm --function`. 1329 Tests grün.
   - **Eine Options-Schicht in `Lyric.Core`, kein Parser je Binary.** `--json` dreimal zu parsen

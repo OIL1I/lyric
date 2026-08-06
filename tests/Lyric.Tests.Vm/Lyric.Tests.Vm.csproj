@@ -1,28 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsPackable>false</IsPackable>
-  </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Using Include="Xunit" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <!-- Ende zu Ende: uebersetzen (lyrfe) und ausfuehren (lyrrt). -->
     <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lyric.Frontend\Lyric.Frontend.csproj" />
     <ProjectReference Include="..\..\src\Lyric.Vm\Lyric.Vm.csproj" />
-    <ProjectReference Include="..\..\src\Lyric.Bytecode.Emit\Lyric.Bytecode.Emit.csproj" />
-    <ProjectReference Include="..\..\src\Lyric.Parsing\Lyric.Parsing.csproj" />
   </ItemGroup>
-
 </Project>

@@ -78,20 +78,15 @@ fn main(): int {
 ```
 lyric/
 ├── src/
-│   ├── Lyric.Core/          Diagnostics, SourceManager, Span
-│   ├── Lyric.Lexing/        Tokenizer
-│   ├── Lyric.Parsing/       Recursive-descent + Pratt
-│   ├── Lyric.Sema/          Type checker, generics monomorphization
-│   ├── Lyric.Ir/            Typed mid-IR
-│   ├── Lyric.Bytecode/      Bytecode format — read side
-│   ├── Lyric.Bytecode.Emit/ Bytecode format — write side
-│   ├── Lyric.Vm/            Interpreter
-│   ├── Lyric.Compiler/      Pipeline: source → IR → bytes
-│   ├── Lyric.Stdlib/        Standard library bindings
-│   ├── Lyric.Embedding/     Host API for embedders
-│   ├── Lyrc/                `lyrc`  — the compiler
-│   ├── Lyrvm/               `lyrvm` — the bundled runtime
-│   └── Lyric.Cli/           `lyric` — the driver
+│   ├── Lyric.Core/          → lyrcore.dll  Diagnostics, SourceManager, Span,
+│   │                                       and the read side of the bytecode format
+│   ├── Lyric.Frontend/      → lyrfe.dll    Everything between source and bytes:
+│   │                                       Lexing, AST, Parsing, Resolver, Sema,
+│   │                                       Ir, Emit (write side), Compiler
+│   ├── Lyric.Vm/            → lyrrt.dll    Interpreter
+│   ├── Lyrc/                → lyrc.exe     the compiler
+│   ├── Lyrvm/               → lyrvm.exe    the bundled runtime
+│   └── Lyric.Cli/           → lyric.exe    the driver
 ├── stdlib/                 Stdlib source (.lyr files)
 ├── tests/                  xUnit test projects
 ├── examples/               Example programs
@@ -130,6 +125,34 @@ dotnet test
 ```bash
 dotnet run --project src/Lyric.Cli -- run examples/hello.lyr
 ```
+
+### Shipping
+
+One command publishes all three binaries into a single directory:
+
+```bash
+dotnet msbuild build/publish.proj
+```
+
+The result lands in `artifacts/publish/` and is framework-dependent — it needs a
+.NET 10 runtime on the target machine. What ends up there, and nothing else:
+
+```
+lyric.exe  lyrc.exe  lyrvm.exe     the three binaries
+lyrcore.dll                        diagnostics + the read side of the bytecode format
+lyrfe.dll                          everything between source and bytes
+lyrrt.dll                          the interpreter
+*.runtimeconfig.json               which framework version to load
+stdlib/                            the standard library, as .lyr source
+```
+
+No PDBs, no `.deps.json`, no XML doc files. `lyrvm.exe` deliberately ships
+neither `lyrfe.dll` nor `stdlib/`: a runtime gets finished bytes, never source
+(ADR-013, ADR-017). A test enforces that.
+
+Pass `-p:PublishRoot=<dir>` to publish elsewhere. The target directory is wiped
+first — a publish directory that grows across refactors accumulates DLLs under
+names that no longer exist.
 
 ## Why "Lyric"?
 

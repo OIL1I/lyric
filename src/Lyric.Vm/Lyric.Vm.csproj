@@ -1,19 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <AssemblyName>lyrrt</AssemblyName>
+    <RootNamespace>Lyric.Vm</RootNamespace>
+    <Description>Die mitgelieferte Referenz-Runtime: Interpreter, Werte, Dispatch, Host-API.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
-      Die Runtime kennt das Format nur lesend (ADR-017). Keine Kante nach Lyric.Bytecode.Emit,
-      Lyric.Ir, Lyric.Sema oder Lyric.Parsing — 'lyrvm' waere sonst ein Compiler mit
-      Interpreter-Anhang statt einer zweiten, unabhaengigen Implementierung der Spec.
+      Genau eine Kante — und das ist der Punkt (ADR-017). Die Runtime kennt das Format nur ueber
+      die Leseseite in lyrcore; sie kennt weder Lexer noch Parser noch Sema noch IR noch den
+      Bytecode-Writer. Kommt hier je eine Kante nach Lyric.Frontend dazu, ist ADR-013 ("jemand
+      schreibt eine zweite Runtime allein aus der Spec") nur noch eine Behauptung.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
-    <ProjectReference Include="..\Lyric.Bytecode\Lyric.Bytecode.csproj" />
   </ItemGroup>
 
 </Project>

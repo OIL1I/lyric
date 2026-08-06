@@ -1289,6 +1289,27 @@ Gleich für alle drei Programme:
 | `1` | Compile-, Lade- oder IO-Fehler |
 | `2` | Falscher Aufruf |
 
+### 23.7 Was in einer Installation liegt
+
+Eine ausgelieferte Toolchain ist ein Verzeichnis mit drei Programmen, drei Bibliotheken und der
+Stdlib:
+
+```
+lyric.exe  lyrc.exe  lyrvm.exe     die drei Programme
+lyrcore.dll                        Diagnostik + Leseseite des Bytecode-Formats
+lyrfe.dll                          alles zwischen Quelltext und Bytes
+lyrrt.dll                          der Interpreter
+*.runtimeconfig.json               welche Framework-Version geladen wird
+stdlib/                            die Standardbibliothek, als .lyr-Quelltext
+```
+
+Die Stdlib liegt als **Quelltext** daneben, nicht als Binärform: ein `.lyrbc` trägt seine Importe
+symbolisch (ADR-012), und aufgelöst werden sie beim Übersetzen. Deshalb brauchen `lyric` und
+`lyrc` das Verzeichnis, `lyrvm` nicht — eine Runtime bekommt fertige Bytes.
+
+Wenn du die Stdlib woanders hast, sagt `LYRIC_STDLIB` oder `--stdlib <dir>`, wo. Selbst gebaut
+wird die Toolchain mit `dotnet msbuild build/publish.proj`.
+
 ---
 
 ## 24. Was kommt nach v1?

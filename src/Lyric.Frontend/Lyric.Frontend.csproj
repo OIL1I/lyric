@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>lyrfe</AssemblyName>
+    <RootNamespace>Lyric</RootNamespace>
+    <Description>Alles zwischen Quelltext und Bytes: Lexer, Parser, Resolver, Sema, IR, Emit.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Eine Kante, dieselbe wie bei der Runtime: das Format wird gelesen (Op-Codes, Typ-Tags,
+      Verifikation nach dem Schreiben), nicht ausgefuehrt. KEINE Kante nach Lyric.Vm — 'lyrc'
+      fuehrt nichts aus, also hat es auch nichts, womit es koennte.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Die Stdlib ist Quelltext und muss neben dem Binary liegen; ueberlebt auch dotnet publish. -->
+    <Content Include="..\..\stdlib\**\*.lyr" Link="stdlib\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!--
+    Acht vormals eigenstaendige Projekte in einer Assembly: Lexing, AST, Parsing, Resolver, Sema,
+    Ir, Emit, Compiler. Die Ordner unter src/Lyric.Frontend/ sind dieselben wie vorher, und die
+    Namespaces sind unveraendert — was sich geaendert hat, ist ausschliesslich die Zahl der
+    ausgelieferten Dateien.
+
+    Was das kostet, ehrlich: die feinen Kanten INNERHALB des Frontends sind ab jetzt Konvention
+    statt Compilerfehler. Der Parser koennte die Sema rufen, die Sema die IR. Vorher ging das
+    nicht. Was BLEIBT — und was ADR-017 wirklich behauptet — ist die grosse Kante: eine Runtime
+    bekommt nichts hiervon zu sehen, und ein Compiler bekommt keinen Interpreter. Die wird durch
+    die Assembly-Grenze weiterhin erzwungen und maschinell geprueft.
+
+    Der Tausch ist bewusst: elf ausgelieferte DLLs waren elf Dateien, die ein Benutzer sieht und
+    nicht einordnen kann; die Reihenfolge Lexer -> Parser -> Sema -> IR ist dagegen in jedem
+    Compiler-Lehrbuch dieselbe und braucht keinen Compiler, der sie durchsetzt.
+  -->
+
+</Project>

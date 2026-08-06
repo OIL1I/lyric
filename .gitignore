@@ -97,3 +97,6 @@ playground/
 # Generated docs
 docs/_site/
 docs/_book/
+
+# Auslieferung (build/publish.proj)
+artifacts/

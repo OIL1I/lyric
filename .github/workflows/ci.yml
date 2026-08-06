@@ -25,7 +25,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Restore
         run: dotnet restore
@@ -43,3 +43,32 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: '**/TestResults/*.trx'
           retention-days: 7
+
+  publish:
+    # Die Auslieferung ist selbst ein Lieferposten und wird deshalb gebaut, nicht behauptet.
+    # Sie laeuft NACH den Tests: ein Artefakt aus einem roten Build waere schlimmer als keins.
+    name: Publish toolchain
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish all three binaries into one directory
+        run: dotnet msbuild build/publish.proj
+
+      - name: Show what gets shipped
+        run: ls -la artifacts/publish
+
+      - name: Upload toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: lyric-toolchain
+          path: artifacts/publish
+          retention-days: 14

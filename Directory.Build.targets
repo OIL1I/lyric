@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    Wird NACH der .csproj ausgewertet — hier stehen die Regeln, die wissen muessen, ob ein Projekt
+    eine Anwendung ist. In Directory.Build.props waere '$(OutputType)' noch leer.
+  -->
+
+  <PropertyGroup Condition="'$(OutputType)' == 'Exe' and '$(Configuration)' == 'Release' and '$(IsTestProject)' != 'true'">
+    <!--
+      Keine .deps.json im Release. Sie beschreibt den Abhaengigkeitsgraphen fuer den Host; ohne
+      sie laedt er stattdessen alles, was neben der Anwendung liegt. Genau das ist hier das
+      richtige Verhalten: es liegen drei Bibliotheken daneben, alle drei sind unsere, und es gibt
+      kein einziges NuGet-Paket im Auslieferungspfad. Spart drei Dateien und eine Fehlerquelle.
+
+      Die .runtimeconfig.json bleibt — ohne sie weiss der Host nicht, welche Framework-Version er
+      laden soll, und die Anwendung startet nicht. Das ist der Preis eines
+      framework-abhaengigen Publishs und keine Nachlaessigkeit.
+    -->
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+  </PropertyGroup>
+
+</Project>

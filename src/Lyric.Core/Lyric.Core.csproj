@@ -1,9 +1,27 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <AssemblyName>lyrcore</AssemblyName>
+    <RootNamespace>Lyric.Core</RootNamespace>
+    <Description>Diagnostik, Quelltextverwaltung und die Leseseite des .lyrbc-Formats.</Description>
   </PropertyGroup>
+
+  <!--
+    Was BEIDE Seiten brauchen: Diagnosen, SourceManager, Exit-Codes, CLI-Optionen — und die
+    Leseseite des Bytecode-Formats (Format, BytecodeModule, Reader, CodeDecoder, Disassembler,
+    ModuleInfo) unter Bytecode/.
+
+    Warum das Format-LESEN hier liegt und nicht bei der VM (ADR-017): weil es der gemeinsame
+    Vertrag ist und keine Runtime-Eigenschaft. 'lyrvm info' liest ein Modul, ohne es auszufuehren;
+    'lyric disasm' auch; und die Schreibseite braucht dieselben Op- und Tag-Konstanten. Laege es
+    bei der VM, zoege 'lyrc' den Interpreter mit — die Gegenrichtung von ADR-017, und die faellt
+    genauso auf.
+
+    Die Namespaces bleiben getrennt ('Lyric.Core', 'Lyric.Bytecode'): eine Assembly ist eine
+    Auslieferungseinheit, ein Namespace ist ein Begriff. docs/Bytecode.md beschreibt einen Begriff.
+
+    Diese Assembly haengt an NICHTS. Kommt hier je eine Kante nach Lyric.Frontend oder Lyric.Vm
+    dazu, kippt der Split; tests/Lyric.Tests.Cli haelt das maschinell fest.
+  -->
 
 </Project>

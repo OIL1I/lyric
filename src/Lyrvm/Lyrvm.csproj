@@ -2,24 +2,19 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
     <AssemblyName>lyrvm</AssemblyName>
     <RootNamespace>Lyric.Cli.Runtime</RootNamespace>
+    <Description>Die mitgelieferte Runtime und Referenz-Implementierung des Runner-Vertrags.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
       Die mitgelieferte Runtime (ADR-017) und zugleich die Referenz-Implementierung des
-      Runner-Vertrags aus docs/Bytecode.md. Genau drei Referenzen, und das ist der Punkt:
-      kein Lexer, kein Parser, kein Resolver, keine Sema, keine IR, kein Bytecode-Writer.
-      tests/Lyric.Tests.Cli prueft das maschinell — kommt hier je eine Compiler-Kante dazu,
-      ist ADR-013 ("jemand schreibt eine zweite Runtime allein aus der Spec") nur noch
-      eine Behauptung.
+      Runner-Vertrags aus docs/Bytecode.md. Zwei Referenzen, und das ist der Punkt: kein Lexer,
+      kein Parser, kein Resolver, keine Sema, keine IR, kein Bytecode-Writer.
+      tests/Lyric.Tests.Cli prueft maschinell, dass lyrfe.dll hier nie neben der exe landet.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
-    <ProjectReference Include="..\Lyric.Bytecode\Lyric.Bytecode.csproj" />
     <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
   </ItemGroup>
 
