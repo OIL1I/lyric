@@ -1166,7 +1166,6 @@ Die bequeme Oberfläche. Fasst Schritte zusammen und ist das, was du normalerwei
 | `lyric --vm <pfad>` | Runtime wählen (siehe §23.4) |
 | `lyric --version` | Toolchain-Version, Format-Version, aktive Runtime |
 | `lyric --help` | Hilfe |
-| `lyric test [dir]` | `@test`-Funktionen ausführen *(M9)* |
 | `lyric repl` | Interaktive REPL *(M9)* |
 
 ### 23.2 `lyrc` — der Compiler
@@ -1269,6 +1268,7 @@ Folgende Features sind bewusst **post-v1** und in v1-Quellen weder vorhanden noc
 - **LSP-Server** für Editor-Integration (v1.2)
 - **Async/Await-Syntax** als Zucker über Coroutinen (v1.3)
 - **User-defined Operator-Overloading** (v1.4)
+- **Attribute** (`@test`, `@deprecated`, `@inline`, `@cold`) und `lyric test` (v1.1)
 - **Formatter** `lyric fmt` (v1.5)
 - **JIT-Backend** für Performance (post-v1.5, falls Bedarf)
 - **Package-Manager** (nur falls Community entsteht)

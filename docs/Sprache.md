@@ -549,7 +549,7 @@ Primary         = IntLit | FloatLit | StringLit | InterpolatedStr
                 | CharLit | BoolLit | NullLit
                 | 'this'
                 | IDENTIFIER
-                | AT_IDENT [ '(' [ ArgList ] ')' ]
+                | AT_IDENT [ '(' [ ArgList ] ')' ]      (* reserviert, in v1 abgelehnt — §10 *)
                 | '(' Expr ')'
                 | IfExpr
                 | MatchExpr
@@ -755,21 +755,21 @@ fn divide(a: int, b: int): int {
 
 ---
 
-## 10. Compile-Time-Built-ins (`@name`)
+## 10. Attribute (`@name`) — nicht in v1
 
-In v1 sind nur **Attribute** als `@name` syntaktisch erlaubt. Built-ins, die compile-time werten, gibt es nicht (Oils `@import`/`@using`-Konstrukte gibt es bei uns als reguläre `import`-Statements, nicht als Built-ins).
+`@name`-Attribute sind **post-v1**. Der Lexer erkennt `@name` weiterhin als eigene Token-Klasse
+(§1.3) und die Syntax bleibt damit reserviert; Parser und Sema lehnen sie überall ab.
 
-### 10.1 Stdlib-Attribute
+**Warum vertagt**: Attribute brauchen einen Platz in der Grammatik, den §2.3 nie hatte — ein
+`TopLevelDecl` kennt kein vorangestelltes Attribut, und ohne den ist `@test fn t()` schlicht kein
+gültiges Programm. Die Lücke bestand seit M1 unbemerkt, weil kein Beispiel und kein Test ein
+Attribut benutzte. Sie zu schließen hieße, an dieser Stelle eine Sprachentscheidung zu treffen
+(nur an Deklarationen? auch an Parametern? mit Argumenten?), und keine davon zahlt vor v1.0 auf
+ein Programm ein, das jemand schreiben will.
 
-| Attribut | Anwendung | Wirkung |
-|---|---|---|
-| `@test` | Funktion | Markiert Test-Case, ausgeführt von `lyric test` |
-| `@deprecated(reason)` | Funktion, Typ, Feld | Warnung am Aufrufort |
-| `@inline` | Funktion | Hint an VM, inline zu interpretieren |
-| `@cold` | Funktion | Hint: selten ausgeführt |
-| `@noCapture` | Lambda-Parameter | Verbietet implizites Capture (Performance/Safety) |
-
-User-defined Attribute sind **post-v1**.
+**Was damit ebenfalls wartet**: `@test` und `lyric test` (siehe `ROADMAP.md` §M9), `@deprecated`,
+`@inline`, `@cold` und `@noCapture`. Keines davon ist Semantik, die einem Programm fehlt —
+Test-Sammlung, Deprecation-Warnungen und Inlining-Hinweise sind Werkzeug-Themen.
 
 ---
 
@@ -809,6 +809,7 @@ Module, die nur als Library oder Embed-Script dienen, brauchen kein `main`.
 | Feature | Wann |
 |---|---|
 | User-defined Operator-Overloading | v1.X |
+| **Attribute** (`@test`, `@deprecated`, `@inline`, `@cold`, `@noCapture`) und `lyric test` | post-v1 |
 | User-defined Attribute / Macros | post-v1 oder nie |
 | Async/Await-Syntax | v1.X (Coroutines genügen) |
 | Coroutine-Send-Werte (`resume co, v`) + `yield` als Ausdruck | post-v1 (als Paket, braucht `Coroutine<TOut, TIn>`) |

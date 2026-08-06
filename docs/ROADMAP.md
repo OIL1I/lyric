@@ -476,7 +476,7 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > | Konstrukt | `Sprache.md` | Stufe, an der es scheitert |
 > |---|---|---|
 > | `static let` (typgebundene Konstante) | §3.2, ADR-014 | Lowering — hängt an den Konstanten |
-> | `@test` und jedes andere Attribut an einer Deklaration | §10.1 | **Parser** — §2.3 hat keinen Attribut-Slot |
+> | ~~`@test` und jedes andere Attribut~~ → **post-v1** (2026-08-06) | §10 | Grammatik fehlt; Entscheidung getroffen |
 > | `fn main(args: string[])` | §11 | **Lowering, stumm** — erzeugt ein Bibliotheks-Modul ohne Start-Sektion |
 > | `match` über Nicht-Enums (Literale, `\|`, Ranges, Guards, Tupel) | §5, §6.3 | Lowering — „'int' is not an enum" |
 > | `?.` (Optional-Chaining) | §7 | Lowering |
@@ -524,8 +524,8 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > | **P9** | `extend`-Lowering — hat bis heute in keiner Slice-Tabelle gestanden |
 >
 > Und für M9: **`@test` hat keine Grammatik.** §2.3 sieht an einer Deklaration kein Attribut vor,
-> §10.1 verspricht es. `lyric test` kann nichts sammeln, wofür es keine Syntax gibt — das ist vor
-> M9 zu klären, nicht in M9.
+> §10.1 versprach es. *(Entschieden am 2026-08-06: Attribute und `lyric test` gehen zusammen nach
+> post-v1 — siehe die Korrektur bei M9.)*
 >
 > **Regel daraus, in derselben Reihe wie die Gate-Regel:** ein Slice ist fertig, wenn seine
 > Lieferposten Punkt für Punkt abgehakt sind — nicht, wenn sein Gate läuft. Diese Inventur ist am
@@ -554,13 +554,26 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 
 **Lieferposten**:
 - `lyric repl`: interaktive REPL mit Persistent-Environment.
-- `lyric test [dir]`: sammelt `@test`-Funktionen, führt sie aus, Output Text oder JSON.
 - TextMate-Grammar für VS Code (Syntax-Highlighting): `tooling/vscode-lyric/syntaxes/lyric.tmLanguage.json`.
 - Minimale VS-Code-Extension (Highlighting + Run-Command).
 - README.md, LICENSE, CONTRIBUTING.md.
 - Examples-Verzeichnis aufgefüllt.
 
-**Exit**: `lyric repl` produktiv. `lyric test` läuft auf Stdlib. **v0.9 Release-Tag**.
+**Exit**: `lyric repl` produktiv. **v0.9 Release-Tag**.
+
+> **Korrektur (2026-08-06):** `lyric test` ist aus M9 gestrichen und wandert mit den Attributen
+> nach post-v1. Es sammelt `@test`-Funktionen — und `@test` hat keine Grammatik: `Sprache.md` §2.3
+> sieht an einer Deklaration kein Attribut vor, §10.1 versprach eines. Die Lücke bestand seit M1
+> unbemerkt, weil kein Beispiel und kein Test ein Attribut benutzte; die Lieferposten-Inventur hat
+> sie gefunden.
+>
+> Sie zu schließen hieße, hier eine Sprachentscheidung zu treffen (nur an Deklarationen? auch an
+> Parametern? mit Argumenten?) — für ein Werkzeug-Thema, das kein Programm braucht. `Sprache.md`
+> §10 ist entsprechend umgeschrieben: die Syntax bleibt reserviert, Parser und Sema lehnen sie mit
+> einer Meldung ab, die den Grund nennt.
+>
+> M9 verliert damit einen Lieferposten und behält REPL, Editor-Integration und die Beispiele.
+> *(Zur Ratifizierung im nächsten Scope-Check.)*
 
 ### M10 — Embedding-API (2–3 Wochen)
 
@@ -903,6 +916,7 @@ Wir schreiben **keine** ausführliche post-v1-Roadmap (das war einer der Oil-Feh
 | Phase | Inhalt | Wann |
 |---|---|---|
 | **v1.1** | DateTime, Regex, JSON in Stdlib. Newtypes. `pub(package)`. Raw-Strings. | wenn echter Bedarf erkennbar |
+| **v1.1** | Attribute (`@test`, `@deprecated`, `@inline`, `@cold`, `@noCapture`) samt Grammatik, und `lyric test` darauf | wenn die Sprache produktiv ist |
 | **v1.2** | LSP-Server (Diagnostics-Streaming, Hover, Go-to-Definition) | wenn Sprache produktiv ist |
 | **v1.3** | Async/Await-Syntax als Zucker über Coroutinen | wenn Async-Code stark gefragt |
 | **v1.4** | User-defined Operator-Overloading; Funktions-Overloading (ADR-015) | wenn Math-Libs schreien |

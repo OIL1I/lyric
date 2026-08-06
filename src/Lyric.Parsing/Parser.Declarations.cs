@@ -69,6 +69,18 @@ public sealed partial class Parser
             case TokenKind.Let:
             case TokenKind.Var:
                 return ParseGlobalBinding(isPublic, start);
+            // Attribute sind post-v1 (Sprache.md §10). Die Syntax bleibt reserviert — der Lexer
+            // erkennt '@name' weiterhin —, aber an einer Deklaration gibt es keinen Platz dafuer,
+            // und §2.3 hatte nie einen. Eigene Meldung statt "expected a declaration": wer
+            // '@test' schreibt, hat sich nicht vertippt, sondern etwas erwartet, das es gibt —
+            // nur nicht in v1.
+            case TokenKind.AtIdentifier:
+                _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
+                    "attributes are not part of v1 (Sprache.md §10); '@test' and 'lyric test' " +
+                    "arrive after v1.0");
+                var skipped = SynchronizeTopLevel();
+                return new ErrorDecl(Span.Union(start, skipped));
+
             default:
                 if (AtContextual("type")) return ParseTypeAlias(isPublic, start);
                 _de.Report("LYR-PAR0025", Severity.Error, _buffer.Current.Span,

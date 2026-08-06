@@ -621,11 +621,13 @@ public sealed class TypeChecker
             case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
             case LambdaExpr lam: return CheckLambda(lam, scope, expected);
             case ResumeExpr re: return CheckResume(re, scope);
-            // Attribute haben in v1 keinen Ausdruckstyp. Das zu melden statt still Error zu
-            // liefern ist der Unterschied zwischen „geht nicht" und „geht unbemerkt nicht".
+            // Attribute sind post-v1 (Sprache.md §10) und hatten auch vorher keinen
+            // Ausdruckstyp. Das zu melden statt still Error zu liefern ist der Unterschied
+            // zwischen „geht nicht" und „geht unbemerkt nicht".
             case AtIdentifierExpr at:
                 return Report(at.Span, "LYR-SEM0053",
-                    $"attribute '{at.Name}' is not an expression");
+                    $"'{at.Name}' is an attribute, and attributes are not part of v1 " +
+                    "(Sprache.md §10)");
 
             default: return LyrType.Error;
         }

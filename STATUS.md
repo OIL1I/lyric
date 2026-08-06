@@ -628,6 +628,19 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   Programm, das sauber übersetzt und dann als „Bibliothek" nicht startet. Jetzt `LYR-IR0001` mit
   der Stelle. Gebaut ist es damit nicht — aber „noch nicht gebaut" ist genau, was der Code sagt.
 
+- [x] **P5b-5 — Default-Argumente und `params`**: beide sind reine
+  **Aufrufstellen-Transformationen**. Der Callee sieht einen gewöhnlichen Parameter bzw. ein
+  gewöhnliches `T[]`; die IR kennt weder optionale noch variadische Signaturen und soll auch
+  keine kennen. Nach dem Lowering ist ein Aufruf ein Aufruf. Ein Default wird **pro Aufruf**
+  ausgewertet (wie in C#) — sonst teilten sich zwei Aufrufe ein Objekt.
+
+- [x] **Attribute nach post-v1 vertagt** (`Sprache.md` §10 umgeschrieben, `LYR-PAR0038`).
+  Der Lexer erkennt `@name` weiter, die Syntax bleibt reserviert; Parser und Sema lehnen mit einer
+  Meldung ab, die den Grund nennt statt „expected a declaration". **M9 verliert `lyric test`** —
+  es sammelt `@test`-Funktionen, und die Grammatik dafür hat nie existiert (§2.3 sieht an einer
+  Deklaration kein Attribut vor). Die Lücke zu schließen hieße, hier eine Sprachentscheidung für
+  ein Werkzeug-Thema zu treffen.
+
 **Lieferposten-Inventur 2026-08-06** (Details als Blockzitat vor M8 in der ROADMAP,
 Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/Lowering gefahren,
 **12 laufen durch**. Was **keinem Slice gehoert**: Attribute an Deklarationen
@@ -635,6 +648,13 @@ Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/L
 Bibliotheks-Modul), Default-Argumente, `params`, `extend`, Tupel, Konstanten (Modul-`let` und
 `static let`). **Erledigt in P5b**: `match` ueber Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`. Die Restliste von M7 ist deshalb nicht P6/P7/P8,
 sondern **P5b** (Kernsprach-Lucken), P6, P7, P8 und **P9** (`extend`).
+
+**Aus P5b — offene Sprachfrage:**
+
+- **Darf ein fertiges Array an `params` durchgereicht werden?** `sum(xs)` mit `xs: int[]` und
+  `fn sum(params xs: int[])` ist heute `LYR-SEM0001`. `Sprache.md` §3.1 sagt nur, dass `params`
+  einen Array-Typ verlangt — nicht, ob man einen fertigen übergeben darf. C# erlaubt es. Das
+  Lowering wäre trivial (zwei Zeilen), die Entscheidung ist es nicht.
 
 **Aus P5 — bewusst offen und wichtig:**
 

@@ -114,8 +114,14 @@ internal sealed class FunctionLowerer
         // Ohne sie trägt die IR nirgends Parameter-Typen und ein Call wäre nicht typprüfbar.
         foreach (var p in decl.Parameters)
         {
-            if (p.IsParams) throw NotSupported($"variadic parameter '{p.Name}'", p.Span);
-            if (p.Default is not null) throw NotSupported($"default value for '{p.Name}'", p.Span);
+            // 'params' und Default-Werte sind reine AUFRUFSTELLEN-Themen: der Callee sieht ein
+            // gewoehnliches T[] bzw. einen gewoehnlichen Parameter. Materialisiert werden beide
+            // dort, wo der Aufruf steht — siehe MaterializeArguments.
+            //
+            // Die Alternative (Callee baut sich seine Defaults selbst) haette bedeutet, dass ein
+            // Default-Ausdruck einmal pro Funktion statt einmal pro Aufruf gelowert wird; bei
+            // 'params' waere die Signatur zusaetzlich variadisch geworden, und das kann diese IR
+            // nicht. C# entscheidet aus demselben Grund an der Aufrufstelle.
 
             if (_types.RefOf(p) is not ParameterSymbol ps)
                 throw Bug($"parameter '{p.Name}' was not bound by the type checker");
@@ -1812,19 +1818,18 @@ internal sealed class FunctionLowerer
         if (!_functions.TryGetValue(symbol, out var target))
             throw NotSupported($"call to '{calleeName}' (external, generic or bodiless)", expr.Span);
 
-        // Default-Argumente und 'params' würden hier Argumente materialisieren müssen; solange das
-        // fehlt, ist eine Arity-Abweichung kein IR-Bug, sondern eine Lücke im Lowering.
-        if (symbol.Declaration is FunctionDecl declaration
-            && declaration.Parameters.Length != expr.Arguments.Length)
-            throw NotSupported($"call to '{calleeName}' with default or variadic arguments", expr.Span);
+        if (symbol.Declaration is not FunctionDecl declaration)
+            throw NotSupported($"call to '{calleeName}' (no declaration to read parameters from)",
+                expr.Span);
+
+        var supplied = MaterializeArguments(declaration, expr.Arguments, calleeName, expr.Span);
 
         // Der Empfänger steht vorn — die Reihenfolge ist die Parameter-Konvention der IR und
         // muss zu der passen, in der FunctionLowerer die Slots angelegt hat.
         var offset = receiver is null ? 0 : 1;
-        var args = new TempId[expr.Arguments.Length + offset];
+        var args = new TempId[supplied.Length + offset];
         if (receiver is { } self) args[0] = self;
-        for (var i = 0; i < expr.Arguments.Length; i++)
-            args[i + offset] = LowerArgument(expr.Arguments[i], symbol, i);
+        supplied.CopyTo(args, offset);
 
         var returnType = TypeOfExpr(expr);
         if (IsVoid(returnType))
@@ -1840,6 +1845,87 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
+    /// Die Argumentliste, wie der Callee sie erwartet: genau ein Wert je deklariertem Parameter.
+    ///
+    /// <para>Hier entstehen die beiden Formen, die an der Quelle anders aussehen als in der
+    /// Signatur — <b>Default-Werte</b> für weggelassene Trailing-Parameter und das
+    /// <b>params</b>-Array für den Rest. Beides ist eine Aufrufstellen-Transformation: die IR
+    /// kennt keine variadischen Signaturen und keine optionalen Parameter, und sie soll auch
+    /// keine kennen. Nach dieser Methode ist ein Aufruf ein Aufruf.</para>
+    ///
+    /// <para>Der Default-Ausdruck wird <b>an der Aufrufstelle</b> ausgewertet, nicht einmal beim
+    /// Callee — dieselbe Wahl wie in C#. Sonst müsste er in einem Kontext gelowert werden, in dem
+    /// die Argumente des Aufrufers nicht sichtbar sind.</para>
+    /// </summary>
+    private TempId[] MaterializeArguments(FunctionDecl callee, Expr[] provided, string name,
+        Span span)
+    {
+        var parameters = callee.Parameters;
+        var args = new TempId[parameters.Length];
+
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var parameter = parameters[i];
+
+            // 'params xs: T[]' sammelt alles ab hier. Die Sema erlaubt es nur am letzten
+            // Parameter (§3.1), also ist der Rest wirklich der Rest.
+            if (parameter.IsParams)
+            {
+                args[i] = CollectVariadic(parameter, provided, i, span);
+                return args;
+            }
+
+            if (i < provided.Length)
+            {
+                args[i] = LowerArgument(provided[i], parameter);
+                continue;
+            }
+
+            if (parameter.Default is { } fallback)
+            {
+                args[i] = LowerArgument(fallback, parameter);
+                continue;
+            }
+
+            // Die Sema hat die Arity geprueft; hier zu landen hiesse, sie waere durchgerutscht.
+            throw Bug($"call to '{name}' at {span} passes {provided.Length} argument(s) but " +
+                      $"parameter '{parameter.Name}' has no default");
+        }
+
+        if (provided.Length > parameters.Length)
+            throw Bug($"call to '{name}' at {span} passes {provided.Length} argument(s) for " +
+                      $"{parameters.Length} parameter(s)");
+
+        return args;
+    }
+
+    /// <summary>
+    /// Die restlichen Argumente als Array — <c>sum(1, 2, 3)</c> wird zu <c>sum([1, 2, 3])</c>.
+    ///
+    /// <para><b>Ein fertiges Array durchzureichen geht nicht</b> — <c>sum(xs)</c> mit
+    /// <c>xs: int[]</c> ist heute <c>LYR-SEM0001</c>. Das ist eine Sema-Regel, keine Luecke hier:
+    /// <c>Sprache.md</c> §3.1 sagt nur, dass <c>params</c> einen Array-Typ verlangt, nicht ob man
+    /// einen fertigen uebergeben darf. C# erlaubt es; ob Lyric das auch will, ist eine offene
+    /// Sprachfrage und steht in STATUS.</para>
+    /// </summary>
+    private TempId CollectVariadic(Param parameter, Expr[] provided, int from, Span span)
+    {
+        if (_typeTable.Lower(parameter.Type) is not IrArrayType array)
+            throw NotSupported($"'params {parameter.Name}' whose type is not an array",
+                parameter.Span);
+
+        var rest = provided.Length > from ? provided[from..] : [];
+
+        var elements = new TempId[rest.Length];
+        for (var i = 0; i < elements.Length; i++)
+            elements[i] = LowerExprAs(rest[i], array.Element);
+
+        var dest = _slots.NewTemp(array);
+        _b.Emit(new NewArray(dest, array.Element, elements, span));
+        return dest;
+    }
+
+    /// <summary>
     /// Ein Argument, angepasst an den <b>deklarierten</b> Parametertyp.
     ///
     /// <para>Ohne diesen Schritt bliebe eine Klasse eine Klasse, auch wenn der Parameter ein
@@ -1847,11 +1933,8 @@ internal sealed class FunctionLowerer
     /// Der Verifier faengt das, aber als Typ-Mismatch tief im Callee statt als das, was es ist:
     /// eine fehlende Coercion am Aufrufort.</para>
     /// </summary>
-    private TempId LowerArgument(Expr argument, FunctionSymbol callee, int index)
+    private TempId LowerArgument(Expr argument, Param parameter)
     {
-        if (callee.Declaration is not FunctionDecl decl || index >= decl.Parameters.Length)
-            return LowerExpr(argument);
-
         // Nur das Lowern des Parametertyps wird abgeschirmt — ein Typ, den dieser Compiler-Stand
         // nicht kennt, meldet ohnehin gleich die Funktion selbst, und hier doppelt zu klagen waere
         // Laerm. Die Coercion steht BEWUSST ausserhalb: als sie mit im try lag, verschluckte der
@@ -1860,7 +1943,7 @@ internal sealed class FunctionLowerer
         IrType expected;
         try
         {
-            expected = _typeTable.Lower(decl.Parameters[index].Type);
+            expected = _typeTable.Lower(parameter.Type);
         }
         catch (UnsupportedConstructException)
         {

@@ -745,4 +745,66 @@ public class VmTests
             fn main(): int { return f(5); }
             """).Result.AsI64);
     }
+
+    // ------------------------------------------------------------------ P5b: Defaults, params
+
+    /// <summary>
+    /// Default-Werte werden an der <b>Aufrufstelle</b> materialisiert, nicht beim Callee — die IR
+    /// kennt keine optionalen Parameter, und nach dem Lowering ist ein Aufruf ein Aufruf.
+    /// </summary>
+    [Theory]
+    [InlineData("f(1)", 3)]        // b faellt weg -> Default 2
+    [InlineData("f(1, 10)", 11)]   // b angegeben -> Default ungenutzt
+    public void A_default_fills_an_omitted_trailing_argument(string call, long expected) =>
+        Assert.Equal(expected, Run($$"""
+            fn f(a: int, b: int = 2): int { return a + b; }
+            fn main(): int { return {{call}}; }
+            """).AsI64);
+
+    [Fact]
+    public void Several_defaults_fill_from_the_right()
+    {
+        Assert.Equal(6, Run("""
+            fn f(a: int, b: int = 2, c: int = 3): int { return a + b + c; }
+            fn main(): int { return f(1); }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_default_is_evaluated_per_call_not_once()
+    {
+        // An der Aufrufstelle heisst: zweimal aufgerufen, zweimal ausgewertet. Waere der Default
+        // einmal beim Callee gelowert, teilten sich beide Aufrufe ein Objekt.
+        Assert.Equal(2, Run("""
+            class Cell { n: int }
+            fn make(c: Cell = Cell { n = 0 }): int { c.n += 1; return c.n; }
+            fn main(): int { make(); make(); return make() + 1; }
+            """).AsI64);
+    }
+
+    /// <summary><c>params</c> sammelt den Rest in ein Array (§3.1) — auch das eine
+    /// Aufrufstellen-Transformation: der Callee sieht ein gewoehnliches <c>T[]</c>.</summary>
+    [Theory]
+    [InlineData("sum(1, 2, 3)", 6)]
+    [InlineData("sum()", 0)]        // leeres Array, kein Sonderfall
+    [InlineData("sum(5)", 5)]
+    public void Params_collects_the_remaining_arguments(string call, long expected) =>
+        Assert.Equal(expected, Run($$"""
+            fn sum(params xs: int[]): int {
+                var total = 0;
+                var i = 0;
+                while (i < xs.length) { total += xs[i]; i += 1; }
+                return total;
+            }
+            fn main(): int { return {{call}}; }
+            """).AsI64);
+
+    [Fact]
+    public void Params_follows_the_fixed_parameters()
+    {
+        Assert.Equal(7, Run("""
+            fn tag(n: int, params xs: int[]): int { return n * 3 + xs.length; }
+            fn main(): int { return tag(2, 5); }
+            """).AsI64);
+    }
 }
