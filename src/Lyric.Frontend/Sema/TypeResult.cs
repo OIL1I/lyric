@@ -47,4 +47,26 @@ public sealed class TypeResult
         _captures[lambda] = (symbols, capturesThis);
     public (IReadOnlyList<Symbol> Symbols, bool CapturesThis) CapturesOf(Node lambda) =>
         _captures.TryGetValue(lambda, out var c) ? c : (NoCaptures, false);
+
+    /// <summary>
+    /// Locals, die eine Closure sich mit ihrer umgebenden Funktion <b>teilt</b> — sie leben nicht
+    /// in einem Frame-Slot, sondern in einer Zelle auf dem Heap (ADR-018).
+    ///
+    /// <para>Ein <c>var</c>, das gefangen wird, muss geteilt werden: schreibt die Closure, sieht
+    /// die Funktion es, und umgekehrt. Ein Frame-Slot kann das nicht, sobald der Frame endet und
+    /// die Closure weiterlebt.</para>
+    ///
+    /// <para><b>Nur <c>var</c>.</b> Ein <c>let</c> und ein Parameter aendern sich nie (Zuweisung
+    /// an einen Parameter ist <c>LYR-SEM0019</c>) — fuer sie ist „Wert kopieren" von „Variable
+    /// teilen" nicht unterscheidbar, und die Kopie ist billiger. Die Unterscheidung kostet hier
+    /// ein <c>if</c> und spart im erzeugten Code jede Zelle, die niemand braucht.</para>
+    /// </summary>
+    private readonly HashSet<Symbol> _boxed = new(ReferenceEqualityComparer.Instance);
+
+    public void MarkBoxed(Symbol symbol) => _boxed.Add(symbol);
+
+    /// <summary>Lebt dieses Symbol in einer Zelle statt in einem Frame-Slot? Das Lowering fragt
+    /// das an <b>jeder</b> Zugriffsstelle — auch ausserhalb der Closure, denn beide Seiten muessen
+    /// dieselbe Zelle sehen.</summary>
+    public bool IsBoxed(Symbol symbol) => _boxed.Contains(symbol);
 }

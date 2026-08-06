@@ -752,6 +752,53 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-018 — Closures fangen Variablen, nicht Werte
+
+**Datum**: 2026-08-06. **Status**: Akzeptiert.
+
+**Entscheidung**: Eine Closure fängt die **Variable**, nicht ihren Wert. Schreibt sie in ein
+gefangenes `var`, sieht die umgebende Funktion die Änderung, und umgekehrt — auch dann noch, wenn
+der erzeugende Aufruf längst zurückgekehrt ist. Umgesetzt wird das, indem ein gefangenes `var` in
+einer **Zelle auf dem Heap** lebt statt in einem Frame-Slot; alle Zugriffe darauf, innerhalb wie
+außerhalb der Closure, gehen über die Zelle.
+
+`let`-Bindungen und Parameter werden dagegen **kopiert**. Für sie ist der Unterschied nicht
+beobachtbar: sie ändern sich nie (Zuweisung an einen Parameter ist `LYR-SEM0019`), und die Kopie
+ist billiger. Das ist keine zweite Semantik, sondern dieselbe — nur ohne die Zelle, die niemand
+lesen würde.
+
+```lyr
+fn counter(): fn() -> int {
+    var n = 0;                       // lebt in einer Zelle, nicht im Frame
+    return () => { n += 1; return n; };
+}
+
+let next = counter();
+next();                              // 1
+next();                              // 2 — dieselbe Zelle
+```
+
+**Begründung**: ADR-011 begründet *implizite* Captures damit, dass C#-Nutzer sie erwarten. Wer
+implizite Captures erwartet, erwartet auch C#s Capture-*Semantik*; still etwas anderes zu tun wäre
+die schlechtere Hälfte der Übernahme. Die Alternative — gefangene `var` verbieten, wie Javas
+„effectively final" — wäre billiger zu bauen und lehnt den Fall wenigstens ehrlich ab, macht aber
+genau das unmöglich, wofür Game-Scripting Closures benutzt: ein Handler, der Zustand fortschreibt.
+Die dritte Möglichkeit, `var` beim Erzeugen einzufrieren (C++ `[=]`), ist die einzige, die still
+etwas anderes tut als jeder Leser annimmt; sie fällt aus demselben Grund weg wie stille
+Truncation bei Casts.
+
+**Konsequenz**: Das Lowering muss **alle** Zugriffe auf ein gefangenes `var` umschreiben, auch die
+in der umgebenden Funktion — sonst sähen beide Seiten verschiedene Werte. Die Sema markiert die
+betroffenen Symbole beim Erfassen der Captures (`TypeResult.IsBoxed`), das Lowering fragt an jeder
+Zugriffsstelle nach. Eine Zelle ist dabei **kein neuer Mechanismus**: sie ist ein Objekt mit einem
+Feld, also `newobj` + `ldfld`/`stfld`, und der Verifier prüft sie wie jedes andere Objekt. — Der
+Preis ist GC-Druck bei häufig erzeugten Closures; ADR-011 nennt dafür bereits `@noCapture` als
+post-v1-Option. — Nicht entschieden und hier nicht nötig: ob Lua-artige „Upvalues" (Zelle erst beim
+Verlassen des Frames schließen) später Speicher sparen sollen. Das wäre eine reine
+Repräsentations-Änderung hinter derselben Semantik.
+
+---
+
 ### ADR-012 — Eine Datei = ein Modul mit Pfad-Inferenz
 
 **Datum**: 2026-06-05. **Status**: Akzeptiert.

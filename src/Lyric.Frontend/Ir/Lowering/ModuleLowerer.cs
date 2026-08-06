@@ -165,6 +165,12 @@ public static class ModuleLowerer
             return null;
         }
 
+        // Angehobene Lambdas kommen ganz ans Ende der Funktionsliste — hinter die geschriebenen
+        // Funktionen UND hinter den Global-Initialisierer. Die Reihenfolge ist kein Geschmack:
+        // die Position IST die FunctionId (ADR-013), und ein Lambda im Initialisierer
+        // (`let f = () => 1;`) wuerde sonst seine eigene Id verschieben.
+        var lambdas = new LambdaTable(pending.Count + (globals.IsEmpty ? 0 : 1));
+
         // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
         var functions = new List<IrFunction>(pending.Count);
@@ -174,7 +180,7 @@ public static class ModuleLowerer
             try
             {
                 functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable,
-                    NoSubstitution, globals, receiver).Run());
+                    NoSubstitution, globals, lambdas, receiver).Run());
             }
             catch (UnsupportedConstructException ex)
             {
@@ -197,7 +203,22 @@ public static class ModuleLowerer
             try
             {
                 globalInit = new FunctionId(functions.Count);
-                functions.Add(GlobalInitializer.Build(globals, types, ids, imports, typeTable));
+                functions.Add(GlobalInitializer.Build(globals, types, ids, imports, typeTable, lambdas));
+            }
+            catch (UnsupportedConstructException ex)
+            {
+                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+                return null;
+            }
+        }
+
+        // Zuletzt die angehobenen Lambdas — und das ist eine Worklist, keine Schleife: ein Lambda
+        // in einem Lambda meldet waehrend seines eigenen Lowerings ein weiteres an.
+        if (!lambdas.IsEmpty)
+        {
+            try
+            {
+                functions.AddRange(lambdas.LowerAll(types, ids, imports, typeTable, globals));
             }
             catch (UnsupportedConstructException ex)
             {

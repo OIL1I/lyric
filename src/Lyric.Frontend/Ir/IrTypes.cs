@@ -44,10 +44,16 @@ namespace Lyric.Ir
                     return x.Type == y.Type;
                 case (IrStructType x, IrStructType y):
                     return x.Type == y.Type;
+                case (IrFunctionType x, IrFunctionType y):
+                    // Strukturell, und das terminiert: ein Funktionstyp kann sich nur ueber einen
+                    // benannten Typ selbst enthalten, und der vergleicht ueber seine Id.
+                    return x.Parameters.Length == y.Parameters.Length
+                           && Equal(x.Return, y.Return)
+                           && x.Parameters.Zip(y.Parameters).All(pair => Equal(pair.First, pair.Second));
                 case (IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
-                          or IrInterfaceType or IrStructType,
+                          or IrInterfaceType or IrStructType or IrFunctionType,
                       IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
-                          or IrInterfaceType or IrStructType):
+                          or IrInterfaceType or IrStructType or IrFunctionType):
                     return false; // verschiedene Sorten — vergleichbar, nur eben ungleich
                 default:
                     throw new InternalCompilationException(
@@ -133,4 +139,19 @@ public sealed record IrInterfaceType(TypeId Type) : IrType;
 /// Voraussetzung fuer Korrektheit.</para>
 /// </summary>
 public sealed record IrStructType(TypeId Type) : IrType;
+
+/// <summary>
+/// Ein <b>Funktionswert</b>: das, was in <c>fn(int) -> bool</c> steht, und was eine Closure ist.
+///
+/// <para><b>Zur Laufzeit ein Fat Pointer</b> aus Environment-Objekt und Funktionsindex — dieselbe
+/// Bauart wie <see cref="IrInterfaceType"/>, aus demselben Grund: <c>LyrValue</c> hat beide Felder
+/// ohnehin, also kostet ein Funktionswert keine zusaetzliche Allokation ueber sein Environment
+/// hinaus. Eine Closure ohne Captures hat gar keins und ist damit reiner Index.</para>
+///
+/// <para>Der Typ traegt seine Signatur <b>strukturell</b>, anders als jeder benannte Typ hier.
+/// Er muss es: <c>fn(int) -> bool</c> hat keine Deklaration, an der eine Id haengen koennte, und
+/// zwei gleich geformte Funktionstypen aus verschiedenen Modulen sind derselbe Typ. Terminierend
+/// bleibt der Vergleich, weil Rekursion nur ueber einen benannten Typ moeglich ist.</para>
+/// </summary>
+public sealed record IrFunctionType(IrType[] Parameters, IrType Return) : IrType;
 }

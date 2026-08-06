@@ -40,6 +40,57 @@ internal sealed class TypeTable
 
     public List<IrTypeDef> Defs => _defs;
 
+    /// <summary>Eine Zelle je Elementtyp — <c>&lt;cell:int&gt;</c> gibt es genau einmal, egal wie
+    /// viele Variablen darin leben.</summary>
+    private readonly List<(IrType Element, TypeId Id)> _cells = new();
+
+    /// <summary>Ist dieser Typ eine Zelle? Gefragt wird das beim Lesen eines Captures: eine
+    /// gefangene Zelle transportiert eine Variable, und was das Programm sehen will, ist ihr
+    /// Inhalt.</summary>
+    public bool IsCell(TypeId id) => _cells.Any(c => c.Id == id);
+
+    /// <summary>
+    /// Der Typ, in dem ein gefangenes <c>var</c> lebt (ADR-018): ein Objekt mit <b>einem</b> Feld.
+    ///
+    /// <para>Bewusst kein eigener IR-Typ und kein eigener Opcode. Eine Zelle ist ein Objekt, also
+    /// tun es <c>newobj</c>, <c>ldfld 0</c> und <c>stfld 0</c> — der Verifier prueft sie damit wie
+    /// jedes andere Objekt, der Disassembler zeigt sie ohne Sonderfall, und das Bytecode-Format
+    /// bleibt unveraendert. Ein <c>newcell</c>/<c>ldcell</c>/<c>stcell</c>-Trio waere ein zweiter
+    /// Mechanismus fuer „Feld eines Objekts".</para>
+    ///
+    /// <para>Interniert, weil zwei Zellen desselben Elementtyps ununterscheidbar sind. Das haelt
+    /// die Typtabelle klein, wenn eine Funktion mehrere <c>var</c>-Captures hat.</para>
+    /// </summary>
+    public IrRefType CellOf(IrType element)
+    {
+        foreach (var (existing, id) in _cells)
+            if (IrType.Equal(existing, element)) return new IrRefType(id);
+
+        var fresh = new TypeId(_defs.Count);
+        _defs.Add(new IrTypeDef($"<cell>", [element], ["value"]));
+        _cells.Add((element, fresh));
+        return new IrRefType(fresh);
+    }
+
+    /// <summary>
+    /// Der Typ des Environments einer Closure: ein Objekt, dessen Felder die gefangenen Werte
+    /// sind (ADR-018).
+    ///
+    /// <para><b>Nicht</b> interniert, anders als eine Zelle: zwei Lambdas mit gleich geformten
+    /// Captures fangen trotzdem verschiedene Variablen, und ihre Environments zu teilen haette
+    /// keinen Nutzen — es gibt nie zwei Instanzen desselben Environment-Typs, die man sparen
+    /// koennte.</para>
+    ///
+    /// <para>Der Name taucht in Disassembly und Diagnosen auf und traegt deshalb den Namen der
+    /// Funktion, zu der das Lambda gehoert.</para>
+    /// </summary>
+    public IrRefType EnvironmentFor(string lambdaName, IrType[] fieldTypes, string[] fieldNames)
+    {
+        var id = new TypeId(_defs.Count);
+        _defs.Add(new IrTypeDef($"<env:{lambdaName}>", fieldTypes, fieldNames));
+        return new IrRefType(id);
+    }
+
     /// <summary>Der Typ eines Wertes dieser Klasse: eine Referenz, kein eingebetteter Wert
     /// (Sprache.md §3.3).</summary>
     public IrRefType RefTo(TypeSymbol symbol) => new(Intern(symbol));
@@ -307,6 +358,13 @@ internal sealed class TypeTable
         NamedRef { Symbol.Kind: TypeSymbolKind.Struct } n => StructOf(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Enum } n => EnumOf(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Interface } n => InterfaceOf(n.Symbol),
+
+        // Ein Funktionstyp traegt seine Signatur strukturell und braucht deshalb keinen Eintrag in
+        // dieser Tabelle — anders als jeder benannte Typ. Rekursiv gelowert, weil Parameter und
+        // Rueckgabe selbst Klassen, Enums oder wieder Funktionen sein duerfen.
+        FnType f => new IrFunctionType(
+            f.Parameters.Select(p => Lower(p, span)).ToArray(), Lower(f.Return, span)),
+
         _ => TypeLowering.Lower(type)
     };
 
@@ -332,6 +390,13 @@ internal sealed class TypeTable
 
         if (node is NullableType option)
             return new IrOptionalType(Lower(option.Inner, option.Inner.Span));
+
+        // 'fn(A, B) -> R' — geschrieben in Parameter- und Rueckgabepositionen. Braucht keinen
+        // Tabelleneintrag: der Typ traegt seine Signatur selbst.
+        if (node is FunctionType signature)
+            return new IrFunctionType(
+                signature.Parameters.Select(p => Lower(p, p.Span)).ToArray(),
+                Lower(signature.ReturnType, signature.ReturnType.Span));
 
         if (node is NamedType { TypeArguments.Length: 0 } named)
         {

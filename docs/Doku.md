@@ -563,6 +563,32 @@ let clamp: fn(int) -> int = (x) => {
 - **Captures** sind implizit und müssen am Erzeugungsort bereits sicher zugewiesen sein —
   dieselbe Definite-Assignment-Regel wie bei Variablen.
 
+**Was genau gefangen wird** (ADR-018): die **Variable**, nicht ihr Wert. Schreibt die Closure in
+ein gefangenes `var`, siehst du die Änderung auch draußen — und umgekehrt:
+
+```lyr
+fn counter(): fn() -> int {
+    var n = 0;
+    return () => { n += 1; return n; };
+}
+
+let next = counter();
+next();          // 1
+next();          // 2 — dieselbe Variable, obwohl counter() längst zurück ist
+```
+
+Das gilt genauso für zwei Closures, die dasselbe `var` fangen: sie teilen es.
+
+Bei `let` und bei Parametern ist die Frage gegenstandslos — die ändern sich nie, also gibt es
+nichts zu teilen. Wenn du den Wert einfrieren *willst*, binde ihn vorher:
+
+```lyr
+var i = 0;
+let frozen = i;                      // Kopie
+let f = () => frozen;                // sieht immer 0
+i = 99;
+```
+
 Captures sind implizit (ADR-011). Wenn das performance-relevant wird (z.B. häufig erzeugte
 Game-Logic-Lambdas), kann post-v1 ein `@noCapture`-Marker kommen.
 

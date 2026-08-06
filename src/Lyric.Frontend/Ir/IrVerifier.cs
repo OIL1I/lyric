@@ -746,6 +746,8 @@ public static class IrVerifier
                 case StructCopy c: CheckStructCopy(c, block, index); break;
                 case LoadGlobal l: CheckLoadGlobal(l, block, index); break;
                 case StoreGlobal g: CheckStoreGlobal(g, block, index); break;
+                case MakeClosure m: CheckMakeClosure(m, block, index); break;
+                case CallIndirect c: CheckCallIndirect(c, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -1080,6 +1082,73 @@ public static class IrVerifier
     /// hier haelt, ist die Form; die Kongruenz der vtable-Zeilen prueft
     /// <see cref="CheckImpls"/>.</para>
     /// </summary>
+    /// <summary>
+    /// <c>mkclosure</c> (ADR-018): der Fat Pointer aus Zielfunktion und Environment.
+    ///
+    /// <para>Geprueft wird, dass das Ziel existiert, dass der Zieltyp ein Funktionstyp ist und
+    /// dass die <b>Aritaet</b> stimmt — die gehobene Funktion hat einen Parameter mehr als der
+    /// Typ, naemlich das Environment auf Position 0. Ein Fehler hier waere zur Laufzeit ein Frame
+    /// mit falscher Slot-Zahl, also ein Falsch-Slot-Read statt eines Absturzes.</para>
+    /// </summary>
+    private void CheckMakeClosure(MakeClosure m, BlockId block, int index)
+    {
+        RequireDestType(m.Dest, m.Type, "mkclosure", block, index);
+
+        if (m.Target.Value < 0 || m.Target.Value >= _module.Functions.Count)
+        {
+            Report(block, index, $"mkclosure targets {m.Target}, which is outside " +
+                                 $"{N(_module.Functions.Count)} function(s)");
+            return;
+        }
+
+        var target = _module.Functions[m.Target.Value];
+        var expected = m.Type.Parameters.Length + (m.Environment is null ? 0 : 1);
+        if (target.ParamCount != expected)
+            Report(block, index,
+                $"mkclosure targets {target.Name}, which takes {N(target.ParamCount)} " +
+                $"parameter(s), but the closure type needs {N(expected)} " +
+                (m.Environment is null ? "(no environment)" : "(including the environment)"));
+
+        // Ein Environment ist ein gewoehnliches Objekt — genau deshalb braucht es hier keinen
+        // Sonderfall im Typsystem.
+        if (m.Environment is { } env && TypeOf(env) is not IrRefType)
+            Report(block, index, $"mkclosure environment is {Show(TypeOf(env))}, expected a reference");
+    }
+
+    /// <summary>
+    /// <c>callind</c> (ADR-018): Aufruf ueber einen Funktionswert.
+    ///
+    /// <para>Die Signatur steht im TYP des Aufgerufenen, nicht in einer Deklaration — das ist der
+    /// ganze Unterschied zu <c>call</c>. Geprueft werden Aritaet, Parametertypen und der
+    /// Rueckgabetyp gegen genau diesen Typ.</para>
+    /// </summary>
+    private void CheckCallIndirect(CallIndirect c, BlockId block, int index)
+    {
+        if (TypeOf(c.Callee) is not IrFunctionType signature)
+        {
+            Report(block, index, $"callind callee is {Show(TypeOf(c.Callee))}, expected a function value");
+            return;
+        }
+
+        if (c.Args.Length != signature.Parameters.Length)
+        {
+            Report(block, index, $"callind passes {N(c.Args.Length)} arg(s), " +
+                                 $"but {Show(signature)} takes {N(signature.Parameters.Length)}");
+            return;
+        }
+
+        for (var i = 0; i < c.Args.Length; i++)
+            if (!IrType.Equal(TypeOf(c.Args[i]), signature.Parameters[i]))
+                Report(block, index, $"callind argument {N(i)} is {Show(TypeOf(c.Args[i]))}, " +
+                                     $"expected {Show(signature.Parameters[i])}");
+
+        if (!IrType.Equal(c.ReturnType, signature.Return))
+            Report(block, index, $"callind is annotated {Show(c.ReturnType)}, " +
+                                 $"but {Show(signature)} returns {Show(signature.Return)}");
+
+        if (c.Dest is { } dest) RequireDestType(dest, signature.Return, "callind", block, index);
+    }
+
     private void CheckCallVirt(CallVirt c, BlockId block, int index)
     {
         if (c.Args.Length == 0)

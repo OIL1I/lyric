@@ -437,7 +437,6 @@ public class LoweringTests
     // Ausdruck, der ihn benutzt. Die Meldung benennt den Lyric-Typ, nicht den Ausdruck: das ist
     // die fundamentalere Aussage. (Arrays gehören seit P2 nicht mehr dazu.)
     [Theory]
-    [InlineData("fn f(): int { let g = (x: int) => x + 1; return g(1); }", "type 'fn(int) -> int'")]
     [InlineData("fn f(): int { let t = (1, 2); return 0; }", "type '(int, int)'")]
     public void Non_scalar_types_are_reported_by_name(string source, string expected) =>
         AssertNotSupported(source, expected);
@@ -521,8 +520,12 @@ public class LoweringTests
     {
         // Eine Meldung pro Aufruf wäre Schikane: wer drei nicht unterstützte Konstrukte benutzt,
         // soll sie in einem Durchlauf sehen. Deshalb sammelt das Lowering pro Funktion weiter.
+        // 'a' war bis P6 ein Lambda — seit ADR-018 lowert das, und der Test misst jetzt an einer
+        // Grenze, die noch steht. Genau dafuer ist er da: er zaehlt Meldungen, er behauptet nicht,
+        // welche Konstrukte fehlen.
         var (ir, de) = TryLower("""
-            fn a(): int { let g = (x: int) => x + 1; return g(1); }
+            fn id<T>(x: T): T { return x; }
+            fn a(): int { return id(1); }
             fn b(): int { var s = 0; for (i in 0..3) { s += i; } return s; }
             fn c(): int { let t = (1, 2); return 0; }
             """);

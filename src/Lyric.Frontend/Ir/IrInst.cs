@@ -99,6 +99,27 @@ public sealed record StructCopy(TempId Dest, TempId Value, TypeId Type, Span Spa
 public sealed record LoadGlobal(TempId Dest, GlobalId Global, IrType Type, Span Span) : IrOp(Span);
 public sealed record StoreGlobal(GlobalId Global, TempId Value, Span Span) : IrOp(Span);
 
+// Closures (P6). Dasselbe Paar wie bei Interfaces: eine Instruktion materialisiert einen Fat
+// Pointer, eine konsumiert ihn. Der Unterschied ist, WORAUS der Funktionsindex kommt — beim
+// Interface aus einer Slot-Tabelle zur Laufzeit, hier steht er direkt in der Instruktion.
+
+/// <param name="Environment">Das Objekt mit den gefangenen Werten, oder <c>null</c>, wenn nichts
+/// gefangen wird. Eine Closure ohne Captures ist dann reiner Funktionsindex und kostet keine
+/// Allokation — der haeufige Fall bei einem Filter-Lambda wie <c>(x) =&gt; x &gt; 0</c>.</param>
+/// <param name="Target">Die <b>gehobene</b> Funktion, nicht das Lambda: das Lambda ist zu diesem
+/// Zeitpunkt bereits eine gewoehnliche IrFunction, deren Parameter 0 das Environment ist. Damit
+/// ist ein Closure-Aufruf derselbe Mechanismus wie ein Methodenaufruf mit Empfaenger (ADR-014),
+/// und nicht ein zweiter daneben.</param>
+public sealed record MakeClosure(TempId Dest, FunctionId Target, TempId? Environment,
+    IrFunctionType Type, Span Span) : IrOp(Span);
+
+/// <param name="Callee">Der Funktionswert. Sein Environment wird beim Aufruf als Argument 0
+/// vorangestellt — die Instruktion nennt es deshalb nicht.</param>
+/// <param name="ReturnType">Kopie fuer den Printer, aus demselben Grund wie bei
+/// <see cref="CallVirt"/>: es gibt keine Zielfunktion, die man fragen koennte.</param>
+public sealed record CallIndirect(TempId? Dest, TempId Callee, TempId[] Args,
+    IrType ReturnType, Span Span) : IrOp(Span);
+
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);

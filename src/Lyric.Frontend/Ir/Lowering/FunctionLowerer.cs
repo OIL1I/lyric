@@ -36,7 +36,7 @@ internal sealed class FunctionLowerer
     private static readonly IrType VoidType = new IrScalarType(IrScalar.Void);
     private static readonly IrType BoolType = new IrScalarType(IrScalar.Bool);
 
-    private readonly FunctionDecl _decl;
+    private readonly FunctionDecl? _decl;
     private readonly string _name;
     private readonly TypeResult _types;
     private readonly IReadOnlyDictionary<FunctionSymbol, FunctionId> _functions;
@@ -46,7 +46,11 @@ internal sealed class FunctionLowerer
 
     /// <summary>Slot des Empfängers (immer 0), oder <c>null</c> bei freier bzw. static-Funktion.</summary>
     private readonly LocalId? _thisSlot;
-    private readonly IrType? _thisType;
+    private IrType? _thisType;
+
+    /// <summary>Der Empfaengertyp dieser Funktion — ein Lambda in ihrem Rumpf erbt ihn,
+    /// wenn es <c>this</c> faengt.</summary>
+    private readonly TypeSymbol? _receiver;
 
     /// <summary>Typargumente der Instanz, für die gelowert wird. In P4 immer leer — der Haken sitzt
     /// in <see cref="LowerType"/>, damit die Worklist-Monomorphisierung später nur die Map füllen
@@ -65,6 +69,35 @@ internal sealed class FunctionLowerer
     /// </summary>
     private readonly HashSet<TempId> _fresh = new();
 
+    /// <summary>Die angehobenen Lambdas des Moduls. Ein Lambda im Rumpf meldet sich hier an und
+    /// bekommt sofort seine Id, lange bevor sein eigener Rumpf gelowert wird.</summary>
+    private readonly LambdaTable _lambdas;
+
+    /// <summary>
+    /// Slots, die eine <b>Zelle</b> halten statt eines Wertes (ADR-018) — je Slot der Typ der
+    /// Zelle und der Typ dessen, was darin liegt.
+    ///
+    /// <para>Ein solcher Slot verhaelt sich fuer den ganzen Rest des Lowerings unauffaellig: nur
+    /// <see cref="LoadValue"/> und <see cref="StoreValue"/> wissen davon, und sie sind die
+    /// einzigen Stellen, die <c>ldloc</c>/<c>stloc</c> auf benannte Variablen schreiben. Ohne
+    /// diese Buendelung muesste jede der rund fuenfzehn Zugriffsstellen die Frage selbst stellen,
+    /// und die eine, die es vergisst, laesst Closure und Funktion verschiedene Werte sehen.</para>
+    /// </summary>
+    private readonly Dictionary<LocalId, (TypeId Cell, IrType Value)> _cells = new();
+
+    /// <summary>Beim Lowern eines Lambdas: welches Environment-Feld haelt welches gefangene
+    /// Symbol. Ausserhalb eines Lambdas leer.</summary>
+    private readonly Dictionary<Symbol, int> _captureFields =
+        new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Slot des Environments (immer 0, wenn es eins gibt) und sein Typ.</summary>
+    private readonly LocalId? _envSlot;
+    private readonly TypeId? _envType;
+
+    /// <summary>Das Lambda, das gerade gelowert wird — <c>null</c> bei einer geschriebenen
+    /// Funktion. Traegt den Rumpf, weil ein Lambda keinen <see cref="FunctionDecl"/> hat.</summary>
+    private readonly LambdaExpr? _lambda;
+
     private readonly SlotAllocator _slots = new();
     private readonly List<IrBlock> _blocks = new();
     private readonly BlockBuilder _b;
@@ -77,8 +110,11 @@ internal sealed class FunctionLowerer
         TypeTable typeTable,
         IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution,
         GlobalTable globals,
+        LambdaTable lambdas,
         TypeSymbol? receiver = null)
     {
+        _lambdas = lambdas;
+        _receiver = receiver;
         _globals = globals;
         _decl = decl;
         _name = name;
@@ -132,9 +168,234 @@ internal sealed class FunctionLowerer
         }
     }
 
+    /// <summary>
+    /// Der Lowerer fuer ein <b>angehobenes Lambda</b> (ADR-018).
+    ///
+    /// <para>Eine eigene Factory statt eines synthetischen <see cref="FunctionDecl"/>: der
+    /// GlobalInitializer darf sich einen bauen, weil seine Statements echte AST-Knoten sind. Hier
+    /// ginge das nicht — die Sema hat die <c>LambdaParam</c>-Knoten an ihre Symbole gebunden, und
+    /// nachgebaute <c>Param</c>-Knoten waeren andere Objekte ohne Bindung. Der Umweg haette also
+    /// eine zweite Symbolaufloesung gebraucht.</para>
+    /// </summary>
+    public static FunctionLowerer ForLambda(LambdaExpr lambda, string name,
+        IReadOnlyList<Symbol> captures, bool capturesThis, IrType environmentType,
+        TypeSymbol? receiver, TypeResult types,
+        IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas) =>
+        new(lambda, name, captures, capturesThis, environmentType, receiver, types, functions,
+            imports, typeTable, globals, lambdas);
+
+    private FunctionLowerer(LambdaExpr lambda, string name, IReadOnlyList<Symbol> captures,
+        bool capturesThis, IrType environmentType, TypeSymbol? receiver, TypeResult types,
+        IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas)
+    {
+        _lambda = lambda;
+        _receiver = receiver;
+        _name = name;
+        _types = types;
+        _functions = functions;
+        _imports = imports;
+        _typeTable = typeTable;
+        _globals = globals;
+        _lambdas = lambdas;
+        _substitution = ModuleLowerer.NoSubstitution;
+        _b = new BlockBuilder(_blocks);
+
+        _returnType = _types.TypeOf(lambda) is FnType fn
+            ? LowerType(fn.Return, lambda.Span)
+            : throw Bug("lambda has no function type");
+
+        // Das Environment ist Parameter 0 — dieselbe Position, die 'this' bei einer Methode
+        // belegt (ADR-014). Damit ist ein Closure-Aufruf ein gewoehnlicher Aufruf, und die VM
+        // braucht fuer 'callind' keinen zweiten Frame-Aufbau.
+        if (environmentType is IrRefType env)
+        {
+            _envType = env.Type;
+            _envSlot = _slots.Declare("<env>", environmentType);
+
+            for (var i = 0; i < captures.Count; i++) _captureFields[captures[i]] = i;
+
+            // 'this' liegt hinter den benannten Captures, wenn es gefangen wird — es ist kein
+            // Symbol (es hat keine Deklaration), also braucht es einen eigenen Platz statt eines
+            // Eintrags in derselben Map.
+            if (capturesThis)
+            {
+                _thisType = receiver is null ? null : _typeTable.RefTo(receiver);
+                _capturedThisField = captures.Count;
+            }
+        }
+
+        foreach (var p in lambda.Parameters)
+        {
+            if (_types.RefOf(p) is not ParameterSymbol ps)
+                throw Bug($"lambda parameter '{p.Name}' was not bound by the type checker");
+            _slots.DeclareFor(ps, LowerType(ps.Type, p.Span));
+        }
+    }
+
+    /// <summary>Feldindex des gefangenen <c>this</c> im Environment, falls gefangen.</summary>
+    private readonly int? _capturedThisField;
+
+    // ------------------------------------------------------------------ Closures (ADR-018)
+
+    /// <summary>
+    /// Ein Lambda: Environment bauen, Funktion anmelden, Fat Pointer erzeugen.
+    ///
+    /// <para>Die gehobene Funktion wird hier <b>nicht</b> gelowert — sie wird nur angemeldet und
+    /// bekommt sofort ihre Id. Das ist die Bedingung dafuer, dass ein rekursives oder
+    /// verschachteltes Lambda ueberhaupt geht: sein <c>mkclosure</c> steht fest, bevor sein Rumpf
+    /// existiert.</para>
+    /// </summary>
+    private TempId LowerLambda(LambdaExpr lambda)
+    {
+        if (LowerType(_types.TypeOf(lambda), lambda.Span) is not IrFunctionType signature)
+            throw Bug("lambda has no function type");
+
+        var (captured, capturesThis) = _types.CapturesOf(lambda);
+
+        // Die Werte fuer das Environment werden HIER ausgewertet, im umgebenden Frame — das ist
+        // der Kern von „faengt beim Erzeugen ein": ein spaeterer Aufruf sieht den Stand von jetzt.
+        // Bei einem geboxten 'var' ist dieser Stand die ZELLE, nicht ihr Inhalt; genau dadurch
+        // teilen beide Seiten dieselbe Variable.
+        var fieldTypes = new IrType[captured.Count + (capturesThis ? 1 : 0)];
+        var fieldNames = new string[fieldTypes.Length];
+        var values = new TempId[fieldTypes.Length];
+
+        for (var i = 0; i < captured.Count; i++)
+        {
+            var symbol = captured[i];
+            fieldNames[i] = symbol.Name;
+            (fieldTypes[i], values[i]) = LoadCaptured(symbol, lambda.Span);
+        }
+
+        if (capturesThis)
+        {
+            var slot = _thisSlot ?? throw Bug("lambda captures 'this' outside a method");
+            var thisType = _thisType ?? throw Bug("captured 'this' has no type");
+            var value = _slots.NewTemp(thisType);
+            _b.Emit(new LoadLocal(value, slot, thisType, lambda.Span));
+
+            fieldNames[^1] = "this";
+            fieldTypes[^1] = thisType;
+            values[^1] = value;
+        }
+
+        // Ohne Captures gibt es kein Environment und keine Allokation — der haeufige Fall bei
+        // einem Filter wie '(x) => x > 0'.
+        IrType environment = fieldTypes.Length == 0
+            ? VoidType
+            : _typeTable.EnvironmentFor(_name, fieldTypes, fieldNames);
+
+        var target = _lambdas.Register(lambda, _name, captured, capturesThis, environment,
+            ReceiverForLambda());
+
+        TempId? env = null;
+        if (environment is IrRefType envType)
+        {
+            var instance = _slots.NewTemp(environment);
+            _b.Emit(new NewObject(instance, envType.Type, environment, lambda.Span));
+            for (var i = 0; i < values.Length; i++)
+                _b.Emit(new StoreField(instance, envType.Type, new FieldId(i), values[i], lambda.Span));
+            env = instance;
+        }
+
+        var dest = _slots.NewTemp(signature);
+        _b.Emit(new MakeClosure(dest, target, env, signature, lambda.Span));
+        return dest;
+    }
+
+    /// <summary>
+    /// Der Wert, der fuer ein gefangenes Symbol ins Environment wandert.
+    ///
+    /// <para>Bei einer Zelle ist das die Zelle selbst und nicht ihr Inhalt — sonst waere die
+    /// Closure bei einer Kopie gelandet, und ADR-018 waere still zu by-value geworden.</para>
+    ///
+    /// <para>Wird ein Symbol gefangen, das die UMGEBENDE Funktion selbst schon gefangen hat, liegt
+    /// es dort im Environment und nicht in einem Slot. Verschachtelte Lambdas loesen ihre Captures
+    /// deshalb ueber dieselbe Kette auf, die auch ein gewoehnlicher Bezeichner nimmt.</para>
+    /// </summary>
+    private (IrType Type, TempId Value) LoadCaptured(Symbol symbol, Core.Span span)
+    {
+        if (_slots.TryLookup(symbol, out var slot))
+        {
+            var type = _slots.TypeOfLocal(slot); // bei einer Zelle: der Zelltyp — genau richtig
+            var value = _slots.NewTemp(type);
+            _b.Emit(new LoadLocal(value, slot, type, span));
+            return (type, value);
+        }
+
+        if (_captureFields.TryGetValue(symbol, out var field) && _envSlot is { } envSlot)
+        {
+            var envType = _slots.TypeOfLocal(envSlot);
+            var fieldType = _typeTable.Defs[_envType!.Value.Value].FieldTypes[field];
+
+            var holder = _slots.NewTemp(envType);
+            _b.Emit(new LoadLocal(holder, envSlot, envType, span));
+
+            var value = _slots.NewTemp(fieldType);
+            _b.Emit(new LoadField(value, holder, _envType.Value, new FieldId(field), fieldType, span));
+            return (fieldType, value);
+        }
+
+        throw Bug($"captured symbol '{symbol.Name}' is neither a slot nor an environment field");
+    }
+
+    /// <summary>Der Empfaenger-Typ, den ein inneres Lambda erbt, wenn es <c>this</c> faengt.</summary>
+    private TypeSymbol? ReceiverForLambda() => _receiver;
+
+    // ------------------------------------------------------------------ Zellen (ADR-018)
+
+    /// <summary>
+    /// Liest eine benannte Variable. Liegt sie in einer Zelle, geht der Zugriff ueber deren Feld —
+    /// und zwar hier genauso wie in jeder Closure, die sie teilt.
+    /// </summary>
+    private TempId LoadValue(LocalId slot, Core.Span span)
+    {
+        if (!_cells.TryGetValue(slot, out var cell))
+        {
+            var plain = _slots.TypeOfLocal(slot);
+            var direct = _slots.NewTemp(plain);
+            _b.Emit(new LoadLocal(direct, slot, plain, span));
+            return direct;
+        }
+
+        var holder = _slots.NewTemp(_slots.TypeOfLocal(slot));
+        _b.Emit(new LoadLocal(holder, slot, _slots.TypeOfLocal(slot), span));
+
+        var dest = _slots.NewTemp(cell.Value);
+        _b.Emit(new LoadField(dest, holder, cell.Cell, new FieldId(0), cell.Value, span));
+        return dest;
+    }
+
+    /// <summary>Schreibt eine benannte Variable — in ihren Slot oder in ihre Zelle.</summary>
+    private void StoreValue(LocalId slot, TempId value, Core.Span span)
+    {
+        if (!_cells.TryGetValue(slot, out var cell))
+        {
+            _b.Emit(new StoreLocal(slot, value, span));
+            return;
+        }
+
+        var holder = _slots.NewTemp(_slots.TypeOfLocal(slot));
+        _b.Emit(new LoadLocal(holder, slot, _slots.TypeOfLocal(slot), span));
+        _b.Emit(new StoreField(holder, cell.Cell, new FieldId(0), value, span));
+    }
+
+    /// <summary>Der Typ des <b>Wertes</b> in einem Slot — bei einer Zelle also der Inhalt, nicht
+    /// die Zelle. Jede Stelle, die bisher <c>TypeOfLocal</c> benutzt hat, um einen Wert zu typen,
+    /// muss diese Frage stellen.</summary>
+    private IrType ValueTypeOf(LocalId slot) =>
+        _cells.TryGetValue(slot, out var cell) ? cell.Value : _slots.TypeOfLocal(slot);
+
     public IrFunction Run()
     {
-        if (_decl.Body is null) throw Bug("function has no body");
+        // Ein Lambda hat statt eines Rumpfes einen Ausdruck ODER einen Block (Doku §11). Der
+        // Ausdrucks-Fall ist der haeufige und braucht kein 'return' im Quelltext — hier wird es
+        // eingesetzt.
+        if (_lambda is not null) return RunLambda();
+
+        if (_decl!.Body is null) throw Bug("function has no body");
 
         // Der Funktionsrumpf ist selbst ein Scope mit eigenen defers.
         if (LowerScope(_decl.Body))
@@ -153,6 +414,48 @@ internal sealed class FunctionLowerer
         // Argument 0 übergeben. Ohne ihn hier wäre die Parameter-Konvention verletzt, und der
         // Verifier meldet genau das ("call passes 2 arg(s), expected 1").
         return new IrFunction(_name, _returnType, _decl.Parameters.Length + (_thisSlot is null ? 0 : 1),
+            _slots.Locals, _slots.Temps, _blocks)
+        {
+            Entry = new BlockId(0), Handlers = _handlers,
+        };
+    }
+
+    /// <summary>
+    /// Der Rumpf eines angehobenen Lambdas. Zwei Formen (Doku §11): ein Ausdruck <b>ist</b> der
+    /// Rueckgabewert, ein Block liefert ueber <c>return</c>.
+    /// </summary>
+    private IrFunction RunLambda()
+    {
+        switch (_lambda!.Body)
+        {
+            case Block block:
+                if (LowerScope(block))
+                    _b.Seal(IsVoid(_returnType)
+                        ? new Return(null, block.Span)
+                        : new Unreachable(block.Span));
+                break;
+
+            case Expr expr:
+                // Ein void-Kontext verwirft den Wert: '() => doStuff()' ist erlaubt und ruft nur.
+                if (IsVoid(_returnType))
+                {
+                    LowerExprOrVoid(expr);
+                    if (!_b.IsSealed) _b.Seal(new Return(null, expr.Span));
+                }
+                else
+                {
+                    var value = LowerExprAs(expr, _returnType);
+                    _b.Seal(new Return(value, expr.Span));
+                }
+                break;
+
+            default:
+                throw Bug($"lambda body is neither an expression nor a block ({_lambda.Body.GetType().Name})");
+        }
+
+        // Das Environment zaehlt als Parameter 0 — dieselbe Rechnung wie beim Empfaenger.
+        return new IrFunction(_name, _returnType,
+            _lambda.Parameters.Length + (_envSlot is null ? 0 : 1),
             _slots.Locals, _slots.Temps, _blocks)
         {
             Entry = new BlockId(0), Handlers = _handlers,
@@ -423,6 +726,27 @@ internal sealed class FunctionLowerer
             throw Bug($"binding '{binding.Name}' was not bound by the type checker");
 
         var type = LowerType(local.Type, binding.Span);
+
+        // Ein gefangenes 'var' lebt in einer Zelle (ADR-018) — der Slot haelt dann die Zelle, und
+        // sie muss existieren, BEVOR irgendjemand hineinschreibt. Deshalb steht das newobj hier
+        // und nicht bei der ersten Zuweisung: ein 'var n: int;' ohne Initialisierer wird spaeter
+        // beschrieben, und dort waere die Zelle sonst noch nicht da.
+        if (_types.IsBoxed(local))
+        {
+            var cellType = _typeTable.CellOf(type);
+            var slotForCell = _slots.DeclareFor(local, cellType);
+            _cells[slotForCell] = (cellType.Type, type);
+
+            var cell = _slots.NewTemp(cellType);
+            _b.Emit(new NewObject(cell, cellType.Type, cellType, binding.Span));
+            _b.Emit(new StoreLocal(slotForCell, cell, binding.Span));
+
+            if (binding.Initializer is not null)
+                StoreValue(slotForCell, LowerExprAs(binding.Initializer, type), binding.Span);
+
+            return true;
+        }
+
         var slot = _slots.DeclareFor(local, type);
 
         // Ohne Initializer bleibt der Slot ungeschrieben: die Definite-Assignment-Analyse hat
@@ -570,7 +894,7 @@ internal sealed class FunctionLowerer
         InterpolatedStringExpr e => LowerInterpolatedString(e),
 
         NullLiteralExpr e => LowerNull(e),
-        LambdaExpr e => throw NotSupported("lambda (needs closure lifting)", e.Span),
+        LambdaExpr e => LowerLambda(e),
         MatchExpr e => LowerMatch(e.Scrutinee, e.Arms, TypeOfExpr(e), e.Span)
                        ?? throw Bug($"match expression produced no value at {e.Span}"),
         MemberExpr e => LowerFieldRead(e),
@@ -619,29 +943,57 @@ internal sealed class FunctionLowerer
         // Ein Modul-'let' hat keinen Frame-Slot, sondern einen globalen.
         if (TryLowerGlobalIdentifier(expr) is { } global) return global;
 
+        // In einem angehobenen Lambda liegt ein gefangenes Symbol im Environment, nicht in einem
+        // Slot. Erst Slots fragen: ein gleichnamiges lokales Symbol IST ein anderes Symbol, und
+        // die Referenzgleichheit haelt beide auseinander.
         if (!_slots.TryLookup(symbol, out var slot))
+        {
+            if (_captureFields.ContainsKey(symbol))
+            {
+                var (capturedType, capturedValue) = LoadCaptured(symbol, expr.Span);
+
+                // Ist das Gefangene eine Zelle, steht hier ihr Inhalt zur Debatte, nicht sie
+                // selbst — die Zelle ist Transportmittel, kein Wert des Programms.
+                if (capturedType is IrRefType reference && _typeTable.IsCell(reference.Type))
+                {
+                    var inner = _typeTable.Defs[reference.Type.Value].FieldTypes[0];
+                    var unwrapped = _slots.NewTemp(inner);
+                    _b.Emit(new LoadField(unwrapped, capturedValue, reference.Type, new FieldId(0),
+                        inner, expr.Span));
+                    return Narrow(expr, unwrapped, inner);
+                }
+
+                return Narrow(expr, capturedValue, capturedType);
+            }
+
             throw NotSupported($"reference to '{expr.Name}' (only parameters, locals and constants)",
                 expr.Span);
-
-        var type = _slots.TypeOfLocal(slot);
-        var dest = _slots.NewTemp(type);
-        _b.Emit(new LoadLocal(dest, slot, type, expr.Span));
-
-        // Flow-Narrowing (§7): nach `if (x != null)` sagt die Sema für x den Typ T, der SLOT hält
-        // aber weiter ?T — die Einengung ist eine Aussage über den Kontrollfluss, keine über den
-        // Speicher. Genau hier wird sie eingelöst: der Lowerer packt aus, wo die Sema T erwartet.
-        //
-        // Dass das sicher ist, hat die Sema bewiesen — sie engt nur ein, wo sie null ausgeschlossen
-        // hat. Das optget kann deshalb nie panicken; es ist die Materialisierung eines schon
-        // geführten Beweises.
-        if (type is IrOptionalType option && TypeOfExpr(expr) is not IrOptionalType)
-        {
-            var narrowed = _slots.NewTemp(option.Inner);
-            _b.Emit(new OptGet(narrowed, dest, option.Inner, expr.Span));
-            return narrowed;
         }
 
-        return dest;
+        return Narrow(expr, LoadValue(slot, expr.Span), ValueTypeOf(slot));
+    }
+
+    /// <summary>
+    /// Flow-Narrowing (§7): nach <c>if (x != null)</c> sagt die Sema fuer x den Typ T, die Stelle
+    /// im Speicher haelt aber weiter ?T — die Einengung ist eine Aussage ueber den Kontrollfluss,
+    /// keine ueber den Speicher. Hier wird sie eingeloest: der Lowerer packt aus, wo die Sema T
+    /// erwartet.
+    ///
+    /// <para>Dass das sicher ist, hat die Sema bewiesen — sie engt nur ein, wo sie null
+    /// ausgeschlossen hat. Das <c>optget</c> kann deshalb nie panicken; es ist die
+    /// Materialisierung eines schon gefuehrten Beweises.</para>
+    ///
+    /// <para>Herausgezogen, als Captures dazukamen: ein gefangenes <c>?T</c> braucht dieselbe
+    /// Einengung wie ein lokales, und zwei Kopien derselben vier Zeilen waeren zwei Orte gewesen,
+    /// an denen sie haette fehlen koennen.</para>
+    /// </summary>
+    private TempId Narrow(Expr expr, TempId value, IrType type)
+    {
+        if (type is not IrOptionalType option || TypeOfExpr(expr) is IrOptionalType) return value;
+
+        var narrowed = _slots.NewTemp(option.Inner);
+        _b.Emit(new OptGet(narrowed, value, option.Inner, expr.Span));
+        return narrowed;
     }
 
     private TempId LowerUnary(UnaryExpr expr)
@@ -797,14 +1149,17 @@ internal sealed class FunctionLowerer
         if (expr.Target is MemberExpr member) return LowerFieldAssign(member, expr);
         if (expr.Target is IndexExpr indexed) return LowerElementAssign(indexed, expr);
 
+        if (TryCapturedCell(expr.Target, out var cell, out var cellType, out var cellValueType))
+            return LowerCapturedAssign(expr, cell, cellType, cellValueType);
+
         var slot = ResolveLocalTarget(expr.Target, "assignment");
 
         if (expr.Operator is null)
         {
             // Der Slot-Typ ist die erwartete Form — sonst landete bei 'var d: Damageable; d = p;'
             // eine nackte Klassenreferenz in einem Interface-Slot.
-            var value = LowerExprAs(expr.Value, _slots.TypeOfLocal(slot));
-            _b.Emit(new StoreLocal(slot, value, expr.Span));
+            var value = LowerExprAs(expr.Value, ValueTypeOf(slot));
+            StoreValue(slot, value, expr.Span);
             return value;
         }
 
@@ -813,15 +1168,41 @@ internal sealed class FunctionLowerer
         if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
             throw NotSupported("short-circuit assignment ('&&=' / '||=')", expr.Span);
 
-        var type = _slots.TypeOfLocal(slot);
-        var current = _slots.NewTemp(type);
-        _b.Emit(new LoadLocal(current, slot, type, expr.Target.Span));
+        var type = ValueTypeOf(slot);
+        var current = LoadValue(slot, expr.Target.Span);
 
         var operand = LowerExpr(expr.Value);
         var result = _slots.NewTemp(type);
         _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), type,
             current, operand, expr.Span));
-        _b.Emit(new StoreLocal(slot, result, expr.Span));
+        StoreValue(slot, result, expr.Span);
+        return result;
+    }
+
+    /// <summary>
+    /// Zuweisung an eine gefangene Zelle. Dieselben drei Formen wie beim Slot-Pfad, nur dass
+    /// gelesen und geschrieben wird, wo die Variable wirklich lebt.
+    /// </summary>
+    private TempId LowerCapturedAssign(AssignExpr expr, TempId cell, TypeId cellType, IrType type)
+    {
+        if (expr.Operator is null)
+        {
+            var assigned = LowerExprAs(expr.Value, type);
+            _b.Emit(new StoreField(cell, cellType, new FieldId(0), assigned, expr.Span));
+            return assigned;
+        }
+
+        if (expr.Operator is BinaryOp.Coalesce or BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
+            throw NotSupported($"'{expr.Operator}=' on a captured variable", expr.Span);
+
+        var current = _slots.NewTemp(type);
+        _b.Emit(new LoadField(current, cell, cellType, new FieldId(0), type, expr.Target.Span));
+
+        var operand = LowerExpr(expr.Value);
+        var result = _slots.NewTemp(type);
+        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), type,
+            current, operand, expr.Span));
+        _b.Emit(new StoreField(cell, cellType, new FieldId(0), result, expr.Span));
         return result;
     }
 
@@ -1778,6 +2159,42 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
+    /// <summary>
+    /// Ein Aufruf ueber einen <b>Funktionswert</b>: <c>f(1)</c>, wo <c>f</c> eine Closure ist.
+    ///
+    /// <para>Kein Default-Argument und kein <c>params</c>: beide sind Aufrufstellen-Transformationen
+    /// (P5b-5), die die DEKLARATION des Aufgerufenen brauchen — ein Funktionswert hat keine. Der
+    /// Typ <c>fn(int) -&gt; int</c> sagt „ein Argument", und mehr gibt es nicht zu wissen. Dieselbe
+    /// Grenze zieht C# bei Delegates, aus demselben Grund.</para>
+    /// </summary>
+    private TempId? LowerIndirectCall(CallExpr expr)
+    {
+        if (LowerType(_types.TypeOf(expr.Callee), expr.Callee.Span) is not IrFunctionType signature)
+            throw Bug("indirect call on a non-function value");
+
+        var callee = LowerExpr(expr.Callee);
+
+        var args = new TempId[expr.Arguments.Length];
+        for (var i = 0; i < args.Length; i++)
+            args[i] = i < signature.Parameters.Length
+                ? LowerExprAs(expr.Arguments[i], signature.Parameters[i])
+                : LowerExpr(expr.Arguments[i]); // Aritaetsfehler hat die Sema schon gemeldet
+
+        if (IsVoid(signature.Return))
+        {
+            _b.Emit(new CallIndirect(null, callee, args, signature.Return, expr.Span));
+            return null;
+        }
+
+        var dest = _slots.NewTemp(signature.Return);
+        _b.Emit(new CallIndirect(dest, callee, args, signature.Return, expr.Span));
+
+        // Das Ergebnis gehoert noch niemandem — bei einem struct spart das den structcopy beim
+        // Binden, genau wie bei einem gewoehnlichen Call.
+        _fresh.Add(dest);
+        return dest;
+    }
+
     private TempId? LowerCall(CallExpr expr)
     {
         // Der Empfänger ist Parameter 0 (ADR-014). Bei `p.get()` wird 'p' also zum ersten Argument;
@@ -1786,6 +2203,22 @@ internal sealed class FunctionLowerer
         TempId? receiver = null;
         string calleeName;
         Symbol? bound;
+
+        // Der Aufgerufene ist ein WERT und keine Deklaration: eine Closure, ein Parameter vom Typ
+        // 'fn(…) -> …', ein Feld, das Ergebnis eines anderen Aufrufs.
+        //
+        // Der Typ allein entscheidet das NICHT: eine deklarierte Funktion hat ebenfalls einen
+        // Funktionstyp, und eine Enum-Variante mit Payload ('Shape.Line(1.0)') auch — sie ist ein
+        // Konstruktor, kein Wert. Was den indirekten Aufruf ausmacht, ist die BINDUNG: er zeigt
+        // auf etwas, das einen Funktionswert HAELT, oder auf gar nichts wie bei 'mk()()'.
+        //
+        // Positiv aufgezaehlt statt negativ: eine Liste von Verboten haette bei jeder neuen
+        // Symbolart stillschweigend die falsche Antwort gegeben, und zwar in die gefaehrliche
+        // Richtung — 'Shape.Line(1.0)' wurde so zu einem callind auf einen Enum-Wert.
+        if (_types.TypeOf(expr.Callee) is FnType
+            && _types.RefOf(expr.Callee) is null or LocalSymbol or ParameterSymbol
+               or FieldSymbol or GlobalSymbol)
+            return LowerIndirectCall(expr);
 
         switch (expr.Callee)
         {
@@ -2160,6 +2593,33 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
+    /// <summary>
+    /// Zeigt dieses Zuweisungsziel auf eine <b>gefangene Zelle</b> (ADR-018)? Dann liegt es nicht
+    /// in einem Slot dieser Funktion, sondern in einem Feld ihres Environments — und der Schreib-
+    /// vorgang muss dorthin, sonst schriebe die Closure in eine Kopie und die Semantik waere
+    /// still by-value.
+    /// </summary>
+    private bool TryCapturedCell(Expr target, out TempId cell, out TypeId cellType,
+        out IrType valueType)
+    {
+        cell = default; cellType = default; valueType = VoidType;
+
+        if (target is not IdentifierExpr identifier) return false;
+        if (_types.RefOf(identifier) is not { } symbol) return false;
+        if (_slots.TryLookup(symbol, out _)) return false;
+        if (!_captureFields.ContainsKey(symbol)) return false;
+
+        var (type, value) = LoadCaptured(symbol, target.Span);
+        if (type is not IrRefType reference || !_typeTable.IsCell(reference.Type))
+            throw Bug($"assignment to captured '{identifier.Name}', which is not a cell — the " +
+                      "sema should have boxed it (ADR-018) or rejected the assignment");
+
+        cell = value;
+        cellType = reference.Type;
+        valueType = _typeTable.Defs[reference.Type.Value].FieldTypes[0];
+        return true;
+    }
+
     private LocalId ResolveLocalTarget(Expr target, string what)
     {
         if (target is not IdentifierExpr identifier)
@@ -2233,6 +2693,13 @@ internal sealed class FunctionLowerer
             return new IrOptionalType(inner);
         }
 
+        // fn(A, B) -> R: ein Funktionswert (ADR-018). Traegt seine Signatur strukturell und
+        // braucht deshalb keinen Eintrag in der Typtabelle.
+        if (type is FnType signature)
+            return new IrFunctionType(
+                signature.Parameters.Select(p => LowerType(p, span)).ToArray(),
+                LowerType(signature.Return, span));
+
         if (type is not PrimitiveType)
             throw NotSupported($"type '{TypeFacts.Display(type)}'", span);
 
@@ -2245,7 +2712,7 @@ internal sealed class FunctionLowerer
     /// eine Fabrik <c>static fn new(): P</c> denselben Typ liefert wie ein Feld vom Typ
     /// <c>P</c>.</summary>
     private IrType LowerDeclaredReturnType() =>
-        _decl.ReturnType is null ? VoidType : _typeTable.Lower(_decl.ReturnType);
+        _decl!.ReturnType is null ? VoidType : _typeTable.Lower(_decl.ReturnType);
 
     /// <summary>Scope-Grenze: gültiges Lyric, für das der Backend-Teil noch fehlt. Wird von
     /// <see cref="ModuleLowerer"/> zu einer <c>LYR-IR0001</c>-Diagnose mit Datei/Zeile/Spalte —

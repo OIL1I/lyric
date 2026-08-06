@@ -55,6 +55,11 @@ public static class IrShape
 
         LoadGlobal => Array.Empty<TempId>(),
         StoreGlobal g => new[] { g.Value },
+
+        // Das Environment ist der einzige Operand — der Funktionsindex steht in der Instruktion.
+        MakeClosure m => m.Environment is { } env ? new[] { env } : Array.Empty<TempId>(),
+        // Der Aufgerufene liegt VOR den Argumenten, wie der Empfaenger bei callvirt.
+        CallIndirect c => new[] { c.Callee }.Concat(c.Args).ToArray(),
         // Der Empfaenger ist Arg 0 und liegt damit zuunterst — dieselbe Konvention wie bei Call
         // (ADR-014). CallVirt braucht keine Sonderbehandlung.
         CallVirt c => c.Args,
@@ -111,6 +116,8 @@ public static class IrShape
 
         LoadGlobal l => l.Dest,
         StoreGlobal => null,
+        MakeClosure m => m.Dest,
+        CallIndirect c => c.Dest,
         CallVirt c => c.Dest,
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")

@@ -31,7 +31,7 @@ internal static class GlobalInitializer
 
     public static IrFunction Build(GlobalTable globals, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable)
+        TypeTable typeTable, LambdaTable lambdas)
     {
         // Ein synthetischer FunctionDecl: der FunctionLowerer arbeitet auf einer Deklaration, und
         // ihm hier eine zu bauen ist ehrlicher, als ihm einen zweiten Einstieg zu geben.
@@ -46,7 +46,7 @@ internal static class GlobalInitializer
             Parameters: [], ReturnType: null, Throws: null, Body: body, Span: default);
 
         return new FunctionLowerer(decl, Name, types, functions, imports, typeTable,
-            ModuleLowerer.NoSubstitution, globals).Run();
+            ModuleLowerer.NoSubstitution, globals, lambdas).Run();
     }
 }
 

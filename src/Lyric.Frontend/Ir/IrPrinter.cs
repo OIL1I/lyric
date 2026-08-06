@@ -197,6 +197,10 @@ public static class IrPrinter
         CallVirt c => CallVirtStr(c),
         StructCopy c => $"{c.Dest}: {TypeStr(new IrStructType(c.Type))} = structcopy {c.Value}",
         LoadGlobal l => $"{l.Dest}: {TypeStr(l.Type)} = ldglobal {l.Global}",
+        MakeClosure m => $"{m.Dest}: {TypeStr(m.Type)} = mkclosure {m.Target}" +
+                         (m.Environment is { } env ? $", {env}" : " (no captures)"),
+        CallIndirect c => (c.Dest is { } d ? $"{d}: {TypeStr(c.ReturnType)} = " : "") +
+                          $"callind {c.Callee}({string.Join(", ", c.Args)})",
         StoreGlobal g => $"stglobal {g.Global}, {g.Value}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
@@ -256,6 +260,7 @@ public static class IrPrinter
         IrEnumType e => $"enum {e.Type}",
         IrInterfaceType i => $"dyn {i.Type}",
         IrStructType v => $"val {v.Type}",
+        IrFunctionType f => $"fn({string.Join(", ", f.Parameters.Select(TypeStr))}) -> {TypeStr(f.Return)}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 

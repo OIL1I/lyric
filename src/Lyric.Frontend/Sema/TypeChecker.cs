@@ -2173,6 +2173,13 @@ public sealed class TypeChecker
         WalkNode(lam.Body);
         if (captured.Count > 0 || capturesThis)
             _result.SetCaptures(lam, captured, capturesThis);
+
+        // ADR-018: gefangene 'var' werden geteilt, nicht kopiert — sie brauchen eine Zelle.
+        // Konservativ: es zaehlt nicht, OB die Closure schreibt, sondern dass sie es koennte.
+        // Eine Analyse „wird nach der Erzeugung noch zugewiesen" waere eine Optimierung und
+        // haette einen zweiten Wahrheitsbegriff fuer dieselbe Frage.
+        foreach (var symbol in captured)
+            if (symbol is LocalSymbol { IsMutable: true }) _result.MarkBoxed(symbol);
     }
 
     // --- Numerik / Zuweisbarkeit / Literal-Fit (①A / ②a) ---
