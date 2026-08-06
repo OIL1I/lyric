@@ -356,7 +356,11 @@ public sealed class TypeChecker
         var it = ResolveType(iface.Type, _currentModule?.Members ?? _comp.Builtins);
         var pt = ResolveType(impl.Type, _currentModule?.Members ?? _comp.Builtins);
         if (LyrType.Equal(it, pt)) return true;
-        return pt is NamedRef pr && it is NamedRef ir && Conformance.Implements(pr.Symbol, ir.Symbol, _binding);
+        // Beide Seiten koennen Instanzen sein ('Box<int> :: [Src<int>]') — TypeFacts.SymbolOf
+        // beantwortet die Frage fuer beide Formen.
+        return TypeFacts.SymbolOf(pt) is { } implementation
+               && TypeFacts.SymbolOf(it) is { } required
+               && Conformance.Implements(implementation, required, _binding);
     }
 
     private static Span NodeSpan(TypeNode n) => n.Span;
@@ -523,14 +527,7 @@ public sealed class TypeChecker
     {
         if (_iterator is null) return null;
 
-        var symbol = type switch
-        {
-            NamedRef n => n.Symbol,
-            GenericInstance g => g.Definition,
-            _ => null,
-        };
-
-        if (symbol is null) return null;
+        if (TypeFacts.SymbolOf(type) is not { } symbol) return null;
 
         // Ein Iterator IST einer, wenn er das Interface direkt ist ('Iterator<int>' als
         // Parametertyp) oder es implementiert.
@@ -576,7 +573,7 @@ public sealed class TypeChecker
         if (!Conformance.IsThrowable(t, _throwable, _binding))
             _de.Report("LYR-SEM0030", Severity.Error, fn.Throws.Span,
                 $"'{TypeFacts.Display(t)}' in 'throws' does not implement 'Throwable'");
-        if (t is NamedRef nr) _result.BindRef(fn.Throws, nr.Symbol);
+        if (TypeFacts.SymbolOf(t) is { } thrown) _result.BindRef(fn.Throws, thrown);
     }
 
     private void CheckCatch(CatchClause clause, SymbolTable scope)
@@ -589,7 +586,8 @@ public sealed class TypeChecker
             if (!Conformance.IsThrowable(bt, _throwable, _binding))
                 _de.Report("LYR-SEM0030", Severity.Error, clause.BindingType.Span,
                     $"cannot catch '{TypeFacts.Display(bt)}' — only types implementing 'Throwable' can be caught");
-            if (bt is NamedRef nr) _result.BindRef(clause.BindingType, nr.Symbol); // für den ExceptionAnalyzer
+            if (TypeFacts.SymbolOf(bt) is { } caught)
+                _result.BindRef(clause.BindingType, caught); // für den ExceptionAnalyzer
         }
         else bt = _throwable is not null ? new NamedRef(_throwable) : LyrType.Error; // Catch-All bindet Throwable
 
@@ -2480,26 +2478,17 @@ public sealed class TypeChecker
         // Das Ziel kann ein generisches Interface sein ('Src<int>') — dann ist es eine
         // GenericInstance und keine NamedRef. Ohne diesen Fall waere jede Zuweisung an ein
         // generisches Interface ein Typfehler, und 'Iterator<T>' unbenutzbar.
-        var target = to switch
-        {
-            NamedRef { Symbol.Kind: TypeSymbolKind.Interface } named => named.Symbol,
-            GenericInstance { Definition.Kind: TypeSymbolKind.Interface } instance
-                => instance.Definition,
-            _ => null,
-        };
+        if (TypeFacts.KindOf(to) != TypeSymbolKind.Interface) return false;
+        var target = TypeFacts.SymbolOf(to)!;
 
-        if (target is null) return false;
+        if (TypeFacts.SymbolOf(from) is { } source)
+            return Conformance.Implements(source, target, _binding);
 
-        return from switch
-        {
-            NamedRef source => Conformance.Implements(source.Symbol, target, _binding),
-            GenericInstance instance =>
-                Conformance.Implements(instance.Definition, target, _binding),
-            TypeParamType parameter => parameter.Param.Constraints.Any(c =>
-                Conformance.InterfaceOf(c, _binding) is { } it
-                && ReferenceEquals(it, target)),
-            _ => false,
-        };
+        // Ein Typ-Parameter erfuellt, was seine Constraints verlangen — er hat kein eigenes
+        // Symbol, deshalb steht er hier neben und nicht in SymbolOf.
+        return from is TypeParamType parameter
+               && parameter.Param.Constraints.Any(c =>
+                   Conformance.InterfaceOf(c, _binding) is { } it && ReferenceEquals(it, target));
     }
 
     private static bool LiteralAdaptsTo(Expr expr, PrimitiveType target)

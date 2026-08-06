@@ -1822,10 +1822,10 @@ internal sealed class FunctionLowerer
     /// <summary>Der Enum-Typ, zu dem ein Wert gehört — oder eine Scope-Grenze.</summary>
     private (TypeSymbol Symbol, IrEnumType Type) RequireEnum(Expr expr)
     {
-        if (_types.TypeOf(expr) is not NamedRef { Symbol.Kind: TypeSymbolKind.Enum } named)
+        if (TypeFacts.SymbolOf(_types.TypeOf(expr)) is not { Kind: TypeSymbolKind.Enum } named)
             throw NotSupported($"'{TypeFacts.Display(_types.TypeOf(expr))}' is not an enum", expr.Span);
 
-        return (named.Symbol, _typeTable.EnumOf(named.Symbol));
+        return (named, _typeTable.EnumOf(named));
     }
 
     /// <summary><c>Shape.Circle(2.0)</c> und <c>Shape.Empty</c> — eine Tuple- bzw. Unit-Variante.
@@ -2459,12 +2459,13 @@ internal sealed class FunctionLowerer
     private (TypeId Type, FieldId Field, IrType FieldType) ResolveFieldOn(IrType carrier,
         MemberExpr expr)
     {
-        if (_types.TypeOf(expr.Target) is not Optional { Inner: NamedRef named })
+        if (_types.TypeOf(expr.Target) is not Optional option
+            || TypeFacts.SymbolOf(option.Inner) is not { } named)
             throw NotSupported($"'?.{expr.Member}' on " +
                                $"'{TypeFacts.Display(_types.TypeOf(expr.Target))}'", expr.Span);
 
-        var type = _typeTable.Intern(named.Symbol);
-        var field = _typeTable.FieldOf(named.Symbol, expr.Member, expr.Span);
+        var type = _typeTable.Intern(named);
+        var field = _typeTable.FieldOf(named, expr.Member, expr.Span);
         return (type, field, _typeTable.Defs[type.Value].FieldTypes[field.Value]);
     }
 

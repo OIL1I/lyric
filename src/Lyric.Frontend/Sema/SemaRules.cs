@@ -197,14 +197,8 @@ public sealed class SemaRules
         if (baseType.IsError) return true; // Poison: kein Folgefehler
 
         // Eine Instanz eines generischen Typs verhaelt sich wie ihre Definition: 'Box<int>' ist
-        // eine Klasse, wenn 'Box' eine ist. Ohne diesen Fall waere ein Feld einer generischen
-        // Klasse nie schreibbar — und damit kein Iterator moeglich, der seinen Index fortschreibt.
-        var kind = baseType switch
-        {
-            NamedRef nr => nr.Symbol.Kind,
-            GenericInstance instance => instance.Definition.Kind,
-            _ => (TypeSymbolKind?)null,
-        };
+        // eine Klasse, wenn 'Box' eine ist.
+        var kind = TypeFacts.KindOf(baseType);
 
         if (kind == TypeSymbolKind.Class) return true;               // class-Felder immer mutabel (§6.4)
         if (kind == TypeSymbolKind.Struct)

@@ -1,3 +1,4 @@
+using Lyric.Resolver;
 using System.Text;
 
 namespace Lyric.Sema;
@@ -43,6 +44,41 @@ public static class TypeFacts
         PrimitiveKind.Uint64 or PrimitiveKind.Uint => !negative,
         _ => false
     };
+
+    /// <summary>
+    /// Das <see cref="TypeSymbol"/> hinter einem benannten Typ — <c>null</c>, wenn keines
+    /// dahintersteckt (Skalar, Array, Funktionstyp …).
+    ///
+    /// <para><b>Warum das eine Funktion sein muss.</b> Ein benannter Typ tritt in zwei Formen auf:
+    /// <see cref="NamedRef"/> fuer <c>Box</c> und <see cref="GenericInstance"/> fuer
+    /// <c>Box&lt;int&gt;</c>. Fast jede Frage, die man ihm stellt — welche Art, welche Konformanz,
+    /// welches Feld — hat fuer beide dieselbe Antwort, und wer sie einzeln behandelt, vergisst
+    /// irgendwann die zweite.</para>
+    ///
+    /// <para>Genau das ist in M7/P8 <b>fuenfmal</b> passiert: bei der Konformanz, beim virtuellen
+    /// Aufruf, beim Slot-Index, in der Impl-Tabelle und bei der Feld-Mutabilitaet. Der letzte Fall
+    /// machte ein Feld einer generischen Klasse <b>nie</b> schreibbar und damit jeden Iterator
+    /// unmoeglich. Jedes Mal war die Ursache dieselbe: ein Muster, das nur <c>NamedRef</c>
+    /// nannte.</para>
+    /// </summary>
+    public static TypeSymbol? SymbolOf(LyrType type) => type switch
+    {
+        NamedRef named => named.Symbol,
+        GenericInstance instance => instance.Definition,
+        _ => null,
+    };
+
+    /// <summary>Die Art eines benannten Typs — Klasse, Struct, Enum, Interface. <c>null</c>, wenn
+    /// es kein benannter Typ ist.</summary>
+    public static TypeSymbolKind? KindOf(LyrType type) => SymbolOf(type)?.Kind;
+
+    /// <summary>Ist das ein benannter Typ dieser Art? Der Fall, den die meisten Aufrufer
+    /// brauchen — inklusive Instanzen.</summary>
+    public static bool Is(LyrType type, TypeSymbolKind kind) => KindOf(type) == kind;
+
+    /// <summary>Ist das ein benannter Typ <b>einer</b> dieser Arten?</summary>
+    public static bool IsAny(LyrType type, params TypeSymbolKind[] kinds) =>
+        KindOf(type) is { } actual && Array.IndexOf(kinds, actual) >= 0;
 
     public static string Display(LyrType t)
     {
