@@ -1077,4 +1077,63 @@ public class VmTests
 
         Assert.Contains("already finished", panic.Message);
     }
+
+    // ------------------------------------------------------------------ P8: Generics
+
+    [Fact]
+    public void A_generic_function_runs() =>
+        Assert.Equal(7, Run("""
+            fn id<T>(x: T): T { return x; }
+            fn main(): int { return id(7); }
+            """).AsI64);
+
+    [Fact]
+    public void Two_type_arguments_do_not_interfere() =>
+        Assert.Equal(5, Run("""
+            fn id<T>(x: T): T { return x; }
+            fn main(): int { let s = id("x"); return id(5); }
+            """).AsI64);
+
+    [Fact]
+    public void A_generic_function_can_call_a_generic_function() =>
+        // 'id' wird aus 'twice<int>' heraus angefordert, und welches T gemeint ist, weiss nur die
+        // Substitution der rufenden Instanz.
+        Assert.Equal(4, Run("""
+            fn id<T>(x: T): T { return x; }
+            fn twice<T>(x: T): T { return id(id(x)); }
+            fn main(): int { return twice(4); }
+            """).AsI64);
+
+    [Fact]
+    public void A_generic_function_can_recurse() =>
+        // Die Instanz findet ihre eigene Id vor — deshalb wird sie bei der Anforderung vergeben
+        // und nicht erst beim Lowern.
+        Assert.Equal(3, Run("""
+            fn down<T>(x: T, n: int): int { if (n <= 0) { return 0; } return 1 + down(x, n - 1); }
+            fn main(): int { return down("a", 3); }
+            """).AsI64);
+
+    [Fact]
+    public void A_generic_type_has_one_layout_per_instance() =>
+        Assert.Equal(3, Run("""
+            class Box<T> { v: T }
+            fn main(): int { let a = Box<int> { v = 3 }; let s = Box<string> { v = "x" }; return a.v; }
+            """).AsI64);
+
+    [Fact]
+    public void A_method_of_a_generic_type_is_instantiated_per_type() =>
+        // Der Rueckgabetyp ist T — er kann nur aus der INSTANZ kommen, nicht aus der Definition.
+        Assert.Equal(5, Run("""
+            class Box<T> { v: T, fn get(): T { return this.v; } }
+            fn main(): int { let a = Box<int> { v = 5 }; let s = Box<string> { v = "x" }; return a.get(); }
+            """).AsI64);
+
+    [Fact]
+    public void A_generic_struct_lowers_like_any_other() =>
+        // Generisch UND Wert-Semantik: 'Pair<int>' geht durch denselben Layout-Pfad wie jedes
+        // andere struct (P4) — die Instanziierung aendert daran nichts.
+        Assert.Equal(5, Run("""
+            struct Pair<T> { a: T, b: T, fn first(): T { return this.a; } }
+            fn main(): int { let p = Pair<int> { a = 5, b = 3 }; return p.first(); }
+            """).AsI64);
 }

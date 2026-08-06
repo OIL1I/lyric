@@ -44,6 +44,24 @@ internal sealed class TypeTable
     /// viele Variablen darin leben.</summary>
     private readonly List<(IrType Element, TypeId Id)> _cells = new();
 
+    /// <summary>
+    /// Instanzen generischer Typen, unter ihrem vollen Namen (<c>Box&lt;int&gt;</c>).
+    ///
+    /// <para>Getrennt von <see cref="_assigned"/>, weil dort das SYMBOL der Schluessel ist —
+    /// <c>Box&lt;int&gt;</c> und <c>Box&lt;string&gt;</c> teilen sich eines und sind trotzdem zwei
+    /// Typen mit verschiedenem Layout (§12).</para>
+    /// </summary>
+    private readonly Dictionary<string, TypeId> _instances = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Die Typargumente, die gerade eingesetzt werden, waehrend das Layout einer Instanz entsteht.
+    ///
+    /// <para>Ein Stapel, weil Layouts sich schachteln: <c>Box&lt;Pair&lt;int&gt;&gt;</c> lowert das
+    /// Feld <c>v: T</c> zu <c>Pair&lt;int&gt;</c>, und dessen Felder brauchen dann DESSEN
+    /// Substitution, nicht die von <c>Box</c>.</para>
+    /// </summary>
+    private readonly Stack<IReadOnlyDictionary<string, LyrType>> _substitutions = new();
+
     /// <summary>Ist dieser Typ eine Zelle? Gefragt wird das beim Lesen eines Captures: eine
     /// gefangene Zelle transportiert eine Variable, und was das Programm sehen will, ist ihr
     /// Inhalt.</summary>
@@ -181,7 +199,49 @@ internal sealed class TypeTable
             $"'{enumSymbol.Name}' has no variant '{variantName}'", span);
     }
 
-    public TypeId Intern(TypeSymbol symbol)
+    public TypeId Intern(TypeSymbol symbol) => Intern(symbol, []);
+
+    /// <summary>
+    /// Die <see cref="TypeId"/> eines Typs — bei einem generischen die seiner <b>Instanz</b> fuer
+    /// genau diese Typargumente (§12).
+    ///
+    /// <para><c>Box&lt;int&gt;</c> und <c>Box&lt;string&gt;</c> bekommen verschiedene Eintraege mit
+    /// eigenem Layout. Das ist dieselbe Monomorphisierung wie bei Funktionen und aus demselben
+    /// Grund: die VM kennt keine Typen zur Laufzeit, also muss ein Feld-Layout zur Compile-Zeit
+    /// feststehen.</para>
+    /// </summary>
+    public TypeId Intern(TypeSymbol symbol, IReadOnlyList<LyrType> typeArguments)
+    {
+        if (symbol.Generics.Length > 0)
+        {
+            if (typeArguments.Count != symbol.Generics.Length)
+                throw new UnsupportedConstructException(
+                    $"generic type '{symbol.Name}' needs {symbol.Generics.Length} type "
+                    + $"argument(s), got {typeArguments.Count}", SpanOf(symbol));
+
+            var instanceName =
+                $"{symbol.Name}<{string.Join(", ", typeArguments.Select(TypeFacts.Display))}>";
+            if (_instances.TryGetValue(instanceName, out var known)) return known;
+
+            var mapping = new Dictionary<string, LyrType>(StringComparer.Ordinal);
+            for (var i = 0; i < symbol.Generics.Length; i++)
+                mapping[symbol.Generics[i].Name] = typeArguments[i];
+
+            _substitutions.Push(mapping);
+            try
+            {
+                return InternLayout(symbol, instanceName, _instances);
+            }
+            finally
+            {
+                _substitutions.Pop();
+            }
+        }
+
+        return InternNonGeneric(symbol);
+    }
+
+    private TypeId InternNonGeneric(TypeSymbol symbol)
     {
         // Ein Typ, dessen Layout schon einmal gescheitert ist, scheitert wieder — mit derselben
         // Meldung. Ohne das bliebe der Platzhalter aus dem ersten Versuch stehen, und der zweite
@@ -201,10 +261,6 @@ internal sealed class TypeTable
                 $"type '{symbol.Name}' ({Describe(symbol.Kind)}) is not supported by this compiler version yet",
                 SpanOf(symbol));
 
-        if (symbol.Generics.Length > 0)
-            throw new UnsupportedConstructException(
-                $"generic type '{symbol.Name}' is not supported by this compiler version yet",
-                SpanOf(symbol));
 
         // Klasse und struct teilen sich das gesamte Layout-Verfahren; sie unterscheiden sich
         // ausschliesslich in der Bindungs-Semantik, und die steckt im Lowering, nicht hier.
@@ -220,11 +276,31 @@ internal sealed class TypeTable
                 $"type '{symbol.Name}' has no declaration to read a layout from",
                 SpanOf(symbol));
 
+        return InternLayout(symbol, symbol.Name, null);
+    }
+
+    /// <summary>
+    /// Baut das Layout und traegt es ein. Fuer eine Instanz ist <paramref name="registry"/> die
+    /// Instanz-Map und <paramref name="name"/> traegt die Typargumente; sonst zaehlt das Symbol.
+    /// </summary>
+    private TypeId InternLayout(TypeSymbol symbol, string name, Dictionary<string, TypeId>? registry)
+    {
+        var members = symbol.Declaration switch
+        {
+            ClassDecl c => c.Members,
+            StructDecl v => v.Members,
+            _ => null,
+        };
+
+        if (members is null)
+            throw new UnsupportedConstructException(
+                $"type '{symbol.Name}' has no declaration to read a layout from", SpanOf(symbol));
+
         // Platz reservieren UND Id eintragen, bevor die Feldtypen gelowert werden — siehe
         // Klassen-Doku. Der Platzhalter wird unten überschrieben; sichtbar wird er nie, weil
         // Lower(field) nur die Id braucht, nicht das Layout.
         var id = new TypeId(_defs.Count);
-        _assigned[symbol] = id;
+        if (registry is null) _assigned[symbol] = id; else registry[name] = id;
         _defs.Add(default);
 
         try
@@ -242,7 +318,7 @@ internal sealed class TypeTable
                 types[i] = Lower(fields[i].Type, fields[i].Span);
             }
 
-            _defs[id.Value] = new IrTypeDef(symbol.Name, types, names)
+            _defs[id.Value] = new IrTypeDef(name, types, names)
             {
                 IsStruct = symbol.Kind == TypeSymbolKind.Struct,
             };
@@ -385,6 +461,10 @@ internal sealed class TypeTable
         // Ein Funktionstyp traegt seine Signatur strukturell und braucht deshalb keinen Eintrag in
         // dieser Tabelle — anders als jeder benannte Typ. Rekursiv gelowert, weil Parameter und
         // Rueckgabe selbst Klassen, Enums oder wieder Funktionen sein duerfen.
+        // Eine Instanz eines generischen Typs: 'Box<int>' ist ein eigener Tabellen-Eintrag mit
+        // eigenem Layout (§12).
+        GenericInstance g => InstanceType(g, span),
+
         // Coroutine<T> ist ein Funktionswert ohne Parameter — siehe FunctionLowerer.LowerType.
         CoroutineOf c => new IrFunctionType([], Lower(c.Yield, span)),
 
@@ -424,13 +504,38 @@ internal sealed class TypeTable
                 signature.Parameters.Select(p => Lower(p, p.Span)).ToArray(),
                 Lower(signature.ReturnType, signature.ReturnType.Span));
 
-        if (node is NamedType { TypeArguments.Length: 0 } named)
+        if (node is NamedType named)
         {
-            if (TypeFacts.FromBuiltinName(named.Path[^1]) is { } primitive)
+            // Ein Typ-Parameter im Layout einer Instanz: 'v: T' in 'Box<int>' ist ein int. Die
+            // Frage muss VOR der Symbolaufloesung kommen — 'T' ist kein Typ, den man finden
+            // koennte.
+            if (named.TypeArguments.Length == 0 && _substitutions.Count > 0
+                && _substitutions.Peek().TryGetValue(named.Path[^1], out var substituted))
+                return Lower(substituted, span);
+
+            if (named.TypeArguments.Length == 0
+                && TypeFacts.FromBuiltinName(named.Path[^1]) is { } primitive)
                 return TypeLowering.Lower(primitive);
 
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
+
+            // Geschriebene Typargumente ('Box<int>' als Feld- oder Parametertyp): sie werden
+            // gelowert, BEVOR die Instanz interniert wird — ein Argument kann selbst ein
+            // Typ-Parameter der umgebenden Instanz sein ('Box<T>' in 'Pair<T>').
+            if (named.TypeArguments.Length > 0 && bound is TypeSymbol generic)
+            {
+                var arguments = named.TypeArguments.Select(a => Resolve(a, span)).ToArray();
+                var id = Intern(generic, arguments);
+                return generic.Kind switch
+                {
+                    TypeSymbolKind.Struct => new IrStructType(id),
+                    TypeSymbolKind.Enum => new IrEnumType(id),
+                    TypeSymbolKind.Interface => new IrInterfaceType(id),
+                    _ => new IrRefType(id),
+                };
+            }
+
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Enum } enumType) return EnumOf(enumType);
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Interface } iface) return InterfaceOf(iface);
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Struct } value) return StructOf(value);
@@ -439,6 +544,51 @@ internal sealed class TypeTable
 
         throw new UnsupportedConstructException(
             "a non-primitive field type is not supported by this compiler version yet", node.Span);
+    }
+
+    /// <summary>
+    /// Ein geschriebenes Typargument als <see cref="LyrType"/> — das, was <see cref="Intern"/> als
+    /// Schluessel braucht.
+    ///
+    /// <para>Nicht ueber <see cref="Lower(TypeNode)"/>: der liefert einen IR-Typ, und aus dem
+    /// laesst sich der Sema-Typ nicht zurueckgewinnen. Der Name einer Instanz muss aber aus
+    /// Sema-Typen gebildet werden, sonst hiessen <c>Box&lt;int&gt;</c> und <c>Box&lt;int64&gt;</c>
+    /// verschieden, obwohl sie dasselbe sind.</para>
+    /// </summary>
+    /// <summary>Der IR-Typ einer Instanz — Referenz, Wert, Enum oder Interface, je nach dem, was
+    /// die Definition ist.</summary>
+    public IrType InstanceType(GenericInstance instance, Core.Span span)
+    {
+        var id = Intern(instance.Definition, instance.Arguments);
+        return instance.Definition.Kind switch
+        {
+            TypeSymbolKind.Struct => new IrStructType(id),
+            TypeSymbolKind.Enum => new IrEnumType(id),
+            TypeSymbolKind.Interface => new IrInterfaceType(id),
+            _ => new IrRefType(id),
+        };
+    }
+
+    private LyrType Resolve(TypeNode node, Core.Span span)
+    {
+        if (node is NamedType { TypeArguments.Length: 0 } named)
+        {
+            if (_substitutions.Count > 0
+                && _substitutions.Peek().TryGetValue(named.Path[^1], out var substituted))
+                return substituted;
+
+            if (TypeFacts.FromBuiltinName(named.Path[^1]) is { } primitive) return primitive;
+
+            var bound = _binding.Resolve(named);
+            if (bound is ImportBindingSymbol import) bound = import.Target;
+            if (bound is TypeSymbol symbol) return new NamedRef(symbol);
+        }
+
+        if (node is ArrayType { Size: null } array) return new ArrayOf(Resolve(array.Element, span), null);
+        if (node is NullableType option) return new Optional(Resolve(option.Inner, span));
+
+        throw new UnsupportedConstructException(
+            "this type argument is not supported by this compiler version yet", span);
     }
 
     private static Core.Span SpanOf(TypeSymbol symbol) => symbol.Declaration?.Span ?? default;

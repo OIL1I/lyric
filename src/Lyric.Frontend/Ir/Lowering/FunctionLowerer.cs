@@ -52,6 +52,11 @@ internal sealed class FunctionLowerer
     /// wenn es <c>this</c> faengt.</summary>
     private readonly TypeSymbol? _receiver;
 
+    /// <summary>Die Typinstanz, zu der diese Methode gehoert — gesetzt, wenn hier
+    /// <c>Box&lt;int&gt;.get</c> gelowert wird. Dann ist <c>this</c> vom Typ der INSTANZ, nicht
+    /// der Definition: <c>Box</c> allein hat kein Layout, nur <c>Box&lt;int&gt;</c> hat eines.</summary>
+    private readonly GenericInstance? _ownerInstance;
+
     /// <summary>Typargumente der Instanz, für die gelowert wird. In P4 immer leer — der Haken sitzt
     /// in <see cref="LowerType"/>, damit die Worklist-Monomorphisierung später nur die Map füllen
     /// muss und nicht den ganzen Ausdrucks-Pfad umbauen.</summary>
@@ -116,8 +121,10 @@ internal sealed class FunctionLowerer
         GlobalTable globals,
         LambdaTable lambdas,
         InstanceTable instances,
-        TypeSymbol? receiver = null)
+        TypeSymbol? receiver = null,
+        GenericInstance? ownerInstance = null)
     {
+        _ownerInstance = ownerInstance;
         _instances = instances;
         _lambdas = lambdas;
         _receiver = receiver;
@@ -142,7 +149,9 @@ internal sealed class FunctionLowerer
             // In einer Interface-Default-Methode ist 'this' der Interface-Typ selbst — welche
             // Implementierung dahintersteckt, weiss erst die Laufzeit. Ein 'this.foo()' darin wird
             // damit zu einem callvirt, und das ist die richtige Antwort.
-            _thisType = receiver.Kind switch
+            _thisType = _ownerInstance is { } owner
+                ? _typeTable.InstanceType(owner, SpanOfDecl(decl))
+                : receiver.Kind switch
             {
                 TypeSymbolKind.Enum => _typeTable.EnumOf(receiver),
                 TypeSymbolKind.Interface => _typeTable.InterfaceOf(receiver),
@@ -2351,12 +2360,30 @@ internal sealed class FunctionLowerer
         if (_types.TypeOf(expr) is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } owner)
             return LowerStructVariant(expr, owner.Symbol);
 
-        if (_types.TypeOf(expr) is not NamedRef
-            { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } named)
+        // Ein Initialisierer fuer eine Instanz eines generischen Typs ('Box<int> { v = 3 }'):
+        // die Typargumente entscheiden ueber das Layout, also muessen sie beim Internieren dabei
+        // sein — und durch die eigene Substitution, falls die rufende Funktion selbst eine
+        // Instanz ist.
+        TypeId type;
+        TypeSymbol declaring;
+        if (SubstituteType(_types.TypeOf(expr)) is GenericInstance instance
+            && instance.Definition.Kind is TypeSymbolKind.Class or TypeSymbolKind.Struct)
+        {
+            type = _typeTable.Intern(instance.Definition, instance.Arguments);
+            declaring = instance.Definition;
+        }
+        else if (_types.TypeOf(expr) is NamedRef
+                 { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } named)
+        {
+            type = _typeTable.Intern(named.Symbol);
+            declaring = named.Symbol;
+        }
+        else
+        {
             throw NotSupported($"initializer for '{TypeFacts.Display(_types.TypeOf(expr))}' " +
                                "(only classes and structs are lowered)", expr.Span);
+        }
 
-        var type = _typeTable.Intern(named.Symbol);
         var layout = _typeTable.Defs[type.Value];
 
         // Erst alle Werte auswerten (Quelltext-Reihenfolge), dann in Layout-Reihenfolge schreiben.
@@ -2379,7 +2406,7 @@ internal sealed class FunctionLowerer
         //
         // Ohne Default bleibt es beim Fehler: ein stillschweigender Nullwert waere geraten, und
         // die Sema kennt keine Regel, die das erlaubt.
-        var declaredFields = named.Symbol.Declaration switch
+        var declaredFields = declaring.Declaration switch
         {
             ClassDecl c => c.Members.OfType<FieldDecl>().ToArray(),
             StructDecl v => v.Members.OfType<FieldDecl>().ToArray(),
@@ -2402,7 +2429,7 @@ internal sealed class FunctionLowerer
 
         foreach (var name in layout.FieldNames)
             if (!values.ContainsKey(name))
-                throw Bug($"field '{name}' of '{named.Symbol.Name}' has neither a value nor a default");
+                throw Bug($"field '{name}' of '{declaring.Name}' has neither a value nor a default");
 
         // Ein struct-Wert ist zur Laufzeit dasselbe Slot-Array wie ein Klassenobjekt — 'newobj'
         // taugt fuer beides. Der Unterschied steckt allein in den Bindepunkten.
@@ -2477,15 +2504,33 @@ internal sealed class FunctionLowerer
     /// und Feldtyp bestimmen.</summary>
     private (TempId Object, TypeId Type, FieldId Field, IrType FieldType) ResolveFieldAccess(MemberExpr expr)
     {
-        if (_types.TypeOf(expr.Target) is not NamedRef
-            { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } named)
-            throw NotSupported($"member access '.{expr.Member}' on " +
-                               $"'{TypeFacts.Display(_types.TypeOf(expr.Target))}'", expr.Span);
+        // Der Empfaenger kann eine Instanz eines generischen Typs sein ('Box<int>'). Dann
+        // entscheidet SIE ueber das Layout, nicht die Definition — 'Box<int>' und 'Box<string>'
+        // haben verschiedene Feldtypen an derselben Position.
+        var target = SubstituteType(_types.TypeOf(expr.Target));
+
+        var declaring = target switch
+        {
+            NamedRef { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } n => n.Symbol,
+            GenericInstance { Definition.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } g
+                => g.Definition,
+            _ => throw NotSupported($"member access '.{expr.Member}' on " +
+                                    $"'{TypeFacts.Display(target)}'", expr.Span),
+        };
 
         var obj = LowerExpr(expr.Target);
-        var type = _typeTable.Intern(named.Symbol);
-        var field = _typeTable.FieldOf(named.Symbol, expr.Member, expr.Span);
-        return (obj, type, field, _typeTable.Defs[type.Value].FieldTypes[field.Value]);
+        var type = target is GenericInstance instance
+            ? _typeTable.Intern(instance.Definition, instance.Arguments)
+            : _typeTable.Intern(declaring);
+
+        // Index und Feldtyp kommen beide aus dem Layout DIESER Instanz. Ueber das Symbol zu gehen
+        // ginge nicht: 'Box' allein hat kein Layout, nur 'Box<int>' hat eines.
+        var layout = _typeTable.Defs[type.Value];
+        var index = Array.IndexOf(layout.FieldNames, expr.Member);
+        if (index < 0)
+            throw NotSupported($"'{declaring.Name}' has no field '{expr.Member}'", expr.Span);
+
+        return (obj, type, new FieldId(index), layout.FieldTypes[index]);
     }
 
     private TempId LowerCast(CastExpr expr)
@@ -2511,6 +2556,62 @@ internal sealed class FunctionLowerer
     /// Typ <c>fn(int) -&gt; int</c> sagt „ein Argument", und mehr gibt es nicht zu wissen. Dieselbe
     /// Grenze zieht C# bei Delegates, aus demselben Grund.</para>
     /// </summary>
+    /// <summary>
+    /// Ein Methodenaufruf auf einer Instanz eines generischen Typs (§12).
+    ///
+    /// <para>Die Methode wird <b>pro Typinstanz</b> monomorphisiert: <c>Box&lt;int&gt;.get</c> und
+    /// <c>Box&lt;string&gt;.get</c> sind zwei Funktionen. Die Substitution kommt dabei vom TYP und
+    /// nicht vom Aufruf — <c>get()</c> hat selbst keine Typparameter, sein <c>T</c> ist das von
+    /// <c>Box</c>.</para>
+    /// </summary>
+    private TempId? LowerGenericMethodCall(MemberExpr member, GenericInstance owner, CallExpr expr)
+    {
+        if (_types.RefOf(member) is not FunctionSymbol method)
+            throw NotSupported($"call to '{member.Member}' on " +
+                               $"'{TypeFacts.Display(owner)}'", expr.Span);
+
+        if (method.Declaration is not FunctionDecl declaration)
+            throw NotSupported($"call to '{member.Member}' (no declaration)", expr.Span);
+
+        var target = _instances.RequestMethod(method, declaration, owner, expr.Span);
+
+        var receiver = LowerExpr(member.Target);
+        var supplied = MaterializeArguments(declaration, expr.Arguments, member.Member, expr.Span);
+
+        // MaterializeArguments liefert bereits gelowerte Werte samt Defaults und 'params'
+        // (P5b-5) — der Empfaenger kommt davor, wie bei jedem Methodenaufruf (ADR-014).
+        var args = new TempId[supplied.Length + 1];
+        args[0] = receiver;
+        Array.Copy(supplied, 0, args, 1, supplied.Length);
+
+        var returns = ReturnTypeOfInstanceMethod(declaration, owner, expr.Span);
+        if (IsVoid(returns))
+        {
+            _b.Emit(new Call(null, target, args, expr.Span));
+            return null;
+        }
+
+        var dest = _slots.NewTemp(returns);
+        _b.Emit(new Call(dest, target, args, expr.Span));
+        _fresh.Add(dest);
+        return dest;
+    }
+
+    /// <summary>Der Rueckgabetyp einer Methode, gesehen aus der Instanz: das <c>T</c> in
+    /// <c>fn get(): T</c> ist das Typargument des Empfaengers.</summary>
+    private IrType ReturnTypeOfInstanceMethod(FunctionDecl declaration, GenericInstance owner,
+        Core.Span span)
+    {
+        if (declaration.ReturnType is null) return VoidType;
+
+        if (declaration.ReturnType is NamedType { TypeArguments.Length: 0 } named)
+            for (var i = 0; i < owner.Definition.Generics.Length; i++)
+                if (owner.Definition.Generics[i].Name == named.Path[^1])
+                    return LowerType(owner.Arguments[i], span);
+
+        return _typeTable.Lower(declaration.ReturnType);
+    }
+
     private TempId? LowerIndirectCall(CallExpr expr)
     {
         if (LowerType(_types.TypeOf(expr.Callee), expr.Callee.Span) is not IrFunctionType signature)
@@ -2581,6 +2682,13 @@ internal sealed class FunctionLowerer
                 bound = _types.RefOf(member);
                 receiver = LowerExpr(member.Target);
                 break;
+
+            // Der Empfaenger ist eine Instanz eines generischen Typs: 'Box<int>.get()'. Die
+            // Methode gehoert der INSTANZ, nicht der Definition — ihr Rueckgabetyp kann T sein.
+            case MemberExpr member
+                when SubstituteType(_types.TypeOf(member.Target)) is GenericInstance owner
+                     && owner.Definition.Kind is TypeSymbolKind.Class or TypeSymbolKind.Struct:
+                return LowerGenericMethodCall(member, owner, expr);
 
             // Shape.Circle(2.0) — eine Tuple-Variante. Kein Call, sondern eine Konstruktion.
             case MemberExpr member when _types.RefOf(member) is EnumVariantSymbol:
@@ -3060,6 +3168,15 @@ internal sealed class FunctionLowerer
             return new IrOptionalType(inner);
         }
 
+        // Eine Instanz eines generischen Typs (§12). Die Typargumente koennen selbst
+        // Typ-Parameter sein, wenn die rufende Funktion schon eine Instanz ist — deshalb werden
+        // sie hier durch die eigene Substitution geschickt, bevor die Instanz interniert wird.
+        if (type is GenericInstance instance)
+            return _typeTable.InstanceType(
+                new GenericInstance(instance.Definition,
+                    instance.Arguments.Select(a => SubstituteType(a)).ToArray()),
+                span);
+
         // Coroutine<T> IST ein Funktionswert ohne Parameter (Sprache.md §8): 'resume co' setzt
         // sie fort und liefert den naechsten Wert — das ist ein Aufruf, und die Coroutine
         // unterscheidet sich von einer gewoehnlichen Funktion nur darin, WO sie beim naechsten
@@ -3091,6 +3208,20 @@ internal sealed class FunctionLowerer
     /// <see cref="TypeTable"/> — dieselbe Stelle, die auch Feld- und Parametertypen auflöst, damit
     /// eine Fabrik <c>static fn new(): P</c> denselben Typ liefert wie ein Feld vom Typ
     /// <c>P</c>.</summary>
+    /// <summary>Setzt die Typargumente dieser Instanz in einen Typ ein — rekursiv, weil ein
+    /// Argument selbst zusammengesetzt sein kann (<c>Box&lt;T[]&gt;</c>).</summary>
+    private LyrType SubstituteType(LyrType type) => type switch
+    {
+        TypeParamType p when _substitution.TryGetValue(p.Param, out var bound) => bound,
+        ArrayOf a => new ArrayOf(SubstituteType(a.Element), a.Size),
+        Optional o => new Optional(SubstituteType(o.Inner)),
+        GenericInstance g => new GenericInstance(g.Definition,
+            g.Arguments.Select(SubstituteType).ToArray()),
+        _ => type,
+    };
+
+    private static Core.Span SpanOfDecl(FunctionDecl decl) => decl.Span;
+
     private IrType LowerDeclaredReturnType()
     {
         if (_decl!.ReturnType is null) return VoidType;

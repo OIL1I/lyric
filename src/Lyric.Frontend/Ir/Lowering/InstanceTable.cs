@@ -26,7 +26,8 @@ internal sealed class InstanceTable
     /// <summary>Eine angeforderte, noch nicht gelowerte Instanz.</summary>
     private readonly record struct Pending(
         FunctionDecl Decl, string Name, FunctionId Id, TypeSymbol? Receiver,
-        IReadOnlyDictionary<GenericParamSymbol, LyrType> Substitution);
+        IReadOnlyDictionary<GenericParamSymbol, LyrType> Substitution,
+        GenericInstance? Owner = null);
 
     private readonly List<Pending> _pending = new();
 
@@ -86,6 +87,32 @@ internal sealed class InstanceTable
     }
 
     /// <summary>
+    /// Fordert eine <b>Methode einer Typinstanz</b> an: <c>Box&lt;int&gt;.get</c>.
+    ///
+    /// <para>Die Substitution kommt vom Typ und nicht vom Aufruf — <c>get()</c> hat selbst keine
+    /// Typparameter, sein <c>T</c> ist das von <c>Box</c>. Deshalb eine eigene Anforderung und
+    /// nicht dieselbe wie fuer generische Funktionen.</para>
+    /// </summary>
+    public FunctionId RequestMethod(FunctionSymbol method, FunctionDecl decl,
+        GenericInstance owner, Core.Span span)
+    {
+        var ownerName =
+            $"{owner.Definition.Name}<{string.Join(", ", owner.Arguments.Select(TypeFacts.Display))}>";
+        var name = $"{ownerName}.{method.Name}";
+        if (_byKey.TryGetValue(name, out var existing)) return existing;
+
+        var substitution = new Dictionary<GenericParamSymbol, LyrType>(
+            ReferenceEqualityComparer.Instance);
+        for (var i = 0; i < owner.Definition.Generics.Length && i < owner.Arguments.Length; i++)
+            substitution[owner.Definition.Generics[i]] = owner.Arguments[i];
+
+        var id = _ids.Next();
+        _byKey[name] = id;
+        _pending.Add(new Pending(decl, name, id, owner.Definition, substitution, owner));
+        return id;
+    }
+
+    /// <summary>
     /// Lowert alle angeforderten Instanzen — <b>als Worklist</b>, weil eine Instanz beim Lowern
     /// weitere anfordern kann: <c>id&lt;T&gt;</c> ruft <c>wrap&lt;T&gt;</c>, und erst hier steht
     /// fest, welches <c>T</c> gemeint war.
@@ -100,7 +127,7 @@ internal sealed class InstanceTable
         {
             var p = _pending[_lowered];
             lowered.Add((p.Id, new FunctionLowerer(p.Decl, p.Name, types, functions, imports, typeTable,
-                p.Substitution, globals, lambdas, this, p.Receiver).Run()));
+                p.Substitution, globals, lambdas, this, p.Receiver, p.Owner).Run()));
         }
 
         return lowered;
