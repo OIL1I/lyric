@@ -185,7 +185,7 @@ Globale Bindings auf Modul-Ebene dürfen nur `let` sein (kein globales Mutable-S
 ```lyr
 let xs: int[]          = [1, 2, 3];           // dynamisches Array
 let buf: byte[16]      = [0, 0, ..., 0];      // fixed-size Array
-let pair: (int, string) = (42, "hi");          // Tupel (max arity 3)
+let pair: (int, string) = (42, "hi");          // Tupel (ab 2 Elementen, keine Obergrenze)
 let user: ?User        = findUser(id);         // nullable
 let fn: fn(int) -> int = (x) => x * 2;         // Funktionstyp
 ```
@@ -204,6 +204,31 @@ let c = a + [9];        // Konkatenation
 Wenn du etwas brauchst, das **wächst**, nimm `std.collections.List<T>`. Es hält intern ein `T[]`,
 kopiert bei Bedarf um und kann `.push(v)`/`.pop()`. Der Index-Operator funktioniert dort genauso —
 `List<T>` implementiert das `Indexable<T>`-Interface, an das `[i]` für alles außer `T[]` bindet.
+
+#### Tupel auseinandernehmen
+
+An die Elemente kommst du über **Destructuring** — einen Zugriff wie `t.0` gibt es absichtlich
+nicht:
+
+```lyr
+fn divmod(a: int, b: int): (int, int) {
+    return (a / b, a % b);
+}
+
+let (q, r) = divmod(17, 5);        // q = 3, r = 2
+let (_, rest) = divmod(9, 4);      // '_' bindet nichts
+let ((x0, y0), (x1, y1)) = ecken(); // Muster folgen der Form des Wertes
+```
+
+Das geht auch mit `var`, dann sind die Namen veränderlich. Und ein `match` zerlegt genauso:
+
+```lyr
+let sum = match (punkt) { (a, b) => a + b };
+```
+
+Ein Tupel ist der Fall „mehrere Werte zurückgeben, ohne dafür einen Typ zu erfinden". Wenn die
+Positionen eine Bedeutung tragen, die man benennen möchte, nimm einen `struct` — dort haben die
+Felder Namen.
 
 ### 5.2.1 Klammern in Typen
 

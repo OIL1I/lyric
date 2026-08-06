@@ -71,6 +71,43 @@ internal sealed class TypeTable
     /// </summary>
     private readonly Stack<IReadOnlyDictionary<string, LyrType>> _substitutions = new();
 
+    /// <summary>Ein Tupel-Layout je Elementfolge — <c>(int, int)</c> gibt es genau einmal.</summary>
+    private readonly List<(IrType[] Elements, TypeId Id)> _tuples = new();
+
+    /// <summary>
+    /// Der Typ eines Tupels (Sprache.md §4): ein Objekt mit einem Feld je Element.
+    ///
+    /// <para>Kein eigener IR-Typ und kein eigener Opcode — dieselbe Entscheidung wie bei Zellen
+    /// und Closure-Environments (ADR-018). Ein Tupel IST ein Objekt mit N Feldern, also tun es
+    /// <c>newobj</c> und <c>ldfld</c>; der Verifier prueft es wie jedes andere Objekt, und das
+    /// Bytecode-Format bleibt unveraendert.</para>
+    ///
+    /// <para><b>Referenz statt Wert-Semantik</b>, und das ist nicht beobachtbar: ein Tupel ist
+    /// unveraenderlich. Es gibt keinen Elementzugriff und damit keine Zuweisung an ein Element —
+    /// der einzige Weg hinein ist Destructuring, und der liest. Damit ist „kopieren" von
+    /// „teilen" nicht unterscheidbar, und die Kopie waere nur teurer. Dieselbe Begruendung wie
+    /// bei den <c>let</c>-Captures in ADR-018.</para>
+    ///
+    /// <para>Interniert, weil zwei Tupel derselben Form dasselbe Layout haben. Die Feldnamen sind
+    /// die Positionen — sie stehen nur in Disassembly und Diagnose.</para>
+    /// </summary>
+    public IrRefType TupleOf(IrType[] elements)
+    {
+        foreach (var (existing, id) in _tuples)
+            if (existing.Length == elements.Length
+                && existing.Zip(elements).All(pair => IrType.Equal(pair.First, pair.Second)))
+                return new IrRefType(id);
+
+        var fresh = new TypeId(_defs.Count);
+        var names = new string[elements.Length];
+        for (var i = 0; i < names.Length; i++)
+            names[i] = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        _defs.Add(new IrTypeDef("<tuple>", elements, names));
+        _tuples.Add((elements, fresh));
+        return new IrRefType(fresh);
+    }
+
     /// <summary>Ist dieser Typ eine Zelle? Gefragt wird das beim Lesen eines Captures: eine
     /// gefangene Zelle transportiert eine Variable, und was das Programm sehen will, ist ihr
     /// Inhalt.</summary>
@@ -495,6 +532,9 @@ internal sealed class TypeTable
         // Ein Funktionstyp traegt seine Signatur strukturell und braucht deshalb keinen Eintrag in
         // dieser Tabelle — anders als jeder benannte Typ. Rekursiv gelowert, weil Parameter und
         // Rueckgabe selbst Klassen, Enums oder wieder Funktionen sein duerfen.
+        // Ein Tupel: ein Objekt mit einem Feld je Element (§4).
+        Sema.TupleOf t => TupleOf(t.Elements.Select(e => Lower(e, span)).ToArray()),
+
         // Eine Instanz eines generischen Typs: 'Box<int>' ist ein eigener Tabellen-Eintrag mit
         // eigenem Layout (§12).
         GenericInstance g => InstanceType(g, span),
@@ -530,6 +570,10 @@ internal sealed class TypeTable
 
         if (node is NullableType option)
             return new IrOptionalType(Lower(option.Inner, option.Inner.Span));
+
+        // '(A, B)' — ein Tupel, geschrieben als Feld-, Parameter- oder Rueckgabetyp (§4).
+        if (node is AST.TupleType written)
+            return TupleOf(written.Elements.Select(e => Lower(e, e.Span)).ToArray());
 
         // 'fn(A, B) -> R' — geschrieben in Parameter- und Rueckgabepositionen. Braucht keinen
         // Tabelleneintrag: der Typ traegt seine Signatur selbst.

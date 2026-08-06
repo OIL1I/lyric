@@ -31,6 +31,7 @@ public sealed class CommandTests
         { "generator.lyr", 40 },
         { "fizzbuzz.lyr", 0 },
         { "greet.lyr", 0 },
+        { "tuples.lyr", 26 },
     };
 
     [Theory]

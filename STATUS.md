@@ -371,6 +371,28 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **Tupel** (Sprache.md §4) — das letzte Konstrukt ohne Slice. `examples/tuples.lyr` -> **26**,
+  1562 Tests gruen.
+  - **Ein Tupel ist ein Objekt mit N Feldern**, wie Zelle und Closure-Environment (ADR-018).
+    Kein neuer IR-Typ, kein Opcode, kein Format-Bump — `newobj` und `ldfld` reichen.
+  - **Referenz- statt Wert-Semantik, und das ist nicht beobachtbar**: ein Tupel ist
+    unveraenderlich. Es gibt keinen Elementzugriff und damit keine Zuweisung an ein Element; der
+    einzige Weg hinein ist Destructuring, und der liest. „Kopieren" und „teilen" sind damit
+    ununterscheidbar, und die Kopie waere nur teurer — dieselbe Begruendung wie bei den
+    `let`-Captures.
+  - **Destructuring statt `t.0`** (entschieden): `let (a, b) = paar;` ist ein eigenes Statement,
+    weil es mehrere Namen bindet und sein Initialisierer Pflicht ist. Ein Elementzugriff daneben
+    waeren zwei Mechanismen fuer dieselbe Sache.
+  - **Der Doku-Widerspruch ist aufgeloest**: `Sprache.md` sagt „arity ≥ 2, keine Obergrenze", die
+    Doku sagte „max 3". Die Grammatik ist der Vertrag, also wurde die Doku korrigiert.
+  - **Der Initialisierer laeuft genau einmal** — ein Test haelt das fest, weil `let (a, b) = f();`
+    sonst leicht zu zwei Aufrufen wird.
+  - **Zwei Tests sind ersatzlos entfallen**, und das ist ein Ergebnis fuer sich:
+    `Non_scalar_types_are_reported_by_name` und der Layout-Dedup-Test hatten **keinen Ausloeser
+    mehr**. Es gibt keinen Typ, den die Sema akzeptiert und das Lowering ablehnt — Arrays fielen
+    mit P2, Structs mit P4, Funktionstypen mit P6, Coroutinen mit P7, generische Instanzen mit P8,
+    und Tupel waren der letzte. Was die Tests absicherten, steht als Kommentar an ihrer Stelle.
+
 - [x] **Inventur-Sweep ueber die alten Slices** (2026-08-06, zweite Runde). **31 von 38**
   Konstrukten laufen bis zur IR — vorher 12, dann 20. 1554 Tests gruen.
   - **`match` als Statement, wo jeder Arm returnt, war eine Scope-Grenze.** Also das haeufigste

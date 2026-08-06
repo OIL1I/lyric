@@ -481,6 +481,11 @@ Statement       = Block
                 | ExprStmt .
 
 BindingStmt     = ( 'let' | 'var' ) IDENTIFIER [ ':' TypeExpr ] [ '=' Expr ] ';' .
+DestructuringStmt = ( 'let' | 'var' ) TuplePattern [ ':' TypeExpr ] '=' Expr ';' .
+(* Zerlegt ein Tupel in mehrere Namen: 'let (a, b) = paar;'. Der Initialisierer ist PFLICHT —
+   ohne ihn gaebe es nichts zu zerlegen. Innerhalb des Musters sind Namen, '_' und weitere
+   Tupel-Muster erlaubt, aber nichts, was FEHLSCHLAGEN kann: eine Bindung testet nicht.
+   Einen Elementzugriff ('t.0') gibt es bewusst nicht — dies ist der Weg an die Elemente. *)
 
 IfStmt          = 'if' '(' Expr ')' Block [ 'else' ( Block | IfStmt ) ] .
 

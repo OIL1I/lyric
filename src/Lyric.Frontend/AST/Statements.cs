@@ -15,6 +15,20 @@ public sealed record Block(Stmt[] Statements, Span Span) : Stmt(Span);
 // let (immutable) / var (mutable); Type und Initializer je optional (§5, DAA-Regeln in Sema).
 public sealed record BindingStmt(bool IsMutable, string Name, TypeNode? Type, Expr? Initializer, Span Span) : Stmt(Span);
 
+/// <summary>
+/// <c>let (a, b) = paar;</c> — bindet mehrere Namen aus einem Tupel (Sprache.md §4).
+///
+/// <para>Ein eigenes Statement und keine Variante von <see cref="BindingStmt"/>: dort steht ein
+/// Name, hier stehen mehrere, und der Initialisierer ist <b>Pflicht</b> — ohne ihn gaebe es
+/// nichts zu zerlegen. Der Unterschied im Typ macht die Verwechslung unmoeglich, statt sie durch
+/// eine Bedingung im Lowering auszuschliessen.</para>
+///
+/// <para>Ein Elementzugriff (<c>t.0</c>) existiert bewusst nicht: das hier IST der Weg an die
+/// Elemente. Zwei Wege waeren zwei Mechanismen fuer dieselbe Sache.</para>
+/// </summary>
+public sealed record DestructuringStmt(bool IsMutable, TuplePattern Pattern, TypeNode? Type,
+    Expr Initializer, Span Span) : Stmt(Span);
+
 // Else ist Block, IfStmt (else-if) oder null.
 public sealed record IfStmt(Expr Condition, Block Then, Stmt? Else, Span Span) : Stmt(Span);
 

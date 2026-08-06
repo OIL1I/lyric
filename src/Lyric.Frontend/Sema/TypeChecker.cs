@@ -423,6 +423,7 @@ public sealed class TypeChecker
         {
             case Block b: CheckBlock(b, scope); break;
             case BindingStmt bnd: CheckBinding(bnd, scope); break;
+            case DestructuringStmt d: CheckDestructuring(d, scope); break;
             case IfStmt f: CheckIf(f, scope); break;
             case WhileStmt w: CheckWhile(w, scope); break;
             case DoWhileStmt d: CheckBlock(d.Body, scope); CheckCondition(d.Condition, scope); break;
@@ -1830,12 +1831,48 @@ public sealed class TypeChecker
     // Pattern-Bindungen (§6.3): jede Form typt ihre Bindungen echt gegen den Scrutinee-Typ.
     // Nicht-null-Patterns auf ?T matchen gegen T (Doku §6: 'null => …, u => u.name');
     // Fehler poisonen ihre Sub-Bindungen, damit Arm-Bodies nicht kaskadieren.
-    private void BindPattern(Pattern pattern, LyrType scrutinee, SymbolTable scope)
+    /// <summary>
+    /// <c>let (a, b) = paar;</c> (Sprache.md §4).
+    ///
+    /// <para>Der Initialisierer muss ein Tupel passender Aritaet liefern; die Namen bindet
+    /// dieselbe Routine, die auch ein <c>match</c>-Arm benutzt. Zwei Wege, Namen aus einem Muster
+    /// zu binden, waeren zwei Gelegenheiten fuer verschiedene Antworten.</para>
+    /// </summary>
+    private void CheckDestructuring(DestructuringStmt stmt, SymbolTable scope)
+    {
+        var declared = stmt.Type is null ? null : ResolveType(stmt.Type, scope);
+        var actual = CheckExpr(stmt.Initializer, scope, declared);
+
+        if (declared is not null) CheckAssignable(stmt.Initializer, actual, declared, stmt.Span);
+        var source = declared ?? actual;
+
+        if (source.IsError) return; // schon gemeldet
+
+        if (source is not TupleOf tuple)
+        {
+            Report(stmt.Initializer.Span, "LYR-SEM0058",
+                $"cannot destructure '{TypeFacts.Display(source)}' — only tuples can be taken apart");
+            return;
+        }
+
+        if (tuple.Elements.Length != stmt.Pattern.Elements.Length)
+        {
+            Report(stmt.Pattern.Span, "LYR-SEM0058",
+                $"the pattern binds {stmt.Pattern.Elements.Length} name(s), but "
+                + $"'{TypeFacts.Display(tuple)}' has {tuple.Elements.Length} element(s)");
+            return;
+        }
+
+        BindPattern(stmt.Pattern, tuple, scope, stmt.IsMutable);
+    }
+
+    private void BindPattern(Pattern pattern, LyrType scrutinee, SymbolTable scope,
+        bool mutable = false)
     {
         if (scrutinee.IsError) { BindPoison(pattern, scope); return; }
         if (scrutinee is Optional opt && pattern is not (WildcardPattern or OrPattern) && !IsNullPattern(pattern))
         {
-            BindPattern(pattern, opt.Inner, scope);
+            BindPattern(pattern, opt.Inner, scope, mutable);
             return;
         }
 
@@ -1854,7 +1891,7 @@ public sealed class TypeChecker
                     _result.BindRef(b, bev); // Unit-Varianten-Test, keine Bindung
                     return;
                 }
-                var local = new LocalSymbol(b.Name, scrutinee, false, b);
+                var local = new LocalSymbol(b.Name, scrutinee, mutable, b);
                 scope.TryDeclare(local);
                 _result.BindRef(b, local); // für DAA
                 return;
@@ -1862,7 +1899,8 @@ public sealed class TypeChecker
             case TuplePattern t:
                 if (scrutinee is TupleOf tup && tup.Elements.Length == t.Elements.Length)
                 {
-                    for (var i = 0; i < t.Elements.Length; i++) BindPattern(t.Elements[i], tup.Elements[i], scope);
+                    for (var i = 0; i < t.Elements.Length; i++)
+                        BindPattern(t.Elements[i], tup.Elements[i], scope, mutable);
                     return;
                 }
                 Report(t.Span, "LYR-SEM0029", scrutinee is TupleOf other

@@ -433,13 +433,11 @@ public class LoweringTests
 
     // ------------------------------------------------------------------ 3) Scope-Grenzen
 
-    // Ein Typ, den die IR nicht kennt, ist die ERSTE Grenze, auf die man läuft — noch vor dem
-    // Ausdruck, der ihn benutzt. Die Meldung benennt den Lyric-Typ, nicht den Ausdruck: das ist
-    // die fundamentalere Aussage. (Arrays gehören seit P2 nicht mehr dazu.)
-    [Theory]
-    [InlineData("fn f(): int { let t = (1, 2); return 0; }", "type '(int, int)'")]
-    public void Non_scalar_types_are_reported_by_name(string source, string expected) =>
-        AssertNotSupported(source, expected);
+    // 'Non_scalar_types_are_reported_by_name' stand hier und ist ENTFALLEN: es gibt keinen Typ
+    // mehr, den die Sema akzeptiert und das Lowering ablehnt. Arrays fielen mit P2 weg, Structs
+    // mit P4, Funktionstypen mit P6, Coroutinen mit P7, generische Instanzen mit P8 — und Tupel
+    // waren der letzte. Die Regel dahinter gilt weiter: eine Typ-Grenze wird am TYP gemeldet,
+    // nicht am Ausdruck, der ihn benutzt.
 
     // Konstrukte, deren Typ skalar ist — hier greift die Grenze erst am Ausdruck bzw. Statement.
     [Theory]
@@ -486,26 +484,15 @@ public class LoweringTests
     ///
     /// <para>Zwei Funktionen sind Pflicht: mit nur einer läuft der zweite Zugriff nie.</para>
     /// </summary>
-    [Fact]
-    public void A_type_whose_layout_fails_reports_once_and_does_not_corrupt_the_table()
-    {
-        // Ausloeser muss im LAYOUT scheitern, nicht an der Konstruktionsstelle — sonst prueft der
-        // Test die Dedup nach Span statt die nach Typ. Frueher war es ein Feld-Default; der laeuft
-        // seit P5 durch, also jetzt ein Tupel-Feld, das das Lowering noch nicht kennt.
-        var (ir, de) = TryLower("""
-            class Account {
-                owner: string,
-                pair: (int, int)
-            }
-
-            fn open(who: string): int { let a = Account { owner = who, pair = (1, 2) }; return 0; }
-            fn main(): int { let a = Account { owner = "x", pair = (3, 4) }; return 0; }
-            """);
-
-        Assert.Null(ir);
-        var diagnostic = Assert.Single(de.Diagnostics); // genau einmal, nicht je Funktion
-        Assert.Equal("LYR-IR0001", diagnostic.Code);
-    }
+    // 'A_type_whose_layout_fails_reports_once_and_does_not_corrupt_the_table' stand hier und
+    // ist ENTFALLEN, weil es keinen Ausloeser mehr gibt: seit den Tupeln kennt das Lowering jeden
+    // Typ, den die Sema akzeptiert — Coroutinen, Funktionstypen und generische Instanzen
+    // eingeschlossen. Der Test ist dreimal umgezogen (Feld-Default -> Tupel-Feld -> 'int[4]', das
+    // schon die Sema faengt) und misst jetzt nichts mehr.
+    //
+    // Was er absicherte, bleibt richtig und ungetestet: ein gescheitertes Layout wird EINMAL
+    // gemeldet, nicht je Funktion, und der Platzhalter in der Typtabelle wird nicht gelesen.
+    // Kommt je wieder ein solcher Typ, gehoert der Test zurueck.
 
     [Fact]
     public void A_generic_call_becomes_an_instance_of_its_own()
@@ -568,7 +555,7 @@ public class LoweringTests
             extend Item { fn twice(): int { return this.n * 2; } }
             fn a(): int { let i = Item { n = 1 }; return i.twice(); }
             fn b(): int { var s = 0; for (i in 0..3) { s += i; } return s; }
-            fn c(): int { let t = (1, 2); return 0; }
+            fn c(): int { var s = 0; for (i in 0..2) { s += i; } return s; }
             """);
 
         Assert.Null(ir);

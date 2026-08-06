@@ -261,7 +261,7 @@ public sealed partial class Parser
             _buffer.Advance();
             if (_buffer.Check(TokenKind.Let) || _buffer.Check(TokenKind.Var))
             {
-                var binding = ParseBinding();
+                var binding = RequireNamedBinding(ParseBinding(), "static let");
                 return new StaticBindingDecl(isPublic, binding, Span.Union(start, binding.Span));
             }
             return ParseFunctionDecl(isPublic, start, isStatic: true);
@@ -393,8 +393,23 @@ public sealed partial class Parser
         if (_buffer.Check(TokenKind.Var))
             _de.Report("LYR-PAR0027", Severity.Error, _buffer.Current.Span,
                 "global bindings must be immutable — use 'let', not 'var'");
-        var binding = ParseBinding();
+        var binding = RequireNamedBinding(ParseBinding(), "a module-level 'let'");
         return new GlobalBindingDecl(isPublic, binding, Span.Union(start, binding.Span));
+    }
+
+    /// <summary>
+    /// Eine Konstante hat <b>einen</b> Namen. Destructuring gibt es nur fuer lokale Bindungen: ein
+    /// globaler Slot ist eine benannte Sache (P5c), und mehrere Namen aus einem Ausdruck zu
+    /// ziehen hiesse, mehrere Slots aus einer Deklaration entstehen zu lassen.
+    /// </summary>
+    private BindingStmt RequireNamedBinding(Stmt parsed, string what)
+    {
+        if (parsed is BindingStmt named) return named;
+
+        _de.Report("LYR-PAR0020", Severity.Error, parsed.Span,
+            $"{what} needs a single name — destructuring is only allowed on local bindings");
+
+        return new BindingStmt(false, "<error>", null, null, parsed.Span);
     }
 
     private Decl ParseTypeAlias(bool isPublic, Span start)

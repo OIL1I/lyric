@@ -1292,4 +1292,68 @@ public class VmTests
                 return r;
             }
             """).AsI64);
+
+    // ------------------------------------------------------------------ Tupel (§4)
+
+    [Fact]
+    public void A_tuple_can_be_destructured() =>
+        Assert.Equal(3, Run("fn main(): int { let (a, b) = (1, 2); return a + b; }").AsI64);
+
+    [Fact]
+    public void A_wildcard_binds_nothing() =>
+        // '_' liest das Feld gar nicht erst — ein ldfld ohne Abnehmer waere toter Code.
+        Assert.Equal(7, Run("fn main(): int { let (a, _) = (7, 2); return a; }").AsI64);
+
+    [Fact]
+    public void Tuple_patterns_nest() =>
+        Assert.Equal(6, Run("""
+            fn main(): int { let (a, (b, c)) = (1, (2, 3)); return a + b + c; }
+            """).AsI64);
+
+    [Fact]
+    public void A_tuple_is_a_return_type() =>
+        // Der Fall, fuer den es Tupel gibt: mehrere Werte zurueckgeben, ohne einen Typ dafuer zu
+        // erfinden.
+        Assert.Equal(12, Run("""
+            fn pair(): (int, int) { return (3, 4); }
+            fn main(): int { let (a, b) = pair(); return a * b; }
+            """).AsI64);
+
+    [Fact]
+    public void The_initializer_runs_once() =>
+        // 'let (a, b) = f();' darf f NICHT zweimal rufen. Der Zaehler liegt in einer Zelle
+        // (ADR-018), weil ein globales 'var' nicht erlaubt ist — bei zwei Aufrufen stuende hier 2.
+        Assert.Equal(1, Run("""
+            fn main(): int {
+                var calls = 0;
+                let count = (): (int, int) => { calls += 1; return (0, 0); };
+                let (a, b) = count();
+                return calls;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void A_match_takes_a_tuple_apart() =>
+        // Dasselbe Muster wie im Destructuring, und deshalb dieselbe Routine im Lowering.
+        Assert.Equal(3, Run("""
+            fn main(): int { let t = (1, 2); return match (t) { (a, b) => a + b }; }
+            """).AsI64);
+
+    [Fact]
+    public void A_var_destructuring_binds_mutable_names() =>
+        Assert.Equal(7, Run("""
+            fn main(): int { var (a, b) = (1, 2); a = 5; return a + b; }
+            """).AsI64);
+
+    [Fact]
+    public void Tuples_of_the_same_shape_share_one_layout() =>
+        // Interniert: zwei '(int, int)' sind derselbe Tabellen-Eintrag. Sonst wuechse die
+        // Typtabelle mit der Zahl der LITERALE statt mit der Zahl der Formen.
+        Assert.Equal(10, Run("""
+            fn main(): int {
+                let (a, b) = (1, 2);
+                let (c, d) = (3, 4);
+                return a + b + c + d;
+            }
+            """).AsI64);
 }

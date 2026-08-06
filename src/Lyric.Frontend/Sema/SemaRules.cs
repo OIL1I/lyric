@@ -130,6 +130,7 @@ public sealed class SemaRules
             case Block b: foreach (var s in b.Statements) WalkStmt(s); break;
             case ExprStmt es: CheckExprStmt(es); WalkExpr(es.Expr); break;
             case BindingStmt bd: if (bd.Initializer is not null) WalkExpr(bd.Initializer); break;
+            case DestructuringStmt d: WalkExpr(d.Initializer); break;
             case IfStmt f: WalkExpr(f.Condition); WalkStmt(f.Then); if (f.Else is not null) WalkStmt(f.Else); break;
             case WhileStmt w: WalkExpr(w.Condition); WalkStmt(w.Body); break;
             case DoWhileStmt d: WalkStmt(d.Body); WalkExpr(d.Condition); break;

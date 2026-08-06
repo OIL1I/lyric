@@ -63,10 +63,15 @@ public sealed partial class Parser
         return new Block(stmts.ToArray(), Span.Union(open.Span, close.Span));
     }
 
-    private BindingStmt ParseBinding()
+    private Stmt ParseBinding()
     {
         var kw = _buffer.Advance(); // let / var
         var isMutable = kw.TokenKind == TokenKind.Var;
+
+        // 'let (a, b) = …' — Destructuring. Die Klammer entscheidet, und sie kann an dieser
+        // Stelle nichts anderes einleiten: ein Bindungsname ist ein Bezeichner.
+        if (_buffer.Check(TokenKind.LParen)) return ParseDestructuring(kw, isMutable);
+
         var nameTok = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0020",
             $"expected binding name, got {_buffer.Current.TokenKind}");
         TypeNode? type = _buffer.Match(TokenKind.Colon) ? ParseType() : null;
@@ -74,6 +79,43 @@ public sealed partial class Parser
         var semi = ExpectSemicolon();
         return new BindingStmt(isMutable, _sm.Slice(nameTok.Span).ToString(), type, init,
             Span.Union(kw.Span, semi.Span));
+    }
+
+    /// <summary>
+    /// <c>let (a, b) = paar;</c> (Sprache.md §4).
+    ///
+    /// <para>Das Muster wird als gewoehnliches Tupel-Pattern geparst — dasselbe, das ein
+    /// <c>match</c>-Arm benutzt. Damit gilt hier automatisch, was dort gilt: verschachtelte
+    /// Muster, <c>_</c> als Platzhalter, und die Aritaet muss passen.</para>
+    /// </summary>
+    private Stmt ParseDestructuring(Token kw, bool isMutable)
+    {
+        // ParseOrPattern, nicht ParsePattern: letzteres ist der Test-Einstieg und verlangt, dass
+        // danach die Datei zu Ende ist.
+        var pattern = ParseOrPattern();
+        if (pattern is not TuplePattern tuple)
+        {
+            _de.Report("LYR-PAR0020", Severity.Error, pattern.Span,
+                "a destructuring binding needs a tuple pattern like '(a, b)'");
+            tuple = new TuplePattern([], pattern.Span);
+        }
+
+        TypeNode? type = _buffer.Match(TokenKind.Colon) ? ParseType() : null;
+
+        // Der Initialisierer ist Pflicht: ohne ihn gaebe es nichts zu zerlegen, und die
+        // Definite-Assignment-Analyse haette mehrere Namen ohne Wert zu verwalten.
+        if (!_buffer.Match(TokenKind.Equal))
+        {
+            _de.Report("LYR-PAR0020", Severity.Error, _buffer.Current.Span,
+                "a destructuring binding needs an initializer ('let (a, b) = …;')");
+            var bad = ExpectSemicolon();
+            return new DestructuringStmt(isMutable, tuple, type, new ErrorExpr(bad.Span),
+                Span.Union(kw.Span, bad.Span));
+        }
+
+        var init = ParseExpr(0);
+        var semi = ExpectSemicolon();
+        return new DestructuringStmt(isMutable, tuple, type, init, Span.Union(kw.Span, semi.Span));
     }
 
     private Stmt ParseIf()

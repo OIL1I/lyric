@@ -53,6 +53,20 @@ internal sealed class FlowAnalyzer
     }
 
     // Liefert den assigned-Set NACH den Statements (sequentiell).
+    /// <summary>Jede Namensbindung in einem Muster — auch aus verschachtelten Tupeln.
+    /// <c>_</c> bindet nichts und taucht deshalb nicht auf.</summary>
+    private static IEnumerable<Pattern> BoundNames(Pattern pattern)
+    {
+        switch (pattern)
+        {
+            case BindingPattern: yield return pattern; break;
+            case TuplePattern t:
+                foreach (var element in t.Elements)
+                    foreach (var inner in BoundNames(element)) yield return inner;
+                break;
+        }
+    }
+
     private HashSet<Symbol> AnalyzeStatements(IEnumerable<Stmt> stmts, HashSet<Symbol> assigned)
     {
         foreach (var s in stmts) assigned = AnalyzeStmt(s, assigned);
@@ -72,6 +86,15 @@ internal sealed class FlowAnalyzer
                     if (_types.RefOf(bd) is { } sym) assigned.Add(sym);
                 }
                 return assigned; // ohne Initializer: deklariert, aber unassigned
+
+            // 'let (a, b) = …' — der Initialisierer ist Pflicht, also sind ALLE gebundenen Namen
+            // danach zugewiesen. Ohne diesen Fall haelt die Analyse sie fuer leer und meldet
+            // LYR-SEM0018 bei der ersten Benutzung.
+            case DestructuringStmt d:
+                AnalyzeExpr(d.Initializer, assigned);
+                foreach (var name in BoundNames(d.Pattern))
+                    if (_types.RefOf(name) is { } bound) assigned.Add(bound);
+                return assigned;
             case ExprStmt es:
                 AnalyzeExpr(es.Expr, assigned);
                 return assigned;

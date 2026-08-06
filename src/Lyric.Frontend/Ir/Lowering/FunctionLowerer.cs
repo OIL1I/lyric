@@ -385,6 +385,32 @@ internal sealed class FunctionLowerer
     /// verschachteltes Lambda ueberhaupt geht: sein <c>mkclosure</c> steht fest, bevor sein Rumpf
     /// existiert.</para>
     /// </summary>
+    /// <summary>
+    /// <c>(1, "a")</c> — ein Objekt mit einem Feld je Element (§4).
+    ///
+    /// <para>Dieselbe Folge wie bei einem Struct-Initialisierer, nur dass die Felder nach Position
+    /// statt nach Namen gehen. Ein eigener Opcode waere ein zweiter Weg, ein Objekt zu bauen.</para>
+    /// </summary>
+    private TempId LowerTupleLiteral(TupleLitExpr expr)
+    {
+        if (LowerType(_types.TypeOf(expr), expr.Span) is not IrRefType type)
+            throw Bug("tuple literal has no tuple type");
+
+        var layout = _typeTable.Defs[type.Type.Value];
+
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new NewObject(dest, type.Type, type, expr.Span));
+
+        for (var i = 0; i < expr.Elements.Length; i++)
+        {
+            var value = LowerExprAs(expr.Elements[i], layout.FieldTypes[i]);
+            _b.Emit(new StoreField(dest, type.Type, new FieldId(i), value, expr.Span));
+        }
+
+        _fresh.Add(dest);
+        return dest;
+    }
+
     private TempId LowerLambda(LambdaExpr lambda)
     {
         if (LowerType(_types.TypeOf(lambda), lambda.Span) is not IrFunctionType signature)
@@ -667,6 +693,7 @@ internal sealed class FunctionLowerer
             // seinem Ende, nicht erst am Funktionsende (Sprache.md §5).
             case Block b: return LowerScope(b);
             case BindingStmt b: return LowerBinding(b);
+            case DestructuringStmt d: return LowerDestructuring(d);
             // 'panic(…)' hat Rueckgabetyp 'never' (§9) und versiegelt seinen Block. Ein
             // Ausdruck kann den Kontrollfluss also beenden — der Rueckgabewert muss das melden,
             // sonst versucht der Aufrufer spaeter, denselben Block ein zweites Mal zu versiegeln.
@@ -954,6 +981,74 @@ internal sealed class FunctionLowerer
             _b.Emit(new StoreLocal(slot, LowerExprAs(binding.Initializer, type), binding.Span));
 
         return true;
+    }
+
+    /// <summary>
+    /// <c>let (a, b) = paar;</c> — den Wert einmal auswerten, dann Feld fuer Feld binden (§4).
+    ///
+    /// <para><b>Einmal</b> auswerten ist die eigentliche Aussage: <c>let (a, b) = f();</c> darf
+    /// <c>f</c> nicht zweimal rufen. Deshalb landet das Tupel zuerst in einem Temp und die
+    /// Bindungen lesen daraus — nicht aus dem Ausdruck.</para>
+    /// </summary>
+    private bool LowerDestructuring(DestructuringStmt stmt)
+    {
+        if (LowerType(_types.TypeOf(stmt.Initializer), stmt.Span) is not IrRefType type)
+            throw Bug("destructuring a value that is not a tuple");
+
+        var source = LowerExprAs(stmt.Initializer, type);
+        BindTupleElements(stmt.Pattern, source, type.Type, stmt.Span);
+        return true;
+    }
+
+    /// <summary>
+    /// Bindet die Namen eines Tupel-Musters an die Felder eines Objekts — rekursiv, weil Muster
+    /// sich schachteln (<c>let (a, (b, c)) = …</c>).
+    /// </summary>
+    private void BindTupleElements(TuplePattern pattern, TempId source, TypeId type, Core.Span span)
+    {
+        var layout = _typeTable.Defs[type.Value];
+
+        for (var i = 0; i < pattern.Elements.Length; i++)
+        {
+            var fieldType = layout.FieldTypes[i];
+
+            switch (pattern.Elements[i])
+            {
+                // '_' bindet nichts. Das Feld wird deshalb gar nicht erst gelesen — ein 'ldfld',
+                // dessen Ergebnis niemand benutzt, waere toter Code im Bytecode.
+                case WildcardPattern:
+                    continue;
+
+                case BindingPattern binding:
+                {
+                    if (_types.RefOf(binding) is not LocalSymbol local)
+                        throw Bug($"'{binding.Name}' in a destructuring was not bound by the type checker");
+
+                    var value = _slots.NewTemp(fieldType);
+                    _b.Emit(new LoadField(value, source, type, new FieldId(i), fieldType, span));
+
+                    var slot = _slots.DeclareFor(local, fieldType);
+                    _b.Emit(new StoreLocal(slot, value, span));
+                    break;
+                }
+
+                case TuplePattern nested:
+                {
+                    if (fieldType is not IrRefType inner)
+                        throw Bug("nested tuple pattern on a field that is not a tuple");
+
+                    var value = _slots.NewTemp(fieldType);
+                    _b.Emit(new LoadField(value, source, type, new FieldId(i), fieldType, span));
+                    BindTupleElements(nested, value, inner.Type, span);
+                    break;
+                }
+
+                default:
+                    throw NotSupported(
+                        "this pattern in a destructuring binding (only names, '_' and nested "
+                        + "tuples — a binding cannot fail, so it cannot test)", span);
+            }
+        }
     }
 
     private bool LowerReturn(ReturnStmt stmt)
@@ -1269,12 +1364,12 @@ internal sealed class FunctionLowerer
 
         NullLiteralExpr e => LowerNull(e),
         LambdaExpr e => LowerLambda(e),
+        TupleLitExpr e => LowerTupleLiteral(e),
         MatchExpr e => LowerMatch(e.Scrutinee, e.Arms, TypeOfExpr(e), e.Span)
                        ?? throw Bug($"match expression produced no value at {e.Span}"),
         MemberExpr e => LowerFieldRead(e),
         IndexExpr e => LowerIndexRead(e),
         ArrayLitExpr e => LowerArrayLiteral(e),
-        TupleLitExpr e => throw NotSupported("tuple literal", e.Span),
         StructInitExpr e => LowerObjectInit(e),
         RangeExpr e => throw NotSupported("range expression", e.Span),
         ResumeExpr e => LowerResume(e),
@@ -1964,7 +2059,7 @@ internal sealed class FunctionLowerer
             _b.SwitchTo(body);
 
             // Bindungen stehen vor dem Guard: 'n if n > 0' braucht 'n'.
-            BindPattern(arm.Pattern, value, enumSymbol);
+            BindPattern(arm.Pattern, value, subjectType, enumSymbol);
 
             if (arm.Guard is { } guard)
             {
@@ -2031,6 +2126,14 @@ internal sealed class FunctionLowerer
         {
             // Faengt alles — kein Test noetig.
             case WildcardPattern:
+                _b.Seal(new Branch(onMatch, span));
+                return;
+
+            // Ein Tupel-Muster (§4) kann nicht FEHLSCHLAGEN: die Aritaet steht im Typ, und die
+            // Sema hat sie geprueft. Es ist also reine Bindung — die macht BindPattern, nicht
+            // dieser Zweig hier. (Muster INNERHALB des Tupels, die testen koennten, meldet
+            // BindTupleElements als Scope-Grenze.)
+            case TuplePattern:
                 _b.Seal(new Branch(onMatch, span));
                 return;
 
@@ -2115,12 +2218,28 @@ internal sealed class FunctionLowerer
 
     /// <summary>Bindet, was das Muster bindet: eine reine Bindung den Wert selbst, ein
     /// Varianten-Muster seine Felder.</summary>
-    private void BindPattern(Pattern pattern, TempId value, TypeSymbol? enumSymbol)
+    private void BindPattern(Pattern pattern, TempId value, IrType valueType,
+        TypeSymbol? enumSymbol)
     {
         if (pattern is BindingPattern binding && _types.RefOf(pattern) is LocalSymbol local)
         {
             var slot = _slots.DeclareFor(local, LowerType(local.Type, binding.Span));
             _b.Emit(new StoreLocal(slot, value, binding.Span));
+            return;
+        }
+
+        // Ein Tupel-Muster bindet Feld fuer Feld — dieselbe Routine wie beim
+        // Destructuring-Binding. Sie muss HIER stehen und nicht im Verzweigungs-Zweig: der letzte
+        // Arm eines 'match' wird gar nicht geprueft (die Sema hat Exhaustivitaet bewiesen), also
+        // liefe dort keine Bindung.
+        if (pattern is TuplePattern tuple)
+        {
+            // Der Typ kommt vom WERT und nicht aus dem Muster: '_' bindet nichts und hat deshalb
+            // keinen, den man ablesen koennte.
+            if (valueType is not IrRefType tupleType)
+                throw Bug("tuple pattern on a value that is not a tuple");
+
+            BindTupleElements(tuple, value, tupleType.Type, tuple.Span);
             return;
         }
 
@@ -3497,6 +3616,10 @@ internal sealed class FunctionLowerer
                 throw NotSupported("a nested optional '??T' (optionals do not nest)", span);
             return new IrOptionalType(inner);
         }
+
+        // Ein Tupel (§4): ein Objekt mit einem Feld je Element.
+        if (type is Sema.TupleOf tuple)
+            return _typeTable.TupleOf(tuple.Elements.Select(e => LowerType(e, span)).ToArray());
 
         // Eine Instanz eines generischen Typs (§12). Die Typargumente koennen selbst
         // Typ-Parameter sein, wenn die rufende Funktion schon eine Instanz ist — deshalb werden

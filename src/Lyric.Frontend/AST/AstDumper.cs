@@ -276,6 +276,12 @@ public static class AstDumper
                 if (n.Type is not null) Write(n.Type, indent + 1, sb);
                 if (n.Initializer is not null) Write(n.Initializer, indent + 1, sb);
                 break;
+            case DestructuringStmt n:
+                Line(sb, indent, n.IsMutable ? "DestructureVar" : "DestructureLet", n.Span);
+                Write(n.Pattern, indent + 1, sb);
+                if (n.Type is not null) Write(n.Type, indent + 1, sb);
+                Write(n.Initializer, indent + 1, sb);
+                break;
             case IfStmt n:
                 Line(sb, indent, "If", n.Span);
                 Write(n.Condition, indent + 1, sb);
