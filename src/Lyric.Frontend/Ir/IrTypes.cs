@@ -44,6 +44,8 @@ namespace Lyric.Ir
                     return x.Type == y.Type;
                 case (IrStructType x, IrStructType y):
                     return x.Type == y.Type;
+                case (IrCoroutineType x, IrCoroutineType y):
+                    return Equal(x.Yield, y.Yield);
                 case (IrFunctionType x, IrFunctionType y):
                     // Strukturell, und das terminiert: ein Funktionstyp kann sich nur ueber einen
                     // benannten Typ selbst enthalten, und der vergleicht ueber seine Id.
@@ -51,9 +53,9 @@ namespace Lyric.Ir
                            && Equal(x.Return, y.Return)
                            && x.Parameters.Zip(y.Parameters).All(pair => Equal(pair.First, pair.Second));
                 case (IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
-                          or IrInterfaceType or IrStructType or IrFunctionType,
+                          or IrInterfaceType or IrStructType or IrFunctionType or IrCoroutineType,
                       IrScalarType or IrRefType or IrArrayType or IrOptionalType or IrEnumType
-                          or IrInterfaceType or IrStructType or IrFunctionType):
+                          or IrInterfaceType or IrStructType or IrFunctionType or IrCoroutineType):
                     return false; // verschiedene Sorten — vergleichbar, nur eben ungleich
                 default:
                     throw new InternalCompilationException(
@@ -154,4 +156,19 @@ public sealed record IrStructType(TypeId Type) : IrType;
 /// bleibt der Vergleich, weil Rekursion nur ueber einen benannten Typ moeglich ist.</para>
 /// </summary>
 public sealed record IrFunctionType(IrType[] Parameters, IrType Return) : IrType;
+
+/// <summary>
+/// Eine <b>Coroutine</b>: <c>Coroutine&lt;T&gt;</c> aus Sprache.md §8.
+///
+/// <para>Zur Laufzeit ein gewoehnliches Objekt — Slot 0 ist der Wiedereintrittspunkt, danach
+/// kommen die Locals, die ein <c>yield</c> ueberleben. Der Typ traegt nur, was <c>resume</c>
+/// liefert; das Layout steht in der Typtabelle wie bei jeder Klasse.</para>
+///
+/// <para><b>Kein VM-Eingriff.</b> Sprache.md §8 erlaubt <c>yield</c> nur im Coroutine-Rumpf, nicht
+/// in Funktionen, die von dort gerufen werden — genau unter dieser Bedingung reicht eine
+/// Compiler-Transformation in einen Zustandsautomaten, wie C#, Kotlin und Python sie machen. Lua
+/// braucht fuer sein maechtigeres Modell echte separate Stacks in der Runtime; die Sema-Regel ist
+/// bereits die Entscheidung dagegen.</para>
+/// </summary>
+public sealed record IrCoroutineType(IrType Yield, TypeId State) : IrType;
 }

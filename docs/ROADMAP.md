@@ -349,7 +349,7 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 | P4 | Structs (Wert-Semantik, Copy-on-Assign) | `examples/vectors.lyr` |
 | P5 ✅ | Exceptions + `defer` (LIFO auf jedem Exit-Pfad) | `examples/bank.lyr` |
 | P6 | Closures (Lifting + Environment-Objekt) | `examples/closures.lyr` |
-| P7 | Coroutinen (State-Machine-Lowering, ADR-006) | `examples/fibonacci.lyr` |
+| P7 | Coroutinen (State-Machine-Lowering, ADR-006) | `examples/generator.lyr` |
 | P8 | Generics-Monomorphisierung + `for-in`/`Iterator` | `examples/fizzbuzz.lyr`, `examples/stats.lyr` |
 
 - IR-Instruktionen: `NewClass`, `NewStruct`, `NewArray`, `LoadField`, `StoreField`, `LoadElem`,
@@ -519,7 +519,7 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > | ~~**P5b**~~ ✓ | Die Lücken aus B, soweit sie Kernsprache sind: `match` über Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`, `main(args)`, Default-Argumente, `params`. **Tupel sind dabei herausgefallen** — sie sind ein *Typ* und keine Aufrufform, und brauchen deshalb einen eigenen Slice |
 > | ~~**P5c**~~ ✓ | Konstanten: Modul-`let` und `static let` als Globals-Sektion (Format 2.4) |
 > | P6 | Closures |
-> | P7 | Coroutinen |
+> | P7 | Coroutinen — Gate am 2026-08-06 von `fibonacci.lyr` auf `generator.lyr` gewechselt: das alte benutzt `for-in`, also P8 |
 > | P8 | Generics + `for-in`/`Iterator` |
 > | **P9** | `extend`-Lowering — hat bis heute in keiner Slice-Tabelle gestanden |
 >

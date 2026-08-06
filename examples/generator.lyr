@@ -1,0 +1,46 @@
+// Gate-Programm fuer M7/P7 — Coroutinen.
+//
+// Der Kern: eine Coroutine PAUSIERT und laeuft spaeter dort weiter, wo sie aufgehoert hat. Ihre
+// lokalen Variablen ueberleben das 'yield' — genau das unterscheidet sie von einer Funktion, die
+// bei jedem Aufruf von vorn beginnt.
+//
+// Bewusst OHNE 'for-in': das gehoert zu P8. Das fruehere Gate 'fibonacci.lyr' benutzt es und
+// haette P7 erst fertig werden lassen, wenn P8 es ist — dieselbe Falle wie bei 'inventory.lyr'.
+import std.io.console;
+
+// Endlos: der Aufrufer entscheidet, wie viele Werte er abholt.
+fn counter(): Coroutine<int> {
+    var n = 0;
+    while (true) {
+        yield n;
+        n += 1;
+    }
+}
+
+// Endlich: laeuft der Rumpf durch, ist die Coroutine fertig.
+fn three(): Coroutine<int> {
+    yield 10;
+    yield 20;
+    yield 30;
+}
+
+fn main(): int {
+    let c = counter();
+    var sum = 0;
+
+    // 0 + 1 + 2 + 3 + 4 = 10. Ohne erhaltenen Zustand kaeme fuenfmal die 0.
+    var i = 0;
+    while (i < 5) {
+        sum = sum + resume c;
+        i += 1;
+    }
+    console.println(f"counter: {sum}");
+
+    let t = three();
+    let a = resume t;
+    let b = resume t;
+    console.println(f"three: {a}, {b}");
+
+    // 10 + 10 + 20 = 40
+    return sum + a + b;
+}

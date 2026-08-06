@@ -261,6 +261,7 @@ public static class IrPrinter
         IrInterfaceType i => $"dyn {i.Type}",
         IrStructType v => $"val {v.Type}",
         IrFunctionType f => $"fn({string.Join(", ", f.Parameters.Select(TypeStr))}) -> {TypeStr(f.Return)}",
+        IrCoroutineType c => $"coro<{TypeStr(c.Yield)}> {c.State}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
 
