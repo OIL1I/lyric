@@ -40,6 +40,11 @@ internal sealed class TypeTable
 
     public List<IrTypeDef> Defs => _defs;
 
+    /// <summary>Das Interface hinter einem Constraint (<c>T :: [P]</c>). Der Lowerer braucht es,
+    /// um eine Default-Methode zu finden, die der konkrete Typ nicht selbst hat — die Aufloesung
+    /// gehoert hierher, weil hier das Binding liegt.</summary>
+    public TypeSymbol? ConstraintInterface(TypeNode node) => Conformance.InterfaceOf(node, _binding);
+
     /// <summary>Eine Zelle je Elementtyp — <c>&lt;cell:int&gt;</c> gibt es genau einmal, egal wie
     /// viele Variablen darin leben.</summary>
     private readonly List<(IrType Element, TypeId Id)> _cells = new();

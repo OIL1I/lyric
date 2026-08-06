@@ -392,9 +392,16 @@ Programm, mit Begründung als Blockzitat).
 
 - **`b?.get()` geht nicht** — Optional-Chaining mit *Methodenaufruf*. Die Sema macht `?.get` zu
   einem `?fn() -> int` und stolpert dann ueber das `()`. Feldzugriff (`b?.v`) funktioniert.
-- **Ein Constraint dispatcht nicht**: `fn total<T :: [P]>(x: T) { x.price(); }` meldet
-  `LYR-IR0001`. Bei Monomorphisierung waere das ein direkter Aufruf auf dem eingesetzten Typ. Das
-  gehoert zu P8 und ist durch dessen Gate nicht abgedeckt — `fizzbuzz.lyr` benutzt keine Generics.
+- ~~**Ein Constraint dispatcht nicht**~~ — **erledigt.** `fn total<T :: [P]>(x: T) { x.price(); }`
+  laeuft: in der Instanz steht T fest, also auch die Methode, und aus dem dynamischen Dispatch wird
+  ein **direkter Aufruf**. Das ist der Gewinn der Monomorphisierung, den Rust und C++ genauso
+  einstreichen — ein Constraint braucht deshalb keine vtable.
+  - **Eine Default-Methode geht trotzdem virtuell**: sie gehoert dem Interface, ihr `this` ist der
+    Interface-Typ, und dorthin fuehrt kein direkter Aufruf. Der Empfaenger wird gehoben
+    (`mkiface`), dann `callvirt` — genau der Weg aus P3. „Eigenes Member schlaegt Default" (§3.5)
+    gilt dabei unveraendert.
+  - Ein Wert, der ueber sein Interface vorliegt (`let p: P = item;`), dispatcht weiterhin
+    dynamisch. Zwei verschiedene Fragen, zwei Pfade — ein Test haelt beide fest.
 
 - [x] **Flow-Narrowing: `while` und `&&`** (Sprache.md §7). Gefunden beim Bau der Iteratoren:
   `while (v != null) { … v … }` lehnte ab, `if` nicht.

@@ -1215,4 +1215,59 @@ public class VmTests
 
     /// <summary>'for-in' baut seinen Iterator aus std.iter — ohne Modulpfad gibt es keinen.</summary>
     private static long Iterating(string source) => RunWithStdlib(source).Result.AsI64;
+
+    // ------------------------------------------------------------------ P8: Constraints
+
+    [Fact]
+    public void A_constraint_dispatches_directly() =>
+        // Der Gewinn der Monomorphisierung: in der Instanz steht T fest, also auch die Methode.
+        // Aus dem dynamischen Dispatch wird ein direkter Aufruf — kein callvirt, keine vtable.
+        Assert.Equal(4, Run("""
+            interface P { fn price(): int; }
+            class Item :: [P] { fn price(): int { return 4; } }
+            fn total<T :: [P]>(x: T): int { return x.price(); }
+            fn main(): int { return total(Item { }); }
+            """).AsI64);
+
+    [Fact]
+    public void Each_constrained_instance_calls_its_own_implementation() =>
+        // Die Gegenprobe: ohne getrennte Instanzen liefe zweimal dieselbe Methode.
+        Assert.Equal(8, Run("""
+            interface P { fn price(): int; }
+            class A :: [P] { fn price(): int { return 3; } }
+            class B :: [P] { fn price(): int { return 5; } }
+            fn total<T :: [P]>(x: T): int { return x.price(); }
+            fn main(): int { return total(A { }) + total(B { }); }
+            """).AsI64);
+
+    [Fact]
+    public void A_default_method_reached_through_a_constraint_goes_virtual() =>
+        // Eine Default-Methode gehoert dem INTERFACE, ihr 'this' ist der Interface-Typ. Dorthin
+        // fuehrt kein direkter Aufruf: der Empfaenger wird gehoben, und callvirt macht den Rest.
+        Assert.Equal(12, Run("""
+            interface P { fn base(): int; fn twice(): int { return this.base() * 2; } }
+            class Item :: [P] { fn base(): int { return 6; } }
+            fn go<T :: [P]>(x: T): int { return x.twice(); }
+            fn main(): int { return go(Item { }); }
+            """).AsI64);
+
+    [Fact]
+    public void An_own_member_beats_the_default_through_a_constraint() =>
+        // §3.5, und die Gegenprobe zum Test darueber: haette der Default gewonnen, stuende 99 da.
+        Assert.Equal(3, Run("""
+            interface P { fn base(): int; fn twice(): int { return 99; } }
+            class Item :: [P] { fn base(): int { return 6; }, fn twice(): int { return 3; } }
+            fn go<T :: [P]>(x: T): int { return x.twice(); }
+            fn main(): int { return go(Item { }); }
+            """).AsI64);
+
+    [Fact]
+    public void A_value_held_as_an_interface_still_dispatches_dynamically() =>
+        // Zwei verschiedene Fragen, zwei Pfade: ein Constraint kennt den Typ, ein Interface-Wert
+        // nicht. Dieser Test haelt fest, dass der zweite Pfad nicht verloren gegangen ist.
+        Assert.Equal(7, Run("""
+            interface P { fn price(): int; }
+            class Item :: [P] { fn price(): int { return 7; } }
+            fn main(): int { let p: P = Item { }; return p.price(); }
+            """).AsI64);
 }

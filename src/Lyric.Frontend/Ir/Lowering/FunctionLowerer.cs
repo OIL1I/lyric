@@ -2804,6 +2804,79 @@ internal sealed class FunctionLowerer
         return _typeTable.Lower(node);
     }
 
+    /// <summary>
+    /// Ein Methodenaufruf auf einem <b>Typ-Parameter mit Constraint</b> (§12).
+    ///
+    /// <para>Die Sema bindet <c>x.price()</c> an die Interface-Deklaration — mehr weiss sie in
+    /// einer generischen Funktion nicht. In einer <b>Instanz</b> steht der eingesetzte Typ fest,
+    /// und damit auch die Methode, die wirklich laeuft: aus dem dynamischen Dispatch wird ein
+    /// direkter Aufruf.</para>
+    ///
+    /// <para>Das ist der Gewinn der Monomorphisierung, den Rust und C++ genauso einstreichen —
+    /// und der Grund, warum ein Constraint hier keine vtable braucht. Ein Wert, der ueber sein
+    /// Interface vorliegt (<c>let p: P = item;</c>), geht weiterhin ueber <c>callvirt</c>; das
+    /// sind zwei verschiedene Fragen und deshalb zwei Pfade.</para>
+    /// </summary>
+    private TempId? LowerConstraintCall(MemberExpr member, LyrType concrete, CallExpr expr)
+    {
+        if (TypeFacts.SymbolOf(concrete) is not { } owner)
+            throw NotSupported($"call to '{member.Member}' on '{TypeFacts.Display(concrete)}'",
+                expr.Span);
+
+        // Eigenes Member schlaegt Default (§3.5). Hat der konkrete Typ die Methode NICHT, kommt
+        // sie als Default vom Interface — und deren 'this' ist der Interface-Typ. Dann fuehrt kein
+        // direkter Aufruf hin: der Empfaenger muss erst gehoben werden, und das ist genau, was
+        // 'callvirt' seit P3 tut. Der Constraint nennt das Interface, also ist es bekannt.
+        if (owner.Members.LookupLocal(member.Member) is not FunctionSymbol method
+            || method.Declaration is not FunctionDecl declaration)
+        {
+            if (_types.TypeOf(member.Target) is TypeParamType parameter)
+                foreach (var constraint in parameter.Param.Constraints)
+                    if (_typeTable.ConstraintInterface(constraint) is { } iface
+                        && iface.Members.LookupLocal(member.Member) is FunctionSymbol)
+                    {
+                        // Der Empfaenger liegt als Klassenreferenz vor, 'callvirt' braucht einen
+                        // Interface-Wert: erst heben (mkiface), dann rufen. Dasselbe tut jede
+                        // andere Stelle, an der eine Klasse in einen Interface-Slot wandert.
+                        var lifted = LowerExprAs(member.Target, _typeTable.InterfaceOf(iface));
+                        return LowerVirtualCall(member, iface, expr, receiver: lifted);
+                    }
+
+            throw NotSupported(
+                $"'{owner.Name}' has no '{member.Member}' — the constraint promises it, so this "
+                + "is a lowering gap and not a program error", expr.Span);
+        }
+
+        // Bei einem generischen Empfaenger gehoert die Methode der Instanz; sonst wurde sie in
+        // Pass 1 mit allen anderen gelowert.
+        var target = concrete is GenericInstance instance
+            ? _instances.RequestMethod(method, declaration, instance, expr.Span)
+            : _functions.TryGetValue(method, out var direct)
+                ? direct
+                : throw NotSupported($"'{owner.Name}.{member.Member}' was not lowered", expr.Span);
+
+        var supplied = MaterializeArguments(declaration, expr.Arguments, member.Member, expr.Span);
+
+        var args = new TempId[supplied.Length + 1];
+        args[0] = LowerExpr(member.Target);
+        Array.Copy(supplied, 0, args, 1, supplied.Length);
+
+        var returns = concrete is GenericInstance owning
+            ? ReturnTypeOfInstanceMethod(declaration, owning, expr.Span)
+            : declaration.ReturnType is null ? VoidType : _typeTable.Lower(declaration.ReturnType);
+
+        if (IsVoid(returns))
+        {
+            _b.Emit(new Call(null, target, args, expr.Span));
+            return null;
+        }
+
+        var dest = _slots.NewTemp(returns);
+        _b.Emit(new Call(dest, target, args, expr.Span));
+        _fresh.Add(dest);
+        return dest;
+    }
+
     private TempId? LowerIndirectCall(CallExpr expr)
     {
         if (LowerType(_types.TypeOf(expr.Callee), expr.Callee.Span) is not IrFunctionType signature)
@@ -2873,6 +2946,15 @@ internal sealed class FunctionLowerer
                 when SubstituteType(_types.TypeOf(member.Target)) is GenericInstance
                      { Definition.Kind: TypeSymbolKind.Interface } genericIface:
                 return LowerVirtualCall(member, genericIface, expr);
+
+            // Der Empfaenger ist ein TYP-PARAMETER mit Constraint: 'fn total<T :: [P]>(x: T)
+            // { x.price(); }'. Die Sema bindet 'price' an das Interface — dort hat es keinen
+            // Rumpf. In einer Instanz steht T aber fest, also gibt es eine echte Methode.
+            case MemberExpr member
+                when _types.TypeOf(member.Target) is TypeParamType parameter
+                     && _substitution.ContainsKey(parameter.Param):
+                return LowerConstraintCall(member, SubstituteType(_types.TypeOf(member.Target)),
+                    expr);
 
             case MemberExpr member
                 when _types.TypeOf(member.Target) is NamedRef
@@ -3114,7 +3196,7 @@ internal sealed class FunctionLowerer
             _typeTable.Intern(instance.Definition, instance.Arguments));
 
     private TempId? LowerVirtualCall(MemberExpr member, TypeSymbol iface, CallExpr expr,
-        TypeId? instanceType = null)
+        TypeId? instanceType = null, TempId? receiver = null)
     {
         // Bei einem generischen Interface haengt die Slot-Tabelle an der INSTANZ; der Slot-INDEX
         // ist derselbe, weil er aus der Deklaration kommt und fuer alle Instanzen gilt.
@@ -3129,7 +3211,10 @@ internal sealed class FunctionLowerer
                 member.Span);
 
         var args = new TempId[expr.Arguments.Length + 1];
-        args[0] = LowerExpr(member.Target);
+
+        // Der Empfaenger kann schon gehoben vorliegen — etwa bei einem Constraint, dessen
+        // Default-Methode ueber das Interface laeuft.
+        args[0] = receiver ?? LowerExpr(member.Target);
 
         // Die Signatur steht am Interface, nicht an einer Implementierung — sie ist der Vertrag.
         var declaration = iface.Members.LookupLocal(member.Member) is FunctionSymbol method
