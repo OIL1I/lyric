@@ -90,7 +90,8 @@ public sealed class Compilation
     /// das f-String-Lowering ruft <c>std.string.concat</c> und die <c>fromXxx</c>-Wandler auf.
     /// Roslyn macht dasselbe mit seinen Well-Known-Members.
     /// </summary>
-    private static readonly string[][] WellKnownModules = [["std", "string"]];
+    private static readonly string[][] WellKnownModules =
+        [["std", "string"], ["std", "core"]];
 
     private void LoadImportedModules()
     {

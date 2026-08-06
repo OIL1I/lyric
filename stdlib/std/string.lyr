@@ -19,3 +19,8 @@ pub fn fromInt(value: int): string;
 pub fn fromFloat(value: float): string;
 pub fn fromBool(value: bool): string;
 pub fn fromChar(value: char): string;
+
+// 'ab' * 3 aus Sprache.md §6.5. Eigene Funktion und kein Opcode: die Wiederholung ist
+// Bibliotheksarbeit, und ein 'mul'-Opcode, der bei string etwas anderes taete als bei int, waere
+// genau der polymorphe Dispatch, den ADR-013 vermeidet.
+pub fn repeat(value: string, count: int): string;

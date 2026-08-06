@@ -444,7 +444,6 @@ public class LoweringTests
 
     // Konstrukte, deren Typ skalar ist — hier greift die Grenze erst am Ausdruck bzw. Statement.
     [Theory]
-    [InlineData("fn f(): string { return \"a\" + \"b\"; }", "string concatenation")]
     // f-Strings lowern zu einer concat/fromXxx-Kette. Ohne Stdlib auf dem Modulpfad fehlen die
     // Helfer — die Meldung nennt genau den fehlenden, statt „f-Strings gehen nicht" zu behaupten.
     // Beim ersten Loch ist das der Wandler, noch vor dem concat.

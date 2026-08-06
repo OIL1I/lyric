@@ -1,0 +1,10 @@
+// std.core — was die Sprache selbst braucht.
+//
+// 'panic' ist ein Sprach-Built-in (Sprache.md §9) mit Rueckgabetyp 'never': es kehrt nie zurueck,
+// laesst sich nicht fangen und beendet die VM mit Backtrace. Der Compiler bindet den Aufruf hier
+// an, ohne dass jemand 'std.core' importiert — dasselbe Modell wie bei den f-String-Helfern in
+// 'std.string'.
+
+module std.core;
+
+pub fn panic(message: string): void;

@@ -170,7 +170,10 @@ internal sealed class FunctionLowerer
             // seinem Ende, nicht erst am Funktionsende (Sprache.md §5).
             case Block b: return LowerScope(b);
             case BindingStmt b: return LowerBinding(b);
-            case ExprStmt e: LowerExprOrVoid(e.Expr); return true;
+            // 'panic(…)' hat Rueckgabetyp 'never' (§9) und versiegelt seinen Block. Ein
+            // Ausdruck kann den Kontrollfluss also beenden — der Rueckgabewert muss das melden,
+            // sonst versucht der Aufrufer spaeter, denselben Block ein zweites Mal zu versiegeln.
+            case ExprStmt e: LowerExprOrVoid(e.Expr); return !_b.IsSealed;
             case IfStmt s: return LowerIf(s);
             case WhileStmt s: return LowerWhile(s);
             case DoWhileStmt s: return LowerDoWhile(s);
@@ -693,11 +696,17 @@ internal sealed class FunctionLowerer
             return built;
         }
 
-        // Sprache.md §6.5 überlädt '+' und '*' für string; das ist eingebaute Semantik, aber KEIN
-        // BinOp — sonst wäre der add-Opcode polymorph und müsste zur Laufzeit Typ-Dispatch machen
-        // (gegen ADR-013). Es lowert zu einem Call, und der braucht ein Ziel, das es noch nicht gibt.
+        // Sprache.md §6.5 ueberlaedt '+' und '*' fuer string; das ist eingebaute Semantik, aber
+        // KEIN BinOp — sonst waere der add-Opcode polymorph und muesste zur Laufzeit
+        // Typ-Dispatch machen (gegen ADR-013). Es lowert zu einem Call in std.string, genau wie
+        // das f-String-Lowering seine Teile zusammensetzt.
         if (!kind.IsComparison() && type is IrScalarType { Kind: IrScalar.String })
-            throw NotSupported("string concatenation/repetition (lowers to a call)", expr.Span);
+            return kind switch
+            {
+                IrBinKind.Add => CallHelper("std.string.concat", expr.Span, lhs, rhs),
+                IrBinKind.Mul => CallHelper("std.string.repeat", expr.Span, lhs, rhs),
+                _ => throw NotSupported($"'{IrNames.Bin(kind)}' on strings", expr.Span),
+            };
 
         var dest = _slots.NewTemp(type);
         _b.Emit(new BinOp(dest, kind, type, lhs, rhs, expr.Span));
@@ -1783,6 +1792,23 @@ internal sealed class FunctionLowerer
         if (_imports.IsNative(symbol))
             return LowerImportCall(_imports.Intern(symbol), expr.Arguments, expr.Span);
 
+        // 'panic' ist ein Sprach-Built-in (§9) und hat deshalb kein Modul, in dem es deklariert
+        // waere — der Resolver legt es in den Wurzel-Scope. Gebunden wird es wie jeder andere
+        // Native, ueber seinen symbolischen Namen.
+        if (symbol.Name == "panic" && !_functions.ContainsKey(symbol))
+        {
+            var message = expr.Arguments.Length == 1
+                ? LowerExprAs(expr.Arguments[0], new IrScalarType(IrScalar.String))
+                : throw NotSupported("panic with other than one argument", expr.Span);
+
+            CallHelper("std.core.panic", expr.Span, message);
+
+            // panic kehrt nie zurueck (Rueckgabetyp 'never'). Der Block endet hier — alles
+            // dahinter waere toter Code, und der Verifier lehnt unerreichbare Bloecke ab.
+            _b.Seal(new Unreachable(expr.Span));
+            return null;
+        }
+
         if (!_functions.TryGetValue(symbol, out var target))
             throw NotSupported($"call to '{calleeName}' (external, generic or bodiless)", expr.Span);
 
@@ -1904,15 +1930,27 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Direkter Aufruf eines Runtime-Helfers über seinen festen Namen — das f-String-
-    /// Lowering referenziert <c>std.string.concat</c>, ohne dass jemand <c>std.string</c>
-    /// importiert hätte. Dasselbe Modell wie Roslyns Verweis auf <c>String.Concat</c>.</summary>
+    /// <summary>
+    /// Direkter Aufruf eines Runtime-Helfers ueber seinen festen Namen.
+    ///
+    /// <para>Das Lowering referenziert <c>std.string.concat</c> und <c>std.core.panic</c>, ohne
+    /// dass jemand die Module importiert haette — dasselbe Modell wie Roslyns Verweis auf
+    /// <c>String.Concat</c>. Benutzt von f-Strings, von <c>string</c>-<c>+</c>/<c>*</c> (§6.5) und
+    /// von <c>panic</c> (§9).</para>
+    /// </summary>
     private TempId CallHelper(string name, Span span, params TempId[] args)
     {
         if (!_imports.TryFind(name, out var import))
-            throw NotSupported($"the f-string helper '{name}' (is the standard library on the module path?)", span);
+            throw NotSupported(
+                $"the runtime helper '{name}' (is the standard library on the module path?)", span);
 
         var target = _imports.Intern(import);
+        if (IsVoid(import.ReturnType))
+        {
+            _b.Emit(new CallImport(null, target, args, span));
+            return default;
+        }
+
         var dest = _slots.NewTemp(import.ReturnType);
         _b.Emit(new CallImport(dest, target, args, span));
         return dest;

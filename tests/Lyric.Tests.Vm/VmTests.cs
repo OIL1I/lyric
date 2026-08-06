@@ -688,4 +688,61 @@ public class VmTests
                 return n ?? 0;
             }
             """).AsI64);
+
+    // ------------------------------------------------------------------ P5b: string-Ops, panic
+
+    /// <summary><c>+</c> und <c>*</c> auf <c>string</c> sind eingebaute Semantik (§6.5), aber
+    /// kein Opcode: sie lowern zu Calls in <c>std.string</c>, sonst waere <c>add</c> polymorph.</summary>
+    [Fact]
+    public void String_concatenation_lowers_to_a_call()
+    {
+        var (_, output) = RunWithStdlib("""
+            import std.io.console;
+            fn main(): int { console.print("a" + "b" + "c"); return 0; }
+            """);
+        Assert.Equal("abc", output);
+    }
+
+    [Theory]
+    [InlineData("3", "ababab")]
+    [InlineData("0", "")]
+    [InlineData("0 - 1", "")]   // negativ ist kein Fehlerfall — die Spec kennt keinen
+    public void String_repetition_lowers_to_a_call(string count, string expected)
+    {
+        var (_, output) = RunWithStdlib($$"""
+            import std.io.console;
+            fn main(): int { console.print("ab" * ({{count}})); return 0; }
+            """);
+        Assert.Equal(expected, output);
+    }
+
+    /// <summary><c>panic</c> ist ein Sprach-Built-in mit Rueckgabetyp <c>never</c> (§9): nicht
+    /// catchbar, beendet die VM mit Backtrace.</summary>
+    [Fact]
+    public void Panic_aborts_with_its_message_and_a_backtrace()
+    {
+        var panic = Assert.Throws<LyricPanic>(() => RunWithStdlib("""
+            fn deep(): int { panic("kaputt"); }
+            fn main(): int { return deep(); }
+            """));
+
+        Assert.Equal(VmDiagnostics.Panicked, panic.Code);
+        Assert.Equal("kaputt", panic.Message);
+        // Der Backtrace nennt beide Frames, innerster zuerst.
+        Assert.Equal(["main.deep", "main.main"], panic.CallStack);
+    }
+
+    [Fact]
+    public void Code_after_a_panic_is_unreachable_but_the_other_branch_still_runs()
+    {
+        // 'panic' versiegelt seinen Block — der Rueckgabewert von LowerStmt muss das melden,
+        // sonst versucht der Aufrufer, denselben Block ein zweites Mal zu versiegeln.
+        Assert.Equal(5, RunWithStdlib("""
+            fn f(n: int): int {
+                if (n < 0) { panic("negativ"); }
+                return n;
+            }
+            fn main(): int { return f(5); }
+            """).Result.AsI64);
+    }
 }

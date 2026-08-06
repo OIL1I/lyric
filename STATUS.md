@@ -612,6 +612,18 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   `optget` im Some-Zweig kann nie panicken — der Beweis steht im `optissome` davor, dieselbe
   Arbeitsteilung wie beim Flow-Narrowing.
 
+- [x] **P5b-3 — `string +`/`*` und `panic`**: alle drei lowern jetzt zu Calls, keiner zu einem
+  Opcode. `add` bliebe sonst polymorph und müsste zur Laufzeit Typ-Dispatch machen — genau das,
+  was ADR-013 vermeidet. `std.string.repeat` ist neu, `std.core.panic` auch: **`panic` war ein
+  M6-Lieferposten und wurde nie geliefert.**
+  - **`panic` versiegelt seinen Block** — Rückgabetyp `never` (§9). Der Rückgabewert von
+    `LowerStmt` („fällt der Kontrollfluss durch?") muss das melden, sonst versucht der Aufrufer,
+    denselben Block ein zweites Mal zu versiegeln. Das ist derselbe Mechanismus, den `return` und
+    `throw` schon benutzen — ein *Ausdruck*, der ihn auslöst, war neu.
+  - Ein negativer Wiederholungsfaktor liefert den leeren String statt zu werfen: die Spec kennt
+    dafür keinen Fehlerfall, und eine .NET-Ausnahme mitten in einem Lyric-Programm wäre die
+    falsche Antwort.
+
 **Lieferposten-Inventur 2026-08-06** (Details als Blockzitat vor M8 in der ROADMAP,
 Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/Lowering gefahren,
 **12 laufen durch**. Was **keinem Slice gehoert**: `static let` (scheitert im **Parser**), Attribute

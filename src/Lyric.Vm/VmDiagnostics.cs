@@ -57,6 +57,10 @@ public static class VmDiagnostics
     /// es ueber ein von Hand gebautes Modul — und dann ist es ein Abbruch wie ein panic.</para>
     /// </summary>
     public const string UncaughtException = "LYR-VM0010";
+
+    /// <summary>Ein <c>panic(msg)</c> aus dem Programm (Sprache.md §9). Nicht catchbar; die
+    /// Meldung ist die des Aufrufers.</summary>
+    public const string Panicked = "LYR-VM0011";
 }
 
 /// <summary>

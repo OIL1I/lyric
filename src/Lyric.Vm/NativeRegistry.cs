@@ -81,6 +81,19 @@ public sealed class NativeRegistry
         registry.Register("std.string.concat", new[] { TypeTag.String, TypeTag.String },
             TypeTag.String, args => LyrValue.FromString(args[0].AsString + args[1].AsString));
 
+        // 'ab' * 3 (Sprache.md §6.5). Ein negativer Faktor liefert den leeren String statt zu
+        // werfen: die Spec kennt dafuer keinen Fehlerfall, und 'string.Concat' mit negativer
+        // Anzahl waere eine .NET-Ausnahme mitten in einem Lyric-Programm.
+        registry.Register("std.string.repeat", new[] { TypeTag.String, TypeTag.I64 },
+            TypeTag.String, args => LyrValue.FromString(
+                args[1].AsI64 <= 0 ? string.Empty
+                    : string.Concat(Enumerable.Repeat(args[0].AsString, (int)args[1].AsI64))));
+
+        // panic ist nicht catchbar (§9) und kehrt nie zurueck — deshalb ein Wurf und kein
+        // Rueckgabewert. Den Backtrace haengt die Schleife an, die den Frame-Stack haelt.
+        registry.Register("std.core.panic", str, TypeTag.Void,
+            args => throw new LyricPanic(VmDiagnostics.Panicked, args[0].AsString));
+
         // Invariante Kultur: '3.5' und nicht '3,5' — dieselbe .lyrbc-Datei muss auf jeder Maschine
         // dieselbe Ausgabe erzeugen.
         registry.Register("std.string.fromInt", new[] { TypeTag.I64 }, TypeTag.String,
