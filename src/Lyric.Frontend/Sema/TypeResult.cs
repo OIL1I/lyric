@@ -22,6 +22,11 @@ public sealed class TypeResult
     private readonly HashSet<Node> _exhaustiveMatches = new(ReferenceEqualityComparer.Instance);
 
     public void SetType(Expr expr, LyrType type) => _types[expr] = type;
+
+    /// <summary>Jeder typisierte Ausdruck mit seinem Typ. Der Abnehmer ist der Test, der die
+    /// <see cref="ErrorType"/>-Invariante prueft — ohne Aufzaehlung liesse sie sich nur an den
+    /// Stellen pruefen, an denen ohnehin schon jemand hinsieht.</summary>
+    public IEnumerable<KeyValuePair<Expr, LyrType>> AllTypes => _types;
     public LyrType TypeOf(Expr expr) => _types.TryGetValue(expr, out var t) ? t : LyrType.Error;
 
     public void BindRef(Node node, Symbol symbol) => _refs[node] = symbol;

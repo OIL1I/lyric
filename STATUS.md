@@ -371,6 +371,31 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **Aufraeum-Sweep: `NamedRef`/`GenericInstance` und `ErrorType`**. 1538 Tests gruen.
+  - **`TypeFacts.SymbolOf`/`KindOf`** beantworten „welches Symbol steckt dahinter" **einmal**. Ein
+    benannter Typ tritt in zwei Formen auf — `NamedRef` fuer `Box`, `GenericInstance` fuer
+    `Box<int>` —, und fast jede Frage an ihn hat fuer beide dieselbe Antwort. Wer sie einzeln
+    behandelt, vergisst irgendwann die zweite: in P8 ist das **fuenfmal** passiert.
+  - Umgestellt: Constraint-Vergleich, `throws`- und `catch`-Bindung, `ImplementsInterface`,
+    Feld-Mutabilitaet, `RequireEnum` und der Traeger von `?.`. **Die letzten beiden haben dabei
+    stillschweigend generische Instanzen dazubekommen** — sie haetten vorher abgelehnt, ohne dass
+    es jemandem aufgefallen waere.
+  - **Die `ErrorType`-Invariante ist jetzt maschinell geprueft.** Sie lautet: `ErrorType` heisst
+    „hier wurde bereits gemeldet" — nicht „unbekannt". In M7 wurde sie **dreimal** gebrochen (bei
+    den Globals, den Typargumenten und dem Iterator-Yield-Typ), jedes Mal mit demselben Muster:
+    ein Lookup gab `Error` zurueck, weil er nichts fand, die Sema schwieg, und der Absturz kam
+    spaeter aus dem Lowering. 23 Tests pruefen sie ueber alle Beispiele und zehn Fehlerformen —
+    plus eine Gegenprobe, dass die Pruefung ueberhaupt greift. Dreimal dieselbe Ursache heisst:
+    die Konvention allein traegt nicht.
+
+**Beim Sweep gefunden, noch offen:**
+
+- **`b?.get()` geht nicht** — Optional-Chaining mit *Methodenaufruf*. Die Sema macht `?.get` zu
+  einem `?fn() -> int` und stolpert dann ueber das `()`. Feldzugriff (`b?.v`) funktioniert.
+- **Ein Constraint dispatcht nicht**: `fn total<T :: [P]>(x: T) { x.price(); }` meldet
+  `LYR-IR0001`. Bei Monomorphisierung waere das ein direkter Aufruf auf dem eingesetzten Typ. Das
+  gehoert zu P8 und ist durch dessen Gate nicht abgedeckt — `fizzbuzz.lyr` benutzt keine Generics.
+
 - [x] **Flow-Narrowing: `while` und `&&`** (Sprache.md §7). Gefunden beim Bau der Iteratoren:
   `while (v != null) { … v … }` lehnte ab, `if` nicht.
   - **`while` wendete gar keine Fakten an** — die Zeile rief `NarrowingFacts` schlicht nicht.

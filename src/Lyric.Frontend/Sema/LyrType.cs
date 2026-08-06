@@ -68,7 +68,25 @@ public sealed record TupleOf(LyrType[] Elements) : LyrType;
 public sealed record FnType(LyrType[] Parameters, LyrType Return) : LyrType;
 public sealed record RangeOf(LyrType Element) : LyrType;             // interner Typ von 0..9 (kein Spec-Typ)
 public sealed record CoroutineOf(LyrType Yield) : LyrType;           // Coroutine<T> (§8), als interner Typ wie RangeOf
-public sealed record ErrorType : LyrType;                           // Recovery-Sentinel
+/// <summary>
+/// Der Recovery-Sentinel. <b>Er bedeutet „hier wurde bereits eine Diagnose abgesetzt"</b> — nicht
+/// „unbekannt", nicht „noch nicht berechnet", nicht „egal".
+///
+/// <para>Daran haengt eine Invariante, die der ganze Compiler benutzt: wer einen
+/// <c>ErrorType</c> sieht, schweigt, weil sonst ein Fehler zu einer Lawine von Folgefehlern
+/// wuerde. Wer ihn <b>erzeugt</b>, muss deshalb vorher gemeldet haben.</para>
+///
+/// <para><b>Diese Invariante ist in M7 dreimal gebrochen worden</b>, und jedes Mal auf dieselbe
+/// Weise: ein Lookup lieferte <c>Error</c> zurueck, weil er nichts fand — die Sema schwieg, und
+/// das Lowering stuerzte spaeter ueber einen <c>&lt;error&gt;</c>-Typ ab, weit weg von der
+/// Ursache. Gefunden bei den Globals (LYR-SEM0057), bei den Typargumenten und beim
+/// Iterator-Yield-Typ.</para>
+///
+/// <para>Deshalb prueft <c>Lyric.Tests.Sema.ErrorTypeInvariantTests</c> sie maschinell: taucht in
+/// einem Programm irgendwo ein <c>ErrorType</c> auf, muss eine Diagnose vorliegen. Eine
+/// Konvention, an die sich niemand erinnert, ist keine.</para>
+/// </summary>
+public sealed record ErrorType : LyrType;
 
 /// <summary>
 /// Der Ausdruck <b>benennt</b> etwas (einen Typ, ein Modul), das kein Wert ist.
