@@ -559,18 +559,22 @@ internal sealed class FunctionLowerer
 
         if (LowerScope(body))
         {
-            // Der Rumpf ist durchgelaufen: die Coroutine ist fertig. -1 merkt sich das, und
-            // 'resume' liest es (Sprache.md §8) — der Wert selbst wird nie benutzt.
+            // Der Rumpf ist durchgelaufen. Der Zustand merkt sich das fuer spaetere Aufrufe —
+            // und DIESER Aufruf wirft bereits, denn er hat keinen Wert zu liefern.
+            //
+            // Sprache.md §8 sagt „Coroutine endet, wenn der Body durchlaeuft; weitere
+            // resume-Aufrufe werfen". Das Auslaufen selbst ist der erste dieser Faelle: es gibt
+            // kein 'yield' mehr, also nichts zurueckzugeben. Einen Nullwert zu erfinden hiesse,
+            // der Sprache einen zu geben, den sie nicht hat — Python meldet hier StopIteration
+            // und aus demselben Grund.
             var i32 = new IrScalarType(IrScalar.I32);
             var done = _slots.NewTemp(i32);
-            // -1 als Zweierkomplement in 32 Bit: der Verifier prueft, dass der Wert in die
-            // deklarierte Breite passt.
+            // -1 als Zweierkomplement in 32 Bit: der Verifier prueft die deklarierte Breite.
             _b.Emit(new Const(done, i32, new IntConst(unchecked((ulong)(uint)-1)), body.Span));
             StoreStateField(0, done, body.Span);
 
-            _b.Seal(IsVoid(_returnType)
-                ? new Return(null, body.Span)
-                : new Return(ZeroOf(_returnType, body.Span), body.Span));
+            CallHelper("std.core.coroutineEnded", body.Span);
+            _b.Seal(new Unreachable(body.Span));
         }
 
         BuildResumeDispatch(dispatch, start, body.Span);
@@ -582,36 +586,6 @@ internal sealed class FunctionLowerer
         {
             Entry = dispatch, Handlers = _handlers,
         };
-    }
-
-    /// <summary>
-    /// Der Wert, den eine <b>durchgelaufene</b> Coroutine formal zurueckgibt.
-    ///
-    /// <para>Er ist nie beobachtbar — <c>resume</c> liest den Zustand, bevor es ruft, und wirft
-    /// bei -1 (Sprache.md §8). Der Rumpf muss trotzdem etwas zurueckgeben, weil er eine
-    /// gewoehnliche Funktion ist und der Verifier keinen Pfad ohne <c>ret</c> durchlaesst.</para>
-    ///
-    /// <para>Nur Skalare: fuer einen Referenz- oder Enum-Yield-Typ gaebe es hier keinen
-    /// natuerlichen Wert, und einen zu erfinden hiesse, einen Nullwert in die Sprache zu tragen,
-    /// den sie nicht hat. Die saubere Loesung ist ein optionaler Rueckgabetyp fuer die
-    /// Rumpf-Funktion; sie gehoert zu <c>resume</c> und damit in den naechsten Slice.</para>
-    /// </summary>
-    private TempId ZeroOf(IrType type, Core.Span span)
-    {
-        if (type is not IrScalarType scalar)
-            throw NotSupported(
-                "a coroutine yielding a non-scalar type (the state machine needs a value for the "
-                + "path where the body runs out)", span);
-
-        var dest = _slots.NewTemp(type);
-        _b.Emit(new Const(dest, type, scalar.Kind switch
-        {
-            IrScalar.F32 or IrScalar.F64 => new FloatConst(0.0),
-            IrScalar.Bool => new BoolConst(false),
-            IrScalar.String => new StringConst(""),
-            _ => new IntConst(0),
-        }, span));
-        return dest;
     }
 
     /// <summary>
@@ -1467,6 +1441,25 @@ internal sealed class FunctionLowerer
 
         var i32 = new IrScalarType(IrScalar.I32);
         var current = LoadStateField(0, span);
+
+        // Zuerst der Endzustand: -1 heisst „Rumpf durchgelaufen", und ein weiteres 'resume' ist
+        // dann ein Fehler (Sprache.md §8). Ohne diese Pruefung liefe die Vergleichskette ins
+        // Leere und die Coroutine finge von vorn an — still und falsch.
+        var ended = _slots.NewTemp(i32);
+        _b.Emit(new Const(ended, i32, new IntConst(unchecked((ulong)(uint)-1)), span));
+
+        var isEnded = _slots.NewTemp(BoolType);
+        _b.Emit(new BinOp(isEnded, IrBinKind.Eq, BoolType, current, ended, span));
+
+        var endedBlock = _b.NewBlock();
+        var live = _b.NewBlock();
+        _b.Seal(new CondBranch(isEnded, endedBlock, live, span));
+
+        _b.SwitchTo(endedBlock);
+        CallHelper("std.core.coroutineEnded", span);
+        _b.Seal(new Unreachable(span));
+
+        _b.SwitchTo(live);
 
         for (var i = 0; i < _resumePoints.Count; i++)
         {

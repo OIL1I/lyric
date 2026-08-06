@@ -94,6 +94,13 @@ public sealed class NativeRegistry
         registry.Register("std.core.panic", str, TypeTag.Void,
             args => throw new LyricPanic(VmDiagnostics.Panicked, args[0].AsString));
 
+        // Ein 'resume' auf eine durchgelaufene Coroutine (Sprache.md §8). Bis Throwable-Typen
+        // aus der Stdlib kommen (M8) ist das ein Panic und kein fangbarer Fehler — die Meldung
+        // sagt dasselbe, die Abweichung steht in STATUS.
+        registry.Register("std.core.coroutineEnded", Array.Empty<TypeTag>(), TypeTag.Void,
+            _ => throw new LyricPanic(VmDiagnostics.Panicked,
+                "resume on a coroutine that has already finished"));
+
         // Invariante Kultur: '3.5' und nicht '3,5' — dieselbe .lyrbc-Datei muss auf jeder Maschine
         // dieselbe Ausgabe erzeugen.
         registry.Register("std.string.fromInt", new[] { TypeTag.I64 }, TypeTag.String,

@@ -8,3 +8,9 @@
 module std.core;
 
 pub fn panic(message: string): void;
+
+// Ein 'resume' auf eine Coroutine, deren Rumpf durchgelaufen ist (Sprache.md §8). Wie 'panic'
+// vom Compiler angebunden, ohne dass jemand 'std.core' importiert — der Aufruf steht im
+// Sprungverteiler, den niemand geschrieben hat, also kann auch niemand den Import geschrieben
+// haben.
+pub fn coroutineEnded(): void;
