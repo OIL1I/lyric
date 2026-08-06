@@ -66,11 +66,43 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
-    public void Lyric_driver_ships_both_sides()
+    public void The_driver_carries_neither_compiler_nor_runtime_of_its_own()
     {
-        // Die Gegenprobe zu den Tests oben: der Treiber *muss* beides haben, sonst pruefen sie
-        // nur, dass die Projekte leer sind.
-        AssertShips("Lyric.Cli", Shared, Frontend, Runtime, "lyric.dll");
+        // ADR-019, und die schaerfste Aussage dieser Datei: der Treiber COMPILIERT NICHTS und
+        // FUEHRT NICHTS AUS. Er startet Werkzeuge — also liegen die Werkzeuge daneben, aber ihre
+        // Bibliotheken sind nicht seine.
+        //
+        // Vor ADR-019 stand hier die Gegenprobe „der Treiber muss beides haben". Dass sie sich
+        // umgedreht hat, IST die Entscheidung: vorher war lyric ein zweiter Compiler mit bequemerer
+        // Oberflaeche, jetzt ist es ein Dispatcher.
+        var shipped = LyricAssemblies("Lyric.Cli");
+
+        Assert.Contains(Shared, shipped);        // Exit- und Diagnose-Codes
+        Assert.Contains("lyric.dll", shipped);   // er selbst
+        Assert.Contains("lyrc.dll", shipped);    // die Werkzeuge liegen daneben,
+        Assert.Contains("lyrvm.dll", shipped);   // weil er sie dort sucht
+    }
+
+    [Fact]
+    public void The_driver_has_no_reference_of_its_own_to_frontend_or_runtime()
+    {
+        // Die Bibliotheken lyrfe/lyrrt liegen im Verzeichnis — aber weil die WERKZEUGE sie
+        // brauchen, nicht der Treiber. Was ihn bindet, steht in seiner Projektdatei, und dort
+        // darf genau eine Kante stehen.
+        var project = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "src", "Lyric.Cli",
+            "Lyric.Cli.csproj"));
+
+        // ReplaceLineEndings() zuerst: die Projektdateien im Repo haben gemischte Zeilenenden, und
+        // ein Split auf Environment.NewLine faende auf Windows in einer LF-Datei gar nichts — der
+        // Test waere dann still gruen, weil die Liste leer ist statt richtig.
+        var referenced = project.ReplaceLineEndings()
+            .Split(Environment.NewLine, StringSplitOptions.TrimEntries)
+            .Where(line => line.Contains("ProjectReference")
+                           && !line.Contains("ReferenceOutputAssembly"))
+            .ToArray();
+
+        Assert.Single(referenced);
+        Assert.Contains("Lyric.Core", referenced[0]);
     }
 
     [Fact]

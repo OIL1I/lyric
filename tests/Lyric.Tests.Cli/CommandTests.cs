@@ -73,23 +73,11 @@ public sealed class CommandTests
     }
 
     /// <summary>
-    /// Die zweite Aequivalenz, und der Grund, warum der Zwei-Pfade-Entwurf vertretbar ist: der
-    /// In-Process-Pfad (mitgelieferte Runtime) und der Subprozess-Pfad (<c>--vm</c>) muessen
-    /// dasselbe liefern. Das mitgelieferte <c>lyrvm</c> ist hier das Testdouble fuer eine
-    /// Fremd-Runtime — es ist per Konstruktion vertragskonform und kostet nichts extra.
+    /// Frueher stand hier <c>In_process_and_foreign_vm_paths_agree</c> — der Beweis, dass zwei
+    /// Ausfuehrungspfade dasselbe liefern. Seit ADR-019 gibt es nur einen: der Treiber startet
+    /// immer ein Werkzeug. Der Test ist damit nicht gestrichen, sondern <b>gegenstandslos</b>;
+    /// was er absicherte, kann nicht mehr auseinanderlaufen.
     /// </summary>
-    [Theory]
-    [MemberData(nameof(RunnableExamples))]
-    public void In_process_and_foreign_vm_paths_agree(string example, int expected)
-    {
-        var inProcess = Toolchain.Lyric("run", Toolchain.Example(example));
-        var foreign = Toolchain.Lyric("run", Toolchain.Example(example), "--vm", Toolchain.LyrvmPath);
-
-        Assert.Equal(expected, inProcess.ExitCode);
-        Assert.Equal(inProcess.ExitCode, foreign.ExitCode);
-        Assert.Equal(inProcess.Out, foreign.Out);
-    }
-
     [Fact]
     public void Foreign_vm_can_be_selected_through_the_environment()
     {

@@ -4,19 +4,53 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>lyric</AssemblyName>
     <RootNamespace>Lyric.Cli</RootNamespace>
-    <Description>Der Treiber: compile, run, disasm — und die Wahl der Runtime.</Description>
+    <Description>Der Einstiegspunkt der Werkzeug-Suite: waehlt Werkzeuge und reicht durch.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
-      Der Treiber (ADR-017): darf beide Seiten kennen, weil er beide fahren koennen muss. Er
-      enthaelt trotzdem keine eigene Pipeline — SourceCompiler und VmHost sind dieselben
-      Einstiege, die auch lyrc und lyrvm benutzen. Die Stdlib kommt als Content ueber
-      Lyric.Frontend mit.
+      EINE Referenz, und das ist die Aussage von ADR-019: dieser Treiber compiliert nichts und
+      fuehrt nichts aus, er startet Werkzeuge. Kein lyrfe, kein lyrrt — er braucht nur die
+      Exit-Codes und die Diagnose-Codes, damit ein Fehler von IHM sich nicht als Fehler eines
+      Werkzeugs tarnt.
+
+      Kommt hier je eine Kante nach lyrfe oder lyrrt dazu, ist der Treiber wieder ein zweiter
+      Compiler; tests/Lyric.Tests.Cli haelt das maschinell fest.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
-    <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />
-    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
+
+    <!--
+      Die Werkzeuge werden GEBAUT, aber nicht referenziert und nicht hierher kopiert: sie liegen
+      im selben Ausgabeverzeichnis, weil der Treiber sie dort sucht.
+    -->
+    <ProjectReference Include="..\Lyrc\Lyrc.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\Lyrvm\Lyrvm.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
+
+  <!--
+    Die Werkzeuge vollstaendig neben den Treiber legen — nicht nur ihren Apphost. Ein
+    framework-abhaengiges 'lyrc.exe' ist ein Launcher, der 'lyrc.dll' daneben erwartet; ohne sie
+    startet es mit „The application to execute does not exist".
+
+    Damit sieht das Ausgabeverzeichnis waehrend der Entwicklung genauso aus wie das
+    Publish-Verzeichnis. Das ist der Punkt: der Treiber sucht seine Werkzeuge neben sich, und
+    „neben sich" muss in beiden Faellen dasselbe heissen.
+  -->
+  <Target Name="CopyToolsNextToDriver" AfterTargets="Build">
+    <MSBuild Projects="..\Lyrc\Lyrc.csproj;..\Lyrvm\Lyrvm.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="ToolAssembly" />
+    </MSBuild>
+
+    <ItemGroup>
+      <!-- Samt stdlib: sie gehoert neben den Compiler, und „neben" ist hier ein Verzeichnis. -->
+      <ToolFile Include="%(ToolAssembly.RootDir)%(ToolAssembly.Directory)**\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(ToolFile)"
+          DestinationFiles="@(ToolFile->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

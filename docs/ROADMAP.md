@@ -752,6 +752,61 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-019 — `lyric` ist ein Dispatcher, kein zweiter Compiler
+
+**Datum**: 2026-08-06. **Status**: Akzeptiert. **Revidiert**: ADR-017 (In-Process-Ausführung).
+
+**Entscheidung**: `lyric` übersetzt nichts und führt nichts aus. Es wählt Werkzeuge, übersetzt
+bequeme Kommandos in technische und reicht durch, was zurückkommt: `lyric run app.lyr` ist
+`lyrc build` gefolgt von `lyrvm run`, mit einer temporären Datei dazwischen. Damit hat der Treiber
+keine Referenz mehr auf `lyrfe` oder `lyrrt` — neben `lyric.exe` liegen die *Werkzeuge*, nicht
+deren Bibliotheken.
+
+Die Werkzeug-Auflösung ist für alle gleich und gestaffelt: `--<flag> <pfad>` schlägt
+`LYRIC_<TOOL>` schlägt „neben der eigenen exe". Vorher galt sie nur für die Runtime.
+
+**Begründung**: ADR-017 ließ die mitgelieferte Runtime in-process laufen und begründete das mit
+einem gesparten Prozessstart von „~50–70 ms". **Gemessen am 2026-08-06 hält das nicht**:
+
+| | |
+|---|---|
+| `lyric run` in-process | ~283 ms |
+| `lyric run --vm lyrvm.exe` (Subprozess) | ~290 ms |
+| nackter Prozessstart (`lyrvm --version`) | ~120 ms |
+
+Der Unterschied liegt im Rauschen. Bezahlt wurde er mit zwei Ausführungspfaden, die gegeneinander
+getestet werden mussten (ADR-017 nannte das selbst „den Preis der In-Process-Entscheidung"), und
+mit vier Kommandos — `run`, `build`, `check`, `disasm` —, die es zweimal gab. `lyric` war keine
+vereinfachte Oberfläche, sondern eine zweite Implementierung derselben Sache.
+
+Dass **alle** Werkzeuge austauschbar sind und nicht nur die Runtime, folgt aus der Absicht, die
+Sprache nach v1 formell zu spezifizieren: dann ist ein zweiter Compiler genauso denkbar, wie
+ADR-013 heute eine zweite Runtime denkbar macht. Ein Sonderweg nur für die Runtime wäre jetzt
+bequemer und später im Weg.
+
+Das ist das `git`-Modell (ein Dispatcher startet `git-<subcommand>`), das `cargo`-Modell (ruft
+`rustc`) und das `dotnet`-Modell (ruft MSBuild). Alle drei zahlen den Prozessstart und bekommen
+dafür Werkzeuge, die einzeln benutzbar, einzeln testbar und einzeln ersetzbar sind. Das
+Gegenmodell — ein Monolith mit Symlink-Namen wie BusyBox — spart den Start und macht genau diese
+Austauschbarkeit unmöglich.
+
+**Konsequenz**: Der Zwei-Pfade-Test `In_process_and_foreign_vm_paths_agree` wird
+**gegenstandslos**, nicht gestrichen — was er absicherte, kann nicht mehr auseinanderlaufen. Der
+Architektur-Test dreht sich um: wo vorher stand „der Treiber *muss* beide Seiten haben", steht
+jetzt „er hat genau eine Referenz, und die heißt `Lyric.Core`". — Die Werkzeuge werden beim Build
+vollständig neben den Treiber kopiert, damit „neben sich" während der Entwicklung dasselbe heißt
+wie im Publish-Verzeichnis; ein framework-abhängiges `lyrc.exe` ist ein Launcher und braucht seine
+`lyrc.dll` daneben. — `lyric run` ruft den Compiler mit `--quiet`: wer `run` tippt, will sein
+Programm sehen und nicht die Größe eines Zwischenartefakts, das gleich wieder verschwindet. Das
+ist die Sorte Vorgabe, für die dieser Einstiegspunkt existiert. — Das Zwischenartefakt ist eine
+temporäre Datei und kein Cache: ein Cache bräuchte ein Verzeichnis, eine Invalidierungsregel (die
+auch Stdlib-Änderungen erfassen muss) und ein `clean`, also einen eigenen Mechanismus mit einer
+eigenen klassischen Fehlerquelle. Er lässt sich später darüberlegen, ohne den Entwurf zu ändern.
+— **Offen**: `lyrtest` (post-v1) fügt sich als drittes Werkzeug ein, ohne dass am Dispatcher etwas
+zu ändern wäre; das ist der Test dafür, ob dieser Entwurf trägt.
+
+---
+
 ### ADR-018 — Closures fangen Variablen, nicht Werte
 
 **Datum**: 2026-08-06. **Status**: Akzeptiert.
@@ -924,6 +979,11 @@ ein zweiter Kompatibilitäts-Mechanismus neben der Load-Zeit-Validierung (Rule 2
 weil ihn jede Fremd-VM nachbauen müsste. Aus demselben Grund gibt es **kein** VM-Registry
 (`lyric vm add …`): das bedeutete persistente Konfiguration, also eine Konfigurationsdatei, also
 Projektdateien, also ein Projektsystem. Ein Pfad in einer Variablen erledigt denselben Job zustandsfrei.
+
+> **Teilweise revidiert durch ADR-019 (2026-08-06)**: die In-Process-Ausführung der
+> mitgelieferten Runtime ist gestrichen — ihre Begründung („spart ~50–70 ms") hielt der
+> Messung nicht stand. Der Rest dieses ADR gilt unverändert: drei Binaries, der
+> Runner-Vertrag, die Abhängigkeitsregel.
 
 **Konsequenz**: Zwei neue Bibliotheken (`Lyric.Bytecode.Emit`, `Lyric.Compiler`) und zwei neue
 Executables; `Lyric.Cli` bleibt und wird zum Treiber. `Lyric.Compiler` ist dabei kein Vorgriff — M10

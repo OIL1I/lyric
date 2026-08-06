@@ -1232,7 +1232,17 @@ Vollständige API-Doku entsteht in v1.0. Hier nur ein Überblick.
 
 ## 23. CLI-Befehle
 
-Die Toolchain besteht aus **drei** Programmen (ADR-017). Im Alltag brauchst du nur `lyric`.
+Die Toolchain ist eine **Werkzeug-Suite** (ADR-019). `lyric` ist der Einstiegspunkt; es übersetzt
+und führt nichts selbst aus, sondern startet die Werkzeuge und nimmt dir dabei Entscheidungen ab.
+Im Alltag brauchst du nur `lyric` — wenn du genauer steuern willst, rufst du das Werkzeug direkt.
+
+```
+lyric run app.lyr     ist    lyrc build app.lyr -o <temp> --quiet
+                             lyrvm run <temp>
+```
+
+Jedes Werkzeug lässt sich ersetzen: `--compiler <pfad>` und `--vm <pfad>`, oder über
+`LYRIC_COMPILER` und `LYRIC_VM`. Ohne Angabe wird das mitgelieferte benutzt.
 
 ### 23.1 `lyric` — der Treiber
 

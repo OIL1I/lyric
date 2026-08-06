@@ -371,6 +371,27 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **ADR-019 — `lyric` ist ein Dispatcher, kein zweiter Compiler**. 1473 Tests gruen.
+  - **Die Begruendung von ADR-017 hielt der Messung nicht stand.** Dort lief die Runtime
+    in-process, weil das „~50–70 ms" Prozessstart spare. Gemessen: **283 ms in-process gegen
+    290 ms ueber den Subprozess** — im Rauschen. Bezahlt wurde es mit zwei Ausfuehrungspfaden, die
+    gegeneinander getestet werden mussten, und vier Kommandos, die es zweimal gab. `lyric` war
+    keine vereinfachte Oberflaeche, sondern eine zweite Implementierung.
+  - **Der Treiber hat jetzt genau eine Referenz**: `Lyric.Core`. Kein `lyrfe`, kein `lyrrt`. Der
+    Architektur-Test hat sich dadurch umgedreht — wo „der Treiber *muss* beide Seiten haben" stand,
+    steht jetzt das Gegenteil, und **dass er sich umdreht, IST die Entscheidung**.
+  - **Alle Werkzeuge sind austauschbar**, nicht nur die Runtime (`--compiler`/`LYRIC_COMPILER`
+    analog zu `--vm`/`LYRIC_VM`). Begruendung ist die Absicht, die Sprache nach v1 formell zu
+    spezifizieren: dann ist ein zweiter Compiler genauso denkbar, wie ADR-013 heute eine zweite
+    Runtime denkbar macht.
+  - **`lyric run` ruft den Compiler mit `--quiet`.** Wer `run` tippt, will sein Programm sehen und
+    nicht die Groesse eines Zwischenartefakts, das gleich wieder verschwindet — die Sorte Vorgabe,
+    fuer die dieser Einstiegspunkt da ist.
+  - Das Zwischenartefakt ist eine **temporaere Datei**, kein Cache. Ein Cache braeuchte
+    Verzeichnis, Invalidierung und `clean`; er laesst sich spaeter darueberlegen.
+  - `lyrtest` (post-v1) fuegt sich als drittes Werkzeug ein, ohne dass am Dispatcher etwas zu
+    aendern waere. Das ist der Test dafuer, ob der Entwurf traegt.
+
 - [x] **Auslieferung: drei Assemblies, ein Ordner, ein Kommando**. `dotnet msbuild
   build/publish.proj` legt alle drei Binaries nach `artifacts/publish/`. Der Ordner hatte 24
   Eintraege und hat jetzt **13**; 1451 Tests gruen.
