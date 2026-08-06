@@ -169,7 +169,13 @@ public static class ModuleLowerer
         // Funktionen UND hinter den Global-Initialisierer. Die Reihenfolge ist kein Geschmack:
         // die Position IST die FunctionId (ADR-013), und ein Lambda im Initialisierer
         // (`let f = () => 1;`) wuerde sonst seine eigene Id verschieben.
-        var lambdas = new LambdaTable(pending.Count + (globals.IsEmpty ? 0 : 1));
+        // Coroutine-Rumpfe kommen hinter die geschriebenen Funktionen und den Initialisierer,
+        // Lambdas dahinter — die Position IST die FunctionId (ADR-013), also muss die Reihenfolge
+        // festliegen, bevor der erste Rumpf gelowert wird.
+        var coroutineCount = pending.Count(p => CoroutineYield(p.Decl) is not null);
+        var reserved = pending.Count + (globals.IsEmpty ? 0 : 1);
+        var coroutines = new CoroutineTable(reserved);
+        var lambdas = new LambdaTable(reserved + coroutineCount);
 
         // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
@@ -179,6 +185,23 @@ public static class ModuleLowerer
         {
             try
             {
+                // Eine Coroutine wird zu ZWEI Funktionen: die Fabrik traegt den geschriebenen
+                // Namen und liefert ein Zustandsobjekt, der Rumpf wird angemeldet und hinten
+                // angehaengt (Sprache.md §8).
+                if (CoroutineYield(decl) is { } yieldNode)
+                {
+                    var state = typeTable.ReserveCoroutineState(name);
+                    var yieldType = typeTable.Lower(yieldNode);
+                    var parameterTypes = decl.Parameters
+                        .Select(p => typeTable.Lower(p.Type)).ToArray();
+                    var receiverType = receiver is null ? null : typeTable.RefTo(receiver);
+
+                    coroutines.Register(decl, name, state, yieldType, receiver);
+                    functions.Add(CoroutineFactory.Build(decl, name, state, yieldType,
+                        parameterTypes, receiver is not null, receiverType, decl.Span));
+                    continue;
+                }
+
                 functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable,
                     NoSubstitution, globals, lambdas, receiver).Run());
             }
@@ -204,6 +227,21 @@ public static class ModuleLowerer
             {
                 globalInit = new FunctionId(functions.Count);
                 functions.Add(GlobalInitializer.Build(globals, types, ids, imports, typeTable, lambdas));
+            }
+            catch (UnsupportedConstructException ex)
+            {
+                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+                return null;
+            }
+        }
+
+        // Erst die Coroutine-Rumpfe, dann die Lambdas — in genau der Reihenfolge, in der die Ids
+        // oben reserviert wurden.
+        if (!coroutines.IsEmpty)
+        {
+            try
+            {
+                functions.AddRange(coroutines.LowerAll(types, ids, imports, typeTable, globals, lambdas));
             }
             catch (UnsupportedConstructException ex)
             {
@@ -303,6 +341,17 @@ public static class ModuleLowerer
 
         return impls;
     }
+
+    /// <summary>
+    /// Ist das eine Coroutine, und was liefert sie? Der Typ steht syntaktisch da:
+    /// <c>Coroutine&lt;T&gt;</c> ist ein eingebauter Typ (Sprache.md §8), keine Bibliotheksklasse,
+    /// und v1 kennt keine anderen generischen Typen — eine Verwechslung ist damit ausgeschlossen.
+    /// </summary>
+    internal static TypeNode? CoroutineYield(FunctionDecl decl) =>
+        decl.ReturnType is NamedType { TypeArguments.Length: 1 } named
+        && named.Path[^1] == "Coroutine"
+            ? named.TypeArguments[0]
+            : null;
 
     private static FunctionId? Resolve(TypeSymbol owner, string method,
         Dictionary<FunctionSymbol, FunctionId> ids) =>

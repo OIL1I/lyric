@@ -160,9 +160,16 @@ public sealed record IrFunctionType(IrType[] Parameters, IrType Return) : IrType
 /// <summary>
 /// Eine <b>Coroutine</b>: <c>Coroutine&lt;T&gt;</c> aus Sprache.md §8.
 ///
-/// <para>Zur Laufzeit ein gewoehnliches Objekt — Slot 0 ist der Wiedereintrittspunkt, danach
-/// kommen die Locals, die ein <c>yield</c> ueberleben. Der Typ traegt nur, was <c>resume</c>
-/// liefert; das Layout steht in der Typtabelle wie bei jeder Klasse.</para>
+/// <para>Zur Laufzeit ein <b>Fat Pointer</b> aus Zustandsobjekt und Index der Rumpf-Funktion —
+/// dieselbe Darstellung wie eine Closure (ADR-018), und <c>resume co</c> ist damit ein
+/// <c>callind</c>. Slot 0 des Objekts ist der Wiedereintrittspunkt, danach kommen Parameter und
+/// Locals.</para>
+///
+/// <para><b>Der Typ traegt die Zustands-Id NICHT.</b> Er darf es nicht: <c>let c = counter();</c>
+/// hat den Typ <c>Coroutine&lt;int&gt;</c>, und dort ist nicht mehr sichtbar, welche Coroutine ihn
+/// erzeugt hat — zwei Coroutinen mit gleichem Yield-Typ sind fuer die Sema derselbe Typ. Welche
+/// Rumpf-Funktion laeuft, kann deshalb nur der WERT wissen, nicht sein Typ. Genau dieselbe Frage
+/// beantwortet ein Interface-Wert mit seinem konkreten Typindex (P3).</para>
 ///
 /// <para><b>Kein VM-Eingriff.</b> Sprache.md §8 erlaubt <c>yield</c> nur im Coroutine-Rumpf, nicht
 /// in Funktionen, die von dort gerufen werden — genau unter dieser Bedingung reicht eine
@@ -170,5 +177,5 @@ public sealed record IrFunctionType(IrType[] Parameters, IrType Return) : IrType
 /// braucht fuer sein maechtigeres Modell echte separate Stacks in der Runtime; die Sema-Regel ist
 /// bereits die Entscheidung dagegen.</para>
 /// </summary>
-public sealed record IrCoroutineType(IrType Yield, TypeId State) : IrType;
+public sealed record IrCoroutineType(IrType Yield) : IrType;
 }
