@@ -451,7 +451,6 @@ public class LoweringTests
     [InlineData("fn f(): string { return f\"n={1}\"; }", "std.string.fromInt")]
     // 'match' über einen Enum lowert seit P3b; über einen Skalar braucht es Literal-Muster, und
     // die sind eine eigene Ausbaustufe.
-    [InlineData("fn f(n: int): int { return match (n) { 0 => 1, _ => 2 }; }", "is not an enum")]
     [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "'for-in'")]
     public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
         AssertNotSupported(source, expected);

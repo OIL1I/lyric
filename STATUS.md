@@ -592,6 +592,19 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   bevor `Indexable<T>` kommt: der Setter dort wäre `mut fn`, und dann hängt die Frage an derselben
   Stelle nochmal.
 
+- [x] **P5b-1 — `match` über Nicht-Enums**: Literale, Or-Patterns, Ranges (inklusiv und exklusiv),
+  Guards, Bindungen — über `int`, `bool`, `char` und `string`. P3b hatte nur Enums geliefert,
+  `match (5)` war `LYR-IR0001`.
+  - **Muster verzweigen, sie rechnen nicht.** Ein Range braucht zwei Vergleiche, ein Or-Pattern
+    beliebig viele; sie zu einem `bool` zu verknüpfen hieße `and`/`or` auf `bool`, und beide sind
+    in dieser IR ganzzahlig — der Verifier sagt das auch. Dieselbe Lösung wie bei `&&`/`||`, die
+    aus demselben Grund Kontrollfluss sind und keine Opcodes.
+  - **Der letzte Arm bleibt ungeprüft**, sofern er keinen Guard hat: die Sema hat Exhaustivität
+    bewiesen (`LYR-SEM0050`). Der `enums`-Golden-Snapshot ist danach **byte-identisch** — der
+    gemeinsame Pfad hat den Enum-Fall nicht angefasst.
+  - 20 Testfälle, jede Musterform **doppelt**: einmal treffend, einmal daneben. Ein Test, der nur
+    den Treffer prüft, bliebe auch grün, wenn jedes Muster auf alles passte.
+
 **Lieferposten-Inventur 2026-08-06** (Details als Blockzitat vor M8 in der ROADMAP,
 Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/Lowering gefahren,
 **12 laufen durch**. Was **keinem Slice gehoert**: `static let` (scheitert im **Parser**), Attribute

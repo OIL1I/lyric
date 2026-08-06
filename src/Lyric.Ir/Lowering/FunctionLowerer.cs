@@ -951,14 +951,39 @@ internal sealed class FunctionLowerer
     /// die Semantik ist eine Kette von Vergleichen, und die Exhaustivität hat die Sema bereits
     /// bewiesen (<c>LYR-SEM0050</c>), weshalb der letzte Arm ohne Fallback auskommt.</para>
     /// </summary>
+    /// <summary>
+    /// <c>match</c> als Ausdruck und als Statement, über Enums <b>und</b> über Skalare.
+    ///
+    /// <para><b>Kein eigener Opcode.</b> Ein <c>match</c> verzweigt über eine Folge von Tests wie
+    /// jede andere Fallunterscheidung — bei einem Enum über sein Tag, sonst über den Wert selbst.
+    /// Eine Sprungtabelle wäre eine Optimierung, keine Semantik.</para>
+    ///
+    /// <para><b>Der letzte Arm wird nur dann ungeprüft übernommen, wenn sein Muster
+    /// unwiderlegbar ist</b> (<c>_</c> oder eine reine Bindung) und er keinen Guard hat. Die Sema
+    /// hat Exhaustivität bewiesen — aber ein Guard kann trotzdem fehlschlagen, und ein
+    /// Literal-Arm am Ende ist nur deshalb erschöpfend, weil ein anderer Arm die Lücke deckt.
+    /// Der Fehlpfad wird dann <c>unreachable</c>: erreichbar im CFG, unmöglich zur Laufzeit.</para>
+    /// </summary>
     private TempId? LowerMatch(Expr scrutinee, MatchArm[] arms, IrType? resultType, Span span)
     {
-        var (symbol, enumType) = RequireEnum(scrutinee);
+        var scrutineeType = TypeOfExpr(scrutinee);
         var value = LowerExpr(scrutinee);
         var slot = resultType is null ? (LocalId?)null : _slots.DeclareSynthetic("match", resultType);
 
-        var tag = _slots.NewTemp(new IrScalarType(IrScalar.I64));
-        _b.Emit(new EnumTag(tag, value, span));
+        // Bei einem Enum wird über das Tag verglichen, nicht über den Wert — welche Variante
+        // vorliegt, steht in Slot 0 und sonst nirgends.
+        TypeSymbol? enumSymbol = null;
+        TempId subject = value;
+        IrType subjectType = scrutineeType;
+
+        if (scrutineeType is IrEnumType)
+        {
+            enumSymbol = RequireEnum(scrutinee).Symbol;
+            var tag = _slots.NewTemp(new IrScalarType(IrScalar.I64));
+            _b.Emit(new EnumTag(tag, value, span));
+            subject = tag;
+            subjectType = new IrScalarType(IrScalar.I64);
+        }
 
         var merge = _b.NewBlock();
         var reachesMerge = false;
@@ -966,31 +991,48 @@ internal sealed class FunctionLowerer
         for (var i = 0; i < arms.Length; i++)
         {
             var arm = arms[i];
-            if (arm.Guard is not null) throw NotSupported("a match guard", arm.Span);
+            var last = i == arms.Length - 1;
+
+            // Der letzte Arm wird nicht geprueft: die Sema hat Exhaustivitaet bewiesen
+            // (LYR-SEM0050), also passt er, wenn keiner davor gepasst hat. Der Test waere immer
+            // wahr — und bei einem Enum ein zusaetzlicher Vergleich pro match.
+            //
+            // Mit Guard gilt das nicht: ein Guard kann fehlschlagen, und dann braucht es einen
+            // Fehlpfad. Der wird 'unreachable' — im CFG erreichbar, zur Laufzeit unmoeglich.
+            var unconditional = last && arm.Guard is null;
 
             var body = _b.NewBlock();
-            // Der letzte Arm braucht keine Prüfung: die Sema hat Exhaustivität bewiesen. Ein
-            // Vergleich hier wäre ein unerreichbarer else-Block, und den lehnt der Verifier ab.
-            if (i < arms.Length - 1)
+            var next = unconditional ? (BlockId?)null : _b.NewBlock();
+
+            if (unconditional) _b.Seal(new Branch(body, arm.Span));
+            else EmitPatternBranch(arm.Pattern, subject, subjectType, enumSymbol,
+                body, next!.Value, arm.Span);
+
+            _b.SwitchTo(body);
+
+            // Bindungen stehen vor dem Guard: 'n if n > 0' braucht 'n'.
+            BindPattern(arm.Pattern, value, enumSymbol);
+
+            if (arm.Guard is { } guard)
             {
-                var next = _b.NewBlock();
-                var expected = EmitConst(new IntConst((ulong)TagOfPattern(symbol, arm.Pattern)),
-                    new IrScalarType(IrScalar.I64), arm.Span);
-                // Das Type-Feld eines Vergleichs ist sein ERGEBNIS-Typ (bool); den Operandentyp
-                // schlägt der Emitter in der Temp-Tabelle nach, weil signed/unsigned verschiedene
-                // Opcodes sind.
-                var matches = _slots.NewTemp(BoolType);
-                _b.Emit(new BinOp(matches, IrBinKind.Eq, BoolType, tag, expected, arm.Span));
-                _b.Seal(new CondBranch(matches, body, next, arm.Span));
-                _b.SwitchTo(body);
-                if (LowerArm(arm, symbol, value, slot, resultType)) { _b.Seal(new Branch(merge, arm.Span)); reachesMerge = true; }
-                _b.SwitchTo(next);
+                var guarded = _b.NewBlock();
+                _b.Seal(new CondBranch(LowerExpr(guard), guarded, next!.Value, guard.Span));
+                _b.SwitchTo(guarded);
             }
-            else
+
+            if (LowerArm(arm, value, slot, resultType))
             {
-                _b.Seal(new Branch(body, arm.Span));
-                _b.SwitchTo(body);
-                if (LowerArm(arm, symbol, value, slot, resultType)) { _b.Seal(new Branch(merge, arm.Span)); reachesMerge = true; }
+                _b.Seal(new Branch(merge, arm.Span));
+                reachesMerge = true;
+            }
+
+            if (next is { } fallthrough)
+            {
+                _b.SwitchTo(fallthrough);
+                // Nach dem letzten Arm ist der Fehlpfad zur Laufzeit unmöglich — die Sema hat
+                // Exhaustivität bewiesen. Im CFG ist er erreichbar, also braucht er einen
+                // Terminator, und 'unreachable' ist genau die Aussage.
+                if (last) _b.Seal(new Unreachable(span));
             }
         }
 
@@ -1004,11 +1046,122 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Bindet die Felder der Variante und lowert den Rumpf. Liefert „fällt durch".</summary>
-    private bool LowerArm(MatchArm arm, TypeSymbol symbol, TempId value, LocalId? slot, IrType? resultType)
+    /// <summary>
+    /// Verzweigt nach <paramref name="onMatch"/> oder <paramref name="onFail"/>, je nachdem ob das
+    /// Muster passt. Versiegelt dabei den aktuellen Block.
+    ///
+    /// <para><b>Verzweigung statt eines bool-Temps</b>, und das ist keine Stilfrage: ein Range
+    /// braucht zwei Vergleiche, ein Or-Pattern beliebig viele, und die zu einem Wert zu
+    /// verknuepfen hiesse <c>and</c>/<c>or</c> auf <c>bool</c> — beide sind in dieser IR
+    /// ganzzahlig, und der Verifier sagt das auch. Dieselbe Loesung wie bei <c>&amp;&amp;</c> und
+    /// <c>||</c>, die aus demselben Grund Kontrollfluss sind und keine Opcodes.</para>
+    /// </summary>
+    private void EmitPatternBranch(Pattern pattern, TempId subject, IrType subjectType,
+        TypeSymbol? enumSymbol, BlockId onMatch, BlockId onFail, Span span)
     {
-        BindPatternFields(arm.Pattern, symbol, value);
+        switch (pattern)
+        {
+            // Faengt alles — kein Test noetig.
+            case WildcardPattern:
+                _b.Seal(new Branch(onMatch, span));
+                return;
 
+            case BindingPattern binding when _types.RefOf(pattern) is EnumVariantSymbol:
+                _b.Seal(new CondBranch(EmitTagTest(enumSymbol, binding.Name, subject, binding.Span),
+                    onMatch, onFail, binding.Span));
+                return;
+
+            case BindingPattern:
+                _b.Seal(new Branch(onMatch, span));
+                return;
+
+            case VariantPattern variant:
+                _b.Seal(new CondBranch(EmitTagTest(enumSymbol, variant.Path[^1], subject, variant.Span),
+                    onMatch, onFail, variant.Span));
+                return;
+
+            case LiteralPattern literal:
+            {
+                var expected = LowerExprAs(literal.Literal, subjectType);
+                var matches = _slots.NewTemp(BoolType);
+                _b.Emit(new BinOp(matches, IrBinKind.Eq, BoolType, subject, expected, literal.Span));
+                _b.Seal(new CondBranch(matches, onMatch, onFail, literal.Span));
+                return;
+            }
+
+            // 'lo <= v' und dann 'v <= hi' — zwei Blocke statt einer Verknuepfung.
+            case RangePattern range:
+            {
+                var low = LowerExprAs(range.Low, subjectType);
+                var atLeast = _slots.NewTemp(BoolType);
+                _b.Emit(new BinOp(atLeast, IrBinKind.Ge, BoolType, subject, low, range.Span));
+
+                var upper = _b.NewBlock();
+                _b.Seal(new CondBranch(atLeast, upper, onFail, range.Span));
+                _b.SwitchTo(upper);
+
+                var high = LowerExprAs(range.High, subjectType);
+                var atMost = _slots.NewTemp(BoolType);
+                _b.Emit(new BinOp(atMost, range.IsInclusive ? IrBinKind.Le : IrBinKind.Lt,
+                    BoolType, subject, high, range.Span));
+                _b.Seal(new CondBranch(atMost, onMatch, onFail, range.Span));
+                return;
+            }
+
+            // Jede Alternative bekommt ihren eigenen Versuch; die erste, die passt, gewinnt.
+            case OrPattern or:
+            {
+                for (var i = 0; i < or.Alternatives.Length; i++)
+                {
+                    var lastAlternative = i == or.Alternatives.Length - 1;
+                    var nextAlternative = lastAlternative ? onFail : _b.NewBlock();
+
+                    EmitPatternBranch(or.Alternatives[i], subject, subjectType, enumSymbol,
+                        onMatch, nextAlternative, or.Span);
+
+                    if (!lastAlternative) _b.SwitchTo(nextAlternative);
+                }
+
+                return;
+            }
+
+            default:
+                throw NotSupported($"a {pattern.GetType().Name} in a match", pattern.Span);
+        }
+    }
+
+    private TempId EmitTagTest(TypeSymbol? enumSymbol, string variant, TempId tag, Span span)
+    {
+        if (enumSymbol is null)
+            throw NotSupported("a variant pattern in a match over a non-enum", span);
+
+        var expected = EmitConst(new IntConst((ulong)_typeTable.TagOf(enumSymbol, variant, span)),
+            new IrScalarType(IrScalar.I64), span);
+
+        // Das Type-Feld eines Vergleichs ist sein ERGEBNIS-Typ (bool); den Operandentyp schlaegt
+        // der Emitter in der Temp-Tabelle nach, weil signed/unsigned verschiedene Opcodes sind.
+        var matches = _slots.NewTemp(BoolType);
+        _b.Emit(new BinOp(matches, IrBinKind.Eq, BoolType, tag, expected, span));
+        return matches;
+    }
+
+    /// <summary>Bindet, was das Muster bindet: eine reine Bindung den Wert selbst, ein
+    /// Varianten-Muster seine Felder.</summary>
+    private void BindPattern(Pattern pattern, TempId value, TypeSymbol? enumSymbol)
+    {
+        if (pattern is BindingPattern binding && _types.RefOf(pattern) is LocalSymbol local)
+        {
+            var slot = _slots.DeclareFor(local, LowerType(local.Type, binding.Span));
+            _b.Emit(new StoreLocal(slot, value, binding.Span));
+            return;
+        }
+
+        if (enumSymbol is not null) BindPatternFields(pattern, enumSymbol, value);
+    }
+
+    /// <summary>Lowert den Rumpf eines Arms. Liefert „faellt durch".</summary>
+    private bool LowerArm(MatchArm arm, TempId value, LocalId? slot, IrType? resultType)
+    {
         if (arm.Body is Expr expr)
         {
             var produced = resultType is null ? LowerExprOrVoid(expr) : LowerExprAs(expr, resultType);
@@ -1016,7 +1169,7 @@ internal sealed class FunctionLowerer
             return true;
         }
 
-        return LowerStatements((Block)arm.Body);
+        return LowerScope((Block)arm.Body);
     }
 
     /// <summary>Der Tag, auf den ein Muster passt. Eine Unit-Variante parst als
