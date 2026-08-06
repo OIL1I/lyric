@@ -91,7 +91,7 @@ public sealed class Compilation
     /// Roslyn macht dasselbe mit seinen Well-Known-Members.
     /// </summary>
     private static readonly string[][] WellKnownModules =
-        [["std", "string"], ["std", "core"]];
+        [["std", "string"], ["std", "core"], ["std", "iter"]];
 
     private void LoadImportedModules()
     {

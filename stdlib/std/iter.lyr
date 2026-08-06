@@ -1,0 +1,51 @@
+// std.iter — was 'for-in' antreibt (Sprache.md §5).
+//
+// Ein Iterator liefert Werte, bis keiner mehr da ist: 'next()' gibt '?T' zurueck, und 'null' heisst
+// Ende. Das ist die gesamte Schnittstelle — kein 'hasNext' daneben, das ein zweites Mal dieselbe
+// Frage stellt und dabei mit 'next' aus dem Tritt geraten kann.
+//
+// 'for (x in e)' braucht einen Ausdruck, der 'Iterator<T>' erfuellt. Fuer die drei eingebauten
+// Formen — Range, Array, String — hat der Compiler keine Deklaration, an die er eine
+// Konformanz haengen koennte; er baut deshalb einen der Adapter hier unten. Ein eigener Typ, der
+// 'Iterator<T>' implementiert, wird direkt benutzt.
+
+module std.iter;
+
+pub interface Iterator<T> {
+    // 'mut', weil ein Iterator seinen Fortschritt fortschreibt — genau das unterscheidet ihn von
+    // einer Funktion, die jedes Mal dasselbe liefert.
+    mut fn next(): ?T;
+}
+
+// Ein Zahlenbereich: 'a..b' (exklusiv) und 'a..=b' (inklusiv) unterscheiden sich allein im
+// Endwert, den der Compiler beim Bauen einsetzt — deshalb gibt es hier nur EINEN Adapter und
+// nicht zwei.
+pub class RangeIterator :: [Iterator<int>] {
+    current: int,
+    end: int,
+
+    pub mut fn next(): ?int {
+        if (this.current >= this.end) {
+            return null;
+        }
+        let value = this.current;
+        this.current = this.current + 1;
+        return value;
+    }
+}
+
+// Ein Array. Der Index gehoert dem Iterator und nicht dem Array — zwei Schleifen ueber dasselbe
+// Array stoeren einander deshalb nicht.
+pub class ArrayIterator<T> :: [Iterator<T>] {
+    source: T[],
+    index: int,
+
+    pub mut fn next(): ?T {
+        if (this.index >= this.source.length) {
+            return null;
+        }
+        let value = this.source[this.index];
+        this.index = this.index + 1;
+        return value;
+    }
+}

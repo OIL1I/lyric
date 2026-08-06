@@ -2600,16 +2600,32 @@ internal sealed class FunctionLowerer
     /// <summary>Der Rueckgabetyp einer Methode, gesehen aus der Instanz: das <c>T</c> in
     /// <c>fn get(): T</c> ist das Typargument des Empfaengers.</summary>
     private IrType ReturnTypeOfInstanceMethod(FunctionDecl declaration, GenericInstance owner,
-        Core.Span span)
-    {
-        if (declaration.ReturnType is null) return VoidType;
+        Core.Span span) =>
+        declaration.ReturnType is null
+            ? VoidType
+            : LowerWithOwner(declaration.ReturnType, owner, span);
 
-        if (declaration.ReturnType is NamedType { TypeArguments.Length: 0 } named)
+    /// <summary>
+    /// Lowert einen geschriebenen Typ im Kontext einer Typinstanz — <b>rekursiv</b>, weil ein
+    /// Typ-Parameter tief stecken kann: <c>?T</c>, <c>T[]</c>, <c>Box&lt;T&gt;</c>.
+    ///
+    /// <para>Nur den nackten Fall zu behandeln reichte fuer <c>fn get(): T</c> und fiel bei
+    /// <c>fn next(): ?T</c> um — und genau das ist die Signatur jedes Iterators.</para>
+    /// </summary>
+    private IrType LowerWithOwner(TypeNode node, GenericInstance owner, Core.Span span)
+    {
+        if (node is NamedType { TypeArguments.Length: 0 } named)
             for (var i = 0; i < owner.Definition.Generics.Length; i++)
                 if (owner.Definition.Generics[i].Name == named.Path[^1])
                     return LowerType(owner.Arguments[i], span);
 
-        return _typeTable.Lower(declaration.ReturnType);
+        if (node is NullableType option)
+            return new IrOptionalType(LowerWithOwner(option.Inner, owner, span));
+
+        if (node is ArrayType { Size: null } array)
+            return new IrArrayType(LowerWithOwner(array.Element, owner, span));
+
+        return _typeTable.Lower(node);
     }
 
     private TempId? LowerIndirectCall(CallExpr expr)
@@ -3249,15 +3265,33 @@ internal sealed class FunctionLowerer
         if (_decl!.ReturnType is null) return VoidType;
 
         // In einer monomorphisierten Instanz kann der geschriebene Rueckgabetyp ein
-        // Typ-Parameter sein ('fn id<T>(x: T): T'). Die Parameter gehen ueber den LyrType-Pfad und
-        // treffen die Substitution dort; der Rueckgabetyp kommt syntaktisch und muss sie hier
-        // treffen — sonst suchte die Typtabelle nach einer Klasse namens 'T'.
-        if (_substitution.Count > 0 && _decl.ReturnType is NamedType { TypeArguments.Length: 0 } named)
+        // Typ-Parameter sein ('fn id<T>(x: T): T') oder einen enthalten ('fn next(): ?T'). Die
+        // Parameter gehen ueber den LyrType-Pfad und treffen die Substitution dort; der
+        // Rueckgabetyp kommt syntaktisch und muss sie hier treffen — sonst suchte die Typtabelle
+        // nach einer Klasse namens 'T'.
+        return _substitution.Count > 0
+            ? LowerSubstituted(_decl.ReturnType)
+            : _typeTable.Lower(_decl.ReturnType);
+    }
+
+    /// <summary>
+    /// Lowert einen geschriebenen Typ mit der Substitution dieser Instanz — <b>rekursiv</b>, weil
+    /// ein Typ-Parameter tief stecken kann: <c>?T</c>, <c>T[]</c>.
+    ///
+    /// <para>Nur den nackten Fall zu behandeln reichte fuer <c>fn get(): T</c> und fiel bei
+    /// <c>fn next(): ?T</c> um — und genau das ist die Signatur jedes Iterators.</para>
+    /// </summary>
+    private IrType LowerSubstituted(TypeNode node)
+    {
+        if (node is NamedType { TypeArguments.Length: 0 } named)
             foreach (var (parameter, bound) in _substitution)
                 if (parameter.Name == named.Path[^1])
-                    return LowerType(bound, _decl.ReturnType.Span);
+                    return LowerType(bound, node.Span);
 
-        return _typeTable.Lower(_decl.ReturnType);
+        if (node is NullableType option) return new IrOptionalType(LowerSubstituted(option.Inner));
+        if (node is ArrayType { Size: null } array) return new IrArrayType(LowerSubstituted(array.Element));
+
+        return _typeTable.Lower(node);
     }
 
     /// <summary>Scope-Grenze: gültiges Lyric, für das der Backend-Teil noch fehlt. Wird von

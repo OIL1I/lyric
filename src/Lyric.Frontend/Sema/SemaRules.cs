@@ -195,12 +195,21 @@ public sealed class SemaRules
     {
         var baseType = _types.TypeOf(m.Target);
         if (baseType.IsError) return true; // Poison: kein Folgefehler
-        if (baseType is NamedRef nr)
+
+        // Eine Instanz eines generischen Typs verhaelt sich wie ihre Definition: 'Box<int>' ist
+        // eine Klasse, wenn 'Box' eine ist. Ohne diesen Fall waere ein Feld einer generischen
+        // Klasse nie schreibbar — und damit kein Iterator moeglich, der seinen Index fortschreibt.
+        var kind = baseType switch
         {
-            if (nr.Symbol.Kind == TypeSymbolKind.Class) return true;               // class-Felder immer mutabel (§6.4)
-            if (nr.Symbol.Kind == TypeSymbolKind.Struct)
-                return m.Target is ThisExpr ? _thisMut : IsMutableLvalue(m.Target); // struct: this in mut fn, sonst mutabler Basis-Lvalue
-        }
+            NamedRef nr => nr.Symbol.Kind,
+            GenericInstance instance => instance.Definition.Kind,
+            _ => (TypeSymbolKind?)null,
+        };
+
+        if (kind == TypeSymbolKind.Class) return true;               // class-Felder immer mutabel (§6.4)
+        if (kind == TypeSymbolKind.Struct)
+            return m.Target is ThisExpr ? _thisMut : IsMutableLvalue(m.Target); // struct: this in mut fn, sonst mutabler Basis-Lvalue
+
         return false;
     }
 
