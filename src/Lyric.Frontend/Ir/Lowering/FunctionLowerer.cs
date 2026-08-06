@@ -682,7 +682,9 @@ internal sealed class FunctionLowerer
             case ContinueStmt s: return LowerContinue(s);
 
             case ForInStmt s: return LowerForIn(s);
-            case MatchStmt s: LowerMatch(s.Scrutinee, s.Arms, null, s.Span); return true;
+            case MatchStmt s:
+                LowerMatch(s.Scrutinee, s.Arms, null, s.Span);
+                return _matchFellThrough;
             case TryStmt s: return LowerTry(s);
             case ThrowStmt s: return LowerThrow(s);
             // 'defer' registriert nur — die Rumpfe setzt LowerScope an die Ausgaenge.
@@ -1901,6 +1903,12 @@ internal sealed class FunctionLowerer
     /// Literal-Arm am Ende ist nur deshalb erschöpfend, weil ein anderer Arm die Lücke deckt.
     /// Der Fehlpfad wird dann <c>unreachable</c>: erreichbar im CFG, unmöglich zur Laufzeit.</para>
     /// </summary>
+    /// <summary>Ob das zuletzt gelowerte <c>match</c> hinter sich weiterlaeuft. Ein Rueckgabewert
+    /// waere sauberer, aber <see cref="LowerMatch"/> liefert bereits den Ergebnis-Temp des
+    /// Ausdrucks-Falls; ein zweiter Kanal fuer eine Frage, die nur der Statement-Fall stellt,
+    /// haette jede Aufrufstelle verbreitert.</summary>
+    private bool _matchFellThrough = true;
+
     private TempId? LowerMatch(Expr scrutinee, MatchArm[] arms, IrType? resultType, Span span)
     {
         var scrutineeType = TypeOfExpr(scrutinee);
@@ -1922,7 +1930,15 @@ internal sealed class FunctionLowerer
             subjectType = new IrScalarType(IrScalar.I64);
         }
 
-        var merge = _b.NewBlock();
+        // Der Merge-Block entsteht ERST, wenn ein Arm ihn braucht. Faellt keiner durch — jeder
+        // returnt, wirft oder springt —, gibt es hinter dem 'match' keinen Kontrollfluss mehr,
+        // und ein angelegter Block waere vom Einstieg aus unerreichbar. Genau das lehnt der
+        // Verifier ab, und zu Recht: ein Block, den niemand erreichen kann, ist entweder tot oder
+        // ein Fehler im Lowering.
+        //
+        // Bis 2026-08-06 wurde er immer angelegt, und der haeufigste Statement-Fall —
+        // 'match (e) { A => { return 1; }, B => { return 2; } }' — war deshalb eine Scope-Grenze.
+        BlockId? merge = null;
         var reachesMerge = false;
 
         for (var i = 0; i < arms.Length; i++)
@@ -1959,7 +1975,8 @@ internal sealed class FunctionLowerer
 
             if (LowerArm(arm, value, slot, resultType))
             {
-                _b.Seal(new Branch(merge, arm.Span));
+                merge ??= _b.NewBlock();
+                _b.Seal(new Branch(merge.Value, arm.Span));
                 reachesMerge = true;
             }
 
@@ -1973,9 +1990,23 @@ internal sealed class FunctionLowerer
             }
         }
 
-        if (!reachesMerge) throw NotSupported("a match where no arm falls through", span);
+        // Kein Arm faellt durch — jeder returnt, wirft oder springt. Dann endet der
+        // Kontrollfluss hier, und der Merge-Block ist unerreichbar.
+        //
+        // Das ist kein Randfall, sondern das uebliche Muster fuer ein 'match' als Statement:
+        // 'match (e) { A => { return 1; }, B => { return 2; } }'. Bis 2026-08-06 war es eine
+        // Scope-Grenze — der Merge-Block wurde angelegt, blieb leer, und der Verifier haette
+        // einen Block ohne Terminator gemeldet.
+        if (merge is not { } after)
+        {
+            // Kein Arm faellt durch: der Kontrollfluss endet hier. Der Aufrufer erfaehrt es ueber
+            // _matchFellThrough und versiegelt nicht noch einmal.
+            _matchFellThrough = false;
+            return null;
+        }
 
-        _b.SwitchTo(merge);
+        _b.SwitchTo(after);
+        _matchFellThrough = true;
         if (slot is not { } result || resultType is null) return null;
 
         var dest = _slots.NewTemp(resultType);

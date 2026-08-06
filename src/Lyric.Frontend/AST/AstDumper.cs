@@ -259,6 +259,13 @@ public static class AstDumper
                 Line(sb, indent, "ErrorDecl", n.Span);
                 break;
 
+            // Eine typgebundene Konstante (ADR-014). Sie steht im Rumpf eines Typs, traegt aber
+            // ein gewoehnliches BindingStmt in sich — deshalb hier und nicht bei den Statements.
+            case StaticBindingDecl n:
+                Line(sb, indent, $"StaticLet{(n.IsPublic ? " pub" : "")}", n.Span);
+                Write(n.Binding, indent + 1, sb);
+                break;
+
             // --- Statements ---
             case Block n:
                 Line(sb, indent, "Block", n.Span);

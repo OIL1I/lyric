@@ -1270,4 +1270,26 @@ public class VmTests
             class Item :: [P] { fn price(): int { return 7; } }
             fn main(): int { let p: P = Item { }; return p.price(); }
             """).AsI64);
+
+    [Fact]
+    public void A_match_statement_where_every_arm_returns() =>
+        // Das haeufigste Statement-'match' ueberhaupt — und bis 2026-08-06 eine Scope-Grenze:
+        // der Merge-Block wurde immer angelegt, blieb leer und war vom Einstieg unerreichbar.
+        // Jetzt entsteht er erst, wenn ein Arm ihn braucht.
+        Assert.Equal(7, Run("""
+            enum E { A, B }
+            fn main(): int { let e = E.A; match (e) { A => { return 7; }, B => { return 2; } } }
+            """).AsI64);
+
+    [Fact]
+    public void A_match_statement_where_one_arm_falls_through() =>
+        // Die Gegenprobe: faellt ein Arm durch, MUSS der Merge-Block da sein.
+        Assert.Equal(3, Run("""
+            fn main(): int {
+                var r = 0;
+                let n = 5;
+                match (n) { 5 => { r = 3; }, _ => { return 0; } }
+                return r;
+            }
+            """).AsI64);
 }

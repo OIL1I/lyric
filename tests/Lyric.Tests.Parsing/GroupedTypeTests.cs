@@ -81,6 +81,23 @@ public class GroupedTypeTests
         Assert.Contains(ParseType("(int,)").De.Diagnostics, d => d.Code == "LYR-PAR0010");
 
     [Fact]
+    public void The_ast_dumper_handles_a_static_binding()
+    {
+        // 'lyrc parse' stuerzte hier ab: der Dumper kannte StaticBindingDecl nicht, obwohl check
+        // und lower das Konstrukt seit P1b/P5c koennen. Ein Debug-Kommando, das bei gueltigem
+        // Code wirft, ist genau die Sorte Luecke, die kein Gate misst — gefunden im Sweep.
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("t.lyr", "struct V { x: int, static let ZERO: int = 0; }");
+        var de = new DiagnosticEngine(sm);
+        var module = new Parser(sm, id, de).ParseModule();
+
+        var dump = AstDumper.Dump(module, sm);
+
+        Assert.Contains("StaticLet", dump);
+        Assert.Contains("Let ZERO", dump);
+    }
+
+    [Fact]
     public void Empty_parentheses_are_not_a_type() =>
         Assert.Contains(ParseType("()").De.Diagnostics, d => d.Code == "LYR-PAR0011");
 }
