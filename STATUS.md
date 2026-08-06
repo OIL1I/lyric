@@ -605,6 +605,13 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   - 20 Testfälle, jede Musterform **doppelt**: einmal treffend, einmal daneben. Ein Test, der nur
     den Treffer prüft, bliebe auch grün, wenn jedes Muster auf alles passte.
 
+- [x] **P5b-2 — `?.` und `??=`**: beide lowern jetzt, wie `??` es seit P2b tut — als Verzweigung
+  über `optissome`, nicht als Opcode. Die rechte Seite eines `??=` läuft **nur**, wenn der Slot
+  leer ist; `?.` greift **nicht** zu, wenn der Träger keinen Wert hat. Genau deshalb geht es nicht
+  als Instruktion: eine Stack-Maschine kann keinen unausgewerteten Ausdruck transportieren. Das
+  `optget` im Some-Zweig kann nie panicken — der Beweis steht im `optissome` davor, dieselbe
+  Arbeitsteilung wie beim Flow-Narrowing.
+
 **Lieferposten-Inventur 2026-08-06** (Details als Blockzitat vor M8 in der ROADMAP,
 Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/Lowering gefahren,
 **12 laufen durch**. Was **keinem Slice gehoert**: `static let` (scheitert im **Parser**), Attribute

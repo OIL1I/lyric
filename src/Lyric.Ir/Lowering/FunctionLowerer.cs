@@ -782,8 +782,10 @@ internal sealed class FunctionLowerer
             return value;
         }
 
-        if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr or BinaryOp.Coalesce)
-            throw NotSupported("short-circuit or coalescing assignment", expr.Span);
+        if (expr.Operator is BinaryOp.Coalesce) return LowerCoalesceAssign(slot, expr);
+
+        if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
+            throw NotSupported("short-circuit assignment ('&&=' / '||=')", expr.Span);
 
         var type = _slots.TypeOfLocal(slot);
         var current = _slots.NewTemp(type);
@@ -1425,6 +1427,112 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
+    /// <summary>
+    /// <c>x ??= v</c> — weist nur zu, wenn <c>x</c> keinen Wert hat.
+    ///
+    /// <para>Wie <c>??</c> eine Verzweigung und kein Opcode: die rechte Seite wird <b>nur dann</b>
+    /// ausgewertet, und ein unausgewerteter Ausdruck laesst sich auf einer Stack-Maschine nicht
+    /// transportieren. Der Unterschied zu <c>??</c> ist allein, dass das Ergebnis in den
+    /// vorhandenen Slot zurueckgeht statt in einen neuen.</para>
+    /// </summary>
+    private TempId LowerCoalesceAssign(LocalId slot, AssignExpr expr)
+    {
+        var type = _slots.TypeOfLocal(slot);
+        if (type is not IrOptionalType option)
+            throw NotSupported("'??=' on a non-optional target", expr.Span);
+
+        var current = _slots.NewTemp(type);
+        _b.Emit(new LoadLocal(current, slot, type, expr.Target.Span));
+
+        var test = _slots.NewTemp(BoolType);
+        _b.Emit(new OptIsSome(test, current, expr.Span));
+
+        var whenNone = _b.NewBlock();
+        var merge = _b.NewBlock();
+        // Hat es schon einen Wert, bleibt der Slot unberuehrt — auch die rechte Seite laeuft dann
+        // nicht.
+        _b.Seal(new CondBranch(test, merge, whenNone, expr.Span));
+
+        _b.SwitchTo(whenNone);
+        _b.Emit(new StoreLocal(slot, LowerExprAs(expr.Value, type), expr.Span));
+        _b.Seal(new Branch(merge, expr.Span));
+
+        _b.SwitchTo(merge);
+        var result = _slots.NewTemp(type);
+        _b.Emit(new LoadLocal(result, slot, type, expr.Span));
+        return result;
+    }
+
+    /// <summary>
+    /// <c>a?.b</c> — Feldzugriff, der bei „kein Wert" keinen macht.
+    ///
+    /// <para>Ergebnis ist immer ein Optional (Sprache.md §7): hat <c>a</c> keinen Wert, ist es
+    /// <c>optnone</c>, sonst das ausgepackte Feld in <c>optsome</c>. Auch das ist eine
+    /// Verzweigung — der Feldzugriff darf bei einer leeren Referenz <b>nicht</b> laufen, und ein
+    /// Opcode koennte das nicht ausdruecken, ohne selbst zu verzweigen.</para>
+    /// </summary>
+    private TempId LowerOptionalMember(MemberExpr expr)
+    {
+        var resultType = TypeOfExpr(expr);
+        if (resultType is not IrOptionalType result)
+            throw NotSupported("'?.' whose result is not an optional", expr.Span);
+
+        if (TypeOfExpr(expr.Target) is not IrOptionalType target)
+            throw NotSupported("'?.' on a non-optional", expr.Span);
+
+        var slot = _slots.DeclareSynthetic("chain", resultType);
+        var option = LowerExpr(expr.Target);
+
+        var test = _slots.NewTemp(BoolType);
+        _b.Emit(new OptIsSome(test, option, expr.Span));
+
+        var whenSome = _b.NewBlock();
+        var whenNone = _b.NewBlock();
+        var merge = _b.NewBlock();
+        _b.Seal(new CondBranch(test, whenSome, whenNone, expr.Span));
+
+        _b.SwitchTo(whenSome);
+        var unwrapped = _slots.NewTemp(target.Inner);
+        _b.Emit(new OptGet(unwrapped, option, target.Inner, expr.Span));
+
+        // Das 'optget' kann nicht panicken: der Zweig steht hinter dem 'optissome', der Beweis
+        // ist also gefuehrt. Dieselbe Arbeitsteilung wie beim Flow-Narrowing in P2b.
+        var (type, field, fieldType) = ResolveFieldOn(target.Inner, expr);
+        var value = _slots.NewTemp(fieldType);
+        _b.Emit(new LoadField(value, unwrapped, type, field, fieldType, expr.Span));
+
+        var wrapped = _slots.NewTemp(resultType);
+        _b.Emit(new OptSome(wrapped, value, result.Inner, expr.Span));
+        _b.Emit(new StoreLocal(slot, wrapped, expr.Span));
+        _b.Seal(new Branch(merge, expr.Span));
+
+        _b.SwitchTo(whenNone);
+        var none = _slots.NewTemp(resultType);
+        _b.Emit(new OptNone(none, result.Inner, expr.Span));
+        _b.Emit(new StoreLocal(slot, none, expr.Span));
+        _b.Seal(new Branch(merge, expr.Span));
+
+        _b.SwitchTo(merge);
+        var dest = _slots.NewTemp(resultType);
+        _b.Emit(new LoadLocal(dest, slot, resultType, expr.Span));
+        return dest;
+    }
+
+    /// <summary>Feldindex und -typ am ausgepackten Traeger. Getrennt von
+    /// <c>ResolveFieldAccess</c>, weil dort der Traeger-Ausdruck selbst gelowert wird — hier liegt
+    /// er schon ausgepackt vor.</summary>
+    private (TypeId Type, FieldId Field, IrType FieldType) ResolveFieldOn(IrType carrier,
+        MemberExpr expr)
+    {
+        if (_types.TypeOf(expr.Target) is not Optional { Inner: NamedRef named })
+            throw NotSupported($"'?.{expr.Member}' on " +
+                               $"'{TypeFacts.Display(_types.TypeOf(expr.Target))}'", expr.Span);
+
+        var type = _typeTable.Intern(named.Symbol);
+        var field = _typeTable.FieldOf(named.Symbol, expr.Member, expr.Span);
+        return (type, field, _typeTable.Defs[type.Value].FieldTypes[field.Value]);
+    }
+
     // ------------------------------------------------------------------ Arrays (ADR-016)
 
     /// <summary><c>[a, b, c]</c> — eine Instruktion, nicht drei Stores. Die Werte liegen beim
@@ -1571,6 +1679,9 @@ internal sealed class FunctionLowerer
         // '.length' auf einem Array ist eingebaut (ADR-016), kein Feld und keine Methode.
         if (expr.Member == "length" && TypeOfExpr(expr.Target) is IrArrayType)
             return LowerArrayLength(expr);
+
+        // 'a?.b' greift nur zu, wenn 'a' einen Wert hat (Sprache.md §7).
+        if (expr.IsOptional) return LowerOptionalMember(expr);
 
         var (obj, type, field, fieldType) = ResolveFieldAccess(expr);
         var dest = _slots.NewTemp(fieldType);

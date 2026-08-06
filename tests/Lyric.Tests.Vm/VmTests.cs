@@ -647,4 +647,45 @@ public class VmTests
         Assert.False(de.HasErrors);
         return ModuleLowerer.Lower(comp, binding, types, de, verify: true)!;
     }
+
+    // ------------------------------------------------------------------ P5b: ?. und ??=
+
+    /// <summary><c>??=</c> weist nur zu, wenn nichts da ist — und wertet die rechte Seite auch
+    /// nur dann aus.</summary>
+    [Theory]
+    [InlineData("null", 5)]
+    [InlineData("1", 1)]
+    public void Coalescing_assign_only_fills_an_empty_optional(string initial, long expected) =>
+        Assert.Equal(expected, Run($"fn main(): int {{ var x: ?int = {initial}; x ??= 5; return x!; }}").AsI64);
+
+    [Fact]
+    public void Coalescing_assign_does_not_evaluate_its_right_side_when_full()
+    {
+        // Kurzschluss-Nachweis ueber eine sonst ausloesende Division durch Null — dieselbe Form,
+        // mit der P2b schon '??' belegt hat.
+        Assert.Equal(1, Run("""
+            fn main(): int {
+                var zero = 0;
+                var x: ?int = 1;
+                x ??= 1 / zero;
+                return x!;
+            }
+            """).AsI64);
+    }
+
+    /// <summary><c>?.</c> greift nur zu, wenn der Traeger einen Wert hat; das Ergebnis ist immer
+    /// ein Optional (Sprache.md §7).</summary>
+    [Theory]
+    [InlineData("null", 0)]
+    [InlineData("P { n = 7 }", 7)]
+    public void Optional_chaining_skips_the_access_when_empty(string initial, long expected) =>
+        Assert.Equal(expected, Run($$"""
+            class P { n: int }
+
+            fn main(): int {
+                let p: ?P = {{initial}};
+                let n: ?int = p?.n;
+                return n ?? 0;
+            }
+            """).AsI64);
 }
