@@ -371,6 +371,28 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **Inventur-Sweep ueber die alten Slices** (2026-08-06, zweite Runde). **31 von 38**
+  Konstrukten laufen bis zur IR — vorher 12, dann 20. 1554 Tests gruen.
+  - **`match` als Statement, wo jeder Arm returnt, war eine Scope-Grenze.** Also das haeufigste
+    Statement-`match` ueberhaupt: `match (e) { A => { return 1; }, B => { return 2; } }`. Der
+    Merge-Block wurde immer angelegt, blieb leer und war vom Einstieg aus unerreichbar — genau
+    das lehnt der Verifier ab. Er entsteht jetzt **erst, wenn ein Arm ihn braucht**.
+  - **`lyrc parse` stuerzte bei `static let` in einem Typ ab**: der `AstDumper` kannte
+    `StaticBindingDecl` nicht, obwohl `check` und `lower` es seit P1b/P5c koennen. Ein
+    Debug-Kommando, das bei gueltigem Code wirft — die Sorte Luecke, die **kein Gate misst**. Die
+    Gegenprobe zeigt: jeder konkrete AST-Knoten ist jetzt abgedeckt.
+  - **Zwei Inventur-Proben waren selbst fehlerhaft** — `static let` ohne `;` (dritter Fehlalarm
+    dieser Sorte) und ein `match`-Arm ohne Komma. Die Lehre von damals gilt unveraendert: ein
+    Parser-Fehler heisst zuerst „meine Probe ist falsch".
+  - Geprueft und **sauber**: alle 13 CLI-Kommandos laufen, kein toter oeffentlicher Code mehr (der
+    `RenderJson`-Fall von damals hat keine Geschwister), und die drei „dokumentiert aber nie
+    erzeugt"-Diagnosecodes sind Bereichsangaben der ROADMAP, keine Luecken.
+  - `LYR-CLI0007` ist **entfallen** und wird nicht neu vergeben: eine wiederverwendete
+    Diagnose-Nummer macht jede aeltere Meldung falsch.
+
+**Was ohne Slice bleibt** (Stand nach dem Sweep): `extend` (Vorschlag P9), **Tupel** — Typ,
+Literal und Destructuring —, und `std.fmt`-Format-Specs (M8). `@test` ist post-v1 (ADR).
+
 - [x] **`fn main(args: string[])` und einstiegslose Module** (Sprache.md §11, Bytecode.md §9).
   1550 Tests gruen; `examples/greet.lyr` und `examples/embedded.lyr` sind die Belege.
   - **Kein Format-Bump.** Welche Einstiegsform vorliegt, steht in der **Signatur** — die

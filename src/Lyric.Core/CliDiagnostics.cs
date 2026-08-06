@@ -34,11 +34,9 @@ public static class CliDiagnostics
     /// <summary>Die Fremd-Runtime liess sich nicht starten.</summary>
     public const string VmLaunchFailed = "LYR-CLI0006";
 
-    /// <summary>Programm-Argumente (<c>-- …</c>) wurden uebergeben, sind aber noch nicht
-    /// einloesbar: <c>fn main(args: string[])</c> aus <c>Sprache.md</c> §11 ist nicht verdrahtet,
-    /// <c>ModuleLowerer</c> nimmt nur ein parameterloses <c>main</c> als Einstieg. Sie werden
-    /// abgelehnt statt still verworfen.</summary>
-    public const string ProgramArgumentsUnsupported = "LYR-CLI0007";
+    // LYR-CLI0007 war "Programm-Argumente noch nicht einloesbar". Seit 'fn main(args: string[])'
+    // laeuft, gibt es den Fall nicht mehr; die Nummer bleibt vergeben und wird nicht neu benutzt —
+    // eine wiederverwendete Diagnose-Nummer macht jede aeltere Fehlermeldung im Netz falsch.
 
     /// <summary>Die Ausgabedatei liess sich nicht schreiben.</summary>
     public const string OutputUnwritable = "LYR-CLI0008";
