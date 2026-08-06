@@ -166,6 +166,24 @@ public static class Interpreter
                     break;
                 }
 
+                // Ende einer finally-Region: die Aufraeumarbeit ist getan, die Abwicklung geht
+                // weiter, wo sie unterbrochen wurde. Auf dem normalen Pfad wird dieser Block nie
+                // betreten — dort stehen die defer-Rumpfe inline.
+                case Op.EndFinally:
+                {
+                    if (frame.UnwindType < 0)
+                        throw new LyricRuntimeException(VmDiagnostics.UncaughtException,
+                            "'endfinally' outside an unwind — a finally region was entered on the "
+                            + "normal path, which the lowering never emits");
+
+                    var pending = frame.Unwinding;
+                    var pendingType = frame.UnwindType;
+                    if (!Resume(frames, ref frame, pending, pendingType))
+                        throw new LyricPanic(VmDiagnostics.UncaughtException,
+                            $"uncaught exception of type '{TypeName(types, pendingType)}'");
+                    break;
+                }
+
                 case Op.Throw:
                 {
                     // 0 heisst "steht erst zur Laufzeit fest" — dann ist der Wert ein Fat Pointer
@@ -174,7 +192,12 @@ public static class Interpreter
                     var declared = (int)instruction.Immediate - 1;
                     var type = declared >= 0 ? declared : thrown.ConcreteType;
 
-                    if (!Unwind(prepared, frames, ref frame, thrown, type))
+                    // Frischer Wurf: die Suche beginnt beim ersten Handler und beim Block, in
+                    // dem geworfen wurde.
+                    frame.NextHandler = 0;
+                    frame.UnwindBlock = BlockAt(frame, frame.Ip - 1);
+
+                    if (!Resume(frames, ref frame, thrown, type))
                         throw new LyricPanic(VmDiagnostics.UncaughtException,
                             $"uncaught exception of type '{TypeName(types, type)}'");
                     break;
@@ -471,37 +494,56 @@ public static class Interpreter
     /// <para>Liefert <c>false</c>, wenn kein Frame einen Handler hat — dann verlaesst die
     /// Exception den Einstiegspunkt.</para>
     /// </summary>
-    private static bool Unwind(Prepared[] prepared, Stack<Frame> frames, ref Frame frame,
-        LyrValue thrown, int type)
+    private static bool Resume(Stack<Frame> frames, ref Frame frame, LyrValue thrown, int type)
     {
         while (true)
         {
-            // Der Zeiger steht schon hinter der werfenden Instruktion; der Block davor ist der,
-            // in dem geworfen wurde.
-            var at = Math.Max(0, frame.Ip - 1);
-            var block = frame.Fn.BlockOfInstruction.Length > at
-                ? frame.Fn.BlockOfInstruction[at]
-                : -1;
-
-            foreach (var handler in frame.Fn.Handlers)
+            for (var i = frame.NextHandler; i < frame.Fn.Handlers.Length; i++)
             {
-                if (block < handler.Start || block >= handler.End) continue;
-                if (handler.IsFinally) continue;   // finally kommt mit defer (offen, s. STATUS)
-                if (handler.CatchType >= 0 && handler.CatchType != type) continue;
+                var handler = frame.Fn.Handlers[i];
+                if (frame.UnwindBlock < handler.Start || frame.UnwindBlock >= handler.End) continue;
 
-                if (handler.Slot >= 0) frame.Slots[handler.Slot] = thrown;
-
-                // Der Stack ist an jeder Blockgrenze leer (Bytecode.md §4) — beim Sprung in den
+                // Der Stack ist an jeder Blockgrenze leer (Bytecode.md §4) — beim Sprung in einen
                 // Handler muss er das auch sein, sonst blieben Zwischenwerte des abgebrochenen
                 // Ausdrucks liegen.
                 frame.ClearStack();
+
+                if (handler.IsFinally)
+                {
+                    // Aufraeumen, dann weitersuchen. Der Zustand haengt am FRAME, nicht an einer
+                    // Seitenstruktur: er stirbt mit ihm, und ein zweiter Wurf aus dem
+                    // finally-Rumpf ueberschreibt ihn — was richtig ist, denn dann gilt der neue.
+                    frame.Unwinding = thrown;
+                    frame.UnwindType = type;
+                    frame.NextHandler = i + 1;
+                    frame.Ip = frame.Fn.BlockStart[handler.Handler];
+                    return true;
+                }
+
+                if (handler.CatchType >= 0 && handler.CatchType != type) continue;
+
+                if (handler.Slot >= 0) frame.Slots[handler.Slot] = thrown;
+                frame.UnwindType = -1;
                 frame.Ip = frame.Fn.BlockStart[handler.Handler];
                 return true;
             }
 
             if (frames.Count == 0) return false;
+
+            // Eine Ebene nach aussen: dort faengt die Suche von vorn an, und der Ursprungsblock
+            // ist der Aufrufort.
             frame = frames.Pop();
+            frame.NextHandler = 0;
+            frame.UnwindBlock = BlockAt(frame, frame.Ip - 1);
         }
+    }
+
+    /// <summary>Der Block, in dem die Instruktion an <paramref name="index"/> steht. Der
+    /// Zeiger steht beim Wurf schon hinter der werfenden Instruktion.</summary>
+    private static int BlockAt(Frame frame, int index)
+    {
+        var at = Math.Max(0, index);
+        return frame.Fn.BlockOfInstruction.Length > at ? frame.Fn.BlockOfInstruction[at] : -1;
     }
 
     private static string TypeName(IReadOnlyList<BytecodeTypeDef> types, int index) =>
@@ -778,6 +820,25 @@ public static class Interpreter
         public required LyrValue[] Stack { get; init; }
         public int Sp;
         public int Ip;
+
+        /// <summary>Die Exception, die gerade durch diesen Frame laeuft — <c>UnwindType &lt; 0</c>
+        /// heisst „keine".
+        ///
+        /// <para>Gebraucht wird das nur zwischen dem Betreten einer <c>finally</c>-Region und
+        /// ihrem <c>endfinally</c>: solange laeuft gewoehnlicher Code, aber die Abwicklung ist
+        /// nicht abgeschlossen.</para></summary>
+        public LyrValue Unwinding;
+
+        public int UnwindType = -1;
+
+        /// <summary>Ab welchem Handler die Suche nach dem <c>endfinally</c> weitergeht. Ohne den
+        /// Index faende dieselbe finally-Region sich selbst wieder.</summary>
+        public int NextHandler;
+
+        /// <summary>Der Block, in dem geworfen wurde. Bleibt ueber ein <c>finally</c> hinweg
+        /// stehen: die Handler-Bereiche sprechen ueber den Ursprung, nicht ueber die Stelle, an
+        /// der die Aufraeumarbeit endet.</summary>
+        public int UnwindBlock;
 
         /// <summary>Block 0 ist der Einstieg — die IR garantiert <c>Entry == bb0</c>, und das
         /// Format schreibt es fest.</summary>

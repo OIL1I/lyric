@@ -455,8 +455,19 @@ Programm, mit Begründung als Blockzitat).
     darf nicht mehr ändern, was `return` schon bestimmt hat. Ein Test hält das fest.
   - **Feld-Defaults nachgeliefert** (offen seit P1b): der Default ist ein *Ausdruck* und wird an
     der Konstruktionsstelle ausgewertet, nicht im Layout abgelegt. Ohne ihn lief das Gate nicht.
-  - 13 E2E-Tests. Der wichtigste ist die Gegenprobe „ohne Wurf wird nicht gefangen" — ohne sie
-    bestünde die ganze Reihe auch, wenn immer gefangen würde.
+  - **`defer` läuft auch beim Abwickeln** (`Sprache.md` §5). Ein Scope mit `defer` bekommt eine
+    `finally`-Region über seinen Blockbereich; ihr Rumpf sind dieselben Statements noch einmal.
+    Der Unwinder betritt sie, räumt auf und setzt die Suche danach fort — `endfinally` ist genau
+    dieses „weiter, wo ich unterbrochen wurde". Auf dem normalen Pfad wird die Region **nie**
+    betreten, dort stehen die Rümpfe inline und kosten nichts.
+  - **`throw` emittiert die Rümpfe deshalb NICHT inline, `return` schon.** Ein `throw` wickelt ab
+    und wird von der Region bedient; ein `return` verlässt den Scope normal, da greift keine.
+    Beides zu tun ließ jeden Rumpf zweimal laufen — die Regression steht als eigener Test da.
+  - **Lyric hat weiterhin kein `finally`** (ADR-009). Die Region ist ein Bytecode-Träger, den
+    ausschließlich `defer` erzeugt; die Sprache bleibt bei einem Schlüsselwort.
+  - 17 E2E-Tests. Der wichtigste ist die Gegenprobe „ohne Wurf wird nicht gefangen" — ohne sie
+    bestünde die ganze Reihe auch, wenn immer gefangen würde. Dazu die beiden Zähl-Tests: ein
+    `defer` läuft **genau einmal**, auf jedem Pfad.
 
 - [x] **M7 — P4 — Structs mit Wert-Semantik** (Format **2.2**): `lyric run examples/vectors.lyr`
   liefert 115. Zuweisung kopiert, Parameter kopiert, `struct` im `struct` kopiert mit.
@@ -591,11 +602,6 @@ sondern **P5b** (Kernsprach-Lucken), P6, P7, P8 und **P9** (`extend`).
 
 **Aus P5 — bewusst offen und wichtig:**
 
-- **`defer` läuft NICHT beim Abwickeln.** `Sprache.md` §5 verlangt „läuft auf jedem Scope-Exit
-  (auch bei Exception)". Die normalen Pfade sind vollständig; der Exception-Pfad bräuchte eine
-  `finally`-Region über den Scope. Der Träger dafür steht bereits (`IrHandlerKind.Finally`,
-  `endfinally`, Format-Sektion, Verifier-Regeln) — es fehlt das Erzeugen im Lowering und das
-  Abarbeiten im Unwinder. **Das ist eine echte Lücke gegen die Spec, kein Aufschub aus Bequemlichkeit.**
 - **`catch (e)` ohne Typ** ist `LYR-IR0001`: der Slot bräuchte den `Throwable`-Typ als Interface,
   und das hängt an der Builtin-Konformanz (M8). `catch (_)` und `catch (e: T)` gehen.
 

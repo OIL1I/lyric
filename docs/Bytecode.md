@@ -569,8 +569,14 @@ der Wurfstelle derselbe, den ein `catch` vergleicht, und der **Typvergleich beim
 Gleichheit**, kein Untertyp-Test. In C# oder Java wäre das falsch und man bräuchte ein Typ-Tag im
 Objekt.
 
-`endfinally` gibt die Abwicklung dorthin zurück, wo sie unterbrochen wurde. **Lyric selbst hat kein
-`finally`** (ADR-009) — eine solche Region entsteht ausschließlich aus `defer`. Das Format braucht
+`endfinally` gibt die Abwicklung dorthin zurück, wo sie unterbrochen wurde: die Suche geht beim
+**nächsten** Handler derselben Funktion weiter, mit demselben Ursprungsblock. Ohne diesen Index
+fände dieselbe Region sich selbst wieder.
+
+Eine `finally`-Region wird **nur beim Abwickeln** betreten. Auf dem normalen Pfad hat ein Compiler
+die Aufräumarbeit bereits inline gesetzt; ein `endfinally` ohne laufende Abwicklung ist deshalb ein
+Fehler. **Lyric selbst hat kein `finally`** (ADR-009) — eine solche Region entsteht ausschließlich
+aus `defer`. Das Format braucht
 den Träger trotzdem, weil „läuft auch beim Abwickeln" anders nicht ausdrückbar ist; die *Sprache*
 bleibt bei einem Schlüsselwort.
 

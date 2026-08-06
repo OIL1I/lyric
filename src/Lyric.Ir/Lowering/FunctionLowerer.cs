@@ -215,11 +215,12 @@ internal sealed class FunctionLowerer
 
     private bool LowerThrow(ThrowStmt stmt)
     {
-        // Ein throw verlaesst den Scope — die faelligen defer-Rumpfe laufen davor. Sie laufen
-        // AUSSERDEM ueber die finally-Region beim Abwickeln, aber nur, wenn der Wurf aus einer
-        // tieferen Ebene kommt; ein throw im eigenen Scope wird hier direkt bedient.
-        EmitAllPendingDefers();
-
+        // KEIN EmitAllPendingDefers hier: ein 'throw' wickelt ab, und beim Abwickeln laufen die
+        // defer-Rumpfe ueber die finally-Region ihres Scopes. Beides zu tun liesse jeden Rumpf
+        // zweimal laufen — genau das war der Fall, bevor die Regionen da waren.
+        //
+        // Der Unterschied zu 'return': ein return verlaesst den Scope normal, da greift keine
+        // Region, und die Rumpfe muessen inline stehen.
         var value = LowerExpr(stmt.Value);
 
         // Bei einem Klassentyp steht der konkrete Typ hier fest (ADR-003: keine Inheritance);
@@ -317,12 +318,69 @@ internal sealed class FunctionLowerer
     /// </summary>
     private bool LowerScope(Block block)
     {
+        // Ob dieser Scope defers hat, steht in seinen EIGENEN Statements — ein defer in einem
+        // geschachtelten Block gehoert dorthin. Die Vorabfrage spart jedem defer-freien Scope die
+        // zusaetzliche Blockgrenze, und das sind fast alle.
+        var hasDefers = block.Statements.Any(st => st is DeferStmt);
+        if (!hasDefers) return LowerPlainScope(block);
+
+        // Eigener Block: die geschuetzte Region muss an einer Blockgrenze anfangen.
+        var start = _b.NewBlock();
+        _b.Seal(new Branch(start, block.Span));
+        _b.SwitchTo(start);
+
+        _defers.Push(new List<DeferStmt>());
+        List<DeferStmt> pending;
+        bool fallsThrough;
+        try
+        {
+            fallsThrough = LowerStatements(block);
+            pending = _defers.Peek();
+
+            // Der normale Pfad bekommt die Rumpfe direkt — kein Handler, keine Laufzeitkosten.
+            if (fallsThrough) EmitDefers(pending);
+        }
+        finally
+        {
+            _defers.Pop();
+        }
+
+        var end = new BlockId(_blocks.Count);
+        var afterBody = _b.CurrentId;
+
+        // Und derselbe Rumpf noch einmal als finally-Region, fuer den Fall, dass eine Exception
+        // durch diesen Scope hindurchlaeuft. Sprache.md §5 verlangt „laeuft auf jedem Scope-Exit
+        // (auch bei Exception)"; die normalen Ausgaenge sind oben bedient, dieser hier nicht.
+        //
+        // Der Preis ist Code-Duplikation: die Rumpfe stehen einmal inline und einmal hier. Die
+        // Alternative — ausschliesslich ueber die Region gehen — verlagerte auch den normalen
+        // Pfad in den Unwinder und machte jeden Scope-Exit zu einem Handler-Durchlauf.
+        var cleanup = _b.NewBlock();
+        _b.SwitchTo(cleanup);
+        EmitDefers(pending);
+        _b.Seal(new EndFinally(block.Span));
+
+        _handlers.Add(new IrHandler(start, end, IrHandlerKind.Finally, null, cleanup, null));
+
+        // Nach dem Rumpf geht es hinter der Region weiter — der Cursor steht sonst im
+        // finally-Block, der auf dem normalen Pfad nie erreicht wird.
+        if (fallsThrough)
+        {
+            var after = _b.NewBlock();
+            _b.SealBlock(afterBody, new Branch(after, block.Span));
+            _b.SwitchTo(after);
+        }
+
+        return fallsThrough;
+    }
+
+    /// <summary>Ein Scope ohne <c>defer</c>: nichts zu bewachen, nichts nachzuraeumen.</summary>
+    private bool LowerPlainScope(Block block)
+    {
         _defers.Push(new List<DeferStmt>());
         try
         {
-            var fallsThrough = LowerStatements(block);
-            if (fallsThrough) EmitDefers(_defers.Peek());
-            return fallsThrough;
+            return LowerStatements(block);
         }
         finally
         {

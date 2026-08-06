@@ -272,6 +272,100 @@ public class ExceptionTests
     }
 
     [Fact]
+    public void A_defer_runs_while_the_stack_unwinds()
+    {
+        // Sprache.md §5: "laeuft auf jedem Scope-Exit (auch bei Exception)". Der defer sitzt in
+        // der werfenden Funktion — er laeuft, obwohl sie nie normal endet.
+        Assert.Equal(1, Run(Errors + """
+
+            class Cell { n: int }
+
+            fn risky(c: Cell): int throws Boom {
+                defer c.n = 1;
+                throw Boom { code = 0 };
+            }
+
+            fn main(): int {
+                let c = Cell { n = 0 };
+                try {
+                    risky(c);
+                } catch (e: Boom) { }
+                return c.n;
+            }
+            """));
+    }
+
+    [Fact]
+    public void Defers_run_from_the_inside_out_while_unwinding()
+    {
+        // Zwei Frames, beide mit defer, und keiner faengt. Die Reihenfolge ist die des
+        // Abwickelns: innen zuerst. Sprache.md §18 beschreibt genau das.
+        Assert.Equal(12, Run(Errors + """
+
+            class Cell { n: int }
+
+            fn inner(c: Cell): int throws Boom {
+                defer c.n = c.n * 10 + 1;
+                throw Boom { code = 0 };
+            }
+
+            fn outer(c: Cell): int throws Boom {
+                defer c.n = c.n * 10 + 2;
+                return inner(c);
+            }
+
+            fn main(): int {
+                let c = Cell { n = 0 };
+                try {
+                    outer(c);
+                } catch (e: Boom) { }
+                return c.n;
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_defer_runs_exactly_once_when_it_throws()
+    {
+        // Die Regression, die beim Bau auftrat: solange 'throw' die Rumpfe ZUSAETZLICH inline
+        // emittierte, liefen sie doppelt — einmal dort und einmal ueber die finally-Region.
+        Assert.Equal(1, Run(Errors + """
+
+            class Cell { n: int }
+
+            fn risky(c: Cell): int throws Boom {
+                defer c.n += 1;
+                throw Boom { code = 0 };
+            }
+
+            fn main(): int {
+                let c = Cell { n = 0 };
+                try {
+                    risky(c);
+                } catch (e: Boom) { }
+                return c.n;
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_defer_runs_exactly_once_on_the_normal_path()
+    {
+        // Die Gegenprobe: die finally-Region darf auf dem normalen Pfad NICHT betreten werden.
+        Assert.Equal(1, Run("""
+            class Cell { n: int }
+
+            fn main(): int {
+                let c = Cell { n = 0 };
+                {
+                    defer c.n += 1;
+                }
+                return c.n;
+            }
+            """));
+    }
+
+    [Fact]
     public void A_defer_and_a_catch_both_run()
     {
         // Der defer sitzt in einem inneren Scope, damit er VOR dem return laeuft — auf
