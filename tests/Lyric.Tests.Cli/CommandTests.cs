@@ -29,6 +29,7 @@ public sealed class CommandTests
         { "constants.lyr", 140 },
         { "closures.lyr", 83 },
         { "generator.lyr", 40 },
+        { "fizzbuzz.lyr", 0 },
     };
 
     [Theory]

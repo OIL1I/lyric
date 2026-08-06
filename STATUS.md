@@ -371,6 +371,36 @@ Programm, mit Begründung als Blockzitat).
     und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
     `bank.lyr` -> P5.
 
+- [x] **P8 — Generics und `for-in`** (Sprache.md §5, §12): `examples/fizzbuzz.lyr` laeuft, 1503
+  Tests gruen.
+  - **Monomorphisierung**: pro Typargument-Tupel eine eigene Funktion und ein eigener
+    Tabellen-Eintrag. Die IR bleibt vollstaendig monomorph — Verifier, Format und VM erfahren von
+    Generics nichts. Nicht eine von drei Optionen, sondern die einzige, die zu dieser VM passt:
+    C# reifiziert und braucht einen JIT, Java erased und bezahlt mit Boxing; beides setzt voraus,
+    dass die Runtime Typen kennt, und ein Lyric-Wert traegt kein Typ-Tag (ADR-013).
+  - **`for-in` laeuft ueber `Iterator<T>`**, wie §5 es verlangt — die Sema kannte bis dahin drei
+    eingebaute Formen und kein Interface, Spec und Implementierung widersprachen sich also. Fuer
+    Range und Array baut der Compiler einen Adapter aus `std.iter`: sie haben keine Deklaration,
+    an die sich eine Konformanz haengen liesse. Ein eigener Typ wird direkt benutzt.
+  - **Ein Aufruf je Durchlauf, kein `hasNext` daneben.** Zwei Aufrufe stellen dieselbe Frage
+    zweimal und koennen dazwischen aus dem Tritt geraten; Rust und Python machen es aus demselben
+    Grund mit einem.
+  - **Der Preis, ausgesprochen**: `for (n in 1..=100)` loest jetzt hundert Methodenaufrufe aus, wo
+    vorher ein Vergleich stuende. Rust kompensiert das durch Inlining, Lyric hat keinen Optimizer.
+    Ein Schnellpfad fuer die drei eingebauten Formen waere spaeter eine **Optimierung hinter
+    unveraenderter Semantik**, kein zweiter Mechanismus.
+  - **Fuenfmal derselbe Fehler gefunden**: eine Sema- oder Lowering-Pruefung, die nur `NamedRef`
+    kennt und jede `GenericInstance` uebersieht — bei der Konformanz, beim virtuellen Aufruf, beim
+    Slot-Index, in der Impl-Tabelle und bei der Feld-Mutabilitaet. Der letzte Fall machte ein Feld
+    einer generischen Klasse **nie** schreibbar und damit jeden Iterator unmoeglich. Das schreit
+    nach einer gemeinsamen Hilfsfunktion; sie steht als Aufraeumarbeit aus.
+  - **Zwei Gates waren zu gross.** `stats.lyr` braucht eine Format-Spec (`{avg:N2}`), also
+    `std.fmt` und damit M8 — es ist kein P8-Gate. Uebrig bleibt `fizzbuzz.lyr`.
+  - **Offene Grenzen, benannt**: eine `string` laesst sich nicht iterieren (`std.string` hat kein
+    `length`, mit dem ein Adapter laufen koennte), und die Konformanz prueft die **Definition**
+    statt der Typargumente — `Ones :: [Src<int>]` wuerde auch fuer `Src<string>` akzeptiert.
+    Beides gehoert vor v1 geschlossen.
+
 - [x] **P7 — Coroutinen** (Sprache.md §8): `examples/generator.lyr` -> **40**, 1483 Tests gruen.
   - **Kein VM-Eingriff, kein neuer Opcode, kein Format-Bump.** Der Rumpf wird zu einem
     Zustandsautomaten: Parameter und Locals liegen in Feldern eines Objekts statt in Frame-Slots

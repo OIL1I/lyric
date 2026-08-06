@@ -37,6 +37,13 @@ public sealed class TypeChecker
     private readonly FunctionSymbol? _panic; // Builtin panic → never (§9)
     private readonly TypeSymbol? _coroutine; // Builtin Coroutine<T> (§8) → CoroutineOf
 
+    /// <summary>Das <c>Iterator&lt;T&gt;</c>-Interface aus <c>std.iter</c> — wogegen <c>for-in</c>
+    /// prueft (§5). <c>null</c>, wenn die Stdlib nicht geladen ist; dann meldet sich der
+    /// Schleifenkopf mit der gewoehnlichen „nicht iterierbar"-Diagnose.</summary>
+    private readonly TypeSymbol? _iterator;
+    private readonly TypeSymbol? _arrayIterator;
+    private readonly TypeSymbol? _rangeIterator;
+
     private LyrType _currentReturn = LyrType.Void;
     private LyrType? _currentYield; // Yield-Typ, wenn die aktuelle Funktion eine Coroutine ist
     private LyrType? _currentThis;
@@ -51,10 +58,22 @@ public sealed class TypeChecker
         _throwable = comp.Builtins.LookupLocal("Throwable") as TypeSymbol;
         _panic = comp.Builtins.LookupLocal("panic") as FunctionSymbol;
         _coroutine = comp.Builtins.LookupLocal("Coroutine") as TypeSymbol;
+
+        // 'Iterator<T>' steht in der Stdlib und nicht unter den Builtins: es ist ein
+        // gewoehnliches Interface, das jeder selbst implementieren kann. Der Compiler muss es nur
+        // FINDEN, um 'for-in' dagegen zu pruefen (§5).
+        var iter = comp.FindModule(["std", "iter"])?.Members;
+        _iterator = iter?.LookupLocal("Iterator") as TypeSymbol;
+        _arrayIterator = iter?.LookupLocal("ArrayIterator") as TypeSymbol;
+        _rangeIterator = iter?.LookupLocal("RangeIterator") as TypeSymbol;
     }
 
     public TypeResult Check()
     {
+        _result.IteratorInterface = _iterator;
+        _result.ArrayIterator = _arrayIterator;
+        _result.RangeIterator = _rangeIterator;
+
         foreach (var module in _comp.Modules) ComputeGlobals(module);
         foreach (var module in _comp.Modules)
         {
@@ -469,17 +488,83 @@ public sealed class TypeChecker
         var iterType = CheckExpr(fo.Iterable, scope);
         var elem = iterType switch
         {
+            // Die drei eingebauten Formen. Sie haben keine Deklaration, an die sich eine
+            // Konformanz haengen liesse — der Compiler baut fuer sie einen Adapter aus std.iter
+            // (§5). Semantisch ist das dasselbe Protokoll, nur die Beschaffung unterscheidet sich.
             ArrayOf a => a.Element,
             RangeOf r => r.Element,
             PrimitiveType { Kind: PrimitiveKind.String } => LyrType.Char,
+
             ErrorType => LyrType.Error,
-            _ => Report(fo.Iterable.Span, "LYR-SEM0007", $"'{TypeFacts.Display(iterType)}' is not iterable")
+
+            // Alles andere muss 'Iterator<T>' erfuellen. Was T ist, steht in der Konformanz des
+            // Typs — nicht im Ausdruck, und auch nicht in einer Vermutung des Compilers.
+            _ => YieldTypeOfIterator(iterType, fo.Iterable.Span)
+                 ?? Report(fo.Iterable.Span, "LYR-SEM0007",
+                     $"'{TypeFacts.Display(iterType)}' is not iterable — it must implement "
+                     + "'Iterator<T>' from std.iter")
         };
         var loopScope = new SymbolTable(scope);
         var loopVar = new LocalSymbol(fo.Variable, elem, false, fo);
         loopScope.TryDeclare(loopVar);
         _result.BindRef(fo, loopVar); // für DAA
         CheckBlock(fo.Body, loopScope);
+    }
+
+    /// <summary>
+    /// Was liefert dieser Typ, wenn man ihn iteriert? Der Yield-Typ steht in seiner
+    /// <c>Iterator&lt;T&gt;</c>-Konformanz.
+    ///
+    /// <para><c>null</c>, wenn der Typ kein Iterator ist — dann meldet der Aufrufer. Ein eigener
+    /// Rueckgabewert statt einer Diagnose hier, damit die Meldung an EINER Stelle steht und den
+    /// Ausdruck nennen kann, um den es geht.</para>
+    /// </summary>
+    private LyrType? YieldTypeOfIterator(LyrType type, Span span)
+    {
+        if (_iterator is null) return null;
+
+        var symbol = type switch
+        {
+            NamedRef n => n.Symbol,
+            GenericInstance g => g.Definition,
+            _ => null,
+        };
+
+        if (symbol is null) return null;
+
+        // Ein Iterator IST einer, wenn er das Interface direkt ist ('Iterator<int>' als
+        // Parametertyp) oder es implementiert.
+        if (ReferenceEquals(symbol, _iterator))
+            return type is GenericInstance { Arguments.Length: 1 } direct ? direct.Arguments[0] : null;
+
+        if (!Conformance.Implements(symbol, _iterator, _binding)) return null;
+
+        // Das Typargument steht in der Konformanz-Liste der Deklaration: 'class Ones ::
+        // [Iterator<int>]' liefert int. Ohne sie zu lesen bliebe nur Raten.
+        var declared = symbol.Declaration switch
+        {
+            ClassDecl c => c.Interfaces,
+            StructDecl v => v.Interfaces,
+            _ => null,
+        };
+
+        if (declared is null) return null;
+
+        foreach (var node in declared)
+        {
+            if (node is not NamedType { TypeArguments.Length: 1 } named) continue;
+
+            // Ueber einen Import gebunden ('import std.iter { Iterator }') zeigt die Bindung auf
+            // das Import-Symbol und nicht auf den Typ. Ohne diesen Schritt findet der Vergleich
+            // nie etwas — und 'for-in' lehnte jeden eigenen Iterator ab.
+            var bound = _binding.Resolve(named);
+            if (bound is ImportBindingSymbol import) bound = import.Target;
+
+            if (bound is TypeSymbol target && ReferenceEquals(target, _iterator))
+                return ResolveType(named.TypeArguments[0], _comp.Builtins);
+        }
+
+        return null;
     }
 
     // throws-Klausel (§9): deklarierter Typ muss werfbar sein; das aufgelöste Symbol wird

@@ -86,6 +86,17 @@ public sealed class TypeResult
     public LyrType[] TypeArgumentsOf(Node call) =>
         _typeArguments.TryGetValue(call, out var args) ? args : [];
 
+    /// <summary>
+    /// Die Typen aus <c>std.iter</c>, die <c>for-in</c> braucht (§5).
+    ///
+    /// <para>Der TypeChecker sucht sie ohnehin, um den Schleifenkopf zu pruefen; sie hier
+    /// abzulegen erspart dem Lowering eine zweite Suche — und zwei Suchen waeren zwei
+    /// Gelegenheiten, verschiedene Symbole zu finden.</para>
+    /// </summary>
+    public TypeSymbol? IteratorInterface { get; set; }
+    public TypeSymbol? ArrayIterator { get; set; }
+    public TypeSymbol? RangeIterator { get; set; }
+
     /// <summary>Lebt dieses Symbol in einer Zelle statt in einem Frame-Slot? Das Lowering fragt
     /// das an <b>jeder</b> Zugriffsstelle — auch ausserhalb der Closure, denn beide Seiten muessen
     /// dieselbe Zelle sehen.</summary>

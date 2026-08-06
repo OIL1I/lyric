@@ -1147,4 +1147,72 @@ public class VmTests
             fn take(s: Src<int>): int { return s.next() ?? 0; }
             fn main(): int { let o = Ones { }; return take(o); }
             """).AsI64);
+
+    // ------------------------------------------------------------------ P8c: for-in
+
+    [Fact]
+    public void For_in_walks_an_exclusive_range() =>
+        Assert.Equal(6, Iterating("fn main(): int { var s = 0; for (n in 0..4) { s += n; } return s; }"));
+
+    [Fact]
+    public void For_in_walks_an_inclusive_range() =>
+        // Der inklusive Bereich endet eins spaeter — die Umrechnung passiert beim Bauen des
+        // Adapters, damit es nur EINEN RangeIterator gibt.
+        Assert.Equal(10, Iterating("fn main(): int { var s = 0; for (n in 1..=4) { s += n; } return s; }"));
+
+    [Fact]
+    public void For_in_walks_an_array() =>
+        Assert.Equal(33, Iterating("""
+            fn main(): int { let xs = [10, 20, 3]; var s = 0; for (x in xs) { s += x; } return s; }
+            """));
+
+    [Fact]
+    public void Break_and_continue_work_inside_for_in() =>
+        // Die Schleife ist ein gewoehnlicher LoopScope — 'break' und 'continue' brauchen deshalb
+        // keinen Sonderfall.
+        Assert.Equal(8, Iterating("""
+            fn main(): int {
+                var s = 0;
+                for (n in 0..5) { if (n == 2) { continue; } s += n; }
+                return s;
+            }
+            """));
+
+    [Fact]
+    public void Two_loops_over_the_same_array_do_not_interfere() =>
+        // Der Index gehoert dem ITERATOR und nicht dem Array. Bei geteiltem Zustand kaeme hier 6.
+        Assert.Equal(12, Iterating("""
+            fn main(): int {
+                let xs = [1, 2, 3];
+                var s = 0;
+                for (a in xs) { s += a; }
+                for (b in xs) { s += b; }
+                return s;
+            }
+            """));
+
+    [Fact]
+    public void A_user_defined_iterator_is_used_directly() =>
+        // Kein Adapter: der Typ erfuellt 'Iterator<T>' selbst, also wird er genommen, wie er ist.
+        Assert.Equal(3, Iterating("""
+            import std.iter { Iterator };
+            class UpTo :: [Iterator<int>] {
+                current: int,
+                last: int,
+                pub mut fn next(): ?int {
+                    if (this.current > this.last) { return null; }
+                    let v = this.current;
+                    this.current = this.current + 1;
+                    return v;
+                }
+            }
+            fn main(): int {
+                var n = 0;
+                for (x in UpTo { current = 1, last = 2 }) { n += x; }
+                return n;
+            }
+            """));
+
+    /// <summary>'for-in' baut seinen Iterator aus std.iter — ohne Modulpfad gibt es keinen.</summary>
+    private static long Iterating(string source) => RunWithStdlib(source).Result.AsI64;
 }

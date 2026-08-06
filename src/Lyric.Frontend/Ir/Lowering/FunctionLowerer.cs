@@ -681,7 +681,7 @@ internal sealed class FunctionLowerer
             case BreakStmt s: return LowerBreak(s);
             case ContinueStmt s: return LowerContinue(s);
 
-            case ForInStmt s: throw NotSupported("'for-in' (needs Iterator)", s.Span);
+            case ForInStmt s: return LowerForIn(s);
             case MatchStmt s: LowerMatch(s.Scrutinee, s.Arms, null, s.Span); return true;
             case TryStmt s: return LowerTry(s);
             case ThrowStmt s: return LowerThrow(s);
@@ -1021,6 +1021,181 @@ internal sealed class FunctionLowerer
 
         _b.SwitchTo(mergeBlock);
         return true;
+    }
+
+    /// <summary>
+    /// <c>for (x in e) { … }</c> — eine Schleife ueber <c>next()</c> (Sprache.md §5).
+    ///
+    /// <para>Der Rumpf laeuft, solange <c>next()</c> einen Wert liefert; <c>null</c> beendet die
+    /// Schleife. Das ist das gesamte Protokoll, und es ist dasselbe fuer einen eigenen Iterator
+    /// wie fuer die eingebauten Formen — bei denen beschafft der Compiler den Iterator, indem er
+    /// einen Adapter aus <c>std.iter</c> baut.</para>
+    ///
+    /// <para><b>Ein Aufruf, keine drei.</b> Die Alternative — <c>hasNext()</c> pruefen, dann
+    /// <c>next()</c> holen — stellt dieselbe Frage zweimal und kann zwischen beiden aus dem Tritt
+    /// geraten. Rust und Python machen es aus demselben Grund mit einem Aufruf.</para>
+    /// </summary>
+    private bool LowerForIn(ForInStmt stmt)
+    {
+        if (_types.RefOf(stmt) is not LocalSymbol loopVar)
+            throw Bug($"loop variable '{stmt.Variable}' was not bound by the type checker");
+
+        var (iterator, iteratorType, owner) = BuildIterator(stmt);
+        var elementType = LowerType(loopVar.Type, stmt.Span);
+
+        // Der Iterator lebt in einem Slot: er wird bei jedem Durchlauf gelesen und veraendert
+        // sich dabei — ein Temp wuerde nach dem ersten Block nicht mehr gelten.
+        var slot = _slots.DeclareSynthetic("iter", iteratorType);
+        _b.Emit(new StoreLocal(slot, iterator, stmt.Span));
+
+        var condBlock = _b.NewBlock();
+        _b.Seal(new Branch(condBlock, stmt.Span));
+
+        _b.SwitchTo(condBlock);
+        var current = _slots.NewTemp(iteratorType);
+        _b.Emit(new LoadLocal(current, slot, iteratorType, stmt.Span));
+
+        var optional = new IrOptionalType(elementType);
+        var produced = _slots.NewTemp(optional);
+        EmitNextCall(produced, current, iteratorType, owner, optional, stmt.Span);
+
+        var hasValue = _slots.NewTemp(BoolType);
+        _b.Emit(new OptIsSome(hasValue, produced, stmt.Span));
+
+        var bodyBlock = _b.NewBlock();
+        var exitBlock = _b.NewBlock(); // vor dem Body: 'break' braucht sein Ziel
+        _b.Seal(new CondBranch(hasValue, bodyBlock, exitBlock, stmt.Span));
+
+        _b.SwitchTo(bodyBlock);
+
+        // Das 'optget' kann nicht panicken: es steht hinter dem 'optissome', der den Beweis
+        // gefuehrt hat — dieselbe Arbeitsteilung wie beim Flow-Narrowing.
+        var value = _slots.NewTemp(elementType);
+        _b.Emit(new OptGet(value, produced, elementType, stmt.Span));
+
+        var variable = _slots.DeclareFor(loopVar, elementType);
+        _b.Emit(new StoreLocal(variable, value, stmt.Span));
+
+        _loops.Push(new LoopScope(ContinueTarget: condBlock, BreakTarget: exitBlock));
+        if (LowerStatements(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
+        _loops.Pop();
+
+        _b.SwitchTo(exitBlock);
+        return true;
+    }
+
+    /// <summary>
+    /// Beschafft den Iterator fuer einen <c>for-in</c>-Kopf.
+    ///
+    /// <para>Ein Wert, der <c>Iterator&lt;T&gt;</c> selbst erfuellt, wird direkt benutzt. Die
+    /// eingebauten Formen bekommen einen Adapter aus <c>std.iter</c>: sie haben keine
+    /// Deklaration, an die sich eine Konformanz haengen liesse.</para>
+    /// </summary>
+    private (TempId Value, IrType Type, GenericInstance? Owner) BuildIterator(ForInStmt stmt)
+    {
+        var source = _types.TypeOf(stmt.Iterable);
+
+        if (source is ArrayOf array)
+        {
+            var owner = new GenericInstance(
+                _types.ArrayIterator ?? throw NotSupported(
+                    "iterating an array (std.iter is not on the module path)", stmt.Span),
+                [array.Element]);
+
+            var type = _typeTable.Intern(owner.Definition, owner.Arguments);
+            var instance = _slots.NewTemp(new IrRefType(type));
+            _b.Emit(new NewObject(instance, type, new IrRefType(type), stmt.Span));
+            _b.Emit(new StoreField(instance, type, new FieldId(0), LowerExpr(stmt.Iterable), stmt.Span));
+            _b.Emit(new StoreField(instance, type, new FieldId(1), IntConstant(0, stmt.Span), stmt.Span));
+            return (instance, new IrRefType(type), owner);
+        }
+
+        if (source is RangeOf && stmt.Iterable is RangeExpr range)
+        {
+            var symbol = _types.RangeIterator ?? throw NotSupported(
+                "iterating a range (std.iter is not on the module path)", stmt.Span);
+
+            var type = _typeTable.Intern(symbol);
+
+            var low = LowerExprAs(range.Low, new IrScalarType(IrScalar.I64));
+            var high = LowerExprAs(range.High, new IrScalarType(IrScalar.I64));
+
+            // Ein inklusiver Bereich endet eins spaeter. Die Umrechnung hier statt eines zweiten
+            // Adapters: 'a..b' und 'a..=b' unterscheiden sich allein im Endwert.
+            if (range.IsInclusive)
+            {
+                var one = IntConstant(1, stmt.Span);
+                var shifted = _slots.NewTemp(new IrScalarType(IrScalar.I64));
+                _b.Emit(new BinOp(shifted, IrBinKind.Add, new IrScalarType(IrScalar.I64),
+                    high, one, stmt.Span));
+                high = shifted;
+            }
+
+            var instance = _slots.NewTemp(new IrRefType(type));
+            _b.Emit(new NewObject(instance, type, new IrRefType(type), stmt.Span));
+            _b.Emit(new StoreField(instance, type, new FieldId(0), low, stmt.Span));
+            _b.Emit(new StoreField(instance, type, new FieldId(1), high, stmt.Span));
+            return (instance, new IrRefType(type), null);
+        }
+
+        if (source is PrimitiveType { Kind: PrimitiveKind.String })
+            throw NotSupported(
+                "iterating a string (std.iter has no adapter for it yet — a string has no "
+                + "'length' to walk with)", stmt.Span);
+
+        // Ein eigener Iterator: direkt benutzen.
+        var own = LowerType(source, stmt.Span);
+        return (LowerExpr(stmt.Iterable), own,
+            SubstituteType(source) as GenericInstance);
+    }
+
+    /// <summary>Der <c>next()</c>-Aufruf — virtuell, wenn der Iterator ueber sein Interface
+    /// vorliegt, sonst direkt auf der Instanz.</summary>
+    private void EmitNextCall(TempId dest, TempId iterator, IrType iteratorType,
+        GenericInstance? owner, IrType returns, Core.Span span)
+    {
+        // Liegt der Iterator ueber seinem Interface vor, entscheidet erst die Laufzeit, welche
+        // Implementierung laeuft — das ist der eine Fall, in dem 'for-in' dynamisch dispatcht.
+        if (iteratorType is IrInterfaceType iface)
+        {
+            var slots = _typeTable.MethodSlotsOf(iface.Type);
+            _b.Emit(new CallVirt(dest, iface.Type, Array.IndexOf(slots, "next"), [iterator],
+                returns, span));
+            return;
+        }
+
+        var declaring = owner?.Definition ?? IteratorSymbolOf(iteratorType, span);
+        if (declaring.Members.LookupLocal("next") is not FunctionSymbol method
+            || method.Declaration is not FunctionDecl decl)
+            throw NotSupported($"'{declaring.Name}' has no 'next' to iterate with", span);
+
+        // Ein konkreter Iterator wird direkt gerufen: welche Funktion laeuft, steht fest, und ein
+        // callvirt haette hier nur eine Tabelle zu befragen, deren Antwort der Compiler kennt.
+        var target = owner is not null
+            ? _instances.RequestMethod(method, decl, owner, span)
+            : _functions.TryGetValue(method, out var direct)
+                ? direct
+                : throw NotSupported($"'{declaring.Name}.next' was not lowered", span);
+
+        _b.Emit(new Call(dest, target, [iterator], span));
+    }
+
+    /// <summary>Das Symbol hinter einem nicht-generischen Iterator-Wert.</summary>
+    private TypeSymbol IteratorSymbolOf(IrType type, Core.Span span)
+    {
+        if (type is IrRefType reference)
+            foreach (var (symbol, id) in _typeTable.Interned)
+                if (id == reference.Type) return symbol;
+
+        throw NotSupported("iterating a value that is not an object", span);
+    }
+
+    private TempId IntConstant(long value, Core.Span span)
+    {
+        var type = new IrScalarType(IrScalar.I64);
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new Const(dest, type, new IntConst(unchecked((ulong)value)), span));
+        return dest;
     }
 
     private bool LowerWhile(WhileStmt stmt)
