@@ -65,6 +65,7 @@ public static class ModuleLowerer
         var imports = new ImportTable();
         var typeTable = new TypeTable(binding);
         FunctionId? entry = null;
+        var failed = false;
 
         // Pass 1 — Funktionstabelle. Die Reihenfolge ist Modul- dann Deklarations-Reihenfolge und
         // damit deterministisch: FunctionIds landen als Indizes im Bytecode (ADR-013).
@@ -95,7 +96,23 @@ public static class ModuleLowerer
 
                 // Entry-Contract (Sprache.md §11): genau ein 'main' pro Executable. Dass es
                 // eindeutig ist, hat die Sema geprüft — hier wird es nur festgehalten.
-                if (function.Name == "main" && function.Parameters.Length == 0) entry = id;
+                if (function.Name != "main") continue;
+
+                if (function.Parameters.Length == 0) { entry = id; continue; }
+
+                // §11 kennt auch 'fn main(args: string[])'. Das Lowering kann es nicht: die
+                // Runtime müsste beim Start ein Array bauen und übergeben, und der Runner-Vertrag
+                // (Bytecode.md §9) lehnt Programm-Argumente bis dahin ohnehin ab.
+                //
+                // Gemeldet statt übersprungen: bis 2026-08-06 fiel dieses main einfach durch die
+                // Bedingung, das Modul bekam keine Start-Sektion, und der Compiler meldete
+                // NICHTS. Ein Programm, das sauber übersetzt und dann als "Bibliothek" nicht
+                // startet, ist die schlechteste aller Antworten — LYR-IR0001 heißt "noch nicht
+                // gebaut", und genau das ist es.
+                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, function.Span,
+                    "'fn main(args: string[])' is specified (Sprache.md §11) but not lowered yet; "
+                    + "use a parameterless 'main' until program arguments arrive");
+                failed = true;
             }
 
             // Methoden sind gewöhnliche Funktionen mit dem Empfänger als Parameter 0 — dieselbe
@@ -139,7 +156,6 @@ public static class ModuleLowerer
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
         var functions = new List<IrFunction>(pending.Count);
         var reported = new HashSet<(Span Span, string Message)>();
-        var failed = false;
         foreach (var (decl, name, receiver) in pending)
         {
             try

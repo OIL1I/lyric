@@ -475,7 +475,7 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 >
 > | Konstrukt | `Sprache.md` | Stufe, an der es scheitert |
 > |---|---|---|
-> | `static let` (typgebundene Konstante) | §3.2, ADR-014 | **Parser** — `LYR-PAR0016` |
+> | `static let` (typgebundene Konstante) | §3.2, ADR-014 | Lowering — hängt an den Konstanten |
 > | `@test` und jedes andere Attribut an einer Deklaration | §10.1 | **Parser** — §2.3 hat keinen Attribut-Slot |
 > | `fn main(args: string[])` | §11 | **Lowering, stumm** — erzeugt ein Bibliotheks-Modul ohne Start-Sektion |
 > | `match` über Nicht-Enums (Literale, `\|`, Ranges, Guards, Tupel) | §5, §6.3 | Lowering — „'int' is not an enum" |
@@ -492,9 +492,15 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > **C — drei Stellen, an denen STATUS/ROADMAP etwas Falsches behaupten.** Das ist der ernste Teil,
 > weil genau diese Sätze die Inventur bisher verhindert haben:
 >
-> 1. STATUS zu **P1b**: „`static let` parst und typprüft, lowert aber nicht." Es **parst nicht**.
->    Der Parser kennt `static fn`, aber kein `static` vor einem `BindingStmt` — obwohl ADR-014 und
->    §3.2 es beide festschreiben.
+> 1. *(Zurückgezogen 2026-08-06, noch am selben Tag.)* Hier stand, `static let` parse nicht. **Das
+>    war falsch, und der Fehler lag in der Probe**: sie ließ das `;` weg, das `BindingStmt` laut
+>    §3.2 verlangt. `static let Z: int = 0;` parst und typprüft; es scheitert erst im Lowering, an
+>    derselben Stelle wie jede andere Konstante. STATUS' ursprünglicher P1b-Satz war richtig.
+>
+>    Die Lehre ist unbequem und gehört trotzdem hierher: **eine Inventur ist nur so gut wie ihre
+>    Proben.** Ein `LYR-PAR####` aus einem Test heißt zuerst „mein Testprogramm ist falsch" und
+>    erst danach „der Compiler kann es nicht". Bei den Lowering-Befunden ist das Risiko kleiner —
+>    dort steht die Grenze als Klartext in der Meldung.
 > 2. STATUS zu **P2b**: „`??`, `??=` und `?.` … lowern zu Verzweigungen über `optissome`." Nur `??`
 >    tut das. `??=` und `?.` sind `LYR-IR0001`.
 > 3. STATUS zu **P3b**: „`match` als Ausdruck und Statement". Nur über **Enums**. `match (5)`,

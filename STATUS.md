@@ -214,10 +214,9 @@ Programm, mit Begründung als Blockzitat).
     (`SlotAllocator.Declare`) statt über die Symbol-Map zu gehen.
   - **Namensmangling `<modul>.<Typ>.<methode>`** — ohne den Typnamen fielen `Account.get` und
     `Player.get` zusammen, und der Verifier lehnt doppelte Funktionsnamen ab.
-  - **`static let` parst nicht.** *(Richtigstellung 2026-08-06: hier stand „parst und typprüft,
-    lowert aber nicht" — das war falsch. Der Parser kennt `static fn`, aber kein `static` vor einem
-    `BindingStmt`, obwohl ADR-014 und `Sprache.md` §3.2 es festschreiben.)* Ursprünglicher Text:
-    Es hängt an derselben Lücke wie ein Modul-`let`. Es hängt an derselben Lücke wie ein
+  - **`static let` parst und typprüft, lowert aber nicht.** Es hängt an derselben Lücke wie ein
+    Modul-`let`. *(Dieser Satz wurde am 2026-08-06 kurzzeitig als falsch markiert — die
+    Gegenprobe war es: sie ließ das `;` weg, das `BindingStmt` verlangt. Der Satz stimmt.)* Es hängt an derselben Lücke wie ein
     Modul-`let`: Konstanten werden nirgends gelowert. Die Meldung sagt das jetzt auch, statt über
     einen Member-Zugriff auf `<?>` zu klagen.
   - **Ein Compiler-Absturz gefunden und behoben**: `TypeTable.Intern` trägt den Platzhalter ein,
@@ -624,12 +623,17 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
     dafür keinen Fehlerfall, und eine .NET-Ausnahme mitten in einem Lyric-Programm wäre die
     falsche Antwort.
 
+- [x] **P5b-4 — `fn main(args: string[])` meldet sich**. Es fiel bisher durch die
+  Entry-Bedingung, das Modul bekam keine Start-Sektion, und der Compiler sagte **nichts**: ein
+  Programm, das sauber übersetzt und dann als „Bibliothek" nicht startet. Jetzt `LYR-IR0001` mit
+  der Stelle. Gebaut ist es damit nicht — aber „noch nicht gebaut" ist genau, was der Code sagt.
+
 **Lieferposten-Inventur 2026-08-06** (Details als Blockzitat vor M8 in der ROADMAP,
 Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/Lowering gefahren,
-**12 laufen durch**. Was **keinem Slice gehoert**: `static let` (scheitert im **Parser**), Attribute
-an Deklarationen (`@test` hat keine Grammatik — betrifft M9), `fn main(args)` (erzeugt **stumm** ein
-Bibliotheks-Modul), `match` ueber Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`,
-Default-Argumente, `params`, `extend`, Tupel. Die Restliste von M7 ist deshalb nicht P6/P7/P8,
+**12 laufen durch**. Was **keinem Slice gehoert**: Attribute an Deklarationen
+(`@test` hat keine Grammatik — betrifft M9), `fn main(args)` (erzeugte **stumm** ein
+Bibliotheks-Modul), Default-Argumente, `params`, `extend`, Tupel, Konstanten (Modul-`let` und
+`static let`). **Erledigt in P5b**: `match` ueber Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`. Die Restliste von M7 ist deshalb nicht P6/P7/P8,
 sondern **P5b** (Kernsprach-Lucken), P6, P7, P8 und **P9** (`extend`).
 
 **Aus P5 — bewusst offen und wichtig:**

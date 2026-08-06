@@ -537,4 +537,23 @@ public class LoweringTests
     {
         Assert.Empty(Lower("fn id<T>(x: T): T { return x; }").Functions);
     }
+
+    /// <summary>
+    /// <c>fn main(args: string[])</c> ist spezifiziert (§11), aber nicht gelowert — und muss das
+    /// <b>sagen</b>.
+    ///
+    /// <para>Bis 2026-08-06 fiel dieses <c>main</c> durch die Entry-Bedingung, das Modul bekam
+    /// keine Start-Sektion, und der Compiler meldete nichts. Ein Programm, das sauber übersetzt
+    /// und dann als „Bibliothek" nicht startet, ist die schlechteste aller Antworten.</para>
+    /// </summary>
+    [Fact]
+    public void Main_with_arguments_is_reported_not_silently_skipped()
+    {
+        var (ir, de) = TryLower("fn main(args: string[]): int { return args.length; }");
+
+        Assert.Null(ir);
+        var diagnostic = Assert.Single(de.Diagnostics);
+        Assert.Equal("LYR-IR0001", diagnostic.Code);
+        Assert.Contains("main(args: string[])", diagnostic.Message, StringComparison.Ordinal);
+    }
 }
