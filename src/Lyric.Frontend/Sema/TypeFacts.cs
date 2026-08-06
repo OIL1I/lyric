@@ -61,6 +61,13 @@ public static class TypeFacts
             case TypeParamType tp: return tp.Param.Name;
             case GenericInstance gi: return gi.Definition.Name + "<" + string.Join(", ", gi.Arguments.Select(Display)) + ">";
             case Optional o: return "?" + Display(o.Inner);
+            // Ein Funktionstyp als Elementtyp MUSS geklammert werden: 'fn(int) -> void[]' liest
+            // sich sonst als Funktion, die 'void[]' liefert. Ohne die Klammer meldete die Sema
+            // „cannot assign 'fn(int) -> void[]' to '(fn(int) -> void)[]'" — zwei Anzeigen fuer
+            // Typen, die verschieden SIND, aber gleich aussahen, und der Leser sucht den Fehler
+            // an der falschen Stelle.
+            case ArrayOf { Element: FnType } fnArray:
+                return $"({Display(fnArray.Element)})" + (fnArray.Size is null ? "[]" : $"[{fnArray.Size}]");
             case ArrayOf a: return Display(a.Element) + (a.Size is null ? "[]" : $"[{a.Size}]");
             case TupleOf tu: return "(" + string.Join(", ", tu.Elements.Select(Display)) + ")";
             case FnType f: return "fn(" + string.Join(", ", f.Parameters.Select(Display)) + ") -> " + Display(f.Return);

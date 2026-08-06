@@ -637,6 +637,20 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 - **Generische Klassen** bleiben `LYR-IR0001` — P8. Enums (P3b), Interfaces (P3) und Structs (P4)
   lowern inzwischen.
 
+**Aus P6 — eine Grammatik-Luecke, gefunden beim Nachgehen einer Fehlermeldung:**
+
+- **Ein Array von Funktionswerten laesst sich nicht hinschreiben.** `fn(int) -> void[]` parst als
+  Funktion, die `void[]` liefert; `(fn(int) -> void)[]` hilft nicht, weil `(T)` **kein geklammerter
+  Typ** ist — `Sprache.md` §4 kennt die Klammer nur fuer Tupel, also ist `(int)` ein 1-Tupel und
+  schon allein `LYR-SEM0001`. Der Typ existiert (ein Array-Literal von Lambdas hat ihn), er ist nur
+  nicht benennbar. Betrifft alles, was mehrere Handler halten will.
+  - **Verschleiert wurde das durch einen Anzeigefehler**, der jetzt behoben ist: `TypeFacts.Display`
+    klammerte einen Funktionstyp in Array-Position nicht, und die Meldung lautete „cannot assign
+    'fn(int) -> void[]' to '(fn(int) -> void)[]'" — zwei Typen, die verschieden *sind*, sahen gleich
+    aus. Wer das liest, sucht den Fehler im Vergleich statt in der Grammatik.
+  - Zu entscheiden ist eine **Sprachfrage**, keine Implementierungsfrage: entweder bekommt §4 die
+    Typ-Klammerung, oder der Funktionstyp bindet staerker als `[]`. Nicht in P6 entschieden.
+
 **Aus P2 — eine offene Ungleichbehandlung:**
 
 - `let p = P { hp = 1 }; p.hp = 9;` ist **erlaubt** (Klassenfeld durch eine `let`-Bindung), aber
