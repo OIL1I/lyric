@@ -637,9 +637,22 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 - **Generische Klassen** bleiben `LYR-IR0001` — P8. Enums (P3b), Interfaces (P3) und Structs (P4)
   lowern inzwischen.
 
-**Aus P6 — eine Grammatik-Luecke, gefunden beim Nachgehen einer Fehlermeldung:**
+- [x] **Typ-Klammerung `(T)`** (Sprache.md §4). Ein Array von Funktionswerten liess sich vorher
+  **gar nicht hinschreiben**: `fn(int) -> void[]` parst als Funktion, die `void[]` liefert, und
+  `(fn(int) -> void)[]` ging nicht, weil `(T)` als 1-Tupel gelesen wurde. Der Typ existierte — ein
+  Array-Literal von Lambdas hat ihn —, er war nur nicht benennbar.
+  - **Das war kein fehlendes Feature, sondern eine Abweichung des Parsers von der eigenen Spec.**
+    `TupleType` verlangt in §4 seit jeher Aritaet 2; der Parser baute trotzdem 1-Tupel. Der Platz
+    fuer die Klammerung war also frei — Rust braucht dafuer `(T,)`, hier nicht.
+  - **Die Sprache war mit sich selbst inkonsistent**: im Ausdrucksbereich klammert `(1)` laengst.
+  - **Die Praezedenz bleibt unveraendert.** Sie umzudrehen haette `fn(): int[]` still zu etwas
+    anderem gemacht als bisher — die gefaehrliche Richtung. Dieselbe Logik wie beim Cast:
+    `x as float[]` castet zu `float[]`, und wer es anders meint, klammert.
+  - Gemessen: `(fn(int) -> int)[]` mit zwei Lambdas laeuft (31); `(int,)` und `()` bleiben Fehler.
 
-- **Ein Array von Funktionswerten laesst sich nicht hinschreiben.** `fn(int) -> void[]` parst als
+**Aus P6 — ~~eine Grammatik-Luecke~~ (am selben Tag geschlossen, siehe oben):**
+
+- ~~**Ein Array von Funktionswerten laesst sich nicht hinschreiben.**~~ `fn(int) -> void[]` parst als
   Funktion, die `void[]` liefert; `(fn(int) -> void)[]` hilft nicht, weil `(T)` **kein geklammerter
   Typ** ist — `Sprache.md` §4 kennt die Klammer nur fuer Tupel, also ist `(int)` ein 1-Tupel und
   schon allein `LYR-SEM0001`. Der Typ existiert (ein Array-Literal von Lambdas hat ihn), er ist nur

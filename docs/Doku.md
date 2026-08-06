@@ -205,6 +205,28 @@ Wenn du etwas brauchst, das **wächst**, nimm `std.collections.List<T>`. Es häl
 kopiert bei Bedarf um und kann `.push(v)`/`.pop()`. Der Index-Operator funktioniert dort genauso —
 `List<T>` implementiert das `Indexable<T>`-Interface, an das `[i]` für alles außer `T[]` bindet.
 
+### 5.2.1 Klammern in Typen
+
+Runde Klammern bündeln, genau wie in Ausdrücken:
+
+```lyr
+let a: (int) = 7;                        // dasselbe wie int
+```
+
+Gebraucht wird das bei **Funktionstypen**, denn `fn(A) -> R` ist der einzige Typ, der nach rechts
+offen ist:
+
+```lyr
+let f: fn(int) -> void[] = …;            // eine Funktion, die 'void[]' liefert
+let fs: (fn(int) -> void)[] = …;         // ein ARRAY von Funktionen
+```
+
+Die Regel ist dieselbe wie beim Cast: `x as float[]` castet zu `float[]`, weil rechts vom `as` ein
+Typ steht und `float[]` einer ist. Wo du es anders meinst, klammerst du.
+
+Ab **zwei** Elementen ist die Klammer ein Tupel (§5.2); ein Ein-Element-Tupel gibt es nicht, und
+`(int,)` ist deshalb ein Fehler.
+
 ### 5.3 Type-Aliases
 
 ```lyr

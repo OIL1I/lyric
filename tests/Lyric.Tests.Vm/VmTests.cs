@@ -999,4 +999,21 @@ public class VmTests
         Assert.Equal(9, Run("""
             fn main(): int { let f = (x: int) => x * 3; return f(3); }
             """).AsI64);
+
+    [Fact]
+    public void An_array_of_function_values_runs()
+    {
+        // Der Fall, fuer den die Typ-Klammerung eingefuehrt wurde (Sprache.md §4): vorher liess
+        // sich dieser Typ nicht hinschreiben, obwohl es ihn gab.
+        Assert.Equal(31, Run("""
+            fn main(): int {
+                let fs: (fn(int) -> int)[] = [(x: int) => x + 1, (x: int) => x * 2];
+                return fs[0](10) + fs[1](10);
+            }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_parenthesized_type_is_the_type_itself() =>
+        Assert.Equal(7, Run("fn main(): int { let a: (int) = 7; return a; }").AsI64);
 }

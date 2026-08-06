@@ -605,7 +605,7 @@ public sealed partial class Parser
             case TokenKind.Fn:
                 return ParseFunctionType();
             case TokenKind.LParen:
-                return ParseTupleType();
+                return ParseParenthesizedType();
             case TokenKind.Identifier:
             {
                 _buffer.Advance();
@@ -646,15 +646,45 @@ public sealed partial class Parser
         return new FunctionType(parameters.ToArray(), returnType, Span.Union(start.Span, returnType.Span));
     }
 
-    private TypeNode ParseTupleType()
+    /// <summary>
+    /// <c>(</c> in Typ-Position: entweder ein <b>Tupel</b> (ab zwei Elementen) oder eine blosse
+    /// <b>Klammerung</b> (Sprache.md §4).
+    ///
+    /// <para>Kein Konflikt zwischen beiden, weil Lyric kein 1-Tupel kennt: <c>TupleType</c>
+    /// verlangt seit jeher Aritaet 2. Rust braucht dafuer <c>(T,)</c>, hier ist der Platz frei.</para>
+    ///
+    /// <para><b>Wozu die Klammerung.</b> <c>fn(A) -&gt; R</c> ist der einzige Typ der Sprache, der
+    /// nach rechts offen ist — <c>fn(int) -&gt; void[]</c> liest sich als Funktion, die
+    /// <c>void[]</c> liefert, und ein Array von Funktionswerten liess sich vorher <b>gar nicht
+    /// hinschreiben</b>. Die Praezedenz bleibt dabei, wie sie ist: sie umzudrehen wuerde
+    /// <c>fn(): int[]</c> still zu etwas anderem machen als bisher.</para>
+    ///
+    /// <para>Im Ausdrucksbereich klammert <c>(1)</c> laengst; dies schliesst die Inkonsistenz,
+    /// nicht mehr.</para>
+    /// </summary>
+    private TypeNode ParseParenthesizedType()
     {
         var open = _buffer.Advance(); // '('
+
         var elems = new List<TypeNode>();
-        do { elems.Add(ParseType()); } while (_buffer.Match(TokenKind.Comma) && !_buffer.Check(TokenKind.RParen));
-        var close = _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' to close tuple type");
+        var sawComma = false;
+        do
+        {
+            elems.Add(ParseType());
+            if (!_buffer.Match(TokenKind.Comma)) break;
+            sawComma = true;
+        } while (!_buffer.Check(TokenKind.RParen));
+
+        var close = _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' to close type");
         var span = Span.Union(open.Span, close.Span);
+
+        // Ein Element OHNE Komma ist eine Klammerung — der innere Typ wandert unveraendert nach
+        // oben. Mit Komma ('(T,)') war ein Tupel gemeint, und dafuer fehlt das zweite Element.
+        if (elems.Count == 1 && !sawComma) return elems[0];
+
         if (elems.Count < 2) // keine Obergrenze (Sprache.md §4)
             _de.Report("LYR-PAR0010", Severity.Error, span, "tuple types need at least 2 elements");
+
         return new TupleType(elems.ToArray(), span);
     }
 

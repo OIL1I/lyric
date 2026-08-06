@@ -416,9 +416,14 @@ TypePrefix      = [ '?' ] .                                    (* '?' = nullable
 TypeAtom        = BuiltinType
                 | ModulePath [ '<' TypeExpr { ',' TypeExpr } '>' ]    (* generisch *)
                 | FunctionType
-                | TupleType .
+                | TupleType
+                | GroupedType .
 FunctionType    = 'fn' '(' [ TypeExpr { ',' TypeExpr } ] ')' '->' TypeExpr .
 TupleType       = '(' TypeExpr ',' TypeExpr { ',' TypeExpr } ')' .   (* arity >= 2, keine Obergrenze *)
+GroupedType     = '(' TypeExpr ')' .                                 (* blosse Klammerung, kein 1-Tupel *)
+(* Die Klammerung ist noetig, weil 'fn(A) -> R' als einziger Typ nach rechts offen ist:
+   'fn(int) -> void[]' ist eine Funktion, die 'void[]' liefert; ein Array von Funktionswerten
+   heisst '(fn(int) -> void)[]'. Dieselbe Rolle wie '(' Expr ')' im Ausdrucksbereich. *)
 TypeSuffix      = '[' ']' .                                     (* T[] — die Laenge steht im Wert, nicht im Typ (ADR-016) *)
 
 BuiltinType     = 'int' | 'uint' | 'float'
