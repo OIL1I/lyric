@@ -26,6 +26,11 @@ namespace Lyric.Ir.Lowering;
 /// </summary>
 public static class ModuleLowerer
 {
+    /// <summary>Wie oft die nachgelagerten Tabellen abwechselnd geleert werden, bevor der Compiler
+    /// aufgibt. Jede Runde muss etwas Neues liefern, sonst bricht die Schleife ohnehin ab — die
+    /// Grenze faengt nur den Fall, dass sich zwei Tabellen endlos gegenseitig fuettern.</summary>
+    private const int MaxLoweringRounds = 100;
+
     internal static readonly Dictionary<GenericParamSymbol, LyrType> NoSubstitution =
         new(ReferenceEqualityComparer.Instance);
 
@@ -172,10 +177,12 @@ public static class ModuleLowerer
         // Coroutine-Rumpfe kommen hinter die geschriebenen Funktionen und den Initialisierer,
         // Lambdas dahinter — die Position IST die FunctionId (ADR-013), also muss die Reihenfolge
         // festliegen, bevor der erste Rumpf gelowert wird.
-        var coroutineCount = pending.Count(p => CoroutineYield(p.Decl) is not null);
-        var reserved = pending.Count + (globals.IsEmpty ? 0 : 1);
-        var coroutines = new CoroutineTable(reserved);
-        var lambdas = new LambdaTable(reserved + coroutineCount);
+        // Alle drei Sorten nachgelagerter Funktionen teilen sich EINEN Zaehler: sie wachsen
+        // gleichzeitig und unbegrenzt, also kann keine einen eigenen Bereich reservieren.
+        var nextId = new FunctionIds(pending.Count + (globals.IsEmpty ? 0 : 1));
+        var coroutines = new CoroutineTable(nextId);
+        var instances = new InstanceTable(nextId);
+        var lambdas = new LambdaTable(nextId);
 
         // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
@@ -203,7 +210,7 @@ public static class ModuleLowerer
                 }
 
                 functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable,
-                    NoSubstitution, globals, lambdas, receiver).Run());
+                    NoSubstitution, globals, lambdas, instances, receiver).Run());
             }
             catch (UnsupportedConstructException ex)
             {
@@ -226,7 +233,7 @@ public static class ModuleLowerer
             try
             {
                 globalInit = new FunctionId(functions.Count);
-                functions.Add(GlobalInitializer.Build(globals, types, ids, imports, typeTable, lambdas));
+                functions.Add(GlobalInitializer.Build(globals, types, ids, imports, typeTable, lambdas, instances));
             }
             catch (UnsupportedConstructException ex)
             {
@@ -235,35 +242,30 @@ public static class ModuleLowerer
             }
         }
 
-        // Erst die Coroutine-Rumpfe, dann die Lambdas — in genau der Reihenfolge, in der die Ids
-        // oben reserviert wurden.
-        if (!coroutines.IsEmpty)
+        // Die nachgelagerten Funktionen: Coroutine-Rumpfe, monomorphisierte Instanzen und
+        // angehobene Lambdas. Jede Sorte kann beim Lowern die anderen anfordern, deshalb wird
+        // dreimal abwechselnd geleert, bis nichts mehr nachkommt — und am Ende nach Id sortiert,
+        // weil die Position in der Liste die Id IST (ADR-013).
+        var deferred = new List<(FunctionId Id, IrFunction Function)>();
+        try
         {
-            try
+            for (var round = 0; round < MaxLoweringRounds; round++)
             {
-                functions.AddRange(coroutines.LowerAll(types, ids, imports, typeTable, globals, lambdas));
+                var before = deferred.Count;
+                deferred.AddRange(coroutines.LowerAll(types, ids, imports, typeTable, globals,
+                    lambdas, instances));
+                deferred.AddRange(instances.LowerAll(types, ids, imports, typeTable, globals, lambdas));
+                deferred.AddRange(lambdas.LowerAll(types, ids, imports, typeTable, globals, instances));
+                if (deferred.Count == before) break;
             }
-            catch (UnsupportedConstructException ex)
-            {
-                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
-                return null;
-            }
+        }
+        catch (UnsupportedConstructException ex)
+        {
+            de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+            return null;
         }
 
-        // Zuletzt die angehobenen Lambdas — und das ist eine Worklist, keine Schleife: ein Lambda
-        // in einem Lambda meldet waehrend seines eigenen Lowerings ein weiteres an.
-        if (!lambdas.IsEmpty)
-        {
-            try
-            {
-                functions.AddRange(lambdas.LowerAll(types, ids, imports, typeTable, globals));
-            }
-            catch (UnsupportedConstructException ex)
-            {
-                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
-                return null;
-            }
-        }
+        functions.AddRange(deferred.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
 
         // Types nach dem Lowering eingesammelt, nicht davor: die Tabelle enthält nur, was
         // tatsächlich benutzt wurde — eine deklarierte, nie instanziierte Klasse gehört nicht in

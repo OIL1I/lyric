@@ -505,14 +505,51 @@ public class LoweringTests
     }
 
     [Fact]
-    public void Generic_functions_are_skipped_and_calling_them_is_reported()
+    public void A_generic_call_becomes_an_instance_of_its_own()
     {
-        // Generics brauchen die Worklist-Monomorphisierung: pro konkretem Typargument-Tupel eine
-        // Instanz, ausgehend von den Wurzeln. Bis dahin bekommen sie keine FunctionId.
-        AssertNotSupported("""
+        // Monomorphisierung (§12): pro konkretem Typargument-Tupel eine eigene Funktion. Die
+        // Deklaration selbst bekommt KEINE — sie ist eine Schablone, kein Code.
+        var (ir, de) = TryLower("""
             fn id<T>(x: T): T { return x; }
             fn main(): int { return id(1); }
-            """, "call to 'id'");
+            """);
+
+        Assert.False(de.HasErrors);
+        Assert.NotNull(ir);
+
+        // Der Name traegt die Typargumente: er ist der Schluessel, unter dem die Instanz
+        // wiedergefunden wird, und in einer Disassembly lesbar.
+        Assert.Contains(ir!.Functions, f => f.Name == "id<int>");
+        Assert.DoesNotContain(ir.Functions, f => f.Name == "main.id");
+    }
+
+    [Fact]
+    public void Two_type_arguments_produce_two_instances()
+    {
+        // Die Gegenprobe: ohne sie bewiese der Test darueber nur, dass IRGENDEINE Instanz
+        // entsteht — nicht, dass sie pro Typ getrennt sind.
+        var (ir, de) = TryLower("""
+            fn id<T>(x: T): T { return x; }
+            fn main(): int { let s = id("x"); return id(1); }
+            """);
+
+        Assert.False(de.HasErrors);
+        Assert.Contains(ir!.Functions, f => f.Name == "id<int>");
+        Assert.Contains(ir.Functions, f => f.Name == "id<string>");
+    }
+
+    [Fact]
+    public void The_same_type_argument_is_instantiated_once()
+    {
+        // Zwei Aufrufe mit demselben Typ teilen sich eine Instanz — sonst wuechse der Bytecode
+        // mit der Zahl der AUFRUFE statt mit der Zahl der Typen.
+        var (ir, de) = TryLower("""
+            fn id<T>(x: T): T { return x; }
+            fn main(): int { return id(1) + id(2); }
+            """);
+
+        Assert.False(de.HasErrors);
+        Assert.Single(ir!.Functions.Where(f => f.Name == "id<int>"));
     }
 
     [Fact]
@@ -520,12 +557,13 @@ public class LoweringTests
     {
         // Eine Meldung pro Aufruf wäre Schikane: wer drei nicht unterstützte Konstrukte benutzt,
         // soll sie in einem Durchlauf sehen. Deshalb sammelt das Lowering pro Funktion weiter.
-        // 'a' war bis P6 ein Lambda — seit ADR-018 lowert das, und der Test misst jetzt an einer
-        // Grenze, die noch steht. Genau dafuer ist er da: er zaehlt Meldungen, er behauptet nicht,
-        // welche Konstrukte fehlen.
+        // 'a' war bis P6 ein Lambda und bis P8 eine generische Funktion — beides lowert
+        // inzwischen. Der Test misst jeweils an einer Grenze, die noch steht; genau dafuer ist er
+        // da: er zaehlt Meldungen, er behauptet nicht, welche Konstrukte fehlen.
         var (ir, de) = TryLower("""
-            fn id<T>(x: T): T { return x; }
-            fn a(): int { return id(1); }
+            class Item { n: int }
+            extend Item { fn twice(): int { return this.n * 2; } }
+            fn a(): int { let i = Item { n = 1 }; return i.twice(); }
             fn b(): int { var s = 0; for (i in 0..3) { s += i; } return s; }
             fn c(): int { let t = (1, 2); return 0; }
             """);

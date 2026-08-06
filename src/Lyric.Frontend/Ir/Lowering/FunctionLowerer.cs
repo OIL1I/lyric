@@ -73,6 +73,10 @@ internal sealed class FunctionLowerer
     /// bekommt sofort seine Id, lange bevor sein eigener Rumpf gelowert wird.</summary>
     private readonly LambdaTable _lambdas;
 
+    /// <summary>Die monomorphisierten Instanzen des Moduls. Ein Aufruf einer generischen Funktion
+    /// fordert hier seine an und bekommt sofort eine Id (Sprache.md §12).</summary>
+    private readonly InstanceTable _instances;
+
     /// <summary>
     /// Slots, die eine <b>Zelle</b> halten statt eines Wertes (ADR-018) — je Slot der Typ der
     /// Zelle und der Typ dessen, was darin liegt.
@@ -111,8 +115,10 @@ internal sealed class FunctionLowerer
         IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution,
         GlobalTable globals,
         LambdaTable lambdas,
+        InstanceTable instances,
         TypeSymbol? receiver = null)
     {
+        _instances = instances;
         _lambdas = lambdas;
         _receiver = receiver;
         _globals = globals;
@@ -181,15 +187,16 @@ internal sealed class FunctionLowerer
         IReadOnlyList<Symbol> captures, bool capturesThis, IrType environmentType,
         TypeSymbol? receiver, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas) =>
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances) =>
         new(lambda, name, captures, capturesThis, environmentType, receiver, types, functions,
-            imports, typeTable, globals, lambdas);
+            imports, typeTable, globals, lambdas, instances);
 
     private FunctionLowerer(LambdaExpr lambda, string name, IReadOnlyList<Symbol> captures,
         bool capturesThis, IrType environmentType, TypeSymbol? receiver, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas)
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances)
     {
+        _instances = instances;
         _lambda = lambda;
         _receiver = receiver;
         _name = name;
@@ -245,14 +252,14 @@ internal sealed class FunctionLowerer
     public static FunctionLowerer ForCoroutineBody(FunctionDecl decl, string name, TypeId state,
         IrType yieldType, TypeSymbol? receiver, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas) =>
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances) =>
         new(decl, name, state, yieldType, receiver, types, functions, imports, typeTable, globals,
-            lambdas);
+            lambdas, instances);
 
     private FunctionLowerer(FunctionDecl decl, string name, TypeId state, IrType yieldType,
         TypeSymbol? receiver, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas)
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances)
     {
         _decl = decl;
         _name = name;
@@ -262,6 +269,7 @@ internal sealed class FunctionLowerer
         _typeTable = typeTable;
         _globals = globals;
         _lambdas = lambdas;
+        _instances = instances;
         _receiver = receiver;
         _substitution = ModuleLowerer.NoSubstitution;
         _b = new BlockBuilder(_blocks);
@@ -2621,8 +2629,31 @@ internal sealed class FunctionLowerer
             return null;
         }
 
-        if (!_functions.TryGetValue(symbol, out var target))
-            throw NotSupported($"call to '{calleeName}' (external, generic or bodiless)", expr.Span);
+        if (symbol.Declaration is not FunctionDecl generic)
+            throw NotSupported($"call to '{calleeName}' (no declaration to read parameters from)",
+                expr.Span);
+
+        // Generisch: nicht die Deklaration wird gerufen, sondern eine INSTANZ von ihr. Welche,
+        // sagen die Typargumente, die die Sema an der Aufrufstelle inferiert hat — sie ein
+        // zweites Mal abzuleiten waere eine zweite Wahrheit ueber dieselbe Frage.
+        FunctionId target;
+        if (symbol.Generics.Length > 0)
+        {
+            // Ein Typargument kann selbst ein Typ-Parameter SEIN, wenn die rufende Funktion
+            // schon eine Instanz ist: in 'wrap<T>' ruft 'id(x)' die Instanz 'id<T>', und welches
+            // T das ist, weiss nur die eigene Substitution.
+            var typeArguments = _types.TypeArgumentsOf(expr)
+                .Select(t => t is TypeParamType p && _substitution.TryGetValue(p.Param, out var b)
+                    ? b : t)
+                .ToArray();
+
+            target = _instances.Request(symbol, generic, calleeName, null,
+                typeArguments, _typeTable, expr.Span);
+        }
+        else if (!_functions.TryGetValue(symbol, out target))
+        {
+            throw NotSupported($"call to '{calleeName}' (external or bodiless)", expr.Span);
+        }
 
         if (symbol.Declaration is not FunctionDecl declaration)
             throw NotSupported($"call to '{calleeName}' (no declaration to read parameters from)",
@@ -3060,8 +3091,21 @@ internal sealed class FunctionLowerer
     /// <see cref="TypeTable"/> — dieselbe Stelle, die auch Feld- und Parametertypen auflöst, damit
     /// eine Fabrik <c>static fn new(): P</c> denselben Typ liefert wie ein Feld vom Typ
     /// <c>P</c>.</summary>
-    private IrType LowerDeclaredReturnType() =>
-        _decl!.ReturnType is null ? VoidType : _typeTable.Lower(_decl.ReturnType);
+    private IrType LowerDeclaredReturnType()
+    {
+        if (_decl!.ReturnType is null) return VoidType;
+
+        // In einer monomorphisierten Instanz kann der geschriebene Rueckgabetyp ein
+        // Typ-Parameter sein ('fn id<T>(x: T): T'). Die Parameter gehen ueber den LyrType-Pfad und
+        // treffen die Substitution dort; der Rueckgabetyp kommt syntaktisch und muss sie hier
+        // treffen — sonst suchte die Typtabelle nach einer Klasse namens 'T'.
+        if (_substitution.Count > 0 && _decl.ReturnType is NamedType { TypeArguments.Length: 0 } named)
+            foreach (var (parameter, bound) in _substitution)
+                if (parameter.Name == named.Path[^1])
+                    return LowerType(bound, _decl.ReturnType.Span);
+
+        return _typeTable.Lower(_decl.ReturnType);
+    }
 
     /// <summary>Scope-Grenze: gültiges Lyric, für das der Backend-Teil noch fehlt. Wird von
     /// <see cref="ModuleLowerer"/> zu einer <c>LYR-IR0001</c>-Diagnose mit Datei/Zeile/Spalte —

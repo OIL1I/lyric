@@ -945,6 +945,12 @@ public sealed class TypeChecker
         {
             CheckInferredConstraints(fsym!.Generics, map, call.Span);
             substituted = (FnType)Substitute(fn, map);
+
+            // Fuer die Monomorphisierung: welche Instanz gemeint ist, steht hier fest und nirgends
+            // sonst. In Deklarationsreihenfolge, weil das die Identitaet der Instanz ist.
+            _result.SetTypeArguments(call, fsym.Generics
+                .Select(g => map.TryGetValue(g, out var bound) ? bound : LyrType.Error)
+                .ToArray());
         }
 
         CheckCallArgs(call, substituted, argTypes, decl);

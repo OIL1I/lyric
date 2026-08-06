@@ -65,6 +65,27 @@ public sealed class TypeResult
 
     public void MarkBoxed(Symbol symbol) => _boxed.Add(symbol);
 
+    /// <summary>
+    /// Die Typargumente einer Aufrufstelle — inferiert oder geschrieben (Sprache.md §12).
+    ///
+    /// <para>Die Sema leitet sie ohnehin ab, um den Aufruf zu pruefen; ohne sie hier abzulegen
+    /// muesste das Lowering die Inferenz <b>ein zweites Mal</b> ausfuehren, um zu wissen, welche
+    /// Instanz von <c>id&lt;T&gt;</c> es rufen soll — zwei Wahrheiten ueber dieselbe Frage, und
+    /// die zweite haette keine Diagnosen, mit denen sie sich melden koennte.</para>
+    ///
+    /// <para>Die Reihenfolge ist die der Generics-Deklaration, nicht die der Argumente: sie ist
+    /// das, was eine Instanz identifiziert.</para>
+    /// </summary>
+    private readonly Dictionary<Node, LyrType[]> _typeArguments =
+        new(ReferenceEqualityComparer.Instance);
+
+    public void SetTypeArguments(Node call, LyrType[] arguments) =>
+        _typeArguments[call] = arguments;
+
+    /// <summary>Die Typargumente eines Aufrufs; leer, wenn der Aufgerufene nicht generisch ist.</summary>
+    public LyrType[] TypeArgumentsOf(Node call) =>
+        _typeArguments.TryGetValue(call, out var args) ? args : [];
+
     /// <summary>Lebt dieses Symbol in einer Zelle statt in einem Frame-Slot? Das Lowering fragt
     /// das an <b>jeder</b> Zugriffsstelle — auch ausserhalb der Closure, denn beide Seiten muessen
     /// dieselbe Zelle sehen.</summary>

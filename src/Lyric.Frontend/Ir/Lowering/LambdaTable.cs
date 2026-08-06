@@ -37,9 +37,14 @@ internal sealed class LambdaTable
 
     /// <summary>Die erste Id, die an ein Lambda gehen darf — hinter allen geschriebenen Funktionen
     /// und hinter dem Global-Initialisierer.</summary>
-    private readonly int _firstId;
+    /// <summary>Bis wohin schon gelowert wurde. Die Tabelle wird MEHRFACH geleert — eine
+    /// Instanz kann ein Lambda anfordern, ein Lambda eine Instanz —, und ohne diese Marke
+    /// entstuende bei jedem Durchgang alles noch einmal.</summary>
+    private int _lowered;
 
-    public LambdaTable(int firstId) => _firstId = firstId;
+    private readonly FunctionIds _ids;
+
+    public LambdaTable(FunctionIds ids) => _ids = ids;
 
     public bool IsEmpty => _pending.Count == 0;
 
@@ -51,7 +56,7 @@ internal sealed class LambdaTable
     public FunctionId Register(LambdaExpr lambda, string enclosing, IReadOnlyList<Symbol> captures,
         bool capturesThis, IrType environmentType, TypeSymbol? receiver)
     {
-        var id = new FunctionId(_firstId + _pending.Count);
+        var id = _ids.Next();
 
         // Der Name landet im Bytecode und in jeder Diagnose. '<' kann in keinem Lyric-Bezeichner
         // vorkommen (Sprache.md §1.3), also kollidiert er mit nichts; die laufende Nummer haelt
@@ -67,18 +72,18 @@ internal sealed class LambdaTable
     /// ueber einen Index statt ueber einen Enumerator, weil <see cref="_pending"/> waehrend des
     /// Durchlaufs waechst: ein Lambda in einem Lambda ist der Normalfall, kein Sonderfall.
     /// </summary>
-    public List<IrFunction> LowerAll(TypeResult types,
+    public List<(FunctionId Id, IrFunction Function)> LowerAll(TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals)
+        TypeTable typeTable, GlobalTable globals, InstanceTable instances)
     {
-        var lowered = new List<IrFunction>();
+        var lowered = new List<(FunctionId, IrFunction)>();
 
-        for (var i = 0; i < _pending.Count; i++)
+        for (; _lowered < _pending.Count; _lowered++)
         {
-            var p = _pending[i];
-            lowered.Add(FunctionLowerer.ForLambda(
+            var p = _pending[_lowered];
+            lowered.Add((p.Id, FunctionLowerer.ForLambda(
                 p.Lambda, p.Name, p.Captures, p.CapturesThis, p.EnvironmentType, p.Receiver,
-                types, functions, imports, typeTable, globals, this).Run());
+                types, functions, imports, typeTable, globals, this, instances).Run()));
         }
 
         return lowered;

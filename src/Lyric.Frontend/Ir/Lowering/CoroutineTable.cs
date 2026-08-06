@@ -20,9 +20,14 @@ internal sealed class CoroutineTable
         TypeSymbol? Receiver);
 
     private readonly List<Pending> _pending = new();
-    private readonly int _firstId;
+    /// <summary>Bis wohin schon gelowert wurde. Die Tabelle wird MEHRFACH geleert — eine
+    /// Instanz kann ein Lambda anfordern, ein Lambda eine Instanz —, und ohne diese Marke
+    /// entstuende bei jedem Durchgang alles noch einmal.</summary>
+    private int _lowered;
 
-    public CoroutineTable(int firstId) => _firstId = firstId;
+    private readonly FunctionIds _ids;
+
+    public CoroutineTable(FunctionIds ids) => _ids = ids;
 
     public bool IsEmpty => _pending.Count == 0;
     public int Count => _pending.Count;
@@ -32,7 +37,7 @@ internal sealed class CoroutineTable
     public FunctionId Register(FunctionDecl decl, string name, TypeId state, IrType yield,
         TypeSymbol? receiver)
     {
-        var id = new FunctionId(_firstId + _pending.Count);
+        var id = _ids.Next();
 
         // '<' kann in keinem Lyric-Bezeichner vorkommen (§1.3), also kollidiert der Name mit
         // nichts — dieselbe Konvention wie bei '<globals>' und '<lambda0>'.
@@ -40,15 +45,18 @@ internal sealed class CoroutineTable
         return id;
     }
 
-    public List<IrFunction> LowerAll(TypeResult types,
+    public List<(FunctionId Id, IrFunction Function)> LowerAll(TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas)
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances)
     {
-        var lowered = new List<IrFunction>(_pending.Count);
+        var lowered = new List<(FunctionId, IrFunction)>(_pending.Count);
 
-        foreach (var p in _pending)
-            lowered.Add(FunctionLowerer.ForCoroutineBody(p.Decl, p.Name, p.State, p.Yield,
-                p.Receiver, types, functions, imports, typeTable, globals, lambdas).Run());
+        for (; _lowered < _pending.Count; _lowered++)
+        {
+            var p = _pending[_lowered];
+            lowered.Add((p.Id, FunctionLowerer.ForCoroutineBody(p.Decl, p.Name, p.State, p.Yield,
+                p.Receiver, types, functions, imports, typeTable, globals, lambdas, instances).Run()));
+        }
 
         return lowered;
     }
