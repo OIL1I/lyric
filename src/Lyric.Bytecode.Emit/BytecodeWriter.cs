@@ -142,6 +142,20 @@ public static class BytecodeWriter
             });
 
 
+        // Globale Slots samt ihrer Init-Funktion. Vor Handlers (9), hinter Start (7)? Nein:
+        // Globals ist 10 und steht damit ganz am Ende — Sektions-Ids steigen strikt.
+        if (module.Globals.Count > 0)
+            WriteSection(writer, SectionId.Globals, s =>
+            {
+                s.ULeb(module.Globals.Count);
+                foreach (var global in module.Globals) WriteType(s, global.Type);
+
+                // 0 = keine Init-Funktion; sonst der Index im gemeinsamen Raum, um eins erhoeht.
+                s.ULeb(module.GlobalInit is { } init
+                    ? (ulong)(module.Imports.Count + init.Value + 1)
+                    : 0UL);
+            });
+
         // Geschuetzte Regionen. Ganz zuletzt: Sektions-Ids steigen strikt, Handlers (9) liegt
         // hinter Impls (8).
         var handlers = module.Functions
@@ -330,6 +344,16 @@ public static class BytecodeWriter
             case StructCopy c:
                 code.Opcode(Op.StructCopy);
                 code.ULeb(c.Type.Value);
+                break;
+
+            case LoadGlobal l:
+                code.Opcode(Op.LoadGlobal);
+                code.ULeb(l.Global.Value);
+                break;
+
+            case StoreGlobal g:
+                code.Opcode(Op.StoreGlobal);
+                code.ULeb(g.Global.Value);
                 break;
 
             case EnumAs a:

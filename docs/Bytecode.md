@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v2.3
+# Lyric — `.lyrbc` Bytecode-Format v2.4
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,11 +7,11 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **2.3**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **2.4**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
 > (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals**,
 > **Enums**, **Interfaces mit vtable-Dispatch**, **Structs mit Wert-Semantik** und
-> **Exceptions** (`throw`/`try`/`catch`).
+> **Exceptions** (`throw`/`try`/`catch`) und **globale Konstanten**.
 
 ---
 
@@ -73,6 +73,7 @@ zu tolerieren — neue Minor-Versionen dürfen nur überspringbare Sektionen hin
 | 7 | Start | nein | Einstiegspunkt: `uleb128`-Index der aufzurufenden Funktion |
 | 8 | Impls | nein | Interface-Implementierungen (vtables) |
 | 9 | Handlers | nein | geschützte Regionen je Funktion |
+| 10 | Globals | nein | globale Slots samt ihrer Initialisierungs-Funktion |
 
 Fehlt eine Sektion, gilt sie als leer.
 
@@ -298,6 +299,39 @@ Typ- oder Slot-Index außerhalb seiner Tabelle, und eine `finally`-Region mit Ty
 
 **Beim Sprung in einen Handler ist der Operanden-Stack zu leeren.** Der abgebrochene Ausdruck kann
 Zwischenwerte hinterlassen haben.
+
+---
+
+### Globals (Id 10)
+
+Globale Slots — in Lyric die Modul-`let` und `static let` (`Sprache.md` §2.3, §3.2).
+
+```
+globalCount      uleb128
+globalTypes      globalCount × Typ (§3)
+initFunction     uleb128   0 = keine; sonst Index + 1 in den gemeinsamen
+                 Aufruf-Indexraum (erst Imports, dann Funktionen)
+```
+
+Eine Runtime **muss** die Init-Funktion aufrufen, **bevor** sie den Einstiegspunkt (§Start)
+aufruft. Sie nimmt keine Argumente, liefert nichts und hinterlässt gefüllte Slots.
+
+**Warum eine Funktion und nicht Werte in der Sektion**: ein Initialisierer ist ein *Ausdruck*, kein
+Literal — `static let ZERO: Vector3 = Vector3 { … }` legt ein Objekt an. Als Wert wäre nur der
+skalare Teil darstellbar, der Rest bräuchte doch wieder Code. Eine Funktion kann alles, was der
+Instruktionssatz ohnehin kann, und der bekommt keinen Sonderfall. CIL löst es mit `.cctor` genauso.
+
+**Die Reihenfolge im Rumpf ist die Initialisierungsreihenfolge.** Ein Slot darf einen früher
+gefüllten lesen, einen späteren nicht — dort stünde ein Wert, den niemand geschrieben hat. Das
+Format erzwingt das nicht (es sähe nur ein `ldglobal`), der Lyric-Compiler lehnt es als
+`LYR-SEM0057` ab.
+
+Ein Leser **muss** ablehnen: einen globalen Typ `void`, einen Init-Index außerhalb des
+Aufrufraums, und eine nichtleere Globals-Liste **ohne** Init-Funktion — die Slots wären
+uninitialisiert, und jeder Wert in Lyric hat einen (§6.6 der Sprachspec).
+
+Ein Slot vom Typ `string` beginnt wie ein Objektfeld mit dem leeren String, nicht mit einer leeren
+Referenz.
 
 ---
 
@@ -551,6 +585,20 @@ es nicht: er hat noch keinen anderen Besitzer.
 Ein `structcopy` auf einem Typ, der **kein** Struct-Eintrag ist, muss ein Leser ablehnen. Es wäre
 kein Fehler, den die Laufzeit bemerkt — sie kopierte klaglos ein Slot-Array, das geteilt gehört,
 und die Semantik bräche still.
+
+### Globals
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x75` | `ldglobal` | `uleb128` index | −0 +1 | liest einen globalen Slot |
+| `0x76` | `stglobal` | `uleb128` index | −1 +0 | schreibt einen globalen Slot |
+
+Wie `ldloc`/`stloc`, nur modulweit statt frameweit. Der Index ist beim Laden geprüft, der Zugriff
+zur Laufzeit deshalb ungeprüft.
+
+`stglobal` benutzt in Lyric ausschließlich die Init-Funktion: Globale sind dort immer `let`. Der
+Opcode ist trotzdem allgemein — das Füllen selbst ist ein Schreibvorgang, und ihn zu verstecken
+hieße, der Init-Funktion eine Sonderrolle im Instruktionssatz zu geben.
 
 ### Exceptions
 

@@ -94,6 +94,11 @@ public sealed record CallVirt(TempId? Dest, TypeId Interface, int Slot, TempId[]
 // Ein frisch gebauter Wert (newobj, Call-Ergebnis) braucht sie nicht — er gehoert noch niemandem.
 public sealed record StructCopy(TempId Dest, TempId Value, TypeId Type, Span Span) : IrOp(Span);
 
+// Globals (P5c). Wie LoadLocal/StoreLocal, nur modulweit statt frameweit — und geschrieben wird
+// nur einmal, von der Init-Funktion.
+public sealed record LoadGlobal(TempId Dest, GlobalId Global, IrType Type, Span Span) : IrOp(Span);
+public sealed record StoreGlobal(GlobalId Global, TempId Value, Span Span) : IrOp(Span);
+
 //Ir Terminator
 public sealed record Return(TempId? Value, Span Span) : IrTerminator(Span); //Value == null -> void-return
 public sealed record Branch(BlockId Target, Span Span) : IrTerminator(Span);

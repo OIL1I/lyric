@@ -40,6 +40,18 @@ public static class IrVerifier
         VerifyTypes(module, findings);
         VerifyImpls(module, findings);
 
+        // Die Init-Funktion wird von der Runtime vor dem Einstiegspunkt gerufen; ein Index ins
+        // Leere waere dort erst beim Laden aufgefallen.
+        if (module.GlobalInit is { } init
+            && (init.Value < 0 || init.Value >= module.Functions.Count))
+            findings.Add($"global initializer {init} is out of range " +
+                         $"(module has {module.Functions.Count} function(s))");
+
+        // Globals ohne Initialisierer waeren uninitialisierte Slots — und jeder Wert in Lyric hat
+        // einen (§6.6). Entweder gibt es beide oder keines.
+        if (module.Globals.Count > 0 && module.GlobalInit is null)
+            findings.Add($"module declares {module.Globals.Count} global(s) but no initializer");
+
         foreach (var function in module.Functions)
         {
             // Namen sind die Symbol-Namen im Bytecode (ADR-013). Eine Kollision ist der
@@ -732,6 +744,8 @@ public static class IrVerifier
                 case MakeInterface m: CheckMakeInterface(m, block, index); break;
                 case CallVirt c: CheckCallVirt(c, block, index); break;
                 case StructCopy c: CheckStructCopy(c, block, index); break;
+                case LoadGlobal l: CheckLoadGlobal(l, block, index); break;
+                case StoreGlobal g: CheckStoreGlobal(g, block, index); break;
                 default:
                     throw new InternalCompilationException(
                         $"ir-verifier: unhandled op {op.GetType().Name}");
@@ -1127,6 +1141,36 @@ public static class IrVerifier
         }
 
         RequireDestType(c.Dest, new IrStructType(c.Type), "structcopy", block, index);
+    }
+
+    private void CheckLoadGlobal(LoadGlobal l, BlockId block, int index)
+    {
+        if (ResolveGlobal(l.Global, "ldglobal", block, index) is not { } global) return;
+
+        if (!IrType.Equal(l.Type, global.Type))
+            Report(block, index, $"ldglobal of {l.Global} is declared {Show(global.Type)} " +
+                                 $"but the instruction says {Show(l.Type)}");
+        else
+            RequireDestType(l.Dest, global.Type, "ldglobal", block, index);
+    }
+
+    private void CheckStoreGlobal(StoreGlobal g, BlockId block, int index)
+    {
+        if (ResolveGlobal(g.Global, "stglobal", block, index) is not { } global) return;
+
+        var actual = TypeOf(g.Value);
+        if (!IrType.Equal(global.Type, actual))
+            Report(block, index, $"stglobal into {g.Global} takes {Show(global.Type)}, " +
+                                 $"but {g.Value} is {Show(actual)}");
+    }
+
+    private IrGlobal? ResolveGlobal(GlobalId id, string what, BlockId block, int index)
+    {
+        if (id.Value >= 0 && id.Value < _module.Globals.Count) return _module.Globals[id.Value];
+
+        Report(block, index, $"{what} references global {id} which is out of range " +
+                             $"(module has {N(_module.Globals.Count)} global(s))");
+        return null;
     }
 
     private IrTypeDef? ResolveType(TypeId type, string what, BlockId block, int index)

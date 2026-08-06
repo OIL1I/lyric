@@ -485,6 +485,40 @@ Modul-`let` mit sprechendem Präfix. Mehrere Fabriken sind kein Problem — sie 
 verschiedene Namen (`Enemy.new`, `Enemy.fromSave`), weil Lyric in v1 kein Overloading hat
 (ADR-015).
 
+### 10.4 Konstanten und ihre Reihenfolge
+
+Ein `let` auf Modulebene und ein `static let` in einem Typ sind dasselbe: ein Wert, der einmal
+berechnet wird, bevor dein Programm startet. Der Unterschied ist nur, wo der Name sichtbar ist.
+
+```lyr
+let VERSION = "1.0";
+let BANNER = "lyric " + VERSION;      // darf VERSION lesen: steht davor
+```
+
+Der Initialisierer ist ein ganz normaler Ausdruck — er darf rechnen, Funktionen rufen und Objekte
+anlegen:
+
+```lyr
+let ORIGIN = Vector3 { x = 0.0, y = 0.0, z = 0.0 };
+```
+
+**Die Reihenfolge zählt.** Konstanten werden von oben nach unten initialisiert; eine Konstante darf
+nur lesen, was *vor* ihr steht:
+
+```lyr
+let A = B + 1;    // Fehler: LYR-SEM0057 — B ist hier noch nicht gefüllt
+let B = 2;
+```
+
+Innerhalb einer Funktion gilt das nicht — wenn die läuft, sind alle Konstanten längst da:
+
+```lyr
+fn banner(): string { return BANNER; }   // ok, egal wo BANNER steht
+```
+
+Konstanten sind immer `let`, nie `var`. Ein `var` auf Modulebene gibt es nicht: veränderlicher
+globaler Zustand ist die Sorte Kopplung, die man in einem großen Programm nicht mehr los wird.
+
 ---
 
 ## 11. Lambdas und Closures

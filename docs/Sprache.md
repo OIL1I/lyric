@@ -176,6 +176,9 @@ TopLevelDecl    = ImportDecl
                             | TypeAlias ) .
 
 GlobalBinding   = BindingStmt .                                      (* nur let, nicht var *)
+(* Globale und typgebundene Konstanten werden in DEKLARATIONSREIHENFOLGE initialisiert (Modul-,
+   dann Quelltextreihenfolge). Ein Initialisierer darf nur Konstanten lesen, die vor ihm stehen —
+   sonst LYR-SEM0057. Aus einem Funktionsrumpf ist jede Konstante lesbar, egal wo sie steht. *)
 TypeAlias       = 'type' IDENTIFIER '=' TypeExpr ';' .
 ```
 

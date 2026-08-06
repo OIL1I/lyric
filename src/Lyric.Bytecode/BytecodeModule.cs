@@ -28,6 +28,13 @@ public sealed class BytecodeModule
     /// <summary>Die geschuetzten Regionen aus der Handlers-Sektion, innerste zuerst.</summary>
     public IReadOnlyList<BytecodeHandler> Handlers { get; init; } = [];
 
+    /// <summary>Typ je globalem Slot. Der Index ist die Identitaet.</summary>
+    public IReadOnlyList<BytecodeType> Globals { get; init; } = [];
+
+    /// <summary>Die Funktion, die die Globals fuellt, im gemeinsamen Indexraum — oder
+    /// <c>null</c>. Eine Runtime ruft sie <b>vor</b> dem Einstiegspunkt.</summary>
+    public int? GlobalInit { get; init; }
+
     /// <summary>Index der Einstiegsfunktion im gemeinsamen Indexraum (erst Imports, dann
     /// Funktionen), oder <c>null</c> bei einem Bibliotheks-Modul. Aus der Start-Sektion.</summary>
     public int? Start { get; init; }

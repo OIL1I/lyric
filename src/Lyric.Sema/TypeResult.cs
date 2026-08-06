@@ -12,6 +12,13 @@ public sealed class TypeResult
 {
     private readonly Dictionary<Expr, LyrType> _types = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Node, Symbol> _refs = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>Typ je Modul-<c>let</c> / <c>static let</c>. Der TypeChecker fuellt sie, das
+    /// Lowering liest sie — ein Global hat keinen Ausdruck, an dem sein Typ haengen koennte.</summary>
+    private readonly Dictionary<GlobalSymbol, LyrType> _globals =
+        new(ReferenceEqualityComparer.Instance);
+
+    public void BindGlobal(GlobalSymbol symbol, LyrType type) => _globals[symbol] = type;
     private readonly HashSet<Node> _exhaustiveMatches = new(ReferenceEqualityComparer.Instance);
 
     public void SetType(Expr expr, LyrType type) => _types[expr] = type;
@@ -19,6 +26,12 @@ public sealed class TypeResult
 
     public void BindRef(Node node, Symbol symbol) => _refs[node] = symbol;
     public Symbol? RefOf(Node node) => _refs.TryGetValue(node, out var s) ? s : null;
+
+    /// <summary>Der Typ eines Modul-<c>let</c> oder <c>static let</c>. Getrennt von
+    /// <see cref="TypeOf"/>, weil ein Global kein Ausdruck ist — sein Typ haengt am Symbol, nicht
+    /// an einer Verwendungsstelle.</summary>
+    public LyrType TypeOfGlobal(GlobalSymbol symbol) =>
+        _globals.TryGetValue(symbol, out var t) ? t : LyrType.Error;
 
     // Exhaustivität (M4-2): vom TypeChecker bewiesene matches — Flow/DAA lesen das,
     // ohne selbst Typ-Wissen zu brauchen.

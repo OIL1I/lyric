@@ -26,6 +26,7 @@ public static class IrPrinter
         var sb = new StringBuilder();
         var ctx = CallContext.ForModule(module);
         WriteTypes(sb, module.Types);
+        WriteGlobals(sb, module.Globals);
         WriteImpls(sb, module.Impls);
         for (var i = 0; i < module.Functions.Count; i++)
         {
@@ -103,6 +104,14 @@ public static class IrPrinter
                 sb.Append($"  {new FieldId(f)} {def.FieldNames[f]}: {TypeStr(def.FieldTypes[f])}\n");
             sb.Append("}\n");
         }
+    }
+
+    /// <summary>Die globalen Slots am Kopf, wie die Typen: der Index ist das, was im
+    /// Instruktionsstrom steht, der Name steht nur hier.</summary>
+    private static void WriteGlobals(StringBuilder sb, IReadOnlyList<IrGlobal> globals)
+    {
+        for (var i = 0; i < globals.Count; i++)
+            sb.Append($"global {new GlobalId(i)} {globals[i].Name}: {TypeStr(globals[i].Type)}\n");
     }
 
     /// <summary>Die vtable-Zeilen. Sie stehen als eigener Block da, weil sie zu keinem einzelnen
@@ -187,6 +196,8 @@ public static class IrPrinter
                            $"{m.Value}, {m.Concrete}",
         CallVirt c => CallVirtStr(c),
         StructCopy c => $"{c.Dest}: {TypeStr(new IrStructType(c.Type))} = structcopy {c.Value}",
+        LoadGlobal l => $"{l.Dest}: {TypeStr(l.Type)} = ldglobal {l.Global}",
+        StoreGlobal g => $"stglobal {g.Global}, {g.Value}",
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 

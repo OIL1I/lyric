@@ -26,7 +26,7 @@ namespace Lyric.Ir.Lowering;
 /// </summary>
 public static class ModuleLowerer
 {
-    private static readonly Dictionary<GenericParamSymbol, LyrType> NoSubstitution =
+    internal static readonly Dictionary<GenericParamSymbol, LyrType> NoSubstitution =
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
@@ -64,6 +64,7 @@ public static class ModuleLowerer
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
         var imports = new ImportTable();
         var typeTable = new TypeTable(binding);
+        var globals = new GlobalTable();
         FunctionId? entry = null;
         var failed = false;
 
@@ -152,6 +153,18 @@ public static class ModuleLowerer
             }
         }
 
+        // Globals werden VOR den Rumpfen gesammelt: eine Funktion darf eine Konstante lesen, die
+        // weiter unten im Quelltext steht. Dieselbe Zwei-Phasen-Form wie bei den FunctionIds.
+        try
+        {
+            globals.Collect(compilation, types, typeTable);
+        }
+        catch (UnsupportedConstructException ex)
+        {
+            de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+            return null;
+        }
+
         // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
         var functions = new List<IrFunction>(pending.Count);
@@ -161,7 +174,7 @@ public static class ModuleLowerer
             try
             {
                 functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable,
-                    NoSubstitution, receiver).Run());
+                    NoSubstitution, globals, receiver).Run());
             }
             catch (UnsupportedConstructException ex)
             {
@@ -178,12 +191,28 @@ public static class ModuleLowerer
         // Modulaufbau ist damit nicht mehr rettbar. Kein Teilergebnis zurückgeben.
         if (failed) return null;
 
+        FunctionId? globalInit = null;
+        if (!globals.IsEmpty)
+        {
+            try
+            {
+                globalInit = new FunctionId(functions.Count);
+                functions.Add(GlobalInitializer.Build(globals, types, ids, imports, typeTable));
+            }
+            catch (UnsupportedConstructException ex)
+            {
+                de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+                return null;
+            }
+        }
+
         // Types nach dem Lowering eingesammelt, nicht davor: die Tabelle enthält nur, was
         // tatsächlich benutzt wurde — eine deklarierte, nie instanziierte Klasse gehört nicht in
         // den Bytecode. Gleiche Regel wie bei den Imports.
         var result = new IrModule(functions)
         {
             EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
+            Globals = globals.Defs, GlobalInit = globalInit,
             Impls = BuildImpls(typeTable, binding, ids, de, ref failed),
         };
         if (failed) return null;

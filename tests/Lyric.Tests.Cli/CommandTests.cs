@@ -24,6 +24,9 @@ public sealed class CommandTests
         { "arrays.lyr", 144 },
         { "optionals.lyr", 200 },
         { "enums.lyr", 24 },
+        { "interfaces.lyr", 140 },
+        { "vectors.lyr", 115 },
+        { "constants.lyr", 140 },
     };
 
     [Theory]

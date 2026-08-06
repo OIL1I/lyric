@@ -53,6 +53,8 @@ public static class BytecodeReader
         int? start = null;
         IReadOnlyList<BytecodeImpl> impls = Array.Empty<BytecodeImpl>();
         IReadOnlyList<BytecodeHandler> handlers = Array.Empty<BytecodeHandler>();
+        IReadOnlyList<BytecodeType> globals = Array.Empty<BytecodeType>();
+        int? globalInit = null;
 
         var previousId = -1;
         while (!reader.AtEnd)
@@ -78,6 +80,17 @@ public static class BytecodeReader
                 case SectionId.Start: start = payload.ULebAsCount(); break;
                 case SectionId.Impls: impls = ReadImpls(payload); break;
                 case SectionId.Handlers: handlers = ReadHandlers(payload); break;
+                case SectionId.Globals:
+                {
+                    var count = payload.ULebAsCount();
+                    var slots = new List<BytecodeType>(Math.Min(count, 4096));
+                    for (var i = 0; i < count; i++) slots.Add(ReadType(payload));
+                    globals = slots;
+
+                    var init = payload.ULebAsCount();
+                    globalInit = init == 0 ? null : init - 1;
+                    break;
+                }
                 default: break; // unbekannt oder reserviert: überspringen, dafür ist die Länge da
             }
 
@@ -98,6 +111,8 @@ public static class BytecodeReader
             Start = start,
             Impls = impls,
             Handlers = handlers,
+            Globals = globals,
+            GlobalInit = globalInit,
         };
 
         Validate(module);
@@ -340,6 +355,7 @@ public static class BytecodeReader
         ValidateTypeReferences(module);
         ValidateImpls(module);
         ValidateHandlers(module);
+        ValidateGlobals(module);
 
         foreach (var function in module.Functions)
         {
@@ -491,6 +507,12 @@ public static class BytecodeReader
                         $"function '{function.Name}' at {instruction.Offset}: structcopy targets " +
                         $"'{module.Types[(int)instruction.Immediate].Name}', which is not a struct");
 
+                case Op.LoadGlobal or Op.StoreGlobal
+                    when instruction.Immediate >= (ulong)module.Globals.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: global index " +
+                        $"{instruction.Immediate} is outside {module.Globals.Count} global(s)");
+
                 case Op.Branch when instruction.Immediate >= (ulong)function.BlockOffsets.Count:
                 case Op.CondBranch when instruction.Immediate >= (ulong)function.BlockOffsets.Count
                                         || instruction.Immediate2 >= (ulong)function.BlockOffsets.Count:
@@ -591,6 +613,27 @@ public static class BytecodeReader
                     $"handler in '{module.Functions[h.Function].Name}': a finally region catches " +
                     "nothing and binds nothing");
         }
+    }
+
+    /// <summary>
+    /// Globale Slots und ihre Init-Funktion (ADR-013: geprueft beim Laden).
+    /// </summary>
+    private static void ValidateGlobals(BytecodeModule module)
+    {
+        foreach (var global in module.Globals)
+            if (global.Tag == TypeTag.Void)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    "a global has type void; void is not a value (§3)");
+
+        var callable = module.Imports.Count + module.Functions.Count;
+        if (module.GlobalInit is { } init && (init < 0 || init >= callable))
+            throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                $"global initializer {init} is outside {callable} callable(s)");
+
+        // Slots ohne Fueller waeren uninitialisiert, und jeder Wert in Lyric hat einen (§6.6).
+        if (module.Globals.Count > 0 && module.GlobalInit is null)
+            throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                $"module declares {module.Globals.Count} global(s) but no initializer");
     }
 
     /// <summary>

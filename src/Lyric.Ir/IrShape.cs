@@ -52,6 +52,9 @@ public static class IrShape
 
         MakeInterface m => new[] { m.Value },
         StructCopy c => new[] { c.Value },
+
+        LoadGlobal => Array.Empty<TempId>(),
+        StoreGlobal g => new[] { g.Value },
         // Der Empfaenger ist Arg 0 und liegt damit zuunterst — dieselbe Konvention wie bei Call
         // (ADR-014). CallVirt braucht keine Sonderbehandlung.
         CallVirt c => c.Args,
@@ -105,6 +108,9 @@ public static class IrShape
 
         MakeInterface m => m.Dest,
         StructCopy c => c.Dest,
+
+        LoadGlobal l => l.Dest,
+        StoreGlobal => null,
         CallVirt c => c.Dest,
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")

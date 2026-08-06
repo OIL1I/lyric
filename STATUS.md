@@ -214,11 +214,11 @@ Programm, mit Begründung als Blockzitat).
     (`SlotAllocator.Declare`) statt über die Symbol-Map zu gehen.
   - **Namensmangling `<modul>.<Typ>.<methode>`** — ohne den Typnamen fielen `Account.get` und
     `Player.get` zusammen, und der Verifier lehnt doppelte Funktionsnamen ab.
-  - **`static let` parst und typprüft, lowert aber nicht.** Es hängt an derselben Lücke wie ein
-    Modul-`let`. *(Dieser Satz wurde am 2026-08-06 kurzzeitig als falsch markiert — die
-    Gegenprobe war es: sie ließ das `;` weg, das `BindingStmt` verlangt. Der Satz stimmt.)* Es hängt an derselben Lücke wie ein
-    Modul-`let`: Konstanten werden nirgends gelowert. Die Meldung sagt das jetzt auch, statt über
-    einen Member-Zugriff auf `<?>` zu klagen.
+  - **`static let` parste und typprüfte, lowerte aber nicht.** Es hing an derselben Lücke wie ein
+    Modul-`let`: Konstanten wurden nirgends gelowert. Die Meldung sagte das dann auch, statt über
+    einen Member-Zugriff auf `<?>` zu klagen. *(Dieser Satz wurde am 2026-08-06 kurzzeitig als
+    falsch markiert — die Gegenprobe war es: sie ließ das `;` weg, das `BindingStmt` verlangt.
+    **Seit P5c ist die Lücke geschlossen**, beide lowern in die Globals-Sektion.)*
   - **Ein Compiler-Absturz gefunden und behoben**: `TypeTable.Intern` trägt den Platzhalter ein,
     *bevor* es die Feldtypen lowert. Warf es danach — bei `bank.lyr` am Feld-Default `balance:
     int = 0` —, blieb der Platzhalter stehen, und die nächste Funktion las ein Layout mit
@@ -572,9 +572,6 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
 
 **Aus M7/P1+P1b — bewusst offen:**
 
-- **Konstanten lowern nicht** — weder `static let` noch ein Modul-`let`. Beide typprüfen sauber und
-  scheitern erst im Lowering (`LYR-IR0001`). Braucht entweder eine Globals-Sektion im Bytecode oder
-  Konstanten-Inlining; das ist eine eigene Entscheidung, kein Nachziehen.
 - **Feld-Defaults** (`balance: int = 0`) werden abgelehnt statt ignoriert. Ein weggelassenes Feld im
   Initialisierer hätte seinen Nullwert; ob das erlaubt ist, sagt die Sema heute nicht. `bank.lyr`
   hängt daran.
@@ -643,6 +640,34 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
     Element `int[]` und das Array `int[][]` — verschiedene Typen, kein Konflikt. Ein Test führt
     beide Fälle nebeneinander.
 
+- [x] **P5c — Konstanten: Globals-Sektion, Format 2.4**. Modul-`let` und `static let` lowern jetzt;
+  beide sind **derselbe Mechanismus** (ein globaler Slot), der Unterschied ist nur, wo der Name
+  sichtbar ist. Das schließt die letzte Lücke aus P1b.
+  - **Eine Init-Funktion, keine Werte in der Sektion.** Ein Initialisierer ist ein *Ausdruck*, kein
+    Literal — `static let ZERO: Vector3 = Vector3 { … }` legt ein Objekt an. Als Wert im Bytecode
+    wäre nur der skalare Teil darstellbar, der Rest bräuchte doch wieder Code. Die synthetische
+    `<globals>`-Funktion kann alles, was das Lowering ohnehin kann, und der Instruktionssatz
+    bekommt keinen Sonderfall. CIL löst es mit `.cctor` genauso.
+  - **Gegen Inlining entschieden**: es dupliziert den Initialisierer an jede Verwendungsstelle und
+    funktioniert nur für Skalare — für alles andere bräuchte es *zusätzlich* Slots. Zwei
+    Mechanismen für ein Konzept, genau das, was `CONTRIBUTING.md` verbietet.
+  - **`GlobalTable` sammelt vollständig vorab**, anders als `TypeTable`/`ImportTable`, die bei
+    Bedarf internieren: die Init-Funktion muss *jeden* Slot füllen, also darf keiner erst durch
+    eine Verwendung entstehen.
+  - **`LYR-SEM0057` — benutzt, bevor es initialisiert ist.** Reihenfolge ist
+    Deklarationsreihenfolge (wie C#s Feld-Initialisierer; Go sortiert stattdessen topologisch).
+    Ohne diese Meldung lieferte der Lookup eines noch nicht berechneten Globals still `ErrorType`
+    — „schon gemeldet" — die Sema schwieg, und das Lowering stürzte später ab. **Zum dritten Mal
+    in M7 dieselbe überladene Invariante.** Nur *innerhalb* eines Initialisierers gilt die Regel;
+    aus einem Funktionsrumpf ist jede Konstante lesbar.
+  - Ein Leser lehnt ab: globaler Typ `void`, Init-Index außerhalb des Aufrufraums, und Slots
+    **ohne** Init-Funktion — die wären uninitialisiert, und jeder Wert in Lyric hat einen.
+  - Gate: `examples/constants.lyr` → **140**. Es benutzt Modul-`let`, `static let` auf Klasse
+    *und* Struct, ein objektwertiges Global, eine Konstante, die eine frühere liest, und eine
+    Funktion, die eine *später* deklarierte liest — jede Regel des Slice steht drin. **Dabei
+    fiel auf, dass `RunnableExamples` seit P3 nicht mitgewachsen war**: `interfaces.lyr` (140)
+    und `vectors.lyr` (115) liefen längst, standen aber in keiner Kommando-Matrix. Jetzt drin.
+
 - [x] **Attribute nach post-v1 vertagt** (`Sprache.md` §10 umgeschrieben, `LYR-PAR0038`).
   Der Lexer erkennt `@name` weiter, die Syntax bleibt reserviert; Parser und Sema lehnen mit einer
   Meldung ab, die den Grund nennt statt „expected a declaration". **M9 verliert `lyric test`** —
@@ -655,8 +680,9 @@ Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/L
 **12 laufen durch**. Was **keinem Slice gehoert**: Attribute an Deklarationen
 (`@test` hat keine Grammatik — betrifft M9), `fn main(args)` (erzeugte **stumm** ein
 Bibliotheks-Modul), Default-Argumente, `params`, `extend`, Tupel, Konstanten (Modul-`let` und
-`static let`). **Erledigt in P5b**: `match` ueber Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`. Die Restliste von M7 ist deshalb nicht P6/P7/P8,
-sondern **P5b** (Kernsprach-Lucken), P6, P7, P8 und **P9** (`extend`).
+`static let`). **Erledigt in P5b**: `match` ueber Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`,
+`fn main(args)`, Default-Argumente, `params`. **Erledigt in P5c**: Konstanten. **Ohne Slice bleiben**
+`extend` (Vorschlag P9) und **Tupel**. Die Restliste von M7 ist deshalb P6, P7, P8 und **P9**.
 
 **Aus P5 — bewusst offen und wichtig:**
 

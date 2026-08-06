@@ -860,4 +860,78 @@ public class VmTests
                 return count({{argument}});
             }
             """).AsI64);
+
+    // ------------------------------------------------------------------ P5c: Konstanten
+
+    [Fact]
+    public void A_module_level_let_is_a_global_slot()
+    {
+        Assert.Equal(3, Run("""
+            let pi = 3;
+            fn main(): int { return pi; }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_static_let_is_the_same_mechanism()
+    {
+        Assert.Equal(7, Run("""
+            class V { static let Z: int = 7; }
+            fn main(): int { return V.Z; }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void An_initializer_may_read_an_earlier_constant()
+    {
+        Assert.Equal(5, Run("""
+            let a = 2;
+            let b = a + 3;
+            fn main(): int { return b; }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_function_reads_a_constant_declared_after_it()
+    {
+        // Aus einem Rumpf ist jede Konstante lesbar, egal wo sie steht — dann ist die Init-Phase
+        // laengst vorbei. Nur INNERHALB eines Initialisierers gilt die Reihenfolge.
+        Assert.Equal(4, Run("""
+            fn f(): int { return k; }
+            let k = 4;
+            fn main(): int { return f(); }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void An_initializer_can_build_an_object()
+    {
+        // Der Fall, wegen dem es eine Init-FUNKTION ist und keine Werte in der Sektion: ein
+        // Initialisierer ist ein Ausdruck, kein Literal (ADR-014).
+        Assert.Equal(9, Run("""
+            class C { n: int }
+            let cell = C { n = 9 };
+            fn main(): int { return cell.n; }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void The_documented_static_let_example_works()
+    {
+        // Doku.md §10.3 — der Fall, fuer den ADR-014 'static let' ueberhaupt eingefuehrt hat.
+        Assert.Equal(50, Run("""
+            class Enemy {
+                name: string,
+                hp: int,
+
+                static let BASE_HP: int = 10;
+
+                static fn new(level: int): Enemy {
+                    return Enemy { name = "goblin", hp = Enemy.BASE_HP * level };
+                }
+            }
+
+            fn main(): int { let e = Enemy.new(5); return e.hp; }
+            """).AsI64);
+    }
 }

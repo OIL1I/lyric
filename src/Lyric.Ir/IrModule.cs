@@ -149,6 +149,10 @@ public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldN
 /// </summary>
 public record struct IrImpl(TypeId Type, TypeId Interface, FunctionId[] Methods);
 
+/// <summary>Ein globaler Slot. <paramref name="Name"/> ist reine Diagnose — im Bytecode steht nur
+/// der Typ, und der Index ist die Identitaet.</summary>
+public record struct IrGlobal(string Name, IrType Type);
+
 public class IrModule(List<IrFunction> Functions)
 {
     /// <summary>Native Funktionen, die dieses Modul aufruft — nur die tatsächlich benutzten.
@@ -159,6 +163,20 @@ public class IrModule(List<IrFunction> Functions)
     /// <c>LoadField</c> und <c>StoreField</c> referenzieren sie per <see cref="TypeId"/>; dicht
     /// indiziert wie alle Tabellen hier.</summary>
     public List<IrTypeDef> Types { get; init; } = new();
+
+    /// <summary>
+    /// Globale Slots: Modul-<c>let</c> und <c>static let</c>. Der Name ist Diagnose, der
+    /// <b>Index</b> ist der Vertrag — wie ueberall hier.
+    /// </summary>
+    public List<IrGlobal> Globals { get; init; } = new();
+
+    /// <summary>
+    /// Die Funktion, die alle Globals fuellt, oder <c>null</c>, wenn es keine gibt.
+    ///
+    /// <para>Eine Runtime ruft sie <b>vor</b> dem Einstiegspunkt. Die Reihenfolge darin ist
+    /// Deklarationsreihenfolge — ein Global darf ein frueheres benutzen, ein spaeteres nicht.</para>
+    /// </summary>
+    public FunctionId? GlobalInit { get; set; }
 
     /// <summary>Die vtable-Zeilen. Landen als Impls-Sektion im Bytecode; die Runtime baut daraus
     /// beim Laden ihre Dispatch-Tabelle, damit <c>callvirt</c> ein Nachschlagen und kein Suchen

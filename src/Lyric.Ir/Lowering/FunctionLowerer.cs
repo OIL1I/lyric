@@ -42,6 +42,7 @@ internal sealed class FunctionLowerer
     private readonly IReadOnlyDictionary<FunctionSymbol, FunctionId> _functions;
     private readonly ImportTable _imports;
     private readonly TypeTable _typeTable;
+    private readonly GlobalTable _globals;
 
     /// <summary>Slot des Empfängers (immer 0), oder <c>null</c> bei freier bzw. static-Funktion.</summary>
     private readonly LocalId? _thisSlot;
@@ -75,8 +76,10 @@ internal sealed class FunctionLowerer
         ImportTable imports,
         TypeTable typeTable,
         IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution,
+        GlobalTable globals,
         TypeSymbol? receiver = null)
     {
+        _globals = globals;
         _decl = decl;
         _name = name;
         _types = types;
@@ -180,6 +183,9 @@ internal sealed class FunctionLowerer
             // Ausdruck kann den Kontrollfluss also beenden — der Rueckgabewert muss das melden,
             // sonst versucht der Aufrufer spaeter, denselben Block ein zweites Mal zu versiegeln.
             case ExprStmt e: LowerExprOrVoid(e.Expr); return !_b.IsSealed;
+
+            // Nur im synthetischen Global-Initialisierer (siehe GlobalInitializer).
+            case GlobalInitStmt g: LowerGlobalInit(g); return true;
             case IfStmt s: return LowerIf(s);
             case WhileStmt s: return LowerWhile(s);
             case DoWhileStmt s: return LowerDoWhile(s);
@@ -609,8 +615,13 @@ internal sealed class FunctionLowerer
     private TempId LowerIdentifier(IdentifierExpr expr)
     {
         var symbol = _types.RefOf(expr) ?? throw Bug($"identifier '{expr.Name}' is unbound");
+
+        // Ein Modul-'let' hat keinen Frame-Slot, sondern einen globalen.
+        if (TryLowerGlobalIdentifier(expr) is { } global) return global;
+
         if (!_slots.TryLookup(symbol, out var slot))
-            throw NotSupported($"reference to '{expr.Name}' (only parameters and locals)", expr.Span);
+            throw NotSupported($"reference to '{expr.Name}' (only parameters, locals and constants)",
+                expr.Span);
 
         var type = _slots.TypeOfLocal(slot);
         var dest = _slots.NewTemp(type);
@@ -1684,8 +1695,41 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
+    /// <summary>Fuellt einen globalen Slot. Kommt ausschliesslich im synthetischen Initialisierer
+    /// vor — im Nutzer-Quelltext gibt es keine Zuweisung an ein Global, weil sie alle <c>let</c>
+    /// sind (§2.3).</summary>
+    private void LowerGlobalInit(GlobalInitStmt stmt)
+    {
+        var (id, type) = _globals.Resolve(stmt.Symbol, stmt.Span);
+        var value = LowerExprAs(stmt.Binding.Initializer!, type);
+        _b.Emit(new StoreGlobal(id, value, stmt.Span));
+    }
+
+    /// <summary>Ein globaler Slot ueber einen blossen Namen — ein Modul-<c>let</c> im eigenen
+    /// oder importierten Modul.</summary>
+    private TempId? TryLowerGlobalIdentifier(IdentifierExpr expr)
+    {
+        var symbol = _types.RefOf(expr);
+        if (symbol is ImportBindingSymbol import) symbol = import.Target;
+        return symbol is GlobalSymbol global ? LowerGlobalRead(global, expr.Span) : null;
+    }
+
+    /// <summary>Ein globaler Slot — Modul-<c>let</c> oder <c>static let</c>. Beide sind
+    /// dasselbe im Bytecode; der Unterschied ist nur, wo der Name sichtbar ist.</summary>
+    private TempId LowerGlobalRead(GlobalSymbol symbol, Span span)
+    {
+        var (id, type) = _globals.Resolve(symbol, span);
+        var dest = _slots.NewTemp(type);
+        _b.Emit(new LoadGlobal(dest, id, type, span));
+        return dest;
+    }
+
     private TempId LowerFieldRead(MemberExpr expr)
     {
+        // 'P.ZERO' ist keine Feld-, sondern eine Konstanten-Lesung: ein 'static let' ist ein
+        // globaler Slot, kein Objekt-Slot.
+        if (_types.RefOf(expr) is GlobalSymbol constant) return LowerGlobalRead(constant, expr.Span);
+
         // 'Shape.Empty' — eine Unit-Variante. Sie sieht aus wie ein Member-Zugriff, ist aber eine
         // Konstruktion ohne Argumente.
         if (_types.RefOf(expr) is EnumVariantSymbol)
@@ -1708,13 +1752,6 @@ internal sealed class FunctionLowerer
     /// und Feldtyp bestimmen.</summary>
     private (TempId Object, TypeId Type, FieldId Field, IrType FieldType) ResolveFieldAccess(MemberExpr expr)
     {
-        // 'P.ZERO' ist keine Feld-, sondern eine Konstanten-Lesung. Sie hängt an derselben Lücke
-        // wie ein Modul-'let': Konstanten werden noch nirgends gelowert. Das hier zu benennen ist
-        // ehrlicher als eine Meldung über einen Member-Zugriff auf '<?>'.
-        if (_types.RefOf(expr) is GlobalSymbol)
-            throw NotSupported($"reading the constant '{expr.Member}' " +
-                               "(constants are not lowered yet, module-level 'let' neither)", expr.Span);
-
         if (_types.TypeOf(expr.Target) is not NamedRef
             { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct } named)
             throw NotSupported($"member access '.{expr.Member}' on " +

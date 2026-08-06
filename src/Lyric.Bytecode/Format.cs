@@ -17,7 +17,7 @@ public static class Format
     /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
     /// ausdrücklich.</remarks>
     public const ushort VersionMajor = 2;
-    public const ushort VersionMinor = 3;
+    public const ushort VersionMinor = 4;
 }
 
 /// <summary>
@@ -73,6 +73,16 @@ public enum SectionId : byte
     /// Formaenderung. Dieselbe Ueberlegung wie bei Impls.</para>
     /// </summary>
     Handlers = 9,
+
+    /// <summary>
+    /// Globale Slots — Modul-<c>let</c> und <c>static let</c> — samt der Funktion, die sie fuellt.
+    ///
+    /// <para>Ein Wert und keine Konstante: <c>static let ZERO: Vector3 = Vector3 { … }</c> ist ein
+    /// Ausdruck, kein Literal (ADR-014). Ihn im Bytecode als Wert abzulegen ginge nur fuer
+    /// Skalare; eine Init-Funktion kann alles, was das Lowering sonst auch kann. CIL loest es mit
+    /// <c>.cctor</c> genauso.</para>
+    /// </summary>
+    Globals = 10,
 }
 
 /// <summary>
@@ -295,4 +305,17 @@ public enum Op : byte
     /// aus <c>defer</c>. Das Format braucht den Traeger trotzdem, weil „laeuft auch beim
     /// Abwickeln" anders nicht ausdrueckbar ist.</para></summary>
     EndFinally = 0x74,
+
+    // --- Globals (Format 2.4) ------------------------------------------------------------------
+
+    /// <summary><c>ldglobal &lt;uleb128 index&gt;</c> — liest einen globalen Slot.</summary>
+    LoadGlobal = 0x75,
+
+    /// <summary><c>stglobal &lt;uleb128 index&gt;</c> — schreibt einen globalen Slot.
+    ///
+    /// <para>Nur die Init-Funktion benutzt das: Globale sind in Lyric ausschliesslich <c>let</c>
+    /// (Sprache.md §2.3), also gibt es nach der Initialisierung keinen Schreiber mehr. Der Opcode
+    /// existiert trotzdem, weil das Fuellen selbst ein Schreibvorgang ist — ihn zu verstecken
+    /// hiesse, der Init-Funktion eine Sonderrolle im Instruktionssatz zu geben.</para></summary>
+    StoreGlobal = 0x76,
 }

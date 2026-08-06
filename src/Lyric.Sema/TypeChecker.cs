@@ -21,6 +21,18 @@ public sealed class TypeChecker
     private readonly DiagnosticEngine _de;
     private readonly TypeResult _result = new();
     private readonly Dictionary<GlobalSymbol, LyrType> _globals = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// Laeuft gerade ein Global-Initialisierer? Dann ist ein noch nicht berechnetes Global ein
+    /// <b>Fehler</b> und nicht bloss ein unbekannter Typ.
+    ///
+    /// <para>Ohne dieses Flag lieferte der Lookup still <see cref="LyrType.Error"/>, die Sema
+    /// meldete nichts, und das Lowering stuerzte spaeter ueber einen <c>&lt;error&gt;</c>-Typ ab —
+    /// genau die ueberladene <c>ErrorType</c>-Invariante, die in M7 schon einmal sechs Prueffungen
+    /// stillgelegt hatte. <c>Error</c> heisst „schon gemeldet", und deshalb muss hier gemeldet
+    /// werden.</para>
+    /// </summary>
+    private bool _inGlobalInitializer;
     private readonly TypeSymbol? _throwable; // Builtin-Interface Throwable (§9)
     private readonly FunctionSymbol? _panic; // Builtin panic → never (§9)
     private readonly TypeSymbol? _coroutine; // Builtin Coroutine<T> (§8) → CoroutineOf
@@ -67,13 +79,17 @@ public sealed class TypeChecker
             LyrType type;
             if (g.Binding.Initializer is not null)
             {
+                _inGlobalInitializer = true;
                 var initT = CheckExpr(g.Binding.Initializer, module.Members);
+                _inGlobalInitializer = false;
                 if (declared is not null) { CheckAssignable(g.Binding.Initializer, initT, declared, g.Span); type = declared; }
                 else type = initT;
             }
             else type = declared ?? LyrType.Error;
 
-            if (module.Members.LookupLocal(g.Binding.Name) is GlobalSymbol gs) _globals[gs] = type;
+            if (module.Members.LookupLocal(g.Binding.Name) is not GlobalSymbol gs) continue;
+            _globals[gs] = type;
+            _result.BindGlobal(gs, type);   // fuer das Lowering
         }
     }
 
@@ -157,7 +173,12 @@ public sealed class TypeChecker
         _currentThis = null;
 
         var declared = sb.Binding.Type is { } t ? ResolveType(t, ts.Members) : null;
+
+        // Wie bei einem Modul-'let': innerhalb eines Initialisierers ist ein noch nicht
+        // berechnetes Global ein Fehler, kein unbekannter Typ.
+        _inGlobalInitializer = true;
         var init = sb.Binding.Initializer is { } e ? CheckExpr(e, ts.Members, declared) : null;
+        _inGlobalInitializer = false;
 
         if (declared is null && init is null)
             _de.Report("LYR-SEM0010", Severity.Error, sb.Span,
@@ -166,7 +187,10 @@ public sealed class TypeChecker
             CheckAssignable(sb.Binding.Initializer!, init, declared, sb.Span);
 
         if (ts.Members.LookupLocal(sb.Binding.Name) is GlobalSymbol gs)
+        {
             _globals[gs] = declared ?? init ?? LyrType.Error;
+            _result.BindGlobal(gs, _globals[gs]);   // fuer das Lowering
+        }
 
         _currentThis = outerThis;
     }
@@ -633,6 +657,30 @@ public sealed class TypeChecker
         }
     }
 
+    /// <summary>
+    /// Der Typ eines gelesenen Globals — und die Stelle, an der „benutzt, bevor es initialisiert
+    /// ist" auffaellt.
+    ///
+    /// <para>Globals werden in <b>Deklarationsreihenfolge</b> gefuellt (Modul-, dann
+    /// Quelltextreihenfolge); ein spaeteres zu lesen laege einen Nullwert vor, den niemand
+    /// geschrieben hat. Das ist die einzige Ordnung ohne Abhaengigkeitsanalyse — C#
+    /// (Feld-Initialisierer) macht es genauso, Go sortiert stattdessen topologisch und lehnt
+    /// Zyklen ab. Fuer v1 ist die einfache Regel die richtige, sie muss nur <i>gesagt</i> werden.</para>
+    ///
+    /// <para>Nur <b>innerhalb</b> eines Initialisierers ist das ein Fehler. Aus einem
+    /// Funktionsrumpf heraus ist jedes Global lesbar, egal wo es steht — dann ist die Init-Phase
+    /// laengst vorbei.</para>
+    /// </summary>
+    private LyrType TypeOfGlobalReference(GlobalSymbol symbol, Span span)
+    {
+        if (_globals.TryGetValue(symbol, out var type)) return type;
+        if (!_inGlobalInitializer) return LyrType.Error;
+
+        return Report(span, "LYR-SEM0057",
+            $"'{symbol.Name}' is used before it is initialized; constants are initialized in " +
+            "declaration order, so an initializer may only read constants declared before it");
+    }
+
     private LyrType CheckIdentifier(IdentifierExpr id, SymbolTable scope)
     {
         var sym = scope.Lookup(id.Name);
@@ -647,7 +695,7 @@ public sealed class TypeChecker
         {
             ParameterSymbol p => p.Type,
             LocalSymbol l => l.Type,
-            GlobalSymbol g => _globals.TryGetValue(g, out var t) ? t : LyrType.Error,
+            GlobalSymbol g => TypeOfGlobalReference(g, id.Span),
             FunctionSymbol f => FnTypeOf(f),
 
             // Ein Typ- oder Modulname ist kein Wert. Als Member-ZIEL ist er trotzdem legitim,
@@ -1240,7 +1288,7 @@ public sealed class TypeChecker
                 $"call it on a value, or declare it 'static fn {member}(…)'"), fn),
 
             FunctionSymbol fn => (FnTypeOf(fn), fn),                 // static fn (z. B. die Fabrik Point.new)
-            GlobalSymbol g => (_globals.TryGetValue(g, out var t) ? t : LyrType.Error, g), // static let
+            GlobalSymbol g => (TypeOfGlobalReference(g, span), g),   // static let
             EnumVariantSymbol ev => (VariantConstructorType(ev, ts, span), ev),
 
             FieldSymbol => (Report(span, "LYR-SEM0055",
@@ -1253,7 +1301,7 @@ public sealed class TypeChecker
         mod.Members.LookupLocal(member) switch
         {
             FunctionSymbol fn => (FnTypeOf(fn), fn),
-            GlobalSymbol g => (_globals.TryGetValue(g, out var t) ? t : LyrType.Error, g),
+            GlobalSymbol g => (TypeOfGlobalReference(g, span), g),
             ExternalSymbol ex => (LyrType.Error, ex),
             TypeSymbol tsym => (LyrType.Error, tsym), // Typ als Wert → kein Ausdruckstyp
             _ => (Report(span, "LYR-SEM0012", $"module '{mod.FullName}' has no member '{member}'"), null)

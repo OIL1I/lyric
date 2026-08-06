@@ -63,3 +63,10 @@
         }
     }
 }
+
+/// <summary>Index in <see cref="IrModule.Globals"/>. Wie jede Id hier: sie <b>ist</b> der Slot im
+/// Bytecode, die Tabelle ist deshalb dicht.</summary>
+public readonly record struct GlobalId(int Value)
+{
+    public override string ToString() => $"g{Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+}

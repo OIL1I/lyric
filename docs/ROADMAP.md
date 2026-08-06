@@ -475,19 +475,19 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 >
 > | Konstrukt | `Sprache.md` | Stufe, an der es scheitert |
 > |---|---|---|
-> | `static let` (typgebundene Konstante) | §3.2, ADR-014 | Lowering — hängt an den Konstanten |
+> | ~~`static let` (typgebundene Konstante)~~ → **P5c** | §3.2, ADR-014 | Lowering — hing an den Konstanten |
 > | ~~`@test` und jedes andere Attribut~~ → **post-v1** (2026-08-06) | §10 | Grammatik fehlt; Entscheidung getroffen |
-> | `fn main(args: string[])` | §11 | **Lowering, stumm** — erzeugt ein Bibliotheks-Modul ohne Start-Sektion |
-> | `match` über Nicht-Enums (Literale, `\|`, Ranges, Guards, Tupel) | §5, §6.3 | Lowering — „'int' is not an enum" |
-> | `?.` (Optional-Chaining) | §7 | Lowering |
-> | `??=` (Coalescing-Assign) | §7 | Lowering |
-> | `string + string`, `string * int` | §6.5 | Lowering |
-> | `panic(msg)` | §9 | Lowering — `std.core.panic` fehlt |
-> | Default-Argumente | §3.1 | Lowering |
-> | `params`-Variadics | §3.1 | Lowering |
-> | `extend`-Blöcke | §3.6 | Lowering |
-> | Tupel als Typ und Wert | §4 | Lowering |
-> | Modul-`let` / Konstanten | §2.3 | Lowering (war bekannt) |
+> | ~~`fn main(args: string[])`~~ → **P5b-4** (meldet sich jetzt) | §11 | **Lowering, stumm** — erzeugte ein Bibliotheks-Modul ohne Start-Sektion |
+> | ~~`match` über Nicht-Enums (Literale, `\|`, Ranges, Guards)~~ → **P5b-1** | §5, §6.3 | Lowering — „'int' is not an enum" |
+> | ~~`?.` (Optional-Chaining)~~ → **P5b-2** | §7 | Lowering |
+> | ~~`??=` (Coalescing-Assign)~~ → **P5b-2** | §7 | Lowering |
+> | ~~`string + string`, `string * int`~~ → **P5b-3** | §6.5 | Lowering |
+> | ~~`panic(msg)`~~ → **P5b-3** | §9 | Lowering — `std.core.panic` fehlte |
+> | ~~Default-Argumente~~ → **P5b-5** | §3.1 | Lowering |
+> | ~~`params`-Variadics~~ → **P5b-5** | §3.1 | Lowering |
+> | `extend`-Blöcke → Vorschlag **P9** | §3.6 | Lowering |
+> | Tupel als Typ und Wert | §4 | Lowering — **hat bis heute keinen Slice** |
+> | ~~Modul-`let` / Konstanten~~ → **P5c** (Globals-Sektion, Format 2.4) | §2.3 | Lowering (war bekannt) |
 >
 > **C — drei Stellen, an denen STATUS/ROADMAP etwas Falsches behaupten.** Das ist der ernste Teil,
 > weil genau diese Sätze die Inventur bisher verhindert haben:
@@ -517,7 +517,8 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 >
 > | Slice | Inhalt |
 > |---|---|
-> | **P5b** | Die Lücken aus B, soweit sie Kernsprache sind: `match` über Nicht-Enums, `?.`, `??=`, `string +`/`*`, Default-Argumente, `params`, Tupel, `panic`, `static let` (inkl. Parser), `main(args)` |
+> | ~~**P5b**~~ ✓ | Die Lücken aus B, soweit sie Kernsprache sind: `match` über Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`, `main(args)`, Default-Argumente, `params`. **Tupel sind dabei herausgefallen** — sie sind ein *Typ* und keine Aufrufform, und brauchen deshalb einen eigenen Slice |
+> | ~~**P5c**~~ ✓ | Konstanten: Modul-`let` und `static let` als Globals-Sektion (Format 2.4) |
 > | P6 | Closures |
 > | P7 | Coroutinen |
 > | P8 | Generics + `for-in`/`Iterator` |

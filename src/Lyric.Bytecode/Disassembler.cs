@@ -52,6 +52,12 @@ public static class Disassembler
                 sb.Append($"    s{N(i)} {Quote(module.Strings[i])}\n");
         }
 
+        for (var g = 0; g < module.Globals.Count; g++)
+            sb.Append($"  global g{N(g)}: {TypeName(module, module.Globals[g])}\n");
+
+        if (module.GlobalInit is { } globalInit)
+            sb.Append($"  globalinit: {CalleeName(module, globalInit)}\n");
+
         if (module.Start is { } start)
             sb.Append($"  start: {CalleeName(module, start)}\n");
 
@@ -127,6 +133,8 @@ public static class Disassembler
 
         Op.NewVariant => $"newvariant {TypeRefName(module, i.Immediate)}",
         Op.StructCopy => $"structcopy {TypeRefName(module, i.Immediate)}",
+        Op.LoadGlobal => $"ldglobal g{N(i.Immediate)}",
+        Op.StoreGlobal => $"stglobal g{N(i.Immediate)}",
         Op.MakeInterface => $"mkiface {TypeRefName(module, i.Immediate)} -> " +
                             $"{TypeRefName(module, i.Immediate2)}",
         Op.CallVirt => $"callvirt {SlotName(module, i.Immediate, i.Immediate2)}",

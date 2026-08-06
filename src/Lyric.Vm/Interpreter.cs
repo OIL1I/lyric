@@ -50,20 +50,33 @@ public static class Interpreter
         // Bindung beim Laden: fehlt ein Native, wird das Modul abgelehnt, bevor eine
         // Instruktion laeuft.
         var bound = (natives ?? new NativeRegistry()).Bind(module);
-        return Execute(prepared, entry, module.Strings, module.Types,
-            DispatchTable.Build(module), bound);
+        var dispatch = DispatchTable.Build(module);
+
+        // Globale Slots. Ein String-Slot startet mit dem leeren String statt mit einer leeren
+        // Referenz — dieselbe Regel wie bei Objektfeldern (§6.6): kein Wert ist je nicht da.
+        var globals = new LyrValue[module.Globals.Count];
+        for (var i = 0; i < globals.Length; i++)
+            if (module.Globals[i].Tag == TypeTag.String) globals[i] = LyrValue.FromString(string.Empty);
+
+        // Die Init-Funktion laeuft VOR dem Einstiegspunkt (Bytecode.md §Globals). Ihr Ergebnis
+        // wird verworfen — sie ist void; was zaehlt, sind die Slots, die sie hinterlaesst.
+        if (module.GlobalInit is { } init && init >= module.Imports.Count)
+            Execute(prepared, init - module.Imports.Count, module.Strings, module.Types,
+                dispatch, bound, globals);
+
+        return Execute(prepared, entry, module.Strings, module.Types, dispatch, bound, globals);
     }
 
     private static LyrValue Execute(Prepared[] prepared, int startIndex,
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
-        DispatchTable dispatch, NativeRegistry.BoundNative[] natives)
+        DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals)
     {
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
 
         try
         {
-            return Loop(prepared, strings, types, dispatch, natives, frames, ref frame);
+            return Loop(prepared, strings, types, dispatch, natives, globals, frames, ref frame);
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
@@ -77,7 +90,8 @@ public static class Interpreter
 
     private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
         IReadOnlyList<BytecodeTypeDef> types, DispatchTable dispatch,
-        NativeRegistry.BoundNative[] natives, Stack<Frame> frames, ref Frame frame)
+        NativeRegistry.BoundNative[] natives, LyrValue[] globals, Stack<Frame> frames,
+        ref Frame frame)
     {
         while (true)
         {
@@ -95,6 +109,16 @@ public static class Interpreter
 
                 case Op.StoreLocal:
                     frame.Slots[(int)instruction.Immediate] = frame.Pop();
+                    break;
+
+                // Wie ldloc/stloc, nur modulweit. Der Index ist beim Laden geprueft (ADR-013),
+                // also ist auch das ein Array-Zugriff ohne Pruefung.
+                case Op.LoadGlobal:
+                    frame.Push(globals[(int)instruction.Immediate]);
+                    break;
+
+                case Op.StoreGlobal:
+                    globals[(int)instruction.Immediate] = frame.Pop();
                     break;
 
                 case Op.Pop:
