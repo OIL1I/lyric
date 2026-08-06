@@ -449,7 +449,10 @@ public class LoweringTests
     [InlineData("fn f(): string { return f\"n={1}\"; }", "std.string.fromInt")]
     // 'match' über einen Enum lowert seit P3b; über einen Skalar braucht es Literal-Muster, und
     // die sind eine eigene Ausbaustufe.
-    [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "'for-in'")]
+    // Seit P8c lowert 'for-in' — aber nur mit std.iter auf dem Modulpfad, und diese Tests fahren
+    // ohne. Die Meldung nennt jetzt den Grund statt bloss das Konstrukt; genau das prueft dieser
+    // Test: dass sie sagt, WO und WAS.
+    [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "std.iter")]
     public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
         AssertNotSupported(source, expected);
 
