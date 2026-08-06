@@ -633,6 +633,15 @@ Zwei Dinge, die dabei gut gelaufen sind und M7 tragen: `docs/Bytecode.md` hat di
   gewöhnliches `T[]`; die IR kennt weder optionale noch variadische Signaturen und soll auch
   keine kennen. Nach dem Lowering ist ein Aufruf ein Aufruf. Ein Default wird **pro Aufruf**
   ausgewertet (wie in C#) — sonst teilten sich zwei Aufrufe ein Objekt.
+  - **Ein fertiges Array darf an `params` durchgereicht werden** (`Sprache.md` §3.1 ergänzt).
+    Entscheidend war nicht die Bequemlichkeit, sondern dass eine variadische Funktion sonst an
+    **keine andere delegieren** kann — `fn logged(params xs: int[]) { return sum(xs); }` wäre
+    unmöglich, und genau solche Hüllen bauen C#s `WriteLine`-Überladungen intern.
+  - **Eindeutig ist es, weil Lyric zwei Dinge nicht hat**, die C# hat: implizite `T` ↔
+    `T[]`-Konvertierung und Overloading. C# braucht dafür „normal form vs expanded form" in der
+    Überladungsauflösung; hier entscheidet der Typ des Arguments. Bei `params xs: int[][]` ist ein
+    Element `int[]` und das Array `int[][]` — verschiedene Typen, kein Konflikt. Ein Test führt
+    beide Fälle nebeneinander.
 
 - [x] **Attribute nach post-v1 vertagt** (`Sprache.md` §10 umgeschrieben, `LYR-PAR0038`).
   Der Lexer erkennt `@name` weiter, die Syntax bleibt reserviert; Parser und Sema lehnen mit einer
@@ -648,13 +657,6 @@ Skript: `tools/inventur.py`): 38 Konstrukte aus `Sprache.md` durch Parser/Sema/L
 Bibliotheks-Modul), Default-Argumente, `params`, `extend`, Tupel, Konstanten (Modul-`let` und
 `static let`). **Erledigt in P5b**: `match` ueber Nicht-Enums, `?.`, `??=`, `string +`/`*`, `panic`. Die Restliste von M7 ist deshalb nicht P6/P7/P8,
 sondern **P5b** (Kernsprach-Lucken), P6, P7, P8 und **P9** (`extend`).
-
-**Aus P5b — offene Sprachfrage:**
-
-- **Darf ein fertiges Array an `params` durchgereicht werden?** `sum(xs)` mit `xs: int[]` und
-  `fn sum(params xs: int[])` ist heute `LYR-SEM0001`. `Sprache.md` §3.1 sagt nur, dass `params`
-  einen Array-Typ verlangt — nicht, ob man einen fertigen übergeben darf. C# erlaubt es. Das
-  Lowering wäre trivial (zwei Zeilen), die Entscheidung ist es nicht.
 
 **Aus P5 — bewusst offen und wichtig:**
 

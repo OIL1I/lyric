@@ -1902,11 +1902,11 @@ internal sealed class FunctionLowerer
     /// <summary>
     /// Die restlichen Argumente als Array — <c>sum(1, 2, 3)</c> wird zu <c>sum([1, 2, 3])</c>.
     ///
-    /// <para><b>Ein fertiges Array durchzureichen geht nicht</b> — <c>sum(xs)</c> mit
-    /// <c>xs: int[]</c> ist heute <c>LYR-SEM0001</c>. Das ist eine Sema-Regel, keine Luecke hier:
-    /// <c>Sprache.md</c> §3.1 sagt nur, dass <c>params</c> einen Array-Typ verlangt, nicht ob man
-    /// einen fertigen uebergeben darf. C# erlaubt es; ob Lyric das auch will, ist eine offene
-    /// Sprachfrage und steht in STATUS.</para>
+    /// <para><b>Ein fertiges Array darf als Ganzes durch</b>: <c>sum(xs)</c> mit <c>xs: int[]</c>
+    /// ist das Array selbst, kein Array mit einem Array darin. Ohne diesen Weg koennte eine
+    /// variadische Funktion an keine andere delegieren. Erkennbar am Typ des einzigen
+    /// verbleibenden Arguments — mehr braucht es nicht, weil ein Element nie denselben Typ hat wie
+    /// das Array, das es aufnimmt (§3.1).</para>
     /// </summary>
     private TempId CollectVariadic(Param parameter, Expr[] provided, int from, Span span)
     {
@@ -1915,6 +1915,9 @@ internal sealed class FunctionLowerer
                 parameter.Span);
 
         var rest = provided.Length > from ? provided[from..] : [];
+
+        if (rest.Length == 1 && IrType.Equal(TypeOfExpr(rest[0]), array))
+            return LowerExpr(rest[0]);
 
         var elements = new TempId[rest.Length];
         for (var i = 0; i < elements.Length; i++)

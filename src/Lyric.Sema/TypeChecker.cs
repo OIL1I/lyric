@@ -913,6 +913,26 @@ public sealed class TypeChecker
         return null;
     }
 
+    /// <summary>
+    /// Wird das <c>params</c>-Array als Ganzes uebergeben statt Stueck fuer Stueck?
+    ///
+    /// <para>Genau dann, wenn <b>ein</b> Argument uebrig ist und sein Typ der des Arrays ist —
+    /// <c>sum(xs)</c> mit <c>xs: int[]</c>. Das ist in Lyric eindeutig, und zwar aus zwei
+    /// Gruenden, die C# beide fehlen: es gibt keine implizite Konvertierung zwischen <c>T</c> und
+    /// <c>T[]</c> (§6.5), und es gibt kein Overloading (ADR-015). C# braucht dafuer die
+    /// Unterscheidung „normal form vs expanded form" in der Ueberladungsaufloesung; hier
+    /// entscheidet der Typ des Arguments, sonst nichts. Bei <c>params xs: int[][]</c> ist ein
+    /// Element <c>int[]</c> und das Array <c>int[][]</c> — verschiedene Typen, kein Konflikt.</para>
+    ///
+    /// <para><b>Warum es ueberhaupt erlaubt ist</b>: ohne diesen Weg kann eine variadische
+    /// Funktion an keine andere delegieren. <c>fn logged(params xs: int[]) { return sum(xs); }</c>
+    /// waere unmoeglich — und genau solche Huellen bauen C#s <c>WriteLine</c>-Ueberladungen
+    /// intern. Wer ein Array ausdruecklich als <i>ein</i> Element uebergeben will, schreibt
+    /// <c>f([a])</c>.</para>
+    /// </summary>
+    private static bool PassesArrayDirectly(LyrType[] argTypes, int fixedCount, LyrType arrayType) =>
+        argTypes.Length == fixedCount + 1 && LyrType.Equal(argTypes[fixedCount], arrayType);
+
     private void CheckCallArgs(CallExpr call, FnType fn, LyrType[] argTypes, FunctionDecl? decl)
     {
         var ps = decl?.Parameters;
@@ -928,8 +948,14 @@ public sealed class TypeChecker
             CheckAssignable(call.Arguments[i], argTypes[i], fn.Parameters[i], call.Arguments[i].Span);
 
         if (variadic && fn.Parameters[^1] is ArrayOf elem)
+        {
+            // Das fertige Array darf als Ganzes durch — sonst koennte eine variadische Funktion
+            // an keine andere delegieren. Siehe PassesArrayDirectly.
+            if (PassesArrayDirectly(argTypes, fixedCount, fn.Parameters[^1])) return;
+
             for (var i = fixedCount; i < argTypes.Length; i++)
                 CheckAssignable(call.Arguments[i], argTypes[i], elem.Element, call.Arguments[i].Span);
+        }
     }
 
     private LyrType CheckMember(MemberExpr mem, SymbolTable scope)

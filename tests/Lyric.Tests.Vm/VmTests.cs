@@ -807,4 +807,57 @@ public class VmTests
             fn main(): int { return tag(2, 5); }
             """).AsI64);
     }
+
+    private const string VariadicSum = """
+        fn sum(params xs: int[]): int {
+            var total = 0;
+            var i = 0;
+            while (i < xs.length) { total += xs[i]; i += 1; }
+            return total;
+        }
+        """;
+
+    /// <summary>
+    /// <b>Der Fall, der die Regel begruendet</b>: ohne Durchreichen kann eine variadische Funktion
+    /// an keine andere delegieren. Genau solche Huellen bauen C#s <c>WriteLine</c>-Ueberladungen
+    /// intern.
+    /// </summary>
+    [Fact]
+    public void A_variadic_function_can_forward_its_own_params()
+    {
+        Assert.Equal(6, Run(VariadicSum + """
+
+            fn logged(params xs: int[]): int { return sum(xs); }
+            fn main(): int { return logged(1, 2, 3); }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_ready_made_array_is_passed_as_the_array_itself()
+    {
+        // Nicht als EIN Element: 4+5+6, nicht 1 (die Laenge eines Arrays mit einem Element).
+        Assert.Equal(15, Run(VariadicSum + """
+
+            fn main(): int { let a = [4, 5, 6]; return sum(a); }
+            """).AsI64);
+    }
+
+    /// <summary>
+    /// Die Eindeutigkeit, die C# ueber Ueberladungsaufloesung herstellen muss und Lyric ueber den
+    /// Typ: bei <c>params xs: int[][]</c> ist ein Element <c>int[]</c> und das Array
+    /// <c>int[][]</c>. Beide Aufrufe liefern 1 — aber aus verschiedenen Gruenden, und genau das
+    /// ist der Punkt.
+    /// </summary>
+    [Theory]
+    [InlineData("inner", 1)]           // int[] -> ein Element, Array der Laenge 1
+    [InlineData("[inner, inner]", 2)]  // int[][] -> das Array selbst, Laenge 2
+    public void The_argument_type_decides_element_versus_array(string argument, long expected) =>
+        Assert.Equal(expected, Run($$"""
+            fn count(params xs: int[][]): int { return xs.length; }
+
+            fn main(): int {
+                let inner = [1, 2];
+                return count({{argument}});
+            }
+            """).AsI64);
 }

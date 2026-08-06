@@ -208,7 +208,13 @@ Regeln (Sema):
   erreichbar. Beide Kreuzformen sind `LYR-SEM0055`.
 - `static mut fn` ist ein Fehler (`LYR-SEM0054`): es gibt keinen Empfänger, über den `mut` sprechen
   könnte. `mut` an einer Klassen-Methode bleibt erlaubt — siehe `Doku.md` §10.2.
-- `params` ist nur am **letzten** Parameter erlaubt und erfordert einen Array-Typ.
+- `params` ist nur am **letzten** Parameter erlaubt und erfordert einen Array-Typ. Die restlichen
+  Argumente werden zu einem Array gesammelt. Ein **fertiges Array** darf stattdessen als Ganzes
+  übergeben werden, wenn sein Typ genau der Array-Typ des Parameters ist (`sum(xs)` mit
+  `xs: int[]`) — sonst könnte eine variadische Funktion an keine andere delegieren. Das ist
+  eindeutig, weil es weder implizite `T` ↔ `T[]`-Konvertierung (§6.5) noch Overloading gibt: bei
+  `params xs: int[][]` ist ein Element `int[]` und das Array `int[][]`. Wer ein Array
+  ausdrücklich als *ein* Element übergeben will, schreibt `f([a])`.
 - Default-Werte sind nur an Trailing-Parametern erlaubt.
 - `throws` ohne Typ: kann jeden `Throwable` werfen. `throws SomeError`: wirft nur diesen Typ (oder Subtypen).
 - Interface-Methoden mit Body sind Defaults; ohne Body abstrakt.
