@@ -73,6 +73,29 @@ internal sealed class TypeTable
     }
 
     /// <summary>
+    /// Reserviert den Zustandstyp einer Coroutine — <b>ohne Layout</b> (Sprache.md §8).
+    ///
+    /// <para>Dieselbe Zwei-Phasen-Form wie bei einer rekursiven Klasse, und aus demselben Grund:
+    /// die Id muss stehen, bevor das Layout bekannt ist. Welche Locals ein <c>yield</c>
+    /// ueberleben, weiss man erst, wenn der Rumpf gelowert ist — und der Rumpf braucht die Id
+    /// schon bei seinem ersten Feldzugriff.</para>
+    ///
+    /// <para>Slot 0 ist der <b>Wiedereintrittspunkt</b>: 0 heisst „noch nicht gestartet", n der
+    /// Block hinter dem n-ten <c>yield</c>, -1 „durchgelaufen". Danach kommen Parameter und
+    /// Locals.</para>
+    /// </summary>
+    public TypeId ReserveCoroutineState(string name)
+    {
+        var id = new TypeId(_defs.Count);
+        _defs.Add(new IrTypeDef($"<coro:{name}>", [], []));
+        return id;
+    }
+
+    /// <summary>Traegt das Layout nach, sobald der Rumpf gelowert ist.</summary>
+    public void CompleteCoroutineState(TypeId id, IrType[] fieldTypes, string[] fieldNames) =>
+        _defs[id.Value] = _defs[id.Value] with { FieldTypes = fieldTypes, FieldNames = fieldNames };
+
+    /// <summary>
     /// Der Typ des Environments einer Closure: ein Objekt, dessen Felder die gefangenen Werte
     /// sind (ADR-018).
     ///
