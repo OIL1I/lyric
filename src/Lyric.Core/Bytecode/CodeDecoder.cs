@@ -31,6 +31,7 @@ public static class CodeDecoder
 
                 Op.LoadLocal or Op.StoreLocal or Op.Call or Op.Branch or Op.NewObject or
                 Op.NewVariant or Op.EnumAs or Op.StructCopy or Op.Throw or
+                Op.MakeClosure or Op.CallIndirect or
                 Op.LoadGlobal or Op.StoreGlobal =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode, Immediate = reader.ULeb() },
 
@@ -123,6 +124,15 @@ public static class CodeDecoder
                 SkipType(reader, offset);
                 return;
 
+            // fn(A, B) -> R: Parameterzahl, dann die Typen, dann die Rueckgabe.
+            case TypeTag.Fn:
+            {
+                var count = reader.ULeb();
+                for (var i = 0UL; i < count; i++) SkipType(reader, offset);
+                SkipType(reader, offset);
+                return;
+            }
+
             case TypeTag.Void:
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                     $"composite type over void at code offset {offset}");
@@ -160,7 +170,11 @@ public static class CodeDecoder
     /// <paramref name="callArity"/> und <paramref name="callReturnsValue"/> gelten nur für
     /// <c>call</c> und kommen aus der Signatur der Callee.</summary>
     public static (int Pops, int Pushes) StackEffect(BytecodeInstruction instruction,
-        int callArity, bool callReturnsValue, int variantArity = 0) => instruction.Opcode switch
+        int callArity, bool callReturnsValue, int variantArity = 0) =>
+        Effect(instruction, instruction.Immediate, callArity, callReturnsValue, variantArity);
+
+    private static (int Pops, int Pushes) Effect(BytecodeInstruction instruction, ulong immediate,
+        int callArity, bool callReturnsValue, int variantArity) => instruction.Opcode switch
     {
         Op.Const or Op.LoadLocal => (0, 1),
         Op.StoreLocal or Op.Pop => (1, 0),
@@ -197,6 +211,13 @@ public static class CodeDecoder
         Op.MakeInterface => (1, 1),
         // structcopy ebenso: Original runter, Kopie rauf.
         Op.StructCopy => (1, 1),
+
+        // Beide Closure-Opcodes tragen ein Flag im untersten Immediate-Bit (Bytecode.md
+        // §Closures), weil ihre Stack-Wirkung sonst nicht aus der Instruktion allein hervorgeht:
+        // eine Closure ohne Captures hat kein Environment, und ein Funktionswert traegt seine
+        // Signatur nicht im Bytecode.
+        Op.MakeClosure => ((immediate & 1) == 1 ? 1 : 0, 1),
+        Op.CallIndirect => (1 + (int)(immediate >> 1), (immediate & 1) == 1 ? 1 : 0),
 
         Op.LoadGlobal => (0, 1),
         Op.StoreGlobal => (1, 0),

@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v2.4
+# Lyric — `.lyrbc` Bytecode-Format v2.5
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,11 +7,11 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **2.4**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Stand**: Format-Version **2.5**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
 > (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals**,
 > **Enums**, **Interfaces mit vtable-Dispatch**, **Structs mit Wert-Semantik** und
-> **Exceptions** (`throw`/`try`/`catch`) und **globale Konstanten**.
+> **Exceptions** (`throw`/`try`/`catch`), **globale Konstanten** und **Closures**.
 
 ---
 
@@ -358,7 +358,9 @@ Zusammengesetzte Typen ab `0x40`:
 | `0x42` | Optional (`?T`) | der innere Typ, wieder als Typ (§3) |
 | `0x43` | Enum | `uleb128` Index eines Enum-Eintrags der Types-Sektion |
 | `0x44` | Interface (`dyn`) | `uleb128` Index eines Interface-Eintrags der Types-Sektion |
+| `0x46` | `Fn` | `uleb128` Parameterzahl, dann die Parametertypen, dann der Rückgabetyp |
 | `0x45` | Struct (Wert-Semantik) | `uleb128` Index eines Struct-Eintrags der Types-Sektion |
+| `0x46` | Fn (Funktionswert) | `uleb128` Parameterzahl, dann die Parametertypen, dann der Rückgabetyp — alles inline |
 
 Ein Wert mit Tag `0x44` traegt neben der Referenz seinen konkreten Typindex — siehe
 §5 „Darstellung eines Interface-Wertes".
@@ -585,6 +587,35 @@ es nicht: er hat noch keinen anderen Besitzer.
 Ein `structcopy` auf einem Typ, der **kein** Struct-Eintrag ist, muss ein Leser ablehnen. Es wäre
 kein Fehler, den die Laufzeit bemerkt — sie kopierte klaglos ein Slot-Array, das geteilt gehört,
 und die Semantik bräche still.
+
+### Closures
+
+| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+|---|---|---|---|---|
+| `0x77` | `mkclosure` | `uleb128` target≪1 \| hasEnv | −(0/1) +1 | baut einen Funktionswert |
+| `0x78` | `callind` | `uleb128` argc≪1 \| retval | −(1+argc) +(0/1) | ruft einen Funktionswert |
+
+Ein Funktionswert ist zur Laufzeit ein **Fat Pointer** aus Environment-Referenz und Funktionsindex
+— dieselbe Bauart wie ein Interface-Wert (§Interfaces) und aus demselben Grund: die Referenz ist
+belegt, das Wortfeld daneben frei. Eine Closure **ohne Captures trägt keine Referenz** und kostet
+deshalb keine Allokation.
+
+`mkclosure` nimmt sein Environment vom Stack, `callind` stellt es beim Aufruf als **Argument 0**
+voran — genau die Position, die bei einer Methode der Empfänger belegt. Eine angehobene Lambda ist
+damit eine ganz gewöhnliche Funktion, und eine Runtime braucht für `callind` keinen zweiten
+Frame-Aufbau.
+
+**Beide Operanden tragen ein Flag im untersten Bit.** Der eigentliche Wert steht ab Bit 1. Das ist
+kein Sparen an Bytes, sondern eine Anforderung aus ADR-013: ein Leser muss die **Stack-Wirkung
+jeder Instruktion beim Laden** kennen, und sie geht hier nicht aus dem Opcode allein hervor — eine
+Closure hat ein Environment oder keins, und ein Funktionswert trägt seine Signatur nicht im
+Instruktionsstrom. Bei `call` steht beides in der Zielsignatur; hier gibt es keine.
+
+Ein Leser **muss** ablehnen: einen `mkclosure`-Zielindex außerhalb des Aufrufraums (erst Imports,
+dann Funktionen — dieselbe Rechnung wie bei `call`).
+
+Der Funktionsindex wird im Wert **um eins erhöht** gehalten. Sonst wäre eine Closure auf Funktion 0
+ohne Environment bitgleich mit „kein Wert", und ein `?fn(…)` könnte beides nicht unterscheiden.
 
 ### Globals
 

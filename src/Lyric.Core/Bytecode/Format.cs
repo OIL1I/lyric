@@ -17,7 +17,7 @@ public static class Format
     /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
     /// ausdrücklich.</remarks>
     public const ushort VersionMajor = 2;
-    public const ushort VersionMinor = 4;
+    public const ushort VersionMinor = 5;
 }
 
 /// <summary>
@@ -132,6 +132,14 @@ public enum TypeTag : byte
     /// Zuweisung kopiert. Das war schon bei der Einfuehrung von <c>0x40</c> so vorgesehen.</para>
     /// </summary>
     Struct = 0x45,
+
+    /// <summary>
+    /// Ein Funktionswert: <c>fn(A, B) -&gt; R</c>. Kodiert <b>strukturell</b> — Parameterzahl,
+    /// dann die Parametertypen, dann der Rueckgabetyp —, weil er als einziger zusammengesetzter
+    /// Typ keinen Eintrag in der Typtabelle hat: er hat keine Deklaration, an der eine Id haengen
+    /// koennte, und zwei gleich geformte Funktionstypen sind derselbe Typ.
+    /// </summary>
+    Fn = 0x46,
 }
 
 /// <summary>Art eines Types-Eintrags. Varianten eines Enums sind selbst
@@ -318,4 +326,18 @@ public enum Op : byte
     /// existiert trotzdem, weil das Fuellen selbst ein Schreibvorgang ist — ihn zu verstecken
     /// hiesse, der Init-Funktion eine Sonderrolle im Instruktionssatz zu geben.</para></summary>
     StoreGlobal = 0x76,
+
+    /// <summary>
+    /// Baut einen Closure-Wert aus einem Funktionsindex (Immediate) und einem Environment
+    /// (Stack). Das Gegenstueck zu <see cref="CallIndirect"/>, genau wie
+    /// <see cref="MakeInterface"/> zu <see cref="CallVirt"/> — und zur Laufzeit dieselbe
+    /// Darstellung: ein Fat Pointer aus Objektreferenz und Index.
+    /// </summary>
+    MakeClosure = 0x77,
+
+    /// <summary>
+    /// Ruft einen Closure-Wert. Das Immediate ist die Argumentzahl <b>ohne</b> das Environment;
+    /// das schiebt die Runtime als Argument 0 davor, wenn eines vorhanden ist.
+    /// </summary>
+    CallIndirect = 0x78,
 }

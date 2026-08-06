@@ -74,6 +74,27 @@ public readonly struct LyrValue
     /// nachschlägt.</summary>
     public int ConcreteType => (int)(uint)Bits;
 
+    /// <summary>
+    /// Ein <b>Closure-Wert</b> (ADR-018): Environment plus Index der gehobenen Funktion.
+    ///
+    /// <para>Dieselbe Bauart wie <see cref="FromInterface"/>, und aus demselben Grund: die
+    /// Referenz nimmt das Environment auf, <c>Bits</c> ist daneben frei. Eine Closure ohne
+    /// Captures traegt damit gar keine Referenz und kostet keine Allokation — der haeufige Fall
+    /// bei einem Filter wie <c>(x) =&gt; x &gt; 0</c>.</para>
+    ///
+    /// <para>Der Index wird um eins erhoeht abgelegt. Sonst waere eine Closure auf Funktion 0
+    /// ohne Environment bitgleich mit <see cref="None"/>, und ein <c>?fn(…)</c> haette „kein
+    /// Wert" nicht mehr von „die erste Funktion" unterscheiden koennen.</para>
+    /// </summary>
+    public static LyrValue FromClosure(LyrValue environment, int function) =>
+        new((ulong)(uint)(function + 1), environment.Ref);
+
+    /// <summary>Der Funktionsindex eines Closure-Wertes.</summary>
+    public int ClosureFunction => (int)(uint)Bits - 1;
+
+    /// <summary>Traegt diese Closure ein Environment? Ohne Captures gibt es keins.</summary>
+    public bool HasEnvironment => Ref is not null;
+
     /// <summary>„Kein Wert" ist eine leere Referenz — einheitlich für alle <c>?T</c>.</summary>
     public static LyrValue None => default;
 

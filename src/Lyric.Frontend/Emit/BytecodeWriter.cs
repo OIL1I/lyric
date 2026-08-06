@@ -346,6 +346,24 @@ public static class BytecodeWriter
                 code.ULeb(c.Type.Value);
                 break;
 
+            case MakeClosure m:
+                code.Opcode(Op.MakeClosure);
+                // Zielindex im gemeinsamen Aufruf-Indexraum (erst Imports, dann Funktionen) —
+                // dieselbe Rechnung wie bei 'call'. Das UNTERSTE BIT sagt, ob ein Environment auf
+                // dem Stack liegt: ein Leser muss die Stack-Wirkung beim Laden kennen (ADR-013),
+                // und eine Closure ohne Captures hat kein Environment.
+                code.ULeb(((ulong)(importCount + m.Target.Value) << 1)
+                          | (m.Environment is null ? 0UL : 1UL));
+                break;
+
+            case CallIndirect c:
+                code.Opcode(Op.CallIndirect);
+                // Argumentzahl ohne den Aufgerufenen; unterstes Bit: liefert einen Wert. Dieselbe
+                // Kodierung wie bei mkclosure und aus demselben Grund — bei 'call' steht beides in
+                // der Zielsignatur, hier gibt es keine.
+                code.ULeb(((ulong)c.Args.Length << 1) | (c.Dest is null ? 0UL : 1UL));
+                break;
+
             case LoadGlobal l:
                 code.Opcode(Op.LoadGlobal);
                 code.ULeb(l.Global.Value);
@@ -498,6 +516,15 @@ public static class BytecodeWriter
         if (type is IrEnumType e) w.ULeb(e.Type.Value);
         if (type is IrInterfaceType i) w.ULeb(i.Type.Value);
         if (type is IrStructType v) w.ULeb(v.Type.Value);
+
+        // Strukturell: Parameterzahl, Parametertypen, Rueckgabetyp. Als einziger zusammengesetzter
+        // Typ ohne Tabellen-Eintrag — er hat keine Deklaration, an der eine Id haengen koennte.
+        if (type is IrFunctionType f)
+        {
+            w.ULeb(f.Parameters.Length);
+            foreach (var parameter in f.Parameters) WriteType(w, parameter);
+            WriteType(w, f.Return);
+        }
     }
 
     internal static TypeTag TagOf(IrType type) => type switch
@@ -526,6 +553,7 @@ public static class BytecodeWriter
         IrEnumType => TypeTag.Enum,
         IrInterfaceType => TypeTag.Interface,
         IrStructType => TypeTag.Struct,
+        IrFunctionType => TypeTag.Fn,
         _ => throw new InternalCompilationException(
             $"bytecode: type not encodable: {type.GetType().Name}")
     };

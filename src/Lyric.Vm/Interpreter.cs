@@ -240,6 +240,55 @@ public static class Interpreter
                     frame.Push(LyrValue.FromInterface(frame.Pop(), (int)instruction.Immediate));
                     break;
 
+                // Unterstes Immediate-Bit: liegt ein Environment auf dem Stack? Ohne Captures
+                // nicht — dann ist die Closure reiner Funktionsindex (Bytecode.md §Closures).
+                case Op.MakeClosure:
+                {
+                    var environment = (instruction.Immediate & 1) == 1 ? frame.Pop() : default;
+                    frame.Push(LyrValue.FromClosure(environment, (int)(instruction.Immediate >> 1)));
+                    break;
+                }
+
+                // Aufruf ueber einen Funktionswert. Der Aufgerufene liegt UNTER seinen Argumenten;
+                // sein Environment wird als Argument 0 vorangestellt — genau die Position, die bei
+                // einer Methode der Empfaenger belegt (ADR-014). Deshalb braucht dieser Fall
+                // keinen eigenen Frame-Aufbau, nur eine andere Herkunft des Index.
+                case Op.CallIndirect:
+                {
+                    var argCount = (int)(instruction.Immediate >> 1);
+                    var closure = frame.Peek(argCount);
+                    var index = closure.ClosureFunction;
+
+                    if (index < natives.Length)
+                    {
+                        var native = natives[index];
+                        var nativeArgs = new LyrValue[native.Arity];
+                        for (var i = native.Arity - 1; i >= 0; i--) nativeArgs[i] = frame.Pop();
+                        frame.Pop(); // der Closure-Wert selbst
+
+                        var produced = native.Implementation(nativeArgs);
+                        if (native.ReturnsValue) frame.Push(produced);
+                        break;
+                    }
+
+                    if (frames.Count >= MaxCallDepth)
+                        throw new LyricPanic(VmDiagnostics.CallDepthExceeded,
+                            $"call depth exceeded {MaxCallDepth} frames in '{frame.Fn.Source.Name}'");
+
+                    var target = prepared[index - natives.Length];
+                    var callFrame = Frame.For(target);
+
+                    var offset = closure.HasEnvironment ? 1 : 0;
+                    for (var i = argCount - 1; i >= 0; i--) callFrame.Slots[offset + i] = frame.Pop();
+
+                    frame.Pop(); // der Closure-Wert
+                    if (closure.HasEnvironment) callFrame.Slots[0] = LyrValue.FromObject(closure.AsObject);
+
+                    frames.Push(frame);
+                    frame = callFrame;
+                    break;
+                }
+
                 // Der einzige dynamische Dispatch der Sprache. Empfaenger ist Argument 0 und liegt
                 // zuunterst; sein mitgefuehrter Typ waehlt die Zeile, das Immediate den Slot.
                 case Op.CallVirt:

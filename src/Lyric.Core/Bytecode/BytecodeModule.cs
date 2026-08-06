@@ -63,12 +63,18 @@ public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
     /// über einen Tabellen-Index, weil keiner von beiden rekursiv sein kann (ADR-016).</summary>
     public BytecodeType? Element { get; init; }
 
+    /// <summary>Parametertypen, wenn <see cref="Tag"/> <c>Fn</c> ist; <see cref="Element"/> haelt
+    /// dann den Rueckgabetyp. Beides inline, weil ein Funktionstyp keinen Tabellen-Eintrag hat —
+    /// er traegt seine Signatur selbst.</summary>
+    public IReadOnlyList<BytecodeType> Parameters { get; init; } = [];
+
     public override string ToString() => Tag switch
     {
         TypeTag.Ref => $"&ty{TypeIndex}",
         TypeTag.Enum => $"enum ty{TypeIndex}",
         TypeTag.Array => $"{Element?.ToString() ?? "?"}[]",
         TypeTag.Optional => $"?{Element?.ToString() ?? "?"}",
+        TypeTag.Fn => $"fn({string.Join(", ", Parameters)}) -> {Element?.ToString() ?? "?"}",
         _ => Tag.ToString().ToLowerInvariant(),
     };
 }

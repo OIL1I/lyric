@@ -137,6 +137,15 @@ public static class BytecodeReader
         // Bytes verschobener Strom, kein sauberer Fehler.
         if (tag is TypeTag.Ref or TypeTag.Enum or TypeTag.Interface or TypeTag.Struct)
             return new BytecodeType(tag, payload.ULebAsCount());
+        // fn(A, B) -> R traegt seine Signatur inline: Parameterzahl, Parametertypen, Rueckgabe.
+        if (tag is TypeTag.Fn)
+        {
+            var count = payload.ULebAsCount();
+            var parameters = new List<BytecodeType>(Math.Min(count, 256));
+            for (var i = 0; i < count; i++) parameters.Add(ReadType(payload));
+            return new BytecodeType(tag, -1) { Parameters = parameters, Element = ReadType(payload) };
+        }
+
         // Der Elementtyp steht inline und rekursiv (Bytecode.md §3).
         if (tag is TypeTag.Array or TypeTag.Optional)
         {
@@ -506,6 +515,16 @@ public static class BytecodeReader
                     throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                         $"function '{function.Name}' at {instruction.Offset}: structcopy targets " +
                         $"'{module.Types[(int)instruction.Immediate].Name}', which is not a struct");
+
+                // Der Zielindex steht im Immediate ab Bit 1 — das unterste Bit sagt, ob ein
+                // Environment auf dem Stack liegt (Bytecode.md §Closures).
+                case Op.MakeClosure
+                    when (instruction.Immediate >> 1) >=
+                         (ulong)(module.Imports.Count + module.Functions.Count):
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: mkclosure target " +
+                        $"{instruction.Immediate >> 1} is outside " +
+                        $"{module.Imports.Count + module.Functions.Count} callable(s)");
 
                 case Op.LoadGlobal or Op.StoreGlobal
                     when instruction.Immediate >= (ulong)module.Globals.Count:

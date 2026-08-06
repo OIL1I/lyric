@@ -343,6 +343,34 @@ Programm, mit Begründung als Blockzitat).
     Binary liegt, wenn man es ausliefert. Ohne ihn wandert die Kante innerhalb eines Meilensteins
     zurück und es fällt niemandem auf.
 
+- [x] **P6 — Closures** (ADR-018, Format **2.5**): `examples/closures.lyr` -> **83**, 1473 Tests gruen.
+  - **Gefangen wird die VARIABLE, nicht ihr Wert.** Ein gefangenes `var` lebt in einer Zelle auf
+    dem Heap; alle Zugriffe, innen wie aussen, gehen darueber. `let` und Parameter werden kopiert,
+    weil sie sich nie aendern (Zuweisung an einen Parameter ist `LYR-SEM0019`) und der Unterschied
+    damit nicht beobachtbar ist. Die Wahl fiel gegen Javas „effectively final", weil ADR-011
+    implizite Captures mit der C#-Erwartung begruendet — dann muss auch die Semantik passen.
+  - **Drei Dinge sind kein neuer Mechanismus**: eine Zelle ist ein Objekt mit einem Feld
+    (`newobj`/`ldfld`/`stfld`), ein Environment ein Objekt mit den Captures als Feldern, und eine
+    gehobene Lambda eine gewoehnliche `IrFunction` mit dem Environment auf **Parameter 0** — die
+    Position, die bei einer Methode der Empfaenger belegt (ADR-014). Neu sind nur `mkclosure` und
+    `callind`, dasselbe Paar wie `mkiface`/`callvirt` aus P3, und zur Laufzeit dieselbe
+    Darstellung: ein Fat Pointer.
+  - **Beide neuen Opcodes tragen ein Flag im untersten Immediate-Bit.** Kein Bytes-Sparen, sondern
+    ADR-013: ein Leser muss die Stack-Wirkung beim Laden kennen, und sie geht hier nicht aus dem
+    Opcode hervor — eine Closure hat ein Environment oder keins, und ein Funktionswert traegt seine
+    Signatur nicht im Strom. Bei `call` steht beides in der Zielsignatur; hier gibt es keine.
+  - **Der Funktionsindex wird um eins erhoeht gehalten.** Sonst waere eine Closure auf Funktion 0
+    ohne Environment bitgleich mit „kein Wert", und ein `?fn(…)` koennte beides nicht trennen.
+  - **Ein Fund, der 45 Tests gekostet hat**: ein indirekter Aufruf laesst sich NICHT am Typ des
+    Callee erkennen. Eine deklarierte Funktion hat auch einen Funktionstyp — und eine Enum-Variante
+    mit Payload ebenfalls, wodurch `Shape.Line(1.0)` zu einem `callind` auf einen Enum-Wert wurde.
+    Entscheidend ist die **Bindung**, und sie wird jetzt positiv aufgezaehlt statt negativ: eine
+    Verbotsliste haette bei jeder neuen Symbolart still die gefaehrliche Antwort gegeben.
+  - **Das Gate wurde neu zugeschnitten.** `inventory.lyr` stand fuer P6, verlangt aber `extend`
+    (P9), Generics mit Constraint und `for-in` (P8) — P6 waere daran erst fertig geworden, wenn P8
+    und P9 es sind. Es wird das M7-Abschlussgate; P6 bekam ein eigenes. Dieselbe Korrektur wie
+    `bank.lyr` -> P5.
+
 - [x] **Auslieferung: drei Assemblies, ein Ordner, ein Kommando**. `dotnet msbuild
   build/publish.proj` legt alle drei Binaries nach `artifacts/publish/`. Der Ordner hatte 24
   Eintraege und hat jetzt **13**; 1451 Tests gruen.

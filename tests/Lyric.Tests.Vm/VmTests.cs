@@ -934,4 +934,69 @@ public class VmTests
             fn main(): int { let e = Enemy.new(5); return e.hp; }
             """).AsI64);
     }
+
+    // ------------------------------------------------------------------ P6: Closures
+
+    [Fact]
+    public void A_lambda_can_be_called_immediately() =>
+        Assert.Equal(3, Run("fn main(): int { let f = (x: int) => x + 1; return f(2); }").AsI64);
+
+    [Fact]
+    public void A_captured_let_is_copied_into_the_environment() =>
+        Assert.Equal(7, Run("""
+            fn main(): int { let k = 5; let f = (x: int) => x + k; return f(2); }
+            """).AsI64);
+
+    [Fact]
+    public void A_closure_outlives_the_call_that_made_it() =>
+        // Der Kern von ADR-018: 'n' lebt in einer Zelle, nicht im Frame von mk — sonst waere es
+        // hier weg.
+        Assert.Equal(2, Run("""
+            fn mk(): fn() -> int { var n = 0; return (): int => { n += 1; return n; }; }
+            fn main(): int { let c = mk(); c(); return c(); }
+            """).AsI64);
+
+    [Fact]
+    public void Two_closures_share_one_captured_variable() =>
+        // Die Gegenprobe zum Test darueber: teilen heisst teilen. Bei zwei Zellen stuende hier 1.
+        Assert.Equal(21, Run("""
+            fn main(): int {
+                var n = 1;
+                let inc = (): int => { n += 10; return n; };
+                let get = (): int => n;
+                inc();
+                inc();
+                return get();
+            }
+            """).AsI64);
+
+    [Fact]
+    public void The_enclosing_function_sees_what_the_closure_wrote() =>
+        // Die andere Richtung derselben Zelle — ohne diesen Test bliebe „geteilt" die halbe Aussage.
+        Assert.Equal(30, Run("""
+            fn main(): int { var n = 0; let set = () => { n = 30; }; set(); return n; }
+            """).AsI64);
+
+    [Fact]
+    public void A_closure_can_be_passed_as_an_argument() =>
+        Assert.Equal(12, Run("""
+            fn ap(f: fn(int) -> int, v: int): int { return f(v); }
+            fn main(): int { let m = 3; return ap((x: int) => x * m, 4); }
+            """).AsI64);
+
+    [Fact]
+    public void A_lambda_inside_a_lambda_reaches_the_outer_capture() =>
+        // Verschachtelt: 'a' liegt im Environment der aeusseren Closure, und die innere liest es
+        // von dort — nicht aus einem Slot, den es in ihrem Frame nicht gibt.
+        Assert.Equal(8, Run("""
+            fn main(): int { let a = 7; let f = (): int => { let g = (): int => a + 1; return g(); }; return f(); }
+            """).AsI64);
+
+    [Fact]
+    public void A_closure_without_captures_needs_no_environment() =>
+        // Kein newobj im erzeugten Code — der Wert ist reiner Funktionsindex. Gemessen wird das
+        // Ergebnis; dass keine Allokation stattfand, haelt der Disassembler fest.
+        Assert.Equal(9, Run("""
+            fn main(): int { let f = (x: int) => x * 3; return f(3); }
+            """).AsI64);
 }

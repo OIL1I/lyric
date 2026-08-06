@@ -1,0 +1,48 @@
+// Gate-Programm fuer M7/P6 — Closures.
+//
+// Der Kern ist ADR-018: eine Closure faengt die VARIABLE, nicht ihren Wert. 'counter' gibt eine
+// Funktion zurueck, die ihr 'n' weiterzaehlt, obwohl der erzeugende Aufruf laengst zurueck ist —
+// und zwei Closures ueber demselben 'n' sehen dieselbe.
+import std.io.console;
+
+// Ein gefangenes 'let' wird kopiert: es aendert sich nie, also ist der Unterschied nicht
+// beobachtbar, und die Kopie spart die Zelle.
+fn scaler(factor: int): fn(int) -> int {
+    return (x: int) => x * factor;
+}
+
+// Ein gefangenes 'var' wird geteilt. Es lebt in einer Zelle auf dem Heap, nicht im Frame.
+fn counter(): fn() -> int {
+    var n = 0;
+    return (): int => { n += 1; return n; };
+}
+
+// Eine Closure als Parameter — der Fall, fuer den es Funktionstypen ueberhaupt gibt.
+fn applyTwice(f: fn(int) -> int, v: int): int {
+    return f(f(v));
+}
+
+fn main(): int {
+    let triple = scaler(3);
+    console.println(f"triple(7) = {triple(7)}");
+
+    let next = counter();
+    next();
+    next();
+    console.println(f"nach drei Aufrufen: {next()}");
+
+    console.println(f"applyTwice: {applyTwice(triple, 2)}");
+
+    // Zwei Closures, eine Variable.
+    var total = 0;
+    let add = (x: int) => { total = total + x; };
+    let read = (): int => total;
+    add(10);
+    add(30);
+    console.println(f"geteiltes total: {read()}");
+
+    // 21 + 4 + 18 + 40 = 83. Die 4 ist der Punkt: 'next()' zaehlt hier WEITER, es liefert nicht
+    // noch einmal die 3 von oben. Genau das unterscheidet „faengt die Variable" von „faengt den
+    // Wert" (ADR-018) — bei by-value stuende hier eine 1.
+    return triple(7) + next() + applyTwice(triple, 2) + read();
+}

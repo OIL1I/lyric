@@ -134,6 +134,10 @@ public static class Disassembler
         Op.NewVariant => $"newvariant {TypeRefName(module, i.Immediate)}",
         Op.StructCopy => $"structcopy {TypeRefName(module, i.Immediate)}",
         Op.LoadGlobal => $"ldglobal g{N(i.Immediate)}",
+        Op.MakeClosure => $"mkclosure {CalleeName(module, (int)(i.Immediate >> 1))}" +
+                          ((i.Immediate & 1) == 1 ? "" : " (no captures)"),
+        Op.CallIndirect => $"callind {N(i.Immediate >> 1)}" +
+                           ((i.Immediate & 1) == 1 ? "" : " (void)"),
         Op.StoreGlobal => $"stglobal g{N(i.Immediate)}",
         Op.MakeInterface => $"mkiface {TypeRefName(module, i.Immediate)} -> " +
                             $"{TypeRefName(module, i.Immediate2)}",
