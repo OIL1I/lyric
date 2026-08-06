@@ -549,6 +549,11 @@ internal sealed class FunctionLowerer
     {
         var body = _decl!.Body ?? throw Bug("coroutine has no body");
 
+        // bb0 gehoert dem Sprungverteiler und bleibt vorerst leer: der Verifier verlangt, dass
+        // der Einstieg der ERSTE Block ist, und welche Einstiegspunkte es gibt, weiss man erst
+        // nach dem Rumpf. Also Platz reservieren und spaeter fuellen — dieselbe Zwei-Phasen-Form
+        // wie bei der Typ-Id eines rekursiven Typs.
+        var dispatch = _b.CurrentId;
         var start = _b.NewBlock();
         _b.SwitchTo(start);
 
@@ -568,7 +573,7 @@ internal sealed class FunctionLowerer
                 : new Return(ZeroOf(_returnType, body.Span), body.Span));
         }
 
-        var dispatch = BuildResumeDispatch(start, body.Span);
+        BuildResumeDispatch(dispatch, start, body.Span);
         _typeTable.CompleteCoroutineState(_coroutineState!.Value,
             _stateTypes.ToArray(), _stateNames.ToArray());
 
@@ -1104,7 +1109,7 @@ internal sealed class FunctionLowerer
         TupleLitExpr e => throw NotSupported("tuple literal", e.Span),
         StructInitExpr e => LowerObjectInit(e),
         RangeExpr e => throw NotSupported("range expression", e.Span),
-        ResumeExpr e => throw NotSupported("'resume'", e.Span),
+        ResumeExpr e => LowerResume(e),
         ThisExpr e => LowerThis(e),
         AtIdentifierExpr e => throw NotSupported($"attribute '{e.Name}'", e.Span),
         ErrorExpr e => throw Bug($"error expression reached lowering at {e.Span}"),
@@ -1388,6 +1393,26 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
+    /// <c>resume co</c> — die Coroutine fortsetzen und den naechsten Wert holen.
+    ///
+    /// <para>Ein gewoehnlicher <c>callind</c>: der Coroutine-Wert IST ein Funktionswert ueber dem
+    /// Zustandsobjekt (Sprache.md §8, ADR-018). Der Sprungverteiler im Rumpf sorgt dafuer, dass
+    /// der Aufruf dort weitermacht, wo der letzte <c>yield</c> aufgehoert hat — von hier aus sieht
+    /// das aus wie jeder andere Aufruf, und das ist der ganze Punkt der Transformation.</para>
+    /// </summary>
+    private TempId LowerResume(ResumeExpr expr)
+    {
+        if (LowerType(_types.TypeOf(expr.Coroutine), expr.Span) is not IrFunctionType signature)
+            throw Bug("'resume' on a value that is not a coroutine");
+
+        var coroutine = LowerExpr(expr.Coroutine);
+        var dest = _slots.NewTemp(signature.Return);
+        _b.Emit(new CallIndirect(dest, coroutine, [], signature.Return, expr.Span));
+        _fresh.Add(dest);
+        return dest;
+    }
+
+    /// <summary>
     /// <c>yield x</c> — der Punkt, an dem die Coroutine aufhoert und spaeter wieder anfaengt.
     ///
     /// <para>Drei Schritte: den Wiedereintrittspunkt ins Zustandsobjekt schreiben, den Wert
@@ -1436,9 +1461,8 @@ internal sealed class FunctionLowerer
     /// einzigen Anwendungsfall. Bei den Groessenordnungen, um die es geht — ein Vergleich je
     /// <c>yield</c> im Quelltext —, ist der Unterschied nicht messbar.</para>
     /// </summary>
-    private BlockId BuildResumeDispatch(BlockId start, Core.Span span)
+    private void BuildResumeDispatch(BlockId dispatch, BlockId start, Core.Span span)
     {
-        var dispatch = _b.NewBlock();
         _b.SwitchTo(dispatch);
 
         var i32 = new IrScalarType(IrScalar.I32);
@@ -1450,17 +1474,17 @@ internal sealed class FunctionLowerer
             _b.Emit(new Const(wanted, i32, new IntConst((ulong)(i + 1)), span));
 
             var matches = _slots.NewTemp(BoolType);
-            _b.Emit(new BinOp(matches, IrBinKind.Eq, i32, current, wanted, span));
+            // Bei einem Vergleich traegt BinOp.Type den ERGEBNIS-Typ, nicht den der Operanden —
+            // dieselbe Konvention wie bei jedem anderen Vergleich im Lowering.
+            _b.Emit(new BinOp(matches, IrBinKind.Eq, BoolType, current, wanted, span));
 
             var next = _b.NewBlock();
             _b.Seal(new CondBranch(matches, _resumePoints[i], next, span));
             _b.SwitchTo(next);
         }
 
-        // Kein Treffer heisst "noch nicht gestartet" — der Rumpf beginnt von vorn. Der Fall
-        // "durchgelaufen" gehoert nicht hierher: ihn faengt 'resume' ab, bevor es ruft.
+        // Kein Treffer heisst "noch nicht gestartet" — der Rumpf beginnt von vorn.
         _b.Seal(new Branch(start, span));
-        return dispatch;
     }
 
     /// <summary>Zeigt dieses Zuweisungsziel auf eine Variable im Zustandsobjekt?</summary>
@@ -3011,6 +3035,19 @@ internal sealed class FunctionLowerer
                 throw NotSupported("a nested optional '??T' (optionals do not nest)", span);
             return new IrOptionalType(inner);
         }
+
+        // Coroutine<T> IST ein Funktionswert ohne Parameter (Sprache.md §8): 'resume co' setzt
+        // sie fort und liefert den naechsten Wert — das ist ein Aufruf, und die Coroutine
+        // unterscheidet sich von einer gewoehnlichen Funktion nur darin, WO sie beim naechsten
+        // Mal anfaengt. Genau deshalb braucht sie hier keinen eigenen Typ: sie ist ein Fat Pointer
+        // aus Zustandsobjekt und Rumpf-Index, also eine Closure (ADR-018).
+        //
+        // Dass die Sema 'Coroutine<int>' und 'fn() -> int' trotzdem TRENNT, ist richtig und
+        // gehoert dorthin: 'resume' auf einer Nicht-Coroutine ist LYR-SEM0040, und ein
+        // Coroutine-Wert laesst sich nicht wie eine Funktion rufen. Die IR muss diese
+        // Unterscheidung nicht wiederholen — sie prueft Konsistenz, nicht Sprachregeln.
+        if (type is CoroutineOf coroutine)
+            return new IrFunctionType([], LowerType(coroutine.Yield, span));
 
         // fn(A, B) -> R: ein Funktionswert (ADR-018). Traegt seine Signatur strukturell und
         // braucht deshalb keinen Eintrag in der Typtabelle.

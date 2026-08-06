@@ -19,12 +19,11 @@ namespace Lyric.Ir.Lowering;
 internal static class CoroutineFactory
 {
     public static IrFunction Build(FunctionDecl decl, string name, TypeId state, IrType yieldType,
-        IrType[] parameterTypes, bool hasReceiver, IrType? receiverType, Span span)
+        FunctionId body, IrType[] parameterTypes, bool hasReceiver, IrType? receiverType, Span span)
     {
         var slots = new SlotAllocator();
         var blocks = new List<IrBlock>();
-        var builder = new BlockBuilder(blocks);
-        builder.SwitchTo(builder.NewBlock());
+        var builder = new BlockBuilder(blocks); // legt bb0 an und setzt den Cursor darauf
 
         // Die Parameter der Fabrik sind die der Coroutine — in derselben Reihenfolge, damit ein
         // Aufrufer nichts anders macht als bei jeder anderen Funktion.
@@ -57,9 +56,15 @@ internal static class CoroutineFactory
             builder.Emit(new StoreField(instance, state, new FieldId(field), value, span));
         }
 
-        builder.Seal(new Return(instance, span));
+        // Der Rueckgabewert ist eine CLOSURE ueber dem Zustandsobjekt (ADR-018): Fat Pointer aus
+        // Objektreferenz und Rumpf-Index. Damit ist 'resume co' ein gewoehnliches 'callind' und
+        // braucht weder einen Opcode noch einen Wert-Typ fuer sich.
+        var signature = new IrFunctionType([], yieldType);
+        var closure = slots.NewTemp(signature);
+        builder.Emit(new MakeClosure(closure, body, instance, signature, span));
+        builder.Seal(new Return(closure, span));
 
-        return new IrFunction(name, stateType,
+        return new IrFunction(name, signature,
             decl.Parameters.Length + (hasReceiver ? 1 : 0), slots.Locals, slots.Temps, blocks)
         {
             Entry = new BlockId(0),

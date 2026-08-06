@@ -385,6 +385,9 @@ internal sealed class TypeTable
         // Ein Funktionstyp traegt seine Signatur strukturell und braucht deshalb keinen Eintrag in
         // dieser Tabelle — anders als jeder benannte Typ. Rekursiv gelowert, weil Parameter und
         // Rueckgabe selbst Klassen, Enums oder wieder Funktionen sein duerfen.
+        // Coroutine<T> ist ein Funktionswert ohne Parameter — siehe FunctionLowerer.LowerType.
+        CoroutineOf c => new IrFunctionType([], Lower(c.Yield, span)),
+
         FnType f => new IrFunctionType(
             f.Parameters.Select(p => Lower(p, span)).ToArray(), Lower(f.Return, span)),
 

@@ -196,8 +196,8 @@ public static class ModuleLowerer
                         .Select(p => typeTable.Lower(p.Type)).ToArray();
                     var receiverType = receiver is null ? null : typeTable.RefTo(receiver);
 
-                    coroutines.Register(decl, name, state, yieldType, receiver);
-                    functions.Add(CoroutineFactory.Build(decl, name, state, yieldType,
+                    var body = coroutines.Register(decl, name, state, yieldType, receiver);
+                    functions.Add(CoroutineFactory.Build(decl, name, state, yieldType, body,
                         parameterTypes, receiver is not null, receiverType, decl.Span));
                     continue;
                 }
