@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1629 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1637 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -52,6 +52,23 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **ADR-020 — `let` bindet den Namen, nicht den Inhalt.** Die Frage stand seit P2 offen und
+  waere mit `Indexable<T>` zum zweiten Mal faellig geworden; entschieden vor S5, nicht darin.
+  - **Die alte Regel war nicht nur inkonsistent, sie war wirkungslos.** `let xs[0] = 9` war
+    `LYR-SEM0019`, aber `let ps[0].hp = 9` ging immer durch — verboten war genau die eine
+    Operation, die man umgehen konnte, indem man ein Element mit einem Feld nahm.
+  - Seit **ADR-016** ist `T[]` ein echter Referenztyp wie eine Klasse. Java (`final`), C#
+    (`readonly`) und JavaScript (`const`) halten es alle so; **Rust ist die einzige Sprache, die
+    Unveraenderlichkeit bis in den Inhalt durchhaelt, und kann das nur wegen Ownership** — das
+    hat Lyric nicht und will es laut ADR-003 nicht.
+  - **Kein einziger Test hatte die alte Regel festgehalten.** Sie stand in `Sprache.md` §6.4 und
+    war durch nichts abgesichert — genau deshalb ueberlebte ihr Widerspruch zwei Meilensteine.
+    Die neue Regel hat jetzt acht Tests, inklusive der Gegenproben, dass `let` den Namen
+    weiterhin festhaelt und ein `struct`-Feld weiterhin eine mutable Basis braucht.
+  - Was Lyric damit **nicht** hat: eine Moeglichkeit, ein unveraenderliches Array auszudruecken.
+    Sie hat faktisch nie existiert. Wer sie will, braucht einen eigenen Typ und keine
+    Bindungs-Annotation — Bibliotheks-, nicht Sprachfrage.
+
 - [x] **Sweep ueber die Merge-Bloecke** — 15 Konstrukte durchgemessen, bei denen alle Zweige
   terminieren. **13 waren sauber**, zwei nicht, und der schwerere Fund hatte mit Merge-Bloecken
   gar nichts zu tun.
@@ -70,28 +87,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     pruefen, ob ueberhaupt jemand durchfaellt, dann den Block anlegen. `while`, `for-in`,
     `match`, if-Ausdruck, `&&`/`||`, `??`, `?.`, verschachteltes `try`, Coroutinen und
     `panic` in beiden Zweigen sind alle sauber.
-
-- [x] **M8 — S3 — `std.fmt` und Format-Specs.** `f"{avg:N2}"` laeuft; **`examples/stats.lyr`
-  ist damit gruen**, nachdem es seit M6 auf genau diese Zeile gewartet hat. 1621 Tests gruen.
-  - **Die Spec-Sprache ist die von .NET und wird unveraendert durchgereicht** (`N2`, `F3`, `D5`,
-    `X`, `E2`, `P1`), wie `Sprache.md` §2.2 es verlangt. Eine eigene Notation daneben waere ein
-    zweiter Mechanismus fuer dieselbe Sache.
-  - **Ohne Spec bleibt es bei den `fromXxx`-Wandlern.** Ein Format-Aufruf, der nur den Standard
-    nachbaut, waere ein zweiter Weg zu demselben Ergebnis — ein Test haelt das fest.
-  - **Immer invariant.** Eine Zahl, die unter deutscher Locale `1.234,57` und unter englischer
-    `1,234.57` wird, ist kein Formatierungsdetail, sondern ein Programm, das sich je nach Rechner
-    anders verhaelt. Dieselbe Entscheidung wie bei `toUpper`/`toLower` in S2.
-  - **Eine ungueltige Spec ist ein `panic`**, kein stilles Ausweichen auf die
-    Standarddarstellung: sie steht als Literal im Quelltext und haengt nicht von der Eingabe ab.
-    `{x:Q9}` ist falsch geschrieben, nicht ungluecklich gelaufen — ein Fallback truege den
-    Tippfehler bis in die Ausgabe.
-  - **`Sprache.md` §2.2 ist korrigiert**: dort stand `{value:0>5}` als Beispiel fuer eine
-    „.NET-analoge" Spec. Das ist Rust- bzw. Python-Notation und war nie .NET — die Zeile
-    widersprach ihrer eigenen Ansage im selben Satz. Das Auffuellen uebernimmt jetzt die
-    Breiten-Form (`{name:10}`, `{name:-10}`), die es fuer `string`, `bool` und `char` ohnehin
-    braucht, weil .NET fuer die keine Standardformate kennt.
-  - **`shapes.lyr` laeuft weiterhin nicht** — es braucht `std.math` (`sqrt`, `pi`), also S7. Das
-    ist keine Format-Luecke, und der Slice endet hier.
 
 ## Messungen
 
@@ -128,9 +123,9 @@ steht weiter aus.
 **M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`), S3 (`std.fmt`) und S4 (`Throwable`)
 stehen. Als naechstes **S5 — `std.collections`** mit `List<T>`, `Map<K,V>`, `Set<T>`.
 
-**Vor S5 gehoert die Mutabilitaets-Entscheidung getroffen** (siehe „Noch offen"): `Indexable<T>`
-hat einen `mut fn`-Setter, und dann stellt sich die Frage aus P2 zum zweiten Mal — diesmal an
-einem Interface, das jeder Nutzertyp implementieren kann.
+**Die Mutabilitaets-Frage ist entschieden** (ADR-020): `let` bindet den Namen, nicht den Inhalt.
+`Indexable<T>` bekommt damit einen gewoehnlichen `mut fn`-Setter, ohne eine Sonderregel
+nachbilden zu muessen.
 
 Danach **S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math` — daran haengt
 `shapes.lyr`), **S8** (Gate: `wc`-Klon).
@@ -169,10 +164,6 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 **Zwei Ungleichbehandlungen, die eine Entscheidung brauchen (keine Bugs):**
 
-- `let p = P { hp = 1 }; p.hp = 9;` ist **erlaubt**, `let xs = [1,2]; xs[0] = 9;` ist
-  **`LYR-SEM0019`**. §6.4 unterscheidet sie ausdrücklich, aber seit ADR-016 ist `T[]` genauso ein
-  Referenztyp wie eine Klasse. **Zu klären, bevor `Indexable<T>` kommt** — dort hängt dieselbe
-  Frage am `mut fn`-Setter nochmal.
 - `fn f(p: P) { p.x = 9; }` ist `LYR-SEM0019`, aber `p.shift(9)` mit `mut fn` geht durch — obwohl
   beides denselben Effekt auf dieselbe Kopie hat.
 
@@ -228,7 +219,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`sweep: defer neben return, Merge-Bloecke durchgemessen`
+`sema: ADR-020 - let bindet den Namen, nicht den Inhalt`
 
 ---
 

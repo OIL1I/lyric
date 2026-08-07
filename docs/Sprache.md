@@ -654,8 +654,16 @@ match (shape) {
 Linke Seite eines Assignments:
 - `IDENTIFIER` (das gebundene Symbol muss `var` sein)
 - `Postfix '.' IDENTIFIER` (Feld muss mut sein: `class`-Feld, oder `mut fn`-Methode für `struct`)
-- `Postfix '[' Expr ']'` (Container muss mut sein)
+- `Postfix '[' Expr ']'` (immer erlaubt, solange der Container ein Referenztyp ist)
 - `( Lvalue )`
+
+**`let` bindet den Namen, nicht den Inhalt** (ADR-020). Bei einem Referenztyp — `class`, `T[]` —
+verhindert `let` nur, dass der Name neu gebunden wird; das Objekt dahinter bleibt änderbar. Ein
+unveränderliches Array lässt sich in v1 nicht ausdrücken.
+
+*(Korrektur 2026-08-07: hier stand „Container muss mut sein". Die Regel war wirkungslos —
+`let ps = [P { … }]; ps[0].hp = 9;` ging immer, verboten war nur die direkte Element-Zuweisung —
+und behandelte seit ADR-016 zwei Referenztypen ohne Grund verschieden.)*
 
 ### 6.5 Operator- und Konvertierungs-Semantik (Typen)
 

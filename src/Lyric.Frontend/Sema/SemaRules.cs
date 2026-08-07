@@ -188,7 +188,14 @@ public sealed class SemaRules
     {
         IdentifierExpr id => _types.RefOf(id) is LocalSymbol { IsMutable: true },
         MemberExpr m => IsFieldMutable(m),
-        IndexExpr ix => IsMutableLvalue(ix.Target),
+        // Ein Element ist schreibbar, sobald der Container eine REFERENZ ist — genau wie ein
+        // class-Feld (ADR-020). 'let' haelt den Namen fest, nicht das Objekt dahinter.
+        //
+        // Vorher erbte der Index die Mutabilitaet des Containers, und das war wirkungslos:
+        // 'let ps = [P { … }]; ps[0].hp = 9;' ging immer durch, verboten war nur die direkte
+        // Element-Zuweisung. Eine Regel, die nichts schuetzt und dafuer 'T[]' anders behandelt
+        // als eine Klasse, kostet nur Erklaerungsaufwand — seit ADR-016 ist 'T[]' beides.
+        IndexExpr ix => _types.TypeOf(ix.Target) is ArrayOf or ErrorType,
         _ => false
     };
 

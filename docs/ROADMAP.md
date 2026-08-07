@@ -772,6 +772,45 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-020 — `let` bindet den Namen, nicht den Inhalt
+
+**Datum**: 2026-08-07. **Status**: Akzeptiert.
+
+**Entscheidung**: Bei einem Referenztyp verhindert `let` ausschließlich die **Neubindung des
+Namens**. Der Inhalt dahinter bleibt änderbar. `let xs = [1, 2]; xs[0] = 9;` ist damit gültig —
+bisher war es `LYR-SEM0019`. Die Zeile „Container muss mut sein" fällt aus `Sprache.md` §6.4.
+
+**Begründung**: Die alte Regel war nicht nur inkonsistent, sie war **wirkungslos**. Drei Fälle,
+gemessen:
+
+| Code | vorher |
+|---|---|
+| `let p = P { hp = 1 }; p.hp = 9;` | erlaubt |
+| `let xs = [1, 2]; xs[0] = 9;` | **`LYR-SEM0019`** |
+| `let ps = [P { hp = 1 }]; ps[0].hp = 9;` | erlaubt |
+
+Der dritte Fall entwertet den zweiten: über ein `let`-Array hindurch ließ sich der Inhalt eines
+Elements ändern. Verboten war genau die eine Operation, die man umgehen konnte, indem man ein
+Element mit einem Feld nahm. Eine Regel, die nichts schützt und dafür zwei Referenztypen
+verschieden behandelt, kostet nur Erklärungsaufwand.
+
+Seit **ADR-016** ist `T[]` ein echter Referenztyp wie eine Klasse — spätestens damit war die
+Sonderbehandlung nicht mehr begründbar. Java (`final`), C# (`readonly`) und JavaScript (`const`)
+machen es alle so: der Name ist fest, das Objekt nicht. **Rust ist die einzige Sprache, die
+Unveränderlichkeit bis in den Inhalt durchhält, und sie kann das nur wegen Ownership und
+Borrowing** — beides hat Lyric nicht und will es laut ADR-003 auch nicht.
+
+**Konsequenz**: `IsMutableLvalue` behandelt ein Array-Element wie ein Klassenfeld. `Indexable<T>`
+(M8/S5) bekommt einen gewöhnlichen `mut fn`-Setter, ohne eine Sonderregel nachbilden zu müssen —
+das war der Anlass, die Frage jetzt zu entscheiden statt sie ein drittes Mal zu vertagen.
+
+Was Lyric damit **nicht** hat: eine Möglichkeit, ein unveränderliches Array auszudrücken. Sie
+hat faktisch nie existiert (siehe Fall 3). Wer sie später will, braucht einen eigenen Typ
+(`Frozen<T>` o. ä.) und keine Bindungs-Annotation — das ist eine Bibliotheks-, keine
+Sprachfrage.
+
+---
+
 ### ADR-019 — `lyric` ist ein Dispatcher, kein zweiter Compiler
 
 **Datum**: 2026-08-06. **Status**: Akzeptiert. **Revidiert**: ADR-017 (In-Process-Ausführung).
