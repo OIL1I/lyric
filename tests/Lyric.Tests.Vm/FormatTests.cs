@@ -139,4 +139,38 @@ public class FormatTests
 
         Assert.Contains("Q9", panic.Message);
     }
+
+    // ------------------------------------------- schmale Skalare in einem f-String
+
+    /// <summary>
+    /// Jeder Ganzzahl- und Fliesskomma-Typ laesst sich interpolieren, nicht nur <c>int</c> und
+    /// <c>float</c>.
+    ///
+    /// <para><b>Vorher stuerzte der Compiler ab.</b> Die Wandler heissen <c>fromInt</c> und
+    /// <c>fromFloat</c> — Einzahl, weil Lyric kein Overloading hat (ADR-015) — und nehmen den
+    /// breitesten Typ. Das Lowering reichte den Wert ungewidert durch, und der IR-Verifier warf
+    /// „arg 0 is i8, expected i64" als InternalCompilationException mit Stack-Trace.</para>
+    ///
+    /// <para>Betroffen war <b>jeder</b> Typ ausser <c>int</c> und <c>float</c>. Gefunden nur, weil
+    /// <c>char</c> (ADR-022) zufaellig danebenlag — ohne diesen Zufall waere es liegengeblieben.
+    /// Deshalb steht hier eine Theory ueber alle Breiten und nicht ein Beispiel.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("int8", "-5", "-5")]
+    [InlineData("int8", "-128", "-128")]
+    [InlineData("int8", "127", "127")]
+    [InlineData("int16", "-32768", "-32768")]
+    [InlineData("int32", "70000", "70000")]
+    [InlineData("uint8", "255", "255")]
+    [InlineData("uint16", "300", "300")]
+    [InlineData("uint32", "4000000000", "4000000000")]
+    [InlineData("float32", "1.5", "1.5")]
+    public void A_narrow_scalar_interpolates(string type, string literal, string expected) =>
+        Assert.Equal(expected, Out($"let x: {type} = {literal}; println(f\"{{x}}\");").Trim());
+
+    [Fact]
+    public void A_narrow_scalar_takes_a_format_spec() =>
+        // Der zweite Weg: mit Spec geht es ueber std.fmt statt std.string. Zwei Pfade, derselbe
+        // Fehler — ohne diesen Test waere nur einer davon abgesichert.
+        Assert.Equal("-005", Out("let x: int8 = -5; println(f\"{x:D3}\");").Trim());
 }

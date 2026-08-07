@@ -3790,7 +3790,7 @@ internal sealed class FunctionLowerer
             _ => throw NotSupported("formatting a non-scalar value", expr.Span),
         };
 
-        return CallHelper(helper, expr.Span, value, specValue);
+        return CallHelper(helper, expr.Span, WidenForHelper(value, scalar.Kind, expr.Span), specValue);
     }
 
     /// <summary>Ein Loch im f-String als string. Strings bleiben, wie sie sind; alles andere geht
@@ -3808,10 +3808,48 @@ internal sealed class FunctionLowerer
             IrScalar.String => value,
             IrScalar.Bool => CallHelper("std.string.fromBool", expr.Span, value),
             IrScalar.Char => CallHelper("std.string.fromChar", expr.Span, value),
-            IrScalar.F32 or IrScalar.F64 => CallHelper("std.string.fromFloat", expr.Span, value),
-            _ when IsIntegerScalar(scalar.Kind) => CallHelper("std.string.fromInt", expr.Span, value),
+            IrScalar.F32 or IrScalar.F64 => CallHelper("std.string.fromFloat", expr.Span,
+                WidenForHelper(value, scalar.Kind, expr.Span)),
+            _ when IsIntegerScalar(scalar.Kind) => CallHelper("std.string.fromInt", expr.Span,
+                WidenForHelper(value, scalar.Kind, expr.Span)),
             _ => throw NotSupported($"interpolating a non-scalar value", expr.Span),
         };
+    }
+
+    /// <summary>
+    /// Verbreitert einen Skalar auf die Signatur seines Wandlers: Ganzzahlen auf <c>i64</c>,
+    /// <c>f32</c> auf <c>f64</c>.
+    ///
+    /// <para><b>Warum das noetig ist.</b> Die Wandler in <c>std.string</c> und <c>std.fmt</c>
+    /// heissen <c>fromInt</c> und <c>fromFloat</c> — Einzahl, weil Lyric kein Overloading hat
+    /// (ADR-015). Es gibt also genau <i>eine</i> Signatur je Sorte, und die nimmt den breitesten
+    /// Typ. Wer einen <c>int8</c> hineinreicht, muss ihn vorher verbreitern.</para>
+    ///
+    /// <para>Ohne diesen Schritt liess <c>f"{x}"</c> mit <c>x: int8</c> den Compiler im
+    /// IR-Verifier <b>abstuerzen</b> („arg 0 is i8, expected i64") — mit Stack-Trace statt
+    /// Diagnose, und das fuer jeden Typ ausser <c>int</c> und <c>float</c>. Gefunden beim Bau von
+    /// ADR-022, weil <c>char</c> zufaellig danebenlag.</para>
+    ///
+    /// <para><b>Bekannte Grenze</b>: ein <c>uint</c> jenseits von <c>int64.MaxValue</c> wird als
+    /// negative Zahl gedruckt — der Bitmuster-Cast nach <c>i64</c> deutet ihn um. Das ist kein
+    /// Absturz, sondern eine falsche Ausgabe, und der Fix waere ein eigener <c>fromUint</c>.</para>
+    /// </summary>
+    private TempId WidenForHelper(TempId value, IrScalar kind, Span span)
+    {
+        var widened = kind switch
+        {
+            IrScalar.F32 => IrScalar.F64,
+            _ when IsIntegerScalar(kind) => IrScalar.I64,
+            _ => kind,
+        };
+
+        if (widened == kind) return value;
+
+        var from = new IrScalarType(kind);
+        var to = new IrScalarType(widened);
+        var dest = _slots.NewTemp(to);
+        _b.Emit(new Lyric.Ir.Convert(dest, from, to, value, span));
+        return dest;
     }
 
     // ------------------------------------------------------------------ Helfer
