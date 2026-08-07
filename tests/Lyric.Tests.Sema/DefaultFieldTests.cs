@@ -128,3 +128,56 @@ public class InferenceDiagnosticTests
         Assert.DoesNotContain("LYR-SEM0060", diagnostics);
     }
 }
+
+/// <summary>
+/// Ein Fehler <b>in</b> einem Typ zählt als gemeldet — die Poison-Regel, eine Ebene tiefer.
+///
+/// <para>Bisher galt sie nur, wenn der Typ selbst <c>ErrorType</c> war. Ein
+/// <c>fn(int) -&gt; &lt;error&gt;</c> — außen intakt, innen kaputt — ging durch und erzeugte
+/// Folgemeldungen, die die eigentliche Ursache zudeckten.</para>
+///
+/// <para>Aufgefallen an einem Block-Lambda ohne Rückgabetyp-Annotation: <b>drei</b> Diagnosen für
+/// einen Fehler, und die einzige mit einem brauchbaren Hinweis (<c>LYR-SEM0046</c>, „add a return
+/// type annotation") stand unten.</para>
+/// </summary>
+public class DiagnosticNoiseTests
+{
+    private static string[] Codes(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de);
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        Semantics.Analyze(comp, comp.Resolve(), de);
+        return de.Diagnostics.Select(d => d.Code).ToArray();
+    }
+
+    private const string BlockLambda = """
+        pub fn anwenden<T, U>(v: T, f: fn(T) -> U): U { let g = f; return g(v); }
+        fn main(): int { let b = anwenden(3, (n: int) => { return n * 2; }); return 0; }
+        """;
+
+    [Fact]
+    public void A_block_lambda_without_annotation_reports_the_helpful_code() =>
+        Assert.Contains("LYR-SEM0046", Codes(BlockLambda));
+
+    [Fact]
+    public void It_does_not_also_complain_about_the_type_argument() =>
+        // LYR-SEM0060 wäre hier Rauschen: die Ursache steht in SEM0046, samt Anleitung.
+        Assert.DoesNotContain("LYR-SEM0060", Codes(BlockLambda));
+
+    [Fact]
+    public void It_does_not_also_complain_about_assignability() =>
+        // "cannot assign 'fn(int) -> <error>' to 'fn(int) -> U'" sagt dem Leser nichts.
+        Assert.DoesNotContain("LYR-SEM0001", Codes(BlockLambda));
+
+    [Fact]
+    public void The_annotated_form_compiles_cleanly() =>
+        // Die Gegenprobe: was die Meldung vorschlägt, muss auch funktionieren — sonst wäre der
+        // Hinweis falsch, und das ist schlimmer als kein Hinweis.
+        Assert.Empty(Codes("""
+            pub fn anwenden<T, U>(v: T, f: fn(T) -> U): U { let g = f; return g(v); }
+            fn main(): int { return anwenden(3, (n: int): int => { return n * 2; }); }
+            """));
+}

@@ -1277,7 +1277,7 @@ public sealed class TypeChecker
             //
             // Nicht melden, wenn ohnehin schon ein Argument fehlerhaft war: dann ist die Ursache
             // gemeldet, und eine zweite Zeile ueber ein Typargument waere Folgerauschen.
-            if (!argTypes.Any(t => t.IsError))
+            if (!argTypes.Any(ContainsError))
                 foreach (var generic in fsym.Generics)
                     if (!map.ContainsKey(generic))
                         _de.Report("LYR-SEM0060", Severity.Error, call.Span,
@@ -1537,6 +1537,30 @@ public sealed class TypeChecker
             return;
         }
     }
+
+    /// <summary>
+    /// Steckt irgendwo in diesem Typ ein <see cref="ErrorType"/>?
+    /// </summary>
+    /// <remarks>
+    /// <para><c>IsError</c> allein reicht nicht: ein Block-Lambda ohne Rueckgabetyp-Annotation hat
+    /// den Typ <c>fn(int) -&gt; &lt;error&gt;</c> — aussen intakt, innen kaputt. Die Ursache ist
+    /// bereits gemeldet (<c>LYR-SEM0046</c>, mit dem Hinweis, die Annotation zu schreiben), und
+    /// eine zweite Zeile ueber ein nicht inferierbares Typargument haette sie zugedeckt.</para>
+    /// <para>Gefunden, weil genau das passierte: drei Meldungen fuer einen Fehler, und die
+    /// einzige hilfreiche stand unten.</para>
+    /// </remarks>
+    private static bool ContainsError(LyrType type) => type switch
+    {
+        ErrorType => true,
+        Optional o => ContainsError(o.Inner),
+        ArrayOf a => ContainsError(a.Element),
+        TupleOf t => t.Elements.Any(ContainsError),
+        FnType f => f.Parameters.Any(ContainsError) || ContainsError(f.Return),
+        GenericInstance g => g.Arguments.Any(ContainsError),
+        RangeOf r => ContainsError(r.Element),
+        CoroutineOf c => ContainsError(c.Yield),
+        _ => false,
+    };
 
     private void CheckConstraints(GenericParamSymbol[] generics, LyrType[] args, Span span)
     {
@@ -2678,6 +2702,12 @@ public sealed class TypeChecker
 
     private void CheckAssignable(Expr expr, LyrType from, LyrType to, Span span)
     {
+        // Ein Fehler IN einem der Typen heisst: die Ursache ist gemeldet (Poison-Regel). Bisher
+        // galt das nur, wenn der Typ SELBST ErrorType war — ein 'fn(int) -> <error>' ging durch
+        // und erzeugte "cannot assign 'fn(int) -> <error>' to 'fn(int) -> U'", eine Zeile, die
+        // dem Leser nichts sagt und die eigentliche Meldung daneben zudeckt.
+        if (ContainsError(from) || ContainsError(to)) return;
+
         if (!IsAssignable(expr, from, to))
         {
             _de.Report("LYR-SEM0001", Severity.Error, span, $"cannot assign '{TypeFacts.Display(from)}' to '{TypeFacts.Display(to)}'");
