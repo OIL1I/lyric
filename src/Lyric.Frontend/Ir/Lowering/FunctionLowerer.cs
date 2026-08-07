@@ -1976,7 +1976,10 @@ internal sealed class FunctionLowerer
 
         if (expr.Operator is null)
         {
-            var assigned = LowerExpr(expr.Value);
+            // Ueber den ERWARTETEN Typ, nicht nackt: sonst hat 'xs[i] = null' auf einem
+            // '(?T)[]' keinen Zieltyp, an dem 'null' seine Form faende — und ein 'T' in einem
+            // '?T'-Slot bliebe unverpackt. Dieselbe Regel wie bei 'stloc' in LowerAssign.
+            var assigned = LowerExprAs(expr.Value, element);
             _b.Emit(new StoreElem(array, index, assigned, expr.Span));
             return assigned;
         }

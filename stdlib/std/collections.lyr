@@ -16,6 +16,11 @@ import std.iter { Iterator };
 // Inhalt; ein Container hinter einer `let`-Bindung ist deshalb schreibbar, genau wie ein
 // Klassenfeld. Vor ADR-020 hätte dieses Interface eine Sonderregel nachbilden müssen, die noch
 // dazu wirkungslos war — das war der Anlass, die Frage vorher zu entscheiden.
+//
+// **`get` und `set` sind O(1).** Das ist eine Zusicherung, keine Beschreibung: eine
+// Implementierung mit O(n)-Zugriff — etwa eine verkettete Liste — darf dieses Interface *nicht*
+// erfüllen. Sonst würde `for (var i = 0; i < n; i++) xs[i]` quadratisch, ohne dass man es der
+// Schleife ansieht. Aus demselben Grund hat `string` keinen Indexoperator (§4).
 pub interface Indexable<T> {
     fn get(index: int): T;
     mut fn set(index: int, value: T): void;
@@ -26,30 +31,53 @@ pub interface Indexable<T> {
 // **Sie ist in Lyric geschrieben, nicht nativ.** Die ROADMAP sah einen Hook auf
 // `System.Collections.Generic.List<>` vor; dagegen sprechen zwei Dinge. Erstens sind Natives
 // monomorph registriert — ein generischer bräuchte eine eigene Marshalling-Schicht, und die
-// gehört zu M10, nicht hierher. Zweitens ist eine Stdlib, die ihre eigenen Container nicht
-// ausdrücken kann, ein schlechtes Zeichen für die Sprache; dass es geht, ist die interessantere
-// Aussage als ein paar Nanosekunden.
+// gehört zu M10. Zweitens ist eine Stdlib, die ihre eigenen Container nicht ausdrücken kann, ein
+// schlechtes Zeichen für die Sprache.
 //
-// **Das Wachsen kommt ohne `newArray<T>(n)` aus** — das gibt es nicht, weil ein `T[]` der Länge
-// n auch n Werte vom Typ T bräuchte und Lyric kein `default(T)` hat. Stattdessen verdoppelt
-// `data = data + data`: was jenseits von `count` steht, wird nie gelesen, also ist sein Inhalt
-// egal. Amortisiert O(1).
+// **Das Backing ist `(?T)[]` und nicht `T[]`.** Der Grund ist nicht Bequemlichkeit, sondern dass
+// ein Slot **leerbar** sein muss: `pop` gibt seinen Wert wirklich frei, statt ihn nur hinter
+// `count` verschwinden zu lassen. Ohne das hielte die Liste jedes je eingefügte Objekt am Leben,
+// und ein `get` daneben läse es sogar zurück. Nebenbei löst es das Erzeugungsproblem — ein `T[]`
+// der Länge n bräuchte n Werte vom Typ T, und Lyric hat kein `default(T)`; für `?T` gibt es
+// einen, nämlich `null`.
+//
+// **Wachsen verdoppelt, Schrumpfen halbiert bei einem Viertel.** Verdoppeln macht `push`
+// amortisiert O(1) — exaktes Wachsen (`data + [v]`) wäre O(n) pro Aufruf und damit quadratisch
+// über die Liste; gemessen bei 50 000 Elementen Faktor 8,6. Die Schrumpf-Schwelle liegt bei
+// einem Viertel und nicht bei der Hälfte, damit eine Liste, die um die Grenze pendelt, nicht bei
+// jedem `push`/`pop` umkopiert.
 pub class List<T> :: [Indexable<T>] {
-    data: T[],
+    data: (?T)[],
     count: int,
 
     pub fn length(): int {
         return this.count;
     }
 
+    // Wie viele Slots belegt sind — inklusive der leeren. Nur für Tests und für den, der wissen
+    // will, was die Liste kostet; für alles andere ist `length` die Wahrheit.
+    pub fn capacity(): int {
+        return this.data.length;
+    }
+
+    mut fn resize(target: int): void {
+        let hole: ?T = null;
+        let moved = [hole] * target;
+
+        var i = 0;
+        while (i < this.count) {
+            moved[i] = this.data[i];
+            i = i + 1;
+        }
+        this.data = moved;
+    }
+
     pub mut fn push(value: T): void {
         if (this.count >= this.data.length) {
-            // Der erste Wert legt das Array an — vorher gibt es keinen, mit dem sich eines
-            // füllen ließe.
             if (this.data.length == 0) {
-                this.data = [value];
+                this.resize(4);
             } else {
-                this.data = this.data + this.data;
+                this.resize(this.data.length * 2);
             }
         }
         this.data[this.count] = value;
@@ -57,22 +85,46 @@ pub class List<T> :: [Indexable<T>] {
     }
 
     // Der letzte Wert, oder `null` bei leerer Liste. Kein `panic`: eine leere Liste ist ein
-    // gewöhnlicher Zustand und keine Programmierfehler — anders als ein Index daneben.
+    // gewöhnlicher Zustand und kein Programmierfehler — anders als ein Index daneben.
+    //
+    // Der Slot wird **geleert**, nicht nur übersprungen. Sonst hielte die Liste das Objekt am
+    // Leben, und ein `get` an dieser Stelle läse es zurück, obwohl es entfernt ist.
     pub mut fn pop(): ?T {
         if (this.count == 0) {
             return null;
         }
+
         this.count = this.count - 1;
-        return this.data[this.count];
+        let value = this.data[this.count];
+        this.data[this.count] = null;
+
+        // Unter einem Viertel: halbieren. Vier Slots bleiben immer stehen — darunter lohnt das
+        // Umkopieren nicht und der Gewinn wären ein paar Dutzend Byte.
+        if (this.data.length > 4 && this.count * 4 < this.data.length) {
+            this.resize(this.data.length / 2);
+        }
+        return value;
     }
 
     // Ein Index außerhalb ist ein `panic` (§9), wie bei einem Array: er ist ein Programmierfehler
     // und kein Zustand, über den man sich verständigt.
+    //
+    // Geprüft wird gegen `count`, **nicht** gegen `data.length` — dahinter stehen leere Slots aus
+    // dem Verdoppeln, die niemanden etwas angehen. Genau das war der Fehler der ersten Fassung:
+    // sie verließ sich auf die Array-Grenze und gab Reste zurück.
     pub fn get(index: int): T {
-        return this.data[index];
+        if (index < 0 || index >= this.count) {
+            panic("list index out of range");
+        }
+        // Kann nie fehlschlagen: innerhalb von `count` steht immer ein Wert. Der Beweis ist die
+        // Prüfung darüber — dieselbe Arbeitsteilung wie beim Flow-Narrowing.
+        return this.data[index]!;
     }
 
     pub mut fn set(index: int, value: T): void {
+        if (index < 0 || index >= this.count) {
+            panic("list index out of range");
+        }
         this.data[index] = value;
     }
 }
@@ -81,7 +133,8 @@ pub class List<T> :: [Indexable<T>] {
 // einer generischen Instanz (`List<int>.empty()`) nicht ausdrückbar ist — die Typargumente gibt
 // es nur am Funktions-Aufruf.
 pub fn emptyList<T>(): List<T> {
-    return List<T> { data = [], count = 0 };
+    let hole: ?T = null;
+    return List<T> { data = [hole] * 0, count = 0 };
 }
 
 // Läuft über eine Liste. Wie `ArrayIterator` hält er seinen Index selbst, damit zwei Schleifen
