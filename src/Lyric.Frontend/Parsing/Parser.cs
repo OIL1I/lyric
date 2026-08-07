@@ -154,6 +154,68 @@ public sealed partial class Parser
         return ParsePostfix(ParsePrimary());
     }
 
+    /// <summary>
+    /// Sind das Typargumente eines Aufrufs — <c>f&lt;int&gt;(…)</c> — oder eine Vergleichskette
+    /// <c>(f &lt; int) &gt; (…)</c>?
+    ///
+    /// <para><b>Ein reiner Token-Scan, kein spekulatives Parsen.</b> Der Unterschied ist
+    /// wichtig: <see cref="ParseType"/> meldet Diagnosen, und eine Vermutung, die sich als
+    /// falsch herausstellt, darf keine Fehlermeldung hinterlassen. Der Scan hier kann nichts
+    /// melden — er zaehlt nur Klammern und prueft, was hinter dem schliessenden <c>&gt;</c>
+    /// steht.</para>
+    ///
+    /// <para>Die Regel: es sind Typargumente, wenn zwischen <c>&lt;</c> und dem passenden
+    /// <c>&gt;</c> ausschliesslich Tokens stehen, die in einem Typausdruck vorkommen koennen,
+    /// und unmittelbar danach ein <c>(</c> folgt. C# entscheidet nach demselben Prinzip; Rust
+    /// umgeht die Frage mit dem Turbofish <c>::&lt;&gt;</c>.</para>
+    ///
+    /// <para>Bewusst konservativ: im Zweifel ist es ein Vergleich. Ein falsch erkannter Vergleich
+    /// gibt eine verstaendliche Typfehlermeldung, eine falsch erkannte Typargumentliste einen
+    /// Parser-Fehler an einer Stelle, an der der Nutzer nichts vermutet.</para>
+    /// </summary>
+    private bool LooksLikeCallTypeArguments()
+    {
+        var depth = 0;
+
+        for (var offset = 0; ; offset++)
+        {
+            switch (_buffer.Peek(offset).TokenKind)
+            {
+                case TokenKind.Less:
+                    depth++;
+                    break;
+
+                case TokenKind.Greater:
+                    depth--;
+                    // Geschlossen: jetzt entscheidet das naechste Token allein.
+                    if (depth == 0) return _buffer.Peek(offset + 1).TokenKind == TokenKind.LParen;
+                    break;
+
+                // Was in einem Typausdruck vorkommen darf (Sprache.md §4): benannte Typen mit
+                // Pfad, Arrays, Optionals, Funktionstypen, Tupel.
+                case TokenKind.Identifier:
+                case TokenKind.Comma:
+                case TokenKind.Dot:
+                case TokenKind.LBracket:
+                case TokenKind.RBracket:
+                case TokenKind.Question:
+                case TokenKind.Arrow:
+                case TokenKind.Fn:
+                case TokenKind.LParen:
+                case TokenKind.RParen:
+                    break;
+
+                // Alles andere kann kein Typ sein — also war das '<' ein Vergleich.
+                default:
+                    return false;
+            }
+
+            // Eine Typargumentliste ist kurz. Die Grenze verhindert, dass ein '<' irgendwo im
+            // Quelltext den halben Puffer absucht, bevor es aufgibt.
+            if (offset > 64) return false;
+        }
+    }
+
     private Expr ParsePostfix(Expr operand)
     {
         while (true)
@@ -186,6 +248,22 @@ public sealed partial class Parser
                     operand = new IndexExpr(operand, index, Span.Union(operand.Span, close.Span));
                     break;
                 }
+                // 'f<int>()' — explizite Typargumente an einer Aufrufstelle. Gebraucht, wenn die
+                // Argumente nichts hergeben: eine Fabrik 'empty<T>(): List<T>' hat keine, und
+                // ohne sie ist sie nicht aufrufbar.
+                case TokenKind.Less when LooksLikeCallTypeArguments():
+                {
+                    var typeArguments = ParseTypeArguments(out _);
+                    _buffer.Expect(TokenKind.LParen, "LYR-PAR0008",
+                        "expected '(' after type arguments");
+                    var typedArgs = ParseArguments();
+                    var typedClose = _buffer.Expect(TokenKind.RParen, "LYR-PAR0008",
+                        "expected ')' to close call");
+                    operand = new CallExpr(operand, typedArgs,
+                        Span.Union(operand.Span, typedClose.Span), typeArguments);
+                    break;
+                }
+
                 case TokenKind.LParen:
                 {
                     _buffer.Advance();

@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1637 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1647 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -52,6 +52,31 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **Explizite Typargumente am Aufruf: `f<int>()`.** Vorbedingung fuer S5, aufgefallen beim
+  Bau von `List<T>`. 1647 Tests gruen.
+  - **Generics liessen sich ausschliesslich ueber Argument-Inferenz instanziieren.** Eine Fabrik
+    `empty<T>(): List<T>` hat keine Argumente, aus denen sich `T` ziehen liesse — sie war
+    schlicht **nicht aufrufbar**, und damit war `std.collections` unbaubar. Dieselbe Luecke steht
+    seit M4 als `Opt<int>.Some(5)` in dieser Datei.
+  - **Die Disambiguierung ist ein reiner Token-Scan**, kein spekulatives Parsen: `ParseType`
+    meldet Diagnosen, und eine verworfene Vermutung darf keine Fehlermeldung hinterlassen. Der
+    Scan zaehlt Klammern und prueft, ob hinter dem `>` ein `(` folgt; im Zweifel ist es ein
+    Vergleich. C# entscheidet nach demselben Prinzip, Rust umgeht die Frage mit `::<>`.
+  - **Geschriebenes gewinnt gegen Inferenz**: `id<int>("x")` ist ein Typfehler und wird nicht
+    still zu `id<string>`. Constraints gelten auch fuer geschriebene Argumente — sonst waere die
+    explizite Form ein Weg, sie zu umgehen.
+
+- [x] **Bug: eine generische Funktion konnte keinen generischen Typ zurueckgeben.**
+  `fn make<T>(x: T): Box<T>` war nicht lowerbar — **auch mit Inferenz nicht**, also unabhaengig
+  vom Punkt darueber. Auf dem letzten Commit gegengeprueft.
+  - `LowerSubstituted` war eine **Teilkopie** der Typ-Aufloesung: erst nur der nackte Fall
+    (`fn get(): T`), dann `?T` nachgezogen, dann `T[]` — und `Box<T>` fehlte immer noch. **Zum
+    dritten Mal dieselbe Ursache**: zwei Stellen, die dieselbe Frage beantworten, driften
+    auseinander. Der Kommentar ueber der Methode beschrieb die vorigen zwei Runden bereits.
+  - Jetzt schiebt der `FunctionLowerer` seine Substitution auf den Stack der **Typtabelle** —
+    dieselbe, die sie beim Lowern der Member einer generischen Instanz benutzt. Eine Wahrheit
+    statt zwei; die Sonderfaelle sind ersatzlos entfallen.
+
 - [x] **ADR-020 — `let` bindet den Namen, nicht den Inhalt.** Die Frage stand seit P2 offen und
   waere mit `Indexable<T>` zum zweiten Mal faellig geworden; entschieden vor S5, nicht darin.
   - **Die alte Regel war nicht nur inkonsistent, sie war wirkungslos.** `let xs[0] = 9` war
@@ -68,25 +93,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
   - Was Lyric damit **nicht** hat: eine Moeglichkeit, ein unveraenderliches Array auszudruecken.
     Sie hat faktisch nie existiert. Wer sie will, braucht einen eigenen Typ und keine
     Bindungs-Annotation — Bibliotheks-, nicht Sprachfrage.
-
-- [x] **Sweep ueber die Merge-Bloecke** — 15 Konstrukte durchgemessen, bei denen alle Zweige
-  terminieren. **13 waren sauber**, zwei nicht, und der schwerere Fund hatte mit Merge-Bloecken
-  gar nichts zu tun.
-  - **`defer` neben einem `return` in einem Zweig liess den Compiler abstuerzen.** Das Lowern
-    eines defer-Rumpfes betritt einen Scope und pusht dabei auf genau den Stack, ueber den
-    `EmitAllPendingDefers` gerade iteriert — .NET wirft „Collection was modified" mitten im
-    Compiler. Behoben (Iteration ueber eine Kopie), mit einem zweiten Test, der die
-    LIFO-Reihenfolge festhaelt: eine Kopie in der falschen Richtung waere sonst unbemerkt
-    geblieben. **Die alltaeglichste Form ueberhaupt, und kein Test hatte beides zusammen** —
-    obwohl P5 „defer an jedem Ausgang" ausdruecklich liefert.
-  - **`do { return … } while (…)` bleibt offen** (siehe „Noch offen"). Der Fix braucht einen
-    Umbau, und die Form ist tot: eine Schleife, deren Rumpf immer terminiert, schleift nie.
-    Verglichen mit `try/catch` — sehr haeufig, deshalb in S4 sofort behoben — ist das eine
-    andere Groessenordnung.
-  - **`if/else` machte es laengst richtig** und war die Vorlage fuer den try/catch-Fix: erst
-    pruefen, ob ueberhaupt jemand durchfaellt, dann den Block anlegen. `while`, `for-in`,
-    `match`, if-Ausdruck, `&&`/`||`, `??`, `?.`, verschachteltes `try`, Coroutinen und
-    `panic` in beiden Zweigen sind alle sauber.
 
 ## Messungen
 
@@ -123,9 +129,12 @@ steht weiter aus.
 **M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`), S3 (`std.fmt`) und S4 (`Throwable`)
 stehen. Als naechstes **S5 — `std.collections`** mit `List<T>`, `Map<K,V>`, `Set<T>`.
 
-**Die Mutabilitaets-Frage ist entschieden** (ADR-020): `let` bindet den Namen, nicht den Inhalt.
-`Indexable<T>` bekommt damit einen gewoehnlichen `mut fn`-Setter, ohne eine Sonderregel
-nachbilden zu muessen.
+**S5 kann jetzt starten.** Die beiden Vorbedingungen stehen: `let` bindet den Namen (ADR-020),
+und generische Fabriken sind aufrufbar (`empty<int>()`). Gemessen ist auch, dass `List<T>` ohne
+`newArray<T>(n)` auskommt — `data = data + data` verdoppelt, und was jenseits von `count` steht,
+wird nie gelesen. Amortisiert O(1), reines Lyric, kein Native.
+
+Offen bleibt `Indexable<T>`: `[i]` auf einem Nutzertyp ist heute `LYR-SEM0007`.
 
 Danach **S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math` — daran haengt
 `shapes.lyr`), **S8** (Gate: `wc`-Klon).
@@ -146,8 +155,9 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
   Wert-Position" erlaubt — die Mehrdeutigkeits-Sperre gilt dem *Anfang* eines `ExprStmt`, greift
   aber auf die ganze Zuweisung durch. *(Bekannt seit P3 — und am 2026-08-07 beim Schreiben einer
   Messprobe erneut hineingelaufen, ohne ihn wiederzuerkennen. Er kostet real Zeit.)*
-- **Generics-Rest aus M4**: Constraints mit eigenen Typ-Args über die Grenze substituieren;
-  `Opt.Some(5)` typt ohne Instanz-Inferenz, `Opt<int>.Some(…)` ist per TypePath nicht ausdrückbar.
+- **Generics-Rest aus M4**: Constraints mit eigenen Typ-Args über die Grenze substituieren.
+  `Opt<int>.Some(5)` bleibt offen — eine *statische Methode* auf einer generischen Instanz ist
+  weiterhin `LYR-SEM0052`; explizite Typargumente gibt es nur an Funktions-Aufrufen.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
 - **`char as int` ist kein erlaubter Cast** (`LYR-SEM0006`). Beim Schreiben der S2-Tests
   aufgefallen. Ob das gewollt ist, sagt §6.5 nicht eindeutig — ungeprüft gelassen, weil eine
@@ -219,7 +229,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`sema: ADR-020 - let bindet den Namen, nicht den Inhalt`
+`sema: explizite Typargumente am Aufruf (f<int>())`
 
 ---
 

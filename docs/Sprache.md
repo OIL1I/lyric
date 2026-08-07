@@ -566,6 +566,16 @@ Sema-Regeln (Auswahl):
 | # | Operatoren | Assoz. |
 |---|---|---|
 | 1 | Postfix `.` `?.` `[ ]` `( )` `++` `--` `!` (unwrap) | links |
+
+**Explizite Typargumente an einem Aufruf** (`f<int>()`) sind seit 2026-08-07 gültig. Gebraucht
+werden sie, wo die Argumente nichts hergeben: eine Fabrik `empty<T>(): List<T>` hat keine, und
+ohne sie wäre sie nicht aufrufbar. *(Bis dahin stand hier „es gibt kein `f<T>(x)`" — die
+Einschränkung machte `std.collections` unbaubar.)*
+
+`f<a>(b)` ist mehrdeutig mit der Vergleichskette `(f < a) > (b)`. Es sind Typargumente, wenn
+zwischen `<` und dem passenden `>` **ausschließlich** Tokens stehen, die in einem Typausdruck
+vorkommen können, und unmittelbar danach ein `(` folgt. Im Zweifel ist es ein Vergleich — C#
+entscheidet nach demselben Prinzip, Rust umgeht die Frage mit `::<>`.
 | 2 | Prefix `!` (logical not) `-` `~` `++` `--` `resume` | rechts |
 | 3 | `as` | links |
 | 4 | `*` `/` `%` | links |
@@ -612,7 +622,11 @@ ResumeExpr      = 'resume' UnaryExpr .   (* Präfix-Ebene (§6.1 Level 2, await-
 StructInit      = TypePath '{' [ StructInitField { ',' StructInitField } [ ',' ] ] '}' .  (* nicht am ExprStmt-Anfang erkannt (mehrdeutig mit Block); in jeder Wert-Position erlaubt *)
 StructInitField = IDENTIFIER '=' Expr .                              (* '=' für Werte, ':' nur für Typen *)
 
-TypePath        = ModulePath [ '<' TypeExpr { ',' TypeExpr } '>' ] . (* Typ-Referenz in Wert-/Pattern-Position: Stack<int>, game.Enemy. Generische Typen brauchen explizite Argumente (keine Feld-Inferenz); generische FUNKTIONEN dagegen inferieren aus den Argumenten — es gibt kein f<T>(x) (Turbofish) *)
+TypePath        = ModulePath [ '<' TypeExpr { ',' TypeExpr } '>' ] . (* Typ-Referenz in Wert-/Pattern-Position: Stack<int>, game.Enemy. Generische Typen brauchen explizite Argumente — keine Feld-Inferenz *)
+
+CallArgs        = [ '<' TypeExpr { ',' TypeExpr } '>' ] '(' [ Expr { ',' Expr } ] ')' .
+                  (* Typargumente sind optional: ohne sie inferiert die Sema aus den Argumenten.
+                     Geschriebene gewinnen — 'id<int>("x")' ist ein Typfehler, kein 'id<string>'. *)
 
 ArrayLit        = '[' [ Expr { ',' Expr } [ ',' ] ] ']' .
 TupleLit        = '(' Expr ',' Expr { ',' Expr } ')' .

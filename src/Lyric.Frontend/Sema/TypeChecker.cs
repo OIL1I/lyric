@@ -1105,6 +1105,33 @@ public sealed class TypeChecker
         if (fsym is { Generics.Length: > 0 })
         {
             map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
+
+            // Explizit geschriebene Typargumente ('f<int>()') binden VORAB. Die Inferenz laeuft
+            // danach unveraendert weiter und fuellt nur, was noch offen ist — 'UnifyInfer'
+            // benutzt 'TryAdd' und ueberschreibt deshalb nichts. Damit gewinnt das Geschriebene
+            // immer, und ein 'id<int>("x")' wird ein Typfehler statt still zu 'id<string>'.
+            //
+            // Gebraucht werden sie, wo die Argumente nichts hergeben: eine Fabrik
+            // 'empty<T>(): List<T>' hat keine, und ohne diesen Weg ist sie nicht aufrufbar.
+            if (call.TypeArguments is { Length: > 0 } written)
+            {
+                if (written.Length != fsym.Generics.Length)
+                    _de.Report("LYR-SEM0026", Severity.Error, call.Span,
+                        $"generic function '{fsym.Name}' expects {fsym.Generics.Length} type "
+                        + $"argument(s), got {written.Length}");
+
+                var explicitArgs = new LyrType[Math.Min(written.Length, fsym.Generics.Length)];
+                for (var i = 0; i < explicitArgs.Length; i++)
+                {
+                    explicitArgs[i] = ResolveType(written[i], scope);
+                    map[fsym.Generics[i]] = explicitArgs[i];
+                }
+
+                // Constraints gelten auch fuer geschriebene Argumente — sonst waere die explizite
+                // Form ein Weg, sie zu umgehen.
+                CheckConstraints(fsym.Generics, explicitArgs, call.Span);
+            }
+
             var n = Math.Min(fn.Parameters.Length, args.Length);
             for (var i = 0; i < n; i++)
                 if (args[i] is not LambdaExpr) UnifyInfer(fn.Parameters[i], argTypes[i], map);

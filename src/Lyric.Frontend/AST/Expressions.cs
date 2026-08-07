@@ -47,7 +47,11 @@ public sealed record RangeExpr(Expr Low, Expr High, bool IsInclusive, Span Span)
 public sealed record CastExpr(Expr Operand, TypeNode Type, Span Span) : Expr(Span);
 
 // --- Postfix-erzeugte Knoten ---
-public sealed record CallExpr(Expr Callee, Expr[] Arguments, Span Span) : Expr(Span);
+/// <param name="TypeArguments">Explizit geschriebene Typargumente: <c>f&lt;int&gt;()</c>. Leer,
+/// wenn keine dastanden — dann inferiert die Sema aus den Argumenten. Gebraucht werden sie, wenn
+/// die Argumente nichts hergeben: eine Fabrik <c>empty&lt;T&gt;(): List&lt;T&gt;</c> hat keine.</param>
+public sealed record CallExpr(Expr Callee, Expr[] Arguments, Span Span,
+    TypeNode[]? TypeArguments = null) : Expr(Span);
 public sealed record IndexExpr(Expr Target, Expr Index, Span Span) : Expr(Span);
 public sealed record MemberExpr(Expr Target, string Member, bool IsOptional, Span Span) : Expr(Span); // IsOptional: '?.' statt '.'
 

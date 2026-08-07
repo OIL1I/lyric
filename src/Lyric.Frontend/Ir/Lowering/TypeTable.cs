@@ -713,6 +713,26 @@ internal sealed class TypeTable
         };
     }
 
+    /// <summary>
+    /// Legt eine Substitution fuer die Dauer des zurueckgegebenen Scopes auf den Stack — dieselbe,
+    /// die <see cref="Intern"/> beim Lowern der Member einer generischen Instanz benutzt.
+    ///
+    /// <para>Gebraucht vom <see cref="FunctionLowerer"/>: eine monomorphisierte <b>Funktion</b>
+    /// (nicht Methode) kennt ihre Typargumente, aber die Typtabelle erfaehrt davon sonst nichts.
+    /// Ohne das war <c>fn make&lt;T&gt;(x: T): Box&lt;T&gt;</c> nicht lowerbar — der Rueckgabetyp
+    /// wurde ohne Substitution aufgeloest, und <c>T</c> fand nichts.</para>
+    /// </summary>
+    public IDisposable PushSubstitution(IReadOnlyDictionary<string, LyrType> mapping)
+    {
+        _substitutions.Push(mapping);
+        return new SubstitutionScope(this);
+    }
+
+    private sealed class SubstitutionScope(TypeTable owner) : IDisposable
+    {
+        public void Dispose() => owner._substitutions.Pop();
+    }
+
     private LyrType Resolve(TypeNode node, Core.Span span)
     {
         if (node is NamedType { TypeArguments.Length: 0 } named)
@@ -726,6 +746,22 @@ internal sealed class TypeTable
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
             if (bound is TypeSymbol symbol) return new NamedRef(symbol);
+        }
+
+        // Ein generischer Typ als Typargument oder Rueckgabetyp: 'fn empty<T>(): List<T>'. Die
+        // Argumente laufen durch dieselbe Aufloesung, also greift die Substitution auch in der
+        // Tiefe — aus 'List<T>' wird in der Instanz 'List<int>'.
+        //
+        // Ohne diesen Fall war eine generische Funktion, die einen generischen Typ LIEFERT, nicht
+        // lowerbar. Das fiel nie auf, weil sie ohne explizite Typargumente ohnehin nicht
+        // aufrufbar war: die Inferenz braucht ein Argument, aus dem sie T ziehen kann.
+        if (node is NamedType { TypeArguments.Length: > 0 } generic)
+        {
+            var definition = _binding.Resolve(generic);
+            if (definition is ImportBindingSymbol imported) definition = imported.Target;
+            if (definition is TypeSymbol generictype)
+                return new GenericInstance(generictype,
+                    generic.TypeArguments.Select(argument => Resolve(argument, span)).ToArray());
         }
 
         if (node is ArrayType { Size: null } array) return new ArrayOf(Resolve(array.Element, span), null);

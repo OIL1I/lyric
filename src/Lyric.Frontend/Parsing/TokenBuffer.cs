@@ -44,6 +44,12 @@ namespace Lyric.Parsing
         /// <summary>Aktueller Lese-Index. Für Fortschritts-Guards in Recovery-Schleifen.</summary>
         public int Position => _pos;
 
+        /// <summary>Setzt den Lesekopf zurueck. Gebraucht fuer die Disambiguierung von
+        /// <c>f&lt;int&gt;()</c> gegen <c>(f &lt; int) &gt; (…)</c>: erst spekulativ die
+        /// Typargumente lesen, und wenn danach kein <c>(</c> steht, war es doch ein
+        /// Vergleich.</summary>
+        public void Rewind(int position) => _pos = position;
+
         public Token Advance()
         {
             var c = Current;

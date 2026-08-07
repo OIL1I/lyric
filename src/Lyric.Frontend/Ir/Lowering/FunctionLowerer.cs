@@ -3922,15 +3922,27 @@ internal sealed class FunctionLowerer
     /// </summary>
     private IrType LowerSubstituted(TypeNode node)
     {
-        if (node is NamedType { TypeArguments.Length: 0 } named)
-            foreach (var (parameter, bound) in _substitution)
-                if (parameter.Name == named.Path[^1])
-                    return LowerType(bound, node.Span);
-
-        if (node is NullableType option) return new IrOptionalType(LowerSubstituted(option.Inner));
-        if (node is ArrayType { Size: null } array) return new IrArrayType(LowerSubstituted(array.Element));
-
+        // Die Substitution geht an die TYPTABELLE, statt hier eine zweite Auflegung nachzubauen.
+        //
+        // Vorher stand hier eine Teilkopie: erst nur der nackte Fall ('fn get(): T'), dann '?T'
+        // nachgezogen, dann 'T[]' — und 'Box<T>' fehlte immer noch, womit eine generische
+        // Funktion, die einen generischen Typ LIEFERT, gar nicht lowerbar war. Dreimal dieselbe
+        // Ursache: zwei Stellen, die dieselbe Frage beantworten, driften auseinander.
+        //
+        // Die Tabelle kann es vollstaendig — sie benutzt denselben Stack beim Lowern der Member
+        // einer generischen Instanz. Sie musste nur erfahren, dass hier eine Substitution gilt.
+        using var scope = _typeTable.PushSubstitution(NamedSubstitution());
         return _typeTable.Lower(node);
+    }
+
+    /// <summary>Die Substitution dieser Instanz mit Namen als Schluessel — die Form, in der die
+    /// Typtabelle sie fuehrt. Sie kennt keine <see cref="GenericParamSymbol"/>e, weil sie
+    /// geschriebene Typen aufloest und dort nur Namen stehen.</summary>
+    private Dictionary<string, LyrType> NamedSubstitution()
+    {
+        var mapping = new Dictionary<string, LyrType>(StringComparer.Ordinal);
+        foreach (var (parameter, bound) in _substitution) mapping[parameter.Name] = bound;
+        return mapping;
     }
 
     /// <summary>Scope-Grenze: gültiges Lyric, für das der Backend-Teil noch fehlt. Wird von
