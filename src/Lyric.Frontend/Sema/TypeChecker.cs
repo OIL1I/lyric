@@ -680,8 +680,12 @@ public sealed class TypeChecker
             _narrowed = snapshot;
         }
 
-        if (Flow.AlwaysReturns(f.Then, _result)) Apply(elseFacts);
-        else if (f.Else is not null && Flow.AlwaysReturns(f.Else, _result)) Apply(thenFacts);
+        // 'AlwaysExits' und nicht 'AlwaysReturns': fuer das Narrowing zaehlt, ob der Code nach
+        // dem 'if' ueberhaupt erreicht wird — und 'continue' verlaesst den Block genauso wie
+        // 'return'. Die andere Funktion beantwortet "fehlt ein return", und dort waere
+        // 'continue' die falsche Antwort.
+        if (Flow.AlwaysExits(f.Then, _result)) Apply(elseFacts);
+        else if (f.Else is not null && Flow.AlwaysExits(f.Else, _result)) Apply(thenFacts);
     }
 
     /// <summary>

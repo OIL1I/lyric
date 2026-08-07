@@ -27,6 +27,33 @@ internal static class Flow
         _ => false
     };
 
+    /// <summary>
+    /// Verlaesst der Kontrollfluss diesen Block <b>auf jeden Fall</b> — egal wohin?
+    ///
+    /// <para>Das ist eine ANDERE Frage als <see cref="AlwaysReturns"/>, und die Unterscheidung
+    /// ist der Grund, warum es zwei Funktionen gibt. „Fehlt ein return am Ende der Funktion"
+    /// darf <c>continue</c> nicht als Rueckgabe zaehlen; „wird der Code nach dem if erreicht"
+    /// muss es. Beides in eine Funktion zu legen hiesse, eine der beiden Antworten still falsch
+    /// zu geben.</para>
+    ///
+    /// <para>Gebraucht fuer das Flow-Narrowing (§7): nach <c>if (x == null) { continue; }</c> ist
+    /// x im Rest der Schleife eingeengt — genauso wie nach einem <c>return</c>. Dass nur der
+    /// eine Fall galt, ist beim Bau des M8-Gates aufgefallen.</para>
+    /// </summary>
+    public static bool AlwaysExits(Stmt s, TypeResult? types = null) => s switch
+    {
+        BreakStmt => true,
+        ContinueStmt => true,
+        Block b => b.Statements.Any(st => AlwaysExits(st, types)),
+        IfStmt f => f.Else is not null && AlwaysExits(f.Then, types) && AlwaysExits(f.Else, types),
+        TryStmt t => AlwaysExits(t.Body, types) && t.Catches.All(c => AlwaysExits(c.Body, types)),
+        MatchStmt m => (types?.IsMatchExhaustive(m) == true || m.Arms.Any(a => a.Pattern is WildcardPattern))
+                       && m.Arms.All(a => a.Body is Block bl && AlwaysExits(bl, types)),
+
+        // Alles, was schon 'AlwaysReturns' erfuellt, verlaesst den Block erst recht.
+        _ => AlwaysReturns(s, types),
+    };
+
     private static bool Diverges(Expr cond, Block body) => cond is BoolLiteralExpr { Value: true } && !HasBreak(body);
 
     private static bool ArmReturns(MatchArm a, TypeResult? types) => a.Body is Block b && AlwaysReturns(b, types);

@@ -1,0 +1,115 @@
+// wc.lyr — das M8-Gate: Zeilen, Wörter und Zeichen einer Datei zählen.
+//
+//     lyric run examples/wc.lyr -- datei.txt [datei2.txt ...]
+//
+// Es ist als Gate gewählt, weil es die Stdlib **quer** belastet statt in die Tiefe: Dateien
+// lesen (S7, `fileAccess`), Zeilen und Wörter zerlegen (S2), zählen in einer Liste (S5),
+// formatiert ausgeben (S3), und der Einstieg mit Argumenten (§11). Fällt eines davon aus, läuft
+// es nicht — genau das soll ein Gate messen.
+//
+// Was es **nicht** kann: `-l`/`-w`/`-c`-Flags und Lesen von stdin. Beides ist Ergonomie, keine
+// Sprach- oder Bibliotheksfrage; das echte `wc` hat dafür 200 Zeilen Argument-Parsing.
+//
+// **Eine bewusste Abweichung von POSIX**: `wc -l` zaehlt *Zeilenumbrueche*, nicht Zeilen — eine
+// Datei mit Text, aber ohne abschliessenden Umbruch, hat fuer POSIX null Zeilen. Hier hat sie
+// eine. Fuer ein Beispielprogramm ist die intuitive Zaehlung die bessere; wer echte
+// wc-Kompatibilitaet braucht, zaehlt Umbrueche und nennt es auch so.
+
+import std.io.file { readText, exists };
+import std.io.console { println, eprintln };
+import std.string { length, split, trim };
+import std.collections { List, emptyList };
+
+// Die drei Zahlen einer Datei. Ein `struct`, weil es ein Wert ist: zwei Zählungen mit denselben
+// Zahlen sind dasselbe Ergebnis, und niemand mutiert es nachträglich (§3.2).
+struct Counts {
+    lines: int,
+    words: int,
+    chars: int,
+}
+
+// Wörter sind durch Weißraum getrennt, und mehrere Trenner hintereinander zählen als einer —
+// sonst hätte "a  b" drei Wörter. `split` liefert die leeren Stücke mit; sie werden hier
+// verworfen, statt `split` eine Option zu geben, die nur dieser Aufrufer braucht.
+fn countWords(line: string): int {
+    var n = 0;
+    for (part in split(line, " ")) {
+        if (length(trim(part)) > 0) {
+            n = n + 1;
+        }
+    }
+    return n;
+}
+
+fn count(content: string): Counts {
+    // Über die Zeilen laufen, statt `readLines` zu nehmen: die Zeichen sollen die **Datei**
+    // zählen, samt Zeilenumbrüchen. `readLines` wirft sie weg, und dann wäre `chars` kleiner als
+    // die Datei groß ist — genau der Unterschied, den `wc -c` und `wc -m` ausmachen.
+    let lines = split(content, "\n");
+
+    var lineCount = 0;
+    var wordCount = 0;
+
+    for (line in lines) {
+        wordCount = wordCount + countWords(line);
+    }
+
+    // Eine Datei, die mit einem Umbruch endet, hat danach keine leere letzte Zeile. `split`
+    // liefert sie trotzdem — dieselbe Regel wie in `std.io.file.readLines`.
+    lineCount = lines.length;
+    if (lines.length > 0 && length(lines[lines.length - 1]) == 0) {
+        lineCount = lineCount - 1;
+    }
+
+    return Counts { lines = lineCount, words = wordCount, chars = length(content) };
+}
+
+fn report(name: string, c: Counts): void {
+    // Rechtsbündig auf acht Stellen, wie es `wc` tut — dafür ist die Breiten-Form der
+    // Format-Spec da (§2.2).
+    println(f"{c.lines:-8} {c.words:-8} {c.chars:-8} {name}");
+}
+
+fn main(args: string[]): int {
+    if (args.length == 0) {
+        eprintln("usage: wc <file> [file ...]");
+        return 2;
+    }
+
+    let results = emptyList<Counts>();
+    var missing = 0;
+
+    for (path in args) {
+        let content = readText(path);
+        if (content == null) {
+            eprintln(f"wc: {path}: cannot read");
+            missing = missing + 1;
+            continue;
+        }
+
+        let c = count(content);
+        results.push(c);
+        report(path, c);
+    }
+
+    // Eine Summenzeile nur, wenn es etwas zu summieren gibt — bei einer Datei wäre sie eine
+    // Wiederholung.
+    if (results.length() > 1) {
+        var lines = 0;
+        var words = 0;
+        var chars = 0;
+        for (c in results) {
+            lines = lines + c.lines;
+            words = words + c.words;
+            chars = chars + c.chars;
+        }
+        report("total", Counts { lines = lines, words = words, chars = chars });
+    }
+
+    // Wie das echte `wc`: eine nicht lesbare Datei ist ein Fehler, aber kein Grund, die anderen
+    // nicht zu zählen.
+    if (missing > 0) {
+        return 1;
+    }
+    return 0;
+}

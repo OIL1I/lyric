@@ -462,6 +462,17 @@ public sealed class NativeRegistry
     /// Standarddarstellung wuerde den Tippfehler bis in die Ausgabe tragen.</para></summary>
     private static LyrValue Formatted(IFormattable value, string spec)
     {
+        // Eine reine Zahl ist eine BREITE, auch bei einem Zahlenwert: '{n:8}' rechtsbuendig auf
+        // acht Stellen, '{n:-8}' linksbuendig. Ohne diesen Fall reicht sie .NET durch, und dort
+        // ist '8' ein Custom-Format (Ziffern-Platzhalter) und '-8' sogar ein Literal — aus
+        // '{c.lines:-8}' wurde woertlich "-8". Gefunden vom M8-Gate.
+        //
+        // Damit gilt die Breiten-Form fuer ALLE Typen und nicht nur fuer die, denen .NET keine
+        // Standardformate gibt. Eine Regel, die je nach Typ etwas anderes bedeutet, waere die
+        // schlechtere Antwort.
+        if (IsWidth(spec)) return LyrValue.FromString(Padded(
+            value.ToString(null, CultureInfo.InvariantCulture), spec));
+
         try
         {
             return LyrValue.FromString(value.ToString(spec, CultureInfo.InvariantCulture));
@@ -476,6 +487,20 @@ public sealed class NativeRegistry
     /// <summary>Fuer Typen ohne .NET-Standardformate ist die Spec eine Breite: <c>{name:10}</c>
     /// fuellt rechts auf, <c>{name:-10}</c> links. Eine leere Spec laesst den Text, wie er
     /// ist.</summary>
+    /// <summary>Ist die Spec eine reine Breite — Ziffern, optional mit fuehrendem Minus?</summary>
+    private static bool IsWidth(string spec)
+    {
+        if (spec.Length == 0) return false;
+
+        var start = spec[0] == '-' ? 1 : 0;
+        if (start >= spec.Length) return false;
+
+        for (var i = start; i < spec.Length; i++)
+            if (!char.IsAsciiDigit(spec[i]))
+                return false;
+        return true;
+    }
+
     private static string Padded(string value, string spec)
     {
         if (spec.Length == 0) return value;

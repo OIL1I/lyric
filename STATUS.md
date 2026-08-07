@@ -11,20 +11,19 @@
 
 ## Aktueller Meilenstein
 
-**M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
+**M8 — Stdlib — abgeschlossen.** Slices S1 bis S8 stehen.
 
-Bytecode-Format **2.5**. 1696 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
-Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
-Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
-— und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
+Bytecode-Format **2.5**. 1702 Tests grün. Das Gate `examples/wc.lyr` zählt Zeilen, Wörter und
+Zeichen — **dieselben Zahlen wie POSIX-`wc`** — und belastet dabei die Stdlib quer: Dateien lesen
+(S7), Strings zerlegen (S2), in einer Liste sammeln (S5), formatiert ausgeben (S3), Einstieg mit
+Argumenten (§11).
 
-Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstrukte aus
-`Sprache.md`. **`extend` war das letzte ohne Slice.**
+Fertig: `Display` und Builtin-Konformanz, `string` als richtiger Typ, `std.fmt`, `Throwable`,
+`std.collections` mit `Indexable`/`Iterable`/`List<T>`, Capabilities, `std.math`/`std.os`/`std.io.file`.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
-> selbst (Meilenstein-Kopf stand auf M6, „woran wir arbeiten" auf P5, die Verifier-Laufzeit einmal
-> als widerlegt und zwanzig Zeilen später wieder als Tatsache). Sie ist auf ihre eigene Pflegeregel
-> zurückgeschnitten: letzte Slices, offene Punkte, Design-Kontext. Alles andere steht in `git log`.
+> selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
+> Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
 
@@ -52,6 +51,26 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **M8 — S8 — das Gate: `examples/wc.lyr`.** **M8 ist damit abgeschlossen.**
+  - Es zaehlt wie POSIX-`wc`: 4 Zeilen, 6 Woerter, 33 Zeichen fuer dieselbe Datei. Mehrere
+    Dateien bekommen eine Summenzeile, eine fehlende wird gemeldet, ohne die anderen zu
+    verhindern.
+  - **Eine bewusste Abweichung**: `wc -l` zaehlt *Zeilenumbrueche* — eine Datei ohne
+    abschliessenden Umbruch hat fuer POSIX null Zeilen. Hier hat sie eine. Ein Test haelt fest,
+    dass das eine Entscheidung war.
+  - **Zwei Fehler gefunden, die kein Slice-Test bemerkt hatte** — genau dafuer ist ein Gate da:
+    - **`continue` engte nicht ein.** Nach `if (x == null) { return; }` war x eingeengt, nach
+      `if (x == null) { continue; }` nicht — obwohl beide den Rest des Blocks verlassen. Behoben
+      ueber eine **zweite** Funktion `Flow.AlwaysExits`: „fehlt ein return am Ende der Funktion"
+      darf `continue` nicht als Rueckgabe zaehlen, „wird der Code nach dem if erreicht" muss es.
+      Beides in eine Funktion zu legen hiesse, eine der Antworten still falsch zu geben.
+    - **Format-Specs zaehlten bei Zahlen nicht als Breite.** `{n:-8}` reichte an .NET durch, und
+      dort ist `-8` ein *Custom Format* mit Literalen — die Ausgabe war woertlich „-8". Die
+      Breiten-Form gilt jetzt fuer **alle** Typen; eine Regel, die je nach Typ etwas anderes
+      bedeutet, waere die schlechtere Antwort.
+  - Der bekannte Parser-Bug aus P3 (`x = Struct { … }` im Statement-Kontext) ist beim Schreiben
+    **erneut** aufgetreten. Er steht seit P3 in dieser Datei; das ist die dritte Begegnung.
+
 - [x] **M8 — S7 — `std.math`, `std.os`, `std.io.file`.** 1696 Tests gruen.
   **`examples/shapes.lyr` laeuft** — es wartete seit M6 auf `std.math`.
   - **Fehler sind Rueckgabewerte, keine Exceptions.** Eine Datei, die nicht existiert, und eine
@@ -75,29 +94,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
   - **Ein Test hat seine Aufgabe erfuellt und wurde umgedreht**: `Program_waiting_on_a_stdlib_module_reports_it`
     hielt fest, dass `shapes.lyr` auf `std.math` wartet. Sein eigener Kommentar sagte, dass sein
     Fehlschlag die Erinnerung sein wuerde — er war es.
-
-- [x] **M8 — S6 — Capabilities** (ADR-007). 1680 Tests gruen.
-  - **Der Bedarf steht IM Modul, die Entscheidung bei der Runtime.** Der Compiler schreibt in die
-    Capabilities-Sektion, was ein Programm anfassen will; beim Laden prueft die VM gegen das, was
-    sie gewaehrt. ADR-007 nennt die **Resolve-Zeit** — dort gaebe es die fruehe Meldung, aber ein
-    `.lyrbc` kann von woanders kommen, und ein Host, der fremden Bytecode laedt, hat den Compiler
-    nie gesehen. Eine reine Compile-Zeit-Pruefung waere fuer ihn wertlos.
-  - **Die Bit-Zuordnung ist jetzt Vertrag** (`Bytecode.md` §Capabilities): `fileAccess` = 0x1,
-    `networkAccess` = 0x2, `osAccess` = 0x4, `hostAccess` = 0x8. Das Netz-Bit steht fest, obwohl
-    `std.io.net` aus M8 gestrichen ist — eine Nummer, die spaeter etwas anderes bedeutet, macht
-    jedes aeltere Modul falsch.
-  - **Gezaehlt wird geladen, nicht importiert.** Ein Modul, das `std.os` importiert, zieht es in
-    die Compilation, und sein Bedarf gehoert zum Programm — auch wenn die Hauptdatei den Namen
-    nie nennt. Wer nur die Import-Zeilen der Wurzel zaehlte, haette eine Luecke, die genau eine
-    Indirektion tief ist.
-  - **`lyrvm run --grant file,os`** schraenkt ein. Ohne das Flag waere die Durchsetzung nicht
-    testbar (Standalone gewaehrt alles), und es ist fuer sich nuetzlich: fremden Bytecode
-    sandboxed fahren, ohne einen Host in C# zu schreiben.
-  - **`std.os` ist minimal angelegt** (nur `platform()`) — ein Lieferposten von S7, hier als
-    Testobjekt. Ohne ein gated Modul liesse sich die Grenze nicht pruefen.
-  - Die Natives sind **immer** registriert; die Capability entscheidet, ob ein Modul geladen wird,
-    nicht ob eine Funktion existiert. Der Host konfiguriert eine Richtlinie, keine
-    Funktionsliste.
 
 ## Messungen
 
@@ -131,26 +127,16 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`), S3 (`std.fmt`) und S4 (`Throwable`)
-stehen. Als naechstes **S5 — `std.collections`** mit `List<T>`, `Map<K,V>`, `Set<T>`.
+**M8 ist abgeschlossen — als naechstes M9** (REPL, Editor-Integration, Beispiele; `lyric test` ist
+mit den Attributen nach post-v1 gestrichen).
 
-**S5 steht** — `Indexable<T>`, `Iterable<T>` und `List<T>`. `LinkedList<T>` kommt spaeter als
-eigener Typ ohne `Indexable` (O(1) an beiden Enden, Iteration ueber `Iterable<T>`, kein `[i]`).
+Offen aus M8, bewusst nicht gebaut: `Map<K,V>` und `Set<T>` (brauchen eine `Hashable`-Entscheidung
+— wie liefert ein Nutzertyp seinen Hash?), `LinkedList<T>` (eigener Typ ohne `Indexable`),
+`std.option`/`std.error`/`std.coroutine` (die ROADMAP nennt sie; was sie ueber die Sprachmittel
+hinaus liefern sollen, ist offen), `std.dotnet` (gehoert zu M10s Marshalling).
 
-Offen im Slice bleiben `Map<K,V>` und `Set<T>`:
-beide brauchen Hashing, und wie ein Nutzertyp seinen Hash liefert, ist eine Interface-Frage
-(`Hashable`), die `Sprache.md` nicht beantwortet. Auch `for (x in liste)` fehlt noch — der
-`ListIterator` steht, die Sema kennt ihn aber nicht als eingebaute Form.
-
-Als naechstes **S8 — das Gate**: ein `wc`-Klon. Alle Bausteine stehen (Dateien, Zeilen,
-String-Zerlegung, `fn main(args)`), es fehlt das Programm und der Test.
-
-Danach **S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math` — daran haengt
-`shapes.lyr`), **S8** (Gate: `wc`-Klon).
-
-**`std.io.net` ist aus M8 gestrichen** und steht in der v1.X-Tabelle (Begruendung in der
-ROADMAP): was ein blockierender Socket in einer Single-Thread-VM bedeutet, ist eine Entscheidung
-ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilensteins.
+**`std.io.net` ist aus M8 gestrichen** und steht in der v1.X-Tabelle: was ein blockierender Socket
+in einer Single-Thread-VM bedeutet, ist eine Entscheidung ueber das Nebenlaeufigkeitsmodell.
 
 ## Noch offen
 
