@@ -6,10 +6,24 @@ namespace Lyric.Sema;
 /// <summary>Klassifikation, Anzeige und Konvertierbarkeit von Typen (Sprache.md §4).</summary>
 public static class TypeFacts
 {
+    /// <summary>
+    /// Ganzzahl im Sinne von <c>Sprache.md</c> §6.5 — <b>einschliesslich <c>char</c></b> (ADR-022).
+    ///
+    /// <para>Ein <c>char</c> ist ein Unicode-Codepoint und damit eine Zahl; er zaehlt zur Numerik,
+    /// weil <c>std.string</c> sonst fuer „ist das eine Ziffer?" in den Host absteigen muesste.
+    /// Der Preis steht in der VM: jede Operation, die einen <c>char</c> ERZEUGT, prueft den
+    /// Wertebereich, damit die Zusage aus §4 wahr bleibt.</para>
+    ///
+    /// <para>Diese Frage wird ein zweites Mal in <c>IrVerifier.IsInteger</c> beantwortet — auf
+    /// <c>IrType</c> statt <c>LyrType</c>, weil der Verifier den Bytecode ohne die Sema pruefen
+    /// koennen muss (ADR-013). <b>Wer hier einen Typ ergaenzt, ergaenzt ihn auch dort</b>, sonst
+    /// lehnt der Verifier ab, was die Sema erlaubt.</para>
+    /// </summary>
     public static bool IsInteger(LyrType t) => t is PrimitiveType p && p.Kind is
         PrimitiveKind.Int or PrimitiveKind.Uint
         or PrimitiveKind.Int8 or PrimitiveKind.Int16 or PrimitiveKind.Int32 or PrimitiveKind.Int64
-        or PrimitiveKind.Uint8 or PrimitiveKind.Uint16 or PrimitiveKind.Uint32 or PrimitiveKind.Uint64;
+        or PrimitiveKind.Uint8 or PrimitiveKind.Uint16 or PrimitiveKind.Uint32 or PrimitiveKind.Uint64
+        or PrimitiveKind.Char;
 
     public static bool IsFloat(LyrType t) => t is PrimitiveType p && p.Kind is
         PrimitiveKind.Float or PrimitiveKind.Float32 or PrimitiveKind.Float64;
@@ -42,6 +56,16 @@ public static class TypeFacts
         PrimitiveKind.Uint16 => !negative && magnitude <= 65535,
         PrimitiveKind.Uint32 => !negative && magnitude <= 4294967295,
         PrimitiveKind.Uint64 or PrimitiveKind.Uint => !negative,
+
+        // 'c + 1' und 'let c: char = 65' (ADR-022). Die Grenze ist nicht die eines Ganzzahltyps,
+        // sondern die von Unicode — und sie steht in Lyric.Core, weil die VM dieselbe Regel auf
+        // gerechnete Ergebnisse anwendet. Was hier durchgeht, darf die VM erzeugen.
+        //
+        // Ein Literal ist damit zur UEBERSETZUNGSZEIT abgelehnt, wo die Laufzeit sonst panicen
+        // muesste: 'let c: char = 0xD800' ist ein Typfehler, kein Absturz.
+        PrimitiveKind.Char => !negative && magnitude <= long.MaxValue
+                              && Core.Unicode.IsCodepoint((long)magnitude),
+
         _ => false
     };
 

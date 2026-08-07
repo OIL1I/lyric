@@ -137,16 +137,48 @@ public readonly struct LyrValue
         TypeTag.U32 => (uint)bits,
         TypeTag.U64 => bits,
         TypeTag.Bool => bits != 0 ? 1UL : 0UL,
-        TypeTag.Char => bits,
+        TypeTag.Char => CheckedCodepoint(bits),
         _ => bits,
     };
+
+    /// <summary>
+    /// Ein <c>char</c>-Ergebnis muss ein Unicode-Codepoint sein (ADR-022).
+    ///
+    /// <para>Die Pruefung sitzt hier, weil <see cref="Normalize"/> der <b>einzige</b> Weg ist, auf
+    /// dem ein Skalar-Ergebnis entsteht: Arithmetik, Neg/BitNot, Cast und Konstante laufen alle
+    /// hier durch. An den vier Rufstellen einzeln zu pruefen hiesse, dieselbe Regel viermal zu
+    /// schreiben — und beim fuenften Opcode zu vergessen.</para>
+    ///
+    /// <para>Ein <c>char</c> ist damit <b>immer</b> gueltig. Alles, was ihn weiterverarbeitet
+    /// (<c>fromChar</c>, Formatierung, ein String-Aufbau), darf sich darauf verlassen und muss
+    /// nicht selbst pruefen.</para>
+    /// </summary>
+    private static ulong CheckedCodepoint(ulong bits)
+    {
+        // Signed gelesen: 'a' - 1000 ist negativ und muss als solches auffallen, nicht als
+        // riesige vorzeichenlose Zahl durchrutschen.
+        var value = (long)bits;
+        if (Core.Unicode.IsCodepoint(value)) return bits;
+
+        throw new LyricPanic(VmDiagnostics.InvalidCodepoint,
+            $"char value {value} is not a Unicode codepoint ({Core.Unicode.DescribeRange()})");
+    }
 
     public static bool IsSigned(TypeTag tag) =>
         tag is TypeTag.I8 or TypeTag.I16 or TypeTag.I32 or TypeTag.I64;
 
+    /// <summary>
+    /// Ganzzahl auf Bytecode-Ebene — <b>einschliesslich <c>Char</c></b> (ADR-022).
+    ///
+    /// <para>Dieselbe Frage beantworten <c>TypeFacts.IsInteger</c> (Sema, auf <c>LyrType</c>) und
+    /// <c>IrVerifier.IsInteger</c> (auf <c>IrType</c>). Drei Repraesentationen, eine Regel — sie
+    /// muessen zusammen wandern. Fehlte <c>Char</c> hier, fiele <c>c as int</c> in
+    /// <c>Interpreter.Convert</c> in den Fliesskomma-Zweig und lieferte Unsinn.</para>
+    /// </summary>
     public static bool IsInteger(TypeTag tag) =>
         tag is TypeTag.I8 or TypeTag.I16 or TypeTag.I32 or TypeTag.I64
-            or TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64;
+            or TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64
+            or TypeTag.Char;
 
     public static bool IsFloat(TypeTag tag) => tag is TypeTag.F32 or TypeTag.F64;
 }

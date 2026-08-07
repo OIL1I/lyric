@@ -454,7 +454,7 @@ BuiltinType     = 'int' | 'uint' | 'float'
 | `float` | 64-bit IEEE 754, Standard-Float |
 | `float32`/`float64` | explizite Größen |
 | `bool` | true/false |
-| `char` | ein Unicode-Codepoint |
+| `char` | ein Unicode-Codepoint — `0..0x10FFFF` ohne `D800..DFFF`. Zählt zur **Numerik** (§6.5, ADR-022); die Grenzen werden erzwungen |
 | `string` | Folge von Unicode-Codepoints, immutable. UTF-8 im Bytecode und an der Host-Schnittstelle; die interne Darstellung der Runtime ist ihre Sache |
 | `void` | nur als Rückgabetyp |
 
@@ -716,6 +716,12 @@ Die Typregeln der Operatoren (von der Sema durchgesetzt):
   `std.string.StringBuilder` / `join`. (Das ist *eingebaute* Semantik, kein
   user-defined Overloading — das bleibt post-v1.)
 - **`as`** konvertiert in v1 nur **Numerik ↔ Numerik** (alle Größen, int ↔ float).
+  **`char` zählt dazu** (ADR-022): `c as int` und `n as char` sind gültig, ebenso `c < 'z'`,
+  `c + 1` und die bitweisen Operatoren. Weil Numerik strikt ist, braucht `c + n` mit `n: int`
+  weiterhin ein `as` auf beiden Seiten — genau wie `int8 + int`.
+  Ein `char`-Ergebnis außerhalb des Unicode-Bereichs ist ein **`panic`** (`LYR-VM0012`), geprüft
+  beim Erzeugen. Ein *Literal* außerhalb des Bereichs ist schon ein Typfehler:
+  `let c: char = 0xD800;` übersetzt nicht.
 - **Vergleiche/Logik** liefern `bool`; `&&`/`||` verlangen `bool`-Operanden.
 - **Nullable** (§7): `T` → `?T` implizit; `?T` → `T` nur via `!`, `??` oder
   Pattern-Match. Flow-Narrowing (`if (x != null)`) siehe §7.
@@ -733,6 +739,7 @@ wie in C" ist deshalb an keiner Stelle zulässig.
 | **`>>` bei signed** | Arithmetisch (Vorzeichen wird nachgezogen). Bei unsigned logisch. |
 | **Ganzzahl-Division/Rest durch Null** | `panic` (§9) — ein gebrochener Vertrag, nicht catchbar. |
 | **Fließkomma-Division durch Null** | IEEE 754: `±Inf` bzw. `NaN`. **Kein** Fehler. |
+| **`char` außerhalb des Unicode-Bereichs** | `panic` (`LYR-VM0012`). Geprüft beim **Erzeugen** — also an jeder Rechnung, jedem Cast und jeder Konstante, nicht erst beim Drucken. `char` wickelt damit als einziger Ganzzahltyp **nicht** um: sein Wertebereich ist der von Unicode, nicht der eines Maschinenworts (ADR-022). |
 | **Fließkomma → Ganzzahl (`as`)** | Schneidet Richtung Null ab und **sättigt**: außerhalb des Zielbereichs auf dessen Grenze, `NaN` auf `0`. |
 | **Ganzzahl → Ganzzahl (`as`)** | Schneidet auf die Zielbreite ab; das Vorzeichen ergibt sich aus dem Zieltyp. |
 

@@ -68,6 +68,16 @@ public static class VmDiagnostics
     /// <summary>Ein <c>panic(msg)</c> aus dem Programm (Sprache.md §9). Nicht catchbar; die
     /// Meldung ist die des Aufrufers.</summary>
     public const string Panicked = "LYR-VM0011";
+
+    /// <summary>Ein <c>char</c>-Ergebnis ausserhalb des Unicode-Bereichs: jenseits
+    /// <c>0x10FFFF</c> oder im Surrogate-Bereich <c>D800..DFFF</c> (ADR-022).
+    ///
+    /// <para>Der Preis dafuer, dass <c>char</c> rechnen darf und <c>Sprache.md</c> §4 trotzdem
+    /// wahr bleibt: dort steht „ein Unicode-Codepoint", und ein Typ, dessen Zusage sich durch
+    /// Addition brechen laesst, macht die Zeile zur Dekoration. Geprueft wird beim <b>Erzeugen</b>,
+    /// nicht beim Benutzen — sonst faellt der Fehler weit entfernt von der Rechnung auf, die ihn
+    /// verursacht hat.</para></summary>
+    public const string InvalidCodepoint = "LYR-VM0012";
 }
 
 /// <summary>

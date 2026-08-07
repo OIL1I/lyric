@@ -1411,4 +1411,57 @@ public class VmTests
             }
             """).AsI64);
     }
+
+    // ------------------------------------------------------------- char als Zahl (ADR-022)
+
+    /// <summary>
+    /// <c>char</c> zaehlt zur Numerik: Vergleiche, Casts und Arithmetik gehen.
+    ///
+    /// <para>Der Anlass ist <c>std.string</c> — „ist das eine Ziffer?" ist Codepoint-Arithmetik,
+    /// und ohne einen Weg dorthin muesste jede solche Funktion nativ sein.</para>
+    /// </summary>
+    [Fact]
+    public void A_char_compares_and_casts_like_a_number()
+    {
+        Assert.Equal(97, Run("fn main(): int { let c = 'a'; return c as int; }").AsI64);
+        Assert.Equal(98, Run("fn main(): int { return ('b' as int); }").AsI64);
+        Assert.Equal(1, Run("fn main(): int { return if ('a' < 'z') 1 else 0; }").AsI64);
+    }
+
+    [Fact]
+    public void An_untyped_literal_adapts_to_char()
+    {
+        // 'c + 1' — das Literal IST ein char (Sprache.md 6.5), es wird nicht konvertiert. Ohne die
+        // Anpassung in UnifyNumeric stand hier ein 'const i64' neben einem char-Operanden, und der
+        // IR-Verifier liess den Compiler ABSTUERZEN statt zu diagnostizieren.
+        Assert.Equal(98, Run("fn main(): int { let c = 'a'; return (c + 1) as int; }").AsI64);
+    }
+
+    [Fact]
+    public void The_highest_codepoint_is_valid() =>
+        // Die Grenze selbst muss durchgehen, sonst prueft der Test darunter nur, dass irgendetwas
+        // ablehnt.
+        Assert.Equal(1114111, Run("fn main(): int { return (1114111 as char) as int; }").AsI64);
+
+    [Fact]
+    public void A_codepoint_beyond_the_range_panics()
+    {
+        var panic = RunExpectingPanic("fn main(): int { return (1114112 as char) as int; }");
+
+        Assert.Equal(VmDiagnostics.InvalidCodepoint, panic.Code);
+    }
+
+    [Fact]
+    public void A_surrogate_is_not_a_char() =>
+        // D800 liegt UNTER der Obergrenze und ist trotzdem kein Zeichen — es ist die Haelfte eines
+        // UTF-16-Paares. Ohne diesen Test bliebe die Pruefung gruen, wenn sie nur die Obergrenze
+        // kennte.
+        Assert.Equal(VmDiagnostics.InvalidCodepoint,
+            RunExpectingPanic("fn main(): int { return (55296 as char) as int; }").Code);
+
+    [Fact]
+    public void Arithmetic_that_leaves_the_range_panics() =>
+        // Geprueft wird beim ERZEUGEN, nicht beim Benutzen: der Wert wird hier nie gedruckt.
+        Assert.Equal(VmDiagnostics.InvalidCodepoint,
+            RunExpectingPanic("fn main(): int { let c = 'a'; let d = c * 1000000; return 0; }").Code);
 }

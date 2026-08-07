@@ -2501,11 +2501,37 @@ public sealed class TypeChecker
 
     // --- Numerik / Zuweisbarkeit / Literal-Fit (①A / ②a) ---
 
+    /// <summary>
+    /// Zwei numerische Operanden auf einen Typ bringen — ein untypisiertes Literal passt sich dem
+    /// anderen an (§6.5).
+    /// </summary>
+    /// <remarks>
+    /// <para>Die Anpassung wird hier auch <b>notiert</b>, nicht nur geprüft. Vorher stand hier
+    /// bloß <c>LiteralAdaptsTo</c>: die Sema akzeptierte <c>a + 1</c> mit <c>a: int8</c>, notierte
+    /// für die <c>1</c> aber weiter <c>int</c>, und das Lowering schob ein <c>const i64</c> neben
+    /// einen i8-Operanden. Ergebnis war kein Fehler, sondern ein <b>Compiler-Absturz</b> im
+    /// IR-Verifier — „operand types differ".</para>
+    /// <para>Genau diesen Fehler beschreibt <see cref="AdaptLiteralType"/> in seinen Remarks, für
+    /// den Zuweisungs-Pfad. Dort wurde er behoben, hier nicht: eine Regel, zwei Stellen, eine
+    /// vergessen. Aufgefallen ist es erst über <c>char</c> (ADR-022), weil der Typ neu genug war,
+    /// dass jemand <c>c + 1</c> ausprobiert hat.</para>
+    /// </remarks>
     private LyrType? UnifyNumeric(Expr le, LyrType l, Expr re, LyrType r)
     {
         if (LyrType.Equal(l, r) && TypeFacts.IsNumeric(l)) return l;
-        if (TypeFacts.IsNumeric(l) && l is PrimitiveType pl && LiteralAdaptsTo(re, pl)) return l; // r passt sich l an
-        if (TypeFacts.IsNumeric(r) && r is PrimitiveType pr && LiteralAdaptsTo(le, pr)) return r; // l passt sich r an
+
+        if (TypeFacts.IsNumeric(l) && l is PrimitiveType pl && LiteralAdaptsTo(re, pl))
+        {
+            AdaptLiteralType(re, pl);   // r passt sich l an
+            return l;
+        }
+
+        if (TypeFacts.IsNumeric(r) && r is PrimitiveType pr && LiteralAdaptsTo(le, pr))
+        {
+            AdaptLiteralType(le, pr);   // l passt sich r an
+            return r;
+        }
+
         return null;
     }
 

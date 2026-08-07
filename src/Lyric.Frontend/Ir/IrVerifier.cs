@@ -1649,10 +1649,14 @@ public static class IrVerifier
 
         private static bool IsBool(IrType type) => type is IrScalarType { Kind: IrScalar.Bool };
 
+        // Die Zwillingsfrage zu TypeFacts.IsInteger, auf IrType statt LyrType — der Verifier muss
+        // Bytecode ohne die Sema pruefen koennen (ADR-013). 'Char' ist seit ADR-022 dabei; fehlte
+        // er hier, lehnte der Verifier ab, was die Sema erlaubt.
         private static bool IsInteger(IrType type) => type is IrScalarType
         {
             Kind: IrScalar.I8 or IrScalar.I16 or IrScalar.I32 or IrScalar.I64
             or IrScalar.U8 or IrScalar.U16 or IrScalar.U32 or IrScalar.U64
+            or IrScalar.Char
         };
 
         private static bool IsFloat(IrType type) =>
@@ -1683,11 +1687,19 @@ public static class IrVerifier
             IrScalar.I16 or IrScalar.U16 => value <= ushort.MaxValue,
             IrScalar.I32 or IrScalar.U32 => value <= uint.MaxValue,
             IrScalar.I64 or IrScalar.U64 => true,
+
+            // Ein IntConst mit char-Typ entsteht aus 'c + 1': das untypisierte Literal IST ein
+            // char (§6.5), also steht es als Ganzzahl-Konstante mit char-Typ im Bytecode. Seine
+            // Grenze ist nicht die eines Maschinenworts, sondern die von Unicode (ADR-022).
+            IrScalar.Char => value <= long.MaxValue && Core.Unicode.IsCodepoint((long)value),
+
             _ => false
         };
 
-        private static bool IsUnicodeScalarValue(int codePoint) =>
-            codePoint >= 0 && codePoint <= 0x10FFFF && codePoint is < 0xD800 or > 0xDFFF;
+        // Frueher stand die Codepoint-Regel hier als eigene Zahlenreihe — die fuenfte Kopie
+        // derselben Grenze im Projekt. Sie liegt jetzt in Lyric.Core, wo Sema, Verifier und VM
+        // sie gemeinsam sehen (ADR-022).
+        private static bool IsUnicodeScalarValue(int codePoint) => Core.Unicode.IsCodepoint(codePoint);
 
         private static bool ConstKindMatches(IrConstValue value, IrScalar kind) => value switch
         {

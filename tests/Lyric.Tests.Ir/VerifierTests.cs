@@ -475,18 +475,22 @@ public class VerifierTests
     [Fact]
     public void Ordering_comparison_on_non_numeric_type()
     {
-        // Sprache.md §6.5: Vergleiche verlangen denselben NUMERISCHEN Typ. char und string haben
-        // in v1 keine Ordnung.
+        // Sprache.md §6.5: Vergleiche verlangen denselben NUMERISCHEN Typ. 'string' hat in v1
+        // keine Ordnung.
+        //
+        // Hier stand 'char' — seit ADR-022 zaehlt er zur Numerik und HAT eine Ordnung ('c < 'z''
+        // ist der Punkt der Aenderung). Der Test bleibt, weil die Verifier-Regel bleibt; nur der
+        // Zeuge musste getauscht werden.
         AssertFinding(
             VoidFn(new List<IrLocal>(),
-                new List<IrTemp> { new(T(0), CharT), new(T(1), CharT), new(T(2), Bool) },
+                new List<IrTemp> { new(T(0), Str), new(T(1), Str), new(T(2), Bool) },
                 new List<IrOp>
                 {
-                    new Const(T(0), CharT, new CharConst('a'), Sp),
-                    new Const(T(1), CharT, new CharConst('b'), Sp),
+                    new Const(T(0), Str, new StringConst("a"), Sp),
+                    new Const(T(1), Str, new StringConst("b"), Sp),
                     new BinOp(T(2), IrBinKind.Lt, Bool, T(0), T(1), Sp),
                 }),
-            "ordering comparison lt on non-numeric type char");
+            "ordering comparison lt on non-numeric type string");
     }
 
     [Fact]
