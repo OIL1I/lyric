@@ -12,9 +12,24 @@
 module std.io.console;
 
 import std.core { Display };
+import std.iter { Iterator };
 
 // Die nativen Schreiber nehmen `string` — das ist die Grenze zum Host, und dort gibt es nur
 // Bytes und Zeichen.
+//
+// GEMESSEN 2026-08-07 (gegen einen falschen Kommentar, der bis dahin hier stand): die
+// Import-Liste in `import std.io.console { println }` steuert ausschliesslich die
+// NAMENSSICHTBARKEIT. Sie hat auf den erzeugten Bytecode keinen Einfluss — mit und ohne Liste
+// entstehen byte-identische Dateien.
+//
+// Was wirklich gilt:
+//   * eine NATIVE Deklaration landet nur in der Import-Tabelle, wenn sie gerufen wird;
+//   * ein LYRIC-RUMPF landet IMMER im Bytecode, sobald sein Modul geladen ist.
+//
+// Ein Hello-World traegt deshalb heute `RangeIterator.next` und `StringIterator.next` mit:
+// 9 Bytes eigener Code, 97 Bytes tote Stdlib. Das ist eine fehlende
+// Erreichbarkeitsanalyse im Lowering, kein Fehler dieses Moduls — und formatneutral
+// nachruestbar (ADR-013), also kein Grund, die Stdlib anders zu schneiden.
 pub fn print(value: string);
 pub fn println(value: string);
 pub fn eprintln(value: string);
@@ -32,4 +47,71 @@ pub fn write<T :: [Display]>(value: T): void {
 
 pub fn writeln<T :: [Display]>(value: T): void {
     println(value.show());
+}
+
+// ------------------------------------------------------------------ Eingabe (M8b/S1)
+//
+// Bis hierher konnte dieses Modul ausschliesslich SCHREIBEN. Ohne `readLine` gibt es keine
+// interaktiven Programme und keine Filter, die von stdin lesen.
+//
+// `?string`, weil EOF kein Fehler ist, sondern ein Zustand der Welt: die Eingabe ist zu Ende.
+// Dieselbe Entscheidung wie bei `readText` und `env`.
+pub fn readLine(): ?string;
+
+// Alles bis EOF, fuer Filter, die den ganzen Text brauchen.
+pub fn readAll(): string;
+
+// Ein einzelner Codepoint.
+pub fn readChar(): ?char;
+
+// Terminal oder Pipe? Wer in eine Pipe schreibt, soll keine Eingabeaufforderung in den
+// Datenstrom setzen.
+pub fn isInteractive(): bool;
+
+// Noetig, sobald ein Prompt OHNE Zeilenumbruch geschrieben wird.
+pub fn flush(): void;
+
+pub fn eprint(value: string);
+
+// Ab hier: Lyric, nicht nativ.
+//
+// Beides liesse sich im Host schreiben und waere dort kuerzer. Es steht trotzdem hier, weil jede
+// native Funktion eine Signatur ist, die der Bytecode-Vertrag mittragen muss (ADR-013) — und was
+// die Sprache selbst kann, gehoert nicht ueber diese Grenze.
+
+// Schreibt die Frage, leert den Puffer, liest die Antwort. Ohne das `flush` stuende die Frage
+// noch im Puffer, waehrend das Programm schon wartet.
+pub fn prompt(text: string): ?string {
+    print(text);
+    flush();
+    return readLine();
+}
+
+// Die idiomatische Form fuer einen Filter:
+//
+//     for (line in console.lines()) { ... }
+//
+// Ein Iterator und kein `string[]`: die Eingabe kann laenger sein als der Speicher, und wer nur
+// zaehlt, soll nicht erst alles sammeln muessen.
+//
+// Der erste Versuch liess JEDES Programm abstuerzen, das dieses Modul importiert — nicht wegen
+// des Iterators, sondern weil `LineIterator { }` ein Feld mit Default weglaesst und die Sema
+// Feld-Defaults nie geprueft hat. Der Absturz lag also in der Sprache, nicht hier.
+pub class LineIterator :: [Iterator<string>] {
+    done: bool = false,
+
+    pub mut fn next(): ?string {
+        if (this.done) {
+            return null;
+        }
+        let line = readLine();
+        if (line == null) {
+            this.done = true;
+        }
+        return line;
+    }
+}
+
+pub fn lines(): Iterator<string> {
+    return LineIterator { };
 }

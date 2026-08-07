@@ -310,4 +310,39 @@ public class StructTests
             }
             """));
     }
+
+    // -------------------------------------------------------------- Feld-Defaults
+
+    /// <summary>
+    /// Ein Initialisierer darf ein Feld weglassen, das einen Default hat.
+    ///
+    /// <para><b>Das ging nicht — und zwar so, dass der Compiler ABSTUERZTE.</b> Die Sema hat
+    /// Feld-Defaults nie besucht; das Lowering wertet sie an der Konstruktionsstelle aus und fand
+    /// in der Seitentabelle keinen Typ, also ErrorType, also „ir: type not lowerable:
+    /// &lt;error&gt;". Weil keine Diagnose gemeldet war, sagte 'lyric check' vorher „ok".</para>
+    ///
+    /// <para>Sichtbar nur, wenn der Initialisierer das Feld WEGLAESST: 'K { v = 9 }' wertet den
+    /// Default nie aus, 'K { }' schon. Ein Default, den man nur benutzen kann, indem man ihn
+    /// ueberschreibt, ist keiner — betroffen war jede Klasse und jeder Struct mit Defaults.</para>
+    /// </summary>
+    [Fact]
+    public void An_initializer_may_omit_a_field_that_has_a_default() =>
+        Assert.Equal(8, Run("""
+            class K { a: int = 5, b: int = 3, }
+            fn main(): int { let k = K { }; return k.a + k.b; }
+            """));
+
+    [Fact]
+    public void A_default_may_be_overridden() =>
+        Assert.Equal(12, Run("""
+            class K { a: int = 5, b: int = 3, }
+            fn main(): int { let k = K { a = 9 }; return k.a + k.b; }
+            """));
+
+    [Fact]
+    public void A_struct_default_works_too() =>
+        Assert.Equal(7, Run("""
+            struct V { n: int = 7, }
+            fn main(): int { let v = V { }; return v.n; }
+            """));
 }

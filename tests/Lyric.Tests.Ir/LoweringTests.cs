@@ -182,10 +182,46 @@ public class LoweringTests
             fn main(): int { println("hi"); return 0; }
             """);
 
-        var import = Assert.Single(module.Imports);
-        Assert.Equal("std.io.console.println", import.Name);
-        Assert.Equal(new IrScalarType(IrScalar.String), Assert.Single(import.ParamTypes));
-        Assert.Equal(new IrScalarType(IrScalar.Void), import.ReturnType);
+        var println = Assert.Single(module.Imports, i => i.Name == "std.io.console.println");
+        Assert.Equal(new IrScalarType(IrScalar.String), Assert.Single(println.ParamTypes));
+        Assert.Equal(new IrScalarType(IrScalar.Void), println.ReturnType);
+    }
+
+    /// <summary>
+    /// Was ein Programm an totem Stdlib-Code mitschleppt — <b>gemessen, nicht behauptet</b>.
+    ///
+    /// <para>Hier stand vorher <c>Assert.Single(module.Imports)</c>, und das galt als Beleg für
+    /// „die Import-Tabelle trägt nur, was wirklich gerufen wird". Der Satz stimmt für native
+    /// Deklarationen und ist für <b>Lyric-Rümpfe falsch</b>: die landen alle im Bytecode, sobald
+    /// ihr Modul geladen ist. Aufgefallen ist es, als <c>console.prompt</c> dazukam — eine
+    /// Funktion, die niemand ruft, deren <c>print</c>/<c>flush</c>/<c>readLine</c> aber in der
+    /// Import-Tabelle auftauchten.</para>
+    ///
+    /// <para>Gemessen am 2026-08-07: ein Hello-World hatte <b>9 Bytes eigenen Code und 97 Bytes
+    /// tote Stdlib</b> (<c>RangeIterator.next</c>, <c>StringIterator.next</c>) — und zwar schon
+    /// vorher. Die Import-Liste <c>{ println }</c> ändert daran nichts; sie steuert allein die
+    /// Namenssichtbarkeit in der Sema, und mit ihr entsteht byte-identischer Bytecode wie
+    /// ohne.</para>
+    ///
+    /// <para>Dieser Test ist ein <b>Marker</b>, keine Zusicherung eines Ideals. Er hält fest, was
+    /// heute gilt, damit eine Erreichbarkeitsanalyse im Lowering — formatneutral nachrüstbar
+    /// (ADR-013) — sichtbar wird, wenn sie kommt: dann fällt er, und das ist der Erfolg.</para>
+    /// </summary>
+    [Fact]
+    public void A_program_carries_the_lyric_bodies_of_every_loaded_module()
+    {
+        var module = LowerWithStdlib("""
+            import std.io.console { println };
+            fn main(): int { println("hi"); return 0; }
+            """);
+
+        // Ruft niemand — sie stehen nur in geladenen Modulen.
+        Assert.Contains(module.Functions, f => f.Name == "std.iter.RangeIterator.next");
+        Assert.Contains(module.Functions, f => f.Name == "std.io.console.prompt");
+
+        // Und ein toter Rumpf zieht seine Natives mit: DAS ist der Weg, auf dem sich der tote
+        // Code nach aussen bemerkbar macht.
+        Assert.Contains(module.Imports, i => i.Name == "std.io.console.readLine");
     }
 
     [Fact]

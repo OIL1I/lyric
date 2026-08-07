@@ -172,6 +172,25 @@ public sealed class TypeChecker
                 continue;
             }
 
+            // Ein Feld-Default ist ein AUSDRUCK und muss geprüft werden wie jeder andere.
+            //
+            // Er wurde hier nie besucht. Die Folge war kein Typfehler, sondern ein
+            // Compiler-ABSTURZ: das Lowering wertet den Default an der Konstruktionsstelle aus
+            // (LowerObjectInit) und fragt die Seitentabelle nach seinem Typ — dort stand nichts,
+            // also ErrorType, also „ir: type not lowerable: <error>". Und weil die Sema keinen
+            // Fehler gemeldet hatte, sagte 'lyric check' vorher „ok".
+            //
+            // Sichtbar wurde das erst, wenn ein Initialisierer das Feld WEGLIESST: 'K { v = 9 }'
+            // wertet den Default nie aus, 'K { }' schon. Ein Default-Wert, den man nur benutzen
+            // kann, indem man ihn überschreibt, ist keiner — betroffen war jede Klasse und jeder
+            // Struct mit Default-Feldern.
+            if (m is FieldDecl { Default: not null } field)
+            {
+                CheckAssignable(field.Default, CheckExpr(field.Default, module.Members),
+                    ResolveType(field.Type, module.Members), field.Default.Span);
+                continue;
+            }
+
             if (m is not FunctionDecl fn) continue;
             if (!isInterface) RequireBody(fn, module);
             CheckMemberModifiers(fn);

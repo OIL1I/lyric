@@ -100,10 +100,17 @@ public sealed class NativeRegistry
     /// <paramref name="error"/> sind Parameter, damit Tests die Ausgabe einsammeln können, ohne
     /// <c>Console</c> umzubiegen.
     /// </summary>
-    public static NativeRegistry CreateDefault(TextWriter output, TextWriter error)
+    /// <param name="input">Woher <c>readLine</c> liest. Voreingestellt ist <c>Console.In</c>;
+    /// Tests reichen einen <c>StringReader</c> herein, ohne die Konsole umzubiegen. Der Parameter
+    /// steht hinten und hat einen Default, damit die bestehenden Aufrufstellen unverändert
+    /// bleiben — sie schreiben nur.</param>
+    public static NativeRegistry CreateDefault(
+        TextWriter output, TextWriter error, TextReader? input = null)
     {
         var registry = new NativeRegistry();
         var str = new[] { TypeTag.String };
+        var none = Array.Empty<TypeTag>();
+        var stdin = input ?? Console.In;
 
         registry.Register("std.io.console.print", str, TypeTag.Void,
             args => { output.Write(args[0].AsString); return default; });
@@ -113,6 +120,48 @@ public sealed class NativeRegistry
             args => { output.Write(args[0].AsString); output.Write('\n'); return default; });
         registry.Register("std.io.console.eprintln", str, TypeTag.Void,
             args => { error.Write(args[0].AsString); error.Write('\n'); return default; });
+
+        // 'eprint' fehlte, obwohl 'print' und 'eprintln' da waren — eine Diagnose ohne
+        // Zeilenumbruch liess sich nicht schreiben.
+        registry.Register("std.io.console.eprint", str, TypeTag.Void,
+            args => { error.Write(args[0].AsString); return default; });
+
+        // ---------------------------------------------------------------- Eingabe
+        //
+        // Bis hierher konnte 'std.io.console' ausschliesslich SCHREIBEN. Ohne 'readLine' gibt es
+        // keine interaktiven Programme und keine Filter, die von stdin lesen — die groesste
+        // einzelne Luecke der Stdlib.
+        //
+        // Keine Capability: stdin zu lesen ist wie auf stdout zu schreiben ein gewoehnlicher Teil
+        // des Prozesses und keine Zugriffsentscheidung (Doku.md 20.1). Wer es verbieten will, gibt
+        // dem Host einen leeren Reader.
+
+        // '?string', weil EOF kein Fehler ist, sondern ein Zustand der Welt: die Eingabe ist zu
+        // Ende. Dieselbe Entscheidung wie bei 'readText' und 'env' — erwartbares Scheitern gehoert
+        // in den Rueckgabewert, nicht in eine Exception.
+        registry.RegisterOptionalReturning("std.io.console.readLine", none, TypeTag.String,
+            _ => Optional(stdin.ReadLine()));
+
+        // Alles bis EOF. Fuer Filter, die den ganzen Text brauchen; liefert "" statt null, weil
+        // „nichts da" und „leer" hier dasselbe bedeuten.
+        registry.Register("std.io.console.readAll", none, TypeTag.String,
+            _ => LyrValue.FromString(stdin.ReadToEnd()));
+
+        // Ein einzelner Codepoint. 'Read()' liefert UTF-16-Einheiten, also muss ein Surrogatpaar
+        // zusammengesetzt werden — sonst kaeme eine halbe Zeichenhaelfte heraus, und die ist seit
+        // ADR-022 nicht einmal ein gueltiger char.
+        registry.RegisterOptionalReturning("std.io.console.readChar", none, TypeTag.Char,
+            _ => ReadCodepoint(stdin));
+
+        // Terminal oder Pipe? Entscheidet, ob ein Prompt ueberhaupt sinnvoll ist — wer in eine
+        // Pipe schreibt, soll keine Eingabeaufforderung in den Datenstrom setzen.
+        registry.Register("std.io.console.isInteractive", none, TypeTag.Bool,
+            _ => LyrValue.FromBool(!Console.IsInputRedirected && !Console.IsOutputRedirected));
+
+        // Noetig, sobald ein Prompt OHNE Zeilenumbruch geschrieben wird: sonst steht die Frage
+        // noch im Puffer, waehrend das Programm schon auf die Antwort wartet.
+        registry.Register("std.io.console.flush", none, TypeTag.Void,
+            _ => { output.Flush(); return default; });
 
         registry.Register("std.string.concat", new[] { TypeTag.String, TypeTag.String },
             TypeTag.String, args => LyrValue.FromString(args[0].AsString + args[1].AsString));
@@ -415,6 +464,26 @@ public sealed class NativeRegistry
     /// folgt P2b: eine Referenz heisst „hat einen Wert", eine leere heisst <c>null</c>.</summary>
     private static LyrValue Optional(string? value) =>
         value is null ? default : LyrValue.FromString(value);
+
+    /// <summary>
+    /// Ein Codepoint von einem <see cref="TextReader"/> — Surrogatpaare zusammengesetzt.
+    /// </summary>
+    /// <remarks>.NETs <c>Read()</c> liefert UTF-16-Einheiten, Lyrics <c>char</c> ist ein
+    /// Codepoint (Sprache.md §4). Ohne das Zusammensetzen käme für ein Zeichen jenseits der BMP
+    /// eine einzelne Surrogathälfte zurück — und die ist seit ADR-022 kein gültiger <c>char</c>,
+    /// würde also beim Erzeugen panicen. Der Fehler wäre erst beim Drucken sichtbar geworden.
+    /// </remarks>
+    private static LyrValue ReadCodepoint(TextReader reader)
+    {
+        var first = reader.Read();
+        if (first < 0) return default;   // EOF
+
+        if (char.IsHighSurrogate((char)first) && reader.Peek() is var next && next >= 0
+            && char.IsLowSurrogate((char)next))
+            return LyrValue.FromBits((ulong)char.ConvertToUtf32((char)first, (char)reader.Read()));
+
+        return LyrValue.FromBits((ulong)first);
+    }
 
     /// <summary>Fuehrt eine Dateioperation aus und liefert <c>null</c>, wenn sie fehlschlaegt.
     ///
