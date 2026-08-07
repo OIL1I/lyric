@@ -9,7 +9,7 @@ module std.core;
 
 // Fuer die Display-Extensions unten. 'std.string' importiert 'std.core' nicht, also ist das
 // kein Zyklus — und selbst einer wuerde terminieren (der Lader registriert vor dem Absteigen).
-import std.string { fromInt, fromFloat, fromBool, fromChar };
+import std.string { fromInt, fromFloat, fromBool, fromChar, length, charAt };
 
 pub fn panic(message: string): void;
 
@@ -51,3 +51,168 @@ extend char :: [Display] {
 extend string :: [Display] {
     fn show(): string { return this; }
 }
+
+// ------------------------------------------------------- Gleichheit, Hash, Ordnung (ADR-024)
+//
+// Dasselbe Muster wie `Display` daueber: Interface hier, Konformanz der Builtins ueber `extend`,
+// Nutzertypen ueber `::`. Ein Constraint macht daraus durch die Monomorphisierung einen direkten
+// Aufruf, es entsteht also kein Interface-Wert und kein Boxing.
+//
+// **Warum generisch und nicht `fn equals(other: Equatable)`**: ein Interface als Parametertyp
+// verlangt einen Interface-WERT, und ein Skalar kann keiner sein (siehe Display oben — ein Fat
+// Pointer braucht eine Referenz). `extend int :: [Equatable]` waere damit unmoeglich, und es
+// gaebe kein `Map<int, V>`. Mit `Equatable<T>` steht auf beiden Seiten der konkrete Typ.
+//
+// **Warum `Hashable` nicht von `Equatable` erbt**: Lyric kennt keine Interface-Vererbung — die
+// Grammatik sieht fuer `InterfaceDecl` keine Konformanzliste vor. Wer beides braucht, verlangt
+// beides: `K :: [Hashable<K>, Equatable<K>]`.
+
+pub interface Equatable<T> {
+    fn equals(other: T): bool;
+}
+
+// Die Invariante, die kein Compiler prueft und jede Hash-Tabelle braucht: gleiche Werte MUESSEN
+// denselben Hash liefern. Umgekehrt gilt das nicht — zwei verschiedene Werte duerfen kollidieren.
+pub interface Hashable<T> {
+    fn hash(): int;
+}
+
+// Negativ, null, positiv — wie `strcmp`. Ein einzelner Vergleichsoperator statt vier Methoden:
+// `<`, `<=`, `>`, `>=` lassen sich alle daraus ableiten, und vier Methoden waeren vier
+// Gelegenheiten, sich zu widersprechen.
+pub interface Ordered<T> {
+    fn compare(other: T): int;
+}
+
+extend int :: [Equatable<int>] {
+    fn equals(other: int): bool { return this == other; }
+}
+
+extend int :: [Ordered<int>] {
+    fn compare(other: int): int {
+        if (this < other) { return -1; }
+        if (this > other) { return 1; }
+        return 0;
+    }
+}
+
+extend int :: [Hashable<int>] {
+    // Ein int IST sein eigener Hash. Eine Streuung waere hier falsch am Platz: welche Bits eine
+    // Tabelle braucht, weiss die Tabelle, nicht der Wert.
+    fn hash(): int { return this; }
+}
+
+extend char :: [Equatable<char>] {
+    fn equals(other: char): bool { return this == other; }
+}
+
+extend char :: [Ordered<char>] {
+    fn compare(other: char): int {
+        if (this < other) { return -1; }
+        if (this > other) { return 1; }
+        return 0;
+    }
+}
+
+extend char :: [Hashable<char>] {
+    fn hash(): int { return this as int; }
+}
+
+extend bool :: [Equatable<bool>] {
+    fn equals(other: bool): bool { return this == other; }
+}
+
+extend bool :: [Hashable<bool>] {
+    fn hash(): int { return if (this) 1 else 0; }
+}
+
+extend float :: [Equatable<float>] {
+    fn equals(other: float): bool { return this == other; }
+}
+
+extend float :: [Ordered<float>] {
+    fn compare(other: float): int {
+        if (this < other) { return -1; }
+        if (this > other) { return 1; }
+        return 0;
+    }
+}
+
+extend string :: [Equatable<string>] {
+    fn equals(other: string): bool { return this == other; }
+}
+
+extend string :: [Ordered<string>] {
+    // Lexikographisch ueber CODEPOINTS — dieselbe Einheit, die `length` zaehlt und `for (c in s)`
+    // liefert (Sprache.md §4). Kein Locale, keine Normalisierung: beides waere eine Bibliothek
+    // fuer sich, und ein `compare`, das je nach Umgebung anders sortiert, waere in einer Sprache
+    // mit plattformneutralem Bytecode (ADR-013) ein Widerspruch.
+    fn compare(other: string): int {
+        let a = length(this);
+        let b = length(other);
+        let kurz = if (a < b) a else b;
+
+        var i = 0;
+        while (i < kurz) {
+            let x = charAt(this, i) as int;
+            let y = charAt(other, i) as int;
+            if (x < y) { return -1; }
+            if (x > y) { return 1; }
+            i = i + 1;
+        }
+
+        // Gleicher Anfang: der kuerzere gewinnt.
+        if (a < b) { return -1; }
+        if (a > b) { return 1; }
+        return 0;
+    }
+}
+
+extend string :: [Hashable<string>] {
+    // FNV-1a ueber die Codepoints. In Lyric und nicht nativ, weil die Sprache es kann: seit
+    // ADR-022 ist ein `char` eine Zahl, und der Ueberlauf wickelt definiert um (§6.6).
+    //
+    // Die Konstanten sind die 64-Bit-Variante. Ein Hash muss nicht kryptographisch sein, er muss
+    // streuen und ueberall dasselbe liefern — beides tut FNV, und es passt in acht Zeilen.
+    fn hash(): int {
+        var h = -3750763034362895579;      // FNV-Offset-Basis, 64 Bit
+        let n = length(this);
+        var i = 0;
+        while (i < n) {
+            h = h ^ (charAt(this, i) as int);
+            h = h * 1099511628211;         // FNV-Prime
+            i = i + 1;
+        }
+        return h;
+    }
+}
+
+extend uint :: [Equatable<uint>] {
+    fn equals(other: uint): bool { return this == other; }
+}
+
+extend uint :: [Ordered<uint>] {
+    fn compare(other: uint): int {
+        if (this < other) { return -1; }
+        if (this > other) { return 1; }
+        return 0;
+    }
+}
+
+extend uint :: [Hashable<uint>] {
+    fn hash(): int { return this as int; }
+}
+
+// KEIN `Hashable` fuer `float` — mit Absicht.
+//
+// Eine Hash-Tabelle verlangt: gleiche Werte, gleicher Hash. Fliesskomma bricht die Voraussetzung
+// davon, nicht die Zusage: `NaN != NaN` (IEEE 754), also findet ein Schluessel sich selbst nicht
+// wieder; `0.0 == -0.0` bei verschiedenen Bitmustern, also braeuchte der Hash eine Sonderregel.
+// Beides ist loesbar, aber keine Loesung ist die offensichtlich richtige — und eine falsche
+// Voreinstellung in `std.core` wuerde niemandem auffallen, bis eine Map Werte verliert.
+//
+// `Equatable` und `Ordered` bleiben: dort ist `NaN != NaN` genau das erwartete Verhalten.
+//
+// Die schmalen Ganzzahltypen (`int8` … `uint32`) haben ebenfalls keine Konformanz. Sie
+// nachzutragen sind 24 weitere `extend`-Bloecke fuer einen Fall, den es noch nicht gibt; wenn er
+// kommt, ist es mechanische Arbeit.
