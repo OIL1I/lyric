@@ -3475,7 +3475,14 @@ internal sealed class FunctionLowerer
             throw NotSupported($"call to '{calleeName}' (no declaration to read parameters from)",
                 expr.Span);
 
-        var supplied = MaterializeArguments(declaration, expr.Arguments, calleeName, expr.Span);
+        // Die Typargumente dieser Aufrufstelle, nach Namen — die Form, in der die Typtabelle
+        // Substitutionen fuehrt. Nur so kann der Parametertyp 'Iterator<T>' zu 'Iterator<int>'
+        // werden und die Coercion Klasse -> Interface entstehen.
+        var calleeSubstitution = symbol.Generics.Length > 0
+            ? NamedSubstitutionFor(symbol, _types.TypeArgumentsOf(expr)) : null;
+
+        var supplied = MaterializeArguments(declaration, expr.Arguments, calleeName, expr.Span,
+            calleeSubstitution);
 
         // Der Empfänger steht vorn — die Reihenfolge ist die Parameter-Konvention der IR und
         // muss zu der passen, in der FunctionLowerer die Slots angelegt hat.
@@ -3511,7 +3518,7 @@ internal sealed class FunctionLowerer
     /// die Argumente des Aufrufers nicht sichtbar sind.</para>
     /// </summary>
     private TempId[] MaterializeArguments(FunctionDecl callee, Expr[] provided, string name,
-        Span span)
+        Span span, IReadOnlyDictionary<string, LyrType>? calleeSubstitution = null)
     {
         var parameters = callee.Parameters;
         var args = new TempId[parameters.Length];
@@ -3530,13 +3537,13 @@ internal sealed class FunctionLowerer
 
             if (i < provided.Length)
             {
-                args[i] = LowerArgument(provided[i], parameter);
+                args[i] = LowerArgument(provided[i], parameter, calleeSubstitution);
                 continue;
             }
 
             if (parameter.Default is { } fallback)
             {
-                args[i] = LowerArgument(fallback, parameter);
+                args[i] = LowerArgument(fallback, parameter, calleeSubstitution);
                 continue;
             }
 
@@ -3589,7 +3596,8 @@ internal sealed class FunctionLowerer
     /// Der Verifier faengt das, aber als Typ-Mismatch tief im Callee statt als das, was es ist:
     /// eine fehlende Coercion am Aufrufort.</para>
     /// </summary>
-    private TempId LowerArgument(Expr argument, Param parameter)
+    private TempId LowerArgument(Expr argument, Param parameter,
+        IReadOnlyDictionary<string, LyrType>? calleeSubstitution = null)
     {
         // Nur das Lowern des Parametertyps wird abgeschirmt — ein Typ, den dieser Compiler-Stand
         // nicht kennt, meldet ohnehin gleich die Funktion selbst, und hier doppelt zu klagen waere
@@ -3599,7 +3607,18 @@ internal sealed class FunctionLowerer
         IrType expected;
         try
         {
-            expected = _typeTable.Lower(parameter.Type);
+            // Unter der Substitution DES CALLEES lowern, nicht der eigenen: bei
+            // 'fn zaehle<T>(source: Iterator<T>)' ist 'Iterator<T>' der geschriebene Parametertyp,
+            // und welches T gemeint ist, weiss nur die Aufrufstelle.
+            //
+            // Ohne sie warf das Lowern des Parametertyps (unaufgeloestes T), der catch unten
+            // griff, und das Argument ging OHNE Coercion durch — eine Klasse landete dort, wo ein
+            // Interface-Wert stehen musste. Der Verifier meldete das als malformed IR, also stuerzte
+            // der Compiler ab statt zu diagnostizieren. Nicht-generische Aufrufe waren nie
+            // betroffen, weshalb es bis zum ersten generischen Iterator-Adapter unentdeckt blieb.
+            using (calleeSubstitution is null
+                       ? null : _typeTable.PushSubstitution(calleeSubstitution))
+                expected = _typeTable.Lower(parameter.Type);
         }
         catch (UnsupportedConstructException)
         {
@@ -4030,6 +4049,24 @@ internal sealed class FunctionLowerer
         // einer generischen Instanz. Sie musste nur erfahren, dass hier eine Substitution gilt.
         using var scope = _typeTable.PushSubstitution(NamedSubstitution());
         return _typeTable.Lower(node);
+    }
+
+    /// <summary>
+    /// Die Typargumente einer Aufrufstelle als Namens-Map fuer die Typtabelle.
+    /// </summary>
+    /// <remarks>Ein Typargument kann selbst ein Typ-Parameter der RUFENDEN Funktion sein
+    /// (<c>wrap&lt;T&gt;</c> ruft <c>id&lt;T&gt;</c>); deshalb geht jedes noch durch die eigene
+    /// Substitution, bevor es in die Map kommt.</remarks>
+    private Dictionary<string, LyrType> NamedSubstitutionFor(
+        FunctionSymbol callee, IReadOnlyList<LyrType> typeArguments)
+    {
+        var mapping = new Dictionary<string, LyrType>(StringComparer.Ordinal);
+        var n = Math.Min(callee.Generics.Length, typeArguments.Count);
+
+        for (var i = 0; i < n; i++)
+            mapping[callee.Generics[i].Name] = SubstituteType(typeArguments[i]);
+
+        return mapping;
     }
 
     /// <summary>Die Substitution dieser Instanz mit Namen als Schluessel — die Form, in der die

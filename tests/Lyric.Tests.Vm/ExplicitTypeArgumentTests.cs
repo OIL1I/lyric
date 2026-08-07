@@ -261,4 +261,122 @@ public class ExplicitTypeArgumentTests
 
             fn main(): int { return describe(5, 5); }
             """));
+
+    // ------------------------------- Interface-Parameter an einer generischen Funktion
+
+    private const string IterSetup = """
+        import std.iter { Iterator, RangeIterator };
+
+        pub fn zaehle<T>(source: Iterator<T>): int {
+            var n = 0;
+            var v = source.next();
+            while (v != null) { n = n + 1; v = source.next(); }
+            return n;
+        }
+
+        """;
+
+    /// <summary>
+    /// Eine Klasse als Argument, wo die generische Signatur ein Interface verlangt.
+    ///
+    /// <para><b>Der Compiler stuerzte hier ab</b> („arg 0 is &amp;ty1, expected dyn ty0"). Der
+    /// Parametertyp <c>Iterator&lt;T&gt;</c> wurde OHNE die Substitution der Aufrufstelle gelowert,
+    /// warf am unaufgeloesten <c>T</c>, und der <c>catch</c> reichte das Argument dann <b>ohne
+    /// Coercion</b> durch — die Klasse landete dort, wo ein Fat Pointer stehen musste.</para>
+    ///
+    /// <para>Nicht-generische Aufrufe waren nie betroffen, weil dort der Parametertyp direkt
+    /// lowerbar ist. Deshalb blieb es bis zum ersten generischen Iterator-Adapter unentdeckt —
+    /// und blockierte <c>std.iter</c> vollstaendig, wo <b>jede</b> Funktion so aussieht.</para>
+    /// </summary>
+    [Fact]
+    public void A_class_coerces_to_an_interface_parameter_of_a_generic_function() =>
+        Assert.Equal(3, Run(IterSetup + """
+            fn main(): int {
+                return zaehle<int>(RangeIterator { current = 0, end = 3 });
+            }
+            """));
+
+    /// <summary>
+    /// <b>Grenze, nicht Zusicherung</b>: das Typargument laesst sich hier NICHT inferieren.
+    ///
+    /// <para><c>zaehle(RangeIterator { … })</c> muesste aus <c>RangeIterator :: [Iterator&lt;int&gt;]</c>
+    /// schliessen, dass <c>T = int</c> ist — also durch eine Konformanz hindurch. Das kann die
+    /// Inferenz nicht; sie liefert <c>&lt;error&gt;</c>, und das Lowering meldet
+    /// <c>LYR-IR0001</c>.</para>
+    ///
+    /// <para><c>lyric check</c> sagt dazu „ok" — die Sema merkt den Fehlschlag nicht. Auch das
+    /// ist ein Riss zwischen Sema und Backend, nur ein milder: es kommt eine Diagnose heraus und
+    /// kein Absturz.</para>
+    ///
+    /// <para>Praktische Folge fuer <c>std.iter</c>: wo eine Klasse an einen Interface-Parameter
+    /// geht, braucht der Aufruf explizite Typargumente. Dieser Test faellt, sobald die Inferenz
+    /// es lernt — und das ist der Erfolg.</para>
+    /// </summary>
+    [Fact]
+    public void Inference_through_a_conformance_does_not_work_yet()
+    {
+        var diagnostics = LoweringDiagnostics(IterSetup + """
+            fn main(): int {
+                return zaehle(RangeIterator { current = 5, end = 7 });
+            }
+            """);
+
+        Assert.Contains("LYR-IR0001", diagnostics);
+        Assert.Contains("not concrete", diagnostics);
+    }
+
+    /// <summary>Uebersetzt bis zum Lowering und liefert die Diagnosen — fuer Faelle, die
+    /// scheitern sollen.</summary>
+    private static string LoweringDiagnostics(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+        ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+
+        var writer = new StringWriter();
+        de.RenderText(writer);
+        return writer.ToString();
+    }
+
+    [Fact]
+    public void A_generic_adapter_over_an_interface_works()
+    {
+        // Der eigentliche Zielfall: eine Klasse mit ZWEI Typparametern, die ein Interface mit
+        // EINEM erfuellt, mit einer Closure als Feld. Das ist die Form jedes iter-Adapters.
+        Assert.Equal(60, Run("""
+            import std.iter { Iterator, RangeIterator };
+
+            pub class MapIter<T, U> :: [Iterator<U>] {
+                source: Iterator<T>,
+                f: fn(T) -> U,
+
+                pub mut fn next(): ?U {
+                    let v = this.source.next();
+                    if (v == null) { return null; }
+                    let g = this.f;
+                    return g(v);
+                }
+            }
+
+            pub fn mapIter<T, U>(source: Iterator<T>, f: fn(T) -> U): Iterator<U> {
+                return MapIter<T, U> { source = source, f = f };
+            }
+
+            fn main(): int {
+                var summe = 0;
+                for (x in mapIter(RangeIterator { current = 0, end = 4 }, (n: int) => n * 10)) {
+                    summe = summe + x;
+                }
+                return summe;
+            }
+            """));
+    }
 }
