@@ -547,7 +547,19 @@ ExprStmt        = Expr ';' .                                    (* nur Call, Ass
 Sema-Regeln (Auswahl):
 
 - `let` ist immutable; `var` mutable. Beide Pflicht-Init in lokalen Scope, außer DAA beweist Init vor erstem Read.
-- `for-in` benötigt einen Ausdruck, der das `Iterator<T>`-Interface implementiert.
+- `for-in` benötigt einen Ausdruck, der `Iterable<T>` **oder** `Iterator<T>` aus `std.iter`
+  erfüllt. Geprüft wird in dieser Reihenfolge: erfüllt der Träger `Iterable<T>`, ruft die Schleife
+  sein `iter()` und bekommt einen **frischen** Cursor; erfüllt er `Iterator<T>`, ist er selbst der
+  Cursor.
+
+  Die Zweiteilung ist der Grund, warum zwei Schleifen über dieselbe Liste einander nicht stören —
+  wäre ein Container sein eigener Iterator, hätte er einen eingebauten Fortschritt. C#, Java und
+  Rust trennen aus demselben Grund. Die drei eingebauten Formen (Range, Array, String) sind die
+  begründete Ausnahme: sie haben keine Deklaration, an die sich eine Konformanz hängen ließe, also
+  baut der Compiler ihren Adapter selbst.
+
+  Der Compiler sucht **nicht** rückwärts nach einem Iterator, der den Träger als Quelle nimmt.
+  Das wäre bei zwei Kandidaten mehrdeutig und müsste alle sichtbaren Module absuchen.
 - `match` ist exhaustive: alle Cases müssen abgedeckt sein oder `_` als Default (`LYR-SEM0050`).
 - Blöcke haben keinen Wert. Ein Block-Arm in einem match-**Ausdruck** (§6.2) muss deshalb auf
   jedem Pfad die Funktion verlassen (`return`/`throw`) und trägt keinen Wert zur

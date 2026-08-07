@@ -41,6 +41,9 @@ internal sealed class TypeTable
     /// <summary>Die Compilation, sofern der Lowerer sie durchreicht. Gebraucht fuer zwei Fragen,
     /// die ohne sie nicht beantwortbar sind: welches Symbol ein Builtin-Typ hat, und welche
     /// <c>extend</c>-Bloecke sichtbar sind.</summary>
+    /// <summary>Die Namensbindung — fuer Konformanz-Fragen, die das Lowering stellt.</summary>
+    public BindingResult Binding => _binding;
+
     public Compilation? Compilation { get; init; }
 
     /// <summary>Die Worklist der benutzten Extension-Methoden. Sie haengt hier und wird nicht
@@ -126,7 +129,13 @@ internal sealed class TypeTable
 
     /// <summary>Symbol und Id jeder Instanz — fuer die Impl-Tabelle, die wissen muss, welche
     /// Klasse welches Interface erfuellt (auch wenn beide Instanzen sind).</summary>
-    private readonly List<(TypeSymbol Symbol, TypeId Id)> _instanceSymbols = new();
+    /// <summary>Jede internierte generische Instanz samt ihrer Typargumente.
+    ///
+    /// <para>Die Argumente stehen dabei, weil die Impl-Tabelle sie braucht: eine vtable-Zeile
+    /// fuer <c>ListIterator&lt;int&gt;</c> muss die Methode der INSTANZ eintragen, und die
+    /// entsteht erst auf Anfrage bei der Monomorphisierung. Ohne sie liesse sich aus der TypeId
+    /// nicht zurueckrechnen, welche Instanz gemeint war.</para></summary>
+    private readonly List<(TypeSymbol Symbol, TypeId Id, LyrType[] Arguments)> _instanceSymbols = new();
 
     /// <summary>
     /// Die Typargumente, die gerade eingesetzt werden, waehrend das Layout einer Instanz entsteht.
@@ -285,7 +294,19 @@ internal sealed class TypeTable
     /// <summary>Alle bisher internierten Typen mit ihrem Symbol — die Grundlage der Impl-Tabelle.
     /// Nur was interniert wurde, steht im Bytecode, und nur dafuer braucht es vtable-Zeilen.</summary>
     public IEnumerable<(TypeSymbol Symbol, TypeId Id)> Interned =>
-        _assigned.Select(pair => (pair.Key, pair.Value)).Concat(_instanceSymbols);
+        _assigned.Select(pair => (pair.Key, pair.Value))
+            .Concat(_instanceSymbols.Select(entry => (entry.Symbol, entry.Id)));
+
+    /// <summary>Die generische Instanz hinter einer TypeId — oder <c>null</c>, wenn der Typ
+    /// nicht generisch ist. Die Impl-Tabelle braucht sie, um die Methode der Instanz statt der
+    /// Definition einzutragen.</summary>
+    public GenericInstance? InstanceOf(TypeId id)
+    {
+        foreach (var entry in _instanceSymbols)
+            if (entry.Id.Value == id.Value && entry.Arguments.Length > 0)
+                return new GenericInstance(entry.Symbol, entry.Arguments);
+        return null;
+    }
 
     public bool IsInterface(TypeId id) => _defs[id.Value].IsInterface;
 
@@ -349,7 +370,7 @@ internal sealed class TypeTable
                 {
                     var id = InternInterface(symbol, instanceName);
                     _instances[instanceName] = id;
-                    _instanceSymbols.Add((symbol, id));
+                    _instanceSymbols.Add((symbol, id, typeArguments.ToArray()));
                     return id;
                 }
 
@@ -357,11 +378,12 @@ internal sealed class TypeTable
                 {
                     var id = InternEnum(symbol);
                     _instances[instanceName] = id;
-                    _instanceSymbols.Add((symbol, id));
+                    _instanceSymbols.Add((symbol, id, typeArguments.ToArray()));
                     return id;
                 }
 
-                return InternLayout(symbol, instanceName, _instances);
+                return InternLayout(symbol, instanceName, _instances,
+                    typeArguments.ToArray());
             }
             finally
             {
@@ -414,7 +436,11 @@ internal sealed class TypeTable
     /// Baut das Layout und traegt es ein. Fuer eine Instanz ist <paramref name="registry"/> die
     /// Instanz-Map und <paramref name="name"/> traegt die Typargumente; sonst zaehlt das Symbol.
     /// </summary>
-    private TypeId InternLayout(TypeSymbol symbol, string name, Dictionary<string, TypeId>? registry)
+    /// <param name="instanceArguments">Die Typargumente, wenn dies eine generische Instanz ist.
+    /// Sie werden mitgefuehrt, weil die Impl-Tabelle aus einer TypeId zurueckrechnen muss, welche
+    /// Instanz gemeint war — die vtable-Zeile traegt die Methode der INSTANZ ein.</param>
+    private TypeId InternLayout(TypeSymbol symbol, string name, Dictionary<string, TypeId>? registry,
+        LyrType[]? instanceArguments = null)
     {
         var members = symbol.Declaration switch
         {
@@ -432,7 +458,7 @@ internal sealed class TypeTable
         // Lower(field) nur die Id braucht, nicht das Layout.
         var id = new TypeId(_defs.Count);
         if (registry is null) _assigned[symbol] = id;
-        else { registry[name] = id; _instanceSymbols.Add((symbol, id)); }
+        else { registry[name] = id; _instanceSymbols.Add((symbol, id, instanceArguments ?? [])); }
         _defs.Add(default);
 
         try

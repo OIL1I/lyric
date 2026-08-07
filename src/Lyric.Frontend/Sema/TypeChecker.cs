@@ -44,6 +44,7 @@ public sealed class TypeChecker
     private readonly TypeSymbol? _arrayIterator;
     private readonly TypeSymbol? _rangeIterator;
     private readonly TypeSymbol? _stringIterator;
+    private readonly TypeSymbol? _iterable;
     private readonly TypeSymbol? _indexable;
 
     private LyrType _currentReturn = LyrType.Void;
@@ -69,6 +70,7 @@ public sealed class TypeChecker
         _arrayIterator = iter?.LookupLocal("ArrayIterator") as TypeSymbol;
         _rangeIterator = iter?.LookupLocal("RangeIterator") as TypeSymbol;
         _stringIterator = iter?.LookupLocal("StringIterator") as TypeSymbol;
+        _iterable = iter?.LookupLocal("Iterable") as TypeSymbol;
 
         // 'Indexable<T>' steht in std.collections und ist fuer '[i]', was 'Iterator<T>' fuer
         // 'for-in' ist: der Compiler kennt EINE eingebaute Form (das Array) und bindet alles
@@ -84,6 +86,7 @@ public sealed class TypeChecker
         _result.RangeIterator = _rangeIterator;
         _result.StringIterator = _stringIterator;
         _result.Indexable = _indexable;
+        _result.Iterable = _iterable;
 
         foreach (var module in _comp.Modules) ComputeGlobals(module);
         foreach (var module in _comp.Modules)
@@ -515,10 +518,18 @@ public sealed class TypeChecker
 
             // Alles andere muss 'Iterator<T>' erfuellen. Was T ist, steht in der Konformanz des
             // Typs — nicht im Ausdruck, und auch nicht in einer Vermutung des Compilers.
-            _ => YieldTypeOfIterator(iterType, fo.Iterable.Span)
+            // Erst 'Iterable<T>' — ein Container SAGT, wie man ihn durchlaeuft. Dann
+            // 'Iterator<T>' fuer den Fall, dass der Ausdruck selbst schon ein Cursor ist
+            // ('for (x in meinIterator)').
+            //
+            // Die Reihenfolge ist bedeutsam: waere sie umgekehrt, wuerde ein Typ, der beides
+            // erfuellt, als sein eigener Cursor benutzt — und zwei Schleifen darueber wuerden
+            // einander weiterschieben.
+            _ => TypeArgumentOfConformance(iterType, _iterable)
+                 ?? YieldTypeOfIterator(iterType, fo.Iterable.Span)
                  ?? Report(fo.Iterable.Span, "LYR-SEM0007",
                      $"'{TypeFacts.Display(iterType)}' is not iterable — it must implement "
-                     + "'Iterator<T>' from std.iter")
+                     + "'Iterable<T>' or 'Iterator<T>' from std.iter")
         };
         var loopScope = new SymbolTable(scope);
         var loopVar = new LocalSymbol(fo.Variable, elem, false, fo);

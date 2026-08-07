@@ -66,3 +66,22 @@ pub class StringIterator :: [Iterator<char>] {
         return value;
     }
 }
+
+// Was sich durchlaufen laesst.
+//
+// Die Zweiteilung ist Absicht und folgt C# (Iterable/Iterator), Java und Rust: ein Container
+// SAGT, wie man ihn durchlaeuft, statt selbst der Cursor zu sein. Waere 'List<T>' ihr eigener
+// 'Iterator<T>', haette sie einen eingebauten Fortschritt — und zwei Schleifen ueber dieselbe
+// Liste wuerden einander weiterschieben. Aus demselben Grund haelt 'ArrayIterator' den Index und
+// nicht das Array.
+//
+// 'for (x in e)' fragt damit VORWAERTS: erfuellt 'e' dieses Interface, wird 'iter()' gerufen. Der
+// Compiler sucht nicht rueckwaerts nach einem Iterator, der 'e' als Quelle nimmt — das waere bei
+// zwei Kandidaten mehrdeutig und muesste alle sichtbaren Module absuchen.
+//
+// Die drei eingebauten Formen — Range, Array, String — sind die begruendete Ausnahme: sie haben
+// keine Deklaration, an die sich eine Konformanz haengen liesse, also baut der Compiler ihren
+// Adapter selbst.
+pub interface Iterable<T> {
+    fn iter(): Iterator<T>;
+}

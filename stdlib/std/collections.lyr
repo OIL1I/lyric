@@ -4,7 +4,7 @@
 
 module std.collections;
 
-import std.iter { Iterator };
+import std.iter { Iterator, Iterable };
 
 // Was sich mit `[i]` lesen und schreiben lässt.
 //
@@ -46,12 +46,18 @@ pub interface Indexable<T> {
 // über die Liste; gemessen bei 50 000 Elementen Faktor 8,6. Die Schrumpf-Schwelle liegt bei
 // einem Viertel und nicht bei der Hälfte, damit eine Liste, die um die Grenze pendelt, nicht bei
 // jedem `push`/`pop` umkopiert.
-pub class List<T> :: [Indexable<T>] {
+pub class List<T> :: [Indexable<T>, Iterable<T>] {
     data: (?T)[],
     count: int,
 
     pub fn length(): int {
         return this.count;
+    }
+
+    // Ein FRISCHER Cursor bei jedem Aufruf — deshalb stoeren zwei Schleifen ueber dieselbe Liste
+    // einander nicht. Genau dafuer ist die Trennung von 'Iterable' und 'Iterator' da.
+    pub fn iter(): Iterator<T> {
+        return ListIterator<T> { source = this, index = 0 };
     }
 
     // Wie viele Slots belegt sind — inklusive der leeren. Nur für Tests und für den, der wissen

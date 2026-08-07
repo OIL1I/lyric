@@ -1239,6 +1239,44 @@ internal sealed class FunctionLowerer
         // treffen muss — ein syntaktisch geschriebener Typ traegt sie nicht von allein.
         var source = SubstituteType(_types.TypeOf(stmt.Iterable));
 
+        // 'Iterable<T>' zuerst: der Traeger SAGT, wie man ihn durchlaeuft, und liefert bei jedem
+        // Aufruf einen frischen Cursor. Deshalb stoeren zwei Schleifen ueber dieselbe Liste
+        // einander nicht — waere die Liste ihr eigener Iterator, wuerden sie es.
+        //
+        // Der Rueckgabetyp ist 'Iterator<T>', also ein INTERFACE — 'next()' geht damit ueber
+        // callvirt. Das ist der Preis der Entkopplung und derselbe Weg, den ein Iterator nimmt,
+        // der ueber sein Interface vorliegt.
+        if (_types.Iterable is { } iterable
+            && TypeFacts.SymbolOf(source) is { } carrier
+            && Conformance.Implements(carrier, iterable, _typeTable.Binding)
+            && carrier.Members.LookupLocal("iter") is FunctionSymbol iterMethod
+            && iterMethod.Declaration is FunctionDecl iterDecl)
+        {
+            var target = source is GenericInstance owning
+                ? _instances.RequestMethod(iterMethod, iterDecl, owning, stmt.Span)
+                : TryResolveFunction(iterMethod, out var direct)
+                    ? direct
+                    : throw NotSupported($"'{carrier.Name}.iter' was not lowered", stmt.Span);
+
+            // 'Iterator<T>' mit dem KONKRETEN Elementtyp, nicht die Definition: eine generische
+            // Instanz hat ihre eigene Slot-Tabelle, und 'callvirt' liest den Index daraus.
+            // Woher der Elementtyp kommt, weiss die Sema laengst — er steht am Symbol der
+            // Schleifenvariable, und ihn hier neu abzuleiten waere eine zweite Wahrheit.
+            var element = _types.RefOf(stmt) is LocalSymbol bound
+                ? SubstituteType(bound.Type)
+                : throw Bug($"for-in at {stmt.Span} has no bound loop variable");
+
+            var iteratorDefinition = _types.IteratorInterface ?? throw NotSupported(
+                "iterating (std.iter is not on the module path)", stmt.Span);
+
+            var cursorType = new IrInterfaceType(
+                _typeTable.Intern(iteratorDefinition, [element]));
+
+            var cursor = _slots.NewTemp(cursorType);
+            _b.Emit(new Call(cursor, target, [LowerExpr(stmt.Iterable)], stmt.Span));
+            return (cursor, cursorType, null);
+        }
+
         if (source is ArrayOf array)
         {
             var owner = new GenericInstance(

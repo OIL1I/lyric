@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1663 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1668 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -51,6 +51,24 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
+
+- [x] **`Iterable<T>` — `for (x in liste)`.** 1668 Tests gruen.
+  - **`for-in` fragt jetzt vorwaerts.** Ein Container SAGT ueber `iter()`, wie man ihn
+    durchlaeuft; der Compiler sucht nicht rueckwaerts nach einem Iterator, der ihn als Quelle
+    nimmt — das waere bei zwei Kandidaten mehrdeutig und muesste alle sichtbaren Module absuchen.
+  - **`List<T>` darf nicht ihr eigener `Iterator<T>` sein.** Sie haette dann einen eingebauten
+    Cursor, und zwei Schleifen ueber dieselbe Liste wuerden einander weiterschieben — ein Test
+    mit verschachtelter Schleife haelt fest, dass 9 und nicht 3 herauskommt. C#, Java und Rust
+    trennen aus demselben Grund.
+  - **Die Reihenfolge in der Sema ist bedeutsam**: erst `Iterable`, dann `Iterator`. Umgekehrt
+    wuerde ein Typ, der beides erfuellt, als sein eigener Cursor benutzt.
+  - **Zwei aeltere Luecken kamen dabei ans Licht.** Eine generische Klasse, die ein Interface
+    implementiert, bekam **keine vtable-Zeile** — `BuildImpls` suchte die Methode der Definition,
+    die es bei einer Instanz nicht gibt. Das fiel nie auf, weil `for-in` ueber `ArrayIterator<T>`
+    den direkten Pfad nimmt; erst ein `iter()`, das einen Interface-Wert liefert, braucht die
+    Tabelle. Und die Nachrunde nach `BuildImpls` leerte `instances` nicht, sodass die
+    angeforderte Methode ohne Rumpf blieb — der Verifier meldete „targets f7, which is out of
+    range".
 
 - [x] **M8 — S5 — `std.collections`: `Indexable<T>` und `List<T>`.** 1663 Tests gruen.
   - **Die erste Fassung war an zwei Stellen falsch, und die Tests haben es nicht gemerkt.** `get`
@@ -142,8 +160,8 @@ steht weiter aus.
 **M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`), S3 (`std.fmt`) und S4 (`Throwable`)
 stehen. Als naechstes **S5 — `std.collections`** mit `List<T>`, `Map<K,V>`, `Set<T>`.
 
-**S5 steht** — `Indexable<T>` und `List<T>`. `LinkedList<T>` kommt spaeter als eigener Typ ohne
-`Indexable` (O(1) an beiden Enden, Iteration ueber `Iterator<T>`, kein `[i]`).
+**S5 steht** — `Indexable<T>`, `Iterable<T>` und `List<T>`. `LinkedList<T>` kommt spaeter als
+eigener Typ ohne `Indexable` (O(1) an beiden Enden, Iteration ueber `Iterable<T>`, kein `[i]`).
 
 Offen im Slice bleiben `Map<K,V>` und `Set<T>`:
 beide brauchen Hashing, und wie ein Nutzertyp seinen Hash liefert, ist eine Interface-Frage
@@ -245,7 +263,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`M8: List<T> korrigiert - Bounds, echtes Loeschen, Schrumpfen`
+`M8: Iterable<T> - for-in ueber eigene Container`
 
 ---
 

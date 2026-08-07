@@ -283,7 +283,8 @@ public static class ModuleLowerer
         // Die vtable-Zeilen ZUERST, denn sie koennen eine Extension anfordern, die bisher niemand
         // gerufen hat: 'extend A :: [I]' wird gebraucht, sobald ein A in einem I-Slot landet —
         // auch wenn die Methode im Quelltext nirgends direkt steht.
-        var impls = BuildImpls(typeTable, binding, compilation, ids, extensions, de, ref failed);
+        var impls = BuildImpls(typeTable, binding, compilation, ids, extensions, instances,
+            de, ref failed);
         if (failed) return null;
 
         var late = new List<(FunctionId Id, IrFunction Function)>();
@@ -292,6 +293,12 @@ public static class ModuleLowerer
             for (var round = 0; round < MaxLoweringRounds; round++)
             {
                 var before = late.Count;
+                // Alle drei, nicht nur zwei: eine vtable-Zeile fuer eine generische Instanz
+                // fordert deren Methode an (ListIterator<int>.next), und die entsteht erst durch
+                // die Monomorphisierung. Fehlte 'instances' hier, zeigte die Zeile auf eine
+                // FunctionId, die niemand gefuellt hat — der Verifier meldet das als
+                // "targets f7, which is out of range".
+                late.AddRange(instances.LowerAll(types, ids, imports, typeTable, globals, lambdas));
                 late.AddRange(extensions.LowerAll(types, ids, imports, typeTable, globals,
                     lambdas, instances));
                 late.AddRange(lambdas.LowerAll(types, ids, imports, typeTable, globals, instances));
@@ -339,7 +346,7 @@ public static class ModuleLowerer
     /// </summary>
     private static List<IrImpl> BuildImpls(TypeTable typeTable, BindingResult binding,
         Compilation compilation, Dictionary<FunctionSymbol, FunctionId> ids,
-        ExtensionTable extensions, DiagnosticEngine de, ref bool failed)
+        ExtensionTable extensions, InstanceTable instances, DiagnosticEngine de, ref bool failed)
     {
         var impls = new List<IrImpl>();
         var interned = typeTable.Interned.ToList();
@@ -370,7 +377,15 @@ public static class ModuleLowerer
                     // Reihenfolge ist §3.5/§3.6: eigenes Member, dann Extension, dann der
                     // Default des Interfaces. Eine Extension-Methode steht NICHT in
                     // 'type.Members' — sie gehoert dem extend-Block, nicht dem Zieltyp.
-                    var target = Resolve(type, slots[i], ids)
+                    // Bei einer generischen Instanz gehoert die Methode der INSTANZ, nicht der
+                    // Definition: 'ListIterator<int>.next' entsteht erst durch die
+                    // Monomorphisierung, und die Definition hat keine lowerbare Fassung.
+                    //
+                    // Das fiel bis M8/S5 nicht auf, weil 'for-in' ueber 'ArrayIterator<T>' den
+                    // DIREKTEN Pfad nimmt und die vtable nie befragt. Erst ein 'iter()', das
+                    // einen Interface-Wert liefert, braucht sie.
+                    var target = ResolveInInstance(typeTable, typeId, slots[i], instances)
+                                 ?? Resolve(type, slots[i], ids)
                                  ?? ResolveInExtensions(viaExtension, slots[i], extensions)
                                  ?? Resolve(iface, slots[i], ids);
                     if (target is { } id) { methods[i] = id; continue; }
@@ -422,6 +437,18 @@ public static class ModuleLowerer
                 }
         }
         return found;
+    }
+
+    /// <summary>Die Methode einer generischen Instanz, ueber die Monomorphisierung angefordert.
+    /// <c>null</c>, wenn der Typ nicht generisch ist oder die Methode nicht hat.</summary>
+    private static FunctionId? ResolveInInstance(TypeTable typeTable, TypeId typeId, string method,
+        InstanceTable instances)
+    {
+        if (typeTable.InstanceOf(typeId) is not { } instance) return null;
+        if (instance.Definition.Members.LookupLocal(method) is not FunctionSymbol symbol) return null;
+        if (symbol.Declaration is not FunctionDecl declaration || declaration.Body is null) return null;
+
+        return instances.RequestMethod(symbol, declaration, instance, default);
     }
 
     private static FunctionId? ResolveInExtensions(List<ExtensionBlock> blocks, string method,

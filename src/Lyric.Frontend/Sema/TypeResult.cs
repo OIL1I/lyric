@@ -106,6 +106,9 @@ public sealed class TypeResult
     /// <summary>'Indexable<T>' aus std.collections — was '[i]' bedient (§6.4).</summary>
     public TypeSymbol? Indexable { get; set; }
 
+    /// <summary>'Iterable<T>' aus std.iter — was 'for-in' zuerst fragt.</summary>
+    public TypeSymbol? Iterable { get; set; }
+
     /// <summary>Lebt dieses Symbol in einer Zelle statt in einem Frame-Slot? Das Lowering fragt
     /// das an <b>jeder</b> Zugriffsstelle — auch ausserhalb der Closure, denn beide Seiten muessen
     /// dieselbe Zelle sehen.</summary>

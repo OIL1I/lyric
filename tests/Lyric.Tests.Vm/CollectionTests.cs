@@ -289,4 +289,106 @@ public class CollectionTests
                 return xs.capacity();
             }
             """));
+
+    // ------------------------------------------------------------------ Iterable<T>
+
+    [Fact]
+    public void A_list_can_be_walked_with_for_in() =>
+        // 'for-in' fragt VORWAERTS: erfuellt der Traeger 'Iterable<T>', wird 'iter()' gerufen.
+        // Der Compiler sucht NICHT rueckwaerts nach einem Iterator, der die Liste als Quelle
+        // nimmt — das waere bei zwei Kandidaten mehrdeutig und muesste alle sichtbaren Module
+        // absuchen.
+        Assert.Equal(6, Run(Head + """
+            fn main(): int {
+                let xs = emptyList<int>();
+                xs.push(1);
+                xs.push(2);
+                xs.push(3);
+                var sum = 0;
+                for (x in xs) { sum = sum + x; }
+                return sum;
+            }
+            """));
+
+    [Fact]
+    public void Two_loops_over_the_same_list_do_not_interfere() =>
+        // DER Grund fuer die Zweiteilung. Waere 'List<T>' ihr eigener 'Iterator<T>', haette sie
+        // einen eingebauten Fortschritt — die innere Schleife wuerde die aeussere weiterschieben,
+        // und statt 9 kaeme 3 heraus. 'iter()' liefert bei jedem Aufruf einen frischen Cursor.
+        Assert.Equal(9, Run(Head + """
+            fn main(): int {
+                let xs = emptyList<int>();
+                xs.push(1);
+                xs.push(2);
+                xs.push(3);
+                var n = 0;
+                for (a in xs) {
+                    for (b in xs) { n = n + 1; }
+                }
+                return n;
+            }
+            """));
+
+    [Fact]
+    public void An_empty_list_iterates_zero_times() =>
+        Assert.Equal(0, Run(Head + """
+            fn main(): int {
+                let xs = emptyList<int>();
+                var n = 0;
+                for (x in xs) { n = n + 1; }
+                return n;
+            }
+            """));
+
+    [Fact]
+    public void A_user_type_can_implement_Iterable() =>
+        // Wie bei 'Indexable': das Interface steht jedem offen, nicht nur der Stdlib. Ohne
+        // diesen Test haenge 'for-in' womoeglich an 'List<T>' statt am Interface.
+        Assert.Equal(3, Run("""
+            import std.iter { Iterator, Iterable };
+
+            class Once :: [Iterator<int>] {
+                done: bool,
+                pub mut fn next(): ?int {
+                    if (this.done) { return null; }
+                    this.done = true;
+                    return 3;
+                }
+            }
+
+            class Source :: [Iterable<int>] {
+                pub fn iter(): Iterator<int> { return Once { done = false }; }
+            }
+
+            fn main(): int {
+                let s = Source { };
+                var sum = 0;
+                for (x in s) { sum = sum + x; }
+                return sum;
+            }
+            """));
+
+    [Fact]
+    public void A_plain_iterator_still_works_directly() =>
+        // Die Gegenprobe: der Iterable-Pfad darf den alten nicht verdraengt haben. Ein Wert, der
+        // selbst 'Iterator<T>' erfuellt, wird weiterhin direkt benutzt.
+        Assert.Equal(3, Run("""
+            import std.iter { Iterator };
+
+            class Once :: [Iterator<int>] {
+                done: bool,
+                pub mut fn next(): ?int {
+                    if (this.done) { return null; }
+                    this.done = true;
+                    return 3;
+                }
+            }
+
+            fn main(): int {
+                let o = Once { done = false };
+                var sum = 0;
+                for (x in o) { sum = sum + x; }
+                return sum;
+            }
+            """));
 }
