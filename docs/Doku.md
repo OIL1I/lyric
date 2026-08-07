@@ -1297,7 +1297,39 @@ Die bequeme Oberfläche. Fasst Schritte zusammen und ist das, was du normalerwei
 | `lyric --vm <pfad>` | Runtime wählen (siehe §23.4) |
 | `lyric --version` | Toolchain-Version, Format-Version, aktive Runtime |
 | `lyric --help` | Hilfe |
-| `lyric repl` | Interaktive REPL *(M9)* |
+| `lyric repl` | Die interaktive Schleife — dispatcht auf `lyrrepl` |
+
+#### `lyric repl` — die interaktive Schleife
+
+```
+$ lyric repl
+Lyric 0.9.0 — :help for commands, :quit to leave
+lyr> let x = 5
+lyr> x * 2
+10
+lyr> fn double(n: int): int { return n * 2; }
+lyr> double(21)
+42
+```
+
+**Deklarationen bleiben, Statements laufen einmal.** Ein `fn`, `class`, `struct`, `enum` oder
+Modul-`let` gehört ab dann zur Sitzung; alles andere wird ausgeführt und ist danach vergessen.
+Ein Ausdruck wird gedruckt, ein Statement nur ausgeführt — was von beidem eine Eingabe ist,
+entscheidet ihr Typ und nicht ihre Form.
+
+| | |
+|---|---|
+| `:list`, `:l` | was die Sitzung sich gemerkt hat |
+| `:reset` | alles vergessen |
+| `:help`, `:h` | die Kommandos |
+| `:quit`, `:q` | beenden (auch Ctrl+D) |
+
+**Eine fehlerhafte Eingabe ändert nichts.** Wer sich vertippt, sitzt danach nicht auf einem
+Vorspann, der nicht mehr übersetzt — auch ein `panic` beendet nur die Eingabe, nicht die Sitzung.
+
+Sie ist ein **eigenes Werkzeug** (`lyrrepl`, ADR-021), weil sie als einziges Frontend und Runtime
+im selben Prozess braucht: sie übersetzt, führt aus und behält den Zustand dazwischen. Was sie in
+v1 nicht kann: eine Deklaration neu definieren, mehrzeilige Eingaben, Tab-Completion.
 
 ### 23.2 `lyrc` — der Compiler
 

@@ -11,11 +11,13 @@
 
 ## Aktueller Meilenstein
 
-**M9 — REPL + Tooling.** S1 bis S4 stehen (README, Grammar, Extension, REPL); offen ist
-nur noch S5: Politur und der `v0.9`-Tag.
+**M9 — REPL + Tooling — abgeschlossen.** Slices S1 bis S5.
 
-**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1726 Tests grün. Das Gate
-`examples/wc.lyr` zählt wie POSIX-`wc`.
+1727 Tests grün, Bytecode-Format **2.5**, **vier** Binaries. `lyric repl` läuft, die README ist
+maschinell geprüft, die TextMate-Grammar an den Lexer gebunden, die VS-Code-Extension liefert
+Highlighting und einen Run-Command.
+
+**Offen für v1.0: nur noch M10** — die Embedding-API (`LangVm`, Marshalling, Hot-Reload).
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
 > selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
@@ -46,6 +48,16 @@ nur noch S5: Politur und der `v0.9`-Tag.
     ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
+
+- [x] **M9 — S5 — Politur.** **M9 ist damit abgeschlossen.** 1727 Tests gruen.
+  - README auf **vier** Binaries; `lyric repl` in `Doku.md` §23.1 mit den Kommandos und der
+    Regel „Deklarationen bleiben, Statements laufen einmal".
+  - Die Auslieferung liefert **16 Eintraege** (vorher 13) — `lyrrepl` samt DLL und
+    `runtimeconfig`. Ein neuer Architektur-Test haelt fest, dass **jedes** Werkzeug aus
+    `Tool.All` neben dem Treiber liegt: er sucht sie dort, und ein fehlendes meldet sich sonst
+    erst zur Laufzeit beim Nutzer.
+  - Die ROADMAP hat ihren M9-Vermerk („erreicht"), inklusive dessen, was M9 **nicht** bringt:
+    LSP, Formatter und Attribute stehen in der v1.X-Tabelle.
 
 - [x] **M9 — S4 — die REPL** (`lyrrepl.exe`, ADR-021). 1726 Tests gruen.
   - **Ein viertes Binary, und das war ADR-019s eigener Test.** Dort stand: „`lyrtest` fuegt sich
@@ -102,41 +114,6 @@ nur noch S5: Politur und der `v0.9`-Tag.
     Grammatik raet es an der Grossschreibung und sagt das im Kommentar. Wer es genau will,
     braucht den LSP (v1.2).
 
-- [x] **M9 — S1 — README.** Sie behauptete nach acht Meilensteinen und 1700 Tests: **„no working
-  compiler exists yet. Current milestone: M0"**. Das ist die Aussenwirkung des Projekts, und sie
-  war acht Meilensteine alt.
-  - **Das Beispiel darin lief nicht** — es benutzte ein `Equatable`, das es nicht gibt, und
-    `sqrt`/`pi` ohne Import. Das neue laeuft und ist **maschinell geprueft**: ein Test schneidet
-    den ```lyr-Block aus der README, fuehrt ihn aus und vergleicht mit der dort gezeigten
-    Ausgabe.
-  - Ein zweiter Test prueft die **Beispiel-Zahl** — er hat sofort gegriffen (ich hatte 23
-    geschrieben, es sind 22). Eine Zahl in der Doku, die niemand nachzaehlt, ist irgendwann
-    falsch.
-  - Ein dritter prueft auf genau den Satz, der acht Meilensteine ueberlebt hat. Schmal, aber er
-    kostet nichts und haette die Peinlichkeit verhindert.
-  - **Dieselbe Erfahrung zum dritten Mal**: `Sprache.md` §4 behauptete UTF-8, wo UTF-16 lief;
-    §2.2 nannte eine Spec-Notation, die nie .NET war. Doku, die niemand prueft, driftet.
-
-- [x] **M8 — S8 — das Gate: `examples/wc.lyr`.** **M8 ist damit abgeschlossen.**
-  - Es zaehlt wie POSIX-`wc`: 4 Zeilen, 6 Woerter, 33 Zeichen fuer dieselbe Datei. Mehrere
-    Dateien bekommen eine Summenzeile, eine fehlende wird gemeldet, ohne die anderen zu
-    verhindern.
-  - **Eine bewusste Abweichung**: `wc -l` zaehlt *Zeilenumbrueche* — eine Datei ohne
-    abschliessenden Umbruch hat fuer POSIX null Zeilen. Hier hat sie eine. Ein Test haelt fest,
-    dass das eine Entscheidung war.
-  - **Zwei Fehler gefunden, die kein Slice-Test bemerkt hatte** — genau dafuer ist ein Gate da:
-    - **`continue` engte nicht ein.** Nach `if (x == null) { return; }` war x eingeengt, nach
-      `if (x == null) { continue; }` nicht — obwohl beide den Rest des Blocks verlassen. Behoben
-      ueber eine **zweite** Funktion `Flow.AlwaysExits`: „fehlt ein return am Ende der Funktion"
-      darf `continue` nicht als Rueckgabe zaehlen, „wird der Code nach dem if erreicht" muss es.
-      Beides in eine Funktion zu legen hiesse, eine der Antworten still falsch zu geben.
-    - **Format-Specs zaehlten bei Zahlen nicht als Breite.** `{n:-8}` reichte an .NET durch, und
-      dort ist `-8` ein *Custom Format* mit Literalen — die Ausgabe war woertlich „-8". Die
-      Breiten-Form gilt jetzt fuer **alle** Typen; eine Regel, die je nach Typ etwas anderes
-      bedeutet, waere die schlechtere Antwort.
-  - Der bekannte Parser-Bug aus P3 (`x = Struct { … }` im Statement-Kontext) ist beim Schreiben
-    **erneut** aufgetreten. Er steht seit P3 in dieser Datei; das ist die dritte Begegnung.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -169,20 +146,16 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M9.** S1 bis S4 stehen. Als naechstes **S5** — Politur und der `v0.9`-Tag.
+**M9 ist abgeschlossen — als naechstes M10**, die Embedding-API: `Lyric.Embedding.LangVm` mit
+`RegisterFunction`/`RegisterType`, die bidirektionale Marshalling-Schicht zwischen Lyric-Werten
+und .NET-Objekten, `Reload` fuer Hot-Reload, und ein Beispiel-Host in C#.
 
-**Die REPL wird ein eigenes Binary** (`lyrrepl.exe`), vom Dispatcher gerufen wie `lyrc` und
-`lyrvm` — entschieden 2026-08-07. Der Grund ist nicht Symmetrie: sie braucht **Frontend UND
-Runtime im selben Prozess** (kompilieren, ausfuehren, Zustand behalten), und kein bestehendes
-Binary hat beide. Kaeme sie in `lyric`, haette der Dispatcher wieder beide Seiten — genau das,
-was ADR-019 abgeschafft hat, und der Architektur-Test wuerde fallen. ADR-019 sieht den Fall
-ausdruecklich vor („`lyrtest` fuegt sich als drittes Werkzeug ein … das ist der Test dafuer, ob
-dieser Entwurf traegt"). Wird als **ADR-021** festgehalten, wenn S4 gebaut wird.
+Die Capabilities aus M8/S6 sind dafuer die halbe Miete: der Host konfiguriert beim Erzeugen der
+VM, was ein Skript anfassen darf, und die Durchsetzung liegt bereits beim Laden. `std.dotnet`
+gehoert in denselben Slice — es ist Interop und teilt sich die Marshalling-Schicht.
 
-**Der REPL-Zustand lebt in persistenten Globals**: die VM behaelt ihr Globals-Array ueber Laeufe,
-jede Eingabe wird ein Modul, dessen Globals hinter den bisherigen anfangen. Der naheliegende Weg
-— den Quelltext akkumulieren und alles neu kompilieren — waere die Falle: `println("hi")` wuerde
-bei jeder folgenden Eingabe erneut drucken.
+**Der `v0.9`-Tag** ist das Exit von M9 und noch nicht gesetzt; die annotierte Tag-Message ist die
+Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
 
 ## Noch offen
 

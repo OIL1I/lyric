@@ -581,6 +581,15 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 
 **Exit**: `lyric repl` produktiv. **v0.9 Release-Tag**.
 
+> **Erreicht (2026-08-07).** `lyric repl` laeuft; die REPL ist ein eigenes Binary geworden
+> (**ADR-021**), und der Dispatch dorthin ist eine Zeile — genau der Test, den ADR-019 sich selbst
+> gestellt hatte. Dazu: README auf den Stand gebracht und **maschinell geprueft** (ihr Beispiel
+> wird ausgefuehrt), TextMate-Grammar gegen den Lexer gebunden, VS-Code-Extension mit Run-Command.
+>
+> **`lyric test` ist gestrichen** (Korrektur unten), die Beispiele waren mit 22 Programmen bereits
+> gefuellt. Was M9 nicht bringt, steht ausdruecklich in der v1.X-Tabelle: LSP, Formatter,
+> Attribute.
+
 > **Korrektur (2026-08-06):** `lyric test` ist aus M9 gestrichen und wandert mit den Attributen
 > nach post-v1. Es sammelt `@test`-Funktionen — und `@test` hat keine Grammatik: `Sprache.md` §2.3
 > sieht an einer Deklaration kein Attribut vor, §10.1 versprach eines. Die Lücke bestand seit M1

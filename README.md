@@ -122,16 +122,17 @@ lyric/
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the M0–M10 milestone plan.
 
-## The three binaries
+## The four binaries
 
 Like `dotnet`/`csc` or `cargo`/`rustc`, the toolchain separates the friendly driver from the
 tools it drives. In daily use you only need `lyric`.
 
 | Binary | Role |
 |---|---|
-| `lyric` | Driver. `run`, `build`, `check`, `disasm` — compiles and executes in one step |
+| `lyric` | Driver. `run`, `build`, `check`, `disasm`, `repl` — it dispatches, it does not compile |
 | `lyrc` | Compiler. `build`, `check`, plus the `lower`/`parse`/`tokenize` debug dumps |
 | `lyrvm` | Runtime. `run`, `disasm`, `verify` on `.lyrbc` only — it does not compile |
+| `lyrrepl` | The interactive prompt. The only tool that holds both sides at once (ADR-021) |
 
 Because `.lyrbc` is a specified format ([`docs/Bytecode.md`](docs/Bytecode.md)), a third party can
 write their own runtime. Point the driver at it with `lyric run app.lyr --vm ./their-runtime`, or
@@ -158,9 +159,25 @@ Or, after publishing:
 lyric run examples/wc.lyr -- README.md
 ```
 
+### The prompt
+
+```
+$ lyric repl
+Lyric 0.9.0 — :help for commands, :quit to leave
+lyr> let x = 5
+lyr> x * 2
+10
+lyr> fn double(n: int): int { return n * 2; }
+lyr> double(21)
+42
+```
+
+Declarations stay for later entries; statements run once. `:list` shows what the session
+remembers, `:reset` forgets it.
+
 ### Shipping
 
-One command publishes all three binaries into a single directory:
+One command publishes all four binaries into a single directory:
 
 ```bash
 dotnet msbuild build/publish.proj
@@ -170,7 +187,8 @@ The result lands in `artifacts/publish/` and is framework-dependent — it needs
 .NET 10 runtime on the target machine. What ends up there, and nothing else:
 
 ```
-lyric.exe  lyrc.exe  lyrvm.exe     the three binaries
+lyric.exe  lyrc.exe               driver and compiler
+lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
 lyrcore.dll                        diagnostics + the read side of the bytecode format
 lyrfe.dll                          everything between source and bytes
 lyrrt.dll                          the interpreter

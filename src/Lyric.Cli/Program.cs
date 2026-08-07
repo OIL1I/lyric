@@ -153,6 +153,7 @@ public static class Program
               build <file> [-o <out>]  Compile .lyr to .lyrbc
               check <file>             Resolve and type-check only
               disasm <file.lyrbc>      Print a readable disassembly
+              repl                     Start a REPL session
 
             Options:
               --compiler <path>        Compiler to use; defaults to $LYRIC_COMPILER,

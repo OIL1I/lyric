@@ -85,6 +85,19 @@ public sealed class ArchitectureTests
     }
 
     [Fact]
+    public void Every_tool_the_driver_dispatches_to_lies_next_to_it()
+    {
+        // Der Treiber sucht seine Werkzeuge NEBEN der eigenen exe (Tool.Resolve). Fehlt eines,
+        // meldet er das erst zur Laufzeit — und zwar dem Nutzer, nicht dem Entwickler. Die Liste
+        // hier ist dieselbe wie Tool.All; waechst sie, faellt dieser Test, bis das Kopier-Target
+        // in Lyric.Cli.csproj nachgezogen ist.
+        var shipped = LyricAssemblies("Lyric.Cli");
+
+        foreach (var tool in new[] { "lyrc.dll", "lyrvm.dll", "lyrrepl.dll" })
+            Assert.Contains(tool, shipped);
+    }
+
+    [Fact]
     public void The_repl_is_the_one_tool_that_needs_both_sides()
     {
         // ADR-021. Die Ausnahme, und sie steht hier ausdruecklich statt als Luecke: eine REPL
