@@ -789,10 +789,35 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 nach demselben Muster wie das bestehende `Display`: die Builtins erfüllen sie über `extend`,
 Nutzertypen über `::`. `Map<K, V>` und `Set<T>` verlangen `K :: [Hashable]` als Constraint.
 
-```
-pub interface Equatable { fn equals(other: Equatable): bool; }
-pub interface Hashable :: [Equatable] { fn hash(): int; }
-```
+> **Korrektur (2026-08-07, beim Bau von S3).** Die erste Fassung dieses ADR schrieb die
+> Signaturen so:
+>
+> ```
+> pub interface Equatable { fn equals(other: Equatable): bool; }
+> pub interface Hashable :: [Equatable] { fn hash(): int; }
+> ```
+>
+> **Beides ist nicht baubar**, und das war ohne Messung erkennbar:
+>
+> - `other: Equatable` verlangt einen Interface-**Wert**. `std/core.lyr` sagt im Kommentar zu
+>   `Display` ausdrücklich, dass ein Skalar das nicht sein kann — ein Fat Pointer braucht eine
+>   Referenz. `extend int :: [Equatable]` wäre damit unmöglich, also gäbe es kein `Map<int, V>`.
+>   Das Beispiel in `Sprache.md` §5.1 benutzt den **konkreten** Typ (`fn equals(other: Vector3)`)
+>   und war die ganze Zeit richtiger als dieses ADR.
+> - `interface Hashable :: [Equatable]` — **Interface-Vererbung gibt es in Lyric nicht.** Die
+>   Grammatik (`InterfaceDecl`, §7) sieht keine Konformanzliste vor. Der Parser lehnt es ab.
+>
+> Was gemessen wurde und **geht**: `interface Eq<T> { fn eq(other: T): bool; }` mit
+> `extend int :: [Eq<int>]` und `struct P :: [Eq<P>]`, direkt gerufen.
+>
+> Was **nicht** geht: `fn same<T :: [Eq<T>]>(a: T, b: T)` scheitert mit `cannot assign 'T' to 'T'`
+> — der Constraint bringt sein eigenes Typargument mit, und die Substitution über die
+> Constraint-Grenze fehlt. Das ist der als „Generics-Rest aus M4" notierte offene Punkt. **Ohne
+> ihn ist dieses ADR nicht in brauchbarer Form umsetzbar**, denn `Map<K :: [Hashable<K>], V>` ist
+> genau diese Konstruktion.
+>
+> Die Entscheidung selbst — Interfaces statt eingebautem Hash — bleibt. Die Signaturen werden
+> festgelegt, wenn der M4-Rest steht.
 
 **Begründung**: Das Muster steht bereits und funktioniert. `Display` ist seit M8/S1 genau so
 gebaut — Interface in `std.core`, `extend int :: [Display]` für jeden Builtin, Constraint an der

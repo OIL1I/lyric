@@ -990,9 +990,15 @@ public sealed class TypeChecker
                     return UnifyNumeric(b.Left, l, b.Right, r) ?? BadBinary(b, l, r);
                 return BadBinary(b, l, r);
             case BinaryOp.Lt or BinaryOp.Le or BinaryOp.Gt or BinaryOp.Ge:
-                if (UnifyNumeric(b.Left, l, b.Right, r) is not null
-                    || (TypeFacts.IsString(l) && TypeFacts.IsString(r))
-                    || (LyrType.Equal(l, r) && l is PrimitiveType { Kind: PrimitiveKind.Char }))
+                // Nur Numerik (§6.5). 'char' ist seit ADR-022 selbst Numerik und braucht deshalb
+                // keinen eigenen Zweig mehr.
+                //
+                // 'string < string' stand hier und war ein WIDERSPRUCH: die Sema liess es durch,
+                // der Verifier lehnte es ab („ordering comparison on non-numeric type string"),
+                // und dazwischen stuerzte der Compiler ab. Die Spec sagt Numerik; wer Strings
+                // sortieren will, braucht eine 'compare'-Funktion — oder wartet auf
+                // Operator-Overloading nach v1.
+                if (UnifyNumeric(b.Left, l, b.Right, r) is not null)
                     return LyrType.Bool;
                 BadBinary(b, l, r);
                 return LyrType.Bool;
@@ -1000,6 +1006,7 @@ public sealed class TypeChecker
                 if (!LyrType.Equal(l, r) && UnifyNumeric(b.Left, l, b.Right, r) is null
                     && l is not NullType && r is not NullType)
                     BadBinary(b, l, r);
+                else CheckEquatable(b, l, r);
                 return LyrType.Bool;
             case BinaryOp.LogicalAnd or BinaryOp.LogicalOr:
                 if (!TypeFacts.IsBool(l) || !TypeFacts.IsBool(r)) BadBinary(b, l, r);
@@ -1007,6 +1014,35 @@ public sealed class TypeChecker
             default: // Coalesce
                 return CheckCoalesce(b, l, r);
         }
+    }
+
+    /// <summary>
+    /// Was <c>==</c> und <c>!=</c> vergleichen dürfen: Skalare und <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>Die Regel stand nur im IR-Verifier. Die Sema liess <c>a == b</c> auf einem
+    /// <c>struct</c> oder einer <c>class</c> durch, und der Verifier lehnte es danach ab — als
+    /// <b>Compiler-Absturz</b> mit Stack-Trace statt als Diagnose. Zwei Stellen mit derselben
+    /// Frage und nur eine mit der Antwort.</para>
+    ///
+    /// <para><b>Die Meldung sagt „noch nicht", nicht „nie".</b> Ein Nutzertyp <i>soll</i>
+    /// vergleichbar werden — über Operator-Overloading, das erste Thema nach v1 (v1.4 in der
+    /// ROADMAP). Bis dahin gibt es dafuer eine gewöhnliche Methode, und die Diagnose zeigt
+    /// darauf, statt den Weg als versperrt darzustellen.</para>
+    /// </remarks>
+    private void CheckEquatable(BinaryExpr b, LyrType l, LyrType r)
+    {
+        if (l is NullType || r is NullType) return;
+
+        // KEIN Auspacken von '?T': der Vergleich zweier Optionals ist im Backend nicht
+        // implementiert (der Verifier meldet „equality comparison on type ?i64"). Der haeufige
+        // Fall '?T == null' ist oben schon durch, und dafuer gibt es ausserdem Flow-Narrowing.
+        if (l is PrimitiveType or ErrorType or NullType) return;
+
+        _de.Report("LYR-SEM0055", Severity.Error, b.Span,
+            $"'{(b.Operator is BinaryOp.Eq ? "==" : "!=")}' is not defined for " +
+            $"'{TypeFacts.Display(l)}' — only scalars compare directly in v1; " +
+            "give the type a method (operator overloading comes after v1.0)");
     }
 
     private LyrType CheckAdd(BinaryExpr b, LyrType l, LyrType r)
