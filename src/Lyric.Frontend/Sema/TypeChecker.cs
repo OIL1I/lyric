@@ -44,6 +44,7 @@ public sealed class TypeChecker
     private readonly TypeSymbol? _arrayIterator;
     private readonly TypeSymbol? _rangeIterator;
     private readonly TypeSymbol? _stringIterator;
+    private readonly TypeSymbol? _indexable;
 
     private LyrType _currentReturn = LyrType.Void;
     private LyrType? _currentYield; // Yield-Typ, wenn die aktuelle Funktion eine Coroutine ist
@@ -68,6 +69,12 @@ public sealed class TypeChecker
         _arrayIterator = iter?.LookupLocal("ArrayIterator") as TypeSymbol;
         _rangeIterator = iter?.LookupLocal("RangeIterator") as TypeSymbol;
         _stringIterator = iter?.LookupLocal("StringIterator") as TypeSymbol;
+
+        // 'Indexable<T>' steht in std.collections und ist fuer '[i]', was 'Iterator<T>' fuer
+        // 'for-in' ist: der Compiler kennt EINE eingebaute Form (das Array) und bindet alles
+        // andere an ein Interface aus der Stdlib.
+        _indexable = comp.FindModule(["std", "collections"])?.Members
+            .LookupLocal("Indexable") as TypeSymbol;
     }
 
     public TypeResult Check()
@@ -76,6 +83,7 @@ public sealed class TypeChecker
         _result.ArrayIterator = _arrayIterator;
         _result.RangeIterator = _rangeIterator;
         _result.StringIterator = _stringIterator;
+        _result.Indexable = _indexable;
 
         foreach (var module in _comp.Modules) ComputeGlobals(module);
         foreach (var module in _comp.Modules)
@@ -527,21 +535,38 @@ public sealed class TypeChecker
     /// Rueckgabewert statt einer Diagnose hier, damit die Meldung an EINER Stelle steht und den
     /// Ausdruck nennen kann, um den es geht.</para>
     /// </summary>
-    private LyrType? YieldTypeOfIterator(LyrType type, Span span)
+    private LyrType? YieldTypeOfIterator(LyrType type, Span span) =>
+        TypeArgumentOfConformance(type, _iterator);
+
+    /// <summary>
+    /// Das Typargument, mit dem <paramref name="type"/> das Interface
+    /// <paramref name="iface"/> erfuellt — <c>class Ones :: [Iterator&lt;int&gt;]</c> liefert
+    /// <c>int</c>.
+    ///
+    /// <para>Eine Funktion fuer beide Faelle, die es gibt: <c>Iterator&lt;T&gt;</c> hinter
+    /// <c>for-in</c> und <c>Indexable&lt;T&gt;</c> hinter <c>[i]</c>. Sie zu kopieren waere die
+    /// vierte Stelle in dieser Datei, an der dieselbe Frage zweimal beantwortet wird — dreimal
+    /// ist das in M7/M8 schon schiefgegangen (NamedRef/GenericInstance, ErrorType,
+    /// LowerSubstituted).</para>
+    ///
+    /// <para><c>null</c>, wenn der Typ das Interface nicht erfuellt — dann meldet der Aufrufer.
+    /// Ein eigener Rueckgabewert statt einer Diagnose hier, damit die Meldung an EINER Stelle
+    /// steht und den Ausdruck nennen kann, um den es geht.</para>
+    /// </summary>
+    private LyrType? TypeArgumentOfConformance(LyrType type, TypeSymbol? iface)
     {
-        if (_iterator is null) return null;
+        if (iface is null) return null;
 
         if (TypeFacts.SymbolOf(type) is not { } symbol) return null;
 
-        // Ein Iterator IST einer, wenn er das Interface direkt ist ('Iterator<int>' als
-        // Parametertyp) oder es implementiert.
-        if (ReferenceEquals(symbol, _iterator))
+        // Der Typ IST das Interface ('Iterator<int>' als Parametertyp) oder implementiert es.
+        if (ReferenceEquals(symbol, iface))
             return type is GenericInstance { Arguments.Length: 1 } direct ? direct.Arguments[0] : null;
 
-        if (!Conformance.Implements(symbol, _iterator, _binding)) return null;
+        if (!Conformance.Implements(symbol, iface, _binding)) return null;
 
-        // Das Typargument steht in der Konformanz-Liste der Deklaration: 'class Ones ::
-        // [Iterator<int>]' liefert int. Ohne sie zu lesen bliebe nur Raten.
+        // Das Typargument steht in der Konformanz-Liste der Deklaration. Ohne sie zu lesen
+        // bliebe nur Raten.
         var declared = symbol.Declaration switch
         {
             ClassDecl c => c.Interfaces,
@@ -561,8 +586,21 @@ public sealed class TypeChecker
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
 
-            if (bound is TypeSymbol target && ReferenceEquals(target, _iterator))
-                return ResolveType(named.TypeArguments[0], _comp.Builtins);
+            if (bound is TypeSymbol target && ReferenceEquals(target, iface))
+            {
+                var argument = ResolveType(named.TypeArguments[0], _comp.Builtins);
+
+                // In der Konformanz-Liste steht der Typ-PARAMETER der Deklaration:
+                // 'class List<T> :: [Indexable<T>]' nennt dort T. Fuer eine Instanz muss er
+                // eingesetzt werden, sonst liefert 'List<int>' als Elementtyp 'T' statt 'int'.
+                //
+                // Bei einer nicht-generischen Konformanz ('class Ones :: [Iterator<int>]') ist
+                // die Substitution leer und das Ergebnis unveraendert — deshalb steht hier kein
+                // Sonderfall.
+                return type is GenericInstance instance
+                    ? Substitute(argument, SubstMap(instance))
+                    : argument;
+            }
         }
 
         return null;
@@ -1054,7 +1092,15 @@ public sealed class TypeChecker
                     + "one position, or 'for (c in s)' to walk all of them"),
 
             ErrorType => LyrType.Error,
-            _ => Report(ix.Span, "LYR-SEM0007", $"'{TypeFacts.Display(target)}' is not indexable")
+
+            // Alles andere muss 'Indexable<T>' erfuellen (std.collections) — dieselbe Regel, die
+            // 'for-in' fuer 'Iterator<T>' benutzt, und derselbe Mechanismus. Der Compiler kennt
+            // damit genau EINE eingebaute indizierbare Form, das Array; jeder Container aus der
+            // Stdlib oder vom Nutzer laeuft ueber das Interface.
+            _ => TypeArgumentOfConformance(target, _indexable)
+                 ?? Report(ix.Span, "LYR-SEM0007",
+                     $"'{TypeFacts.Display(target)}' is not indexable — it must implement "
+                     + "'Indexable<T>' from std.collections")
         };
     }
 

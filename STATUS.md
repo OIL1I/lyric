@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1647 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1657 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -52,6 +52,29 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **M8 — S5 — `std.collections`: `Indexable<T>` und `List<T>`.** 1657 Tests gruen.
+  - **`List<T>` ist in Lyric geschrieben, nicht nativ.** Die ROADMAP sah einen Hook auf
+    `System.Collections.Generic.List<>` vor; dagegen sprach, dass Natives monomorph registriert
+    werden — ein generischer braeuchte eine Marshalling-Schicht, und die gehoert zu M10. Dass
+    eine Stdlib ihre eigenen Container ausdruecken kann, ist ohnehin die interessantere Aussage
+    als ein paar Nanosekunden.
+  - **Das Wachsen kommt ohne `newArray<T>(n)` aus.** Das gibt es nicht, weil ein `T[]` der
+    Laenge n auch n Werte vom Typ T braeuchte und Lyric kein `default(T)` hat. Stattdessen
+    verdoppelt `data = data + data`: was jenseits von `count` steht, wird nie gelesen, also ist
+    sein Inhalt egal. Amortisiert O(1); ein Test ueber 100 Elemente haelt fest, dass beim
+    siebenmaligen Verdoppeln nichts verlorengeht.
+  - **`[i]` laeuft ueber `Indexable<T>`** — dieselbe Arbeitsteilung wie `for-in` ueber
+    `Iterator<T>`: der Compiler kennt genau EINE eingebaute Form (das Array), alles andere
+    erfuellt ein Interface aus der Stdlib. Ein Nutzertyp kann es implementieren; ein Test haelt
+    das fest, weil `[i]` sonst unbemerkt an `List<T>` haengen koennte statt am Interface.
+  - **Die Konformanz substituiert jetzt die Typargumente.** `class List<T> :: [Indexable<T>]`
+    nennt in der Konformanz-Liste den Typ-*Parameter*; ohne Substitution lieferte `List<int>`
+    als Elementtyp `T` statt `int`. Das stand als offener Punkt in dieser Datei
+    (`Ones :: [Src<int>]`) und ist damit zur Haelfte erledigt.
+  - **`YieldTypeOfIterator` ist zu `TypeArgumentOfConformance` verallgemeinert**, statt fuer
+    `Indexable` kopiert zu werden. Das waere die vierte Stelle gewesen, an der dieselbe Frage
+    zweimal beantwortet wird — dreimal ist das in M7/M8 schiefgegangen.
+
 - [x] **Explizite Typargumente am Aufruf: `f<int>()`.** Vorbedingung fuer S5, aufgefallen beim
   Bau von `List<T>`. 1647 Tests gruen.
   - **Generics liessen sich ausschliesslich ueber Argument-Inferenz instanziieren.** Eine Fabrik
@@ -76,23 +99,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
   - Jetzt schiebt der `FunctionLowerer` seine Substitution auf den Stack der **Typtabelle** —
     dieselbe, die sie beim Lowern der Member einer generischen Instanz benutzt. Eine Wahrheit
     statt zwei; die Sonderfaelle sind ersatzlos entfallen.
-
-- [x] **ADR-020 — `let` bindet den Namen, nicht den Inhalt.** Die Frage stand seit P2 offen und
-  waere mit `Indexable<T>` zum zweiten Mal faellig geworden; entschieden vor S5, nicht darin.
-  - **Die alte Regel war nicht nur inkonsistent, sie war wirkungslos.** `let xs[0] = 9` war
-    `LYR-SEM0019`, aber `let ps[0].hp = 9` ging immer durch — verboten war genau die eine
-    Operation, die man umgehen konnte, indem man ein Element mit einem Feld nahm.
-  - Seit **ADR-016** ist `T[]` ein echter Referenztyp wie eine Klasse. Java (`final`), C#
-    (`readonly`) und JavaScript (`const`) halten es alle so; **Rust ist die einzige Sprache, die
-    Unveraenderlichkeit bis in den Inhalt durchhaelt, und kann das nur wegen Ownership** — das
-    hat Lyric nicht und will es laut ADR-003 nicht.
-  - **Kein einziger Test hatte die alte Regel festgehalten.** Sie stand in `Sprache.md` §6.4 und
-    war durch nichts abgesichert — genau deshalb ueberlebte ihr Widerspruch zwei Meilensteine.
-    Die neue Regel hat jetzt acht Tests, inklusive der Gegenproben, dass `let` den Namen
-    weiterhin festhaelt und ein `struct`-Feld weiterhin eine mutable Basis braucht.
-  - Was Lyric damit **nicht** hat: eine Moeglichkeit, ein unveraenderliches Array auszudruecken.
-    Sie hat faktisch nie existiert. Wer sie will, braucht einen eigenen Typ und keine
-    Bindungs-Annotation — Bibliotheks-, nicht Sprachfrage.
 
 ## Messungen
 
@@ -129,12 +135,12 @@ steht weiter aus.
 **M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`), S3 (`std.fmt`) und S4 (`Throwable`)
 stehen. Als naechstes **S5 — `std.collections`** mit `List<T>`, `Map<K,V>`, `Set<T>`.
 
-**S5 kann jetzt starten.** Die beiden Vorbedingungen stehen: `let` bindet den Namen (ADR-020),
-und generische Fabriken sind aufrufbar (`empty<int>()`). Gemessen ist auch, dass `List<T>` ohne
-`newArray<T>(n)` auskommt — `data = data + data` verdoppelt, und was jenseits von `count` steht,
-wird nie gelesen. Amortisiert O(1), reines Lyric, kein Native.
+**S5 steht** — `Indexable<T>` und `List<T>`. Offen im Slice bleiben `Map<K,V>` und `Set<T>`:
+beide brauchen Hashing, und wie ein Nutzertyp seinen Hash liefert, ist eine Interface-Frage
+(`Hashable`), die `Sprache.md` nicht beantwortet. Auch `for (x in liste)` fehlt noch — der
+`ListIterator` steht, die Sema kennt ihn aber nicht als eingebaute Form.
 
-Offen bleibt `Indexable<T>`: `[i]` auf einem Nutzertyp ist heute `LYR-SEM0007`.
+Als naechstes **S6 — Capabilities** (ADR-007).
 
 Danach **S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math` — daran haengt
 `shapes.lyr`), **S8** (Gate: `wc`-Klon).
@@ -229,7 +235,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`sema: explizite Typargumente am Aufruf (f<int>())`
+`M8: std.collections - Indexable<T> und List<T> (S5)`
 
 ---
 

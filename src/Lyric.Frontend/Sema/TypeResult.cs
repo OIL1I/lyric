@@ -103,6 +103,9 @@ public sealed class TypeResult
     public TypeSymbol? RangeIterator { get; set; }
     public TypeSymbol? StringIterator { get; set; }
 
+    /// <summary>'Indexable<T>' aus std.collections — was '[i]' bedient (§6.4).</summary>
+    public TypeSymbol? Indexable { get; set; }
+
     /// <summary>Lebt dieses Symbol in einer Zelle statt in einem Frame-Slot? Das Lowering fragt
     /// das an <b>jeder</b> Zugriffsstelle — auch ausserhalb der Closure, denn beide Seiten muessen
     /// dieselbe Zelle sehen.</summary>

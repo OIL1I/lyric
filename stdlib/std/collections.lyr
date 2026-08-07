@@ -1,0 +1,101 @@
+// std.collections — wachsende Container (M8/S5).
+//
+// `T[]` ist ein echtes Array mit fester Länge (ADR-016). Was wächst, steht hier.
+
+module std.collections;
+
+import std.iter { Iterator };
+
+// Was sich mit `[i]` lesen und schreiben lässt.
+//
+// Dasselbe Modell wie `Iterator<T>` für `for-in` (§5): der Compiler kennt eine eingebaute Form —
+// dort den Range, hier das Array — und bindet alles andere an ein Interface aus der Stdlib. Kein
+// Sonderfall im Compiler pro Container-Typ.
+//
+// **`set` ist `mut`, und das kostet seit ADR-020 nichts.** `let` bindet den Namen, nicht den
+// Inhalt; ein Container hinter einer `let`-Bindung ist deshalb schreibbar, genau wie ein
+// Klassenfeld. Vor ADR-020 hätte dieses Interface eine Sonderregel nachbilden müssen, die noch
+// dazu wirkungslos war — das war der Anlass, die Frage vorher zu entscheiden.
+pub interface Indexable<T> {
+    fn get(index: int): T;
+    mut fn set(index: int, value: T): void;
+}
+
+// Eine wachsende Liste.
+//
+// **Sie ist in Lyric geschrieben, nicht nativ.** Die ROADMAP sah einen Hook auf
+// `System.Collections.Generic.List<>` vor; dagegen sprechen zwei Dinge. Erstens sind Natives
+// monomorph registriert — ein generischer bräuchte eine eigene Marshalling-Schicht, und die
+// gehört zu M10, nicht hierher. Zweitens ist eine Stdlib, die ihre eigenen Container nicht
+// ausdrücken kann, ein schlechtes Zeichen für die Sprache; dass es geht, ist die interessantere
+// Aussage als ein paar Nanosekunden.
+//
+// **Das Wachsen kommt ohne `newArray<T>(n)` aus** — das gibt es nicht, weil ein `T[]` der Länge
+// n auch n Werte vom Typ T bräuchte und Lyric kein `default(T)` hat. Stattdessen verdoppelt
+// `data = data + data`: was jenseits von `count` steht, wird nie gelesen, also ist sein Inhalt
+// egal. Amortisiert O(1).
+pub class List<T> :: [Indexable<T>] {
+    data: T[],
+    count: int,
+
+    pub fn length(): int {
+        return this.count;
+    }
+
+    pub mut fn push(value: T): void {
+        if (this.count >= this.data.length) {
+            // Der erste Wert legt das Array an — vorher gibt es keinen, mit dem sich eines
+            // füllen ließe.
+            if (this.data.length == 0) {
+                this.data = [value];
+            } else {
+                this.data = this.data + this.data;
+            }
+        }
+        this.data[this.count] = value;
+        this.count = this.count + 1;
+    }
+
+    // Der letzte Wert, oder `null` bei leerer Liste. Kein `panic`: eine leere Liste ist ein
+    // gewöhnlicher Zustand und keine Programmierfehler — anders als ein Index daneben.
+    pub mut fn pop(): ?T {
+        if (this.count == 0) {
+            return null;
+        }
+        this.count = this.count - 1;
+        return this.data[this.count];
+    }
+
+    // Ein Index außerhalb ist ein `panic` (§9), wie bei einem Array: er ist ein Programmierfehler
+    // und kein Zustand, über den man sich verständigt.
+    pub fn get(index: int): T {
+        return this.data[index];
+    }
+
+    pub mut fn set(index: int, value: T): void {
+        this.data[index] = value;
+    }
+}
+
+// Eine leere Liste. Als freie Funktion und nicht als `static fn`, weil eine statische Methode auf
+// einer generischen Instanz (`List<int>.empty()`) nicht ausdrückbar ist — die Typargumente gibt
+// es nur am Funktions-Aufruf.
+pub fn emptyList<T>(): List<T> {
+    return List<T> { data = [], count = 0 };
+}
+
+// Läuft über eine Liste. Wie `ArrayIterator` hält er seinen Index selbst, damit zwei Schleifen
+// über dieselbe Liste einander nicht stören.
+pub class ListIterator<T> :: [Iterator<T>] {
+    source: List<T>,
+    index: int,
+
+    pub mut fn next(): ?T {
+        if (this.index >= this.source.length()) {
+            return null;
+        }
+        let value = this.source.get(this.index);
+        this.index = this.index + 1;
+        return value;
+    }
+}

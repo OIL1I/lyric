@@ -1956,6 +1956,22 @@ internal sealed class FunctionLowerer
     /// </summary>
     private TempId LowerElementAssign(IndexExpr indexed, AssignExpr expr)
     {
+        // 'xs[i] = v' auf einem Container: 'Indexable<T>.set(i, v)'. Ein Compound-Assign
+        // ('xs[i] += 1') ist hier NICHT abgedeckt und meldet sich als Scope-Grenze — es braeuchte
+        // ein Lesen und ein Schreiben mit demselben Index, und ob der Index dabei zweimal
+        // ausgewertet werden darf, ist eine Sprachfrage, die §6.4 nicht beantwortet.
+        if (TypeOfExpr(indexed.Target) is not IrArrayType)
+        {
+            if (expr.Operator is not null)
+                throw NotSupported("compound assignment on a container (only on arrays)",
+                    expr.Span);
+
+            var stored = LowerExpr(expr.Value);
+            if (LowerIndexableCall(indexed, "set", stored) is null)
+                ResolveIndexAccess(indexed); // meldet die Scope-Grenze mit dem Typnamen
+            return stored;
+        }
+
         var (array, index, element) = ResolveIndexAccess(indexed);
 
         if (expr.Operator is null)
@@ -2739,9 +2755,59 @@ internal sealed class FunctionLowerer
 
     private TempId LowerIndexRead(IndexExpr expr)
     {
+        // Ein Container aus std.collections geht ueber 'Indexable<T>.get(i)' — dieselbe
+        // Arbeitsteilung wie bei 'for-in': der Compiler kennt EINE eingebaute Form (das Array),
+        // alles andere laeuft ueber das Interface.
+        if (LowerIndexableCall(expr, "get", null) is { } viaInterface) return viaInterface;
+
         var (array, index, element) = ResolveIndexAccess(expr);
         var dest = _slots.NewTemp(element);
         _b.Emit(new LoadElem(dest, array, index, element, expr.Span));
+        return dest;
+    }
+
+    /// <summary>
+    /// <c>xs[i]</c> und <c>xs[i] = v</c> auf einem Typ, der <c>Indexable&lt;T&gt;</c> erfuellt —
+    /// als Aufruf von <c>get</c> bzw. <c>set</c>. Liefert <c>null</c>, wenn der Traeger ein Array
+    /// ist; dann laeuft der eingebaute Weg ueber <c>ldelem</c>/<c>stelem</c>.
+    ///
+    /// <para>Der Aufruf geht <b>direkt</b>, nicht virtuell: der Empfaengertyp steht statisch
+    /// fest, und bei einer generischen Instanz hat die Monomorphisierung die Methode ohnehin
+    /// erzeugt. Das ist derselbe Gewinn wie beim Constraint-Dispatch (P8) — ein Interface
+    /// bedeutet nicht automatisch eine vtable.</para>
+    /// </summary>
+    private TempId? LowerIndexableCall(IndexExpr expr, string method, TempId? value)
+    {
+        if (TypeOfExpr(expr.Target) is IrArrayType) return null;
+
+        var carrier = SubstituteType(_types.TypeOf(expr.Target));
+        if (TypeFacts.SymbolOf(carrier) is not { } owner) return null;
+        if (owner.Members.LookupLocal(method) is not FunctionSymbol symbol) return null;
+        if (symbol.Declaration is not FunctionDecl declaration) return null;
+
+        var target = carrier is GenericInstance instance
+            ? _instances.RequestMethod(symbol, declaration, instance, expr.Span)
+            : TryResolveFunction(symbol, out var direct)
+                ? direct
+                : throw NotSupported($"'{owner.Name}.{method}' was not lowered", expr.Span);
+
+        var receiver = LowerExpr(expr.Target);
+        var index = LowerExprAs(expr.Index, new IrScalarType(IrScalar.I64));
+
+        var arguments = value is { } stored
+            ? new[] { receiver, index, stored }
+            : new[] { receiver, index };
+
+        // 'set' liefert void, 'get' den Elementtyp.
+        if (value is { } assigned)
+        {
+            _b.Emit(new Call(null, target, arguments, expr.Span));
+            return assigned;
+        }
+
+        var dest = _slots.NewTemp(TypeOfExpr(expr));
+        _b.Emit(new Call(dest, target, arguments, expr.Span));
+        _fresh.Add(dest);
         return dest;
     }
 

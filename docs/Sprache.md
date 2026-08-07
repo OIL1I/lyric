@@ -473,7 +473,7 @@ Datenstruktur vor. Das steht der Spec nicht zu (ADR-013 regelt das *Format*, nic
 einer Implementierung) und war zudem falsch: die .NET-Runtime hält Strings als UTF-16. Beobachtbar
 muss überall dasselbe sein — und das ist ab jetzt festgeschrieben.
 | `?T` | nullable, äquivalent `Option<T>` |
-| `T[]` | Array; Länge steht bei der Erzeugung fest (ADR-016). Wachsende Container: `std.collections.List<T>` |
+| `T[]` | Array; Länge steht bei der Erzeugung fest (ADR-016). Wachsende Container: `std.collections.List<T>`, die einzige eingebaute indizierbare Form — alles andere erfüllt `Indexable<T>` |
 | `(A, B)`, `(A, B, C)`, … | Tupel (arity ≥ 2, keine Obergrenze) |
 | `fn(A, B) -> R` | Funktionstyp / Closure-Slot |
 
@@ -668,7 +668,7 @@ match (shape) {
 Linke Seite eines Assignments:
 - `IDENTIFIER` (das gebundene Symbol muss `var` sein)
 - `Postfix '.' IDENTIFIER` (Feld muss mut sein: `class`-Feld, oder `mut fn`-Methode für `struct`)
-- `Postfix '[' Expr ']'` (immer erlaubt, solange der Container ein Referenztyp ist)
+- `Postfix '[' Expr ']'` (auf `T[]` oder einem Typ, der `std.collections.Indexable<T>` erfüllt)
 - `( Lvalue )`
 
 **`let` bindet den Namen, nicht den Inhalt** (ADR-020). Bei einem Referenztyp — `class`, `T[]` —

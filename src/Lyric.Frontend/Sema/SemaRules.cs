@@ -195,9 +195,26 @@ public sealed class SemaRules
         // 'let ps = [P { … }]; ps[0].hp = 9;' ging immer durch, verboten war nur die direkte
         // Element-Zuweisung. Eine Regel, die nichts schuetzt und dafuer 'T[]' anders behandelt
         // als eine Klasse, kostet nur Erklaerungsaufwand — seit ADR-016 ist 'T[]' beides.
-        IndexExpr ix => _types.TypeOf(ix.Target) is ArrayOf or ErrorType,
+        IndexExpr ix => IsIndexableTarget(_types.TypeOf(ix.Target)),
         _ => false
     };
+
+    /// <summary>Ein Array oder ein Typ, der <c>Indexable&lt;T&gt;</c> erfuellt. Beides sind
+    /// Referenzen, also ist das Element schreibbar — ADR-020: <c>let</c> haelt den Namen fest,
+    /// nicht das Objekt dahinter.
+    ///
+    /// <para>Der <c>set</c>-Setter des Interfaces ist <c>mut fn</c>, und das kostet seit ADR-020
+    /// nichts: haette die alte Regel („Container muss mut sein") noch gegolten, muesste dieses
+    /// Interface sie nachbilden — eine Regel, die ohnehin wirkungslos war. Genau deshalb wurde
+    /// sie vor diesem Slice entschieden.</para></summary>
+    private bool IsIndexableTarget(LyrType type)
+    {
+        if (type is ArrayOf or ErrorType) return true;
+        if (_types.Indexable is not { } indexable) return false;
+
+        return TypeFacts.SymbolOf(type) is { } symbol
+               && Conformance.Implements(symbol, indexable, _binding);
+    }
 
     private bool IsFieldMutable(MemberExpr m)
     {
