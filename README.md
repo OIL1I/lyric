@@ -4,9 +4,13 @@ A statically typed, GC-managed application language with an embeddable bytecode 
 
 ![CI](https://github.com/OIL1I/lyric/actions/workflows/ci.yml/badge.svg)
 
-> **Status: pre-alpha.** Lyric is in early development. The language design is
-> frozen for v1.0 (see [`docs/Sprache.md`](docs/Sprache.md)), but no working
-> compiler exists yet. Current milestone: M0 (project scaffolding).
+> **Status: pre-alpha, but it runs.** The compiler, the bytecode VM and the standard library
+> work end to end — every construct in [`docs/Sprache.md`](docs/Sprache.md) compiles and
+> executes. 1700+ tests are green. What is missing before v1.0 is the REPL, editor integration
+> and the embedding API (milestones M9 and M10).
+>
+> Do not depend on it yet: `.lyrbc` has no compatibility promise before v1.0 (ADR-013), and the
+> language may still change where the spec turns out to be wrong.
 
 ## What is Lyric?
 
@@ -22,46 +26,68 @@ type system, no classical inheritance, pattern matching), and Lua/Wren
 
 ### Quick taste
 
-```lyr
-import std.io.console;
+This program runs as-is — `lyric run taste.lyr`:
 
-pub struct Vector3 :: [Equatable] {
+```lyr
+import std.io.console { println };
+import std.math { sqrt, pi };
+import std.collections { emptyList };
+
+struct Vector3 {
     x: float,
     y: float,
     z: float,
 
     fn length(): float {
-        return sqrt(this.x*this.x + this.y*this.y + this.z*this.z);
-    }
-
-    fn equals(other: Vector3): bool {
-        return this.x == other.x && this.y == other.y && this.z == other.z;
+        return sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
     }
 }
 
-pub enum Shape {
+enum Shape {
     Circle(float),
     Rectangle(float, float),
     Empty;
 
     fn area(): float {
         return match (this) {
-            Circle(r) => pi * r * r,
+            Circle(r)       => pi * r * r,
             Rectangle(w, h) => w * h,
-            Empty => 0.0,
+            Empty           => 0.0,
         };
     }
 }
 
 fn main(): int {
     let v = Vector3 { x = 1.0, y = 2.0, z = 2.0 };
-    console.println(f"|v| = {v.length():N2}");
+    println(f"|v| = {v.length():N2}");
 
-    let s = Shape.Circle(2.5);
-    console.println(f"area = {s.area():N2}");
+    let shapes = emptyList<Shape>();
+    shapes.push(Shape.Circle(2.5));
+    shapes.push(Shape.Rectangle(3.0, 4.0));
+
+    for (s in shapes) {
+        println(f"area = {s.area():N2}");
+    }
     return 0;
 }
 ```
+
+```
+|v| = 3.00
+area = 19.63
+area = 12.00
+```
+
+### What works today
+
+Classes, structs with value semantics, enums with payloads and `match`, interfaces with vtable
+dispatch, generics via monomorphization, closures, coroutines, exceptions with `defer`, tuples,
+`extend` blocks, optionals with flow narrowing — and a standard library with strings, formatting,
+collections, math, files and OS access behind capabilities.
+
+The [`examples/`](examples/) directory has 22 programs, all of them exercised by the test suite.
+[`examples/wc.lyr`](examples/wc.lyr) is a word-count clone that produces the same numbers as
+POSIX `wc`.
 
 ## Documentation
 
@@ -73,7 +99,7 @@ fn main(): int {
 | [`docs/IDEAS.md`](docs/IDEAS.md) | Post-v1 idea pile (no commitments) |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Project rules and process |
 
-## Project layout (planned)
+## Project layout
 
 ```
 lyric/
@@ -90,7 +116,7 @@ lyric/
 ├── stdlib/                 Stdlib source (.lyr files)
 ├── tests/                  xUnit test projects
 ├── examples/               Example programs
-├── tooling/                Editor integration (TextMate grammar, etc.)
+├── tooling/                Editor integration (TextMate grammar — M9, not built yet)
 └── docs/                   Documentation
 ```
 
@@ -124,6 +150,12 @@ dotnet test
 
 ```bash
 dotnet run --project src/Lyric.Cli -- run examples/hello.lyr
+```
+
+Or, after publishing:
+
+```bash
+lyric run examples/wc.lyr -- README.md
 ```
 
 ### Shipping

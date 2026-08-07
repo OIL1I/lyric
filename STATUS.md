@@ -11,15 +11,11 @@
 
 ## Aktueller Meilenstein
 
-**M8 — Stdlib — abgeschlossen.** Slices S1 bis S8 stehen.
+**M9 — REPL + Tooling.** S1 (README) steht; offen sind TextMate-Grammar, VS-Code-Extension,
+die REPL und der `v0.9`-Tag.
 
-Bytecode-Format **2.5**. 1702 Tests grün. Das Gate `examples/wc.lyr` zählt Zeilen, Wörter und
-Zeichen — **dieselben Zahlen wie POSIX-`wc`** — und belastet dabei die Stdlib quer: Dateien lesen
-(S7), Strings zerlegen (S2), in einer Liste sammeln (S5), formatiert ausgeben (S3), Einstieg mit
-Argumenten (§11).
-
-Fertig: `Display` und Builtin-Konformanz, `string` als richtiger Typ, `std.fmt`, `Throwable`,
-`std.collections` mit `Indexable`/`Iterable`/`List<T>`, Capabilities, `std.math`/`std.os`/`std.io.file`.
+**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1705 Tests grün. Das Gate
+`examples/wc.lyr` zählt wie POSIX-`wc`.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
 > selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
@@ -51,6 +47,21 @@ Fertig: `Display` und Builtin-Konformanz, `string` als richtiger Typ, `std.fmt`,
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **M9 — S1 — README.** Sie behauptete nach acht Meilensteinen und 1700 Tests: **„no working
+  compiler exists yet. Current milestone: M0"**. Das ist die Aussenwirkung des Projekts, und sie
+  war acht Meilensteine alt.
+  - **Das Beispiel darin lief nicht** — es benutzte ein `Equatable`, das es nicht gibt, und
+    `sqrt`/`pi` ohne Import. Das neue laeuft und ist **maschinell geprueft**: ein Test schneidet
+    den ```lyr-Block aus der README, fuehrt ihn aus und vergleicht mit der dort gezeigten
+    Ausgabe.
+  - Ein zweiter Test prueft die **Beispiel-Zahl** — er hat sofort gegriffen (ich hatte 23
+    geschrieben, es sind 22). Eine Zahl in der Doku, die niemand nachzaehlt, ist irgendwann
+    falsch.
+  - Ein dritter prueft auf genau den Satz, der acht Meilensteine ueberlebt hat. Schmal, aber er
+    kostet nichts und haette die Peinlichkeit verhindert.
+  - **Dieselbe Erfahrung zum dritten Mal**: `Sprache.md` §4 behauptete UTF-8, wo UTF-16 lief;
+    §2.2 nannte eine Spec-Notation, die nie .NET war. Doku, die niemand prueft, driftet.
+
 - [x] **M8 — S8 — das Gate: `examples/wc.lyr`.** **M8 ist damit abgeschlossen.**
   - Es zaehlt wie POSIX-`wc`: 4 Zeilen, 6 Woerter, 33 Zeichen fuer dieselbe Datei. Mehrere
     Dateien bekommen eine Summenzeile, eine fehlende wird gemeldet, ohne die anderen zu
@@ -70,30 +81,6 @@ Fertig: `Display` und Builtin-Konformanz, `string` als richtiger Typ, `std.fmt`,
       bedeutet, waere die schlechtere Antwort.
   - Der bekannte Parser-Bug aus P3 (`x = Struct { … }` im Statement-Kontext) ist beim Schreiben
     **erneut** aufgetreten. Er steht seit P3 in dieser Datei; das ist die dritte Begegnung.
-
-- [x] **M8 — S7 — `std.math`, `std.os`, `std.io.file`.** 1696 Tests gruen.
-  **`examples/shapes.lyr` laeuft** — es wartete seit M6 auf `std.math`.
-  - **Fehler sind Rueckgabewerte, keine Exceptions.** Eine Datei, die nicht existiert, und eine
-    Umgebungsvariable, die nicht gesetzt ist, sind gewoehnliche Zustaende der Welt — beide
-    liefern `?T`. Ein `panic` bleibt dem vorbehalten, was der Programmierer falsch gemacht hat
-    (ein Index daneben), eine Exception dem, was ein Aufrufer sinnvoll behandeln kann. Dieselbe
-    Entscheidung wie bei `List.pop`.
-  - **Natives duerfen jetzt `?T` liefern**, mit Pruefung des inneren Tags beim Binden — dieselbe
-    Erweiterung wie bei den Arrays in S2, und dieselbe Begruendung: ohne den inneren Typ waeren
-    `?string` und `?int` ununterscheidbar.
-  - **`sqrt(-1.0)` ist NaN und kein `panic`** (IEEE 754, §6.6). Ein Fehlerfall waere hier eine
-    Erfindung — die Hardware kennt keinen, und ein Programm, das ihn faengt, liefe auf einer
-    anderen Runtime anders. `round` geht zur geraden Zahl, weil konsequentes Aufrunden ueber
-    viele Werte einen systematischen Fehler eintraegt.
-  - **Zwei Luecken behoben, beide beim Bauen aufgefallen.** Globals in *nativen* Modulen wurden
-    nicht gesammelt — die Begruendung („sie deklarieren nur Signaturen") galt fuer rumpflose
-    `fn`, aber `pub let pi: float = 3.14…` hat einen Wert; genau daran hing `shapes.lyr`. Und
-    `DeclaredTypes.Lower` warf **ungefangen** aus `ModuleLowerer.Lower` heraus, also gab eine
-    unbekannte native Signatur einen Compiler-*Absturz* statt einer Diagnose. Der zweite Punkt
-    stand als offener Posten in dieser Datei.
-  - **Ein Test hat seine Aufgabe erfuellt und wurde umgedreht**: `Program_waiting_on_a_stdlib_module_reports_it`
-    hielt fest, dass `shapes.lyr` auf `std.math` wartet. Sein eigener Kommentar sagte, dass sein
-    Fehlschlag die Erinnerung sein wuerde — er war es.
 
 ## Messungen
 
@@ -127,16 +114,21 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M8 ist abgeschlossen — als naechstes M9** (REPL, Editor-Integration, Beispiele; `lyric test` ist
-mit den Attributen nach post-v1 gestrichen).
+**M9.** Als naechstes **S2 — TextMate-Grammar** (`tooling/vscode-lyric/`), dann **S3** (VS-Code-
+Extension), **S4** (REPL), **S5** (Politur, `v0.9`-Tag).
 
-Offen aus M8, bewusst nicht gebaut: `Map<K,V>` und `Set<T>` (brauchen eine `Hashable`-Entscheidung
-— wie liefert ein Nutzertyp seinen Hash?), `LinkedList<T>` (eigener Typ ohne `Indexable`),
-`std.option`/`std.error`/`std.coroutine` (die ROADMAP nennt sie; was sie ueber die Sprachmittel
-hinaus liefern sollen, ist offen), `std.dotnet` (gehoert zu M10s Marshalling).
+**Die REPL wird ein eigenes Binary** (`lyrrepl.exe`), vom Dispatcher gerufen wie `lyrc` und
+`lyrvm` — entschieden 2026-08-07. Der Grund ist nicht Symmetrie: sie braucht **Frontend UND
+Runtime im selben Prozess** (kompilieren, ausfuehren, Zustand behalten), und kein bestehendes
+Binary hat beide. Kaeme sie in `lyric`, haette der Dispatcher wieder beide Seiten — genau das,
+was ADR-019 abgeschafft hat, und der Architektur-Test wuerde fallen. ADR-019 sieht den Fall
+ausdruecklich vor („`lyrtest` fuegt sich als drittes Werkzeug ein … das ist der Test dafuer, ob
+dieser Entwurf traegt"). Wird als **ADR-021** festgehalten, wenn S4 gebaut wird.
 
-**`std.io.net` ist aus M8 gestrichen** und steht in der v1.X-Tabelle: was ein blockierender Socket
-in einer Single-Thread-VM bedeutet, ist eine Entscheidung ueber das Nebenlaeufigkeitsmodell.
+**Der REPL-Zustand lebt in persistenten Globals**: die VM behaelt ihr Globals-Array ueber Laeufe,
+jede Eingabe wird ein Modul, dessen Globals hinter den bisherigen anfangen. Der naheliegende Weg
+— den Quelltext akkumulieren und alles neu kompilieren — waere die Falle: `println("hi")` wuerde
+bei jeder folgenden Eingabe erneut drucken.
 
 ## Noch offen
 
