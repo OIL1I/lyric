@@ -1,0 +1,71 @@
+{
+  "name": "vscode-lyric",
+  "displayName": "Lyric",
+  "description": "Syntax highlighting and a run command for the Lyric language.",
+  "version": "0.9.0",
+  "publisher": "lyric",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/OIL1I/lyric" },
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages"],
+
+  "main": "./extension.js",
+
+  "activationEvents": ["onLanguage:lyric"],
+
+  "contributes": {
+    "languages": [
+      {
+        "id": "lyric",
+        "aliases": ["Lyric", "lyric"],
+        "extensions": [".lyr"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+
+    "grammars": [
+      {
+        "language": "lyric",
+        "scopeName": "source.lyric",
+        "path": "./syntaxes/lyric.tmLanguage.json"
+      }
+    ],
+
+    "commands": [
+      {
+        "command": "lyric.run",
+        "title": "Lyric: Run File",
+        "icon": "$(play)"
+      }
+    ],
+
+    "keybindings": [
+      {
+        "command": "lyric.run",
+        "key": "ctrl+f5",
+        "when": "editorLangId == lyric"
+      }
+    ],
+
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "lyric.run",
+          "when": "editorLangId == lyric",
+          "group": "navigation"
+        }
+      ]
+    },
+
+    "configuration": {
+      "title": "Lyric",
+      "properties": {
+        "lyric.executable": {
+          "type": "string",
+          "default": "lyric",
+          "markdownDescription": "Path to the `lyric` driver. Leave it as `lyric` if the toolchain is on your `PATH`; otherwise point at the published binary.\n\nThe extension calls the **driver**, not `lyrc` or `lyrvm` — the driver is the one command that compiles and runs in one step (ADR-019)."
+        }
+      }
+    }
+  }
+}

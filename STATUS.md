@@ -11,10 +11,10 @@
 
 ## Aktueller Meilenstein
 
-**M9 — REPL + Tooling.** S1 (README) und S2 (TextMate-Grammar) stehen; offen sind die
-VS-Code-Extension, die REPL und der `v0.9`-Tag.
+**M9 — REPL + Tooling.** S1 (README), S2 (TextMate-Grammar) und S3 (VS-Code-Extension)
+stehen; offen sind die REPL und der `v0.9`-Tag.
 
-**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1709 Tests grün. Das Gate
+**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1715 Tests grün. Das Gate
 `examples/wc.lyr` zählt wie POSIX-`wc`.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -46,6 +46,22 @@ VS-Code-Extension, die REPL und der `v0.9`-Tag.
     ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
+
+- [x] **M9 — S3 — VS-Code-Extension** (`tooling/vscode-lyric/`). 1715 Tests gruen.
+  - Highlighting ist deklarativ (Manifest + Grammatik, kein Code); der einzige JavaScript-Teil
+    ist das **Run-Command**. Es ruft den **Treiber**, nicht `lyrc` oder `lyrvm` — ADR-019: der
+    Treiber ist das eine Kommando, das uebersetzt UND ausfuehrt. Mit `lyrc` bekaeme der Nutzer
+    eine `.lyrbc` statt eines Laufs.
+  - **Ungespeicherte Aenderungen werden vorher geschrieben.** Der Compiler liest von der Platte,
+    nicht aus dem Editor-Puffer; ohne das laeuft die vorige Fassung, und der Nutzer sucht den
+    Fehler in seinem Programm statt in seinem Editor.
+  - **Sechs Tests binden das Manifest an das, was daneben liegt**: jeder Pfad existiert, Grammatik
+    und Sprache nennen denselben `scopeName`, jedes Keybinding zeigt auf ein deklariertes
+    Kommando. Nichts davon prueft VS Code beim Laden — ein falscher Pfad heisst einfach, dass die
+    Faerbung fehlt.
+  - **Keine Diagnosen, keine Completion.** Das braucht einen Sprachserver (v1.2). Eine halbe
+    Loesung waere schlechter als keine: ein Editor, der Fehler *manchmal* zeigt, ist schlimmer
+    als einer, der sie nie zeigt — man hoert in beiden Faellen auf, ihm zu glauben.
 
 - [x] **M9 — S2 — TextMate-Grammar** (`tooling/vscode-lyric/`). 1709 Tests gruen.
   - **Die Keywords kommen aus dem Lexer, nicht aus dem Gedaechtnis** — und ein Test haelt beide
@@ -131,8 +147,8 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M9.** S1 (README) und S2 (TextMate-Grammar) stehen. Als naechstes **S3** (VS-Code-Extension:
-`package.json` und ein Run-Command), dann **S4** (REPL), **S5** (Politur, `v0.9`-Tag).
+**M9.** S1 bis S3 stehen. Als naechstes **S4 — die REPL** (`lyrrepl.exe`, siehe unten), dann
+**S5** (Politur, `v0.9`-Tag).
 
 **Die REPL wird ein eigenes Binary** (`lyrrepl.exe`), vom Dispatcher gerufen wie `lyrc` und
 `lyrvm` — entschieden 2026-08-07. Der Grund ist nicht Symmetrie: sie braucht **Frontend UND
