@@ -13,7 +13,7 @@
 
 **M9 — REPL + Tooling — abgeschlossen.** Slices S1 bis S5, danach ein Aufräum-Slice.
 
-1747 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**. `lyric repl`
+2214 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**. `lyric repl`
 läuft, die README ist maschinell geprüft, die TextMate-Grammar an den Lexer gebunden, die
 VS-Code-Extension liefert Highlighting und einen Run-Command.
 
@@ -24,6 +24,44 @@ VS-Code-Extension liefert Highlighting und einen Run-Command.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **ADR-022 — `char` ist ein Ganzzahltyp mit geprüftem Wertebereich** (2026-08-07).
+  `c as int`, `n as char`, `c < 'z'`, `c + 1` und die bitweisen Operatoren gehen. Ein Ergebnis
+  außerhalb des Unicode-Bereichs ist ein `panic` (`LYR-VM0012`), geprüft in `LyrValue.Normalize` —
+  dem **einzigen** Weg, auf dem ein Skalar-Ergebnis entsteht. An den vier Rufstellen einzeln zu
+  prüfen hieße, dieselbe Regel viermal zu schreiben. Ein Literal außerhalb des Bereichs ist schon
+  ein Typfehler.
+  - Die Codepoint-Grenze stand **fünfmal** im Projekt und liegt jetzt einmal in
+    `Lyric.Core.Unicode`, wo Sema, Verifier und VM sie gemeinsam sehen.
+  - **Mitgefixt**: `a + 1` mit `a: int8` ließ den Compiler abstürzen. `UnifyNumeric` prüfte den
+    Literal-Fit, notierte den angepassten Typ aber nicht — jeder schmale Ganzzahltyp war
+    betroffen. `char` war nur neu genug, dass jemand `c + 1` ausprobiert hat.
+
+- [x] **f-Strings mit schmalen Skalaren** (2026-08-07). `f"{x}"` mit `x: int8` ließ den Compiler
+  abstürzen, auf **beiden** Wegen (mit Spec über `std.fmt`, ohne über `std.string`). Die Wandler
+  heißen `fromInt`/`fromFloat` — Einzahl, weil Lyric kein Overloading hat — und nehmen den
+  breitesten Typ; das Lowering reichte ungewidert durch. Der Test ist eine Theory über alle
+  Breiten, weil ein Beispiel denselben Zufall wiederholen würde, dem der Fund zu verdanken war.
+  - *Nicht behoben, aber dokumentiert*: `f"{u}"` mit `u: uint` jenseits `int64.MaxValue` druckt
+    eine negative Zahl. Der Fix wäre ein eigener `fromUint`.
+
+- [x] **ADR-023 — Struct-Felder sind schreibbar wie class-Felder** (2026-08-07). `LYR-SEM0019`
+  fällt für `let`-gebundene Structs und Struct-Parameter. `this.feld` in einer Methode ohne `mut`
+  bleibt verboten — das ist die Zusage von `mut fn` und das Einzige, was die alte Regel je
+  geschützt hat. Der Anlass war als Parameter-Asymmetrie notiert, betraf aber `let` genauso und
+  dort schwerer: `p.shift(9)` mit einer `mut fn` änderte `p` **wirklich**, während `p.x = 9`
+  daneben abgelehnt wurde.
+
+- [x] **Sweep: Sema und Backend in Übereinstimmung** (2026-08-07). Drei Konstruktionen ließen den
+  Compiler abstürzen statt zu diagnostizieren — `==` auf struct/class, `"a" < "b"`, `?int == ?int`.
+  **`AgreementTests` fährt jetzt 448 Kombinationen** aus 16 Typen und 24 Operationen und verlangt
+  für jede: Diagnose oder übersetztes Programm, nie ein Wurf.
+  - Eine Matrix und keine Beispielliste, weil **alle vier Abstürze dieser Sitzung durch Zufall**
+    gefunden wurden — beim Bauen von etwas anderem, das zufällig danebenlag. Vier Zufälle sind
+    kein Zufall, sondern eine strukturelle Lücke.
+  - Der dritte Fall war **selbstgemacht**: `CheckEquatable` packte Optionals aus, bevor es prüfte.
+    Der Test fand ihn eine halbe Stunde nach seiner Entstehung — ohne ihn wäre er mitcommittet
+    worden.
 
 - [x] **Aufräum-Slice vor M10** (2026-08-07). Drei Punkte, die den `v0.9`-Tag blockiert haben.
   - **Die Version stand an vier Stellen und widersprach sich.** README und `Doku.md` druckten
@@ -194,12 +232,13 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   aber auf die ganze Zuweisung durch. *(Bekannt seit P3 — und am 2026-08-07 beim Schreiben einer
   Messprobe erneut hineingelaufen, ohne ihn wiederzuerkennen. Er kostet real Zeit.)*
 - **Generics-Rest aus M4**: Constraints mit eigenen Typ-Args über die Grenze substituieren.
+  **Der nächste Slice** — `fn same<T :: [Eq<T>]>(a: T, b: T)` scheitert mit `cannot assign 'T' to
+  'T'`, und `Map<K :: [Hashable<K>], V>` ist genau diese Konstruktion. **ADR-024 ist ohne ihn
+  nicht umsetzbar.** Gemessen 2026-08-07: `interface Eq<T>` mit `extend int :: [Eq<int>]` und
+  `struct P :: [Eq<P>]` funktioniert direkt gerufen; nur der generische Constraint fehlt.
   `Opt<int>.Some(5)` bleibt offen — eine *statische Methode* auf einer generischen Instanz ist
   weiterhin `LYR-SEM0052`; explizite Typargumente gibt es nur an Funktions-Aufrufen.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
-- **`char as int` ist kein erlaubter Cast** (`LYR-SEM0006`). Beim Schreiben der S2-Tests
-  aufgefallen. Ob das gewollt ist, sagt §6.5 nicht eindeutig — ungeprüft gelassen, weil eine
-  Cast-Regel eine Sprachentscheidung ist und kein Nebenprodukt.
 - **`do { return … } while (…)` laesst den Compiler abstuerzen.** Rumpf, Bedingung und Ausgang
   werden alle drei vorab angelegt; terminiert der Rumpf, sind Bedingung und Ausgang unerreichbar,
   und der Verifier lehnt ab. Der Fix braucht einen Umbau, weil `_loops.Push` die Sprungziele
@@ -210,10 +249,15 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   Signatur mit einem unbekannten Typ gibt einen Compiler-*Absturz* statt einer Diagnose. Gefunden
   beim Bau von S2, als `split` noch nicht lowerbar war.
 
-**Zwei Ungleichbehandlungen, die eine Entscheidung brauchen (keine Bugs):**
-
-- `fn f(p: P) { p.x = 9; }` ist `LYR-SEM0019`, aber `p.shift(9)` mit `mut fn` geht durch — obwohl
-  beides denselben Effekt auf dieselbe Kopie hat.
+- **Interface-Vererbung gibt es nicht** (`interface A :: [B]` ist ein Parser-Fehler; die
+  Grammatik sieht für `InterfaceDecl` keine Konformanzliste vor). Aufgefallen beim Bau von
+  ADR-024, das sie voraussetzte. Ob v1 sie braucht, ist offen — `Hashable` bräuchte sie nur, um
+  `Equatable` zu implizieren.
+- **`f"{u}"` mit `u: uint` jenseits `int64.MaxValue`** druckt eine negative Zahl. Keine Absturz,
+  eine falsche Ausgabe; der Fix wäre ein eigener nativer `fromUint`.
+- **`string < string` und `==` auf Nutzertypen sind abgelehnt** (`LYR-SEM0003` / `LYR-SEM0055`).
+  Bewusst und vorübergehend: Operator-Overloading ist das erste Thema nach v1.0 (v1.4), und die
+  Diagnose zeigt darauf. Bis dahin eine gewöhnliche Methode.
 
 **Werkzeug und Format:**
 
