@@ -1221,6 +1221,27 @@ internal sealed class FunctionLowerer
             return (instance, new IrRefType(type), owner);
         }
 
+        // Ein String laeuft ueber seine Codepoints (Sprache.md 4: 'char' IST ein Codepoint).
+        // Der Adapter bekommt sie als Array — 'toChars' loest sie EINMAL heraus. Ein Iterator,
+        // der stattdessen 'charAt' riefe, muesste pro Schritt von vorn zaehlen und machte die
+        // Schleife quadratisch; das sieht man einem 'for (c in s)' nicht an, und genau deshalb
+        // darf es nicht so gebaut sein.
+        if (source is PrimitiveType { Kind: PrimitiveKind.String })
+        {
+            var symbol = _types.StringIterator ?? throw NotSupported(
+                "iterating a string (std.iter is not on the module path)", stmt.Span);
+
+            var type = _typeTable.Intern(symbol);
+            var chars = CallHelper("std.string.toChars", stmt.Span, LowerExpr(stmt.Iterable));
+
+            var instance = _slots.NewTemp(new IrRefType(type));
+            _b.Emit(new NewObject(instance, type, new IrRefType(type), stmt.Span));
+            _b.Emit(new StoreField(instance, type, new FieldId(0), chars, stmt.Span));
+            _b.Emit(new StoreField(instance, type, new FieldId(1), IntConstant(0, stmt.Span),
+                stmt.Span));
+            return (instance, new IrRefType(type), null);
+        }
+
         if (source is RangeOf && stmt.Iterable is RangeExpr range)
         {
             var symbol = _types.RangeIterator ?? throw NotSupported(

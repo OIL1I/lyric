@@ -11,9 +11,11 @@ namespace Lyric.Ir.Lowering;
 /// dort stehen nur Ausdrucks-Typen. Für Rückgabetypen und die Parameter nativer Deklarationen
 /// muss das Lowering den Knoten selbst lesen.</para>
 ///
-/// <para>Builtins sind laut <c>Types.cs</c> <see cref="NamedType"/> mit einelementigem Pfad — mehr
-/// als Primitives braucht der heutige Stand nicht, und alles andere meldet sich als Scope-Grenze
-/// statt still etwas Falsches zu liefern.</para>
+/// <para>Builtins sind laut <c>Types.cs</c> <see cref="NamedType"/> mit einelementigem Pfad.
+/// Dazu kommt seit M8/S2 <c>T[]</c> ueber einem Primitiv — <c>split</c> liefert
+/// <c>string[]</c>, <c>toChars</c> liefert <c>char[]</c>. Die Grenze bleibt scharf: ein Array
+/// hat, anders als eine Klasse, <b>kein Layout</b>, das der Host kennen muesste. Alles andere
+/// meldet sich als Scope-Grenze, statt still etwas Falsches zu liefern.</para>
 /// </summary>
 internal static class DeclaredTypes
 {
@@ -26,6 +28,13 @@ internal static class DeclaredTypes
         if (node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
             && TypeFacts.FromBuiltinName(named.Path[0]) is { } primitive)
             return TypeLowering.Lower(primitive);
+
+        // 'T[]' in einer nativen Signatur. Der Elementtyp bleibt primitiv: ein Array von
+        // Objekten wuerde vom Host verlangen, ein Modul-Layout zu kennen.
+        if (node is ArrayType { Size: null } array
+            && array.Element is NamedType { Path.Length: 1, TypeArguments.Length: 0 } element
+            && TypeFacts.FromBuiltinName(element.Path[0]) is { } elementPrimitive)
+            return new IrArrayType(TypeLowering.Lower(elementPrimitive));
 
         throw new UnsupportedConstructException(
             "non-primitive type in a declared signature is not supported by this compiler version yet",

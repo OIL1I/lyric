@@ -443,8 +443,23 @@ BuiltinType     = 'int' | 'uint' | 'float'
 | `float32`/`float64` | explizite Größen |
 | `bool` | true/false |
 | `char` | ein Unicode-Codepoint |
-| `string` | UTF-8 Fat-Pointer `{ data, length }`, immutable |
+| `string` | Folge von Unicode-Codepoints, immutable. UTF-8 im Bytecode und an der Host-Schnittstelle; die interne Darstellung der Runtime ist ihre Sache |
 | `void` | nur als Rückgabetyp |
+
+**Zu `string` und `char`** *(präzisiert 2026-08-07)*: Länge, Positionen und Iteration zählen
+**Codepoints** — dasselbe, was `char` ist. Eine Länge, die etwas anderes zählte als die Iteration
+liefert, wäre ein Widerspruch im Typsystem; C#, Java und JavaScript haben ihn, weil ihr `char`
+eine UTF-16-Einheit ist.
+
+Ein String hat **keinen Indexoperator**. Eine Codepoint-Position kostet O(n), also wäre
+`for (var i = 0; i < length(s); i++) s[i]` quadratisch, ohne dass man es der Schleife ansieht —
+Rust verbietet die Indizierung aus demselben Grund. Wer eine einzelne Position braucht, nimmt
+`std.string.charAt`; wer über alle laufen will, `for (c in s)`.
+
+Die frühere Formulierung („UTF-8 Fat-Pointer `{ data, length }`") schrieb der Runtime ihre
+Datenstruktur vor. Das steht der Spec nicht zu (ADR-013 regelt das *Format*, nicht das Innenleben
+einer Implementierung) und war zudem falsch: die .NET-Runtime hält Strings als UTF-16. Beobachtbar
+muss überall dasselbe sein — und das ist ab jetzt festgeschrieben.
 | `?T` | nullable, äquivalent `Option<T>` |
 | `T[]` | Array; Länge steht bei der Erzeugung fest (ADR-016). Wachsende Container: `std.collections.List<T>` |
 | `(A, B)`, `(A, B, C)`, … | Tupel (arity ≥ 2, keine Obergrenze) |

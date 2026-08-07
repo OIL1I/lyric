@@ -101,6 +101,7 @@ public sealed class TypeResult
     public TypeSymbol? IteratorInterface { get; set; }
     public TypeSymbol? ArrayIterator { get; set; }
     public TypeSymbol? RangeIterator { get; set; }
+    public TypeSymbol? StringIterator { get; set; }
 
     /// <summary>Lebt dieses Symbol in einer Zelle statt in einem Frame-Slot? Das Lowering fragt
     /// das an <b>jeder</b> Zugriffsstelle — auch ausserhalb der Closure, denn beide Seiten muessen

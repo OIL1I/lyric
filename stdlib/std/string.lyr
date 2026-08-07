@@ -24,3 +24,41 @@ pub fn fromChar(value: char): string;
 // Bibliotheksarbeit, und ein 'mul'-Opcode, der bei string etwas anderes taete als bei int, waere
 // genau der polymorphe Dispatch, den ADR-013 vermeidet.
 pub fn repeat(value: string, count: int): string;
+
+// --- Abfragen (M8/S2) --------------------------------------------------------------------
+//
+// Alle Positionen und Laengen zaehlen CODEPOINTS. Sprache.md §4 sagt "char = ein Unicode-
+// Codepoint", also muss eine Laenge dasselbe zaehlen, was die Iteration liefert — sonst
+// widerspraeche sich das Typsystem selbst. C#, Java und JavaScript zaehlen UTF-16-Einheiten und
+// haben genau diesen Widerspruch; dort ist die Laenge eines Emoji 2.
+//
+// Es gibt bewusst KEIN 's[i]'. Der Zugriff auf eine Codepoint-Position ist O(n), und mit einem
+// Indexoperator wuerde die naheliegende Schleife quadratisch, ohne dass man es ihr ansieht.
+// Rust verbietet die Indizierung aus demselben Grund. Wer ueber Zeichen laufen will, nimmt
+// 'for (c in s)' — das ist linear und liest sich besser.
+
+pub fn length(value: string): int;
+pub fn charAt(value: string, index: int): char;
+pub fn substring(value: string, start: int, count: int): string;
+
+// Position in Codepoints, oder -1. Der Rueckgabewert ist damit direkt als Argument fuer
+// 'charAt' und 'substring' brauchbar — bei einer Position in Bytes oder UTF-16-Einheiten waere
+// er das nicht.
+pub fn indexOf(value: string, needle: string): int;
+pub fn contains(value: string, needle: string): bool;
+pub fn startsWith(value: string, prefix: string): bool;
+pub fn endsWith(value: string, suffix: string): bool;
+
+pub fn trim(value: string): string;
+
+// Ordinal, nicht kulturabhaengig: dasselbe Programm liefert auf jeder Maschine dasselbe.
+pub fn toUpper(value: string): string;
+pub fn toLower(value: string): string;
+
+// Ein leerer Trenner ist ein panic, kein Sonderfall — die Frage "in was soll ich teilen" hat
+// dann keine Antwort, und .NET und Python sind sich uneinig, welche sie erfinden.
+pub fn split(value: string, separator: string): string[];
+
+// Was 'for (c in s)' benutzt. Einmal O(n) statt n-mal O(n): ein Iterator, der 'charAt' riefe,
+// waere quadratisch.
+pub fn toChars(value: string): char[];

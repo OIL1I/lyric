@@ -43,6 +43,7 @@ public sealed class TypeChecker
     private readonly TypeSymbol? _iterator;
     private readonly TypeSymbol? _arrayIterator;
     private readonly TypeSymbol? _rangeIterator;
+    private readonly TypeSymbol? _stringIterator;
 
     private LyrType _currentReturn = LyrType.Void;
     private LyrType? _currentYield; // Yield-Typ, wenn die aktuelle Funktion eine Coroutine ist
@@ -66,6 +67,7 @@ public sealed class TypeChecker
         _iterator = iter?.LookupLocal("Iterator") as TypeSymbol;
         _arrayIterator = iter?.LookupLocal("ArrayIterator") as TypeSymbol;
         _rangeIterator = iter?.LookupLocal("RangeIterator") as TypeSymbol;
+        _stringIterator = iter?.LookupLocal("StringIterator") as TypeSymbol;
     }
 
     public TypeResult Check()
@@ -73,6 +75,7 @@ public sealed class TypeChecker
         _result.IteratorInterface = _iterator;
         _result.ArrayIterator = _arrayIterator;
         _result.RangeIterator = _rangeIterator;
+        _result.StringIterator = _stringIterator;
 
         foreach (var module in _comp.Modules) ComputeGlobals(module);
         foreach (var module in _comp.Modules)
@@ -1035,7 +1038,21 @@ public sealed class TypeChecker
         return target switch
         {
             ArrayOf a => a.Element,
-            PrimitiveType { Kind: PrimitiveKind.String } => LyrType.Char,
+
+            // Ein String hat KEINEN Indexoperator (M8/S2). Eine Codepoint-Position kostet O(n)
+            // — 'char' ist ein Codepoint (§4), und die Laenge zaehlt dieselben —, also waere die
+            // naheliegende Indexschleife quadratisch, ohne dass man ihr das ansieht. Rust
+            // verbietet die Indizierung aus demselben Grund; C# erlaubt sie und zahlt mit einem
+            // 'char', der gar kein Zeichen ist.
+            //
+            // Die Meldung nennt beide Auswege, weil der eine (charAt) das ist, wonach der Nutzer
+            // gerade sucht, und der andere (for-in) das, was er meistens haben will.
+            PrimitiveType { Kind: PrimitiveKind.String } =>
+                Report(ix.Span, "LYR-SEM0007",
+                    "a string cannot be indexed — a codepoint position costs O(n), so an index "
+                    + "loop would be quadratic. Use 'std.string.charAt(s, i)' if you really need "
+                    + "one position, or 'for (c in s)' to walk all of them"),
+
             ErrorType => LyrType.Error,
             _ => Report(ix.Span, "LYR-SEM0007", $"'{TypeFacts.Display(target)}' is not indexable")
         };

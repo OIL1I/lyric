@@ -49,3 +49,20 @@ pub class ArrayIterator<T> :: [Iterator<T>] {
         return value;
     }
 }
+
+// Ein String. Er laeuft ueber die Codepoints, die 'toChars' EINMAL herausloest — nicht ueber
+// 'charAt', das pro Aufruf von vorn zaehlen muesste und die Schleife quadratisch machte.
+// Der Preis ist ein Array pro Schleife; der Gewinn ist, dass 'for (c in s)' linear bleibt.
+pub class StringIterator :: [Iterator<char>] {
+    chars: char[],
+    index: int,
+
+    pub mut fn next(): ?char {
+        if (this.index >= this.chars.length) {
+            return null;
+        }
+        let value = this.chars[this.index];
+        this.index = this.index + 1;
+        return value;
+    }
+}

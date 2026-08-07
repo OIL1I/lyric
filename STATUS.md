@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1590 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1606 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -27,6 +27,29 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
 > zurückgeschnitten: letzte Slices, offene Punkte, Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M8 — S2 — `string` wird ein richtiger Typ.** Zwoelf Natives, ein `StringIterator`,
+  `for (c in s)`. 1606 Tests gruen.
+  - **Alles zaehlt Codepoints**, weil `Sprache.md` §4 `char` als Codepoint definiert. Eine
+    Laenge, die etwas anderes zaehlt als die Iteration liefert, waere ein Widerspruch im eigenen
+    Typsystem — C#, Java und JavaScript haben genau den, weil ihr `char` eine UTF-16-Einheit ist.
+    Gemessen: `length("a😀b")` ist **3**; C# sagt 4.
+  - **Kein `s[i]`** — und das war vorher erlaubt, fiel erst im Lowering um. Eine
+    Codepoint-Position kostet O(n), also waere die naheliegende Indexschleife quadratisch, ohne
+    dass man ihr das ansieht. Rust verbietet die Indizierung aus demselben Grund. Die Meldung
+    nennt beide Auswege (`charAt`, `for (c in s)`), weil ein blosses „not indexable" wie ein
+    fehlendes Feature klaenge statt wie eine Entscheidung.
+  - **`for (c in s)` laeuft ueber `toChars`, nicht ueber `charAt`.** Ein Iterator, der pro
+    Schritt `charAt` riefe, waere quadratisch — einmal O(n) plus ein Array statt n-mal O(n).
+  - **Natives duerfen jetzt Arrays liefern.** Die alte Regel war „nur Skalare"; `split` und
+    `toChars` brauchen mehr. Die Linie bleibt scharf: ein Array hat, anders als eine Klasse,
+    **kein Layout**, das der Host kennen muesste. Der Elementtyp wird beim Binden mitgeprueft,
+    sonst waeren `string[]` und `char[]` ununterscheidbar.
+  - **`Sprache.md` §4 ist korrigiert.** Dort stand „UTF-8 Fat-Pointer `{ data, length }`" — das
+    schrieb der Runtime ihre Datenstruktur vor, was der Spec nicht zusteht (ADR-013 regelt das
+    *Format*), und war zudem **falsch**: die .NET-Runtime haelt Strings als UTF-16. Die Divergenz
+    war unbeobachtbar, solange es weder `length` noch Indizierung gab. Mit S2 waere sie es
+    geworden.
 
 - [x] **M8 — S1 — Builtin-Konformanz.** `console.writeln(42)`, `writeln(true)`, `writeln("hi")`,
   `writeln('x')`, `writeln(2.5)` laufen. 1590 Tests grün.
@@ -63,22 +86,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     `ExtensionTable.LowerAll` selbst (also brach eine Extension, die eine andere ruft). Sie hängt
     jetzt am `TypeTable`, den ohnehin jeder Lowerer hat.
 
-- [x] **Drei Lücken, die erst das M7-Gate gefunden hat** — keine davon aus P9.
-  - **Eine Interface-Default-Methode auf einem konkreten Empfänger** (`it.isFree()`) rief direkt
-    statt zu heben. Ihr `this` ist der Interface-Typ, dorthin führt kein direkter Aufruf.
-    `LowerConstraintCall` machte es seit dem P8-Nachtrag richtig — der Fall **ohne** Constraint
-    fehlte, weil bis dahin kein Beispiel eine Default-Methode direkt aufrief.
-  - **`match` über ein Optional** war zweifach falsch: `null` als Muster wurde ein
-    *Gleichheitsvergleich* (es gibt keinen null-Operanden — es ist `optissome`), und die Bindung
-    im anderen Arm speicherte ein `?T` in einen `T`-Slot. Die Sema gibt dem Namen den eingeengten
-    Typ; ausgepackt werden muss trotzdem, weil das Narrowing eine Aussage über den Kontrollfluss
-    ist und nicht über den Speicher.
-  - **`for-in` in einer generischen Funktion** internierte den `ArrayIterator` mit dem
-    Typ-*Parameter*; die Typtabelle suchte nach einer Klasse namens `T`.
-  - **Das ist der Zweck eines Gates.** Ein Programm, das mehrere Slices gleichzeitig belastet,
-    findet die Kanten *zwischen* ihnen — und keine dieser drei hätte ein Slice-Test gefunden, weil
-    jeder für sich grün war.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -111,19 +118,21 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M8 — Stdlib.** S1 (Builtin-Konformanz) steht. Als nächstes **S2 — `string` wird ein richtiger
-Typ**: heute kann `std.string` nur *bauen* (`concat`, `fromInt`, `repeat`) und hat kein `length`,
-keine Indizierung, kein `split` — deshalb ist ein String nicht iterierbar und der `wc`-Klon
-unmöglich.
+**M8 — Stdlib.** S1 (Builtin-Konformanz) und S2 (`string`) stehen. Als naechstes **S3 —
+`std.fmt` und Format-Specs**: `f"{x:N2}"` ruft dann `std.fmt.format(value, spec)` statt der
+`fromXxx`-Wandler, und `Display` liefert den Default. Damit laufen `shapes.lyr` und `stats.lyr`,
+die seit M6 warten.
 
-**Eine Entscheidung gehört vor S2**: zählt `length` Zeichen oder Bytes? Rust indiziert Strings
-gar nicht, Go zählt Bytes und iteriert Runen, Python zählt Codepoints. Empfehlung: **Codepoints**
-— die Antwort, die niemanden überrascht; der Preis (kein O(1)-Index) ist bei Skripten irrelevant.
-Sie ist später nicht mehr änderbar und gehört als ADR festgehalten.
+Danach **S4** (`Throwable` als Interface → `catch (e)` ohne Typ), **S5** (`std.collections`),
+**S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math`), **S8** (Gate:
+`wc`-Klon).
 
-**`std.io.net` ist aus M8 gestrichen** und steht in der v1.X-Tabelle (Begründung in der ROADMAP):
-was ein blockierender Socket in einer Single-Thread-VM bedeutet, ist eine Entscheidung über das
-Nebenläufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilensteins.
+**Vor S5 gehoert eine Sprachentscheidung getroffen** — sie steht unten unter „Noch offen" und
+wird mit `Indexable<T>` zum zweiten Mal faellig.
+
+**`std.io.net` ist aus M8 gestrichen** und steht in der v1.X-Tabelle (Begruendung in der
+ROADMAP): was ein blockierender Socket in einer Single-Thread-VM bedeutet, ist eine Entscheidung
+ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilensteins.
 
 ## Noch offen
 
@@ -133,8 +142,6 @@ Nebenläufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilensteins.
   einem `?fn() -> int` und stolpert dann über das `()`. Feldzugriff (`b?.v`) funktioniert.
 - **Die Konformanz prüft die Definition statt der Typargumente**: `Ones :: [Src<int>]` würde auch
   für `Src<string>` akzeptiert.
-- **`string` lässt sich nicht iterieren** — `std.string` hat kein `length`, mit dem ein Adapter
-  laufen könnte.
 - **`catch (e)` ohne Typ** ist `LYR-IR0001`: der Slot bräuchte `Throwable` als Interface, das hängt
   an der Builtin-Konformanz (M8). `catch (_)` und `catch (e: T)` gehen.
 - **Parser: `s = Small { n = 5 };`** scheitert mit `LYR-PAR0016`, obwohl §6.2 den Ausdruck „in jeder
@@ -144,6 +151,12 @@ Nebenläufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilensteins.
 - **Generics-Rest aus M4**: Constraints mit eigenen Typ-Args über die Grenze substituieren;
   `Opt.Some(5)` typt ohne Instanz-Inferenz, `Opt<int>.Some(…)` ist per TypePath nicht ausdrückbar.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
+- **`char as int` ist kein erlaubter Cast** (`LYR-SEM0006`). Beim Schreiben der S2-Tests
+  aufgefallen. Ob das gewollt ist, sagt §6.5 nicht eindeutig — ungeprüft gelassen, weil eine
+  Cast-Regel eine Sprachentscheidung ist und kein Nebenprodukt.
+- **`DeclaredTypes.Lower` wirft ungefangen** aus `ModuleLowerer.Lower` heraus: eine native
+  Signatur mit einem unbekannten Typ gibt einen Compiler-*Absturz* statt einer Diagnose. Gefunden
+  beim Bau von S2, als `split` noch nicht lowerbar war.
 
 **Zwei Ungleichbehandlungen, die eine Entscheidung brauchen (keine Bugs):**
 
@@ -207,7 +220,7 @@ Nebenläufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilensteins.
 
 ## Letzter relevanter Commit
 
-`M8: Builtin-Konformanz (S1) und benutzte Extensions (S1a)`
+`M8: string als richtiger Typ (S2)`
 
 ---
 
