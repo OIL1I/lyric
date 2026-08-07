@@ -1284,7 +1284,7 @@ internal sealed class FunctionLowerer
         // callvirt haette hier nur eine Tabelle zu befragen, deren Antwort der Compiler kennt.
         var target = owner is not null
             ? _instances.RequestMethod(method, decl, owner, span)
-            : _functions.TryGetValue(method, out var direct)
+            : TryResolveFunction(method, out var direct)
                 ? direct
                 : throw NotSupported($"'{declaring.Name}.next' was not lowered", span);
 
@@ -3016,9 +3016,43 @@ internal sealed class FunctionLowerer
     /// </summary>
     private TempId? LowerConstraintCall(MemberExpr member, LyrType concrete, CallExpr expr)
     {
+        // Ein BUILTIN als eingesetzter Typ: 'render(42)' mit 'extend int :: [Display]'. Primitive
+        // haben kein Symbol in SymbolOf — und das bleibt auch so, weil genau daran die Grenze
+        // haengt, dass ein Skalar nicht in einen Interface-Slot passt (das braeuchte Boxing).
+        // Hier stoert sie nicht: die Monomorphisierung hat den Typ eingesetzt, die Methode steht
+        // fest, und der Aufruf ist direkt. Es entsteht nie ein Fat Pointer, also nie ein
+        // Boxing-Bedarf — der Grund, warum 'println<T :: [Display]>(42)' ohne eine einzige
+        // Format-Aenderung baubar ist.
         if (TypeFacts.SymbolOf(concrete) is not { } owner)
+        {
+            if (_typeTable.BuiltinSymbolOf(concrete) is { } builtin
+                && _typeTable.ExtensionMethod(builtin, member.Member) is { } extension
+                && extension.Declaration is FunctionDecl extensionDecl
+                && TryResolveFunction(extension, out var extensionTarget))
+            {
+                var self = LowerExpr(member.Target);
+                var passed = MaterializeArguments(extensionDecl, expr.Arguments, member.Member,
+                    expr.Span);
+                var all = new TempId[passed.Length + 1];
+                all[0] = self;
+                passed.CopyTo(all, 1);
+
+                var resultType = TypeOfExpr(expr);
+                if (IsVoid(resultType))
+                {
+                    _b.Emit(new Call(null, extensionTarget, all, expr.Span));
+                    return null;
+                }
+
+                var result = _slots.NewTemp(resultType);
+                _b.Emit(new Call(result, extensionTarget, all, expr.Span));
+                _fresh.Add(result);
+                return result;
+            }
+
             throw NotSupported($"call to '{member.Member}' on '{TypeFacts.Display(concrete)}'",
                 expr.Span);
+        }
 
         // Eigenes Member schlaegt Default (§3.5). Hat der konkrete Typ die Methode NICHT, kommt
         // sie als Default vom Interface — und deren 'this' ist der Interface-Typ. Dann fuehrt kein
@@ -3048,7 +3082,7 @@ internal sealed class FunctionLowerer
         // Pass 1 mit allen anderen gelowert.
         var target = concrete is GenericInstance instance
             ? _instances.RequestMethod(method, declaration, instance, expr.Span)
-            : _functions.TryGetValue(method, out var direct)
+            : TryResolveFunction(method, out var direct)
                 ? direct
                 : throw NotSupported($"'{owner.Name}.{member.Member}' was not lowered", expr.Span);
 
@@ -3271,7 +3305,7 @@ internal sealed class FunctionLowerer
             target = _instances.Request(symbol, generic, calleeName, null,
                 typeArguments, _typeTable, expr.Span);
         }
-        else if (!_functions.TryGetValue(symbol, out target))
+        else if (!TryResolveFunction(symbol, out target))
         {
             throw NotSupported($"call to '{calleeName}' (external or bodiless)", expr.Span);
         }
@@ -3744,6 +3778,31 @@ internal sealed class FunctionLowerer
     /// <c>P</c>.</summary>
     /// <summary>Setzt die Typargumente dieser Instanz in einen Typ ein — rekursiv, weil ein
     /// Argument selbst zusammengesetzt sein kann (<c>Box&lt;T[]&gt;</c>).</summary>
+    /// <summary>
+    /// Die Id, unter der eine Funktion aufrufbar ist. Zwei Quellen, und die Reihenfolge ist
+    /// bedeutsam: geschriebene Funktionen haben ihre Id aus Pass 1, eine Extension-Methode
+    /// bekommt sie <b>erst hier</b> — bei ihrem ersten Aufruf.
+    ///
+    /// <para>Genau das ist der Punkt von S1a: eine nie gerufene Extension landet nicht im
+    /// Bytecode. Ohne die Unterscheidung trug jedes Programm die fuenf Display-Extensions aus
+    /// <c>std.core</c> mit, weil dieses Modul immer geladen wird.</para>
+    /// </summary>
+    private bool TryResolveFunction(FunctionSymbol symbol, out FunctionId id)
+    {
+        if (_functions.TryGetValue(symbol, out id)) return true;
+        if (_typeTable.Extensions is not { } table) return false;
+        if (table.TryGet(symbol, out id)) return true;
+
+        if (_typeTable.ExtensionOwnerOf(symbol) is not { } owner) return false;
+        if (symbol.Declaration is not FunctionDecl decl || decl.Body is null) return false;
+        if (decl.Generics.Length > 0) return false;
+
+        id = table.Request(symbol, decl, owner.Module, owner.TargetName,
+            decl.IsStatic ? null : owner.Target,
+            decl.IsStatic ? null : owner.TargetNode);
+        return true;
+    }
+
     private LyrType SubstituteType(LyrType type) => type switch
     {
         TypeParamType p when _substitution.TryGetValue(p.Param, out var bound) => bound,

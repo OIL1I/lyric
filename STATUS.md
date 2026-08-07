@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1586 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1590 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -28,28 +28,40 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
 
 ## Zuletzt fertig geworden
 
-- [x] **P9 — `extend`** (Sprache.md §3.6), beide Formen. **M7 ist damit abgeschlossen.**
-  - **P9a — inhärent.** Eine Extension-Methode ist eine gewöhnliche Funktion mit dem Empfänger als
-    Parameter 0 (ADR-014): kein IR-Typ, kein Opcode, kein Format-Bump, ein direkter `call`. Ein
-    Skalar als Parameter 0 ist nichts Neues — deshalb braucht `extend int` **kein Boxing**.
-  - **Das Mangling war die Arbeit, nicht das Lowering.** Es trägt das *deklarierende* Modul und
-    einen `<extend>`-Infix, und beides ist erzwungen: `extend string` darf in jedem Modul stehen,
-    und §3.6 lässt eine Extension zu, die einen gleichnamigen Member verdeckt — die Sema **meldet
-    das nicht**, sie lässt nur den eigenen Member gewinnen. Ohne den Infix hießen beide
-    `main.Player.get`, und der Verifier lehnt doppelte Funktionsnamen ab: ein sauber typgeprüftes
-    Programm wäre im Lowering abgestürzt.
-  - **P9b — `extend T :: [I]`, und das war zuerst ein Sema-Slice.** Es gab **zwei** Antworten auf
-    „erfüllt T das Interface I": `ImplementsInterface` ohne Extensions (für Zuweisungen),
-    `ImplementsWithExtensions` mit (für Constraints). Ein Constraint akzeptierte damit eine
-    Extension-Konformanz, eine Zuweisung nicht. Der Doc-Kommentar über der ersten warnte wörtlich
-    vor genau dieser Spaltung, während die zweite 1200 Zeilen darüber stand.
-  - **Kein Skalar-Boxing, und es musste nicht verboten werden**: `extend int :: [Display]` bleibt
-    abgelehnt, weil `TypeFacts.SymbolOf` für einen Primitive kein Symbol liefert. Der Fall, der
-    Boxing wirklich brauchte — `println<T :: [Display]>` —, braucht es nicht: Monomorphisierung
-    mit Constraint wird zu einem direkten Aufruf.
-  - **Ein Skalar-Empfänger ging zunächst verloren.** `n.double()` fiel durch alle
-    `MemberExpr`-Fälle bis zum Typ-/Modul-Zweig, der keinen Empfänger anhängt — ein `int` ist kein
-    `NamedRef`, und die Fallunterscheidung fragte nur danach.
+- [x] **M8 — S1 — Builtin-Konformanz.** `console.writeln(42)`, `writeln(true)`, `writeln("hi")`,
+  `writeln('x')`, `writeln(2.5)` laufen. 1590 Tests grün.
+  - **Es braucht kein Boxing, und das war die zentrale Messung.** Ich hatte in P9b das Gegenteil
+    vermutet. `extend int :: [Display]` kam schon immer durch die Sema; die Meldung kam aus dem
+    Lowering, weil `LowerConstraintCall` aufgab, sobald `TypeFacts.SymbolOf` kein Symbol lieferte.
+    Die Monomorphisierung macht aus `writeln(42)` einen **direkten** Aufruf — es entsteht nie ein
+    Fat Pointer, also nie ein Boxing-Bedarf. Kein Format-Bump, keine `LyrValue`-Änderung.
+  - **Damit ist ADR-015 belegt statt behauptet.** Overloading wurde vertagt mit dem Argument,
+    `println` wolle `println<T :: [Display]>` und keine drei Überladungen. Jetzt ist es gebaut.
+  - **Die Sema lässt Builtins bei Constraints nicht mehr blind durch.** Der Kommentar in
+    `Satisfies` sagte wörtlich „Builtins/extern: lenient (Conformance erst M8)" — `render(42)`
+    wurde auch dann angenommen, wenn niemand `int` erweitert hatte, und der Fehler kam als
+    `LYR-IR0001` aus dem Lowering, weit weg von der Ursache.
+  - **`std.core` ist ohne Import sichtbar** — dieselbe Begründung wie bei `panic` (§9) und
+    `coroutineEnded` (§8), die der Compiler anbindet, ohne dass jemand sie importiert haben
+    könnte. Ohne die Regel müsste jedes Programm `std.core` importieren, nur damit
+    `console.writeln(42)` den Constraint erfüllt — obwohl es `std.core` nirgends nennt.
+
+- [x] **M8 — S1a — Extension-Methoden nur lowern, wenn benutzt.**
+  - **S1 hatte einen Preis, und drei Tests haben ihn sofort angezeigt.** `std.core` wird immer
+    geladen, also trug plötzlich *jedes* Programm die fünf `Display`-Extensions und vier
+    `std.string`-Importe — auch ein `hello.lyr`, das keine davon anfasst. Die Tests messen genau
+    das Richtige; sie anzupassen wäre Schönfärberei gewesen.
+  - **`ExtensionTable` in derselben Worklist-Form wie `LambdaTable`/`InstanceTable`**: die Id
+    entsteht bei der *Anforderung*, gelowert wird danach. Damit gilt für Extensions dieselbe
+    Regel wie für Typen und Importe seit jeher — **im Bytecode steht nur, was benutzt wurde**.
+  - **Die vtable braucht eine Vorrunde**: `extend A :: [I]` wird gebraucht, sobald ein `A` in
+    einem `I`-Slot landet, auch wenn die Methode nirgends direkt gerufen wird. `BuildImpls` läuft
+    deshalb vor dem Anhängen der letzten Funktionen, danach dreht die Worklist noch eine Runde.
+  - **Vier Durchreichungen sind vier Gelegenheiten zu vergessen.** Der erste Versuch fädelte die
+    Tabelle als Parameter durch den `FunctionLowerer` — und bekam sie weder in
+    `InstanceTable.LowerAll` (also brach `writeln`, eine generische Funktion) noch in
+    `ExtensionTable.LowerAll` selbst (also brach eine Extension, die eine andere ruft). Sie hängt
+    jetzt am `TypeTable`, den ohnehin jeder Lowerer hat.
 
 - [x] **Drei Lücken, die erst das M7-Gate gefunden hat** — keine davon aus P9.
   - **Eine Interface-Default-Methode auf einem konkreten Empfänger** (`it.isFree()`) rief direkt
@@ -99,9 +111,19 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M7 ist abgeschlossen — als nächstes M8.** Der Meilenstein-Zuschnitt steht in der ROADMAP;
-`std.fmt` mit Format-Specs und die Builtin-Konformanz (`Throwable`, `Display`) sind die beiden
-Posten, an denen die meisten offenen Punkte unten hängen.
+**M8 — Stdlib.** S1 (Builtin-Konformanz) steht. Als nächstes **S2 — `string` wird ein richtiger
+Typ**: heute kann `std.string` nur *bauen* (`concat`, `fromInt`, `repeat`) und hat kein `length`,
+keine Indizierung, kein `split` — deshalb ist ein String nicht iterierbar und der `wc`-Klon
+unmöglich.
+
+**Eine Entscheidung gehört vor S2**: zählt `length` Zeichen oder Bytes? Rust indiziert Strings
+gar nicht, Go zählt Bytes und iteriert Runen, Python zählt Codepoints. Empfehlung: **Codepoints**
+— die Antwort, die niemanden überrascht; der Preis (kein O(1)-Index) ist bei Skripten irrelevant.
+Sie ist später nicht mehr änderbar und gehört als ADR festgehalten.
+
+**`std.io.net` ist aus M8 gestrichen** und steht in der v1.X-Tabelle (Begründung in der ROADMAP):
+was ein blockierender Socket in einer Single-Thread-VM bedeutet, ist eine Entscheidung über das
+Nebenläufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilensteins.
 
 ## Noch offen
 
@@ -185,7 +207,7 @@ Posten, an denen die meisten offenen Punkte unten hängen.
 
 ## Letzter relevanter Commit
 
-`M7: extend - P9c, Gate inventory.lyr, M7 abgeschlossen`
+`M8: Builtin-Konformanz (S1) und benutzte Extensions (S1a)`
 
 ---
 

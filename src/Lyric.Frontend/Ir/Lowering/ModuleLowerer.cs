@@ -68,7 +68,7 @@ public static class ModuleLowerer
         var pending = new List<(FunctionDecl Decl, string Name, TypeSymbol? Receiver, TypeNode? ExtendTarget)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
         var imports = new ImportTable();
-        var typeTable = new TypeTable(binding);
+        var typeTable = new TypeTable(binding) { Compilation = compilation };
         var globals = new GlobalTable();
         FunctionId? entry = null;
         var failed = false;
@@ -159,38 +159,12 @@ public static class ModuleLowerer
             }
         }
 
-        // Extend-Bloecke (Sprache.md §3.6). Eine Extension-Methode ist eine gewoehnliche Funktion
-        // mit dem Empfaenger als Parameter 0 — dieselbe Konvention wie eine Klassenmethode, und
-        // deshalb braucht sie weder einen IR-Typ noch einen Opcode noch ein Format-Bit. Der
-        // Aufruf ist ein direkter 'call': welcher Typ am Empfaenger steht, weiss der Compiler
-        // statisch, es gibt nichts zu dispatchen.
-        //
-        // Die Schleife laeuft ueber die Registry statt ueber die Deklarationen, weil ein
-        // extend-Block dem Zieltyp NICHT gehoert: 'extend string' darf in jedem Modul stehen.
-        // Sie laeuft ausserhalb der Modul-Schleife, damit die Reihenfolge die der Registry ist
-        // und nicht von der Modul-Iteration abhaengt — die Position IST die FunctionId (ADR-013).
-        foreach (var block in compilation.Extensions.Blocks)
-        {
-            // Target == null heisst: der Resolver konnte das Ziel nicht aufloesen, die Sema hat
-            // das als LYR-SEM0047 gemeldet. Hier ist dann nichts mehr zu tun.
-            if (block.Target is null) continue;
-
-            foreach (var method in block.Decl.Methods)
-            {
-                if (method.Generics.Length > 0 || method.Body is null) continue;
-                if (block.MethodScope.LookupLocal(method.Name) is not FunctionSymbol symbol) continue;
-
-                ids[symbol] = new FunctionId(pending.Count);
-                pending.Add((method,
-                    NameMangling.ForExtension(block.Module, block.Target.Name, method.Name),
-                    // Der Empfaenger geht als TYPE NODE weiter, nicht als Symbol: bei
-                    // 'extend int' ist das Ziel ein Builtin ohne Layout-Eintrag, und der
-                    // Symbol-Weg wuerde dort 'RefTo' auf einen Skalar versuchen. Der TypeNode
-                    // laeuft durch dieselbe Lowerung wie jeder Parametertyp.
-                    method.IsStatic ? null : block.Target,
-                    method.IsStatic ? null : block.Decl.Target));
-            }
-        }
+        // Extend-Bloecke bekommen hier KEINE Ids. Eine Extension-Methode wird erst bei ihrem
+        // ersten Aufruf angefordert (ExtensionTable) — dieselbe Worklist-Form wie bei Lambdas und
+        // monomorphisierten Instanzen, und aus demselben Grund: im Bytecode soll nur stehen, was
+        // benutzt wird. Bis M8/S1a standen sie hier, was harmlos war, solange Extensions nur in
+        // Nutzer-Programmen vorkamen; mit den Display-Extensions in 'std.core' — einem Modul, das
+        // immer geladen wird — trug ploetzlich jedes Programm fuenf ungenutzte Funktionen.
 
         // Globals werden VOR den Rumpfen gesammelt: eine Funktion darf eine Konstante lesen, die
         // weiter unten im Quelltext steht. Dieselbe Zwei-Phasen-Form wie bei den FunctionIds.
@@ -217,6 +191,8 @@ public static class ModuleLowerer
         var coroutines = new CoroutineTable(nextId);
         var instances = new InstanceTable(nextId);
         var lambdas = new LambdaTable(nextId);
+        var extensions = new ExtensionTable(nextId);
+        typeTable.Extensions = extensions;
 
         // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
@@ -291,6 +267,8 @@ public static class ModuleLowerer
                     lambdas, instances));
                 deferred.AddRange(instances.LowerAll(types, ids, imports, typeTable, globals, lambdas));
                 deferred.AddRange(lambdas.LowerAll(types, ids, imports, typeTable, globals, instances));
+                deferred.AddRange(extensions.LowerAll(types, ids, imports, typeTable, globals,
+                    lambdas, instances));
                 if (deferred.Count == before) break;
             }
         }
@@ -302,6 +280,32 @@ public static class ModuleLowerer
 
         functions.AddRange(deferred.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
 
+        // Die vtable-Zeilen ZUERST, denn sie koennen eine Extension anfordern, die bisher niemand
+        // gerufen hat: 'extend A :: [I]' wird gebraucht, sobald ein A in einem I-Slot landet —
+        // auch wenn die Methode im Quelltext nirgends direkt steht.
+        var impls = BuildImpls(typeTable, binding, compilation, ids, extensions, de, ref failed);
+        if (failed) return null;
+
+        var late = new List<(FunctionId Id, IrFunction Function)>();
+        try
+        {
+            for (var round = 0; round < MaxLoweringRounds; round++)
+            {
+                var before = late.Count;
+                late.AddRange(extensions.LowerAll(types, ids, imports, typeTable, globals,
+                    lambdas, instances));
+                late.AddRange(lambdas.LowerAll(types, ids, imports, typeTable, globals, instances));
+                if (late.Count == before) break;
+            }
+        }
+        catch (UnsupportedConstructException ex)
+        {
+            de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
+            return null;
+        }
+
+        functions.AddRange(late.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
+
         // Types nach dem Lowering eingesammelt, nicht davor: die Tabelle enthält nur, was
         // tatsächlich benutzt wurde — eine deklarierte, nie instanziierte Klasse gehört nicht in
         // den Bytecode. Gleiche Regel wie bei den Imports.
@@ -309,7 +313,7 @@ public static class ModuleLowerer
         {
             EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
             Globals = globals.Defs, GlobalInit = globalInit,
-            Impls = BuildImpls(typeTable, binding, compilation, ids, de, ref failed),
+            Impls = impls,
         };
         if (failed) return null;
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
@@ -335,7 +339,7 @@ public static class ModuleLowerer
     /// </summary>
     private static List<IrImpl> BuildImpls(TypeTable typeTable, BindingResult binding,
         Compilation compilation, Dictionary<FunctionSymbol, FunctionId> ids,
-        DiagnosticEngine de, ref bool failed)
+        ExtensionTable extensions, DiagnosticEngine de, ref bool failed)
     {
         var impls = new List<IrImpl>();
         var interned = typeTable.Interned.ToList();
@@ -367,7 +371,7 @@ public static class ModuleLowerer
                     // Default des Interfaces. Eine Extension-Methode steht NICHT in
                     // 'type.Members' — sie gehoert dem extend-Block, nicht dem Zieltyp.
                     var target = Resolve(type, slots[i], ids)
-                                 ?? ResolveInExtensions(viaExtension, slots[i], ids)
+                                 ?? ResolveInExtensions(viaExtension, slots[i], extensions)
                                  ?? Resolve(iface, slots[i], ids);
                     if (target is { } id) { methods[i] = id; continue; }
 
@@ -421,12 +425,18 @@ public static class ModuleLowerer
     }
 
     private static FunctionId? ResolveInExtensions(List<ExtensionBlock> blocks, string method,
-        Dictionary<FunctionSymbol, FunctionId> ids)
+        ExtensionTable extensions)
     {
         foreach (var block in blocks)
-            if (block.MethodScope.LookupLocal(method) is FunctionSymbol symbol
-                && ids.TryGetValue(symbol, out var id))
-                return id;
+        {
+            if (block.MethodScope.LookupLocal(method) is not FunctionSymbol symbol) continue;
+            if (symbol.Declaration is not FunctionDecl decl || decl.Body is null) continue;
+            if (block.Target is not { } target) continue;
+
+            // Fordert an, falls noch nicht geschehen — eine vtable-Zeile ist eine Benutzung.
+            return extensions.Request(symbol, decl, block.Module, target.Name,
+                decl.IsStatic ? null : target, decl.IsStatic ? null : block.Decl.Target);
+        }
         return null;
     }
 

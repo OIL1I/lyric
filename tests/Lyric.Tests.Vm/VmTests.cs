@@ -44,7 +44,7 @@ public class VmTests
         Assert.NotNull(ir);
 
         var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!));
-        return Interpreter.Run(module);
+        return Interpreter.Run(module, NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null));
     }
 
     /// <summary>Kürzel: der Rumpf wird in ein `main` gepackt.</summary>
@@ -617,7 +617,7 @@ public class VmTests
         var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir));
         Assert.Null(module.Start);
 
-        var ex = Assert.Throws<LyricRuntimeException>(() => Interpreter.Run(module));
+        var ex = Assert.Throws<LyricRuntimeException>(() => Interpreter.Run(module, NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)));
         Assert.Equal(VmDiagnostics.NoEntryPoint, ex.Code);
     }
 

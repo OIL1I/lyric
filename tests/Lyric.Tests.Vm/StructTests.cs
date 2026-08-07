@@ -34,7 +34,8 @@ public class StructTests
         var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         Assert.NotNull(ir);
 
-        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!))).AsI64;
+        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!)),
+            NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
     private const string Point = """

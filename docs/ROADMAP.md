@@ -546,13 +546,27 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 **Ziel**: Alle 14 Stdlib-Module produktiv.
 
 **Lieferposten**:
-- `std.core`, `std.option`, `std.error`, `std.string`, `std.fmt`, `std.math`, `std.collections`, `std.iter`, `std.coroutine`, `std.io.console`, `std.io.file`, `std.io.net` (minimal HTTP/TCP), `std.os`, `std.dotnet`.
+- `std.core`, `std.option`, `std.error`, `std.string`, `std.fmt`, `std.math`, `std.collections`, `std.iter`, `std.coroutine`, `std.io.console`, `std.io.file`, `std.os`, `std.dotnet`.
 - Native-Hooks für Performance-kritische Operationen (z.B. `List<T>` direkt auf `System.Collections.Generic.List<>`).
 - Capability-Enforcement: Imports von permission-gated Modulen prüfen Capabilities zur Resolve-Zeit.
 - Diagnostik-Codes `LYR-CAP0001..0010`.
 - Pro Modul: 10+ Unit-Tests.
 
 **Exit**: Stdlib-Tests grün. Beispiel-CLI-Tool nutzbar (z.B. ein simples `wc`-Klon).
+
+> **Korrektur (2026-08-07, beim M8-Plan): `std.io.net` ist aus M8 gestrichen** und steht in der
+> v1.X-Tabelle. Es war als „minimal HTTP/TCP" ein Lieferposten neben dreizehn anderen Modulen —
+> tatsächlich ist es ein eigener Meilenstein: Sockets, Adressauflösung, Timeouts, Fehlerklassen,
+> und vor allem eine **Designfrage, die M8 sonst mitentscheiden müsste**. ADR-010 hat kein
+> Multithreading, und die Coroutinen aus P7 sind kooperativ ohne Scheduler; was ein blockierender
+> Socket in einer Single-Thread-VM bedeutet, ist keine Fleißarbeit, sondern eine Entscheidung über
+> das Nebenläufigkeitsmodell. Sie gehört nicht als Nebenprodukt in einen Stdlib-Meilenstein.
+>
+> **Der Meilenstein verliert damit keinen Exit-Posten**: der `wc`-Klon braucht Dateien und
+> Strings, kein Netzwerk.
+>
+> `std.dotnet` bleibt vorerst drin, ist aber der nächste Kandidat: es ist Interop und teilt sich
+> die Marshalling-Schicht mit **M10**. Zweimal entworfen wäre einmal zu viel.
 
 ### M9 — REPL + Tests + Tooling (2–3 Wochen)
 
@@ -1067,6 +1081,7 @@ Wir schreiben **keine** ausführliche post-v1-Roadmap (das war einer der Oil-Feh
 | **v1.3** | Async/Await-Syntax als Zucker über Coroutinen | wenn Async-Code stark gefragt |
 | **v1.4** | User-defined Operator-Overloading; Funktions-Overloading (ADR-015) | wenn Math-Libs schreien |
 | **v1.5** | Formatter `lyric fmt` | wenn Community entsteht |
+| **v1.X?** | `std.io.net` (TCP/HTTP) — setzt eine Entscheidung über blockierende I/O in einer Single-Thread-VM voraus (ADR-010) | wenn Server-Use-Case konkret wird |
 | **v1.X?** | JIT-Backend (Cranelift), Package-Manager | nur bei demonstriertem Bedarf |
 
 **Niemals** geplant:

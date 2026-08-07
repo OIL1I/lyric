@@ -1,5 +1,6 @@
 using Lyric.Bytecode;
 using Lyric.Core;
+using Lyric.Ir;
 using Lyric.Ir.Lowering;
 using Lyric.Parsing;
 using Lyric.Resolver;
@@ -33,6 +34,30 @@ public class ExtendTests
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
+    /// <summary>Lowert und liefert das IR — fuer die Tests, die nicht am Ergebnis interessiert
+    /// sind, sondern daran, WAS im Modul steht.</summary>
+    private static IrModule Lower(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+
+        var writer = new StringWriter();
+        de.RenderText(writer);
+        Assert.False(de.HasErrors, "source did not compile: " + writer);
+
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+        Assert.NotNull(ir);
+        return ir!;
+    }
+
     private static long Run(string source)
     {
         var sm = new SourceManager();
@@ -52,7 +77,8 @@ public class ExtendTests
 
         var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         Assert.NotNull(ir);
-        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!))).AsI64;
+        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!)),
+            NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
     // ------------------------------------------------------------------ Empfängertypen
@@ -288,6 +314,63 @@ public class ExtendTests
             }
             fn main(): int { return total([Item { n = 2 }, Item { n = 4 }]); }
             """));
+
+    // ------------------------------------------------------------------ nur Benutztes (S1a)
+
+    [Fact]
+    public void An_extension_that_is_never_called_stays_out_of_the_module() =>
+        // Die Invariante des Slice. Sie gilt fuer Typen und Importe seit jeher — eine
+        // deklarierte, nie instanziierte Klasse gehoert nicht in den Bytecode —, fuer
+        // Extension-Methoden erst seit S1a.
+        Assert.DoesNotContain(Lower("""
+            class Item { n: int }
+            extend Item { fn unused(): int { return 1; } }
+            fn main(): int { let i = Item { n = 5 }; return i.n; }
+            """).Functions, f => f.Name.Contains("unused"));
+
+    [Fact]
+    public void An_extension_that_is_called_is_in_the_module() =>
+        // Die Gegenprobe. Ohne sie bliebe der Test darueber auch dann gruen, wenn ueberhaupt
+        // keine Extension mehr gelowert wuerde — und das waere der gefaehrliche Fehler.
+        Assert.Contains(Lower("""
+            class Item { n: int }
+            extend Item { fn used(): int { return 1; } }
+            fn main(): int { let i = Item { n = 5 }; return i.used(); }
+            """).Functions, f => f.Name.Contains("used"));
+
+    [Fact]
+    public void A_program_that_never_formats_carries_no_Display_machinery()
+    {
+        // Der Fall, der S1a ausgeloest hat. 'std.core' wird IMMER geladen (dort stehen 'panic'
+        // und 'coroutineEnded'), also lagen seine fuenf Display-Extensions vorher in jedem
+        // Programm — samt der vier 'std.string'-Importe, die sie brauchen. Ein 'hello.lyr' zahlte
+        // fuer eine Funktion, die es nie ruft.
+        var ir = Lower("fn main(): int { return 7; }");
+
+        Assert.DoesNotContain(ir.Functions, f => f.Name.Contains("Display")
+                                                 || f.Name.EndsWith(".show"));
+        Assert.Empty(ir.Imports);
+    }
+
+    [Fact]
+    public void The_Display_machinery_appears_when_a_constraint_uses_it()
+    {
+        // Gegenprobe zum vorigen Test, und zugleich der Nachweis fuer S1: ein Builtin erfuellt
+        // 'Display' ueber ein 'extend' in std.core, und die Monomorphisierung macht daraus einen
+        // direkten Aufruf — kein Interface-Wert, kein Boxing.
+        var ir = Lower("""
+            import std.core { Display };
+            fn describe<T :: [Display]>(v: T): string { return v.show(); }
+            fn main(): int { let s = describe(42); return 0; }
+            """);
+
+        Assert.Contains(ir.Functions, f => f.Name.Contains("<extend>.int.show"));
+        Assert.Contains(ir.Imports, i => i.Name == "std.string.fromInt");
+
+        // Nur der benutzte Typ: 'float' und 'bool' erfuellen 'Display' genauso, werden hier aber
+        // nicht gerufen.
+        Assert.DoesNotContain(ir.Functions, f => f.Name.Contains("<extend>.float.show"));
+    }
 
     // Kein Test fuer 'static fn' in einem extend-Block: Sprache.md §3.6 laesst dort
     // 'FunctionDecl' zu, und 'static' ist per ADR-014 ein MEMBER-Marker, der nicht dazugehoert.

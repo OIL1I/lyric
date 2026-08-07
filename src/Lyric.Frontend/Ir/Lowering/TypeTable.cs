@@ -38,6 +38,57 @@ internal sealed class TypeTable
     /// eine zweite Auflösung wäre eine zweite Wahrheit über Sichtbarkeit und Schattierung.</param>
     public TypeTable(BindingResult binding) => _binding = binding;
 
+    /// <summary>Die Compilation, sofern der Lowerer sie durchreicht. Gebraucht fuer zwei Fragen,
+    /// die ohne sie nicht beantwortbar sind: welches Symbol ein Builtin-Typ hat, und welche
+    /// <c>extend</c>-Bloecke sichtbar sind.</summary>
+    public Compilation? Compilation { get; init; }
+
+    /// <summary>Die Worklist der benutzten Extension-Methoden. Sie haengt hier und wird nicht
+    /// durch jeden Lowerer gefaedelt: den TypeTable hat ohnehin JEDER, und die Alternative waere
+    /// ein zusaetzlicher Parameter an vier Tabellen (Instanzen, Lambdas, Coroutinen, Extensions
+    /// selbst) — vier Gelegenheiten, ihn an einer Stelle zu vergessen. Genau das ist beim ersten
+    /// Versuch passiert: eine Extension, die eine andere ruft, fand sie nicht.</summary>
+    public ExtensionTable? Extensions { get; set; }
+
+    /// <summary>Das Symbol hinter einem Primitivtyp (<c>int</c>, <c>string</c>, …) — der Anker,
+    /// an dem ein <c>extend int { … }</c> haengt. Primitive haben kein Symbol in
+    /// <see cref="TypeFacts.SymbolOf"/>, und das soll auch so bleiben: daran haengt die Grenze,
+    /// dass ein Skalar NICHT in einen Interface-Slot passt (das braeuchte Boxing).</summary>
+    public TypeSymbol? BuiltinSymbolOf(LyrType type) =>
+        type is PrimitiveType prim && Compilation is { } comp
+            ? comp.Builtins.LookupLocal(TypeFacts.Display(prim)) as TypeSymbol
+            : null;
+
+    /// <summary>Der <c>extend</c>-Block, zu dem dieses Methoden-Symbol gehoert — samt Zielname
+    /// und deklarierendem Modul, den beiden Angaben, die das Mangling braucht. <c>null</c>, wenn
+    /// das Symbol keine Extension-Methode ist.</summary>
+    public (ModuleSymbol Module, string TargetName, TypeSymbol Target, TypeNode TargetNode)?
+        ExtensionOwnerOf(FunctionSymbol symbol)
+    {
+        if (Compilation is not { } comp) return null;
+        foreach (var block in comp.Extensions.Blocks)
+        {
+            if (block.Target is not { } target) continue;
+            foreach (var method in block.Methods)
+                if (ReferenceEquals(method, symbol))
+                    return (block.Module, target.Name, target, block.Decl.Target);
+        }
+        return null;
+    }
+
+    /// <summary>Eine Extension-Methode dieses Namens auf diesem Typ, ueber alle sichtbaren
+    /// <c>extend</c>-Bloecke.</summary>
+    public FunctionSymbol? ExtensionMethod(TypeSymbol target, string member)
+    {
+        if (Compilation is not { } comp) return null;
+        foreach (var block in comp.Extensions.Blocks)
+        {
+            if (!ReferenceEquals(block.Target, target)) continue;
+            if (block.MethodScope.LookupLocal(member) is FunctionSymbol found) return found;
+        }
+        return null;
+    }
+
     public List<IrTypeDef> Defs => _defs;
 
     /// <summary>Das Interface hinter einem Constraint (<c>T :: [P]</c>). Der Lowerer braucht es,

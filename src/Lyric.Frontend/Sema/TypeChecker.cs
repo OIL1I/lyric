@@ -1315,13 +1315,21 @@ public sealed class TypeChecker
     private TypeSymbol? ConstraintInterface(TypeNode c) => Conformance.InterfaceOf(c, _binding);
 
     // Erfüllt arg das Constraint iface? Nutzertypen über ihre deklarierte Interface-Liste;
-    // Typ-Param über seine eigenen Constraints. Builtins/extern: lenient (Conformance erst M8).
+    // Typ-Param über seine eigenen Constraints.
+    //
+    // Ein BUILTIN erfuellt es ueber einen sichtbaren 'extend int :: [I]' — bis M8/S1 wurde er
+    // hier blind durchgelassen ("Conformance erst M8"), was 'render(42)' auch dann annahm, wenn
+    // niemand 'int' erweitert hatte; der Fehler kam dann als LYR-IR0001 aus dem Lowering, weit
+    // weg von der Ursache. Jetzt ist es dieselbe Frage wie bei jedem anderen Typ und wird von
+    // derselben Funktion beantwortet.
     private bool Satisfies(LyrType arg, TypeSymbol iface) => arg switch
     {
         NamedRef nr => ImplementsWithExtensions(nr.Symbol, iface),
         GenericInstance gi => ImplementsWithExtensions(gi.Definition, iface),
         TypeParamType tp => tp.Param.Constraints.Any(c => ReferenceEquals(ConstraintInterface(c), iface)),
-        _ => true // Primitive/extern/Error: opak durchlassen
+        PrimitiveType prim when BuiltinSymbol(prim) is { } builtin =>
+            ImplementsWithExtensions(builtin, iface),
+        _ => true // extern/Error: opak durchlassen
     };
 
     // Konformanz via deklarierte Interfaces ODER ein sichtbarer `extend T :: [I]`-Block (§3.6).

@@ -11,9 +11,25 @@
 
 module std.io.console;
 
-// Nimmt `string`. Lyric hat kein Overloading, und ein generisches `println<T :: [Display]>`
-// setzt Builtin-Konformanz voraus — die kommt mit M8. Zahlen gehen über einen f-String:
-// `println(f"{v}")`.
+import std.core { Display };
+
+// Die nativen Schreiber nehmen `string` — das ist die Grenze zum Host, und dort gibt es nur
+// Bytes und Zeichen.
 pub fn print(value: string);
 pub fn println(value: string);
 pub fn eprintln(value: string);
+
+// Was der Nutzer schreibt: `write(42)`, `write(true)`, `write("hi")`. Lyric hat kein
+// Overloading (ADR-015) und braucht hier auch keins — ein Constraint tut dasselbe besser, weil
+// er sich auf JEDEN Typ erstreckt, der `Display` erfuellt, und nicht auf eine feste Liste.
+//
+// Die Monomorphisierung macht daraus einen direkten Aufruf pro benutztem Typ, also kostet die
+// Verallgemeinerung zur Laufzeit nichts. Genau das war der Grund, Overloading zu vertagen statt
+// es fuer `println` einzufuehren.
+pub fn write<T :: [Display]>(value: T): void {
+    print(value.show());
+}
+
+pub fn writeln<T :: [Display]>(value: T): void {
+    println(value.show());
+}

@@ -35,7 +35,8 @@ public class InterfaceTests
         var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         Assert.NotNull(ir);
 
-        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!))).AsI64;
+        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!)),
+            NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
     /// <summary>Zwei Klassen, ein Interface, eine Aufrufstelle.</summary>

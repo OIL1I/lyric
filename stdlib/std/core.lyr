@@ -7,6 +7,10 @@
 
 module std.core;
 
+// Fuer die Display-Extensions unten. 'std.string' importiert 'std.core' nicht, also ist das
+// kein Zyklus — und selbst einer wuerde terminieren (der Lader registriert vor dem Absteigen).
+import std.string { fromInt, fromFloat, fromBool, fromChar };
+
 pub fn panic(message: string): void;
 
 // Ein 'resume' auf eine Coroutine, deren Rumpf durchgelaufen ist (Sprache.md §8). Wie 'panic'
@@ -14,3 +18,36 @@ pub fn panic(message: string): void;
 // Sprungverteiler, den niemand geschrieben hat, also kann auch niemand den Import geschrieben
 // haben.
 pub fn coroutineEnded(): void;
+
+// Display — was sich als Text darstellen laesst (M8/S1).
+//
+// Der Anker fuer 'println<T :: [Display]>' und fuer 'std.fmt'. Dass ein Builtin ihn erfuellen
+// kann, ist der ganze Punkt: die Konformanz haengt an einem 'extend', und der Constraint-Aufruf
+// wird durch die Monomorphisierung ein DIREKTER Aufruf. Es entsteht kein Interface-Wert, also
+// braucht ein 'int' hier kein Boxing — der Grund, warum das ohne Format-Aenderung geht.
+//
+// Ein Wert, der ueber sein Interface vorliegt ('let d: Display = 5;'), bleibt verboten: dafuer
+// braeuchte der Fat Pointer eine Referenz, und ein Skalar hat keine.
+pub interface Display {
+    fn show(): string;
+}
+
+extend int :: [Display] {
+    fn show(): string { return fromInt(this); }
+}
+
+extend float :: [Display] {
+    fn show(): string { return fromFloat(this); }
+}
+
+extend bool :: [Display] {
+    fn show(): string { return fromBool(this); }
+}
+
+extend char :: [Display] {
+    fn show(): string { return fromChar(this); }
+}
+
+extend string :: [Display] {
+    fn show(): string { return this; }
+}

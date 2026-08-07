@@ -34,7 +34,8 @@ public class ExceptionTests
         var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         Assert.NotNull(ir);
 
-        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!))).AsI64;
+        return Interpreter.Run(BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!)),
+            NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
     private const string Errors = """
@@ -190,7 +191,7 @@ public class ExceptionTests
         Assert.NotNull(ir);
 
         var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir!));
-        var panic = Assert.Throws<LyricPanic>(() => Interpreter.Run(module));
+        var panic = Assert.Throws<LyricPanic>(() => Interpreter.Run(module, NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)));
 
         Assert.Equal(VmDiagnostics.UncaughtException, panic.Code);
     }

@@ -53,6 +53,18 @@ public sealed class Compilation
     public bool Sees(ModuleSymbol from, ModuleSymbol to)
     {
         if (ReferenceEquals(from, to)) return true;
+
+        // 'std.core' ist immer sichtbar, ohne Import. Es ist das Modul, das die Sprache selbst
+        // benutzt — 'panic' (§9) und 'coroutineEnded' (§8) stehen darin und werden vom Compiler
+        // angebunden, ohne dass jemand sie importiert haben koennte; der Aufruf steht im
+        // Sprungverteiler, den niemand geschrieben hat.
+        //
+        // Seit M8/S1 haengen dort auch die 'Display'-Extensions fuer die Builtins, und damit
+        // wird die Regel praktisch relevant: ohne sie muesste ein Programm 'std.core'
+        // importieren, nur damit 'console.writeln(42)' den Constraint erfuellt — obwohl es
+        // 'std.core' nirgends nennt. Das waere die Sorte Ritual, die eine Sprache unbeliebt
+        // macht. Dasselbe Modell wie Roslyns Well-Known-Members.
+        if (to.FullName == "std.core") return true;
         foreach (var decl in AstOf(from).Declarations)
             if (decl is ImportDecl imp && FindModule(imp.Path) is { } t && ReferenceEquals(t, to))
                 return true;
