@@ -38,6 +38,12 @@
 
 ## VM / runtime
 
+- Frame-Pooling im Interpreter — `Frame.For` allokiert pro Aufruf drei Objekte (Frame, Slots, Stack), gemessen ~176 B. Eine Freelist mit Größenklassen wäre VM-intern, ohne Sprach-, Format- oder Semantikbezug.
+- Inlining kleiner Funktionen im Lowering — senkt Aufrufkosten und ist die Voraussetzung dafür, dass Escape-Analyse überhaupt etwas findet: der in einer Methode gebaute Wert escaped, solange er zurückgegeben wird.
+- Scalar Replacement für nicht-entkommende Structs — zerlegt das Slot-Array in einzelne Temps. Formatneutral, aber ohne vorheriges Inlining wirkungslos.
+- Schnellpfad für `for-in` über Range, Array und String, der den Iterator-Adapter überspringt — Optimierung hinter unveränderter Semantik, kein zweiter Mechanismus.
+- Bitsets statt HashSets im Availability-Dataflow des Verifiers — nur interessant, wenn Debug-Builds spürbar zäh werden.
+- Copy-Propagation im Emitter — ein Temp mit mehreren Lesern erzeugt heute ein `ldloc`/`stloc`-Paar, das entfallen könnte.
 - Native Runtime (Rust o.ä.) als zweite, unabhängige Implementierung der `.lyrbc`-Spec — GC-Lernprojekt (eigener Tracing-GC). Setzt eine eingefrorene, plattformneutrale Bytecode-Spec und die explizite Native-Hook-Liste voraus.
 - JIT-Backend (z.B. Cranelift) in der nativen Runtime — Codegen-Lernprojekt. Setzt die native Runtime voraus.
 
