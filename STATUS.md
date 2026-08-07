@@ -11,10 +11,10 @@
 
 ## Aktueller Meilenstein
 
-**M9 — REPL + Tooling.** S1 (README), S2 (TextMate-Grammar) und S3 (VS-Code-Extension)
-stehen; offen sind die REPL und der `v0.9`-Tag.
+**M9 — REPL + Tooling.** S1 bis S4 stehen (README, Grammar, Extension, REPL); offen ist
+nur noch S5: Politur und der `v0.9`-Tag.
 
-**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1715 Tests grün. Das Gate
+**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1726 Tests grün. Das Gate
 `examples/wc.lyr` zählt wie POSIX-`wc`.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -46,6 +46,28 @@ stehen; offen sind die REPL und der `v0.9`-Tag.
     ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
+
+- [x] **M9 — S4 — die REPL** (`lyrrepl.exe`, ADR-021). 1726 Tests gruen.
+  - **Ein viertes Binary, und das war ADR-019s eigener Test.** Dort stand: „`lyrtest` fuegt sich
+    als drittes Werkzeug ein, ohne dass am Dispatcher etwas zu aendern waere; das ist der Test
+    dafuer, ob dieser Entwurf traegt." `lyric repl` ist **eine Zeile** im Dispatcher — der Entwurf
+    traegt. Der Architektur-Test hat einen vierten Fall bekommen, der die Ausnahme ausdruecklich
+    erlaubt: `lyrrepl` ist das erste Binary mit **beiden** Bibliotheken, weil eine REPL
+    uebersetzt UND ausfuehrt.
+  - **Deklarationen sammeln sich an, Statements laufen einmal.** Das ist die ganze Mechanik. Wer
+    schlicht den Quelltext akkumuliert, laesst jedes `println` bei jeder folgenden Eingabe erneut
+    laufen — ein Test misst genau das (`An_earlier_print_does_not_repeat`), und ohne ihn waere der
+    Fehler unsichtbar, weil alles andere richtig aussieht.
+  - **Zwei Versuche pro Eingabe**: erst als Ausdruck (gedruckt), bei Fehlschlag als Statement. Ob
+    `console.println(x)` das eine oder andere ist, entscheidet der **Typ** und nicht die Syntax —
+    ein Aufruf, der `void` liefert, laesst sich nicht drucken. Die Diagnosen des ersten Versuchs
+    werden verworfen.
+  - **Eine fehlerhafte Eingabe aendert nichts.** Wer sich vertippt, sitzt danach nicht auf einem
+    Vorspann, der nicht mehr uebersetzt — ohne diese Eigenschaft waere eine Sitzung nach dem
+    ersten Fehler unbrauchbar.
+  - **Beim Bauen zweimal dasselbe gelernt**: der `try` sass nur um den Interpreter, aber eine
+    Scope-Grenze wirft im **Lowering**. Ein `let xs = [1, 2]` riss die ganze Sitzung mit. In einem
+    Programm ist ein solcher Wurf ein Absturz; interaktiv ist er eine Zeile, die nicht ging.
 
 - [x] **M9 — S3 — VS-Code-Extension** (`tooling/vscode-lyric/`). 1715 Tests gruen.
   - Highlighting ist deklarativ (Manifest + Grammatik, kein Code); der einzige JavaScript-Teil
@@ -147,8 +169,7 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M9.** S1 bis S3 stehen. Als naechstes **S4 — die REPL** (`lyrrepl.exe`, siehe unten), dann
-**S5** (Politur, `v0.9`-Tag).
+**M9.** S1 bis S4 stehen. Als naechstes **S5** — Politur und der `v0.9`-Tag.
 
 **Die REPL wird ein eigenes Binary** (`lyrrepl.exe`), vom Dispatcher gerufen wie `lyrc` und
 `lyrvm` — entschieden 2026-08-07. Der Grund ist nicht Symmetrie: sie braucht **Frontend UND
@@ -178,6 +199,9 @@ bei jeder folgenden Eingabe erneut drucken.
 - **Generics-Rest aus M4**: Constraints mit eigenen Typ-Args über die Grenze substituieren.
   `Opt<int>.Some(5)` bleibt offen — eine *statische Methode* auf einer generischen Instanz ist
   weiterhin `LYR-SEM0052`; explizite Typargumente gibt es nur an Funktions-Aufrufen.
+- **Ein Global vom Typ `T[]` ist nicht lowerbar** (`ir: type not lowerable: int[]`). Betrifft
+  jedes Modul-`let` mit einem Array, nicht nur die REPL — dort faellt es nur zuerst auf, weil
+  `let xs = [1, 2]` eine naheliegende erste Eingabe ist.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
 - **`char as int` ist kein erlaubter Cast** (`LYR-SEM0006`). Beim Schreiben der S2-Tests
   aufgefallen. Ob das gewollt ist, sagt §6.5 nicht eindeutig — ungeprüft gelassen, weil eine

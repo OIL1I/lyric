@@ -47,6 +47,39 @@ public static class Toolchain
     public static ToolResult Lyrvm(params string[] args) => Run(LyrvmPath, args);
     public static ToolResult Lyric(params string[] args) => Run(LyricPath, args);
 
+    public static string LyrreplPath => BinaryPath("Lyrrepl", "lyrrepl");
+
+    /// <summary>
+    /// Faehrt ein Werkzeug und schreibt ihm etwas auf stdin — fuer die REPL, die anders nicht
+    /// pruefbar waere.
+    ///
+    /// <para>Der Eingabestrom wird nach der letzten Zeile <b>geschlossen</b>. Ein EOF ist fuer
+    /// die REPL das Ende (Ctrl+D), also beendet sie sich auch ohne ':quit' — ohne das Schliessen
+    /// wartete der Test bis zum Timeout.</para>
+    /// </summary>
+    public static ToolResult RunWithInput(string executable, string[] args, string input)
+    {
+        var info = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = RepositoryRoot,
+        };
+        foreach (var argument in args) info.ArgumentList.Add(argument);
+
+        using var process = Process.Start(info)!;
+        process.StandardInput.Write(input);
+        process.StandardInput.Close();
+
+        var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        return new ToolResult(process.ExitCode, output, error);
+    }
+
     /// <summary>
     /// Wie <see cref="Run(string, string[])"/>, aber mit Umgebungsvariablen fuer <b>nur diesen</b>
     /// Kindprozess.

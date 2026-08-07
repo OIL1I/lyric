@@ -81,6 +81,26 @@ public sealed class ArchitectureTests
         Assert.Contains("lyric.dll", shipped);   // er selbst
         Assert.Contains("lyrc.dll", shipped);    // die Werkzeuge liegen daneben,
         Assert.Contains("lyrvm.dll", shipped);   // weil er sie dort sucht
+        Assert.Contains("lyrrepl.dll", shipped); // seit ADR-021 auch die REPL
+    }
+
+    [Fact]
+    public void The_repl_is_the_one_tool_that_needs_both_sides()
+    {
+        // ADR-021. Die Ausnahme, und sie steht hier ausdruecklich statt als Luecke: eine REPL
+        // uebersetzt UND fuehrt aus, und der Zustand muss dazwischen leben — 'lyric run' loest
+        // das ueber zwei Subprozesse, was interaktiv nicht geht.
+        //
+        // Dass sie beide Bibliotheken hat, widerspricht ADR-017 nicht: die Kante trennt die
+        // BIBLIOTHEKEN, sie verbietet nicht, beide zu benutzen. Dass man sie kombinieren kann,
+        // ohne sie aufzuweichen, ist der Beweis, dass der Schnitt sauber liegt — und die
+        // Trennung fuer lyrc und lyrvm gilt unveraendert weiter (die Tests darueber).
+        var shipped = LyricAssemblies("Lyrrepl");
+
+        Assert.Contains(Shared, shipped);
+        Assert.Contains(Frontend, shipped);
+        Assert.Contains(Runtime, shipped);
+        Assert.Contains("lyrrepl.dll", shipped);
     }
 
     [Fact]

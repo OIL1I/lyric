@@ -38,6 +38,11 @@ public static class Program
             "run" => Run(args, selection),
             "build" or "check" => Forward(Tool.Compiler, selection, args),
             "disasm" => Forward(Tool.Runtime, selection, args),
+
+            // Der Dispatch ist die ganze Verdrahtung — 'lyric repl' hat keinen eigenen Code
+            // (ADR-021). Genau das war der Test dafuer, ob ADR-019s Entwurf traegt: ein viertes
+            // Werkzeug fuegt sich ein, ohne den Treiber anzufassen.
+            "repl" => Forward(Tool.Repl, selection, args),
             _ => CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
                 $"unknown command: {args[0]} — try 'lyric --help'", ExitCodes.Usage),
         };

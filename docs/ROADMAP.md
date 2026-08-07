@@ -772,6 +772,45 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-021 — Die REPL ist ein eigenes Werkzeug
+
+**Datum**: 2026-08-07. **Status**: Akzeptiert.
+
+**Entscheidung**: `lyrrepl` ist ein viertes Binary neben `lyrc`, `lyrvm` und `lyric`. Der Treiber
+ruft es über denselben Mechanismus wie die anderen (`--repl`, `LYRIC_REPL`); `lyric repl` ist ein
+Dispatch, kein eigener Code.
+
+**Begründung**: Die REPL ist das erste Werkzeug, das **Frontend und Runtime im selben Prozess**
+braucht — jede Eingabe wird übersetzt *und* ausgeführt, und der Zustand muss dazwischen leben.
+`lyric run` löst das heute über zwei Subprozesse; für eine REPL geht das nicht.
+
+Käme sie in den Treiber, hätte der wieder beide Seiten. Genau das hat **ADR-019** abgeschafft:
+*„Der Treiber hat jetzt genau eine Referenz: `Lyric.Core`. … `lyric` war keine vereinfachte
+Oberfläche, sondern eine zweite Implementierung."* Der Architektur-Test, der das festhält, würde
+fallen — und **dass er fällt, wäre die Aussage**, so wie sein Umdrehen damals die Entscheidung war.
+
+ADR-019 sieht den Fall ausdrücklich vor: *„`lyrtest` fügt sich als drittes Werkzeug ein, ohne dass
+am Dispatcher etwas zu ändern wäre; das ist der Test dafür, ob dieser Entwurf trägt."* `lyrrepl`
+ist dieser Test, nur früher und mit einer schärferen Anforderung.
+
+**Konsequenz**: `lyrrepl` ist das erste Binary mit **beiden** Bibliotheken. Das widerspricht
+ADR-017 nicht — die Kante trennt die Bibliotheken, sie verbietet nicht, beide zu benutzen. Dass
+man sie kombinieren kann, ohne sie aufzuweichen, ist der Beweis, dass der Schnitt sauber liegt.
+Der Architektur-Test bekommt einen vierten Fall, der das ausdrücklich erlaubt; das
+Auslieferungsverzeichnis wächst von 13 auf 14 Einträge.
+
+**Zum Zustand zwischen Eingaben**: Deklarationen (`fn`, `class`, `struct`, `enum`, Modul-`let`)
+sammeln sich an und werden bei jeder Eingabe mitübersetzt; **Statements laufen nur einmal**, als
+Rumpf eines synthetischen `main`. Damit druckt ein `println` aus Eingabe 3 nicht bei Eingabe 4
+erneut — der Fehler, den eine REPL macht, die schlicht den ganzen Quelltext akkumuliert.
+
+Der Preis, ausgesprochen: der *Initialisierer* einer Deklaration läuft bei jeder Eingabe neu. Bei
+`let x = 5` ist das unsichtbar, bei `let s = readText(…)` nicht. Ein Wert, der wirklich einmal
+berechnet wird, bräuchte persistente Globals in der VM — formatneutral nachrüstbar, und die
+Trennung Deklaration/Statement bleibt dabei unverändert.
+
+---
+
 ### ADR-020 — `let` bindet den Namen, nicht den Inhalt
 
 **Datum**: 2026-08-07. **Status**: Akzeptiert.

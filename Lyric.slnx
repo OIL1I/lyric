@@ -5,6 +5,7 @@
     <Project Path="src/Lyric.Vm/Lyric.Vm.csproj" />
     <Project Path="src/Lyrc/Lyrc.csproj" />
     <Project Path="src/Lyrvm/Lyrvm.csproj" />
+    <Project Path="src/Lyrrepl/Lyrrepl.csproj" />
     <Project Path="src/Lyric.Cli/Lyric.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">

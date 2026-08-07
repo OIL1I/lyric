@@ -18,7 +18,11 @@ public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
     /// <summary>Die Runtime: fuehrt ein <c>.lyrbc</c> aus.</summary>
     public static readonly Tool Runtime = new("lyrvm", "--vm", "LYRIC_VM");
 
-    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime];
+    /// <summary>Die interaktive Schleife (ADR-021). Das erste Werkzeug mit BEIDEN Bibliotheken —
+    /// eine REPL uebersetzt und fuehrt aus, und der Zustand muss dazwischen leben.</summary>
+    public static readonly Tool Repl = new("lyrrepl", "--repl", "LYRIC_REPL");
+
+    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl];
 
     /// <summary>
     /// Wo das Werkzeug liegt: <c>--flag &lt;pfad&gt;</c> schlaegt Umgebungsvariable schlaegt „neben

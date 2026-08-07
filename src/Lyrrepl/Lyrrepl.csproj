@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrrepl</AssemblyName>
+    <RootNamespace>Lyric.Cli.Repl</RootNamespace>
+    <Description>Die interaktive Schleife: uebersetzt und fuehrt aus, im selben Prozess.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Das erste Binary mit BEIDEN Seiten (ADR-021). Es braucht sie, weil eine REPL uebersetzt
+      UND ausfuehrt und der Zustand dazwischen leben muss — 'lyric run' loest das ueber zwei
+      Subprozesse, was hier nicht geht.
+
+      Das widerspricht ADR-017 nicht: die Kante trennt die BIBLIOTHEKEN, sie verbietet nicht,
+      beide zu benutzen. Dass man sie kombinieren kann, ohne sie aufzuweichen, ist der Beweis,
+      dass der Schnitt sauber liegt. Der Architektur-Test in tests/Lyric.Tests.Cli haelt genau
+      das fest — fuer lyrc und lyrvm die Trennung, fuer lyrrepl die Ausnahme mit Begruendung.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />
+    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
+  </ItemGroup>
+
+</Project>
