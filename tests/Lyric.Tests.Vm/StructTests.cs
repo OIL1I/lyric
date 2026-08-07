@@ -289,4 +289,25 @@ public class StructTests
             }
             """));
     }
+
+    /// <summary>
+    /// Ein Struct-Parameter darf beschrieben werden (ADR-023) — der Aufrufer sieht davon nichts.
+    ///
+    /// <para>Der wichtigere Teil ist der zweite. ADR-023 erlaubt die Zuweisung, weil sie folgenlos
+    /// ist; waere sie es nicht, waere die Erlaubnis falsch. Ohne diese Zusicherung bliebe der Test
+    /// auch dann gruen, wenn Structs versehentlich per Referenz uebergeben wuerden.</para>
+    /// </summary>
+    [Fact]
+    public void A_struct_parameter_keeps_value_semantics()
+    {
+        Assert.Equal(1, Run("""
+            struct V { x: int, }
+            fn f(v: V): int { v.x = 99; return v.x; }
+            fn main(): int {
+                let a = V { x = 1 };
+                f(a);
+                return a.x;
+            }
+            """));
+    }
 }

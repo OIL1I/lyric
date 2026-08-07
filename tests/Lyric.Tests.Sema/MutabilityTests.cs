@@ -83,21 +83,41 @@ public class MutabilityTests
         Rejected("fn f(n: int): int { n = 2; return n; }\nfn main(): int { return f(1); }");
 
     [Fact]
-    public void A_struct_field_still_needs_a_mutable_base() =>
-        // Ein `struct` ist ein WERT, kein Referenztyp — für ihn gilt die Kette weiter. ADR-020
-        // spricht ausdrücklich nur über Referenztypen, und ohne diesen Test wäre nicht
-        // festgehalten, dass die Unterscheidung überhaupt noch existiert.
-        Rejected("""
+    public void A_struct_field_is_writable_through_let() =>
+        // Umgekehrt zu vorher — hier stand `A_struct_field_still_needs_a_mutable_base`, weil
+        // ADR-020 ausdrücklich nur über Referenztypen sprach. ADR-023 hat die Ausnahme gestrichen,
+        // nachdem gemessen wurde, dass sie nichts hielt: `let v = V { x = 1 }; v.shift(9);` mit
+        // einer `mut fn` ging immer durch UND änderte v wirklich. Verboten war nur die
+        // Schreibweise, die sich ersetzen lässt.
+        Allowed("""
             struct V { x: int, }
             fn main(): int { let v = V { x = 1 }; v.x = 9; return v.x; }
             """);
 
     [Fact]
     public void A_var_struct_field_is_writable() =>
-        // Die Gegenprobe dazu: mit `var` geht es. Ohne sie bliebe der Test darüber auch grün,
-        // wenn struct-Felder gar nicht mehr schreibbar wären.
         Allowed("""
             struct V { x: int, }
             fn main(): int { var v = V { x = 1 }; v.x = 9; return v.x; }
+            """);
+
+    [Fact]
+    public void A_struct_parameter_field_is_writable() =>
+        // Die Änderung trifft die KOPIE (ADR-006) — dass der Aufrufer sie nicht sieht, prüft
+        // `A_struct_parameter_keeps_value_semantics` in den VM-Tests. Hier geht es nur darum,
+        // dass die Sema sie zulässt.
+        Allowed("""
+            struct V { x: int, }
+            fn f(v: V): int { v.x = 9; return v.x; }
+            fn main(): int { return f(V { x = 1 }); }
+            """);
+
+    [Fact]
+    public void A_non_mut_method_still_cannot_touch_this() =>
+        // Das Einzige, was die alte Kette je geschützt hat, und es bleibt: die Zusage von
+        // `mut fn`. Ohne diesen Test wäre ADR-023 auch dann grün, wenn `mut` bedeutungslos würde.
+        Rejected("""
+            struct V { x: int, fn peek(): int { this.x = 9; return this.x; } }
+            fn main(): int { return 0; }
             """);
 }

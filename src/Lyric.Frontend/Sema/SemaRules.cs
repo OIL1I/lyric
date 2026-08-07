@@ -226,8 +226,20 @@ public sealed class SemaRules
         var kind = TypeFacts.KindOf(baseType);
 
         if (kind == TypeSymbolKind.Class) return true;               // class-Felder immer mutabel (§6.4)
+
+        // Struct-Felder ebenso — ausser an 'this' in einer Nicht-'mut'-Methode (ADR-023).
+        //
+        // Vorher erbte das Feld die Mutabilitaet seines Basis-Lvalues, und das war aus demselben
+        // Grund wirkungslos wie bei ADR-020: eine 'mut fn' umging es vollstaendig. Gemessen:
+        // 'let p = P { x = 1 }; p.x = 9;' war LYR-SEM0019, 'p.shift(9)' mit 'mut fn shift' ging
+        // durch UND aenderte p wirklich. An einem Parameter aendern beide Formen nur die Kopie,
+        // sind also gleich folgenlos. Verboten war so oder so nur die Schreibweise, die sich
+        // ersetzen laesst.
+        //
+        // '_thisMut' bleibt: dass eine Nicht-'mut'-Methode ihren eigenen Empfaenger nicht
+        // anfasst, ist die Zusage von 'mut fn' und das Einzige, was hier je etwas geschuetzt hat.
         if (kind == TypeSymbolKind.Struct)
-            return m.Target is ThisExpr ? _thisMut : IsMutableLvalue(m.Target); // struct: this in mut fn, sonst mutabler Basis-Lvalue
+            return m.Target is not ThisExpr || _thisMut;
 
         return false;
     }

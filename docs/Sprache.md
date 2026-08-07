@@ -679,17 +679,27 @@ match (shape) {
 
 Linke Seite eines Assignments:
 - `IDENTIFIER` (das gebundene Symbol muss `var` sein)
-- `Postfix '.' IDENTIFIER` (Feld muss mut sein: `class`-Feld, oder `mut fn`-Methode für `struct`)
+- `Postfix '.' IDENTIFIER` — Felder von `class` und `struct` sind schreibbar. **Ausnahme**:
+  `this.feld` in einer Methode **ohne** `mut` ist verboten (ADR-023).
 - `Postfix '[' Expr ']'` (auf `T[]` oder einem Typ, der `std.collections.Indexable<T>` erfüllt)
 - `( Lvalue )`
 
-**`let` bindet den Namen, nicht den Inhalt** (ADR-020). Bei einem Referenztyp — `class`, `T[]` —
-verhindert `let` nur, dass der Name neu gebunden wird; das Objekt dahinter bleibt änderbar. Ein
-unveränderliches Array lässt sich in v1 nicht ausdrücken.
+**`let` bindet den Namen, nicht den Inhalt** (ADR-020, ADR-023). `let` verhindert
+ausschließlich, dass der Name **neu gebunden** wird — bei jedem Typ. Bei einem Referenztyp
+(`class`, `T[]`) bleibt das Objekt dahinter änderbar; bei einem `struct` bleiben die Felder des
+Wertes änderbar. Ein unveränderlicher Wert lässt sich in v1 nicht ausdrücken.
 
-*(Korrektur 2026-08-07: hier stand „Container muss mut sein". Die Regel war wirkungslos —
-`let ps = [P { … }]; ps[0].hp = 9;` ging immer, verboten war nur die direkte Element-Zuweisung —
-und behandelte seit ADR-016 zwei Referenztypen ohne Grund verschieden.)*
+Ein `struct`-**Parameter** ist damit ebenfalls beschreibbar. Das ändert die **Kopie** (§5.1,
+ADR-006) — der Aufrufer sieht nichts davon.
+
+Was `mut` weiterhin zusagt: eine Methode ohne `mut` fasst ihren eigenen Empfänger nicht an.
+
+*(Korrektur 2026-08-07: hier stand erst „Container muss mut sein", dann „Feld muss mut sein:
+`class`-Feld, oder `mut fn`-Methode für `struct`". Beide Fassungen waren wirkungslos.
+`let ps = [P { … }]; ps[0].hp = 9;` ging immer — verboten war nur die direkte Element-Zuweisung.
+Und `let v = V { x = 1 }; v.shift(9);` mit `mut fn shift` ging ebenfalls immer durch **und änderte
+`v` wirklich**, während `v.x = 9` daneben abgelehnt wurde. Verboten war beide Male die
+Schreibweise, die sich durch eine gleichwertige ersetzen lässt.)*
 
 ### 6.5 Operator- und Konvertierungs-Semantik (Typen)
 

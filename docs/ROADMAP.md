@@ -781,6 +781,108 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-024 — `Equatable` und `Hashable` sind Interfaces in `std.core`
+
+**Datum**: 2026-08-07. **Status**: Akzeptiert.
+
+**Entscheidung**: Gleichheit und Hash für Nutzertypen laufen über zwei Interfaces in `std.core`,
+nach demselben Muster wie das bestehende `Display`: die Builtins erfüllen sie über `extend`,
+Nutzertypen über `::`. `Map<K, V>` und `Set<T>` verlangen `K :: [Hashable]` als Constraint.
+
+```
+pub interface Equatable { fn equals(other: Equatable): bool; }
+pub interface Hashable :: [Equatable] { fn hash(): int; }
+```
+
+**Begründung**: Das Muster steht bereits und funktioniert. `Display` ist seit M8/S1 genau so
+gebaut — Interface in `std.core`, `extend int :: [Display]` für jeden Builtin, Constraint an der
+Nutzung (`println<T :: [Display]>`). Ein zweiter Mechanismus für dieselbe Frage („wie liefert ein
+Typ eine Eigenschaft, die eine Collection braucht?") wäre genau die Sorte Parallelität, an der
+Oil gescheitert ist.
+
+Ein **eingebauter struktureller Hash** in der VM wäre die Alternative und ist verworfen: er
+verlangt, dass die VM Typ-Layouts kennt und rekursiv abläuft — dieselbe Kopplung, die ADR-013
+vermeidet, weil ein Wert im Bytecode kein Typ-Tag trägt. Er würde außerdem für Klassen die
+falsche Antwort geben (Identität statt Inhalt oder umgekehrt), ohne dass der Autor mitreden kann.
+
+Dass `Hashable` von `Equatable` erbt, ist keine Bequemlichkeit, sondern die Invariante jeder
+Hash-Tabelle: gleiche Werte müssen denselben Hash haben. Wer nur `hash` liefert, ohne `equals`,
+baut eine Tabelle, die Kollisionen nicht auflösen kann.
+
+**Konsequenz**: `Sprache.md` §5.1 und `Doku.md` §16.1 zeigen heute `Equatable` bzw. `Comparable`
+in Beispielen, **ohne dass es beide gibt** — Spec-Beispiele ohne Implementierung. `Equatable`
+entsteht mit diesem ADR. `Comparable` bleibt offen und muss entweder gebaut oder aus dem Beispiel
+entfernt werden; ein Beispiel, das nicht übersetzt, ist eine Lüge in der Spec.
+
+---
+
+### ADR-023 — `let` und Parameter binden auch bei Structs nur den Namen
+
+**Datum**: 2026-08-07. **Status**: Akzeptiert.
+
+**Entscheidung**: Struct-Felder sind schreibbar wie `class`-Felder. `LYR-SEM0019` fällt für
+`let`-gebundene Structs **und** für Struct-Parameter weg. Beim Parameter wirkt die Änderung auf
+der **Kopie** — an der Wert-Semantik aus ADR-006 ändert sich nichts. Was bleibt: `this.feld` in
+einer Methode ohne `mut` ist weiterhin verboten.
+
+**Begründung**: Dasselbe Argument wie ADR-020, eine Ebene tiefer. Gemessen am 2026-08-07:
+
+| Code | vorher | Wirkung der erlaubten Form |
+|---|---|---|
+| `fn f(p: P) { p.x = 99; }` | **`LYR-SEM0019`** | — |
+| `fn f(p: P) { p.shift(99); }` mit `mut fn` | erlaubt | ändert die Kopie, folgenlos |
+| `let p = …; p.x = 9;` | **`LYR-SEM0019`** | — |
+| `let p = …; p.shift(9);` mit `mut fn` | erlaubt | **ändert `p` wirklich** |
+
+Die letzte Zeile ist der Grund, warum dieses ADR über Parameter hinausgeht. Beim Parameter sind
+beide Formen gleich folgenlos, das Verbot also bloß lästig. Beim `let` war es **wirkungslos**:
+die `mut fn` änderte den Wert durch das `let` hindurch, während die direkte Zuweisung daneben
+abgelehnt wurde. Verboten war beide Male genau die Schreibweise, die sich durch eine
+gleichwertige ersetzen lässt — wortwörtlich die Begründung, mit der ADR-020 einen Tag zuvor
+dieselbe Konstruktion bei Referenztypen gestrichen hat.
+
+Damit gilt **eine** Regel für alle Typen: `let` verhindert die Neubindung des Namens, sonst
+nichts.
+
+Die Gegenrichtung — `mut fn` auf einem Nicht-`mut`-Empfänger ebenfalls verbieten — wäre ehrlich,
+verlangt aber ein `mut` an Parametern und `let`-Bindungen, das die Grammatik nicht kennt.
+
+**Konsequenz**: Die Tabelle in ADR-020 behauptete, `let p = P { hp = 1 }; p.hp = 9;` sei erlaubt
+gewesen. Beim Nachmessen für dieses ADR war es `LYR-SEM0019` — die Zeile war falsch und ist als
+solche markiert. Ein ADR, dessen Begründung auf einer ungemessenen Zeile steht, ist die Sorte
+Fehler, die sich still fortpflanzt.
+
+---
+
+### ADR-022 — `char` ist ein Ganzzahltyp mit geprüftem Wertebereich
+
+**Datum**: 2026-08-07. **Status**: Akzeptiert.
+
+**Entscheidung**: `char` zählt zur Numerik (§6.5). Damit gehen `c as int`, `n as char`, `c < 'z'`,
+`c + 1` und die bitweisen Operatoren. **Jede Operation, die ein `char` erzeugt, prüft das
+Ergebnis**: ein Wert jenseits `0x10FFFF` oder im Surrogate-Bereich `D800–DFFF` ist ein `panic`,
+kein stiller Wert.
+
+**Begründung**: Der Anlass ist `std.string`. Alles, was Zeichen klassifiziert oder Zahlen parst —
+`isDigit`, `toUpper`, ein Ziffernwert — ist Codepoint-Arithmetik, und ohne einen Weg dorthin
+müsste jede dieser Funktionen nativ sein. Eine Standardbibliothek, die für „ist das eine Ziffer?"
+in den Host absteigt, gibt zu, dass die Sprache zu wenig kann.
+
+Die **Prüfung** ist der Preis dafür, dass §4 wahr bleibt: dort steht „`char` = ein Unicode-
+Codepoint", und ein Typ, dessen Zusage man durch Addition brechen kann, macht die Zeile zur
+Dekoration. Die Alternative — nicht prüfen — wäre schneller und ist verworfen: ein ungültiger
+Codepoint fällt sonst erst beim Drucken auf, weit entfernt von der Rechnung, die ihn erzeugt hat.
+
+**Konsequenz**: Weil Numerik **strikt** ist (§6.5: beide Seiten derselbe Typ), ist `c + n` mit
+`n: int` weiterhin ein Fehler und braucht `c as int + n`. Das ist konsistent mit `int8 + int` und
+wird trotzdem die häufigste Überraschung dieser Änderung sein.
+
+`'a' * 1000` ist ab jetzt ein wohlgeformter Ausdruck, der zur Laufzeit panict. Die Sprache lässt
+Unsinn zu, den sie vorher syntaktisch verhindert hat — der bewusste Preis dafür, dass `c + 1`
+ohne Umweg geht.
+
+---
+
 ### ADR-021 — Die REPL ist ein eigenes Werkzeug
 
 **Datum**: 2026-08-07. **Status**: Akzeptiert.
@@ -833,7 +935,7 @@ gemessen:
 
 | Code | vorher |
 |---|---|
-| `let p = P { hp = 1 }; p.hp = 9;` | erlaubt |
+| `let p = P { hp = 1 }; p.hp = 9;` | erlaubt *(falsch — war `LYR-SEM0019`; nachgemessen bei ADR-023)* |
 | `let xs = [1, 2]; xs[0] = 9;` | **`LYR-SEM0019`** |
 | `let ps = [P { hp = 1 }]; ps[0].hp = 9;` | erlaubt |
 
