@@ -3601,12 +3601,10 @@ internal sealed class FunctionLowerer
                     break;
 
                 case InterpHole hole:
-                    if (hole.FormatSpec is not null)
-                        throw NotSupported($"format spec '{hole.FormatSpec}' (std.fmt arrives with M8)",
-                            hole.Span);
-
                     FlushText(hole.Span);
-                    parts.Add(ToStringValue(hole.Expr));
+                    parts.Add(hole.FormatSpec is { } spec
+                        ? FormattedValue(hole.Expr, spec)
+                        : ToStringValue(hole.Expr));
                     break;
 
                 default:
@@ -3621,6 +3619,38 @@ internal sealed class FunctionLowerer
         for (var i = 1; i < parts.Count; i++)
             result = CallHelper("std.string.concat", expr.Span, result, parts[i]);
         return result;
+    }
+
+    /// <summary>Ein Loch mit Format-Spec: <c>{avg:N2}</c> wird zu
+    /// <c>std.fmt.formatFloat(avg, "N2")</c>.
+    ///
+    /// <para>Die Spec ist ein <b>Literal</b> und wird als Konstante uebergeben, nicht als Teil
+    /// des Funktionsnamens. Sonst braeuchte jede Spec ihre eigene Import-Deklaration, und
+    /// <c>{x:N2}</c> und <c>{x:N3}</c> waeren zwei verschiedene Funktionen.</para>
+    ///
+    /// <para>Ohne Spec bleibt es bei den <c>fromXxx</c>-Wandlern: ein Format-Aufruf, der nur den
+    /// Standard nachbaut, waere ein zweiter Weg zu demselben Ergebnis.</para></summary>
+    private TempId FormattedValue(Expr expr, string spec)
+    {
+        var value = LowerExpr(expr);
+        var type = TypeOfExpr(expr);
+        if (type is not IrScalarType scalar)
+            throw NotSupported("formatting a non-scalar value", expr.Span);
+
+        var stringType = new IrScalarType(IrScalar.String);
+        var specValue = EmitConst(new StringConst(spec), stringType, expr.Span);
+
+        var helper = scalar.Kind switch
+        {
+            IrScalar.String => "std.fmt.formatString",
+            IrScalar.Bool => "std.fmt.formatBool",
+            IrScalar.Char => "std.fmt.formatChar",
+            IrScalar.F32 or IrScalar.F64 => "std.fmt.formatFloat",
+            _ when IsIntegerScalar(scalar.Kind) => "std.fmt.formatInt",
+            _ => throw NotSupported("formatting a non-scalar value", expr.Span),
+        };
+
+        return CallHelper(helper, expr.Span, value, specValue);
     }
 
     /// <summary>Ein Loch im f-String als string. Strings bleiben, wie sie sind; alles andere geht

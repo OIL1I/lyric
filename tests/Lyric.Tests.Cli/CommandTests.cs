@@ -33,6 +33,7 @@ public sealed class CommandTests
         { "greet.lyr", 0 },
         { "tuples.lyr", 26 },
         { "inventory.lyr", 0 },
+        { "stats.lyr", 0 },
     };
 
     [Theory]

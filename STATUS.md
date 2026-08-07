@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1606 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1621 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -27,6 +27,28 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
 > zurückgeschnitten: letzte Slices, offene Punkte, Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M8 — S3 — `std.fmt` und Format-Specs.** `f"{avg:N2}"` laeuft; **`examples/stats.lyr`
+  ist damit gruen**, nachdem es seit M6 auf genau diese Zeile gewartet hat. 1621 Tests gruen.
+  - **Die Spec-Sprache ist die von .NET und wird unveraendert durchgereicht** (`N2`, `F3`, `D5`,
+    `X`, `E2`, `P1`), wie `Sprache.md` §2.2 es verlangt. Eine eigene Notation daneben waere ein
+    zweiter Mechanismus fuer dieselbe Sache.
+  - **Ohne Spec bleibt es bei den `fromXxx`-Wandlern.** Ein Format-Aufruf, der nur den Standard
+    nachbaut, waere ein zweiter Weg zu demselben Ergebnis — ein Test haelt das fest.
+  - **Immer invariant.** Eine Zahl, die unter deutscher Locale `1.234,57` und unter englischer
+    `1,234.57` wird, ist kein Formatierungsdetail, sondern ein Programm, das sich je nach Rechner
+    anders verhaelt. Dieselbe Entscheidung wie bei `toUpper`/`toLower` in S2.
+  - **Eine ungueltige Spec ist ein `panic`**, kein stilles Ausweichen auf die
+    Standarddarstellung: sie steht als Literal im Quelltext und haengt nicht von der Eingabe ab.
+    `{x:Q9}` ist falsch geschrieben, nicht ungluecklich gelaufen — ein Fallback truege den
+    Tippfehler bis in die Ausgabe.
+  - **`Sprache.md` §2.2 ist korrigiert**: dort stand `{value:0>5}` als Beispiel fuer eine
+    „.NET-analoge" Spec. Das ist Rust- bzw. Python-Notation und war nie .NET — die Zeile
+    widersprach ihrer eigenen Ansage im selben Satz. Das Auffuellen uebernimmt jetzt die
+    Breiten-Form (`{name:10}`, `{name:-10}`), die es fuer `string`, `bool` und `char` ohnehin
+    braucht, weil .NET fuer die keine Standardformate kennt.
+  - **`shapes.lyr` laeuft weiterhin nicht** — es braucht `std.math` (`sqrt`, `pi`), also S7. Das
+    ist keine Format-Luecke, und der Slice endet hier.
 
 - [x] **M8 — S2 — `string` wird ein richtiger Typ.** Zwoelf Natives, ein `StringIterator`,
   `for (c in s)`. 1606 Tests gruen.
@@ -69,23 +91,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     könnte. Ohne die Regel müsste jedes Programm `std.core` importieren, nur damit
     `console.writeln(42)` den Constraint erfüllt — obwohl es `std.core` nirgends nennt.
 
-- [x] **M8 — S1a — Extension-Methoden nur lowern, wenn benutzt.**
-  - **S1 hatte einen Preis, und drei Tests haben ihn sofort angezeigt.** `std.core` wird immer
-    geladen, also trug plötzlich *jedes* Programm die fünf `Display`-Extensions und vier
-    `std.string`-Importe — auch ein `hello.lyr`, das keine davon anfasst. Die Tests messen genau
-    das Richtige; sie anzupassen wäre Schönfärberei gewesen.
-  - **`ExtensionTable` in derselben Worklist-Form wie `LambdaTable`/`InstanceTable`**: die Id
-    entsteht bei der *Anforderung*, gelowert wird danach. Damit gilt für Extensions dieselbe
-    Regel wie für Typen und Importe seit jeher — **im Bytecode steht nur, was benutzt wurde**.
-  - **Die vtable braucht eine Vorrunde**: `extend A :: [I]` wird gebraucht, sobald ein `A` in
-    einem `I`-Slot landet, auch wenn die Methode nirgends direkt gerufen wird. `BuildImpls` läuft
-    deshalb vor dem Anhängen der letzten Funktionen, danach dreht die Worklist noch eine Runde.
-  - **Vier Durchreichungen sind vier Gelegenheiten zu vergessen.** Der erste Versuch fädelte die
-    Tabelle als Parameter durch den `FunctionLowerer` — und bekam sie weder in
-    `InstanceTable.LowerAll` (also brach `writeln`, eine generische Funktion) noch in
-    `ExtensionTable.LowerAll` selbst (also brach eine Extension, die eine andere ruft). Sie hängt
-    jetzt am `TypeTable`, den ohnehin jeder Lowerer hat.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -118,14 +123,12 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M8 — Stdlib.** S1 (Builtin-Konformanz) und S2 (`string`) stehen. Als naechstes **S3 —
-`std.fmt` und Format-Specs**: `f"{x:N2}"` ruft dann `std.fmt.format(value, spec)` statt der
-`fromXxx`-Wandler, und `Display` liefert den Default. Damit laufen `shapes.lyr` und `stats.lyr`,
-die seit M6 warten.
+**M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`) und S3 (`std.fmt`) stehen. Als naechstes
+**S4 — `Throwable` als Interface**: damit wird `catch (e)` ohne Typ lowerbar, der Slot bekommt
+den Interface-Typ. Es benutzt dieselbe Maschinerie wie `Display` aus S1.
 
-Danach **S4** (`Throwable` als Interface → `catch (e)` ohne Typ), **S5** (`std.collections`),
-**S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math`), **S8** (Gate:
-`wc`-Klon).
+Danach **S5** (`std.collections`), **S6** (Capabilities, ADR-007), **S7** (`std.io.file`,
+`std.os`, `std.math` — daran haengt `shapes.lyr`), **S8** (Gate: `wc`-Klon).
 
 **Vor S5 gehoert eine Sprachentscheidung getroffen** — sie steht unten unter „Noch offen" und
 wird mit `Indexable<T>` zum zweiten Mal faellig.
@@ -173,7 +176,6 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
   Panics zeigen deshalb die Funktion, nicht die Zeile.
 - **Sektions-Byte-Größen fehlen in `lyrvm info`**: der Reader verwirft sie nach dem Parsen. Sie
   nachzurüsten hieße, das Modell um Herkunftsdaten zu erweitern — eigene Entscheidung.
-- **`std.fmt.format` nach M8** (Format-Specs `{x:N2}` in `shapes.lyr`/`stats.lyr`).
 - **Verifier-Anteil im Release-Profil messen** — die Debug-Zahlen sind von JIT-Aufwärmen
   durchsetzt und taugen nur als Größenordnung.
 
@@ -220,7 +222,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`M8: string als richtiger Typ (S2)`
+`M8: std.fmt und Format-Specs (S3)`
 
 ---
 

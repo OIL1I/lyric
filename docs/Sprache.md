@@ -92,7 +92,19 @@ BoolLit         = 'true' | 'false' .
 NullLit         = 'null' .
 ```
 
-String-Interpolation `f"hello {name}"` ist v1-Pflicht (anders als bei Oil). Format-Spec analog zu .NET (`{value:N2}`, `{value:0>5}`).
+String-Interpolation `f"hello {name}"` ist v1-Pflicht (anders als bei Oil). Die Format-Spec ist
+die von .NET und wird unverändert durchgereicht: `{x:N2}`, `{x:F3}`, `{x:D5}`, `{x:X}`, `{x:E2}`,
+`{x:P1}`. Für Typen, für die .NET keine Standardformate kennt (`string`, `bool`, `char`), ist die
+Spec eine **Breite**: `{name:10}` füllt rechts auf, `{name:-10}` links.
+
+Ausgabe ist immer **invariant**, nie kulturabhängig — dasselbe Programm gibt auf jeder Maschine
+dasselbe aus. Eine ungültige Spec ist ein `panic` (§9): sie steht als Literal im Quelltext und
+hängt nicht von der Eingabe ab.
+
+*(Korrektur 2026-08-07: hier stand `{value:0>5}` als zweites Beispiel. Das ist Rust- bzw.
+Python-Notation und war nie .NET — die Zeile widersprach ihrer eigenen Ansage im selben Satz. Ein
+zweites Spec-Format neben dem von .NET wäre ein zweiter Mechanismus für dieselbe Sache; das
+Auffüllen übernimmt die Breiten-Form oben.)*
 
 ### 1.6 Operatoren und Interpunktion
 

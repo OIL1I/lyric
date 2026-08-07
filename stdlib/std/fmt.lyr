@@ -1,0 +1,35 @@
+// std.fmt — Format-Specs für f-Strings (Sprache.md §2.2).
+//
+// `f"{avg:N2}"` wird zu `formatFloat(avg, "N2")`. Ohne Spec bleibt es bei den `fromXxx`-Wandlern
+// aus `std.string`: ein Format-Aufruf, der nur den Standard nachbaut, wäre ein zweiter Weg zu
+// demselben Ergebnis.
+//
+// **Die Spec-Sprache ist die von .NET**, wie §2.2 es verlangt: `N2` (Tausendertrenner, zwei
+// Nachkommastellen), `F3` (fest), `D5` (mit Nullen aufgefüllt), `X` (hex), `E2`
+// (wissenschaftlich), `P1` (Prozent). Sie wird unverändert an die Runtime durchgereicht — Lyric
+// erfindet keine eigene Notation daneben.
+//
+// **Immer invariant**, nie kulturabhängig. Dasselbe Programm muss auf jeder Maschine dasselbe
+// ausgeben; eine Zahl, die unter deutscher Locale `1.234,57` und unter englischer `1,234.57`
+// wird, ist kein Formatierungsdetail, sondern ein Programm, das sich je nach Rechner anders
+// verhält. Wer bewusst lokalisieren will, tut das später über eine explizite Kultur — nicht
+// versehentlich über die Umgebung.
+//
+// Die Namen unterscheiden nach Quelltyp (`formatInt`, `formatFloat`, …) statt gleichnamige
+// Überladungen zu sein — dieselbe Regel wie bei `std.string.fromXxx`, und aus demselben Grund
+// (ADR-015: Lyric hat kein Overloading).
+
+module std.fmt;
+
+// Eine ungueltige Spec ist ein panic, kein Fehlerwert: sie steht als Literal im Quelltext und
+// haengt nicht von der Eingabe ab. Ein Programm mit `{x:Q9}` ist falsch geschrieben, nicht
+// unglücklich gelaufen.
+pub fn formatInt(value: int, spec: string): string;
+pub fn formatFloat(value: float, spec: string): string;
+pub fn formatBool(value: bool, spec: string): string;
+pub fn formatChar(value: char, spec: string): string;
+
+// Fuer Strings kennt .NET keine Standard-Formate; hier ist die Spec eine Breite, die rechts
+// auffuellt (`{name:10}`) bzw. mit fuehrendem Minus links (`{name:-10}`). Mehr braucht v1 nicht,
+// und mehr zu erfinden hiesse, eine zweite Notation neben die von .NET zu stellen.
+pub fn formatString(value: string, spec: string): string;

@@ -193,6 +193,33 @@ public sealed class NativeRegistry
         registry.RegisterArrayReturning("std.string.toChars", str, TypeTag.Char,
             args => ToChars(args[0].AsString));
 
+        // --- std.fmt (M8/S3) ------------------------------------------------------------
+        //
+        // Die Spec-Sprache ist die von .NET, wie Sprache.md 2.2 es verlangt, und sie wird
+        // unveraendert durchgereicht: N2, F3, D5, X, E2, P1. Lyric erfindet keine eigene
+        // Notation daneben — eine zweite waere ein zweiter Mechanismus fuer dieselbe Sache.
+        //
+        // IMMER invariant. Eine Zahl, die unter deutscher Locale "1.234,57" und unter
+        // englischer "1,234.57" wird, ist kein Formatierungsdetail, sondern ein Programm, das
+        // sich je nach Rechner anders verhaelt. Dieselbe Entscheidung wie bei toUpper/toLower.
+        registry.Register("std.fmt.formatInt", new[] { TypeTag.I64, TypeTag.String },
+            TypeTag.String, args => Formatted(args[0].AsI64, args[1].AsString));
+
+        registry.Register("std.fmt.formatFloat", new[] { TypeTag.F64, TypeTag.String },
+            TypeTag.String, args => Formatted(args[0].AsF64, args[1].AsString));
+
+        registry.Register("std.fmt.formatBool", new[] { TypeTag.Bool, TypeTag.String },
+            TypeTag.String, args => LyrValue.FromString(Padded(args[0].AsBool ? "true" : "false",
+                args[1].AsString)));
+
+        registry.Register("std.fmt.formatChar", new[] { TypeTag.Char, TypeTag.String },
+            TypeTag.String, args => LyrValue.FromString(Padded(
+                char.ConvertFromUtf32((int)args[0].Bits), args[1].AsString)));
+
+        registry.Register("std.fmt.formatString", new[] { TypeTag.String, TypeTag.String },
+            TypeTag.String,
+            args => LyrValue.FromString(Padded(args[0].AsString, args[1].AsString)));
+
         return registry;
     }
 
@@ -271,6 +298,42 @@ public sealed class NativeRegistry
         var values = new LyrValue[parts.Length];
         for (var i = 0; i < parts.Length; i++) values[i] = LyrValue.FromString(parts[i]);
         return LyrValue.FromObject(values);
+    }
+
+    // ------------------------------------------------------------------ std.fmt-Helfer
+
+    /// <summary>Eine Zahl nach einer .NET-Standard-Spec, invariant.
+    ///
+    /// <para>Eine unbekannte Spec ist ein <c>panic</c> und kein Fehlerwert: sie steht als Literal
+    /// im Quelltext und haengt nicht von der Eingabe ab. Ein Programm mit <c>{x:Q9}</c> ist
+    /// falsch geschrieben, nicht unglücklich gelaufen — und ein stilles Ausweichen auf die
+    /// Standarddarstellung wuerde den Tippfehler bis in die Ausgabe tragen.</para></summary>
+    private static LyrValue Formatted(IFormattable value, string spec)
+    {
+        try
+        {
+            return LyrValue.FromString(value.ToString(spec, CultureInfo.InvariantCulture));
+        }
+        catch (FormatException)
+        {
+            throw new LyricPanic(VmDiagnostics.IndexOutOfRange,
+                $"'{spec}' is not a valid format spec");
+        }
+    }
+
+    /// <summary>Fuer Typen ohne .NET-Standardformate ist die Spec eine Breite: <c>{name:10}</c>
+    /// fuellt rechts auf, <c>{name:-10}</c> links. Eine leere Spec laesst den Text, wie er
+    /// ist.</summary>
+    private static string Padded(string value, string spec)
+    {
+        if (spec.Length == 0) return value;
+
+        if (!int.TryParse(spec, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture,
+                out var width))
+            throw new LyricPanic(VmDiagnostics.IndexOutOfRange,
+                $"'{spec}' is not a width — for this type a format spec is a number");
+
+        return width < 0 ? value.PadLeft(-width) : value.PadRight(width);
     }
 
     private static LyrValue ToChars(string s)
