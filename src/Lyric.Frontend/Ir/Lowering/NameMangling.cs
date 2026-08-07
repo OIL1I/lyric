@@ -26,4 +26,22 @@ internal static class NameMangling
     /// doppelte Funktionsnamen ab, weil sie ein stiller Falsch-Call wären.</summary>
     public static string ForMethod(ModuleSymbol module, string typeName, string methodName) =>
         $"{module.FullName}.{typeName}.{methodName}";
+
+    /// <summary>Eine Extension-Methode (§3.6):
+    /// <c>&lt;deklarierendes-modul&gt;.&lt;extend&gt;.&lt;Ziel&gt;.&lt;methode&gt;</c>.
+    ///
+    /// <para>Zwei Dinge unterscheiden das von <see cref="ForMethod"/>, und beide sind gemessen,
+    /// nicht vermutet. Erstens steht hier das <b>deklarierende</b> Modul, nicht das des Zieltyps:
+    /// <c>extend string</c> darf in beliebig vielen Modulen stehen, und der Zieltyp gehoert
+    /// womoeglich keinem davon. Zweitens der <c>&lt;extend&gt;</c>-Infix: §3.6 laesst eine
+    /// Extension zu, die einen gleichnamigen Member verdeckt — die Sema meldet das <b>nicht</b>,
+    /// sie laesst nur den eigenen Member gewinnen. Ohne den Infix hiessen beide
+    /// <c>main.Player.get</c>, und der Verifier lehnt doppelte Funktionsnamen ab: ein sauber
+    /// typgepruefes Programm wuerde im Lowering abstuerzen.</para>
+    ///
+    /// <para>Die spitzen Klammern sind kein Zufall — ein Bezeichner kann sie nicht enthalten, der
+    /// Name ist also im Quelltext nicht erzeugbar. Dieselbe Konvention wie bei
+    /// <c>&lt;globals&gt;</c>.</para></summary>
+    public static string ForExtension(ModuleSymbol declaringModule, string targetName, string methodName) =>
+        $"{declaringModule.FullName}.<extend>.{targetName}.{methodName}";
 }

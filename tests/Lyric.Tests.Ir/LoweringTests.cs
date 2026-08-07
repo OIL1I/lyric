@@ -547,13 +547,13 @@ public class LoweringTests
     {
         // Eine Meldung pro Aufruf wäre Schikane: wer drei nicht unterstützte Konstrukte benutzt,
         // soll sie in einem Durchlauf sehen. Deshalb sammelt das Lowering pro Funktion weiter.
-        // 'a' war bis P6 ein Lambda und bis P8 eine generische Funktion — beides lowert
-        // inzwischen. Der Test misst jeweils an einer Grenze, die noch steht; genau dafuer ist er
-        // da: er zaehlt Meldungen, er behauptet nicht, welche Konstrukte fehlen.
+        // 'a' war bis P6 ein Lambda, bis P8 eine generische Funktion und bis P9a ein
+        // 'extend'-Aufruf — alle drei lowern inzwischen. Der Test misst jeweils an einer Grenze,
+        // die noch steht; genau dafuer ist er da: er zaehlt Meldungen, er behauptet nicht, welche
+        // Konstrukte fehlen. Dass er dreimal nachgezogen werden musste, ist kein Mangel des Tests,
+        // sondern der Beleg, dass die Grenzen wandern.
         var (ir, de) = TryLower("""
-            class Item { n: int }
-            extend Item { fn twice(): int { return this.n * 2; } }
-            fn a(): int { let i = Item { n = 1 }; return i.twice(); }
+            fn a(): int { var s = 0; for (i in 0..4) { s += i; } return s; }
             fn b(): int { var s = 0; for (i in 0..3) { s += i; } return s; }
             fn c(): int { var s = 0; for (i in 0..2) { s += i; } return s; }
             """);

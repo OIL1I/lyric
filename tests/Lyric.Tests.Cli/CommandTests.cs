@@ -32,6 +32,7 @@ public sealed class CommandTests
         { "fizzbuzz.lyr", 0 },
         { "greet.lyr", 0 },
         { "tuples.lyr", 26 },
+        { "inventory.lyr", 0 },
     };
 
     [Theory]

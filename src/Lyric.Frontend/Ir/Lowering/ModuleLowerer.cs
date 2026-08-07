@@ -65,7 +65,7 @@ public static class ModuleLowerer
     {
         // Receiver == null: freie Funktion oder 'static fn'. Sonst der Typ, dessen Instanz als
         // Parameter 0 übergeben wird (ADR-014).
-        var pending = new List<(FunctionDecl Decl, string Name, TypeSymbol? Receiver)>();
+        var pending = new List<(FunctionDecl Decl, string Name, TypeSymbol? Receiver, TypeNode? ExtendTarget)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
         var imports = new ImportTable();
         var typeTable = new TypeTable(binding);
@@ -98,7 +98,7 @@ public static class ModuleLowerer
 
                 var id = new FunctionId(pending.Count);
                 ids[symbol] = id;
-                pending.Add((function, NameMangling.ForFunction(module, function.Name), null));
+                pending.Add((function, NameMangling.ForFunction(module, function.Name), null, null));
 
                 // Entry-Contract (Sprache.md §11): genau ein 'main' pro Executable. Dass es
                 // eindeutig ist, hat die Sema geprüft — hier wird es nur festgehalten.
@@ -154,8 +154,41 @@ public static class ModuleLowerer
 
                     ids[symbol] = new FunctionId(pending.Count);
                     pending.Add((method, NameMangling.ForMethod(module, typeName, method.Name),
-                        method.IsStatic ? null : type));
+                        method.IsStatic ? null : type, null));
                 }
+            }
+        }
+
+        // Extend-Bloecke (Sprache.md §3.6). Eine Extension-Methode ist eine gewoehnliche Funktion
+        // mit dem Empfaenger als Parameter 0 — dieselbe Konvention wie eine Klassenmethode, und
+        // deshalb braucht sie weder einen IR-Typ noch einen Opcode noch ein Format-Bit. Der
+        // Aufruf ist ein direkter 'call': welcher Typ am Empfaenger steht, weiss der Compiler
+        // statisch, es gibt nichts zu dispatchen.
+        //
+        // Die Schleife laeuft ueber die Registry statt ueber die Deklarationen, weil ein
+        // extend-Block dem Zieltyp NICHT gehoert: 'extend string' darf in jedem Modul stehen.
+        // Sie laeuft ausserhalb der Modul-Schleife, damit die Reihenfolge die der Registry ist
+        // und nicht von der Modul-Iteration abhaengt — die Position IST die FunctionId (ADR-013).
+        foreach (var block in compilation.Extensions.Blocks)
+        {
+            // Target == null heisst: der Resolver konnte das Ziel nicht aufloesen, die Sema hat
+            // das als LYR-SEM0047 gemeldet. Hier ist dann nichts mehr zu tun.
+            if (block.Target is null) continue;
+
+            foreach (var method in block.Decl.Methods)
+            {
+                if (method.Generics.Length > 0 || method.Body is null) continue;
+                if (block.MethodScope.LookupLocal(method.Name) is not FunctionSymbol symbol) continue;
+
+                ids[symbol] = new FunctionId(pending.Count);
+                pending.Add((method,
+                    NameMangling.ForExtension(block.Module, block.Target.Name, method.Name),
+                    // Der Empfaenger geht als TYPE NODE weiter, nicht als Symbol: bei
+                    // 'extend int' ist das Ziel ein Builtin ohne Layout-Eintrag, und der
+                    // Symbol-Weg wuerde dort 'RefTo' auf einen Skalar versuchen. Der TypeNode
+                    // laeuft durch dieselbe Lowerung wie jeder Parametertyp.
+                    method.IsStatic ? null : block.Target,
+                    method.IsStatic ? null : block.Decl.Target));
             }
         }
 
@@ -189,7 +222,7 @@ public static class ModuleLowerer
         // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
         var functions = new List<IrFunction>(pending.Count);
         var reported = new HashSet<(Span Span, string Message)>();
-        foreach (var (decl, name, receiver) in pending)
+        foreach (var (decl, name, receiver, extendTarget) in pending)
         {
             try
             {
@@ -211,7 +244,8 @@ public static class ModuleLowerer
                 }
 
                 functions.Add(new FunctionLowerer(decl, name, types, ids, imports, typeTable,
-                    NoSubstitution, globals, lambdas, instances, receiver).Run());
+                    NoSubstitution, globals, lambdas, instances, receiver,
+                    receiverTypeNode: extendTarget).Run());
             }
             catch (UnsupportedConstructException ex)
             {
@@ -275,7 +309,7 @@ public static class ModuleLowerer
         {
             EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
             Globals = globals.Defs, GlobalInit = globalInit,
-            Impls = BuildImpls(typeTable, binding, ids, de, ref failed),
+            Impls = BuildImpls(typeTable, binding, compilation, ids, de, ref failed),
         };
         if (failed) return null;
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
@@ -300,7 +334,8 @@ public static class ModuleLowerer
     /// Dictionary erfuellt das nicht.</para>
     /// </summary>
     private static List<IrImpl> BuildImpls(TypeTable typeTable, BindingResult binding,
-        Dictionary<FunctionSymbol, FunctionId> ids, DiagnosticEngine de, ref bool failed)
+        Compilation compilation, Dictionary<FunctionSymbol, FunctionId> ids,
+        DiagnosticEngine de, ref bool failed)
     {
         var impls = new List<IrImpl>();
         var interned = typeTable.Interned.ToList();
@@ -314,7 +349,12 @@ public static class ModuleLowerer
         {
             foreach (var (iface, ifaceId) in interfaces.OrderBy(t => t.Id.Value))
             {
-                if (!Conformance.Implements(type, iface, binding)) continue;
+                // Konformanz kann deklariert sein ODER aus einem 'extend T :: [I]' kommen
+                // (§3.6). Die vtable-Zeile ist dieselbe — welcher der beiden Wege sie begruendet
+                // hat, ist zur Laufzeit nicht mehr unterscheidbar und soll es auch nicht sein.
+                var viaExtension = ExtendBlocksFor(compilation, type, iface, binding);
+                if (!Conformance.Implements(type, iface, binding) && viaExtension.Count == 0)
+                    continue;
 
                 var slots = typeTable.MethodSlotsOf(ifaceId);
                 var methods = new FunctionId[slots.Length];
@@ -323,7 +363,12 @@ public static class ModuleLowerer
                 for (var i = 0; i < slots.Length; i++)
                 {
                     // Eigenes Member schlaegt Default — Sprache.md §3.5.
-                    var target = Resolve(type, slots[i], ids) ?? Resolve(iface, slots[i], ids);
+                    // Reihenfolge ist §3.5/§3.6: eigenes Member, dann Extension, dann der
+                    // Default des Interfaces. Eine Extension-Methode steht NICHT in
+                    // 'type.Members' — sie gehoert dem extend-Block, nicht dem Zieltyp.
+                    var target = Resolve(type, slots[i], ids)
+                                 ?? ResolveInExtensions(viaExtension, slots[i], ids)
+                                 ?? Resolve(iface, slots[i], ids);
                     if (target is { } id) { methods[i] = id; continue; }
 
                     // Die Sema hat Konformanz bereits geprueft (LYR-SEM). Fehlt hier trotzdem
@@ -355,6 +400,35 @@ public static class ModuleLowerer
         && named.Path[^1] == "Coroutine"
             ? named.TypeArguments[0]
             : null;
+
+    /// <summary>Die sichtbaren <c>extend T :: [I]</c>-Bloecke, die genau diese Konformanz
+    /// herstellen. Leer heisst: wenn ueberhaupt, dann ist sie deklariert.</summary>
+    private static List<ExtensionBlock> ExtendBlocksFor(Compilation compilation, TypeSymbol type,
+        TypeSymbol iface, BindingResult binding)
+    {
+        var found = new List<ExtensionBlock>();
+        foreach (var block in compilation.Extensions.Blocks)
+        {
+            if (!ReferenceEquals(block.Target, type)) continue;
+            foreach (var node in block.Decl.Interfaces)
+                if (ReferenceEquals(Conformance.InterfaceOf(node, binding), iface))
+                {
+                    found.Add(block);
+                    break;
+                }
+        }
+        return found;
+    }
+
+    private static FunctionId? ResolveInExtensions(List<ExtensionBlock> blocks, string method,
+        Dictionary<FunctionSymbol, FunctionId> ids)
+    {
+        foreach (var block in blocks)
+            if (block.MethodScope.LookupLocal(method) is FunctionSymbol symbol
+                && ids.TryGetValue(symbol, out var id))
+                return id;
+        return null;
+    }
 
     private static FunctionId? Resolve(TypeSymbol owner, string method,
         Dictionary<FunctionSymbol, FunctionId> ids) =>

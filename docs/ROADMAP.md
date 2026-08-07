@@ -393,6 +393,12 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > P3 bekommt ein Programm, das tatsächlich über einen Interface-Typ dispatcht. Interfaces selbst
 > sind in der Sema fertig (Konformanz, Default-Methoden, `extend`, Orphan-Rule), P3 ist deshalb
 > reiner Dispatch: vtable in der Types-Sektion und ein `callvirt`.
+>
+> *(Korrektur 2026-08-07, beim Bau von P9 gemessen: „`extend` ist in der Sema fertig" stimmte nur
+> für die **inhärente** Form. `extend T :: [I]` scheiterte an `LYR-SEM0001` — `IsAssignable`
+> kannte Extension-Konformanz nicht, obwohl `Satisfies` sie für Constraints längst akzeptierte.
+> Zwei Antworten auf „erfüllt T das Interface I", 1200 Zeilen auseinander. Orphan-Rule und der
+> Konformanz-Check **innerhalb** des Blocks waren fertig, das nominale Subtyping nicht.)*
 
 > **Korrektur (2026-08-05, vor P4):** P4s Gate war `examples/bank.lyr`. Das Programm enthält
 > **kein einziges `struct`** — es zeigt `Throwable`, `throws`, `try`/`catch` mit typed catch und
@@ -521,7 +527,7 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > | P6 | Closures |
 > | P7 | Coroutinen — Gate am 2026-08-06 von `fibonacci.lyr` auf `generator.lyr` gewechselt: das alte benutzt `for-in`, also P8 |
 > | P8 | Generics + `for-in`/`Iterator` |
-> | **P9** | `extend`-Lowering — hat bis heute in keiner Slice-Tabelle gestanden |
+> | ~~**P9**~~ ✓ | `extend` — hatte bis 2026-08-06 in keiner Slice-Tabelle gestanden; P9a inhärent, P9b über Interface, P9c Gate |
 >
 > Und für M9: **`@test` hat keine Grammatik.** §2.3 sieht an einer Deklaration kein Attribut vor,
 > §10.1 versprach es. *(Entschieden am 2026-08-06: Attribute und `lyric test` gehen zusammen nach

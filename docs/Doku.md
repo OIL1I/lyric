@@ -936,7 +936,7 @@ extend Player :: [Logger] {
 }
 ```
 
-**Orphan-Rule**: Du darfst `extend T :: [I]` nur, wenn entweder `T` oder `I` in deinem Modul deklariert wurde. Sonst Fehler `LYR-SEM0010`.
+**Orphan-Rule**: Du darfst `extend T :: [I]` nur, wenn entweder `T` oder `I` in deinem Modul deklariert wurde. Sonst Fehler `LYR-SEM0041`.
 
 Extension-Methoden gelten **automatisch** in jedem Modul, das das deklarierende Modul importiert — keine `@using`-Aktivierung wie in Oil.
 

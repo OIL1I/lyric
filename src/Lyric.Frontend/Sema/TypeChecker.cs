@@ -2519,8 +2519,14 @@ public sealed class TypeChecker
         if (TypeFacts.KindOf(to) != TypeSymbolKind.Interface) return false;
         var target = TypeFacts.SymbolOf(to)!;
 
+        // Konformanz kann DEKLARIERT sein ('class P :: [I]') oder aus einem sichtbaren
+        // 'extend P :: [I]' kommen (§3.6). Beides ist dieselbe Frage, also beantwortet sie
+        // dieselbe Funktion. Bis P9b standen hier zwei: diese hier ohne Extensions, und
+        // 'Satisfies' fuer Constraints mit. Ein Constraint akzeptierte damit eine
+        // Extension-Konformanz, eine Zuweisung nicht — genau die Sorte Spaltung, vor der der
+        // Kommentar oben warnt.
         if (TypeFacts.SymbolOf(from) is { } source)
-            return Conformance.Implements(source, target, _binding);
+            return ImplementsWithExtensions(source, target);
 
         // Ein Typ-Parameter erfuellt, was seine Constraints verlangen — er hat kein eigenes
         // Symbol, deshalb steht er hier neben und nicht in SymbolOf.

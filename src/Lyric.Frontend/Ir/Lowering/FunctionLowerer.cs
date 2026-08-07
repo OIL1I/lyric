@@ -122,7 +122,8 @@ internal sealed class FunctionLowerer
         LambdaTable lambdas,
         InstanceTable instances,
         TypeSymbol? receiver = null,
-        GenericInstance? ownerInstance = null)
+        GenericInstance? ownerInstance = null,
+        TypeNode? receiverTypeNode = null)
     {
         _ownerInstance = ownerInstance;
         _instances = instances;
@@ -149,7 +150,15 @@ internal sealed class FunctionLowerer
             // In einer Interface-Default-Methode ist 'this' der Interface-Typ selbst — welche
             // Implementierung dahintersteckt, weiss erst die Laufzeit. Ein 'this.foo()' darin wird
             // damit zu einem callvirt, und das ist die richtige Antwort.
-            _thisType = _ownerInstance is { } owner
+            // Eine Extension (§3.6) bringt ihren Empfaengertyp als geschriebenen TypeNode mit und
+            // laesst ihn durch dieselbe Lowerung laufen wie jeden Parametertyp. Der Umweg ueber
+            // 'receiver.Kind' unten kann das nicht: 'extend int' und 'extend string' zielen auf
+            // Builtins, die keinen Layout-Eintrag haben, und jeder der Faelle dort wuerde fuer sie
+            // ein Objekt erfinden. Ein Skalar als Parameter 0 ist dagegen nichts Neues — jede
+            // freie Funktion hat das. Genau deshalb braucht eine inhaerente Extension kein Boxing.
+            _thisType = receiverTypeNode is { } written
+                ? _typeTable.Lower(written)
+                : _ownerInstance is { } owner
                 ? _typeTable.InstanceType(owner, SpanOfDecl(decl))
                 : receiver.Kind switch
             {
@@ -1190,7 +1199,12 @@ internal sealed class FunctionLowerer
     /// </summary>
     private (TempId Value, IrType Type, GenericInstance? Owner) BuildIterator(ForInStmt stmt)
     {
-        var source = _types.TypeOf(stmt.Iterable);
+        // Substituiert, weil ein 'for-in' in einer monomorphisierten Instanz stehen kann:
+        // 'fn total<T :: [P]>(xs: T[]) { for (x in xs) … }'. Ohne die Substitution wuerde der
+        // ArrayIterator mit dem Typ-PARAMETER interniert, und die Typtabelle suchte nach einer
+        // Klasse namens 'T'. Dieselbe Stelle, an der LowerDeclaredReturnType die Substitution
+        // treffen muss — ein syntaktisch geschriebener Typ traegt sie nicht von allein.
+        var source = SubstituteType(_types.TypeOf(stmt.Iterable));
 
         if (source is ArrayOf array)
         {
@@ -2151,6 +2165,23 @@ internal sealed class FunctionLowerer
                     onMatch, onFail, variant.Span));
                 return;
 
+            // 'null' als Muster ist KEIN Vergleich, sondern die Frage nach der Anwesenheit
+            // eines Wertes — dieselbe Antwort wie bei 'x == null' (TryLowerNullTest). Ein echter
+            // Gleichheitsvergleich braeuchte einen null-Wert als Operanden, und den gibt es
+            // nicht; der Verifier sagt das auch ("equality comparison on type ?…").
+            case LiteralPattern { Literal: NullLiteralExpr } nullPattern:
+            {
+                if (subjectType is not IrOptionalType)
+                    throw NotSupported("'null' pattern on a non-optional", nullPattern.Span);
+
+                var isSome = _slots.NewTemp(BoolType);
+                _b.Emit(new OptIsSome(isSome, subject, nullPattern.Span));
+                var isNone = _slots.NewTemp(BoolType);
+                _b.Emit(new UnOp(isNone, IrUnKind.Not, BoolType, isSome, nullPattern.Span));
+                _b.Seal(new CondBranch(isNone, onMatch, onFail, nullPattern.Span));
+                return;
+            }
+
             case LiteralPattern literal:
             {
                 var expected = LowerExprAs(literal.Literal, subjectType);
@@ -2223,7 +2254,23 @@ internal sealed class FunctionLowerer
     {
         if (pattern is BindingPattern binding && _types.RefOf(pattern) is LocalSymbol local)
         {
-            var slot = _slots.DeclareFor(local, LowerType(local.Type, binding.Span));
+            var slotType = LowerType(local.Type, binding.Span);
+            var slot = _slots.DeclareFor(local, slotType);
+
+            // Bindet ein Arm den Rest eines '?T', gibt die Sema dem Namen den EINGEENGTEN Typ 'T'
+            // — der Arm ist ja nur erreichbar, wenn ein Wert da ist. Der Wert im Subject traegt
+            // aber weiter '?T': das Narrowing ist eine Aussage ueber den Kontrollfluss, nicht
+            // ueber den Speicher (P2b). Ausgepackt wird deshalb hier, genau wie an jeder anderen
+            // Stelle, an der die Sema 'T' erwartet. Das 'optget' kann nie panicken — der Beweis
+            // steht im 'optissome' des null-Arms davor.
+            if (valueType is IrOptionalType && slotType is not IrOptionalType)
+            {
+                var unwrapped = _slots.NewTemp(slotType);
+                _b.Emit(new OptGet(unwrapped, value, slotType, binding.Span));
+                _b.Emit(new StoreLocal(slot, unwrapped, binding.Span));
+                return;
+            }
+
             _b.Emit(new StoreLocal(slot, value, binding.Span));
             return;
         }
@@ -3106,6 +3153,24 @@ internal sealed class FunctionLowerer
                 return LowerConstraintCall(member, SubstituteType(_types.TypeOf(member.Target)),
                     expr);
 
+            // Eine INTERFACE-DEFAULT-Methode auf einem konkreten Empfaenger: 'it.isFree()', wo
+            // 'isFree' dem Interface gehoert und nicht dem Struct. Ihr 'this' ist der
+            // Interface-Typ, also fuehrt kein direkter Aufruf hin — der Empfaenger wird gehoben
+            // (mkiface) und dann virtuell gerufen. Genau denselben Weg geht LowerConstraintCall
+            // seit dem P8-Nachtrag; er fehlte nur fuer den Fall ohne Constraint, weil bis dahin
+            // kein Beispiel eine Default-Methode direkt aufrief.
+            //
+            // 'Eigenes Member schlaegt Default' (§3.5) steckt in der LookupLocal-Bedingung: hat
+            // der konkrete Typ die Methode selbst, faellt dieser Fall durch zum direkten Aufruf.
+            case MemberExpr member
+                when _types.TypeOf(member.Target) is NamedRef
+                     { Symbol: { Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct
+                         or TypeSymbolKind.Enum } concrete }
+                     && concrete.Members.LookupLocal(member.Member) is not FunctionSymbol
+                     && _typeTable.InterfaceProviding(concrete, member.Member) is { } provider:
+                return LowerVirtualCall(member, provider, expr,
+                    receiver: LowerExprAs(member.Target, _typeTable.InterfaceOf(provider)));
+
             case MemberExpr member
                 when _types.TypeOf(member.Target) is NamedRef
                      { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct
@@ -3125,6 +3190,22 @@ internal sealed class FunctionLowerer
             // Shape.Circle(2.0) — eine Tuple-Variante. Kein Call, sondern eine Konstruktion.
             case MemberExpr member when _types.RefOf(member) is EnumVariantSymbol:
                 return LowerVariantCall(member, expr.Arguments, expr.Span);
+
+            // Eine Extension auf einem Builtin (§3.6): 'n.double()' mit 'extend int'. Der
+            // Empfaenger ist ein Skalar und deshalb KEIN NamedRef — ohne diesen Fall faellt er in
+            // den Typ-/Modul-Zweig darunter, der keinen Empfaenger anhaengt, und der Verifier
+            // meldet einen Aufruf mit einem Argument zu wenig. Genau so ist es aufgefallen.
+            //
+            // Ein Skalar als Parameter 0 braucht nichts Neues: kein Boxing, kein Fat Pointer, kein
+            // Dispatch. Welche Funktion laeuft, steht statisch fest — das ist der ganze Unterschied
+            // zwischen einer inhaerenten Extension und einer ueber ein Interface.
+            case MemberExpr member
+                when _types.TypeOf(member.Target) is PrimitiveType
+                     && _types.RefOf(member) is FunctionSymbol:
+                calleeName = member.Member;
+                bound = _types.RefOf(member);
+                receiver = LowerExpr(member.Target);
+                break;
 
             case MemberExpr member: // Typ- oder Modul-Ziel: P.new(…), console.println(…)
                 calleeName = member.Member;

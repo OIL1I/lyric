@@ -45,6 +45,21 @@ internal sealed class TypeTable
     /// gehoert hierher, weil hier das Binding liegt.</summary>
     public TypeSymbol? ConstraintInterface(TypeNode node) => Conformance.InterfaceOf(node, _binding);
 
+    /// <summary>Das Interface, von dem <paramref name="ts"/> ein Member namens
+    /// <paramref name="member"/> erbt — oder <c>null</c>, wenn keins es hat.
+    ///
+    /// <para>Gebraucht fuer Default-Methoden (§3.5): eine solche gehoert dem INTERFACE, ihr
+    /// <c>this</c> ist der Interface-Typ, und dorthin fuehrt kein direkter Aufruf. Der Empfaenger
+    /// muss erst gehoben werden. Aufgerufen wird das nur, wenn der konkrete Typ das Member
+    /// <b>nicht</b> selbst hat — eigenes Member schlaegt Default.</para></summary>
+    public TypeSymbol? InterfaceProviding(TypeSymbol ts, string member)
+    {
+        foreach (var iface in Conformance.DeclaredInterfaces(ts, _binding))
+            if (iface.Members.LookupLocal(member) is FunctionSymbol)
+                return iface;
+        return null;
+    }
+
     /// <summary>Eine Zelle je Elementtyp — <c>&lt;cell:int&gt;</c> gibt es genau einmal, egal wie
     /// viele Variablen darin leben.</summary>
     private readonly List<(IrType Element, TypeId Id)> _cells = new();
