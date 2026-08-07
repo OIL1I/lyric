@@ -627,7 +627,15 @@ public static class Interpreter
 
                 if (handler.CatchType >= 0 && handler.CatchType != type) continue;
 
-                if (handler.Slot >= 0) frame.Slots[handler.Slot] = thrown;
+                // Ein TYPISIERTER Catch kennt den Typ statisch — sein Slot hat ihn, und dort
+                // gehoert die nackte Referenz hinein. Ein CATCH-ALL bindet 'Throwable', also
+                // einen Interface-Typ, und der braucht einen Fat Pointer (P3). Bauen kann ihn
+                // nur diese Stelle: der konkrete Typ steht erst hier fest, und die VM fuehrt ihn
+                // ohnehin mit, weil die Zeile darueber dagegen vergleicht.
+                if (handler.Slot >= 0)
+                    frame.Slots[handler.Slot] = handler.CatchType >= 0
+                        ? thrown
+                        : LyrValue.FromInterface(thrown, type);
                 frame.UnwindType = -1;
                 frame.Ip = frame.Fn.BlockStart[handler.Handler];
                 return true;

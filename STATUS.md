@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1621 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1627 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -27,6 +27,30 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
 > zurückgeschnitten: letzte Slices, offene Punkte, Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M8 — S4 — `catch (e)` ohne Typ.** Die letzte Luecke aus P5 ist zu. 1627 Tests gruen.
+  - **`Throwable` war laengst da** — als Builtin-Interface mit synthetischem AST, und die Sema
+    gab dem ungetypten `e` schon immer diesen Typ. Auch die Handler-Tabelle konnte catch-all seit
+    P5 (`CatchType == null`). Gefehlt hat nur der **Slot**: er bekommt jetzt den Interface-Typ,
+    den die Sema ohnehin vergibt.
+  - **Im Slot liegt ein Fat Pointer, und bauen kann ihn nur die VM.** Welcher konkrete Typ
+    geworfen wurde, steht erst zur Laufzeit fest — die VM fuehrt ihn im Frame ohnehin mit, weil
+    der typisierte Catch dagegen vergleicht. Ohne ihn waere `e.message()` ein `callvirt` auf
+    einen Wert, der seinen eigenen Typ nicht kennt (P3: ein Objekt traegt kein Typ-Tag).
+  - **Ein typisierter Catch bekommt weiterhin die nackte Referenz.** Sein Slot hat den konkreten
+    Typ, dort gehoert sie hin; ein Test haelt beide Faelle nebeneinander.
+  - Der Dispatch-Test fuehrt **zwei** Werfer. Mit nur einem bliebe er auch gruen, wenn der Fat
+    Pointer immer denselben Typindex truege — dieselbe Lehre wie bei den Interface-Tests aus P3.
+
+- [x] **Bug: `try { return … } catch (…) { return … }` liess den Compiler abstuerzen.** Gefunden
+  beim Bau von S4, aber **unabhaengig davon** — und es traf eine der haeufigsten Formen ueberhaupt.
+  - Der Merge-Block wurde **unbedingt** angelegt, blieb ohne Praedecessoren und war vom Einstieg
+    unerreichbar. Genau das lehnt der Verifier ab (kein `SimplifyCfg`-Pass in v1). Er entsteht
+    jetzt erst, wenn ihn jemand erreicht; faellt niemand durch, meldet `LowerTry` das nach oben.
+  - **Derselbe Fehler stand beim Statement-`match`** und wurde im Inventur-Sweep behoben. Hier
+    ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
+    benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
+    bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
 - [x] **M8 — S3 — `std.fmt` und Format-Specs.** `f"{avg:N2}"` laeuft; **`examples/stats.lyr`
   ist damit gruen**, nachdem es seit M6 auf genau diese Zeile gewartet hat. 1621 Tests gruen.
@@ -73,24 +97,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     war unbeobachtbar, solange es weder `length` noch Indizierung gab. Mit S2 waere sie es
     geworden.
 
-- [x] **M8 — S1 — Builtin-Konformanz.** `console.writeln(42)`, `writeln(true)`, `writeln("hi")`,
-  `writeln('x')`, `writeln(2.5)` laufen. 1590 Tests grün.
-  - **Es braucht kein Boxing, und das war die zentrale Messung.** Ich hatte in P9b das Gegenteil
-    vermutet. `extend int :: [Display]` kam schon immer durch die Sema; die Meldung kam aus dem
-    Lowering, weil `LowerConstraintCall` aufgab, sobald `TypeFacts.SymbolOf` kein Symbol lieferte.
-    Die Monomorphisierung macht aus `writeln(42)` einen **direkten** Aufruf — es entsteht nie ein
-    Fat Pointer, also nie ein Boxing-Bedarf. Kein Format-Bump, keine `LyrValue`-Änderung.
-  - **Damit ist ADR-015 belegt statt behauptet.** Overloading wurde vertagt mit dem Argument,
-    `println` wolle `println<T :: [Display]>` und keine drei Überladungen. Jetzt ist es gebaut.
-  - **Die Sema lässt Builtins bei Constraints nicht mehr blind durch.** Der Kommentar in
-    `Satisfies` sagte wörtlich „Builtins/extern: lenient (Conformance erst M8)" — `render(42)`
-    wurde auch dann angenommen, wenn niemand `int` erweitert hatte, und der Fehler kam als
-    `LYR-IR0001` aus dem Lowering, weit weg von der Ursache.
-  - **`std.core` ist ohne Import sichtbar** — dieselbe Begründung wie bei `panic` (§9) und
-    `coroutineEnded` (§8), die der Compiler anbindet, ohne dass jemand sie importiert haben
-    könnte. Ohne die Regel müsste jedes Programm `std.core` importieren, nur damit
-    `console.writeln(42)` den Constraint erfüllt — obwohl es `std.core` nirgends nennt.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -123,15 +129,15 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`) und S3 (`std.fmt`) stehen. Als naechstes
-**S4 — `Throwable` als Interface**: damit wird `catch (e)` ohne Typ lowerbar, der Slot bekommt
-den Interface-Typ. Es benutzt dieselbe Maschinerie wie `Display` aus S1.
+**M8 — Stdlib.** S1 (Builtin-Konformanz), S2 (`string`), S3 (`std.fmt`) und S4 (`Throwable`)
+stehen. Als naechstes **S5 — `std.collections`** mit `List<T>`, `Map<K,V>`, `Set<T>`.
 
-Danach **S5** (`std.collections`), **S6** (Capabilities, ADR-007), **S7** (`std.io.file`,
-`std.os`, `std.math` — daran haengt `shapes.lyr`), **S8** (Gate: `wc`-Klon).
+**Vor S5 gehoert die Mutabilitaets-Entscheidung getroffen** (siehe „Noch offen"): `Indexable<T>`
+hat einen `mut fn`-Setter, und dann stellt sich die Frage aus P2 zum zweiten Mal — diesmal an
+einem Interface, das jeder Nutzertyp implementieren kann.
 
-**Vor S5 gehoert eine Sprachentscheidung getroffen** — sie steht unten unter „Noch offen" und
-wird mit `Indexable<T>` zum zweiten Mal faellig.
+Danach **S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math` — daran haengt
+`shapes.lyr`), **S8** (Gate: `wc`-Klon).
 
 **`std.io.net` ist aus M8 gestrichen** und steht in der v1.X-Tabelle (Begruendung in der
 ROADMAP): was ein blockierender Socket in einer Single-Thread-VM bedeutet, ist eine Entscheidung
@@ -145,8 +151,6 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
   einem `?fn() -> int` und stolpert dann über das `()`. Feldzugriff (`b?.v`) funktioniert.
 - **Die Konformanz prüft die Definition statt der Typargumente**: `Ones :: [Src<int>]` würde auch
   für `Src<string>` akzeptiert.
-- **`catch (e)` ohne Typ** ist `LYR-IR0001`: der Slot bräuchte `Throwable` als Interface, das hängt
-  an der Builtin-Konformanz (M8). `catch (_)` und `catch (e: T)` gehen.
 - **Parser: `s = Small { n = 5 };`** scheitert mit `LYR-PAR0016`, obwohl §6.2 den Ausdruck „in jeder
   Wert-Position" erlaubt — die Mehrdeutigkeits-Sperre gilt dem *Anfang* eines `ExprStmt`, greift
   aber auf die ganze Zuweisung durch. *(Bekannt seit P3 — und am 2026-08-07 beim Schreiben einer
@@ -222,7 +226,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`M8: std.fmt und Format-Specs (S3)`
+`M8: catch (e) ohne Typ (S4)`
 
 ---
 

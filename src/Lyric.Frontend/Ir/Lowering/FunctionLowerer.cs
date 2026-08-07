@@ -801,8 +801,16 @@ internal sealed class FunctionLowerer
         var bodyLast = _b.CurrentId;
         var end = new BlockId(_blocks.Count);
 
-        var merge = _b.NewBlock();
-        if (bodyFallsThrough) _b.SealBlock(bodyLast, new Branch(merge, stmt.Span));
+        // Der Merge-Block entsteht ERST, wenn ihn jemand erreicht. Legte man ihn unbedingt an,
+        // waere er bei 'try { return … } catch (…) { return … }' ohne Praedecessoren — und
+        // unerreichbare Bloecke lehnt der Verifier ab (kein SimplifyCfg-Pass in v1). Das ist eine
+        // der haeufigsten Formen ueberhaupt, und sie liess den Compiler abstuerzen.
+        //
+        // Derselbe Fehler stand beim Statement-'match' und wurde im Inventur-Sweep behoben;
+        // hier ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden
+        // Zweigen benutzt hat. Die offenen Enden werden gesammelt und erst am Ende versiegelt.
+        var open = new List<BlockId>();
+        if (bodyFallsThrough) open.Add(bodyLast);
 
         foreach (var clause in stmt.Catches)
         {
@@ -833,21 +841,36 @@ internal sealed class FunctionLowerer
 
                 slot = _slots.DeclareFor(symbol, type);
             }
-            else if (clause.BindingName is { } anyName)
+            else if (clause.BindingName is not null)
             {
-                // 'catch (e)' ohne Typ faengt jeden Throwable. Ein Slot dafuer braeuchte den
-                // Throwable-Typ als Interface, und das haengt an derselben Luecke wie die
-                // Builtin-Konformanz — sie kommt mit der Stdlib (M8).
-                throw NotSupported(
-                    $"'catch ({anyName})' without a type (an untyped catch binding needs the " +
-                    "Throwable interface, which arrives with the stdlib in M8)", clause.Span);
+                // 'catch (e)' ohne Typ faengt JEDEN Throwable — 'caught' bleibt null, und genau
+                // das heisst catch-all in der Handler-Tabelle. Der Slot bekommt den Typ, den die
+                // Sema dem Namen schon gegeben hat: 'Throwable', also einen Interface-Typ.
+                //
+                // Damit liegt im Slot ein Fat Pointer und keine nackte Referenz. Bauen kann ihn
+                // nur die VM: welcher konkrete Typ geworfen wurde, steht erst zur Laufzeit fest —
+                // sie fuehrt ihn im Frame ohnehin mit, weil der typisierte Catch dagegen
+                // vergleicht. Ohne den Fat Pointer waere 'e.message()' ein callvirt auf einen
+                // Wert, der seinen Typ nicht kennt (P3: ein Objekt traegt kein Typ-Tag).
+                var symbol = _types.RefOf(clause) as LocalSymbol
+                    ?? throw Bug($"catch binding at {clause.Span} was not bound by the type checker");
+
+                slot = _slots.DeclareFor(symbol, LowerType(symbol.Type, clause.Span));
             }
 
             var handlerFallsThrough = LowerScope(clause.Body);
-            if (handlerFallsThrough) _b.Seal(new Branch(merge, clause.Span));
+            var handlerLast = _b.CurrentId;
+            if (handlerFallsThrough) open.Add(handlerLast);
 
             _handlers.Add(new IrHandler(start, end, IrHandlerKind.Catch, caught, handler, slot));
         }
+
+        // Niemand faellt durch: kein Merge-Block, und der Kontrollfluss endet hier. Der
+        // Rueckgabewert sagt genau das — der Aufrufer darf danach keinen Block mehr anlegen.
+        if (open.Count == 0) return false;
+
+        var merge = _b.NewBlock();
+        foreach (var id in open) _b.SealBlock(id, new Branch(merge, stmt.Span));
 
         _b.SwitchTo(merge);
         return true;

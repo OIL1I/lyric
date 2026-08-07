@@ -392,4 +392,128 @@ public class ExceptionTests
             }
             """));
     }
+
+    // ------------------------------------------------------------------ catch-all (M8/S4)
+
+    [Fact]
+    public void An_untyped_catch_catches_everything()
+    {
+        // 'catch (e)' ohne Typ ist ein catch-all: in der Handler-Tabelle bleibt CatchType null,
+        // und die VM springt hinein, ohne zu vergleichen. Bis S4 war das LYR-IR0001 — nicht weil
+        // die Tabelle es nicht koennte, sondern weil der SLOT einen Typ brauchte.
+        Assert.Equal(42, Run(Errors + """
+
+            fn risky(): int throws { throw Boom { code = 7 }; }
+
+            fn main(): int {
+                try { let v = risky(); return 99; }
+                catch (e) { return 42; }
+            }
+            """));
+    }
+
+    [Fact]
+    public void An_untyped_catch_binding_can_call_interface_methods()
+    {
+        // DER Test des Slice. 'e' hat den Typ 'Throwable', also einen INTERFACE-Typ — im Slot
+        // liegt ein Fat Pointer, kein nacktes Objekt. Ohne ihn waere 'e.message()' ein callvirt
+        // auf einen Wert, der seinen eigenen Typ nicht kennt (P3: ein Objekt traegt kein
+        // Typ-Tag), und die VM laese einen Typindex, den niemand geschrieben hat.
+        Assert.Equal(4, Run(Errors + """
+
+            fn risky(): int throws { throw Boom { code = 7 }; }
+
+            fn main(): int {
+                try { let v = risky(); return 0; }
+                catch (e) { if (e.message() == "boom") { return 4; } return 0; }
+            }
+            """));
+    }
+
+    [Fact]
+    public void An_untyped_catch_dispatches_to_the_concrete_type()
+    {
+        // ZWEI Werfer, ein catch-all. Mit nur einem bliebe der Test auch gruen, wenn der Fat
+        // Pointer immer denselben Typindex truege — dieselbe Lehre wie bei den
+        // Interface-Tests aus P3.
+        const string program = """
+
+            fn risky(which: int): int throws {
+                if (which > 0) { throw Boom { code = 1 }; }
+                throw Other { };
+            }
+
+            fn probe(which: int): int {
+                try { let v = risky(which); return 0; }
+                catch (e) {
+                    if (e.message() == "boom") { return 4; }
+                    if (e.message() == "other") { return 5; }
+                    return 0;
+                }
+            }
+
+            fn main(): int { return probe(1) * 100 + probe(0); }
+            """;
+
+        // Zwei verschiedene Werfer, zwei verschiedene Antworten desselben callvirt.
+        Assert.Equal(405, Run(Errors + program));
+    }
+
+    [Fact]
+    public void A_typed_catch_still_gets_a_bare_reference()
+    {
+        // Die Gegenprobe zum Fat Pointer: ein typisierter Catch kennt den Typ statisch, sein
+        // Slot hat ihn, und dort gehoert die nackte Referenz hin. Wuerde die VM auch hier heben,
+        // laege im Slot ein Interface-Wert, wo der Verifier eine Klassenreferenz erwartet — und
+        // der Feldzugriff darunter griffe ins Leere.
+        Assert.Equal(7, Run(Errors + """
+
+            fn risky(): int throws Boom { throw Boom { code = 7 }; }
+
+            fn main(): int {
+                try { let v = risky(); return 0; }
+                catch (e: Boom) { return e.code; }
+            }
+            """));
+    }
+
+    // ------------------------------------------------------------------ Merge-Block
+
+    [Fact]
+    public void A_try_where_both_paths_return_needs_no_merge_block()
+    {
+        // Gefunden beim Bau von S4, aber unabhaengig davon — und es traf eine der haeufigsten
+        // Formen ueberhaupt. Der Merge-Block wurde unbedingt angelegt, blieb ohne Praedecessoren
+        // und war vom Einstieg aus unerreichbar; genau das lehnt der Verifier ab (kein
+        // SimplifyCfg-Pass in v1). Ein gueltiges Programm liess den Compiler abstuerzen.
+        //
+        // Derselbe Fehler stand beim Statement-'match' und wurde im Inventur-Sweep behoben. Hier
+        // ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
+        // benutzt hat.
+        Assert.Equal(42, Run(Errors + """
+
+            fn risky(): int throws Boom { throw Boom { code = 7 }; }
+
+            fn main(): int {
+                try { return risky(); }
+                catch (e: Boom) { return 42; }
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_try_where_only_the_handler_returns_still_merges() =>
+        // Die Gegenprobe: faellt EIN Zweig durch, muss der Merge-Block entstehen. Ein Fix, der
+        // ihn nie mehr anlegt, waere hier rot.
+        Assert.Equal(5, Run(Errors + """
+
+            fn safe(): int throws Boom { return 1; }
+
+            fn main(): int {
+                var n = 0;
+                try { n = safe(); }
+                catch (e: Boom) { return 99; }
+                return n + 4;
+            }
+            """));
 }
