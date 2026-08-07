@@ -3,11 +3,21 @@
 // **Permission-gated** (ADR-007, Doku §20.1): ein Import verlangt `osAccess`. Im Standalone-Modus
 // ist die Capability gewährt, im Embedded entscheidet der Host. Was ein Modul verlangt, steht in
 // seinem Bytecode; durchgesetzt wird es beim Laden, nicht beim Aufruf.
-//
-// Der Umfang ist bewusst klein — dieses Modul entstand mit den Capabilities (S6) und nicht mit
-// der Stdlib (S7). Was hier steht, ist das, was zum Prüfen der Grenze nötig war.
 
 module std.os;
 
-// Der Name des Betriebssystems: "windows", "linux", "macos" oder "unknown".
+// "windows", "linux", "macos" oder "unknown".
 pub fn platform(): string;
+
+// Eine Umgebungsvariable, oder `null`, wenn sie nicht gesetzt ist. Kein `panic`: ob eine Variable
+// existiert, ist eine gewöhnliche Frage über die Umgebung und kein Programmierfehler.
+pub fn env(name: string): ?string;
+
+// Das aktuelle Arbeitsverzeichnis.
+pub fn currentDir(): string;
+
+// Beendet den Prozess sofort mit diesem Code. Kein `defer` läuft mehr, kein `catch` greift —
+// deshalb ist der Rückgabetyp `void` und nicht `never`: `never` würde versprechen, dass der
+// Compiler den nachfolgenden Code als unerreichbar behandelt, und das kann er bei einem Native
+// nicht wissen. Wer sauber beenden will, gibt aus `main` zurück.
+pub fn exit(code: int): void;

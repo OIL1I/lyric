@@ -40,6 +40,19 @@ public sealed class NativeRegistry
         Func<LyrValue[], LyrValue> implementation) =>
         _natives[name] = new Native(paramTypes, TypeTag.Array, implementation, element);
 
+    /// <summary>Ein Native, das ein <c>?T</c> liefert.
+    ///
+    /// <para>Gebraucht ueberall dort, wo ein Fehlschlag ein <b>gewoehnlicher Zustand der Welt</b>
+    /// ist und kein Programmierfehler: eine Datei, die nicht existiert; eine Umgebungsvariable,
+    /// die nicht gesetzt ist. Ein <c>panic</c> waere dort falsch, und eine Exception braeuchte
+    /// einen Throwable-Typ pro Fall.</para>
+    ///
+    /// <para>Wie bei Arrays wird der innere Tag mitgeprueft — <c>?string</c> und <c>?int</c>
+    /// tragen beide <c>TypeTag.Optional</c>.</para></summary>
+    public void RegisterOptionalReturning(string name, TypeTag[] paramTypes, TypeTag inner,
+        Func<LyrValue[], LyrValue> implementation) =>
+        _natives[name] = new Native(paramTypes, TypeTag.Optional, implementation, inner);
+
     /// <summary>Ein gebundener Import: Implementierung plus das, was die Aufrufstelle wissen muss.
     /// Arität und Rückgabe stehen hier, damit der Interpreter im heißen Pfad nichts nachschlagen
     /// muss.</summary>
@@ -198,6 +211,45 @@ public sealed class NativeRegistry
         // Die Natives sind IMMER registriert. Die Capability entscheidet, ob ein Modul, das sie
         // braucht, ueberhaupt geladen wird — nicht, ob die Funktion existiert. Das ist die
         // saubere Trennung: der Host konfiguriert eine Richtlinie, keine Funktionsliste.
+        // --- std.math (ungated: Rechnen fasst nichts an) ---------------------------------
+        //
+        // Sonderwerte folgen IEEE 754, wie Sprache.md 6.6 es fuer Fliesskomma festlegt:
+        // 'sqrt(-1.0)' ist NaN und kein panic. Ein Fehlerfall waere hier eine Erfindung — die
+        // Hardware kennt keinen, und ein Programm, das ihn faengt, wuerde auf einer anderen
+        // Runtime anders laufen.
+        var f1 = new[] { TypeTag.F64 };
+        var f2 = new[] { TypeTag.F64, TypeTag.F64 };
+
+        registry.Register("std.math.sqrt", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Sqrt(args[0].AsF64)));
+        registry.Register("std.math.abs", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Abs(args[0].AsF64)));
+        registry.Register("std.math.floor", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Floor(args[0].AsF64)));
+        registry.Register("std.math.ceil", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Ceiling(args[0].AsF64)));
+
+        // "round half to even" — dasselbe, was .NET ohne Angabe tut. Konsequentes Aufrunden
+        // traegt ueber viele Werte einen systematischen Fehler ein.
+        registry.Register("std.math.round", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Round(args[0].AsF64, MidpointRounding.ToEven)));
+
+        registry.Register("std.math.min", f2, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Min(args[0].AsF64, args[1].AsF64)));
+        registry.Register("std.math.max", f2, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Max(args[0].AsF64, args[1].AsF64)));
+        registry.Register("std.math.pow", f2, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Pow(args[0].AsF64, args[1].AsF64)));
+
+        registry.Register("std.math.sin", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Sin(args[0].AsF64)));
+        registry.Register("std.math.cos", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Cos(args[0].AsF64)));
+        registry.Register("std.math.tan", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Tan(args[0].AsF64)));
+        registry.Register("std.math.log", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Log(args[0].AsF64)));
+
         registry.Register("std.os.platform", Array.Empty<TypeTag>(), TypeTag.String,
             _ => LyrValue.FromString(
                 OperatingSystem.IsWindows() ? "windows"
@@ -231,6 +283,51 @@ public sealed class NativeRegistry
         registry.Register("std.fmt.formatString", new[] { TypeTag.String, TypeTag.String },
             TypeTag.String,
             args => LyrValue.FromString(Padded(args[0].AsString, args[1].AsString)));
+
+        registry.RegisterOptionalReturning("std.os.env", str, TypeTag.String,
+            args => Optional(Environment.GetEnvironmentVariable(args[0].AsString)));
+
+        registry.Register("std.os.currentDir", Array.Empty<TypeTag>(), TypeTag.String,
+            _ => LyrValue.FromString(Directory.GetCurrentDirectory()));
+
+        // Beendet sofort. Kein 'defer' laeuft mehr, kein 'catch' greift — der Rueckgabetyp ist
+        // trotzdem 'void' und nicht 'never': 'never' hiesse, der Compiler duerfe den folgenden
+        // Code als unerreichbar behandeln, und das kann er einem Native nicht ansehen.
+        registry.Register("std.os.exit", new[] { TypeTag.I64 }, TypeTag.Void,
+            args => { Environment.Exit((int)(args[0].AsI64 & 0xFF)); return default; });
+
+        // --- std.io.file (permission-gated: fileAccess) ------------------------------------
+        //
+        // Fehler sind RUECKGABEWERTE, keine Exceptions. Eine Datei, die nicht existiert, ist ein
+        // gewoehnlicher Zustand der Welt und kein Programmierfehler; ein 'panic' waere dort
+        // falsch, und eine Exception braeuchte einen Throwable-Typ pro Fall. Dieselbe
+        // Entscheidung wie bei 'List.pop' und 'std.os.env'.
+        //
+        // Gefangen wird bewusst breit (IOException, Zugriffsrechte, ungueltige Pfade): fuer den
+        // Aufrufer sind das alles dieselbe Antwort — "ging nicht". Wer den Grund braucht, kann
+        // ihn in v1 nicht bekommen; das waere ein Fehler-Enum und damit eine Sprachentscheidung.
+        registry.RegisterOptionalReturning("std.io.file.readText", str, TypeTag.String,
+            args => Optional(TryIo(() => File.ReadAllText(args[0].AsString))));
+
+        registry.Register("std.io.file.writeText", new[] { TypeTag.String, TypeTag.String },
+            TypeTag.Bool, args => LyrValue.FromBool(
+                TryIo(() => { File.WriteAllText(args[0].AsString, args[1].AsString); return ""; }) is not null));
+
+        registry.Register("std.io.file.appendText", new[] { TypeTag.String, TypeTag.String },
+            TypeTag.Bool, args => LyrValue.FromBool(
+                TryIo(() => { File.AppendAllText(args[0].AsString, args[1].AsString); return ""; }) is not null));
+
+        registry.Register("std.io.file.exists", str, TypeTag.Bool,
+            args => LyrValue.FromBool(File.Exists(args[0].AsString)));
+
+        // 'true', wenn die Datei danach weg ist — auch wenn sie vorher schon nicht existierte.
+        // Die Frage des Aufrufers ist "ist sie weg", nicht "habe ich sie geloescht".
+        registry.Register("std.io.file.remove", str, TypeTag.Bool,
+            args => LyrValue.FromBool(
+                TryIo(() => { File.Delete(args[0].AsString); return ""; }) is not null));
+
+        registry.RegisterArrayReturning("std.io.file.readLines", str, TypeTag.String,
+            args => Lines(TryIo(() => File.ReadAllText(args[0].AsString))));
 
         return registry;
     }
@@ -309,6 +406,49 @@ public sealed class NativeRegistry
         var parts = s.Split(separator, StringSplitOptions.None);
         var values = new LyrValue[parts.Length];
         for (var i = 0; i < parts.Length; i++) values[i] = LyrValue.FromString(parts[i]);
+        return LyrValue.FromObject(values);
+    }
+
+    // ------------------------------------------------------------------ std.os/std.io.file
+
+    /// <summary>Ein <c>?string</c> aus einem moeglicherweise fehlenden Wert. Die Darstellung
+    /// folgt P2b: eine Referenz heisst „hat einen Wert", eine leere heisst <c>null</c>.</summary>
+    private static LyrValue Optional(string? value) =>
+        value is null ? default : LyrValue.FromString(value);
+
+    /// <summary>Fuehrt eine Dateioperation aus und liefert <c>null</c>, wenn sie fehlschlaegt.
+    ///
+    /// <para>Gefangen wird breit — fehlende Datei, fehlende Rechte, ungueltiger Pfad, Geraet weg.
+    /// Fuer den Aufrufer sind das alles dieselbe Antwort. Wer den Grund braucht, kann ihn in v1
+    /// nicht bekommen: das waere ein Fehler-Enum in der Stdlib und damit eine
+    /// Sprachentscheidung.</para></summary>
+    private static string? TryIo(Func<string> operation)
+    {
+        try
+        {
+            return operation();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                       or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Zeilen ohne Zeilenenden. Ob die Datei mit CRLF oder LF geschrieben war, ist
+    /// danach nicht mehr sichtbar — sonst haenge das Ergebnis eines Programms daran, auf welchem
+    /// System seine Eingabe entstanden ist.</summary>
+    private static LyrValue Lines(string? content)
+    {
+        if (content is null) return LyrValue.FromObject([]);
+
+        var split = content.ReplaceLineEndings("\n").Split('\n');
+
+        // Eine Datei, die mit einem Zeilenumbruch endet, hat danach keine leere letzte Zeile.
+        var count = split.Length > 0 && split[^1].Length == 0 ? split.Length - 1 : split.Length;
+
+        var values = new LyrValue[count];
+        for (var i = 0; i < count; i++) values[i] = LyrValue.FromString(split[i]);
         return LyrValue.FromObject(values);
     }
 

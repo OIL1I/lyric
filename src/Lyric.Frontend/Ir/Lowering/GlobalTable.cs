@@ -45,8 +45,13 @@ internal sealed class GlobalTable
     {
         foreach (var module in compilation.Modules)
         {
-            // Native Module (die Stdlib) deklarieren nur Signaturen; sie haben nichts zu fuellen.
-            if (compilation.IsNative(module)) continue;
+            // Native Module werden NICHT uebersprungen. Die alte Begruendung — "sie deklarieren
+            // nur Signaturen" — gilt fuer rumpflose 'fn', aber ein 'pub let pi: float = 3.14…'
+            // hat einen Wert, und der muss in die Globals-Sektion wie jeder andere.
+            //
+            // Ohne das war eine Konstante in der Stdlib nicht benutzbar: 'std.math.pi' meldete
+            // "was not collected (is it declared outside this compilation?)" — eine Meldung, die
+            // auf ein fremdes Modul zeigt, obwohl das Modul direkt danebenlag.
 
             foreach (var decl in compilation.AstOf(module).Declarations)
             {

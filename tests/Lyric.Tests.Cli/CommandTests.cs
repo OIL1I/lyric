@@ -34,6 +34,7 @@ public sealed class CommandTests
         { "tuples.lyr", 26 },
         { "inventory.lyr", 0 },
         { "stats.lyr", 0 },
+        { "shapes.lyr", 0 },
     };
 
     [Theory]

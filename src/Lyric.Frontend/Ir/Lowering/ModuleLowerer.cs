@@ -89,10 +89,23 @@ public static class ModuleLowerer
                 if (function.Body is null)
                 {
                     if (!compilation.IsNative(module)) continue;
-                    imports.Declare(symbol, new IrImport(
+
+                    // Gefangen, nicht geworfen: eine native Signatur mit einem Typ, den das
+                    // Lowering nicht kennt, ist eine Scope-Grenze wie jede andere — und der
+                    // Nutzer soll eine Diagnose mit Position sehen statt eines Compiler-Absturzes.
+                    try
+                    {
+                        imports.Declare(symbol, new IrImport(
                         NameMangling.ForFunction(module, function.Name),
-                        function.Parameters.Select(p => DeclaredTypes.Lower(p.Type)).ToArray(),
-                        DeclaredTypes.Lower(function.ReturnType)));
+                            function.Parameters.Select(p => DeclaredTypes.Lower(p.Type)).ToArray(),
+                            DeclaredTypes.Lower(function.ReturnType)));
+                    }
+                    catch (UnsupportedConstructException ex)
+                    {
+                        de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span,
+                            ex.Message);
+                        failed = true;
+                    }
                     continue;
                 }
 

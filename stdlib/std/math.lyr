@@ -1,0 +1,37 @@
+// std.math — Fließkomma-Mathematik.
+//
+// **Keine Capability nötig** (Doku §20.1): Rechnen fasst nichts an. Das Modul steht in derselben
+// Zeile wie `std.string` und `std.collections`.
+//
+// Alle Funktionen arbeiten auf `float` (64-bit IEEE 754, §4). Ganzzahlige Varianten gibt es
+// nicht: `abs` auf einem `int` wäre eine zweite Funktion für dasselbe Konzept, und Lyric hat
+// keine Überladung (ADR-015). Wer eine Ganzzahl braucht, castet — `as` ist ohnehin Pflicht (§6.5).
+//
+// Die Sonderwerte folgen IEEE 754, wie es `Sprache.md` §6.6 für Fließkomma festlegt: `sqrt(-1.0)`
+// ist NaN und kein `panic`. Ein Fehlerfall wäre hier eine Erfindung — die Hardware kennt keinen.
+
+module std.math;
+
+pub let pi: float = 3.141592653589793;
+pub let e: float = 2.718281828459045;
+
+pub fn sqrt(value: float): float;
+pub fn abs(value: float): float;
+
+// Runden: `floor` ab, `ceil` auf, `round` zur nächsten geraden Zahl bei .5 (IEEE 754s
+// "round half to even" — dasselbe, was .NET und die meisten Sprachen tun, weil konsequentes
+// Aufrunden über viele Werte einen systematischen Fehler einträgt).
+pub fn floor(value: float): float;
+pub fn ceil(value: float): float;
+pub fn round(value: float): float;
+
+pub fn min(a: float, b: float): float;
+pub fn max(a: float, b: float): float;
+pub fn pow(base: float, exponent: float): float;
+
+pub fn sin(radians: float): float;
+pub fn cos(radians: float): float;
+pub fn tan(radians: float): float;
+
+// Natürlicher Logarithmus. Für andere Basen: `log(x) / log(basis)`.
+pub fn log(value: float): float;

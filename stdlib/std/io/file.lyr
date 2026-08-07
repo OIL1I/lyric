@@ -1,0 +1,31 @@
+// std.io.file — Dateien lesen und schreiben.
+//
+// **Permission-gated** (ADR-007, Doku §20.1): ein Import verlangt `fileAccess`. Das ist die
+// Capability, für die das Modell erfunden wurde — ein Mod-Skript in einer Game-Engine soll die
+// Festplatte nicht anfassen, während dieselbe Sprache im Standalone-Modus ein CLI-Tool sein darf.
+//
+// **Fehler sind Rückgabewerte, keine Exceptions.** Eine Datei, die nicht existiert, ist ein
+// gewöhnlicher Zustand der Welt und kein Programmierfehler — `readText` liefert deshalb `?string`
+// und nicht `string` mit `throws`. Das ist dieselbe Entscheidung wie bei `List.pop` und bei
+// `std.os.env`; ein `panic` bliebe dem vorbehalten, was der Programmierer falsch gemacht hat.
+
+module std.io.file;
+
+// Der gesamte Inhalt als Text (UTF-8), oder `null`, wenn die Datei nicht existiert oder nicht
+// lesbar ist.
+pub fn readText(path: string): ?string;
+
+// Schreibt Text (UTF-8) und überschreibt eine vorhandene Datei. `true` bei Erfolg.
+pub fn writeText(path: string, content: string): bool;
+
+// Hängt an eine vorhandene Datei an oder legt sie an. `true` bei Erfolg.
+pub fn appendText(path: string, content: string): bool;
+
+pub fn exists(path: string): bool;
+
+// `true`, wenn die Datei danach weg ist — auch wenn sie vorher schon nicht existierte.
+pub fn remove(path: string): bool;
+
+// Die Zeilen einer Datei, oder ein leeres Array, wenn sie nicht lesbar ist. Zeilenenden werden
+// entfernt; ob die Datei mit CRLF oder LF geschrieben war, ist danach nicht mehr sichtbar.
+pub fn readLines(path: string): string[];

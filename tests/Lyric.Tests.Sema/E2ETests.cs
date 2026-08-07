@@ -59,6 +59,7 @@ public class E2ETests
     [InlineData("bank.lyr")]
     [InlineData("fibonacci.lyr")]
     [InlineData("inventory.lyr")]
+    [InlineData("shapes.lyr")]
     public void Valid_program_checks_clean(string name)
     {
         var de = Analyze(name);
@@ -72,12 +73,16 @@ public class E2ETests
     /// Fehler, und diese beiden Fixtures zeigen ihn.
     ///
     /// <para>Sie stehen hier statt in der Liste oben, weil sie <b>gültiges Lyric</b> sind — es
-    /// fehlt die Bibliothek, nicht die Sprache. Wenn <c>std.math</c> und <c>std.io</c> in M8
-    /// entstehen, wandern sie zurück; dass dieser Test dann fehlschlägt, ist die Erinnerung daran.</para>
+    /// fehlt die Bibliothek, nicht die Sprache. Wenn das Modul entsteht, wandern sie zurück; dass
+    /// dieser Test dann fehlschlägt, ist die Erinnerung daran.</para>
+    ///
+    /// <para><b>Genau das ist mit <c>shapes.lyr</c> passiert</b> (M8/S7, 2026-08-07): <c>std.math</c>
+    /// gibt es, das Programm läuft, und die Zeile ist aus dieser Liste in die der sauberen
+    /// Programme gewandert. Der Test hat seine Aufgabe erfüllt — er hat gemeldet, dass die
+    /// Erwartung nicht mehr stimmt, statt still weiter zu behaupten, das Modul fehle.</para>
     /// </summary>
     [Theory]
     [InlineData("imports.lyr", "std.io")]
-    [InlineData("shapes.lyr", "std.math")]
     public void Program_waiting_on_a_stdlib_module_reports_it(string name, string missing)
     {
         var de = Analyze(name);

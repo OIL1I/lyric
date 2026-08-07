@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1680 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1696 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -52,6 +52,30 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **M8 — S7 — `std.math`, `std.os`, `std.io.file`.** 1696 Tests gruen.
+  **`examples/shapes.lyr` laeuft** — es wartete seit M6 auf `std.math`.
+  - **Fehler sind Rueckgabewerte, keine Exceptions.** Eine Datei, die nicht existiert, und eine
+    Umgebungsvariable, die nicht gesetzt ist, sind gewoehnliche Zustaende der Welt — beide
+    liefern `?T`. Ein `panic` bleibt dem vorbehalten, was der Programmierer falsch gemacht hat
+    (ein Index daneben), eine Exception dem, was ein Aufrufer sinnvoll behandeln kann. Dieselbe
+    Entscheidung wie bei `List.pop`.
+  - **Natives duerfen jetzt `?T` liefern**, mit Pruefung des inneren Tags beim Binden — dieselbe
+    Erweiterung wie bei den Arrays in S2, und dieselbe Begruendung: ohne den inneren Typ waeren
+    `?string` und `?int` ununterscheidbar.
+  - **`sqrt(-1.0)` ist NaN und kein `panic`** (IEEE 754, §6.6). Ein Fehlerfall waere hier eine
+    Erfindung — die Hardware kennt keinen, und ein Programm, das ihn faengt, liefe auf einer
+    anderen Runtime anders. `round` geht zur geraden Zahl, weil konsequentes Aufrunden ueber
+    viele Werte einen systematischen Fehler eintraegt.
+  - **Zwei Luecken behoben, beide beim Bauen aufgefallen.** Globals in *nativen* Modulen wurden
+    nicht gesammelt — die Begruendung („sie deklarieren nur Signaturen") galt fuer rumpflose
+    `fn`, aber `pub let pi: float = 3.14…` hat einen Wert; genau daran hing `shapes.lyr`. Und
+    `DeclaredTypes.Lower` warf **ungefangen** aus `ModuleLowerer.Lower` heraus, also gab eine
+    unbekannte native Signatur einen Compiler-*Absturz* statt einer Diagnose. Der zweite Punkt
+    stand als offener Posten in dieser Datei.
+  - **Ein Test hat seine Aufgabe erfuellt und wurde umgedreht**: `Program_waiting_on_a_stdlib_module_reports_it`
+    hielt fest, dass `shapes.lyr` auf `std.math` wartet. Sein eigener Kommentar sagte, dass sein
+    Fehlschlag die Erinnerung sein wuerde — er war es.
+
 - [x] **M8 — S6 — Capabilities** (ADR-007). 1680 Tests gruen.
   - **Der Bedarf steht IM Modul, die Entscheidung bei der Runtime.** Der Compiler schreibt in die
     Capabilities-Sektion, was ein Programm anfassen will; beim Laden prueft die VM gegen das, was
@@ -74,49 +98,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
   - Die Natives sind **immer** registriert; die Capability entscheidet, ob ein Modul geladen wird,
     nicht ob eine Funktion existiert. Der Host konfiguriert eine Richtlinie, keine
     Funktionsliste.
-
-- [x] **`Iterable<T>` — `for (x in liste)`.** 1668 Tests gruen.
-  - **`for-in` fragt jetzt vorwaerts.** Ein Container SAGT ueber `iter()`, wie man ihn
-    durchlaeuft; der Compiler sucht nicht rueckwaerts nach einem Iterator, der ihn als Quelle
-    nimmt — das waere bei zwei Kandidaten mehrdeutig und muesste alle sichtbaren Module absuchen.
-  - **`List<T>` darf nicht ihr eigener `Iterator<T>` sein.** Sie haette dann einen eingebauten
-    Cursor, und zwei Schleifen ueber dieselbe Liste wuerden einander weiterschieben — ein Test
-    mit verschachtelter Schleife haelt fest, dass 9 und nicht 3 herauskommt. C#, Java und Rust
-    trennen aus demselben Grund.
-  - **Die Reihenfolge in der Sema ist bedeutsam**: erst `Iterable`, dann `Iterator`. Umgekehrt
-    wuerde ein Typ, der beides erfuellt, als sein eigener Cursor benutzt.
-  - **Zwei aeltere Luecken kamen dabei ans Licht.** Eine generische Klasse, die ein Interface
-    implementiert, bekam **keine vtable-Zeile** — `BuildImpls` suchte die Methode der Definition,
-    die es bei einer Instanz nicht gibt. Das fiel nie auf, weil `for-in` ueber `ArrayIterator<T>`
-    den direkten Pfad nimmt; erst ein `iter()`, das einen Interface-Wert liefert, braucht die
-    Tabelle. Und die Nachrunde nach `BuildImpls` leerte `instances` nicht, sodass die
-    angeforderte Methode ohne Rumpf blieb — der Verifier meldete „targets f7, which is out of
-    range".
-
-- [x] **Explizite Typargumente am Aufruf: `f<int>()`.** Vorbedingung fuer S5, aufgefallen beim
-  Bau von `List<T>`. 1647 Tests gruen.
-  - **Generics liessen sich ausschliesslich ueber Argument-Inferenz instanziieren.** Eine Fabrik
-    `empty<T>(): List<T>` hat keine Argumente, aus denen sich `T` ziehen liesse — sie war
-    schlicht **nicht aufrufbar**, und damit war `std.collections` unbaubar. Dieselbe Luecke steht
-    seit M4 als `Opt<int>.Some(5)` in dieser Datei.
-  - **Die Disambiguierung ist ein reiner Token-Scan**, kein spekulatives Parsen: `ParseType`
-    meldet Diagnosen, und eine verworfene Vermutung darf keine Fehlermeldung hinterlassen. Der
-    Scan zaehlt Klammern und prueft, ob hinter dem `>` ein `(` folgt; im Zweifel ist es ein
-    Vergleich. C# entscheidet nach demselben Prinzip, Rust umgeht die Frage mit `::<>`.
-  - **Geschriebenes gewinnt gegen Inferenz**: `id<int>("x")` ist ein Typfehler und wird nicht
-    still zu `id<string>`. Constraints gelten auch fuer geschriebene Argumente — sonst waere die
-    explizite Form ein Weg, sie zu umgehen.
-
-- [x] **Bug: eine generische Funktion konnte keinen generischen Typ zurueckgeben.**
-  `fn make<T>(x: T): Box<T>` war nicht lowerbar — **auch mit Inferenz nicht**, also unabhaengig
-  vom Punkt darueber. Auf dem letzten Commit gegengeprueft.
-  - `LowerSubstituted` war eine **Teilkopie** der Typ-Aufloesung: erst nur der nackte Fall
-    (`fn get(): T`), dann `?T` nachgezogen, dann `T[]` — und `Box<T>` fehlte immer noch. **Zum
-    dritten Mal dieselbe Ursache**: zwei Stellen, die dieselbe Frage beantworten, driften
-    auseinander. Der Kommentar ueber der Methode beschrieb die vorigen zwei Runden bereits.
-  - Jetzt schiebt der `FunctionLowerer` seine Substitution auf den Stack der **Typtabelle** —
-    dieselbe, die sie beim Lowern der Member einer generischen Instanz benutzt. Eine Wahrheit
-    statt zwei; die Sonderfaelle sind ersatzlos entfallen.
 
 ## Messungen
 
@@ -161,7 +142,8 @@ beide brauchen Hashing, und wie ein Nutzertyp seinen Hash liefert, ist eine Inte
 (`Hashable`), die `Sprache.md` nicht beantwortet. Auch `for (x in liste)` fehlt noch — der
 `ListIterator` steht, die Sema kennt ihn aber nicht als eingebaute Form.
 
-Als naechstes **S7 — `std.io.file`, `std.os`, `std.math`** (daran haengt `shapes.lyr`).
+Als naechstes **S8 — das Gate**: ein `wc`-Klon. Alle Bausteine stehen (Dateien, Zeilen,
+String-Zerlegung, `fn main(args)`), es fehlt das Programm und der Test.
 
 Danach **S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math` — daran haengt
 `shapes.lyr`), **S8** (Gate: `wc`-Klon).
@@ -256,7 +238,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`M8: Capabilities (S6)`
+`M8: std.math, std.os, std.io.file (S7)`
 
 ---
 

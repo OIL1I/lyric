@@ -29,6 +29,11 @@ internal static class DeclaredTypes
             && TypeFacts.FromBuiltinName(named.Path[0]) is { } primitive)
             return TypeLowering.Lower(primitive);
 
+        // '?T' in einer nativen Signatur: 'readText' liefert '?string', 'env' auch. Ein
+        // Fehlschlag, der ein gewoehnlicher Zustand der Welt ist, gehoert in den Rueckgabewert
+        // und nicht in eine Exception — dafuer muss der Typ ausdrueckbar sein.
+        if (node is NullableType option) return new IrOptionalType(Lower(option.Inner));
+
         // 'T[]' in einer nativen Signatur. Der Elementtyp bleibt primitiv: ein Array von
         // Objekten wuerde vom Host verlangen, ein Modul-Layout zu kennen.
         if (node is ArrayType { Size: null } array
