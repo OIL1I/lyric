@@ -297,33 +297,47 @@ public class ExplicitTypeArgumentTests
             """));
 
     /// <summary>
-    /// <b>Grenze, nicht Zusicherung</b>: das Typargument laesst sich hier NICHT inferieren.
+    /// Das Typargument wird durch eine <b>Konformanz hindurch</b> erschlossen.
     ///
-    /// <para><c>zaehle(RangeIterator { … })</c> muesste aus <c>RangeIterator :: [Iterator&lt;int&gt;]</c>
-    /// schliessen, dass <c>T = int</c> ist — also durch eine Konformanz hindurch. Das kann die
-    /// Inferenz nicht; sie liefert <c>&lt;error&gt;</c>, und das Lowering meldet
-    /// <c>LYR-IR0001</c>.</para>
+    /// <para><c>zaehle(RangeIterator { … })</c> schliesst aus
+    /// <c>class RangeIterator :: [Iterator&lt;int&gt;]</c>, dass <c>T = int</c> ist. Strukturell
+    /// haben die beiden Typen nichts gemeinsam — die Verbindung steht in der Deklaration, und die
+    /// Unifikation schlaegt sie jetzt nach.</para>
     ///
-    /// <para><c>lyric check</c> sagt dazu „ok" — die Sema merkt den Fehlschlag nicht. Auch das
-    /// ist ein Riss zwischen Sema und Backend, nur ein milder: es kommt eine Diagnose heraus und
-    /// kein Absturz.</para>
+    /// <para><b>Hier stand bis 2026-08-08 das Gegenteil</b>: ein Test, der die Grenze festhielt
+    /// (<c>LYR-IR0001: type argument 0 is not concrete</c>) und ausdruecklich fallen sollte,
+    /// sobald die Inferenz es lernt. Er ist gefallen.</para>
     ///
-    /// <para>Praktische Folge fuer <c>std.iter</c>: wo eine Klasse an einen Interface-Parameter
-    /// geht, braucht der Aufruf explizite Typargumente. Dieser Test faellt, sobald die Inferenz
-    /// es lernt — und das ist der Erfolg.</para>
+    /// <para>Ohne diesen Fall waeren in <c>std.iter</c> genau die Funktionen ohne Closure
+    /// betroffen — <c>collect</c>, <c>sum</c>, <c>count</c>, <c>take</c>, <c>zip</c>,
+    /// <c>enumerate</c> —, also ausgerechnet die am Ende einer Kette.</para>
     /// </summary>
     [Fact]
-    public void Inference_through_a_conformance_does_not_work_yet()
-    {
-        var diagnostics = LoweringDiagnostics(IterSetup + """
+    public void Inference_works_through_a_conformance() =>
+        Assert.Equal(2, Run(IterSetup + """
             fn main(): int {
                 return zaehle(RangeIterator { current = 5, end = 7 });
             }
-            """);
+            """));
 
-        Assert.Contains("LYR-IR0001", diagnostics);
-        Assert.Contains("not concrete", diagnostics);
-    }
+    [Fact]
+    public void Inference_works_when_no_other_parameter_carries_the_type() =>
+        // Der schaerfere Fall: ein zweiter Parameter, der NICHTS zur Inferenz beitraegt. Vorher
+        // half nur eine Closure daneben ('map', 'filter'); hier gibt es keine.
+        Assert.Equal(7, Run("""
+            import std.iter { Iterator, RangeIterator };
+
+            pub fn nimm<T>(source: Iterator<T>, n: int): int {
+                var zahl = 0;
+                var v = source.next();
+                while (v != null && zahl < n) { zahl = zahl + 1; v = source.next(); }
+                return zahl + 5;
+            }
+
+            fn main(): int {
+                return nimm(RangeIterator { current = 0, end = 9 }, 2);
+            }
+            """));
 
     /// <summary>Uebersetzt bis zum Lowering und liefert die Diagnosen — fuer Faelle, die
     /// scheitern sollen.</summary>

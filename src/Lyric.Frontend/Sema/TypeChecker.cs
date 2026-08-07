@@ -1267,6 +1267,23 @@ public sealed class TypeChecker
             CheckInferredConstraints(fsym!.Generics, map, call.Span);
             substituted = (FnType)Substitute(fn, map);
 
+            // Ein Typ-Parameter, den die Inferenz nicht binden konnte, wird HIER gemeldet.
+            //
+            // Vorher wurde er still zu 'LyrType.Error', und erst das Lowering fiel darueber:
+            // "LYR-IR0001: type argument 0 is not concrete ('<error>')" — eine Compiler-interne
+            // Formulierung an einer Stelle, wo der Nutzer nur ein Typargument weggelassen hat.
+            // 'lyric check' sagte dazu "ok", 'lyric build' nicht. Genau der Riss zwischen Sema und
+            // Backend, gegen den AgreementTests gebaut wurde.
+            //
+            // Nicht melden, wenn ohnehin schon ein Argument fehlerhaft war: dann ist die Ursache
+            // gemeldet, und eine zweite Zeile ueber ein Typargument waere Folgerauschen.
+            if (!argTypes.Any(t => t.IsError))
+                foreach (var generic in fsym.Generics)
+                    if (!map.ContainsKey(generic))
+                        _de.Report("LYR-SEM0060", Severity.Error, call.Span,
+                            $"cannot infer type argument '{generic.Name}' for '{fsym.Name}' — " +
+                            "no argument determines it; write it explicitly");
+
             // Fuer die Monomorphisierung: welche Instanz gemeint ist, steht hier fest und nirgends
             // sonst. In Deklarationsreihenfolge, weil das die Identitaet der Instanz ist.
             _result.SetTypeArguments(call, fsym.Generics
@@ -1437,7 +1454,20 @@ public sealed class TypeChecker
 
     // Löst Typ-Params aus (param trägt T, arg ist konkret). Erste Bindung gewinnt;
     // Widersprüche (pair(1, "x")) fallen später in CheckCallArgs als Typfehler auf.
-    private static void UnifyInfer(LyrType param, LyrType arg, Dictionary<GenericParamSymbol, LyrType> map)
+    /// <summary>
+    /// Bindet Typ-Parameter, indem sie Parameter- und Argumenttyp gegeneinander laufen lässt.
+    /// </summary>
+    /// <remarks>
+    /// <para>Die Unifikation ist <b>strukturell</b>: sie vergleicht Formen. Das reicht für alles,
+    /// was sich wie ein Baum ineinanderlegen lässt — <c>T[]</c> gegen <c>int[]</c>,
+    /// <c>fn(T) -&gt; bool</c> gegen <c>fn(int) -&gt; bool</c>, <c>Box&lt;T&gt;</c> gegen
+    /// <c>Box&lt;int&gt;</c>.</para>
+    /// <para>Nicht strukturell ist die <b>Konformanz</b>: zwischen <c>RangeIterator</c> und
+    /// <c>Iterator&lt;int&gt;</c> liegt keine Formähnlichkeit, sondern eine Deklaration
+    /// (<c>class RangeIterator :: [Iterator&lt;int&gt;]</c>). Dafür ist der letzte Fall unten da —
+    /// er schlägt sie nach.</para>
+    /// </remarks>
+    private void UnifyInfer(LyrType param, LyrType arg, Dictionary<GenericParamSymbol, LyrType> map)
     {
         switch (param)
         {
@@ -1458,6 +1488,46 @@ public sealed class TypeChecker
                 UnifyInfer(pf.Return, af.Return, map);
                 break;
             case CoroutineOf pc when arg is CoroutineOf ac: UnifyInfer(pc.Yield, ac.Yield, map); break;
+
+            // 'Iterator<T>' gegen 'RangeIterator': der Parameter ist eine Instanz eines
+            // INTERFACES, das Argument ein Typ, der es erfuellt. Strukturell haben die beiden
+            // nichts gemeinsam — die Verbindung steht in der Deklaration des Arguments.
+            //
+            // Ohne diesen Fall blieb 'T' ungebunden, und zwar still: die Sema meldete nichts, und
+            // erst das Lowering fand '<error>' als Typargument. Betroffen war jede generische
+            // Funktion, deren Typ-Parameter NUR im Interface-Parameter vorkommt — in 'std.iter'
+            // also 'collect', 'sum', 'count', 'take', 'zip' und 'enumerate'. Wo eine Closure
+            // danebensteht ('map', 'filter'), griff schon der FnType-Fall darueber.
+            //
+            // Eindeutig ist die Zuordnung, weil ein Typ dasselbe generische Interface nicht
+            // zweimal mit verschiedenen Argumenten erfuellen kann: die Methode haette zwei
+            // Signaturen, und LYR-SEM0042 lehnt das ab.
+            case GenericInstance { Definition.Kind: TypeSymbolKind.Interface } pi:
+                UnifyThroughConformance(pi, arg, map);
+                break;
+        }
+    }
+
+    /// <summary>Sucht im Argumenttyp die Konformanz zu <paramref name="wanted"/> und unifiziert
+    /// deren Typargumente gegen die geschriebenen.</summary>
+    private void UnifyThroughConformance(GenericInstance wanted, LyrType arg,
+        Dictionary<GenericParamSymbol, LyrType> map)
+    {
+        if (TypeFacts.SymbolOf(arg) is not { } symbol) return;
+
+        foreach (var (iface, subst) in InterfacesOf(symbol))
+        {
+            if (!ReferenceEquals(iface, wanted.Definition)) continue;
+
+            // 'subst' bildet die Generics des INTERFACES auf das ab, was in '::' stand. Beides
+            // in derselben Reihenfolge durchlaufen: 'Iterator<T>' gegen '{T_iface -> int}' bindet
+            // das T der rufenden Funktion an int.
+            var n = Math.Min(iface.Generics.Length, wanted.Arguments.Length);
+            for (var i = 0; i < n; i++)
+                if (subst.TryGetValue(iface.Generics[i], out var bound))
+                    UnifyInfer(wanted.Arguments[i], bound, map);
+
+            return;
         }
     }
 

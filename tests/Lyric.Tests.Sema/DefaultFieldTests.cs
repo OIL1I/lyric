@@ -68,3 +68,63 @@ public class DefaultFieldTests
             string.Join("\n", de.Diagnostics.Select(d => $"{d.Code}: {d.Message}")));
     }
 }
+
+/// <summary>
+/// Ein Typ-Parameter, den die Inferenz nicht binden kann, wird von der <b>Sema</b> gemeldet.
+///
+/// <para>Vorher wurde er still zu <c>ErrorType</c>, und erst das Lowering fiel darüber:
+/// <c>LYR-IR0001: type argument 0 is not concrete ('&lt;error&gt;')</c>. <c>lyric check</c> sagte
+/// dazu „ok", <c>lyric build</c> nicht — derselbe Riss zwischen Sema und Backend, gegen den
+/// <c>AgreementTests</c> gebaut wurde, nur mit einer Diagnose am Ende statt einem Absturz.</para>
+/// </summary>
+public class InferenceDiagnosticTests
+{
+    private static string Diagnostics(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de);
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        Semantics.Analyze(comp, comp.Resolve(), de);
+
+        var writer = new StringWriter();
+        de.RenderText(writer);
+        return writer.ToString();
+    }
+
+    [Fact]
+    public void An_unbindable_type_parameter_is_reported_by_the_sema()
+    {
+        // T kommt in keinem Parameter vor — das kann auch die Konformanz-Unifikation nicht retten.
+        var diagnostics = Diagnostics("""
+            pub fn leer<T>(n: int): int { return n; }
+            fn main(): int { return leer(3); }
+            """);
+
+        Assert.Contains("LYR-SEM0060", diagnostics);
+        Assert.Contains("write it explicitly", diagnostics);
+    }
+
+    [Fact]
+    public void An_explicit_type_argument_silences_it() =>
+        Assert.Equal("", Diagnostics("""
+            pub fn leer<T>(n: int): int { return n; }
+            fn main(): int { return leer<int>(3); }
+            """));
+
+    [Fact]
+    public void A_broken_argument_does_not_add_inference_noise()
+    {
+        // Wenn ein Argument selbst fehlerhaft ist, ist die Ursache gemeldet. Eine zweite Zeile
+        // über ein Typargument wäre Folgerauschen — der häufigste Weg, wie Diagnosen unlesbar
+        // werden.
+        var diagnostics = Diagnostics("""
+            pub fn id<T>(v: T): T { return v; }
+            fn main(): int { return id(gibtsNicht); }
+            """);
+
+        Assert.Contains("LYR-SEM0002", diagnostics);
+        Assert.DoesNotContain("LYR-SEM0060", diagnostics);
+    }
+}
