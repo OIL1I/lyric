@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1627 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1629 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -52,6 +52,25 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **Sweep ueber die Merge-Bloecke** — 15 Konstrukte durchgemessen, bei denen alle Zweige
+  terminieren. **13 waren sauber**, zwei nicht, und der schwerere Fund hatte mit Merge-Bloecken
+  gar nichts zu tun.
+  - **`defer` neben einem `return` in einem Zweig liess den Compiler abstuerzen.** Das Lowern
+    eines defer-Rumpfes betritt einen Scope und pusht dabei auf genau den Stack, ueber den
+    `EmitAllPendingDefers` gerade iteriert — .NET wirft „Collection was modified" mitten im
+    Compiler. Behoben (Iteration ueber eine Kopie), mit einem zweiten Test, der die
+    LIFO-Reihenfolge festhaelt: eine Kopie in der falschen Richtung waere sonst unbemerkt
+    geblieben. **Die alltaeglichste Form ueberhaupt, und kein Test hatte beides zusammen** —
+    obwohl P5 „defer an jedem Ausgang" ausdruecklich liefert.
+  - **`do { return … } while (…)` bleibt offen** (siehe „Noch offen"). Der Fix braucht einen
+    Umbau, und die Form ist tot: eine Schleife, deren Rumpf immer terminiert, schleift nie.
+    Verglichen mit `try/catch` — sehr haeufig, deshalb in S4 sofort behoben — ist das eine
+    andere Groessenordnung.
+  - **`if/else` machte es laengst richtig** und war die Vorlage fuer den try/catch-Fix: erst
+    pruefen, ob ueberhaupt jemand durchfaellt, dann den Block anlegen. `while`, `for-in`,
+    `match`, if-Ausdruck, `&&`/`||`, `??`, `?.`, verschachteltes `try`, Coroutinen und
+    `panic` in beiden Zweigen sind alle sauber.
+
 - [x] **M8 — S3 — `std.fmt` und Format-Specs.** `f"{avg:N2}"` laeuft; **`examples/stats.lyr`
   ist damit gruen**, nachdem es seit M6 auf genau diese Zeile gewartet hat. 1621 Tests gruen.
   - **Die Spec-Sprache ist die von .NET und wird unveraendert durchgereicht** (`N2`, `F3`, `D5`,
@@ -73,29 +92,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     braucht, weil .NET fuer die keine Standardformate kennt.
   - **`shapes.lyr` laeuft weiterhin nicht** — es braucht `std.math` (`sqrt`, `pi`), also S7. Das
     ist keine Format-Luecke, und der Slice endet hier.
-
-- [x] **M8 — S2 — `string` wird ein richtiger Typ.** Zwoelf Natives, ein `StringIterator`,
-  `for (c in s)`. 1606 Tests gruen.
-  - **Alles zaehlt Codepoints**, weil `Sprache.md` §4 `char` als Codepoint definiert. Eine
-    Laenge, die etwas anderes zaehlt als die Iteration liefert, waere ein Widerspruch im eigenen
-    Typsystem — C#, Java und JavaScript haben genau den, weil ihr `char` eine UTF-16-Einheit ist.
-    Gemessen: `length("a😀b")` ist **3**; C# sagt 4.
-  - **Kein `s[i]`** — und das war vorher erlaubt, fiel erst im Lowering um. Eine
-    Codepoint-Position kostet O(n), also waere die naheliegende Indexschleife quadratisch, ohne
-    dass man ihr das ansieht. Rust verbietet die Indizierung aus demselben Grund. Die Meldung
-    nennt beide Auswege (`charAt`, `for (c in s)`), weil ein blosses „not indexable" wie ein
-    fehlendes Feature klaenge statt wie eine Entscheidung.
-  - **`for (c in s)` laeuft ueber `toChars`, nicht ueber `charAt`.** Ein Iterator, der pro
-    Schritt `charAt` riefe, waere quadratisch — einmal O(n) plus ein Array statt n-mal O(n).
-  - **Natives duerfen jetzt Arrays liefern.** Die alte Regel war „nur Skalare"; `split` und
-    `toChars` brauchen mehr. Die Linie bleibt scharf: ein Array hat, anders als eine Klasse,
-    **kein Layout**, das der Host kennen muesste. Der Elementtyp wird beim Binden mitgeprueft,
-    sonst waeren `string[]` und `char[]` ununterscheidbar.
-  - **`Sprache.md` §4 ist korrigiert.** Dort stand „UTF-8 Fat-Pointer `{ data, length }`" — das
-    schrieb der Runtime ihre Datenstruktur vor, was der Spec nicht zusteht (ADR-013 regelt das
-    *Format*), und war zudem **falsch**: die .NET-Runtime haelt Strings als UTF-16. Die Divergenz
-    war unbeobachtbar, solange es weder `length` noch Indizierung gab. Mit S2 waere sie es
-    geworden.
 
 ## Messungen
 
@@ -161,6 +157,12 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 - **`char as int` ist kein erlaubter Cast** (`LYR-SEM0006`). Beim Schreiben der S2-Tests
   aufgefallen. Ob das gewollt ist, sagt §6.5 nicht eindeutig — ungeprüft gelassen, weil eine
   Cast-Regel eine Sprachentscheidung ist und kein Nebenprodukt.
+- **`do { return … } while (…)` laesst den Compiler abstuerzen.** Rumpf, Bedingung und Ausgang
+  werden alle drei vorab angelegt; terminiert der Rumpf, sind Bedingung und Ausgang unerreichbar,
+  und der Verifier lehnt ab. Der Fix braucht einen Umbau, weil `_loops.Push` die Sprungziele
+  vorab braucht — ein bedarfsgesteuerter Ausgang muesste wissen, ob ein `break` ihn benutzt.
+  *Bewusst offen gelassen*: eine Schleife, deren Rumpf immer terminiert, schleift nie; die Form
+  ist toter Code. Gefunden im Merge-Block-Sweep 2026-08-07.
 - **`DeclaredTypes.Lower` wirft ungefangen** aus `ModuleLowerer.Lower` heraus: eine native
   Signatur mit einem unbekannten Typ gibt einen Compiler-*Absturz* statt einer Diagnose. Gefunden
   beim Bau von S2, als `split` noch nicht lowerbar war.
@@ -226,7 +228,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`M8: catch (e) ohne Typ (S4)`
+`sweep: defer neben return, Merge-Bloecke durchgemessen`
 
 ---
 

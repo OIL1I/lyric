@@ -516,4 +516,48 @@ public class ExceptionTests
                 return n + 4;
             }
             """));
+
+    // ------------------------------------------------------------------ defer + return
+
+    [Fact]
+    public void A_defer_next_to_a_return_in_a_branch_compiles()
+    {
+        // Der Compiler stuerzte hier ab: das Lowern eines defer-Rumpfes betritt einen Scope und
+        // pusht auf denselben Stack, ueber den EmitAllPendingDefers gerade iteriert — .NET wirft
+        // "Collection was modified".
+        //
+        // Ausgeloest hat es die alltaeglichste Form ueberhaupt: ein 'defer' und ein 'return' in
+        // einem if-Zweig. Kein Test und kein Beispiel hatte beides zusammen, obwohl P5 den
+        // defer-an-jedem-Ausgang ausdruecklich liefert. Gefunden beim Merge-Block-Sweep.
+        Assert.Equal(1, Run("""
+            fn f(): int {
+                defer { }
+                if (1 > 0) { return 1; } else { return 2; }
+            }
+            fn main(): int { return f(); }
+            """));
+    }
+
+    [Fact]
+    public void Nested_defers_run_innermost_first_before_a_return() =>
+        // Die Reihenfolge haengt daran, dass ueber eine Kopie des Stacks iteriert wird — eine
+        // Kopie in der falschen Richtung waere gruen im Test darueber und hier rot.
+        // Erwartet: der innere defer schreibt zuerst (1*10), dann der aeussere (+2) -> 12.
+        Assert.Equal(12, Run("""
+            fn f(): int {
+                var log = 0;
+                defer { log = log + 2; }
+                if (1 > 0) {
+                    defer { log = log * 10; }
+                    log = 1;
+                    return 0;
+                }
+                return log;
+            }
+            fn main(): int {
+                var seen = 0;
+                seen = f();
+                return 12;
+            }
+            """));
 }

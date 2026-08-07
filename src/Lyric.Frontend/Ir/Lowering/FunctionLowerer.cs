@@ -963,7 +963,17 @@ internal sealed class FunctionLowerer
     /// oben auf, die Reihenfolge stimmt also von selbst.</summary>
     private void EmitAllPendingDefers()
     {
-        foreach (var scope in _defers) EmitDefers(scope);
+        // Ueber eine KOPIE, nicht ueber den Stack selbst: das Lowern eines defer-Rumpfes betritt
+        // einen Scope und pusht dabei einen neuen Eintrag auf genau diesen Stack — der Enumerator
+        // wird ungueltig, und .NET wirft mitten im Compiler.
+        //
+        // Ausgeloest hat es die alltaeglichste Form ueberhaupt: ein 'defer' und ein 'return' in
+        // einem if-Zweig. Kein Test und kein Beispiel hatte beides zusammen, obwohl P5 den
+        // defer-an-jedem-Ausgang ausdruecklich liefert.
+        //
+        // Die Reihenfolge bleibt: Stack<T>.ToArray() liefert von oben nach unten, also innerster
+        // Scope zuerst — dasselbe, was die Enumeration tat.
+        foreach (var scope in _defers.ToArray()) EmitDefers(scope);
     }
 
     private bool LowerBinding(BindingStmt binding)
