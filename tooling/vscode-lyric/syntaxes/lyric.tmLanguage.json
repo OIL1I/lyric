@@ -1,0 +1,199 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Lyric",
+  "scopeName": "source.lyric",
+  "fileTypes": ["lyr"],
+
+  "_comment": [
+    "Die Keywords stammen aus src/Lyric.Frontend/Lexing/Lexer.cs, die Literal-Formen aus",
+    "docs/Sprache.md §1.2-1.5 — nicht aus dem Gedaechtnis. Ein Test in tests/Lyric.Tests.Cli",
+    "vergleicht die Keyword-Liste hier mit der des Lexers; driftet eine, faellt er.",
+    "",
+    "Was hier NICHT versucht wird: semantische Faerbung. Ob ein Bezeichner ein Typ oder eine",
+    "Variable ist, weiss nur die Sema — eine TextMate-Grammatik raet es an der Grossschreibung,",
+    "und das ist eine Konvention, keine Regel. Wer es genau haben will, braucht den LSP (v1.2)."
+  ],
+
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#keywords" },
+    { "include": "#types" },
+    { "include": "#declarations" },
+    { "include": "#operators" }
+  ],
+
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.lyric",
+          "begin": "//",
+          "end": "$"
+        },
+        {
+          "_comment": "Block-Kommentare sind VERSCHACHTELBAR (Sprache.md §1.1). Der Selbstbezug in patterns bildet das ab — ohne ihn endet '/* /* */ */' eine Ebene zu frueh.",
+          "name": "comment.block.lyric",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "patterns": [{ "include": "#comments" }]
+        }
+      ]
+    },
+
+    "strings": {
+      "patterns": [
+        {
+          "_comment": "f-String: derselbe Aufbau, aber mit Interpolation. Er steht ZUERST, sonst frisst die gewoehnliche String-Regel das f nicht mit und die Loecher bleiben ungefaerbt.",
+          "name": "string.quoted.double.interpolated.lyric",
+          "begin": "f\"",
+          "end": "\"",
+          "patterns": [
+            { "include": "#escapes" },
+            {
+              "name": "meta.embedded.expression.lyric",
+              "begin": "\\{",
+              "end": "\\}",
+              "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.lyric" } },
+              "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.lyric" } },
+              "patterns": [
+                {
+                  "_comment": "Die Format-Spec nach dem ':' ist kein Ausdruck (Sprache.md §2.2).",
+                  "name": "constant.other.format-spec.lyric",
+                  "match": ":[^}]*"
+                },
+                { "include": "$self" }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.lyric",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "include": "#escapes" }]
+        },
+        {
+          "name": "string.quoted.single.lyric",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{ "include": "#escapes" }]
+        }
+      ]
+    },
+
+    "escapes": {
+      "_comment": "Sprache.md §1.4: \\n \\r \\t \\\\ \\\" \\' \\0, \\xHH und \\u{...}.",
+      "patterns": [
+        {
+          "name": "constant.character.escape.lyric",
+          "match": "\\\\(?:[nrt\\\\\"'0]|x[0-9A-Fa-f]{2}|u\\{[0-9A-Fa-f]+\\})"
+        },
+        {
+          "name": "invalid.illegal.unknown-escape.lyric",
+          "match": "\\\\."
+        }
+      ]
+    },
+
+    "numbers": {
+      "_comment": "Hex/Bin/Okt vor Dezimal, sonst faengt die Dezimalregel die fuehrende 0. Unterstriche sind ueberall als Trenner erlaubt, Suffixe sind i8..i64/u8..u64 bzw. f32/f64.",
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.lyric",
+          "match": "\\b0[xX][0-9A-Fa-f][0-9A-Fa-f_]*(?:[iu](?:8|16|32|64))?\\b"
+        },
+        {
+          "name": "constant.numeric.binary.lyric",
+          "match": "\\b0[bB][01][01_]*(?:[iu](?:8|16|32|64))?\\b"
+        },
+        {
+          "name": "constant.numeric.octal.lyric",
+          "match": "\\b0[oO][0-7][0-7_]*(?:[iu](?:8|16|32|64))?\\b"
+        },
+        {
+          "name": "constant.numeric.float.lyric",
+          "match": "\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?(?:[eE][+-]?[0-9][0-9_]*)?f(?:32|64)?\\b"
+        },
+        {
+          "name": "constant.numeric.float.lyric",
+          "match": "\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*(?:[eE][+-]?[0-9][0-9_]*)?|[eE][+-]?[0-9][0-9_]*)\\b"
+        },
+        {
+          "name": "constant.numeric.integer.lyric",
+          "match": "\\b[0-9][0-9_]*(?:[iu](?:8|16|32|64))?\\b"
+        }
+      ]
+    },
+
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.lyric",
+          "match": "\\b(?:if|else|while|do|for|in|match|break|continue|return|yield|resume|defer|try|catch|throw)\\b"
+        },
+        {
+          "name": "keyword.declaration.lyric",
+          "match": "\\b(?:module|import|pub|struct|class|enum|interface|extend|fn|let|var)\\b"
+        },
+        {
+          "name": "storage.modifier.lyric",
+          "match": "\\b(?:mut|static|params|as)\\b"
+        },
+        {
+          "name": "constant.language.lyric",
+          "match": "\\b(?:true|false|null)\\b"
+        },
+        {
+          "name": "variable.language.this.lyric",
+          "match": "\\bthis\\b"
+        }
+      ]
+    },
+
+    "types": {
+      "patterns": [
+        {
+          "_comment": "Die eingebauten Typen aus Sprache.md §4. 'int'/'float' sind Aliase fuer int64/float64.",
+          "name": "support.type.primitive.lyric",
+          "match": "\\b(?:int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64|float|float32|float64|bool|char|string|void|never)\\b"
+        },
+        {
+          "_comment": "Grossgeschriebene Bezeichner als Typen — eine KONVENTION, keine Sprachregel. Eine TextMate-Grammatik kann Typen nicht wissen; das kann nur die Sema.",
+          "name": "entity.name.type.lyric",
+          "match": "\\b[A-Z][A-Za-z0-9_]*\\b"
+        }
+      ]
+    },
+
+    "declarations": {
+      "patterns": [
+        {
+          "name": "meta.function.lyric",
+          "match": "\\b(fn)\\s+([a-zA-Z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.lyric" },
+            "2": { "name": "entity.name.function.lyric" }
+          }
+        },
+        {
+          "_comment": "Ein Aufruf: Bezeichner direkt vor '(' oder vor '<' mit Typargumenten (f<int>()).",
+          "name": "meta.function-call.lyric",
+          "match": "\\b([a-z_][A-Za-z0-9_]*)\\s*(?=\\(|<[^<>]*>\\s*\\()",
+          "captures": { "1": { "name": "entity.name.function.call.lyric" } }
+        }
+      ]
+    },
+
+    "operators": {
+      "patterns": [
+        {
+          "_comment": "Laengere zuerst, sonst zerlegt die Regel '<<=' in '<<' und '='.",
+          "name": "keyword.operator.lyric",
+          "match": "(?:\\?\\?=|<<=|>>=|&&=|\\|\\|=|\\.\\.=|==|!=|<=|>=|&&|\\|\\||\\?\\?|\\?\\.|\\.\\.|->|=>|::|\\+=|-=|\\*=|/=|%=|&=|\\|=|\\^=|<<|>>|\\+\\+|--|[+\\-*/%&|^!<>=?:.])"
+        }
+      ]
+    }
+  }
+}

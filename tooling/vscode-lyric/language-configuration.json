@@ -1,0 +1,55 @@
+{
+  "comments": {
+    "lineComment": "//",
+    "blockComment": ["/*", "*/"]
+  },
+
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+
+  "_comment_brackets": [
+    "Spitze Klammern sind KEINE Klammern in diesem Sinn. Sie kommen als Vergleich mindestens",
+    "so oft vor wie als Typargumente ('a < b'), und ein Editor, der sie automatisch schliesst,",
+    "produziert bei jedem Vergleich ein '>' zu viel. Der Parser hat fuer dieselbe Mehrdeutigkeit",
+    "einen eigenen Token-Scan — hier ist die richtige Antwort, es zu lassen."
+  ],
+
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] },
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+    { "open": "/*", "close": " */", "notIn": ["string"] }
+  ],
+
+  "surroundingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+
+  "indentationRules": {
+    "increaseIndentPattern": "^.*\\{[^}\"']*$",
+    "decreaseIndentPattern": "^\\s*\\}"
+  },
+
+  "wordPattern": "[A-Za-z_][A-Za-z0-9_]*",
+
+  "onEnterRules": [
+    {
+      "_comment": "Innerhalb eines Block-Kommentars die Fortsetzung mitschreiben.",
+      "beforeText": "^\\s*/\\*(?!.*\\*/).*$",
+      "action": { "indent": "none", "appendText": " * " }
+    },
+    {
+      "beforeText": "^\\s*\\*(?!/).*$",
+      "action": { "indent": "none", "appendText": "* " }
+    }
+  ]
+}

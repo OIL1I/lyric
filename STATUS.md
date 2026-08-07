@@ -11,10 +11,10 @@
 
 ## Aktueller Meilenstein
 
-**M9 — REPL + Tooling.** S1 (README) steht; offen sind TextMate-Grammar, VS-Code-Extension,
-die REPL und der `v0.9`-Tag.
+**M9 — REPL + Tooling.** S1 (README) und S2 (TextMate-Grammar) stehen; offen sind die
+VS-Code-Extension, die REPL und der `v0.9`-Tag.
 
-**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1705 Tests grün. Das Gate
+**M8 ist abgeschlossen** (Slices S1–S8), Bytecode-Format **2.5**, 1709 Tests grün. Das Gate
 `examples/wc.lyr` zählt wie POSIX-`wc`.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -46,6 +46,23 @@ die REPL und der `v0.9`-Tag.
     ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
+
+- [x] **M9 — S2 — TextMate-Grammar** (`tooling/vscode-lyric/`). 1709 Tests gruen.
+  - **Die Keywords kommen aus dem Lexer, nicht aus dem Gedaechtnis** — und ein Test haelt beide
+    Listen aneinander. Eine Editor-Grammatik ist eine **zweite Beschreibung derselben Sprache**,
+    und zwei Beschreibungen driften: bekaeme Lyric ein Keyword, faerbte der Editor es einfach
+    nicht, und das sieht aus wie ein Bezeichner. Der Test prueft **beide Richtungen** — auch, dass
+    die Grammatik nichts faerbt, was die Sprache nicht kennt.
+  - **Verschachtelte Block-Kommentare** (§1.1) sind der Fall, den die meisten Grammatiken falsch
+    machen: ohne den Selbstbezug endet `/* /* */ */` eine Ebene zu frueh und faerbt den Rest der
+    Datei als Kommentar. Ein eigener Test haelt den Selbstbezug fest.
+  - **Spitze Klammern werden NICHT automatisch geschlossen.** Sie kommen als Vergleich mindestens
+    so oft vor wie als Typargumente; ein Editor, der sie schliesst, produziert bei jedem `a < b`
+    ein `>` zu viel. Dieselbe Mehrdeutigkeit, fuer die der Parser einen eigenen Token-Scan hat —
+    hier ist die richtige Antwort, es zu lassen.
+  - **Keine semantische Faerbung.** Ob ein Bezeichner ein Typ ist, weiss nur die Sema; die
+    Grammatik raet es an der Grossschreibung und sagt das im Kommentar. Wer es genau will,
+    braucht den LSP (v1.2).
 
 - [x] **M9 — S1 — README.** Sie behauptete nach acht Meilensteinen und 1700 Tests: **„no working
   compiler exists yet. Current milestone: M0"**. Das ist die Aussenwirkung des Projekts, und sie
@@ -114,8 +131,8 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M9.** Als naechstes **S2 — TextMate-Grammar** (`tooling/vscode-lyric/`), dann **S3** (VS-Code-
-Extension), **S4** (REPL), **S5** (Politur, `v0.9`-Tag).
+**M9.** S1 (README) und S2 (TextMate-Grammar) stehen. Als naechstes **S3** (VS-Code-Extension:
+`package.json` und ein Run-Command), dann **S4** (REPL), **S5** (Politur, `v0.9`-Tag).
 
 **Die REPL wird ein eigenes Binary** (`lyrrepl.exe`), vom Dispatcher gerufen wie `lyrc` und
 `lyrvm` — entschieden 2026-08-07. Der Grund ist nicht Symmetrie: sie braucht **Frontend UND
