@@ -953,14 +953,13 @@ pub fn first<T>(xs: T[]): ?T {
 }
 
 pub class Stack<T> {
-    items: T[] = [],
+    items: List<T>,
 
     mut fn push(value: T) {
         this.items.push(value);
     }
 
     mut fn pop(): ?T {
-        if (this.items.length == 0) { return null; }
         return this.items.pop();
     }
 }

@@ -11,11 +11,11 @@
 
 ## Aktueller Meilenstein
 
-**M9 — REPL + Tooling — abgeschlossen.** Slices S1 bis S5.
+**M9 — REPL + Tooling — abgeschlossen.** Slices S1 bis S5, danach ein Aufräum-Slice.
 
-1727 Tests grün, Bytecode-Format **2.5**, **vier** Binaries. `lyric repl` läuft, die README ist
-maschinell geprüft, die TextMate-Grammar an den Lexer gebunden, die VS-Code-Extension liefert
-Highlighting und einen Run-Command.
+1747 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**. `lyric repl`
+läuft, die README ist maschinell geprüft, die TextMate-Grammar an den Lexer gebunden, die
+VS-Code-Extension liefert Highlighting und einen Run-Command.
 
 **Offen für v1.0: nur noch M10** — die Embedding-API (`LangVm`, Marshalling, Hot-Reload).
 
@@ -24,6 +24,30 @@ Highlighting und einen Run-Command.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **Aufräum-Slice vor M10** (2026-08-07). Drei Punkte, die den `v0.9`-Tag blockiert haben.
+  - **Die Version stand an vier Stellen und widersprach sich.** README und `Doku.md` druckten
+    `Lyric 0.9.0` als REPL-Ausgabe ab, während die REPL `0.0.1-dev` sagte — eine abgeschriebene
+    statt einer erzeugten Ausgabe, hingeschrieben in S5, unmittelbar nachdem S1 Tests **gegen
+    genau diese Sorte Drift** gebaut hatte. Alles auf `0.9.0`; drei neue Tests binden
+    `Directory.Build.props` an die Konstante, alle **vier** Binaries aneinander (`lyrrepl` fehlte,
+    seit es sie gibt) und jede in der Doku abgedruckte Werkzeug-Ausgabe an die echte.
+  - **Ein Modul-`let` mit `T[]` oder `?T` brach das Lowering ab** — mit Stack-Trace, nicht mit
+    Diagnose. Ursache war **zum vierten Mal dieselbe**: `FunctionLowerer.LowerType` war eine
+    zweite, vollständige Kopie der Abbildung Sema-Typ → IR-Typ, und die Kopien waren
+    auseinandergelaufen (`T[]` und `?T` hier, nicht dort). Die Kopie ist **gelöscht**: die Methode
+    substituiert nur noch und delegiert an `TypeTable.Lower`. `SubstituteType` ist im selben Zug
+    vollständig geworden (`FnType`, `CoroutineOf`, `TupleOf` fehlten) — sonst hätte die
+    Delegation `fn(T) -> T` verschlechtert.
+  - **`stack.lyr` lag drei Meilensteine kaputt im Verzeichnis.** Es hat ADR-016 nicht überlebt
+    (`T[]` wurde ein echtes Array ohne `push`) und stand in keiner Test-Matrix — deshalb hat es
+    niemand bemerkt. Jetzt auf `List<T>` umgeschrieben. `bank.lyr` und `fibonacci.lyr` fehlten
+    ebenfalls; sie liefen, aber aus Glück. Ein neuer Test verlangt, dass **jedes** `examples/*.lyr`
+    in der Matrix steht oder auf einer Ausnahmeliste **mit Grund** — die handgepflegte Liste
+    vergisst sonst weiter.
+  - Die Matrix hat eine dritte Spalte bekommen: schreibt das Programm **selbst** auf stderr?
+    `bank.lyr` tut das als Pointe des Beispiels. Vorher hätte es aus der Matrix fallen müssen, und
+    ein Beispiel zu entfernen, damit die Matrix grün bleibt, ist die falsche Richtung.
 
 - [x] **M8 — S4 — `catch (e)` ohne Typ.** Die letzte Luecke aus P5 ist zu. 1627 Tests gruen.
   - **`Throwable` war laengst da** — als Builtin-Interface mit synthetischem AST, und die Sema
@@ -172,9 +196,6 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
 - **Generics-Rest aus M4**: Constraints mit eigenen Typ-Args über die Grenze substituieren.
   `Opt<int>.Some(5)` bleibt offen — eine *statische Methode* auf einer generischen Instanz ist
   weiterhin `LYR-SEM0052`; explizite Typargumente gibt es nur an Funktions-Aufrufen.
-- **Ein Global vom Typ `T[]` ist nicht lowerbar** (`ir: type not lowerable: int[]`). Betrifft
-  jedes Modul-`let` mit einem Array, nicht nur die REPL — dort faellt es nur zuerst auf, weil
-  `let xs = [1, 2]` eine naheliegende erste Eingabe ist.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
 - **`char as int` ist kein erlaubter Cast** (`LYR-SEM0006`). Beim Schreiben der S2-Tests
   aufgefallen. Ob das gewollt ist, sagt §6.5 nicht eindeutig — ungeprüft gelassen, weil eine

@@ -1356,4 +1356,59 @@ public class VmTests
                 return a + b + c + d;
             }
             """).AsI64);
+
+    // ------------------------------------------------------- Globals mit zusammengesetztem Typ
+
+    /// <summary>
+    /// Ein Modul-<c>let</c> darf jeden Typ haben, den eine lokale Variable haben darf.
+    ///
+    /// <para><b>Warum das ein eigener Abschnitt ist:</b> es ging nicht. Ein Global vom Typ
+    /// <c>T[]</c> oder <c>?T</c> brach das Lowering mit „type not lowerable" ab — nicht als
+    /// Diagnose, sondern als Absturz mit Stack-Trace — waehrend derselbe Ausdruck in einer
+    /// Funktion uebersetzte. Die Ursache war eine zweite, unvollstaendige Kopie der Abbildung
+    /// Sema-Typ → IR-Typ; sie ist geloescht, und diese Tests halten fest, was sie verschwiegen
+    /// hat.</para>
+    /// </summary>
+    [Fact]
+    public void A_global_may_be_an_array()
+    {
+        Assert.Equal(5, Run("""
+            let primes = [2, 3, 5, 7];
+            fn main(): int { return primes[2]; }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_global_array_is_writable_and_knows_its_length()
+    {
+        Assert.Equal(15, Run("""
+            let xs = [1, 2, 3];
+            fn main(): int {
+                xs[0] = 12;
+                return xs[0] + xs.length;
+            }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_global_may_be_optional()
+    {
+        Assert.Equal(7, Run("""
+            let maybe: ?int = 7;
+            fn main(): int { return maybe ?? 0; }
+            """).AsI64);
+    }
+
+    [Fact]
+    public void A_global_may_be_an_array_of_strings()
+    {
+        // Ein Referenztyp im Element, damit nicht nur der Skalar-Pfad geprueft ist.
+        Assert.Equal(5, Run("""
+            let names = ["ada", "grace"];
+            fn main(): int {
+                if (names[1] == "grace") { return 5; }
+                return 0;
+            }
+            """).AsI64);
+    }
 }

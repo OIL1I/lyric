@@ -20,7 +20,7 @@ public sealed class OutputTests
 
     [Theory]
     [MemberData(nameof(CommandTests.RunnableExamples), MemberType = typeof(CommandTests))]
-    public void Progress_never_touches_stdout(string example, int _)
+    public void Progress_never_touches_stdout(string example, int _, bool __)
     {
         // Die Zusage, an der alles haengt: die Anzeige lebt auf stderr. Waere sie auf stdout,
         // koennte kein Werkzeug die Ausgabe eines Lyric-Programms mehr maschinell lesen.

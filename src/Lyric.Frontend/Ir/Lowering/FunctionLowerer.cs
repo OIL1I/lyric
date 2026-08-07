@@ -3878,88 +3878,27 @@ internal sealed class FunctionLowerer
     private IrType TypeOfExpr(Expr expr) => LowerType(_types.TypeOf(expr), expr.Span);
 
     /// <summary>
-    /// Sema-Typ → IR-Typ. Hier sitzt der Substitutions-Haken der Monomorphisierung: ein
-    /// Typ-Parameter wird über die Instanz-Substitution aufgelöst. In P4 ist die Map immer leer,
-    /// der Zweig also inaktiv — aber er sitzt an der einzigen Stelle, die ihn braucht, statt
-    /// später über den gesamten Ausdrucks-Pfad nachgerüstet werden zu müssen.
+    /// Sema-Typ → IR-Typ. Hier sitzt der Substitutions-Haken der Monomorphisierung, und sonst
+    /// nichts: die Abbildung selbst liegt in <see cref="TypeTable.Lower(Sema.LyrType, Core.Span)"/>.
+    ///
+    /// <para><b>Warum nicht beides hier?</b> Weil es beides hier schon gab. Diese Methode war eine
+    /// zweite, vollständige Kopie derselben Abbildung — und wie jede zweite Antwort auf dieselbe
+    /// Frage ist sie von der ersten weggedriftet: <c>T[]</c> und <c>?T</c> standen hier und fehlten
+    /// dort, weshalb ein Modul-<c>let</c> mit Array überhaupt nicht übersetzbar war — in einer
+    /// Funktion ging derselbe Ausdruck. Der Unterschied ist jetzt nur noch die Substitution.</para>
     /// </summary>
     private IrType LowerType(LyrType type, Span span)
     {
-        if (type is TypeParamType parameter)
-        {
-            if (!_substitution.TryGetValue(parameter.Param, out var bound))
-                throw NotSupported($"type parameter '{parameter.Param.Name}'", span);
-            type = bound;
-        }
+        // Erst substituieren, dann abbilden. Rekursiv, damit auch 'Box<T>', '?T' und 'T[]' die
+        // Argumente der Instanz sehen — die TypeTable kennt die Substitution dieser Funktion nicht.
+        var concrete = SubstituteType(type);
 
-        // Eine Klasse wird zur Referenz auf ihren Tabellen-Eintrag; das Layout entsteht dabei
-        // einmalig in der TypeTable. Alles andere (Struct, Enum, Array, Tupel, …) ist weiterhin
-        // außerhalb dieses Compiler-Stands.
-        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Class } named)
-            return _typeTable.RefTo(named.Symbol);
+        // Ein Typ-Parameter, den die eigene Substitution nicht kennt: das ist die Grenze der
+        // Monomorphisierung und gehört hierher gemeldet, wo der Name noch bekannt ist.
+        if (concrete is TypeParamType parameter)
+            throw NotSupported($"type parameter '{parameter.Param.Name}'", span);
 
-        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Struct } valueType)
-            return _typeTable.StructOf(valueType.Symbol);
-
-        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } enumType)
-            return _typeTable.EnumOf(enumType.Symbol);
-
-        // Ein Interface als Werttyp: Lyrics 'dyn'. Zur Laufzeit ein Fat Pointer aus Objekt und
-        // konkretem Typindex — siehe IrInterfaceType.
-        if (type is NamedRef { Symbol.Kind: TypeSymbolKind.Interface } interfaceType)
-            return _typeTable.InterfaceOf(interfaceType.Symbol);
-
-        // T[] mit fester Länge (ADR-016). Der Elementtyp steht inline; T[N] gibt es nicht mehr.
-        if (type is ArrayOf array)
-            return new IrArrayType(LowerType(array.Element, span));
-
-        // ?T (Sprache.md §7). Nicht schachtelbar — die Sema kollabiert ??T bereits, hier ist es
-        // trotzdem eine Grenze statt einer stillen Annahme.
-        if (type is Optional optional)
-        {
-            var inner = LowerType(optional.Inner, span);
-            if (inner is IrOptionalType)
-                throw NotSupported("a nested optional '??T' (optionals do not nest)", span);
-            return new IrOptionalType(inner);
-        }
-
-        // Ein Tupel (§4): ein Objekt mit einem Feld je Element.
-        if (type is Sema.TupleOf tuple)
-            return _typeTable.TupleOf(tuple.Elements.Select(e => LowerType(e, span)).ToArray());
-
-        // Eine Instanz eines generischen Typs (§12). Die Typargumente koennen selbst
-        // Typ-Parameter sein, wenn die rufende Funktion schon eine Instanz ist — deshalb werden
-        // sie hier durch die eigene Substitution geschickt, bevor die Instanz interniert wird.
-        if (type is GenericInstance instance)
-            return _typeTable.InstanceType(
-                new GenericInstance(instance.Definition,
-                    instance.Arguments.Select(a => SubstituteType(a)).ToArray()),
-                span);
-
-        // Coroutine<T> IST ein Funktionswert ohne Parameter (Sprache.md §8): 'resume co' setzt
-        // sie fort und liefert den naechsten Wert — das ist ein Aufruf, und die Coroutine
-        // unterscheidet sich von einer gewoehnlichen Funktion nur darin, WO sie beim naechsten
-        // Mal anfaengt. Genau deshalb braucht sie hier keinen eigenen Typ: sie ist ein Fat Pointer
-        // aus Zustandsobjekt und Rumpf-Index, also eine Closure (ADR-018).
-        //
-        // Dass die Sema 'Coroutine<int>' und 'fn() -> int' trotzdem TRENNT, ist richtig und
-        // gehoert dorthin: 'resume' auf einer Nicht-Coroutine ist LYR-SEM0040, und ein
-        // Coroutine-Wert laesst sich nicht wie eine Funktion rufen. Die IR muss diese
-        // Unterscheidung nicht wiederholen — sie prueft Konsistenz, nicht Sprachregeln.
-        if (type is CoroutineOf coroutine)
-            return new IrFunctionType([], LowerType(coroutine.Yield, span));
-
-        // fn(A, B) -> R: ein Funktionswert (ADR-018). Traegt seine Signatur strukturell und
-        // braucht deshalb keinen Eintrag in der Typtabelle.
-        if (type is FnType signature)
-            return new IrFunctionType(
-                signature.Parameters.Select(p => LowerType(p, span)).ToArray(),
-                LowerType(signature.Return, span));
-
-        if (type is not PrimitiveType)
-            throw NotSupported($"type '{TypeFacts.Display(type)}'", span);
-
-        return TypeLowering.Lower(type);
+        return _typeTable.Lower(concrete, span);
     }
 
     /// <summary>Der Rückgabetyp kommt aus dem syntaktischen <see cref="TypeNode"/>, weil die Sema
@@ -3994,11 +3933,24 @@ internal sealed class FunctionLowerer
         return true;
     }
 
+    /// <summary>
+    /// Setzt die Typargumente dieser Instanz überall ein, wo ein Typ-Parameter steht.
+    ///
+    /// <para><b>Vollständig zu sein ist hier keine Kür.</b> Dieselbe Funktion war schon dreimal
+    /// eine Teilkopie — erst fehlte <c>?T</c>, dann <c>T[]</c>, dann <c>Box&lt;T&gt;</c>, und jedes
+    /// Mal sah der Fehler wie ein neuer aus. Wer hier einen Typ-Konstruktor ergänzt, ergänzt ihn
+    /// auch hier: ein nicht substituierter Parameter kommt sonst als „unsubstituted" in der
+    /// <see cref="TypeTable"/> an, weit weg von seiner Ursache.</para>
+    /// </summary>
     private LyrType SubstituteType(LyrType type) => type switch
     {
         TypeParamType p when _substitution.TryGetValue(p.Param, out var bound) => bound,
         ArrayOf a => new ArrayOf(SubstituteType(a.Element), a.Size),
         Optional o => new Optional(SubstituteType(o.Inner)),
+        Sema.TupleOf t => new Sema.TupleOf(t.Elements.Select(SubstituteType).ToArray()),
+        FnType f => new FnType(
+            f.Parameters.Select(SubstituteType).ToArray(), SubstituteType(f.Return)),
+        CoroutineOf c => new CoroutineOf(SubstituteType(c.Yield)),
         GenericInstance g => new GenericInstance(g.Definition,
             g.Arguments.Select(SubstituteType).ToArray()),
         _ => type,

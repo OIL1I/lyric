@@ -631,14 +631,41 @@ internal sealed class TypeTable
         // eigenem Layout (§12).
         GenericInstance g => InstanceType(g, span),
 
-        // Coroutine<T> ist ein Funktionswert ohne Parameter — siehe FunctionLowerer.LowerType.
+        // Coroutine<T> IST ein Funktionswert ohne Parameter (§8): 'resume co' setzt sie fort und
+        // liefert den naechsten Wert — das ist ein Aufruf, und die Coroutine unterscheidet sich von
+        // einer gewoehnlichen Funktion nur darin, WO sie beim naechsten Mal anfaengt. Dass die Sema
+        // beide trennt, ist richtig und gehoert dorthin; die IR prueft Konsistenz, nicht
+        // Sprachregeln.
         CoroutineOf c => new IrFunctionType([], Lower(c.Yield, span)),
 
         FnType f => new IrFunctionType(
             f.Parameters.Select(p => Lower(p, span)).ToArray(), Lower(f.Return, span)),
 
+        // T[] (ADR-016). Ein Array ist ein Referenztyp mit dem Elementtyp inline; es braucht keinen
+        // Tabellen-Eintrag, weil es kein benanntes Layout hat.
+        ArrayOf a => new IrArrayType(Lower(a.Element, span)),
+
+        // ?T (§7). Nicht schachtelbar — die Sema kollabiert '??T' bereits, hier steht trotzdem eine
+        // Grenze statt einer stillen Annahme.
+        Optional o => OptionalOf(Lower(o.Inner, span), span),
+
+        // Ein Typ-Parameter erreicht diese Stelle nur, wenn der Rufer ihn nicht substituiert hat.
+        // Das ist ein Lowering-Fehler und keine Sprachgrenze — deshalb eine eigene Meldung statt
+        // des generischen „not lowerable".
+        TypeParamType p => throw new UnsupportedConstructException(
+            $"type parameter '{p.Param.Name}' reached lowering unsubstituted", span),
+
         _ => TypeLowering.Lower(type)
     };
+
+    /// <summary>'?T' mit der Schachtelungs-Grenze an einer Stelle, statt an jeder Rufstelle.
+    /// </summary>
+    private static IrType OptionalOf(IrType inner, Core.Span span) =>
+        inner is IrOptionalType
+            ? throw new UnsupportedConstructException(
+                "a nested optional '??T' (optionals do not nest) is not supported by this compiler " +
+                "version yet", span)
+            : new IrOptionalType(inner);
 
     /// <summary>
     /// Ein syntaktisch geschriebener Typ (Feld, Parameter, Rückgabetyp). Ein Klassentyp interniert

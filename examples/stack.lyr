@@ -1,42 +1,47 @@
 // stack.lyr — Komplexität: mittel–fortgeschritten
 // Zeigt: generische class + generisches interface, Interface-Konformität via `::`,
-// mut-Methoden, Nullable-Rückgabe, Default-Feld-Wert, while-Schleife.
+// mut-Methoden, Nullable-Rückgabe, Komposition über std.collections.List, while-Schleife.
 
 import std.io.console { println };
+import std.collections { List, emptyList };
 
 pub interface Container<T> {
     mut fn add(item: T);
     fn count(): int;
 }
 
+// Ein Stack ist eine Liste mit weniger Möglichkeiten — und genau das ist der Punkt. Er erbt
+// nichts, er BESITZT eine Liste (Lyric kennt keine Vererbung, ADR-005) und gibt nach außen nur
+// weiter, was ein Stack können darf: oben drauf, oben runter, oben gucken.
 pub class Stack<T> :: [Container<T>] {
-    items: T[] = [],
+    items: List<T>,
 
     mut fn add(item: T) {
         this.items.push(item);
     }
 
     mut fn pop(): ?T {
-        if (this.items.length == 0) {
-            return null;
-        }
         return this.items.pop();
     }
 
     fn peek(): ?T {
-        if (this.items.length == 0) {
+        if (this.items.length() == 0) {
             return null;
         }
-        return this.items[this.items.length - 1];
+        return this.items.get(this.items.length() - 1);
     }
 
     fn count(): int {
-        return this.items.length;
+        return this.items.length();
     }
 }
 
+fn newStack<T>(): Stack<T> {
+    return Stack<T> { items = emptyList<T>() };
+}
+
 fn main(): int {
-    var stack = Stack<int> { };
+    var stack = newStack<int>();
     stack.add(1);
     stack.add(2);
     stack.add(3);

@@ -182,14 +182,59 @@ public sealed class ProtocolTests
     }
 
     [Fact]
-    public void All_three_binaries_report_the_same_toolchain_version()
+    public void All_four_binaries_report_the_same_toolchain_version()
     {
-        var lyrc = Toolchain.Lyrc("--version").Out.Trim();
-        var lyrvm = Toolchain.Lyrvm("--version").Out.Trim();
-        var lyric = Toolchain.Lyric("--version").Out.Trim();
+        // lyrrepl fehlte hier, seit es sie gibt (ADR-021) — eine Liste, die „alle" heisst und
+        // drei zaehlt, waechst nicht mit.
+        Assert.StartsWith("lyrc " + ToolchainVersion.Value, Toolchain.Lyrc("--version").Out.Trim());
+        Assert.StartsWith("lyrvm " + ToolchainVersion.Value, Toolchain.Lyrvm("--version").Out.Trim());
+        Assert.StartsWith("lyric " + ToolchainVersion.Value, Toolchain.Lyric("--version").Out.Trim());
+        Assert.StartsWith("lyrrepl " + ToolchainVersion.Value,
+            Toolchain.Run(Toolchain.LyrreplPath, ["--version"]).Out.Trim());
+    }
 
-        Assert.StartsWith("lyrc " + ToolchainVersion.Value, lyrc);
-        Assert.StartsWith("lyrvm " + ToolchainVersion.Value, lyrvm);
-        Assert.StartsWith("lyric " + ToolchainVersion.Value, lyric);
+    /// <summary>
+    /// Die Version im <c>Version</c>-Property von MSBuild ist dieselbe wie im Quelltext.
+    ///
+    /// <para>Sie steht notgedrungen zweimal — MSBuild kann keine C#-Konstante lesen. Zwei Stellen
+    /// mit derselben Antwort driften; hier faellt das auf, statt dass ein Paket mit einer anderen
+    /// Nummer erscheint, als das Werkzeug darin druckt.</para>
+    /// </summary>
+    [Fact]
+    public void The_build_property_and_the_source_constant_agree()
+    {
+        var props = File.ReadAllText(
+            Path.Combine(Toolchain.RepositoryRoot, "Directory.Build.props"));
+
+        Assert.Contains($"<Version>{ToolchainVersion.Value}</Version>", props);
+    }
+
+    /// <summary>
+    /// Jede Version, die in README oder Doku als <b>Ausgabe eines Werkzeugs</b> abgedruckt ist,
+    /// stimmt mit dem, was das Werkzeug wirklich druckt.
+    ///
+    /// <para>Ohne diesen Test entsteht der Fehler, den er verhindert, beim Schreiben der Doku:
+    /// eine plausible Ausgabe wird hingeschrieben, statt sie zu erzeugen. Genau so kam
+    /// <c>Lyric 0.9.0</c> in beide Dateien, waehrend die REPL <c>0.0.1-dev</c> druckte — ein
+    /// Beispiel, das nie gelaufen ist, gibt es hier nicht mehr.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("README.md")]
+    [InlineData("docs/Doku.md")]
+    public void Printed_versions_in_the_docs_are_the_real_one(string document)
+    {
+        var text = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, document));
+
+        var printed = System.Text.RegularExpressions.Regex
+            .Matches(text, @"^Lyric (\S+) — :help",
+                System.Text.RegularExpressions.RegexOptions.Multiline)
+            .Select(match => match.Groups[1].Value)
+            .ToArray();
+
+        // Ohne diese Zeile ist der Test gruen, wenn die Regex nichts trifft — und faende damit
+        // auch nichts, wenn jemand das Beispiel umformuliert. Ein Test, der still nichts prueft,
+        // ist schlimmer als keiner: er sagt „geprueft".
+        Assert.NotEmpty(printed);
+        Assert.All(printed, version => Assert.Equal(ToolchainVersion.Value, version));
     }
 }

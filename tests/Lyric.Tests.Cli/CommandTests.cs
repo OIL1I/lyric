@@ -12,44 +12,85 @@ namespace Lyric.Tests.Cli;
 /// </summary>
 public sealed class CommandTests
 {
-    /// <summary>Die Programme, die mit dem heutigen Backend-Stand laufen, mit ihrem
-    /// Exit-Code. Was hier fehlt, wartet auf einen M7-Slice (Structs, Closures, Coroutinen,
-    /// Generics) oder auf M8 — bewusst nicht als „erwartet fehlerhaft" gelistet, weil dieser
-    /// Test die Toolchain prueft und nicht den Sprachumfang.</summary>
-    public static TheoryData<string, int> RunnableExamples => new()
+    /// <summary>Die Programme, die mit dem heutigen Backend-Stand laufen: Name, Exit-Code und ob
+    /// das Programm <b>selbst</b> auf stderr schreibt.
+    ///
+    /// <para>Die dritte Spalte trennt zwei Dinge, die vorher eines waren: <c>bank.lyr</c> faengt
+    /// einen Fehler und meldet ihn auf stderr — das ist die Pointe des Beispiels und nicht
+    /// Rauschen der Toolchain. Ohne die Spalte muesste es aus der Matrix fallen, und ein Beispiel
+    /// aus der Matrix zu nehmen, damit die Matrix gruen bleibt, ist die falsche Richtung.</para>
+    /// </summary>
+    public static TheoryData<string, int, bool> RunnableExamples => new()
     {
-        { "hello.lyr", 0 },
-        { "arith.lyr", 55 },
-        { "objects.lyr", 21 },
-        { "arrays.lyr", 144 },
-        { "optionals.lyr", 200 },
-        { "enums.lyr", 24 },
-        { "interfaces.lyr", 140 },
-        { "vectors.lyr", 115 },
-        { "constants.lyr", 140 },
-        { "closures.lyr", 83 },
-        { "generator.lyr", 40 },
-        { "fizzbuzz.lyr", 0 },
-        { "greet.lyr", 0 },
-        { "tuples.lyr", 26 },
-        { "inventory.lyr", 0 },
-        { "stats.lyr", 0 },
-        { "shapes.lyr", 0 },
+        { "hello.lyr", 0, false },
+        { "arith.lyr", 55, false },
+        { "objects.lyr", 21, false },
+        { "arrays.lyr", 144, false },
+        { "optionals.lyr", 200, false },
+        { "enums.lyr", 24, false },
+        { "interfaces.lyr", 140, false },
+        { "vectors.lyr", 115, false },
+        { "constants.lyr", 140, false },
+        { "closures.lyr", 83, false },
+        { "generator.lyr", 40, false },
+        { "fizzbuzz.lyr", 0, false },
+        { "greet.lyr", 0, false },
+        { "tuples.lyr", 26, false },
+        { "inventory.lyr", 0, false },
+        { "stats.lyr", 0, false },
+        { "shapes.lyr", 0, false },
+        { "stack.lyr", 0, false },
+        { "bank.lyr", 0, true },
+        { "fibonacci.lyr", 0, false },
     };
 
-    [Theory]
-    [MemberData(nameof(RunnableExamples))]
-    public void Lyric_run_produces_the_documented_exit_code(string example, int expected)
+    /// <summary>Beispiele, die absichtlich nicht in der Matrix stehen — mit Grund.</summary>
+    private static readonly Dictionary<string, string> NotInTheMatrix = new()
     {
-        var result = Toolchain.Lyric("run", Toolchain.Example(example));
+        ["wc.lyr"] = "hat eigene Tests in GateTests: es liest eine Datei und braucht Argumente",
+        ["embedded.lyr"] = "laeuft nur im Host-Prozess (M10), nicht ueber 'lyric run'",
+    };
 
-        Assert.Equal(expected, result.ExitCode);
-        Assert.Equal("", result.Err);
+    /// <summary>
+    /// <b>Jedes</b> Beispiel steht in der Matrix oder auf der Ausnahmeliste.
+    ///
+    /// <para>Ohne diesen Test ist die Matrix eine handgepflegte Liste, und eine handgepflegte Liste
+    /// vergisst. Genau das ist passiert: <c>stack.lyr</c> hat ADR-016 nicht überlebt — <c>T[]</c>
+    /// wurde ein echtes Array ohne <c>push</c> — und lag danach <i>drei Meilensteine lang kaputt
+    /// im Verzeichnis</i>, weil kein Test es je angefasst hat. <c>bank.lyr</c> und
+    /// <c>fibonacci.lyr</c> liefen zwar, aber aus Glück und nicht aus Zusicherung.</para>
+    /// </summary>
+    [Fact]
+    public void Every_example_is_covered_or_listed_as_an_exception()
+    {
+        var inMatrix = RunnableExamples.Select(row => (string)row[0]).ToHashSet();
+
+        var uncovered = Directory.GetFiles(
+                Path.Combine(Toolchain.RepositoryRoot, "examples"), "*.lyr")
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Where(name => !inMatrix.Contains(name) && !NotInTheMatrix.ContainsKey(name))
+            .OrderBy(name => name)
+            .ToArray();
+
+        Assert.Empty(uncovered);
     }
 
     [Theory]
     [MemberData(nameof(RunnableExamples))]
-    public void Lyric_check_accepts_every_runnable_example(string example, int _)
+    public void Lyric_run_produces_the_documented_exit_code(
+        string example, int expected, bool writesToStderr)
+    {
+        var result = Toolchain.Lyric("run", Toolchain.Example(example));
+
+        Assert.Equal(expected, result.ExitCode);
+        if (!writesToStderr) Assert.Equal("", result.Err);
+    }
+
+    [Theory]
+    [MemberData(nameof(RunnableExamples))]
+    #pragma warning disable xUnit1026 // Die Matrix ist dreispaltig; check braucht nur den Namen.
+    public void Lyric_check_accepts_every_runnable_example(string example, int _, bool __)
     {
         var result = Toolchain.Lyric("check", Toolchain.Example(example));
 
@@ -64,7 +105,7 @@ public sealed class CommandTests
     /// </summary>
     [Theory]
     [MemberData(nameof(RunnableExamples))]
-    public void Lyric_run_equals_lyrc_build_plus_lyrvm_run(string example, int expected)
+    public void Lyric_run_equals_lyrc_build_plus_lyrvm_run(string example, int expected, bool _)
     {
         using var module = Toolchain.Temp(".lyrbc");
 
