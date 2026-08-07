@@ -85,3 +85,153 @@ pub class StringIterator :: [Iterator<char>] {
 pub interface Iterable<T> {
     fn iter(): Iterator<T>;
 }
+
+// ====================================================================== Adapter (M8b/S3)
+//
+// Jeder Adapter ist eine Klasse mit Zustand plus eine Funktion, die sie baut. Die Funktion gibt
+// `Iterator<T>` zurueck und nicht die Klasse: so laesst sich verketten, ohne dass der Typ des
+// Zwischenergebnisses im Quelltext auftaucht.
+//
+// **Faul, nicht eifrig.** Kein Adapter zieht seine Quelle leer, bevor jemand `next` ruft. Wer
+// `take(map(riesig, teuer), 3)` schreibt, bezahlt drei Aufrufe von `teuer` und nicht Millionen —
+// das ist der Grund, warum es Iteratoren gibt und nicht nur Arrays.
+//
+// Die Adapter halten ihre Quelle als `Iterator<T>`, also als Fat Pointer (P3). Das kostet einen
+// virtuellen Aufruf je Element; die Alternative waere ein zweiter Typ-Parameter je Adapter, und
+// der wuerde jede Signatur verdoppeln.
+
+pub class MapIterator<T, U> :: [Iterator<U>] {
+    source: Iterator<T>,
+    f: fn(T) -> U,
+
+    pub mut fn next(): ?U {
+        let value = this.source.next();
+        if (value == null) {
+            return null;
+        }
+        let g = this.f;
+        return g(value);
+    }
+}
+
+pub fn map<T, U>(source: Iterator<T>, f: fn(T) -> U): Iterator<U> {
+    return MapIterator<T, U> { source = source, f = f };
+}
+
+pub class FilterIterator<T> :: [Iterator<T>] {
+    source: Iterator<T>,
+    keep: fn(T) -> bool,
+
+    pub mut fn next(): ?T {
+        var value = this.source.next();
+        while (value != null) {
+            let p = this.keep;
+            if (p(value)) {
+                return value;
+            }
+            value = this.source.next();
+        }
+        return null;
+    }
+}
+
+pub fn filter<T>(source: Iterator<T>, keep: fn(T) -> bool): Iterator<T> {
+    return FilterIterator<T> { source = source, keep = keep };
+}
+
+pub class TakeIterator<T> :: [Iterator<T>] {
+    source: Iterator<T>,
+    remaining: int,
+
+    pub mut fn next(): ?T {
+        if (this.remaining <= 0) {
+            return null;
+        }
+        this.remaining = this.remaining - 1;
+        return this.source.next();
+    }
+}
+
+// Die ersten `count` Elemente. Ein negatives `count` liefert nichts, statt zu panicen: „nimm
+// minus drei" ist keine gebrochene Zusage, sondern eine leere Auswahl.
+pub fn take<T>(source: Iterator<T>, count: int): Iterator<T> {
+    return TakeIterator<T> { source = source, remaining = count };
+}
+
+pub class SkipIterator<T> :: [Iterator<T>] {
+    source: Iterator<T>,
+    pending: int,
+
+    pub mut fn next(): ?T {
+        // Erst beim ersten `next` ueberspringen, nicht beim Bauen — sonst waere der Adapter
+        // eifrig und `skip` allein haette schon einen Effekt.
+        while (this.pending > 0) {
+            this.pending = this.pending - 1;
+            if (this.source.next() == null) {
+                return null;
+            }
+        }
+        return this.source.next();
+    }
+}
+
+pub fn skip<T>(source: Iterator<T>, count: int): Iterator<T> {
+    return SkipIterator<T> { source = source, pending = count };
+}
+
+pub class TakeWhileIterator<T> :: [Iterator<T>] {
+    source: Iterator<T>,
+    keep: fn(T) -> bool,
+    done: bool = false,
+
+    pub mut fn next(): ?T {
+        if (this.done) {
+            return null;
+        }
+        let value = this.source.next();
+        if (value == null) {
+            this.done = true;
+            return null;
+        }
+        let p = this.keep;
+        if (p(value)) {
+            return value;
+        }
+        // Nach dem ersten `false` ist Schluss — auch wenn spaeter wieder `true` kaeme. Das
+        // unterscheidet `takeWhile` von `filter`, und es ist der ganze Zweck.
+        this.done = true;
+        return null;
+    }
+}
+
+pub fn takeWhile<T>(source: Iterator<T>, keep: fn(T) -> bool): Iterator<T> {
+    return TakeWhileIterator<T> { source = source, keep = keep };
+}
+
+// `enumerate` und `zip` fehlen noch. Beide brauchen ein TUPEL als Typargument eines generischen
+// Interfaces — `Iterator<(int, T)>` —, und das ist heute nicht lowerbar:
+//
+//     ir: this type argument is not supported by this compiler version yet
+//
+// Die Sema akzeptiert es, das Lowering nicht. Erst diese Grenze klaeren, dann bauen.
+
+pub class ChainIterator<T> :: [Iterator<T>] {
+    first: Iterator<T>,
+    second: Iterator<T>,
+    onFirst: bool = true,
+
+    pub mut fn next(): ?T {
+        if (this.onFirst) {
+            let value = this.first.next();
+            if (value != null) {
+                return value;
+            }
+            this.onFirst = false;
+        }
+        return this.second.next();
+    }
+}
+
+pub fn chain<T>(first: Iterator<T>, second: Iterator<T>): Iterator<T> {
+    return ChainIterator<T> { first = first, second = second };
+}

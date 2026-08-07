@@ -1515,6 +1515,13 @@ public sealed class TypeChecker
     {
         if (TypeFacts.SymbolOf(arg) is not { } symbol) return;
 
+        // Ist das Argument selbst eine Instanz ('ArrayIterator<string>'), muss deren Substitution
+        // noch obendrauf: die Konformanzliste der DEFINITION sagt 'Iterator<T>' mit dem
+        // Typ-Parameter der Klasse, nicht 'Iterator<string>'. Ohne diesen Schritt kam ein
+        // Typ-Parameter statt eines konkreten Typs heraus — und der Fehler sah aus wie der, den
+        // diese Methode gerade behebt ("type argument 0 is not concrete ('T')").
+        var ofInstance = arg is GenericInstance gi ? SubstMap(gi) : EmptySubst;
+
         foreach (var (iface, subst) in InterfacesOf(symbol))
         {
             if (!ReferenceEquals(iface, wanted.Definition)) continue;
@@ -1525,7 +1532,7 @@ public sealed class TypeChecker
             var n = Math.Min(iface.Generics.Length, wanted.Arguments.Length);
             for (var i = 0; i < n; i++)
                 if (subst.TryGetValue(iface.Generics[i], out var bound))
-                    UnifyInfer(wanted.Arguments[i], bound, map);
+                    UnifyInfer(wanted.Arguments[i], Substitute(bound, ofInstance), map);
 
             return;
         }
