@@ -1039,7 +1039,7 @@ public sealed class TypeChecker
         // Fall '?T == null' ist oben schon durch, und dafuer gibt es ausserdem Flow-Narrowing.
         if (l is PrimitiveType or ErrorType or NullType) return;
 
-        _de.Report("LYR-SEM0055", Severity.Error, b.Span,
+        _de.Report("LYR-SEM0059", Severity.Error, b.Span,
             $"'{(b.Operator is BinaryOp.Eq ? "==" : "!=")}' is not defined for " +
             $"'{TypeFacts.Display(l)}' — only scalars compare directly in v1; " +
             "give the type a method (operator overloading comes after v1.0)");
@@ -1369,11 +1369,20 @@ public sealed class TypeChecker
         foreach (var c in gp.Constraints)
         {
             if (c is not NamedType nt) continue;
-            var csym = _binding.Resolve(nt);
-            if (csym is ImportBindingSymbol ib) csym = ib.Target;
-            if (csym is TypeSymbol { Kind: TypeSymbolKind.Interface } it
-                && it.Members.LookupLocal(member) is FunctionSymbol fn)
-                return (FnTypeOf(fn), fn);
+            if (InterfaceWithSubst(nt) is not { } resolved) continue;
+
+            var (it, subst) = resolved;
+            if (it.Members.LookupLocal(member) is not FunctionSymbol fn) continue;
+
+            // Die Typargumente DES CONSTRAINTS einsetzen. 'T :: [Eq<T>]' heisst: das 'T' in
+            // 'Eq<T>.eq(other: T)' ist das 'T' der rufenden Funktion — zwei verschiedene Symbole
+            // mit demselben Namen.
+            //
+            // Ohne die Substitution kam der rohe Interface-Typ zurueck, und der Aufruf 'a.eq(b)'
+            // scheiterte mit der ratlosen Meldung „cannot assign 'T' to 'T'". Die
+            // Konformanzpruefung (CheckTypeConformance) macht genau dasselbe seit jeher richtig —
+            // eine Frage, zwei Stellen, und nur eine hatte die Antwort.
+            return (Substitute(FnTypeOf(fn), subst), fn);
         }
         return (Report(span, "LYR-SEM0027",
             $"type parameter '{gp.Name}' has no member '{member}' (no constraint provides it)"), null);

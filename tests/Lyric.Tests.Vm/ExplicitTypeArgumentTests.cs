@@ -181,4 +181,84 @@ public class ExplicitTypeArgumentTests
             fn show<T :: [Named]>(x: T): string { return x.name(); }
             fn main(): int { let s = show<int>(5); return 0; }
             """).Diagnostics, d => d.Code == "LYR-SEM0028");
+
+    // ------------------------------------------ Constraints mit eigenen Typargumenten
+
+    private const string EqSetup = """
+        pub interface Eq<T> {
+            fn eq(other: T): bool;
+        }
+
+        extend int :: [Eq<int>] {
+            fn eq(other: int): bool { return this == other; }
+        }
+
+        pub struct P :: [Eq<P>] {
+            x: int,
+            fn eq(other: P): bool { return this.x == other.x; }
+        }
+
+        pub fn same<T :: [Eq<T>]>(a: T, b: T): bool {
+            return a.eq(b);
+        }
+
+        """;
+
+    /// <summary>
+    /// Ein Constraint darf sein eigenes Typargument mitbringen: <c>T :: [Eq&lt;T&gt;]</c>.
+    ///
+    /// <para><b>Der Punkt, an dem es scheiterte</b>, war ratlos formuliert: „cannot assign 'T' to
+    /// 'T'". Zwei verschiedene Symbole mit demselben Namen — das <c>T</c> der Funktion und das
+    /// <c>T</c> des Interfaces. <c>MemberOfTypeParam</c> gab den rohen Interface-Typ zurueck,
+    /// ohne die Argumente des Constraints einzusetzen.</para>
+    ///
+    /// <para>Die Konformanzpruefung machte dieselbe Substitution seit jeher richtig. Eine Frage,
+    /// zwei Stellen, und nur eine hatte die Antwort — dasselbe Muster wie bei
+    /// <c>LowerType</c>/<c>TypeTable.Lower</c> und bei <c>UnifyNumeric</c>.</para>
+    ///
+    /// <para>Ohne diesen Punkt ist <c>Map&lt;K :: [Hashable&lt;K&gt;], V&gt;</c> nicht
+    /// formulierbar, und damit ADR-024 nicht umsetzbar.</para>
+    /// </summary>
+    [Fact]
+    public void A_constraint_may_carry_its_own_type_argument() =>
+        Assert.Equal(1, Run(EqSetup + """
+            fn main(): int {
+                if (same<int>(3, 3)) { return 1; }
+                return 0;
+            }
+            """));
+
+    [Fact]
+    public void The_type_argument_may_be_inferred() =>
+        // Ohne explizites '<int>'. Die Inferenz lief vorher in denselben Fehler.
+        Assert.Equal(0, Run(EqSetup + """
+            fn main(): int {
+                if (same(3, 4)) { return 1; }
+                return 0;
+            }
+            """));
+
+    [Fact]
+    public void A_user_type_satisfies_the_constraint() =>
+        // Ein 'struct' mit ':: [Eq<P>]' — der Fall, den Map/Set brauchen werden.
+        Assert.Equal(1, Run(EqSetup + """
+            fn main(): int {
+                if (same(P { x = 7 }, P { x = 7 })) { return 1; }
+                return 0;
+            }
+            """));
+
+    [Fact]
+    public void The_constraint_survives_being_passed_on() =>
+        // Zwei generische Funktionen hintereinander: 'describe<T>' reicht sein eigenes T an
+        // 'same<T>' weiter. Ohne diesen Test bliebe ungeprueft, ob die Substitution auch dann
+        // stimmt, wenn das Argument selbst ein Typ-Parameter ist.
+        Assert.Equal(1, Run(EqSetup + """
+            pub fn describe<T :: [Eq<T>]>(a: T, b: T): int {
+                if (same<T>(a, b)) { return 1; }
+                return 0;
+            }
+
+            fn main(): int { return describe(5, 5); }
+            """));
 }
