@@ -11,6 +11,10 @@
 
 module std.iter;
 
+// Fuer 'minValue'/'maxValue'. Kein Zyklus: 'std.core' importiert nur 'std.string', und das
+// importiert nichts.
+import std.core { Ordered };
+
 pub interface Iterator<T> {
     // 'mut', weil ein Iterator seinen Fortschritt fortschreibt — genau das unterscheidet ihn von
     // einer Funktion, die jedes Mal dasselbe liefert.
@@ -234,4 +238,169 @@ pub class ChainIterator<T> :: [Iterator<T>] {
 
 pub fn chain<T>(first: Iterator<T>, second: Iterator<T>): Iterator<T> {
     return ChainIterator<T> { first = first, second = second };
+}
+
+// ================================================================= Terminatoren (M8b/S3)
+//
+// Ein Terminator zieht den Iterator leer und liefert einen Wert. Damit endet eine Kette — und
+// erst hier passiert ueberhaupt etwas: die Adapter darueber sind faul.
+//
+// Nach einem Terminator ist der Iterator verbraucht. Lyric hat keine Moeglichkeit, das
+// auszudruecken (kein Move, kein Borrow-Checker), also ist es eine Zusage an den Leser und keine
+// des Compilers: wer denselben Iterator zweimal terminiert, bekommt beim zweiten Mal nichts.
+
+/// Faltet von links: `fold(1..4, 0, (acc, n) => acc + n)` ist `((0+1)+2)+3`.
+///
+/// Der allgemeinste Terminator — `count`, `sum`, `any` und `all` sind Spezialfaelle davon. Sie
+/// stehen trotzdem einzeln da, weil `fold` mit einer Closure fuer „zaehl mal" zu viel Zeremonie
+/// ist.
+pub fn fold<T, A>(source: Iterator<T>, seed: A, step: fn(A, T) -> A): A {
+    var acc = seed;
+    var value = source.next();
+    while (value != null) {
+        let f = step;
+        acc = f(acc, value);
+        value = source.next();
+    }
+    return acc;
+}
+
+pub fn count<T>(source: Iterator<T>): int {
+    var n = 0;
+    var value = source.next();
+    while (value != null) {
+        n = n + 1;
+        value = source.next();
+    }
+    return n;
+}
+
+// `sum` und `sumFloat` getrennt, weil Lyric kein Overloading hat (ADR-015) und es kein
+// `Addable`-Interface gibt. Ein solches Interface waere die Alternative — es gehoert aber zu
+// Operator-Overloading (v1.4) und nicht hierher.
+pub fn sum(source: Iterator<int>): int {
+    var total = 0;
+    var value = source.next();
+    while (value != null) {
+        total = total + value;
+        value = source.next();
+    }
+    return total;
+}
+
+pub fn sumFloat(source: Iterator<float>): float {
+    var total = 0.0;
+    var value = source.next();
+    while (value != null) {
+        total = total + value;
+        value = source.next();
+    }
+    return total;
+}
+
+/// Bricht beim ersten Treffer ab — der Rest wird nie ausgewertet.
+pub fn any<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
+    var value = source.next();
+    while (value != null) {
+        let p = test;
+        if (p(value)) {
+            return true;
+        }
+        value = source.next();
+    }
+    return false;
+}
+
+/// Bricht beim ersten Gegenbeispiel ab. Ein leerer Iterator liefert `true` — das ist die
+/// uebliche Konvention und die einzige, mit der `all(a) && all(b) == all(chain(a, b))` gilt.
+pub fn all<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
+    var value = source.next();
+    while (value != null) {
+        let p = test;
+        if (!p(value)) {
+            return false;
+        }
+        value = source.next();
+    }
+    return true;
+}
+
+pub fn none<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
+    return !any<T>(source, test);
+}
+
+/// Das erste Element, das passt — `null`, wenn keines passt.
+pub fn find<T>(source: Iterator<T>, test: fn(T) -> bool): ?T {
+    var value = source.next();
+    while (value != null) {
+        let p = test;
+        if (p(value)) {
+            return value;
+        }
+        value = source.next();
+    }
+    return null;
+}
+
+/// Die Position des ersten Treffers. Getrennt von `find`, weil ein Tupel `(int, T)` hier den
+/// haeufigen Fall verteuern wuerde, in dem nur eines von beidem gebraucht wird.
+pub fn position<T>(source: Iterator<T>, test: fn(T) -> bool): ?int {
+    var index = 0;
+    var value = source.next();
+    while (value != null) {
+        let p = test;
+        if (p(value)) {
+            return index;
+        }
+        index = index + 1;
+        value = source.next();
+    }
+    return null;
+}
+
+/// Alles in ein Array.
+///
+/// **Quadratisch**: `T[]` ist unveraenderlich in der Laenge (ADR-016), jedes Anhaengen kopiert.
+/// Fuer grosse Iteratoren gehoert `std.collections.collect` benutzt, das in eine `List<T>` mit
+/// Verdoppelung sammelt. Hier steht es trotzdem, weil `std.iter` `std.collections` nicht
+/// importieren darf — die Abhaengigkeit laeuft andersherum.
+pub fn collectArray<T>(source: Iterator<T>): T[] {
+    var result: T[] = [];
+    var value = source.next();
+    while (value != null) {
+        result = result + [value];
+        value = source.next();
+    }
+    return result;
+}
+
+/// Das kleinste Element — `null` bei leerer Quelle.
+pub fn minValue<T :: [Ordered<T>]>(source: Iterator<T>): ?T {
+    var best = source.next();
+    if (best == null) {
+        return null;
+    }
+    var value = source.next();
+    while (value != null) {
+        if (value.compare(best) < 0) {
+            best = value;
+        }
+        value = source.next();
+    }
+    return best;
+}
+
+pub fn maxValue<T :: [Ordered<T>]>(source: Iterator<T>): ?T {
+    var best = source.next();
+    if (best == null) {
+        return null;
+    }
+    var value = source.next();
+    while (value != null) {
+        if (value.compare(best) > 0) {
+            best = value;
+        }
+        value = source.next();
+    }
+    return best;
 }

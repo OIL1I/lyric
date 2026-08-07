@@ -158,3 +158,19 @@ pub class ListIterator<T> :: [Iterator<T>] {
         return value;
     }
 }
+
+/// Sammelt einen Iterator in eine `List<T>`.
+///
+/// Steht hier und nicht in `std.iter`, weil die Abhaengigkeit dorthin laeuft: `std.collections`
+/// importiert `std.iter`, nicht umgekehrt. `std.iter.collectArray` ist die Variante ohne diese
+/// Abhaengigkeit — und quadratisch, weil ein `T[]` bei jedem Anhaengen kopiert. Diese hier
+/// verdoppelt und ist linear.
+pub fn collect<T>(source: Iterator<T>): List<T> {
+    var result = emptyList<T>();
+    var value = source.next();
+    while (value != null) {
+        result.push(value);
+        value = source.next();
+    }
+    return result;
+}
