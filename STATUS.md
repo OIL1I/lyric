@@ -13,7 +13,7 @@
 
 **M9 — REPL + Tooling — abgeschlossen.** Slices S1 bis S5, danach ein Aufräum-Slice.
 
-2214 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**. `lyric repl`
+2218 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**. `lyric repl`
 läuft, die README ist maschinell geprüft, die TextMate-Grammar an den Lexer gebunden, die
 VS-Code-Extension liefert Highlighting und einen Run-Command.
 
@@ -24,6 +24,18 @@ VS-Code-Extension liefert Highlighting und einen Run-Command.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M4-Rest: Constraints tragen ihr eigenes Typargument** (2026-08-07).
+  `fn same<T :: [Eq<T>]>(a: T, b: T)` geht — explizit, inferiert, mit Nutzertypen und über zwei
+  generische Funktionen hinweg weitergereicht. **ADR-024 ist damit nicht mehr blockiert**;
+  `Map<K :: [Hashable<K>], V>` ist formulierbar.
+  - Der Fehler war ratlos formuliert (*„cannot assign 'T' to 'T'"*) und die Ursache klein:
+    `MemberOfTypeParam` gab den Methodentyp aus dem Constraint-Interface **roh** zurück.
+    `InterfaceWithSubst` lag schon da, und `CheckTypeConformance` benutzte es seit jeher richtig —
+    **zum siebten Mal** dasselbe Muster: eine Frage, zwei Stellen, nur eine mit der Antwort.
+  - **`LYR-SEM0055` war doppelt vergeben.** Der Code gehört „Member falsch benutzt" (vier
+    Stellen); die `==`-Diagnose aus dem Sweep bekommt `LYR-SEM0059`. Selbst verursacht, beim
+    Sweep zwei Stunden vorher.
 
 - [x] **ADR-022 — `char` ist ein Ganzzahltyp mit geprüftem Wertebereich** (2026-08-07).
   `c as int`, `n as char`, `c < 'z'`, `c + 1` und die bitweisen Operatoren gehen. Ein Ergebnis
@@ -231,11 +243,10 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   Wert-Position" erlaubt — die Mehrdeutigkeits-Sperre gilt dem *Anfang* eines `ExprStmt`, greift
   aber auf die ganze Zuweisung durch. *(Bekannt seit P3 — und am 2026-08-07 beim Schreiben einer
   Messprobe erneut hineingelaufen, ohne ihn wiederzuerkennen. Er kostet real Zeit.)*
-- **Generics-Rest aus M4**: Constraints mit eigenen Typ-Args über die Grenze substituieren.
-  **Der nächste Slice** — `fn same<T :: [Eq<T>]>(a: T, b: T)` scheitert mit `cannot assign 'T' to
-  'T'`, und `Map<K :: [Hashable<K>], V>` ist genau diese Konstruktion. **ADR-024 ist ohne ihn
-  nicht umsetzbar.** Gemessen 2026-08-07: `interface Eq<T>` mit `extend int :: [Eq<int>]` und
-  `struct P :: [Eq<P>]` funktioniert direkt gerufen; nur der generische Constraint fehlt.
+- **`Opt<int>.Some(5)` ist nicht ausdrückbar.** Scheitert im **Parser** (`LYR-PAR0002: expected
+  an expression, got Dot`) — `Opt<int>` wird in Wert-Position nicht als Typpfad gelesen. *Stand
+  bis 2026-08-07 zusammen mit dem M4-Constraint-Rest in einem Punkt; sie hängen nicht zusammen,
+  der Constraint-Teil ist erledigt und dieser nicht.*
   `Opt<int>.Some(5)` bleibt offen — eine *statische Methode* auf einer generischen Instanz ist
   weiterhin `LYR-SEM0052`; explizite Typargumente gibt es nur an Funktions-Aufrufen.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
