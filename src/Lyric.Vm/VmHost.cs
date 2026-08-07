@@ -30,15 +30,18 @@ public static class VmHost
 
     /// <param name="arguments">Die Programm-Argumente aus dem Runner-Vertrag (Bytecode.md §9) —
     /// alles nach dem ersten <c>--</c>.</param>
+    /// <param name="granted">Welche Capabilities diese Ausfuehrung bekommt (ADR-007). Standalone
+    /// gewaehrt alles (Doku §20.2) — wer 'lyric run' tippt, fuehrt sein eigenes Programm aus, und
+    /// dort liegt keine Trust-Boundary. Ein Host im Embedded-Modus setzt es enger.</param>
     public static int Execute(BytecodeModule module, IReadOnlyList<string> arguments,
-        TextWriter output, TextWriter error)
+        TextWriter output, TextWriter error, Capability granted = Capability.All)
     {
         try
         {
             var natives = NativeRegistry.CreateDefault(output, error);
 
             // §11: Exit-Code ist 0..255. Wie jedes POSIX-System nehmen wir das niedrigste Byte.
-            return (int)(Interpreter.Run(module, arguments, natives).AsI64 & 0xFF);
+            return (int)(Interpreter.Run(module, arguments, natives, granted).AsI64 & 0xFF);
         }
         catch (LyricPanic panic)
         {

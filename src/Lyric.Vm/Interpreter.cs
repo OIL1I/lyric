@@ -1,4 +1,5 @@
 using Lyric.Bytecode;
+using Lyric.Core;
 
 namespace Lyric.Vm;
 
@@ -33,8 +34,20 @@ public static class Interpreter
     /// <c>string[]</c>, das ein <c>fn main(args: string[])</c> bekommt; ein parameterloses
     /// <c>main</c> ignoriert sie.</param>
     public static LyrValue Run(BytecodeModule module, IReadOnlyList<string> arguments,
-        NativeRegistry? natives = null)
+        NativeRegistry? natives = null, Capability granted = Capability.All)
     {
+        // ZUERST, vor allem anderen: was diese VM nicht gewaehrt, laeuft hier gar nicht erst an.
+        //
+        // Die Pruefung gehoert hierher und nicht in den Compiler. ADR-007 nennt die Resolve-Zeit,
+        // und dort gibt es die fruehe Meldung — aber ein '.lyrbc' kann von woanders kommen, und
+        // ein Host, der fremden Bytecode laedt, hat den Compiler nie gesehen. Der Bedarf steht
+        // deshalb IM Modul (ADR-013), und die Durchsetzung passiert beim Laden.
+        var missing = module.Capabilities & ~(ulong)granted;
+        if (missing != 0)
+            throw new LyricRuntimeException(VmDiagnostics.CapabilityDenied,
+                $"module requires capability '{CapabilityTable.Describe((Capability)missing)}', "
+                + "which this runtime does not grant");
+
         if (module.Start is not { } start)
             throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
                 "module has no start section — it is a library, not a program");

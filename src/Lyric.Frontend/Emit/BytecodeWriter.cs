@@ -44,9 +44,10 @@ public static class BytecodeWriter
         writer.U16(Format.VersionMajor);
         writer.U16(Format.VersionMinor);
 
-        // Kein Capability-Bedarf: das Lowering kennt noch keine Imports. Die Bit-Zuordnung der
-        // einzelnen Capabilities (ADR-007) entsteht mit der Stdlib in M8.
-        WriteSection(writer, SectionId.Capabilities, s => s.ULeb(0UL));
+        // Was das Programm VERLANGT (ADR-007). Was gewaehrt wird, entscheidet die Runtime beim
+        // Laden — hier steht nur der Bedarf, und er steht im Modul, weil ein Host fremden
+        // Bytecode ohne den Compiler beurteilen koennen muss (ADR-013).
+        WriteSection(writer, SectionId.Capabilities, s => s.ULeb((ulong)module.Capabilities));
 
         WriteSection(writer, SectionId.Strings, s =>
         {

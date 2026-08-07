@@ -1,3 +1,4 @@
+using Lyric.Core;
 namespace Lyric.Ir;
 
 public record struct IrLocal(LocalId Id, string Name, IrType Type);
@@ -158,6 +159,14 @@ public class IrModule(List<IrFunction> Functions)
     /// <summary>Native Funktionen, die dieses Modul aufruft — nur die tatsächlich benutzten.
     /// <c>CallImport</c> referenziert sie per Index.</summary>
     public List<IrImport> Imports { get; init; } = new();
+
+    /// <summary>Welche Capabilities dieses Modul <b>verlangt</b> (ADR-007). Was gewaehrt wird,
+    /// entscheidet die Runtime beim Laden — der Compiler schreibt nur den Bedarf hinein.
+    ///
+    /// <para>Er steht IM Modul und nicht neben ihm, weil ein '.lyrbc' von woanders kommen kann:
+    /// ein Host, der fremden Bytecode laedt, muss ohne den Compiler wissen, was das Programm
+    /// anfassen will (ADR-013).</para></summary>
+    public Capability Capabilities { get; init; } = Capability.None;
 
     /// <summary>Layouts der zusammengesetzten Typen. <see cref="IrRefType"/>, <c>NewObject</c>,
     /// <c>LoadField</c> und <c>StoreField</c> referenzieren sie per <see cref="TypeId"/>; dicht

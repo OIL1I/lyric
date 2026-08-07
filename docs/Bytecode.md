@@ -165,9 +165,27 @@ keine Interfaces.
 
 ### Capabilities (Id 1)
 
-Ein `uleb128`-Bitset. In Format 1.1 immer `0` = „verlangt nichts". Die Zuordnung einzelner Bits zu
-den Capability-Stufen aus ADR-007 (`fileAccess`, `networkAccess`, `osAccess`, `hostAccess`) entsteht
-mit der Stdlib; bis dahin darf ein Leser ein Bitset ungleich 0 ablehnen.
+Ein `uleb128`-Bitset: **was das Modul verlangt**, nicht was ihm gewährt wird. Die Zuordnung steht
+seit M8/S6 fest und ist Vertrag — eine Nummer, die später etwas anderes bedeutet, macht jedes
+ältere `.lyrbc` falsch:
+
+| Bit | Wert | Stufe | Modul |
+|---|---|---|---|
+| 0 | `0x1` | `fileAccess` | `std.io.file` |
+| 1 | `0x2` | `networkAccess` | `std.io.net` |
+| 2 | `0x4` | `osAccess` | `std.os` |
+| 3 | `0x8` | `hostAccess` | `std.dotnet` |
+
+`0` heißt „verlangt nichts" — das trifft auf jedes Programm zu, das nur die immer erlaubten Module
+benutzt (Doku §20.1). Untermodule erben: `std.os.env` verlangt `osAccess`.
+
+**Durchgesetzt wird beim Laden**, zusammen mit der übrigen Validierung. Verlangt ein Modul mehr,
+als die Runtime gewährt, wird es abgelehnt (`LYR-CAP0001`), bevor eine Instruktion läuft. ADR-007
+nennt die Resolve-Zeit, und dort gibt es die frühe Meldung — aber ein `.lyrbc` kann von woanders
+kommen, und ein Host, der fremden Bytecode lädt, hat den Compiler nie gesehen. Deshalb steht der
+Bedarf im Modul.
+
+Der Standalone-Modus gewährt alles; `lyrvm run … --grant file,os` schränkt ein.
 
 ### Strings (Id 2)
 

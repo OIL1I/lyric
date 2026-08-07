@@ -13,7 +13,7 @@
 
 **M7 — Objektmodell + VM (full) — abgeschlossen.** Slices P1 bis P9 stehen.
 
-Bytecode-Format **2.5**. 1668 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
+Bytecode-Format **2.5**. 1680 Tests grün. Das Gate `examples/inventory.lyr` läuft: es belastet
 Interface mit Default-Methode, `::`-Konformanz, `extend`, Closure als Parameter, generische
 Funktion mit Constraint, `match` auf einem Enum mit Payload und Nullable-Rückgabe **gleichzeitig**
 — und hat dabei drei Lücken gefunden, die kein Einzelslice bemerkt hatte (siehe unten).
@@ -52,6 +52,29 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     benutzt hat. **Zweimal dieselbe Ursache heisst: der Merge-Block gehoert grundsaetzlich
     bedarfsgesteuert**, nicht an jeder Stelle einzeln nachgezogen.
 
+- [x] **M8 — S6 — Capabilities** (ADR-007). 1680 Tests gruen.
+  - **Der Bedarf steht IM Modul, die Entscheidung bei der Runtime.** Der Compiler schreibt in die
+    Capabilities-Sektion, was ein Programm anfassen will; beim Laden prueft die VM gegen das, was
+    sie gewaehrt. ADR-007 nennt die **Resolve-Zeit** — dort gaebe es die fruehe Meldung, aber ein
+    `.lyrbc` kann von woanders kommen, und ein Host, der fremden Bytecode laedt, hat den Compiler
+    nie gesehen. Eine reine Compile-Zeit-Pruefung waere fuer ihn wertlos.
+  - **Die Bit-Zuordnung ist jetzt Vertrag** (`Bytecode.md` §Capabilities): `fileAccess` = 0x1,
+    `networkAccess` = 0x2, `osAccess` = 0x4, `hostAccess` = 0x8. Das Netz-Bit steht fest, obwohl
+    `std.io.net` aus M8 gestrichen ist — eine Nummer, die spaeter etwas anderes bedeutet, macht
+    jedes aeltere Modul falsch.
+  - **Gezaehlt wird geladen, nicht importiert.** Ein Modul, das `std.os` importiert, zieht es in
+    die Compilation, und sein Bedarf gehoert zum Programm — auch wenn die Hauptdatei den Namen
+    nie nennt. Wer nur die Import-Zeilen der Wurzel zaehlte, haette eine Luecke, die genau eine
+    Indirektion tief ist.
+  - **`lyrvm run --grant file,os`** schraenkt ein. Ohne das Flag waere die Durchsetzung nicht
+    testbar (Standalone gewaehrt alles), und es ist fuer sich nuetzlich: fremden Bytecode
+    sandboxed fahren, ohne einen Host in C# zu schreiben.
+  - **`std.os` ist minimal angelegt** (nur `platform()`) — ein Lieferposten von S7, hier als
+    Testobjekt. Ohne ein gated Modul liesse sich die Grenze nicht pruefen.
+  - Die Natives sind **immer** registriert; die Capability entscheidet, ob ein Modul geladen wird,
+    nicht ob eine Funktion existiert. Der Host konfiguriert eine Richtlinie, keine
+    Funktionsliste.
+
 - [x] **`Iterable<T>` — `for (x in liste)`.** 1668 Tests gruen.
   - **`for-in` fragt jetzt vorwaerts.** Ein Container SAGT ueber `iter()`, wie man ihn
     durchlaeuft; der Compiler sucht nicht rueckwaerts nach einem Iterator, der ihn als Quelle
@@ -69,36 +92,6 @@ Damit läuft die Sprache von der Quelle bis zur Ausführung für alle 38 Konstru
     Tabelle. Und die Nachrunde nach `BuildImpls` leerte `instances` nicht, sodass die
     angeforderte Methode ohne Rumpf blieb — der Verifier meldete „targets f7, which is out of
     range".
-
-- [x] **M8 — S5 — `std.collections`: `Indexable<T>` und `List<T>`.** 1663 Tests gruen.
-  - **Die erste Fassung war an zwei Stellen falsch, und die Tests haben es nicht gemerkt.** `get`
-    pruefte gegen `data.length` statt gegen `count` und gab damit Reste aus dem Verdoppeln
-    zurueck (`xs[3]` lieferte einen alten Wert); `pop` liess seinen Wert im Slot stehen, also war
-    er weiter lesbar und das Objekt blieb am Leben. **Der Wachstums-Test prueft nur, dass nichts
-    FEHLT — nicht, dass nichts ZU VIEL da ist.** Beides vom Maintainer gefunden, nicht von mir.
-  - **Das Backing ist jetzt `(?T)[]`.** Nicht aus Bequemlichkeit: ein Slot muss *leerbar* sein,
-    damit `pop` seinen Wert wirklich freigibt. Nebenbei loest das die Erzeugung — ein `T[]` der
-    Laenge n braeuchte n Werte vom Typ T, und Lyric hat kein `default(T)`; fuer `?T` gibt es
-    einen.
-  - **Verdoppeln beim Wachsen, Halbieren unter einem Viertel.** Gemessen gegen exaktes Wachsen
-    (`data + [v]`): bei 5000 Elementen kein Unterschied, bei 50 000 **Faktor 8,6** (5515 ms
-    gegen 640 ms). Die Schrumpf-Schwelle liegt bei einem Viertel und nicht bei der Haelfte, damit
-    eine Liste, die um die Grenze pendelt, nicht bei jedem push/pop umkopiert. Gemessen: 100
-    Elemente → Kapazitaet 128, nach 95 `pop` → Kapazitaet 16.
-  - **Gegen eine verkettete Liste entschieden**, und zwar mit einer Zahl: ein Knoten ist in
-    dieser VM ein Objekt mit `value`/`prev`/`next`, also ~72 Byte gegen 16 Byte fuer einen
-    Array-Slot. Sie braucht **rund das Viereinhalbfache** an Dauerspeicher und macht `get(i)` zu
-    O(n) — womit `Indexable<T>` genau die Falle waere, die `string` in S2 vermieden hat.
-    `LinkedList<T>` ohne `Indexable` bleibt als eigener Typ moeglich (spaeter).
-  - **`List<T>` ist in Lyric geschrieben, nicht nativ.** Natives sind monomorph registriert; ein
-    generischer braeuchte eine Marshalling-Schicht, und die gehoert zu M10.
-  - **`[i]` laeuft ueber `Indexable<T>`** — dieselbe Arbeitsteilung wie `for-in` ueber
-    `Iterator<T>`. Ein Nutzertyp kann es implementieren; ein Test haelt das fest.
-  - Zwei Nebenbefunde behoben: die Konformanz substituiert jetzt ihre Typargumente
-    (`List<int>` lieferte als Elementtyp `T`), und `xs[i] = v` lowert ueber den **erwarteten**
-    Typ — sonst hat `xs[i] = null` auf einem `(?T)[]` keinen Zieltyp.
-  - **`YieldTypeOfIterator` ist zu `TypeArgumentOfConformance` verallgemeinert**, statt fuer
-    `Indexable` kopiert zu werden.
 
 - [x] **Explizite Typargumente am Aufruf: `f<int>()`.** Vorbedingung fuer S5, aufgefallen beim
   Bau von `List<T>`. 1647 Tests gruen.
@@ -168,7 +161,7 @@ beide brauchen Hashing, und wie ein Nutzertyp seinen Hash liefert, ist eine Inte
 (`Hashable`), die `Sprache.md` nicht beantwortet. Auch `for (x in liste)` fehlt noch — der
 `ListIterator` steht, die Sema kennt ihn aber nicht als eingebaute Form.
 
-Als naechstes **S6 — Capabilities** (ADR-007).
+Als naechstes **S7 — `std.io.file`, `std.os`, `std.math`** (daran haengt `shapes.lyr`).
 
 Danach **S6** (Capabilities, ADR-007), **S7** (`std.io.file`, `std.os`, `std.math` — daran haengt
 `shapes.lyr`), **S8** (Gate: `wc`-Klon).
@@ -263,7 +256,7 @@ ueber das Nebenlaeufigkeitsmodell und kein Nebenprodukt eines Stdlib-Meilenstein
 
 ## Letzter relevanter Commit
 
-`M8: Iterable<T> - for-in ueber eigene Container`
+`M8: Capabilities (S6)`
 
 ---
 

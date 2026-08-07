@@ -193,6 +193,18 @@ public sealed class NativeRegistry
         registry.RegisterArrayReturning("std.string.toChars", str, TypeTag.Char,
             args => ToChars(args[0].AsString));
 
+        // --- std.os (permission-gated, ADR-007) -----------------------------------------
+        //
+        // Die Natives sind IMMER registriert. Die Capability entscheidet, ob ein Modul, das sie
+        // braucht, ueberhaupt geladen wird — nicht, ob die Funktion existiert. Das ist die
+        // saubere Trennung: der Host konfiguriert eine Richtlinie, keine Funktionsliste.
+        registry.Register("std.os.platform", Array.Empty<TypeTag>(), TypeTag.String,
+            _ => LyrValue.FromString(
+                OperatingSystem.IsWindows() ? "windows"
+                : OperatingSystem.IsLinux() ? "linux"
+                : OperatingSystem.IsMacOS() ? "macos"
+                : "unknown"));
+
         // --- std.fmt (M8/S3) ------------------------------------------------------------
         //
         // Die Spec-Sprache ist die von .NET, wie Sprache.md 2.2 es verlangt, und sie wird

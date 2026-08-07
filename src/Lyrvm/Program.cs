@@ -56,8 +56,28 @@ public static class Program
 
         // Die Anzeige muss weg, BEVOR die erste Instruktion laeuft — sonst landet die erste
         // Ausgabe des Programms neben einer halben Fortschrittszeile.
+        // '--grant' schraenkt ein, was das Modul anfassen darf (ADR-007). Ohne die Option
+        // gewaehrt der Standalone-Modus alles (Doku §20.2): wer sein eigenes Programm startet,
+        // hat keine Trust-Boundary zu sich selbst. Mit ihr laesst sich fremder Bytecode
+        // sandboxed fahren, ohne dass es dafuer einen Host in C# braucht.
+        var granted = Capability.All;
+        var grantIndex = Array.IndexOf(args, "--grant");
+        if (grantIndex >= 0)
+        {
+            if (grantIndex + 1 >= args.Length)
+                return CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
+                    "'--grant' needs a list, e.g. '--grant file,os' or '--grant none'",
+                    ExitCodes.Usage);
+
+            if (CapabilityTable.Parse(args[grantIndex + 1]) is not { } parsed)
+                return CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
+                    $"unknown capability in '{args[grantIndex + 1]}' — known are "
+                    + "file, net, os, host, all, none", ExitCodes.Usage);
+            granted = parsed;
+        }
+
         terminal.Finish();
-        return VmHost.Execute(module, programArguments, Console.Out, Console.Error);
+        return VmHost.Execute(module, programArguments, Console.Out, Console.Error, granted);
     }
 
     /// <summary>Laedt vollstaendig — ADR-013 prueft beim Laden, nicht beim Ausfuehren — und druckt

@@ -32,6 +32,13 @@ public static class VmDiagnostics
     /// <summary>Das Modul verlangt Imports, aber die Runtime bindet noch keine.</summary>
     public const string ImportsNotBound = "LYR-VM0005";
 
+    /// <summary>Das Modul verlangt eine Capability, die diese VM nicht gewaehrt (ADR-007).
+    ///
+    /// <para>Der Code liegt im CAP-Bereich und nicht bei den VM-Fehlern: er beschreibt keine
+    /// kaputte Datei, sondern eine Richtlinienentscheidung des Hosts. Dasselbe Modul laeuft
+    /// anderswo einwandfrei.</para></summary>
+    public const string CapabilityDenied = "LYR-CAP0001";
+
     /// <summary>Element-Index außerhalb der Array-Grenzen. Anders als Typ- und Feldindizes ist er
     /// ein Laufzeitwert und beim Laden nicht prüfbar (ADR-016) — also ein <c>panic</c> (§9).</summary>
     public const string IndexOutOfRange = "LYR-VM0006";

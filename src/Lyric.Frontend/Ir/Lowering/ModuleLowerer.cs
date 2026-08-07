@@ -320,11 +320,29 @@ public static class ModuleLowerer
         {
             EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
             Globals = globals.Defs, GlobalInit = globalInit,
+            Capabilities = RequiredCapabilities(compilation),
             Impls = impls,
         };
         if (failed) return null;
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
+    }
+
+    /// <summary>
+    /// Was dieses Programm an Capabilities verlangt: die Vereinigung ueber alle geladenen Module
+    /// (ADR-007, Doku §20.1).
+    ///
+    /// <para>Gezaehlt wird <b>geladen</b>, nicht <b>importiert</b>: ein Modul, das <c>std.os</c>
+    /// importiert, zieht es in die Compilation, und sein Bedarf gehoert zum Programm — auch wenn
+    /// die Hauptdatei den Namen nie nennt. Wer nur die Import-Zeilen der Wurzel zaehlte, haette
+    /// eine Luecke, die genau eine Indirektion tief ist.</para>
+    /// </summary>
+    private static Capability RequiredCapabilities(Compilation compilation)
+    {
+        var needed = Capability.None;
+        foreach (var module in compilation.Modules)
+            needed |= CapabilityTable.RequiredForImport(module.FullName);
+        return needed;
     }
 
     /// <summary>
