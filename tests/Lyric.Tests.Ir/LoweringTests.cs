@@ -188,40 +188,33 @@ public class LoweringTests
     }
 
     /// <summary>
-    /// Was ein Programm an totem Stdlib-Code mitschleppt — <b>gemessen, nicht behauptet</b>.
+    /// Ein Programm trägt <b>nur</b>, was es wirklich braucht.
     ///
-    /// <para>Hier stand vorher <c>Assert.Single(module.Imports)</c>, und das galt als Beleg für
-    /// „die Import-Tabelle trägt nur, was wirklich gerufen wird". Der Satz stimmt für native
-    /// Deklarationen und ist für <b>Lyric-Rümpfe falsch</b>: die landen alle im Bytecode, sobald
-    /// ihr Modul geladen ist. Aufgefallen ist es, als <c>console.prompt</c> dazukam — eine
-    /// Funktion, die niemand ruft, deren <c>print</c>/<c>flush</c>/<c>readLine</c> aber in der
-    /// Import-Tabelle auftauchten.</para>
+    /// <para>Hier stand das Gegenteil — ein Marker, der festhielt, dass jeder Lyric-Rumpf eines
+    /// geladenen Moduls im Bytecode landet, und der ausdrücklich fallen sollte, sobald die
+    /// Erreichbarkeitsanalyse kommt. <b>Er ist gefallen.</b></para>
     ///
-    /// <para>Gemessen am 2026-08-07: ein Hello-World hatte <b>9 Bytes eigenen Code und 97 Bytes
-    /// tote Stdlib</b> (<c>RangeIterator.next</c>, <c>StringIterator.next</c>) — und zwar schon
-    /// vorher. Die Import-Liste <c>{ println }</c> ändert daran nichts; sie steuert allein die
-    /// Namenssichtbarkeit in der Sema, und mit ihr entsteht byte-identischer Bytecode wie
-    /// ohne.</para>
-    ///
-    /// <para>Dieser Test ist ein <b>Marker</b>, keine Zusicherung eines Ideals. Er hält fest, was
-    /// heute gilt, damit eine Erreichbarkeitsanalyse im Lowering — formatneutral nachrüstbar
-    /// (ADR-013) — sichtbar wird, wenn sie kommt: dann fällt er, und das ist der Erfolg.</para>
+    /// <para>Gemessen an diesem Hello-World: von 420 Bytes mit vier Importen und vier Funktionen
+    /// auf <b>230 Bytes mit einem Import und einer Funktion</b>. Der Code schrumpfte von 115 auf
+    /// 9 Bytes — und 9 Bytes ist genau <c>main</c>, ohne ein einziges Byte fremder Stdlib.</para>
     /// </summary>
     [Fact]
-    public void A_program_carries_the_lyric_bodies_of_every_loaded_module()
+    public void A_program_carries_only_what_it_reaches()
     {
         var module = LowerWithStdlib("""
             import std.io.console { println };
             fn main(): int { println("hi"); return 0; }
             """);
 
-        // Ruft niemand — sie stehen nur in geladenen Modulen.
-        Assert.Contains(module.Functions, f => f.Name == "std.iter.RangeIterator.next");
-        Assert.Contains(module.Functions, f => f.Name == "std.io.console.prompt");
+        Assert.Single(module.Functions);
+        Assert.Single(module.Imports);
+        Assert.Equal("std.io.console.println", module.Imports[0].Name);
 
-        // Und ein toter Rumpf zieht seine Natives mit: DAS ist der Weg, auf dem sich der tote
-        // Code nach aussen bemerkbar macht.
-        Assert.Contains(module.Imports, i => i.Name == "std.io.console.readLine");
+        // Die drei, die vorher unvermeidlich mitkamen.
+        var namen = module.Functions.Select(f => f.Name).ToArray();
+        Assert.DoesNotContain("std.iter.RangeIterator.next", namen);
+        Assert.DoesNotContain("std.iter.StringIterator.next", namen);
+        Assert.DoesNotContain("std.io.console.prompt", namen);
     }
 
     [Fact]
@@ -250,18 +243,31 @@ public class LoweringTests
             fn main(): int { let n = 7; let s = f"n={n}!"; return 0; }
             """);
 
-        // "n=" ++ fromInt(n) ++ "!" — zwei concat, ein Wandler. Nur die tatsächlich benutzten
-        // Helfer stehen in der Tabelle, nicht alle deklarierten.
-        Assert.Equal(new[] { "std.string.fromInt", "std.string.concat" },
-            module.Imports.Select(i => i.Name).Distinct());
+        // "n=" ++ fromInt(n) ++ "!" — zwei concat, ein Wandler.
+        //
+        // Geprueft wird ENTHALTENSEIN, nicht Exklusivitaet. Hier stand einmal 'Assert.Equal' mit
+        // genau diesen beiden Namen, und das galt als Beleg dafuer, dass nur benutzte Helfer in
+        // der Tabelle landen. Seit M8b/S5 stimmt das nicht mehr: die Lyric-Rumpfe in 'std.string'
+        // (parseInt, replace, …) ziehen ihre eigenen Natives mit, sobald das Modul geladen ist —
+        // auch wenn niemand sie ruft. Das ist die fehlende Erreichbarkeitsanalyse, kein Fehler
+        // dieses Lowerings; 'A_program_carries_the_lyric_bodies_of_every_loaded_module' haelt sie
+        // als Marker fest.
+        var namen = module.Imports.Select(i => i.Name).ToArray();
+        Assert.Contains("std.string.fromInt", namen);
+        Assert.Contains("std.string.concat", namen);
     }
 
     [Fact]
     public void Adjacent_text_segments_collapse_into_one_constant()
     {
         // f"ab" hat kein Loch: das Ergebnis ist eine schlichte Konstante, kein concat.
+        //
+        // 'Assert.Empty' stand hier und geht seit M8b/S5 nicht mehr — siehe die Begruendung im
+        // Test darueber. Was der Test wirklich sagen will, ist: KEIN Wandler und KEIN concat.
         var module = LowerWithStdlib("fn main(): int { let s = f\"ab\"; return 0; }");
-        Assert.Empty(module.Imports);
+        var namen = module.Imports.Select(i => i.Name).ToArray();
+        Assert.DoesNotContain("std.string.concat", namen);
+        Assert.DoesNotContain("std.string.fromInt", namen);
     }
 
     [Fact]

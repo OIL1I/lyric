@@ -10,17 +10,6 @@ type ty2 Outer {
   #1 count: i64
 }
 
-fn main.depth -> i64 {
-  params: 1
-  locals:
-    l0 n: &ty0
-  bb0:
-    t0: &ty0 = load l0
-    t1: &ty0 = loadfield t0, ty0#1
-    t2: i64 = loadfield t1, ty0#0
-    ret t2
-}
-
 fn main.main -> i64 {
   params: 0
   locals:

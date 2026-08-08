@@ -337,6 +337,12 @@ public static class ModuleLowerer
             Impls = impls,
         };
         if (failed) return null;
+
+        // VOR dem Verifier: was gestrichen wird, muss er nicht pruefen — und der Verifier laeuft
+        // ohnehin noch einmal beim Laden (ADR-013), also ist das die einzige Stelle, an der die
+        // Ersparnis zweimal zaehlt.
+        Reachability.Prune(result);
+
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }

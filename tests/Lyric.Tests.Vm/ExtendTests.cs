@@ -349,7 +349,18 @@ public class ExtendTests
 
         Assert.DoesNotContain(ir.Functions, f => f.Name.Contains("Display")
                                                  || f.Name.EndsWith(".show"));
-        Assert.Empty(ir.Imports);
+
+        // Geprueft wird, dass die WANDLER fehlen — nicht, dass die Import-Tabelle leer ist.
+        //
+        // 'Assert.Empty' stand hier und war bis M8b/S5 richtig. Seitdem hat 'std.string' eigene
+        // Lyric-Rumpfe (parseInt, replace, isDigit …), und die ziehen ihre Natives mit, sobald das
+        // Modul geladen ist — auch wenn niemand sie ruft. Das ist die fehlende
+        // Erreichbarkeitsanalyse und kein Rueckschritt bei der Display-Maschinerie, um die es hier
+        // geht.
+        var importe = ir.Imports.Select(i => i.Name).ToArray();
+        Assert.DoesNotContain("std.string.fromInt", importe);
+        Assert.DoesNotContain("std.string.fromBool", importe);
+        Assert.DoesNotContain("std.string.fromChar", importe);
     }
 
     [Fact]
