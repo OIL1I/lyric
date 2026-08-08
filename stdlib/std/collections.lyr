@@ -5,6 +5,7 @@
 module std.collections;
 
 import std.iter { Iterator, Iterable };
+import std.core { Hashable, Equatable, Ordered };
 
 // Was sich mit `[i]` lesen und schreiben lässt.
 //
@@ -173,4 +174,177 @@ pub fn collect<T>(source: Iterator<T>): List<T> {
         value = source.next();
     }
     return result;
+}
+
+// ============================================================== Map<K, V> (M8b/S4, ADR-024)
+//
+// **Open Addressing mit linearer Sondierung.** Kein Bucket pro Slot, sondern ein einziges Array
+// je Spalte; bei Kollision geht es zum naechsten Index weiter. Die Alternative — eine verkettete
+// Liste je Bucket — braeuchte pro Eintrag ein Objekt und einen Zeiger, und Lyric hat keinen
+// Grund, das zu zahlen: Sondierung kommt mit drei flachen Arrays aus.
+//
+// **Drei Zustaende je Slot** (`states`): 0 leer, 1 belegt, 2 geloescht. Der dritte ist noetig,
+// weil ein geloeschter Slot die Sondierungskette nicht unterbrechen darf — sonst faende ein
+// `get` einen Schluessel nicht mehr, der hinter der Luecke liegt. Ein *Grabstein* beendet die
+// Suche beim Lesen nicht, ist beim Schreiben aber wiederverwendbar.
+//
+// **Load Factor 3/4**, gemessen an belegten UND geloeschten Slots: Grabsteine kosten Suchzeit wie
+// belegte Slots, also muessen sie mitzaehlen. Beim Wachsen verschwinden sie.
+
+pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
+    keys: (?K)[],
+    values: (?V)[],
+    states: int[],
+    count: int,      // nur die belegten
+    used: int,       // belegte + Grabsteine
+
+    pub fn length(): int {
+        return this.count;
+    }
+
+    pub fn isEmpty(): bool {
+        return this.count == 0;
+    }
+
+    // Der Startindex fuer einen Schluessel. Ein Hash darf negativ sein — FNV-1a liefert das
+    // regelmaessig —, und `%` folgt in Lyric dem Vorzeichen des Dividenden.
+    fn slotOf(key: K): int {
+        let h = key.hash();
+        let positive = if (h < 0) 0 - h else h;
+        return positive % this.keys.length;
+    }
+
+    // Sucht den Slot eines Schluessels. Liefert -1, wenn er nicht da ist.
+    //
+    // Die Schleife endet garantiert: der Load Factor haelt mindestens ein Viertel der Slots frei,
+    // und ein leerer Slot beendet die Suche.
+    fn findSlot(key: K): int {
+        var i = this.slotOf(key);
+        let n = this.keys.length;
+        var schritte = 0;
+
+        while (schritte < n) {
+            if (this.states[i] == 0) {
+                return -1;                      // leer: hier haette er stehen muessen
+            }
+            if (this.states[i] == 1) {
+                let vorhanden = this.keys[i];
+                if (vorhanden != null && vorhanden.equals(key)) {
+                    return i;
+                }
+            }
+            // Grabstein (2): weitergehen, die Kette ist nicht zu Ende.
+            i = (i + 1) % n;
+            schritte = schritte + 1;
+        }
+        return -1;
+    }
+
+    pub fn containsKey(key: K): bool {
+        return this.findSlot(key) >= 0;
+    }
+
+    pub fn get(key: K): ?V {
+        let i = this.findSlot(key);
+        if (i < 0) {
+            return null;
+        }
+        return this.values[i];
+    }
+
+    pub mut fn set(key: K, value: V): void {
+        if ((this.used + 1) * 4 > this.keys.length * 3) {
+            this.resize(this.keys.length * 2);
+        }
+
+        var i = this.slotOf(key);
+        let n = this.keys.length;
+        var grabstein = -1;
+
+        while (true) {
+            if (this.states[i] == 0) {
+                // Erster freier Slot. Ein vorher gesehener Grabstein ist besser: er verkuerzt
+                // kuenftige Suchen und erhoeht `used` nicht.
+                let ziel = if (grabstein >= 0) grabstein else i;
+                this.keys[ziel] = key;
+                this.values[ziel] = value;
+                this.states[ziel] = 1;
+                this.count = this.count + 1;
+                if (grabstein < 0) {
+                    this.used = this.used + 1;
+                }
+                return;
+            }
+            if (this.states[i] == 2) {
+                if (grabstein < 0) {
+                    grabstein = i;
+                }
+            } else {
+                let vorhanden = this.keys[i];
+                if (vorhanden != null && vorhanden.equals(key)) {
+                    this.values[i] = value;     // Ueberschreiben, kein neuer Eintrag
+                    return;
+                }
+            }
+            i = (i + 1) % n;
+        }
+    }
+
+    // Entfernt und liefert den alten Wert. Der Slot wird zum Grabstein, nicht zu `leer` — sonst
+    // risse die Sondierungskette und ein dahinterliegender Schluessel waere unauffindbar.
+    pub mut fn remove(key: K): ?V {
+        let i = this.findSlot(key);
+        if (i < 0) {
+            return null;
+        }
+        let alt = this.values[i];
+        this.keys[i] = null;
+        this.values[i] = null;
+        this.states[i] = 2;
+        this.count = this.count - 1;
+        return alt;
+    }
+
+    mut fn resize(capacity: int): void {
+        let alteKeys = this.keys;
+        let alteValues = this.values;
+        let alteStates = this.states;
+
+        let keyHole: ?K = null;
+        let valueHole: ?V = null;
+        this.keys = [keyHole] * capacity;
+        this.values = [valueHole] * capacity;
+        this.states = [0] * capacity;
+        this.count = 0;
+        this.used = 0;
+
+        // Neu einfuegen statt kopieren: die Slots haengen an der Kapazitaet. Grabsteine fallen
+        // dabei weg — das ist der zweite Grund, warum `used` und nicht `count` das Wachsen
+        // ausloest.
+        var i = 0;
+        while (i < alteStates.length) {
+            if (alteStates[i] == 1) {
+                let k = alteKeys[i];
+                let v = alteValues[i];
+                if (k != null && v != null) {
+                    this.set(k, v);
+                }
+            }
+            i = i + 1;
+        }
+    }
+}
+
+pub fn emptyMap<K :: [Hashable<K>, Equatable<K>], V>(): Map<K, V> {
+    let keyHole: ?K = null;
+    let valueHole: ?V = null;
+    // Acht Slots als Start: klein genug, dass eine leere Map nichts kostet, gross genug, dass die
+    // ersten Einfuegungen nicht sofort zwei Verdopplungen ausloesen.
+    return Map<K, V> {
+        keys = [keyHole] * 8,
+        values = [valueHole] * 8,
+        states = [0] * 8,
+        count = 0,
+        used = 0,
+    };
 }
