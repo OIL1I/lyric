@@ -11,19 +11,80 @@
 
 ## Aktueller Meilenstein
 
-**M9 — REPL + Tooling — abgeschlossen.** Slices S1 bis S5, danach ein Aufräum-Slice.
+**M8b — Stdlib-Erweiterung — läuft.** S1 bis S4, `Set<T>` fehlt noch.
 
-2218 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**. `lyric repl`
-läuft, die README ist maschinell geprüft, die TextMate-Grammar an den Lexer gebunden, die
-VS-Code-Extension liefert Highlighting und einen Run-Command.
+2327 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
-**Offen für v1.0: nur noch M10** — die Embedding-API (`LangVm`, Marshalling, Hot-Reload).
+**Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
+Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
+`Map`, Merge Sort, der FNV-Hash für Strings, sämtliche Iterator-Adapter. Dass eine Stdlib sich
+selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der schärfste Test der
+Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
+Meilenstein davor berührt hat.
+
+**Offen für v1.0**: `Set<T>`, der Rest von M8b (siehe `docs/IDEAS.md`-Liste), die
+Erreichbarkeitsanalyse, dann M10 — die Embedding-API (`LangVm`, Marshalling, Hot-Reload).
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
 > selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M8b/S4 — `Map<K, V>` und Merge Sort** (2026-08-08). Beide in Lyric.
+  - **`Map`**: Open Addressing mit linearer Sondierung, drei flache Arrays statt einer Liste je
+    Bucket. Der Schlüssel trägt zwei Constraints (`K :: [Hashable<K>, Equatable<K>]`), getrennt
+    weil es keine Interface-Vererbung gibt — die Klasse ist damit der Grund, warum ADR-024 und der
+    M4-Constraint-Fix gebaut wurden.
+  - **Grabsteine**: ein gelöschter Slot darf die Sondierungskette nicht unterbrechen, sonst ist ein
+    dahinterliegender Schlüssel unauffindbar — und zwar lautlos. Sie zählen beim Load Factor mit,
+    weil sie Suchzeit kosten wie belegte Slots.
+  - **Merge Sort**, bottom-up: stabil und garantiert O(n log n). Quicksort wäre schneller, ist aber
+    instabil und bei sortierter Eingabe quadratisch — für eine Standardbibliothek die falsche
+    Überraschung. Dieselbe Wahl wie Python/Java (Timsort), C++ `stable_sort`, Go `sort.Stable`.
+  - Der Stabilitäts-Test ist der wichtigste: an einer sortierten Zahlenliste ist Stabilität **nicht
+    ablesbar**. Ohne ihn wäre ein instabiler Algorithmus grün.
+
+- [x] **M8b/S3 — `std.iter`** (2026-08-08). Sechs Adapter (`map`, `filter`, `take`, `skip`,
+  `takeWhile`, `chain`) und zwölf Terminatoren, dazu `collect` in `std.collections`. Kein einziger
+  nativer Aufruf.
+  - **Faul, nicht eifrig** — und das ist am Ergebnis nicht ablesbar: `take(map(…), 2)` liefert
+    dasselbe, ob die Closure zwei- oder fünfmal lief. Der Test zählt die Aufrufe mit einem
+    Seiteneffekt; ohne ihn wäre ein eifriger Adapter grün.
+  - `collect` gehört nach `std.collections`, nicht nach `std.iter`: die Abhängigkeit läuft dorthin.
+
+- [x] **M8b/S2 — `Equatable`, `Hashable`, `Ordered`** (2026-08-07, ADR-024). Generisch, weil ein
+  Interface als Parametertyp einen Interface-*Wert* verlangt und ein Skalar keiner sein kann —
+  `extend int :: [Equatable]` wäre unmöglich und `Map<int, V>` gäbe es nicht.
+  - `string.compare` (lexikographisch über Codepoints, ohne Locale) und `string.hash` (FNV-1a in
+    acht Zeilen) **in Lyric** — möglich, weil `char` seit ADR-022 eine Zahl ist.
+  - **Kein `Hashable` für `float`**, mit Begründung im Code: `NaN != NaN` hieße, dass ein Schlüssel
+    sich selbst nicht wiederfindet.
+  - `uint` fehlte in der ersten Fassung und fiel nur durch den **Gegentest** auf — 32 grüne Tests
+    sind kein Beleg, dass geprüft wird, solange kein Fall scheitert.
+
+- [x] **M8b/S1 — Eingabe in `std.io.console`** (2026-08-07). `readLine`/`readAll`/`readChar`/
+  `isInteractive`/`flush`/`eprint` nativ, `prompt` und `lines()` in Lyric. Bis dahin konnte das
+  Modul **ausschließlich schreiben** — es gab keine interaktiven Programme.
+  - `readChar` setzt Surrogatpaare zusammen: .NETs `Read()` liefert UTF-16-Einheiten, Lyrics
+    `char` ist ein Codepoint, und eine Surrogathälfte ist seit ADR-022 kein gültiger `char`.
+
+- [x] **Zehn Compiler-Lücken, beim Bau der Stdlib gefunden** (2026-08-07/08). Fünf davon hätten
+  jeweils einen ganzen Slice blockiert:
+  - **Feld-Defaults wurden nie geprüft** — `K { }` mit einem Default-Feld war ein *Absturz*, weil
+    das Lowering den Default auswertet und keinen Typ fand. `lyric check` sagte „ok".
+  - **Coercion Klasse → Interface fehlte an generischen Aufrufen**: der Parametertyp wurde ohne
+    die Substitution der Aufrufstelle gelowert, der `catch` reichte das Argument *ohne* Coercion
+    durch. Hätte `std.iter` vollständig blockiert.
+  - **Ein Lambda-Lowerer bekam grundsätzlich `NoSubstitution`** — `(a: T, b: T) => …` in einer
+    generischen Funktion brach ab. Ein Lambda erbt den generischen Kontext seines Rumpfes.
+  - **`f([])`** stürzte ab, während `let xs: int[] = []` ging: die zweiphasige Inferenz typt
+    Nicht-Lambda-Argumente ohne Kontext.
+  - **Die Poison-Regel griff nur an der Oberfläche** — ein `fn(int) -> <error>` erzeugte
+    Folgemeldungen, die die eigentliche Ursache zudeckten.
+  - Dazu **A + B**: Typargumente werden jetzt durch eine Konformanz hindurch inferiert
+    (`collect(doppelt)` statt `collect<int>(…)`), und ein nicht bindbarer Typ-Parameter ist eine
+    Sema-Diagnose (`LYR-SEM0060`) statt eines stillen `<error>`.
 
 - [x] **M4-Rest: Constraints tragen ihr eigenes Typargument** (2026-08-07).
   `fn same<T :: [Eq<T>]>(a: T, b: T)` geht — explizit, inferiert, mit Nutzertypen und über zwei
@@ -220,7 +281,18 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M9 ist abgeschlossen — als naechstes M10**, die Embedding-API: `Lyric.Embedding.LangVm` mit
+**M8b läuft — `Set<T>` ist der nächste Slice**: die Map ohne Werte-Spalte, plus `union`,
+`intersect` und `difference`. Danach der Rest der Stdlib-Liste (`std.string`, `std.math` samt
+`Random`, `std.io.file`, `std.os`, `std.fmt`, und die drei bis heute inhaltsleeren Module
+`std.option`/`std.error`/`std.coroutine`).
+
+**Die Erreichbarkeitsanalyse kommt NACH der Stdlib-Erweiterung** (Entscheidung 2026-08-08). Sie
+ist formatneutral nachrüstbar (ADR-013) und zwingt deshalb keine Architekturentscheidung — aber
+sie wird nötig: gemessen trägt ein Hello-World heute **9 Bytes eigenen Code und 97 Bytes tote
+Stdlib**, und jede weitere Lyric-Funktion in einem geladenen Modul kommt hinzu. Der Marker-Test
+`A_program_carries_the_lyric_bodies_of_every_loaded_module` fällt, wenn sie da ist.
+
+**Danach M10**, die Embedding-API: `Lyric.Embedding.LangVm` mit
 `RegisterFunction`/`RegisterType`, die bidirektionale Marshalling-Schicht zwischen Lyric-Werten
 und .NET-Objekten, `Reload` fuer Hot-Reload, und ein Beispiel-Host in C#.
 
@@ -246,9 +318,9 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
 - **`Opt<int>.Some(5)` ist nicht ausdrückbar.** Scheitert im **Parser** (`LYR-PAR0002: expected
   an expression, got Dot`) — `Opt<int>` wird in Wert-Position nicht als Typpfad gelesen. *Stand
   bis 2026-08-07 zusammen mit dem M4-Constraint-Rest in einem Punkt; sie hängen nicht zusammen,
-  der Constraint-Teil ist erledigt und dieser nicht.*
-  `Opt<int>.Some(5)` bleibt offen — eine *statische Methode* auf einer generischen Instanz ist
-  weiterhin `LYR-SEM0052`; explizite Typargumente gibt es nur an Funktions-Aufrufen.
+  der Constraint-Teil ist erledigt und dieser nicht.* Auch eine *statische Methode* auf einer
+  generischen Instanz bleibt `LYR-SEM0052`; explizite Typargumente gibt es nur an
+  Funktions-Aufrufen.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
 - **`do { return … } while (…)` laesst den Compiler abstuerzen.** Rumpf, Bedingung und Ausgang
   werden alle drei vorab angelegt; terminiert der Rumpf, sind Bedingung und Ausgang unerreichbar,
@@ -259,6 +331,18 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
 - **`DeclaredTypes.Lower` wirft ungefangen** aus `ModuleLowerer.Lower` heraus: eine native
   Signatur mit einem unbekannten Typ gibt einen Compiler-*Absturz* statt einer Diagnose. Gefunden
   beim Bau von S2, als `split` noch nicht lowerbar war.
+
+- **Ein Tupel als Typargument eines generischen Interfaces ist nicht lowerbar** —
+  `Iterator<(int, T)>` gibt `ir: this type argument is not supported by this compiler version
+  yet`. Die Sema akzeptiert es. **Blockiert `enumerate` und `zip`** in `std.iter`, ausgerechnet
+  die beiden Funktionen, für die Tupel (T1–T3) eingeführt wurden.
+- **Ein Block-Lambda liefert seinen Rückgabetyp nicht an die Inferenz**: `(n: int) => n` bindet
+  `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
+  `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich
+  sie am 2026-08-08 fälschlich als Bug gemeldet habe.
+- **Modul-Bindungen sind immer unveränderlich** (`var` auf Modulebene ist `LYR-PAR0027`).
+  Vermutlich Absicht, steht aber in **keinem ADR** — beim Bau eines Testzählers aufgefallen. Wenn
+  es Absicht ist, gehört es in `Sprache.md`; wenn nicht, ist es eine Lücke.
 
 - **Interface-Vererbung gibt es nicht** (`interface A :: [B]` ist ein Parser-Fehler; die
   Grammatik sieht für `InterfaceDecl` keine Konformanzliste vor). Aufgefallen beim Bau von
@@ -322,7 +406,7 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
 
 ## Letzter relevanter Commit
 
-`M8: std.math, std.os, std.io.file (S7)`
+`stdlib: Merge Sort in std.collections (M8b/S4, Teil 2)`
 
 ---
 
