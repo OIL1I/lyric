@@ -16,6 +16,11 @@ module std.string;
 pub fn concat(a: string, b: string): string;
 
 pub fn fromInt(value: int): string;
+
+// Eigener Wandler fuer vorzeichenlose Zahlen. 'fromInt' deutet ein grosses 'uint' als negative
+// Zahl um — gemessen lieferte f"{u}" mit u = uint64.MaxValue vorher "-1". Zwei Namen, weil Lyric
+// kein Overloading hat (ADR-015).
+pub fn fromUint(value: uint): string;
 pub fn fromFloat(value: float): string;
 pub fn fromBool(value: bool): string;
 pub fn fromChar(value: char): string;

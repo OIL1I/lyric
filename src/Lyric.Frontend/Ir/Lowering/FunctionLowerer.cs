@@ -3820,6 +3820,7 @@ internal sealed class FunctionLowerer
             IrScalar.Bool => "std.fmt.formatBool",
             IrScalar.Char => "std.fmt.formatChar",
             IrScalar.F32 or IrScalar.F64 => "std.fmt.formatFloat",
+            _ when IsUnsignedScalar(scalar.Kind) => "std.fmt.formatUint",
             _ when IsIntegerScalar(scalar.Kind) => "std.fmt.formatInt",
             _ => throw NotSupported("formatting a non-scalar value", expr.Span),
         };
@@ -3843,6 +3844,10 @@ internal sealed class FunctionLowerer
             IrScalar.Bool => CallHelper("std.string.fromBool", expr.Span, value),
             IrScalar.Char => CallHelper("std.string.fromChar", expr.Span, value),
             IrScalar.F32 or IrScalar.F64 => CallHelper("std.string.fromFloat", expr.Span,
+                WidenForHelper(value, scalar.Kind, expr.Span)),
+            // Vorzeichenlos zuerst: 'fromInt' deutet ein grosses uint als negative Zahl um.
+            // Gemessen lieferte f"{u}" mit u = uint64.MaxValue vorher "-1".
+            _ when IsUnsignedScalar(scalar.Kind) => CallHelper("std.string.fromUint", expr.Span,
                 WidenForHelper(value, scalar.Kind, expr.Span)),
             _ when IsIntegerScalar(scalar.Kind) => CallHelper("std.string.fromInt", expr.Span,
                 WidenForHelper(value, scalar.Kind, expr.Span)),
@@ -3873,6 +3878,9 @@ internal sealed class FunctionLowerer
         var widened = kind switch
         {
             IrScalar.F32 => IrScalar.F64,
+            // Ein uint8 wird zu u64 und nicht zu i64: der Zwischenschritt ueber einen
+            // vorzeichenbehafteten Typ wuerde das oberste Bit umdeuten.
+            _ when IsUnsignedScalar(kind) => IrScalar.U64,
             _ when IsIntegerScalar(kind) => IrScalar.I64,
             _ => kind,
         };
@@ -3940,6 +3948,14 @@ internal sealed class FunctionLowerer
         IrScalarType s when IsIntegerScalar(s.Kind) => new IntConst(1),
         _ => throw NotSupported("increment/decrement on a non-numeric type", span)
     };
+
+    /// <summary>Vorzeichenlos — entscheidet, welcher Wandler einen Wert in Text bringt.</summary>
+    /// <remarks>Ohne diese Unterscheidung ging jede Ganzzahl durch <c>fromInt</c>, und ein
+    /// <c>uint</c> jenseits von <c>int64.MaxValue</c> erschien als negative Zahl. Kein Absturz,
+    /// eine falsche Ausgabe — die Sorte Fehler, die niemand meldet, weil sie wie ein eigener
+    /// Rechenfehler aussieht.</remarks>
+    private static bool IsUnsignedScalar(IrScalar kind) => kind is
+        IrScalar.U8 or IrScalar.U16 or IrScalar.U32 or IrScalar.U64;
 
     private static bool IsIntegerScalar(IrScalar kind) => kind is
         IrScalar.I8 or IrScalar.I16 or IrScalar.I32 or IrScalar.I64 or

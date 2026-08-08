@@ -305,6 +305,12 @@ public sealed class NativeRegistry
         //
         // Ableitbar heisst nicht gleichwertig. Die Regel "was die Sprache kann, bleibt in Lyric"
         // gilt fuer Ausdrucksstaerke, nicht gegen Genauigkeit.
+        registry.Register("std.string.fromUint", new[] { TypeTag.U64 }, TypeTag.String,
+            args => LyrValue.FromString(args[0].AsU64.ToString(CultureInfo.InvariantCulture)));
+
+        registry.Register("std.fmt.formatUint", new[] { TypeTag.U64, TypeTag.String },
+            TypeTag.String, args => Formatted(args[0].AsU64, args[1].AsString));
+
         registry.Register("std.math.log2", f1, TypeTag.F64,
             args => LyrValue.FromF64(Math.Log2(args[0].AsF64)));
         registry.Register("std.math.log10", f1, TypeTag.F64,

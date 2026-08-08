@@ -11,9 +11,9 @@
 
 ## Aktueller Meilenstein
 
-**M8b — Stdlib-Erweiterung — läuft.** S1 bis S5 plus die Erreichbarkeitsanalyse.
+**M8b — Stdlib-Erweiterung — läuft.** S1 bis S7 plus die Erreichbarkeitsanalyse.
 
-2343 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2422 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -30,6 +30,22 @@ Erreichbarkeitsanalyse, dann M10 — die Embedding-API (`LangVm`, Marshalling, H
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M8b/S6+S7 — `std.math` und `std.fmt`** (2026-08-08).
+  - `gcd`/`lcm`/`powInt`/`divFloor`/`modFloor`, `clamp`/`sign`/`trunc`, `isNaN`/`isInfinite`,
+    `exp`/`cbrt`/`hypot`/`sinh`/`cosh`/`tanh`, ein **xorshift64\***-Generator — alles in Lyric.
+    `isNaN` braucht keine native Kante: `NaN` ist der einzige Wert, der sich selbst ungleich ist.
+  - **`log2` und `log10` mussten doch nativ werden.** Sie standen erst als `log(x)/log(basis)` da,
+    und gemessen lieferte `log10(1000.0)` dabei `2.9999999999999996` — mit `as int` also 2. Eine
+    Bibliothek, bei der `log10` einer Zehnerpotenz danebenliegt, ist für ihren häufigsten Zweck
+    kaputt. **Ableitbar heißt nicht gleichwertig**; die Vorgabe zielt auf Ausdrucksstärke, nicht
+    gegen Genauigkeit. Ein Test hat es gefunden.
+  - **Der `uint`-Bug ist behoben**: `f"{u}"` mit `u = uint64.MaxValue` lieferte `-1`. Es fehlte
+    ein eigener Wandler *und* die Unterscheidung nach Vorzeichen im Lowering — ein `uint8` muss zu
+    `u64` verbreitert werden, nicht zu `i64`.
+  - `formatHex`/`formatBinary`/`formatRadix`, `padLeft`/`padRight`/`center`, `formatBytes` und
+    `table` in Lyric. Der Seed von `Random` ist **Pflicht**: eine Zeitquelle als Voreinstellung
+    machte jeden Lauf stillschweigend unreproduzierbar.
 
 - [x] **Erreichbarkeitsanalyse im Lowering** (2026-08-08). Ein Lyric-Rumpf landete im Bytecode,
   sobald sein Modul geladen war — auch wenn niemand ihn rief. Gemessen, jeweils mit erweiterter
@@ -385,12 +401,14 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   Vermutlich Absicht, steht aber in **keinem ADR** — beim Bau eines Testzählers aufgefallen. Wenn
   es Absicht ist, gehört es in `Sprache.md`; wenn nicht, ist es eine Lücke.
 
+- **Flow-Narrowing greift im `if`-AUSDRUCK nicht**: `if (a == null) 0 else a` meldet
+  `LYR-SEM0001`, obwohl die Statement-Form `if (a == null) { return 0; } return a;` funktioniert.
+  Beim Bau von `std.fmt` hineingelaufen; die Umgehung ist die Statement-Form.
+
 - **Interface-Vererbung gibt es nicht** (`interface A :: [B]` ist ein Parser-Fehler; die
   Grammatik sieht für `InterfaceDecl` keine Konformanzliste vor). Aufgefallen beim Bau von
   ADR-024, das sie voraussetzte. Ob v1 sie braucht, ist offen — `Hashable` bräuchte sie nur, um
   `Equatable` zu implizieren.
-- **`f"{u}"` mit `u: uint` jenseits `int64.MaxValue`** druckt eine negative Zahl. Keine Absturz,
-  eine falsche Ausgabe; der Fix wäre ein eigener nativer `fromUint`.
 - **`string < string` und `==` auf Nutzertypen sind abgelehnt** (`LYR-SEM0003` / `LYR-SEM0055`).
   Bewusst und vorübergehend: Operator-Overloading ist das erste Thema nach v1.0 (v1.4), und die
   Diagnose zeigt darauf. Bis dahin eine gewöhnliche Methode.
