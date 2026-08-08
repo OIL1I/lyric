@@ -3150,25 +3150,30 @@ internal sealed class FunctionLowerer
             : LowerWithOwner(declaration.ReturnType, owner, span);
 
     /// <summary>
-    /// Lowert einen geschriebenen Typ im Kontext einer Typinstanz — <b>rekursiv</b>, weil ein
-    /// Typ-Parameter tief stecken kann: <c>?T</c>, <c>T[]</c>, <c>Box&lt;T&gt;</c>.
-    ///
-    /// <para>Nur den nackten Fall zu behandeln reichte fuer <c>fn get(): T</c> und fiel bei
-    /// <c>fn next(): ?T</c> um — und genau das ist die Signatur jedes Iterators.</para>
+    /// Lowert einen geschriebenen Typ im Kontext einer Typinstanz — die Substitution geht an die
+    /// <b>Typtabelle</b>, statt hier eine zweite Auflegung nachzubauen.
     /// </summary>
+    /// <remarks>
+    /// <para>Hier stand eine Teilkopie, und sie ist <b>dreimal</b> zu kurz gewesen: erst nur der
+    /// nackte Fall (<c>fn get(): T</c>), dann <c>?T</c> nachgezogen, dann <c>T[]</c> — und
+    /// <c>Iterator&lt;T&gt;</c> fehlte immer noch. Damit war jede Methode nicht lowerbar, die
+    /// einen GENERISCHEN Typ liefert: <c>fn iter(): Iterator&lt;T&gt;</c> ist die Signatur, an der
+    /// <c>Set&lt;T&gt;</c> gescheitert ist.</para>
+    /// <para>Dasselbe Muster und dieselbe Antwort wie bei <see cref="LowerSubstituted"/>: die
+    /// Tabelle kann es vollstaendig — sie benutzt denselben Stack beim Lowern der Member einer
+    /// generischen Instanz. Sie musste nur erfahren, dass hier eine Substitution gilt.</para>
+    /// </remarks>
     private IrType LowerWithOwner(TypeNode node, GenericInstance owner, Core.Span span)
     {
-        if (node is NamedType { TypeArguments.Length: 0 } named)
-            for (var i = 0; i < owner.Definition.Generics.Length; i++)
-                if (owner.Definition.Generics[i].Name == named.Path[^1])
-                    return LowerType(owner.Arguments[i], span);
+        var mapping = new Dictionary<string, LyrType>(StringComparer.Ordinal);
+        var n = Math.Min(owner.Definition.Generics.Length, owner.Arguments.Length);
 
-        if (node is NullableType option)
-            return new IrOptionalType(LowerWithOwner(option.Inner, owner, span));
+        for (var i = 0; i < n; i++)
+            // Durch die EIGENE Substitution: ein Argument der Instanz kann selbst ein
+            // Typ-Parameter der rufenden Funktion sein ('Box<T>' in 'wrap<T>').
+            mapping[owner.Definition.Generics[i].Name] = SubstituteType(owner.Arguments[i]);
 
-        if (node is ArrayType { Size: null } array)
-            return new IrArrayType(LowerWithOwner(array.Element, owner, span));
-
+        using var scope = _typeTable.PushSubstitution(mapping);
         return _typeTable.Lower(node);
     }
 
