@@ -35,3 +35,272 @@ pub fn tan(radians: float): float;
 
 // Natürlicher Logarithmus. Für andere Basen: `log(x) / log(basis)`.
 pub fn log(value: float): float;
+
+// Die Umkehrfunktionen der Trigonometrie. Die vier sind die EINZIGEN neuen nativen Kanten in
+// diesem Modul — alles andere unten laesst sich aus `sqrt`, `pow` und `log` ableiten, und was
+// ableitbar ist, gehoert nicht ueber die Host-Grenze (ADR-013: jede native Signatur ist eine
+// Zeile im Bytecode-Vertrag).
+//
+// Eine Reihenentwicklung in Lyric waere moeglich und waere die falsche Sparsamkeit: sie ist an den
+// Raendern ungenau, und Genauigkeit ist bei genau diesen Funktionen der ganze Punkt.
+pub fn asin(value: float): float;
+pub fn acos(value: float): float;
+pub fn atan(value: float): float;
+pub fn atan2(y: float, x: float): float;
+
+// ====================================================== In Lyric geschrieben (M8b/S6)
+
+pub let tau: float = 6.283185307179586;
+
+// ------------------------------------------------------------------ Ganzzahlen
+//
+// Eigene Namen statt Ueberladung (ADR-015). `absInt` neben `abs` liest sich unschoen und ist
+// ehrlich: es sind zwei Funktionen, weil `int` und `float` zwei Typen sind.
+
+pub fn absInt(value: int): int {
+    return if (value < 0) 0 - value else value;
+}
+
+pub fn minInt(a: int, b: int): int {
+    return if (a < b) a else b;
+}
+
+pub fn maxInt(a: int, b: int): int {
+    return if (a > b) a else b;
+}
+
+/// Klemmt auf `[lo, hi]`. Ein `lo > hi` liefert `lo` — die Grenzen sind Sache des Aufrufers, und
+/// ein `panic` waere hier ein Fehler in einer Funktion, die nur rechnet.
+pub fn clampInt(value: int, lo: int, hi: int): int {
+    if (value < lo) {
+        return lo;
+    }
+    return if (value > hi) hi else value;
+}
+
+pub fn signInt(value: int): int {
+    if (value > 0) {
+        return 1;
+    }
+    return if (value < 0) 0 - 1 else 0;
+}
+
+/// Groesster gemeinsamer Teiler, euklidisch. Immer nicht-negativ.
+pub fn gcd(a: int, b: int): int {
+    var x = absInt(a);
+    var y = absInt(b);
+    while (y != 0) {
+        let rest = x % y;
+        x = y;
+        y = rest;
+    }
+    return x;
+}
+
+/// Kleinstes gemeinsames Vielfaches. `lcm(0, n)` ist 0.
+pub fn lcm(a: int, b: int): int {
+    if (a == 0 || b == 0) {
+        return 0;
+    }
+    // Erst teilen, dann malnehmen: die andere Reihenfolge laeuft bei grossen Zahlen ueber, obwohl
+    // das Ergebnis passt.
+    return absInt(a / gcd(a, b) * b);
+}
+
+/// Ganzzahlige Potenz durch wiederholtes Quadrieren.
+///
+/// Ein negativer Exponent liefert `null`: das Ergebnis waere ein Bruch, und stillschweigend 0 zu
+/// liefern hiesse, einen Fehler als Zahl zu verkleiden.
+pub fn powInt(base: int, exponent: int): ?int {
+    if (exponent < 0) {
+        return null;
+    }
+
+    var ergebnis = 1;
+    var b = base;
+    var e = exponent;
+    while (e > 0) {
+        if (e % 2 == 1) {
+            ergebnis = ergebnis * b;
+        }
+        b = b * b;
+        e = e / 2;
+    }
+    return ergebnis;
+}
+
+/// Division mit Abrunden Richtung minus unendlich — nicht Richtung null.
+///
+/// `%` und `/` folgen in Lyric dem Vorzeichen des Dividenden (§6.6), also ist `-7 / 2` gleich -3.
+/// Wer auf einem Raster rechnet (Kacheln, Zeitfenster), braucht -4. Beide Formen stehen hier
+/// nebeneinander, damit die Wahl sichtbar ist statt versteckt.
+pub fn divFloor(a: int, b: int): int {
+    let q = a / b;
+    // Rest ungleich null UND Vorzeichen verschieden: dann hat die Division nach oben gerundet.
+    if (a % b != 0 && ((a < 0) != (b < 0))) {
+        return q - 1;
+    }
+    return q;
+}
+
+/// Der zu `divFloor` passende Rest — immer mit dem Vorzeichen von `b`.
+pub fn modFloor(a: int, b: int): int {
+    let rest = a % b;
+    if (rest != 0 && ((rest < 0) != (b < 0))) {
+        return rest + b;
+    }
+    return rest;
+}
+
+// ------------------------------------------------------------------ Fliesskomma
+
+pub fn clamp(value: float, lo: float, hi: float): float {
+    if (value < lo) {
+        return lo;
+    }
+    return if (value > hi) hi else value;
+}
+
+pub fn sign(value: float): float {
+    if (value > 0.0) {
+        return 1.0;
+    }
+    return if (value < 0.0) 0.0 - 1.0 else 0.0;
+}
+
+/// Schneidet Richtung null ab — `trunc(-2.7)` ist `-2.0`, `floor(-2.7)` waere `-3.0`.
+pub fn trunc(value: float): float {
+    return if (value < 0.0) ceil(value) else floor(value);
+}
+
+/// `NaN` ist der einzige Wert, der sich selbst ungleich ist (IEEE 754). Deshalb braucht diese
+/// Funktion keine native Kante und keinen Bit-Zugriff.
+pub fn isNaN(value: float): bool {
+    return value != value;
+}
+
+pub fn isInfinite(value: float): bool {
+    if (isNaN(value)) {
+        return false;
+    }
+    // Unendlich ist der einzige Wert, der sich beim Verdoppeln nicht aendert und nicht null ist.
+    return value != 0.0 && value * 2.0 == value;
+}
+
+pub fn isFinite(value: float): bool {
+    return !isNaN(value) && !isInfinite(value);
+}
+
+pub fn exp(value: float): float {
+    return pow(e, value);
+}
+
+// Nativ, obwohl `log(x) / log(basis)` sie ausdrueckt — und genau so standen sie zuerst hier.
+// Gemessen lieferte `log10(1000.0)` dabei 2.9999999999999996, und `as int` machte daraus 2. Eine
+// Bibliothek, bei der `log10` einer Zehnerpotenz danebenliegt, ist fuer ihren haeufigsten Zweck
+// kaputt.
+//
+// **Ableitbar heisst nicht gleichwertig.** Die Vorgabe "was die Sprache kann, bleibt in Lyric"
+// zielt auf Ausdrucksstaerke, nicht gegen Genauigkeit; ein Test hat den Unterschied gefunden.
+pub fn log2(value: float): float;
+pub fn log10(value: float): float;
+
+/// Logarithmus zu beliebiger Basis.
+pub fn logBase(value: float, base: float): float {
+    return log(value) / log(base);
+}
+
+/// Kubikwurzel — auch für negative Werte.
+///
+/// `pow(x, 1/3)` allein liefert für negative `x` NaN: eine gebrochene Potenz ist dort nicht
+/// definiert. Die dritte Wurzel schon, und das Vorzeichen wandert einfach heraus.
+pub fn cbrt(value: float): float {
+    if (value < 0.0) {
+        return 0.0 - pow(0.0 - value, 1.0 / 3.0);
+    }
+    return pow(value, 1.0 / 3.0);
+}
+
+/// Die Länge der Hypotenuse.
+pub fn hypot(a: float, b: float): float {
+    return sqrt(a * a + b * b);
+}
+
+pub fn sinh(value: float): float {
+    return (exp(value) - exp(0.0 - value)) / 2.0;
+}
+
+pub fn cosh(value: float): float {
+    return (exp(value) + exp(0.0 - value)) / 2.0;
+}
+
+pub fn tanh(value: float): float {
+    return sinh(value) / cosh(value);
+}
+
+pub fn toRadians(degrees: float): float {
+    return degrees * pi / 180.0;
+}
+
+pub fn toDegrees(radians: float): float {
+    return radians * 180.0 / pi;
+}
+
+// ------------------------------------------------------------------ Zufall
+//
+// **xorshift64***, in Lyric. Der Zustand ist ein einziger `int`, und die drei Schiebeoperationen
+// samt Multiplikation sind gewoehnliche Arithmetik — es braucht keine native Kante.
+//
+// **Nicht kryptographisch.** Wer Schluessel erzeugt, braucht eine Quelle aus dem Betriebssystem;
+// das gehoert zu `std.os` und nicht hierher. Fuer Simulationen, Spiele und Testdaten ist xorshift
+// gut genug und schnell.
+//
+// **Der Seed kommt vom Aufrufer** — es gibt kein `newRandom()` ohne Argument. Eine Zeitquelle als
+// Voreinstellung waere bequem und wuerde einen Lauf unreproduzierbar machen, und zwar
+// stillschweigend. Wer Zufall pro Lauf will, holt sich die Zeit aus `std.os` und sagt das damit
+// hin.
+
+pub class Random {
+    state: int,
+
+    /// Der nächste Rohwert. Kann jedes Vorzeichen haben.
+    pub mut fn nextInt(): int {
+        var x = this.state;
+        x = x ^ (x << 13);
+        x = x ^ (x >> 7);
+        x = x ^ (x << 17);
+        this.state = x;
+        return x;
+    }
+
+    /// Gleichverteilt in `[lo, hi)`. Ein leerer Bereich liefert `lo`.
+    pub mut fn nextIntRange(lo: int, hi: int): int {
+        if (hi <= lo) {
+            return lo;
+        }
+        // Der Betrag ERST, dann Modulo: ein negativer Rohwert gaebe sonst einen Rest unterhalb
+        // von `lo`.
+        return lo + absInt(this.nextInt()) % (hi - lo);
+    }
+
+    /// Gleichverteilt in `[0, 1)`.
+    pub mut fn nextFloat(): float {
+        // 53 Bit sind genau die Mantisse eines float64: mehr Bits waeren nicht darstellbar,
+        // weniger verschenkten Auflösung.
+        let bits = absInt(this.nextInt()) % 9007199254740992;
+        return (bits as float) / 9007199254740992.0;
+    }
+
+    pub mut fn nextBool(): bool {
+        return this.nextInt() % 2 == 0;
+    }
+}
+
+/// Ein Generator mit ausdrücklichem Seed.
+///
+/// Ein Seed von 0 wäre bei xorshift ein Fixpunkt — die Folge bliebe für immer 0. Er wird deshalb
+/// still ersetzt; das ist die eine Stelle, an der Stillschweigen richtig ist, weil die Alternative
+/// ein `panic` für eine völlig plausible Eingabe wäre.
+pub fn newRandom(seed: int): Random {
+    return Random { state = if (seed == 0) 0x2545F4914F6CDD1D else seed };
+}

@@ -296,6 +296,29 @@ public sealed class NativeRegistry
             args => LyrValue.FromF64(Math.Cos(args[0].AsF64)));
         registry.Register("std.math.tan", f1, TypeTag.F64,
             args => LyrValue.FromF64(Math.Tan(args[0].AsF64)));
+        // Die Umkehrfunktionen der Trigonometrie — die einzigen neuen Natives in std.math
+        // (M8b/S6). Alles andere dort ist aus sqrt/pow/log ableitbar und steht in Lyric.
+        // log2 und log10 nativ, obwohl 'log(x)/log(basis)' sie ausdrueckt: die Umrechnung ist
+        // UNGENAU. Gemessen lieferte 'log10(1000.0)' dort 2.9999999999999996, und 'as int' machte
+        // daraus 2. Eine Bibliothek, bei der 'log10' einer Zehnerpotenz danebenliegt, ist fuer
+        // ihren haeufigsten Zweck kaputt — Stellenzahl ausrechnen.
+        //
+        // Ableitbar heisst nicht gleichwertig. Die Regel "was die Sprache kann, bleibt in Lyric"
+        // gilt fuer Ausdrucksstaerke, nicht gegen Genauigkeit.
+        registry.Register("std.math.log2", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Log2(args[0].AsF64)));
+        registry.Register("std.math.log10", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Log10(args[0].AsF64)));
+
+        registry.Register("std.math.asin", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Asin(args[0].AsF64)));
+        registry.Register("std.math.acos", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Acos(args[0].AsF64)));
+        registry.Register("std.math.atan", f1, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Atan(args[0].AsF64)));
+        registry.Register("std.math.atan2", new[] { TypeTag.F64, TypeTag.F64 }, TypeTag.F64,
+            args => LyrValue.FromF64(Math.Atan2(args[0].AsF64, args[1].AsF64)));
+
         registry.Register("std.math.log", f1, TypeTag.F64,
             args => LyrValue.FromF64(Math.Log(args[0].AsF64)));
 
