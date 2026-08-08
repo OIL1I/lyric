@@ -205,14 +205,16 @@ internal sealed class FunctionLowerer
         IReadOnlyList<Symbol> captures, bool capturesThis, IrType environmentType,
         TypeSymbol? receiver, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances) =>
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances,
+        IReadOnlyDictionary<GenericParamSymbol, LyrType>? substitution = null) =>
         new(lambda, name, captures, capturesThis, environmentType, receiver, types, functions,
-            imports, typeTable, globals, lambdas, instances);
+            imports, typeTable, globals, lambdas, instances, substitution);
 
     private FunctionLowerer(LambdaExpr lambda, string name, IReadOnlyList<Symbol> captures,
         bool capturesThis, IrType environmentType, TypeSymbol? receiver, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
-        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances)
+        TypeTable typeTable, GlobalTable globals, LambdaTable lambdas, InstanceTable instances,
+        IReadOnlyDictionary<GenericParamSymbol, LyrType>? substitution = null)
     {
         _instances = instances;
         _lambda = lambda;
@@ -224,7 +226,15 @@ internal sealed class FunctionLowerer
         _typeTable = typeTable;
         _globals = globals;
         _lambdas = lambdas;
-        _substitution = ModuleLowerer.NoSubstitution;
+
+        // Die Substitution der UMGEBENDEN Funktion. Hier stand 'NoSubstitution', und damit war
+        // jedes Lambda in einer monomorphisierten Instanz kaputt: '(a: T, b: T) => …' in
+        // 'sortList<T>' liess das Lowering abbrechen ("type parameter 'T' is not supported").
+        //
+        // Ein Lambda ist kein eigener generischer Kontext — es erbt den seines Rumpfes. Dass es
+        // als eigene Funktion gelowert wird (ADR-018), ist eine Implementierungsentscheidung und
+        // darf an den Typen nichts aendern.
+        _substitution = substitution ?? ModuleLowerer.NoSubstitution;
         _b = new BlockBuilder(_blocks);
 
         _returnType = _types.TypeOf(lambda) is FnType fn
@@ -461,7 +471,7 @@ internal sealed class FunctionLowerer
             : _typeTable.EnvironmentFor(_name, fieldTypes, fieldNames);
 
         var target = _lambdas.Register(lambda, _name, captured, capturesThis, environment,
-            ReceiverForLambda());
+            ReceiverForLambda(), _substitution);
 
         TempId? env = null;
         if (environment is IrRefType envType)

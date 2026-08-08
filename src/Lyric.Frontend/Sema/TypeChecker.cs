@@ -2702,6 +2702,21 @@ public sealed class TypeChecker
 
     private void CheckAssignable(Expr expr, LyrType from, LyrType to, Span span)
     {
+        // Ein LEERES Array-Literal hat keinen eigenen Elementtyp — er kommt aus dem Kontext.
+        // 'let xs: int[] = []' ging, weil dort der erwartete Typ beim Pruefen vorliegt; 'f([])'
+        // nicht, weil die zweiphasige Inferenz Nicht-Lambda-Argumente ohne Kontext typt (D5). In
+        // der Seitentabelle stand dann 'int[]' mit ErrorType als Element, und das Lowering brach
+        // ab — ein Compiler-Absturz fuer "uebergib keine Elemente".
+        //
+        // Das steht VOR der Poison-Pruefung unten, und zwar notwendigerweise: der Typ des leeren
+        // Literals ENTHAELT einen ErrorType, wuerde dort also aussteigen. Hier ist er kein
+        // gemeldeter Fehler, sondern eine offene Stelle, die der Kontext gerade schliesst.
+        if (expr is ArrayLitExpr { Elements.Length: 0 } && to is ArrayOf)
+        {
+            _result.SetType(expr, to);
+            return;
+        }
+
         // Ein Fehler IN einem der Typen heisst: die Ursache ist gemeldet (Poison-Regel). Bisher
         // galt das nur, wenn der Typ SELBST ErrorType war — ein 'fn(int) -> <error>' ging durch
         // und erzeugte "cannot assign 'fn(int) -> <error>' to 'fn(int) -> U'", eine Zeile, die
@@ -2728,6 +2743,7 @@ public sealed class TypeChecker
     private void AdaptLiteralType(Expr expr, LyrType to)
     {
         while (to is Optional optional) to = optional.Inner; // T → ?T: das Literal nimmt T an
+
         if (to is not PrimitiveType target || !LiteralAdaptsTo(expr, target)) return;
 
         _result.SetType(expr, target);

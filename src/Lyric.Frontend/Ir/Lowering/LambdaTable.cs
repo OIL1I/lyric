@@ -31,7 +31,8 @@ internal sealed class LambdaTable
         IReadOnlyList<Symbol> Captures,
         bool CapturesThis,
         IrType EnvironmentType,
-        TypeSymbol? Receiver);
+        TypeSymbol? Receiver,
+        IReadOnlyDictionary<GenericParamSymbol, LyrType> Substitution);
 
     private readonly List<Pending> _pending = new();
 
@@ -53,8 +54,13 @@ internal sealed class LambdaTable
     /// diesem Zeitpunkt noch nicht gelowert — deshalb kann der Aufrufer sein <c>mkclosure</c>
     /// sofort schreiben.
     /// </summary>
+    /// <param name="substitution">Die Substitution der umgebenden Funktion. Ein Lambda IN einer
+    /// monomorphisierten Instanz sieht deren Typ-Parameter — <c>(a: T, b: T) =&gt; …</c> in
+    /// <c>sortList&lt;T&gt;</c> ist der Normalfall, nicht die Ausnahme. Ohne sie blieb das <c>T</c>
+    /// im Rumpf unaufgeloest und das Lowering brach ab.</param>
     public FunctionId Register(LambdaExpr lambda, string enclosing, IReadOnlyList<Symbol> captures,
-        bool capturesThis, IrType environmentType, TypeSymbol? receiver)
+        bool capturesThis, IrType environmentType, TypeSymbol? receiver,
+        IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution)
     {
         var id = _ids.Next();
 
@@ -63,7 +69,8 @@ internal sealed class LambdaTable
         // zwei Lambdas derselben Funktion auseinander.
         var name = $"{enclosing}.<lambda{_pending.Count}>";
 
-        _pending.Add(new Pending(lambda, name, id, captures, capturesThis, environmentType, receiver));
+        _pending.Add(new Pending(lambda, name, id, captures, capturesThis, environmentType,
+            receiver, substitution));
         return id;
     }
 
@@ -83,7 +90,8 @@ internal sealed class LambdaTable
             var p = _pending[_lowered];
             lowered.Add((p.Id, FunctionLowerer.ForLambda(
                 p.Lambda, p.Name, p.Captures, p.CapturesThis, p.EnvironmentType, p.Receiver,
-                types, functions, imports, typeTable, globals, this, instances).Run()));
+                types, functions, imports, typeTable, globals, this, instances,
+                p.Substitution).Run()));
         }
 
         return lowered;

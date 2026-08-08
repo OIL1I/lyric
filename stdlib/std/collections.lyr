@@ -348,3 +348,118 @@ pub fn emptyMap<K :: [Hashable<K>, Equatable<K>], V>(): Map<K, V> {
         used = 0,
     };
 }
+
+// ================================================================ Sortieren (M8b/S4)
+//
+// **Bottom-up Merge Sort**, in Lyric.
+//
+// Warum Merge und nicht Quicksort: er ist STABIL — gleiche Elemente behalten ihre Reihenfolge —
+// und garantiert O(n log n) auch im schlechtesten Fall. Quicksort ist in der Praxis schneller,
+// aber instabil, und bei bereits sortierter Eingabe quadratisch. Fuer eine Standardbibliothek ist
+// das die falsche Ueberraschung: „mein Programm haengt, seit die Daten sortiert ankommen" ist ein
+// Fehlerbild, das niemand sucht.
+//
+// Dieselbe Wahl treffen alle Sprachen fuer ihre stabile Sortierung: Pythons und Javas Timsort,
+// C++ `stable_sort`, Gos `sort.Stable`. Timsort ist im Kern ein Merge Sort mit Erkennung bereits
+// sortierter Abschnitte; wer die spaeter nachruesten will, erweitert diesen Code und ersetzt ihn
+// nicht.
+//
+// **Bottom-up und nicht rekursiv**: die Schleifenstruktur steht direkt da — Breite 1, 2, 4, …,
+// und in jeder Runde werden benachbarte Paare verschmolzen. Kein Aufrufstack, dessen Tiefe von
+// der Eingabegroesse abhaengt.
+//
+// **Der Preis** ist ein Puffer von der Groesse der Liste. In-place stabil zu sortieren geht, ist
+// aber deutlich verwickelter — und Speicher ist hier nicht die knappe Ressource.
+//
+// Zwei Namen statt eines, weil Lyric kein Overloading hat (ADR-015): `sortList` nach der
+// natuerlichen Ordnung, `sortListBy` mit eigenem Vergleich.
+
+/// Sortiert an Ort und Stelle nach der natürlichen Ordnung des Typs.
+pub fn sortList<T :: [Ordered<T>]>(xs: List<T>): void {
+    sortListBy<T>(xs, (a: T, b: T) => a.compare(b) < 0);
+}
+
+/// Sortiert an Ort und Stelle mit einem eigenen Vergleich.
+///
+/// `less(a, b)` muss `true` liefern, wenn `a` **echt** vor `b` kommt. Ein `less`, das bei
+/// gleichen Elementen `true` liefert, zerstört die Stabilität — und bei einem widersprüchlichen
+/// `less` (`less(a,b)` und `less(b,a)` beide wahr) ist die Ausgabe beliebig, aber es stürzt
+/// nichts ab: der Algorithmus vergleicht nur, er zieht keine Schlüsse.
+pub fn sortListBy<T>(xs: List<T>, less: fn(T, T) -> bool): void {
+    let n = xs.length();
+    if (n < 2) {
+        return;
+    }
+
+    let hole: ?T = null;
+    var buffer = [hole] * n;
+
+    var width = 1;
+    while (width < n) {
+        var start = 0;
+        while (start < n) {
+            // Zwei benachbarte, bereits sortierte Laeufe: [start, mitte) und [mitte, ende).
+            let mitte = min(start + width, n);
+            let ende = min(start + width * 2, n);
+            mergeRuns<T>(xs, buffer, start, mitte, ende, less);
+            start = start + width * 2;
+        }
+
+        // Zurueckschreiben nach jeder Runde. Die Alternative — Quelle und Puffer die Rollen
+        // tauschen lassen — spart die Haelfte der Kopien, verlangt aber, am Ende zu wissen, in
+        // welchem der beiden das Ergebnis liegt. Diese Buchhaltung ist der haeufigste Fehler in
+        // Merge-Sort-Implementierungen; sie ist hier bewusst nicht da.
+        var i = 0;
+        while (i < n) {
+            let v = buffer[i];
+            if (v != null) {
+                xs.set(i, v);
+            }
+            i = i + 1;
+        }
+
+        width = width * 2;
+    }
+}
+
+// Verschmilzt [start, mitte) und [mitte, ende) aus `xs` nach `buffer`.
+fn mergeRuns<T>(xs: List<T>, buffer: (?T)[], start: int, mitte: int, ende: int,
+                less: fn(T, T) -> bool): void {
+    var links = start;
+    var rechts = mitte;
+    var ziel = start;
+
+    while (links < mitte && rechts < ende) {
+        let a = xs.get(links);
+        let b = xs.get(rechts);
+
+        // `less(b, a)` und nicht `less(a, b)`: bei Gleichstand ist das Ergebnis `false`, also
+        // gewinnt die LINKE Seite — und links steht, was vorher weiter vorn stand. Genau daran
+        // haengt die Stabilitaet, und die umgekehrte Frage waere ebenso plausibel und falsch.
+        let p = less;
+        if (p(b, a)) {
+            buffer[ziel] = b;
+            rechts = rechts + 1;
+        } else {
+            buffer[ziel] = a;
+            links = links + 1;
+        }
+        ziel = ziel + 1;
+    }
+
+    while (links < mitte) {
+        buffer[ziel] = xs.get(links);
+        links = links + 1;
+        ziel = ziel + 1;
+    }
+
+    while (rechts < ende) {
+        buffer[ziel] = xs.get(rechts);
+        rechts = rechts + 1;
+        ziel = ziel + 1;
+    }
+}
+
+fn min(a: int, b: int): int {
+    return if (a < b) a else b;
+}
