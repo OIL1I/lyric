@@ -11,9 +11,9 @@
 
 ## Aktueller Meilenstein
 
-**M8b — Stdlib-Erweiterung — läuft.** S1 bis S4, `Set<T>` fehlt noch.
+**M8b — Stdlib-Erweiterung — läuft.** S1 bis S5 plus die Erreichbarkeitsanalyse.
 
-2327 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2343 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -30,6 +30,48 @@ Erreichbarkeitsanalyse, dann M10 — die Embedding-API (`LangVm`, Marshalling, H
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **Erreichbarkeitsanalyse im Lowering** (2026-08-08). Ein Lyric-Rumpf landete im Bytecode,
+  sobald sein Modul geladen war — auch wenn niemand ihn rief. Gemessen, jeweils mit erweiterter
+  `std.string`:
+
+  | | vorher | nachher | | | vorher | nachher |
+  |---|---|---|---|---|---|---|
+  | hello | 968 B | **301 B** | | stats | 1501 B | **837 B** |
+  | arith | 828 B | **437 B** | | shapes | 1888 B | **1224 B** |
+  | fizzbuzz | 1092 B | **528 B** | | inventory | 2321 B | **1657 B** |
+
+  - Ein Hello-World trägt jetzt **9 Bytes Code** — genau `main`, ohne ein Byte fremder Stdlib.
+  - **Auf der IR und nicht davor**: dort stehen die Aufrufe schon als Instruktionen. Eine Analyse
+    auf AST-Ebene müsste den Aufrufgraph mit Überladungsauflösung, Extensions und
+    Monomorphisierung nachbauen — ein zweiter Compiler neben dem ersten.
+  - **Virtuelle Aufrufe** sind der harte Teil, und die tragende Beobachtung ist: ein
+    Interface-Wert entsteht *ausschliesslich* durch `mkiface`. Die erste Fassung nahm jede
+    vtable-Zeile als Wurzel — sicher und wirkungslos.
+  - **Der Beinahe-Unfall**: bei einem untypisierten `catch (e)` baut die **VM** den
+    Throwable-Fat-Pointer selbst, im Code steht kein `mkiface`. Ohne diesen Fall suchte das
+    Programm zur Laufzeit eine Implementierung, die es nicht mehr gab. Dazu ist `Throw` ein
+    *Terminator* und stand nicht in den durchsuchten Instruktionen — zwei Lücken an derselben
+    Stelle, gefangen von zwei Tests.
+  - Bibliotheken ohne Einstiegspunkt bleiben unangetastet: dort ist jede öffentliche Funktion eine
+    mögliche Wurzel.
+
+- [x] **M8b/S5 — `std.string`** (2026-08-08). 30 Funktionen, **alle in Lyric**: Zeichen-Prädikate,
+  `join`/`replace`/`splitLines`/`splitFirst`, `trimStart`/`trimEnd`/`padStart`/`padEnd`,
+  `parseInt`/`parseIntRadix`/`parseFloat`/`parseBool`, `fromChars` und der `StringBuilder`, den
+  `Doku.md` seit M6 erwähnt und den es nie gab.
+  - Möglich nur durch **ADR-022**: seit `char` eine Zahl ist, sind `isDigit` und `parseInt`
+    gewöhnliche Arithmetik. Vorher hätte jede eine native Signatur gebraucht.
+  - Das Modul importiert **nichts** und darf das auch nicht — `std.core` importiert `std.string`.
+
+- [x] **M8b/S4 — `Set<T>`, Map durchlaufen, List durchsuchen** (2026-08-08).
+  - `Set<T>` ist **nicht** als `Map<T, bool>` gebaut: das verschwendet ein Array und macht `add(x)`
+    zu `set(x, true)`.
+  - **Eine `Map` war nicht durchlaufbar** — `keys()` und `values()` fehlten, weil sie am selben
+    Compiler-Fehler hingen wie `Set.iter()`.
+  - `LowerWithOwner` war eine Teilkopie der Typ-Auflösung und zum **dritten** Mal zu kurz: erst der
+    nackte Fall, dann `?T`, dann `T[]` — ein generischer Typ als Rückgabetyp fehlte immer noch.
+    Der Kommentar darüber beschrieb den Fehler bereits, eine Generation zu früh.
 
 - [x] **M8b/S4 — `Map<K, V>` und Merge Sort** (2026-08-08). Beide in Lyric.
   - **`Map`**: Open Addressing mit linearer Sondierung, drei flache Arrays statt einer Liste je
@@ -286,11 +328,10 @@ steht weiter aus.
 `Random`, `std.io.file`, `std.os`, `std.fmt`, und die drei bis heute inhaltsleeren Module
 `std.option`/`std.error`/`std.coroutine`).
 
-**Die Erreichbarkeitsanalyse kommt NACH der Stdlib-Erweiterung** (Entscheidung 2026-08-08). Sie
-ist formatneutral nachrüstbar (ADR-013) und zwingt deshalb keine Architekturentscheidung — aber
-sie wird nötig: gemessen trägt ein Hello-World heute **9 Bytes eigenen Code und 97 Bytes tote
-Stdlib**, und jede weitere Lyric-Funktion in einem geladenen Modul kommt hinzu. Der Marker-Test
-`A_program_carries_the_lyric_bodies_of_every_loaded_module` fällt, wenn sie da ist.
+**Die Erreichbarkeitsanalyse ist da** — vorgezogen, weil `std.string` den Effekt zum ersten Mal
+schmerzhaft sichtbar gemacht hat: zwei Tests, die „ein Hello-World trägt keine String-Maschinerie"
+festhielten, wurden falsch. Sie grün zu schreiben hätte geheißen, eine Zusage aufzugeben statt sie
+einzulösen.
 
 **Danach M10**, die Embedding-API: `Lyric.Embedding.LangVm` mit
 `RegisterFunction`/`RegisterType`, die bidirektionale Marshalling-Schicht zwischen Lyric-Werten
