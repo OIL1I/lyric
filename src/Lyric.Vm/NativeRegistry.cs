@@ -407,6 +407,148 @@ public sealed class NativeRegistry
         registry.RegisterArrayReturning("std.io.file.readLines", str, TypeTag.String,
             args => Lines(TryIo(() => File.ReadAllText(args[0].AsString))));
 
+        // ------------------------------------------------- std.io.file, Erweiterung (M8b/S8)
+        //
+        // Alles hier laeuft durch 'TryIo': eine fehlende Datei, ein gesperrtes Verzeichnis oder
+        // ein voller Datentraeger sind gewoehnliche Zustaende der Welt. Eine .NET-Exception
+        // mitten in einem Lyric-Programm waere die falsche Antwort — der Rueckgabewert sagt es.
+
+        // Nicht ueber 'TryIo': das reicht einen STRING durch, und der Umweg ueber
+        // 'Length.ToString()' und 'long.Parse' war nicht nur haesslich, sondern falsch — der
+        // erste Versuch lieferte fuer eine existierende Datei 'null'.
+        registry.RegisterOptionalReturning("std.io.file.size", str, TypeTag.I64,
+            args =>
+            {
+                try
+                {
+                    var info = new FileInfo(args[0].AsString);
+
+                    // 'Some' und nicht 'FromI64': bei einem '?T' ueber einem SKALAR markiert
+                    // erst der Marker in 'Ref' die Anwesenheit — jedes Bitmuster ist eine
+                    // gueltige Zahl, es gibt also keins fuer "kein Wert" (Bytecode.md §5).
+                    //
+                    // Die bisherigen optionalen Natives liefern alle 'string' und trugen ihre
+                    // Referenz selbst; dieses hier ist das erste mit einem Skalar, und deshalb
+                    // das erste, das ohne 'Some' still 'null' zurueckgab.
+                    return info.Exists ? LyrValue.Some(LyrValue.FromI64(info.Length)) : LyrValue.None;
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                              or ArgumentException or NotSupportedException)
+                {
+                    return LyrValue.None;
+                }
+            });
+
+        registry.Register("std.io.file.isFile", str, TypeTag.Bool,
+            args => LyrValue.FromBool(File.Exists(args[0].AsString)));
+
+        registry.Register("std.io.file.isDirectory", str, TypeTag.Bool,
+            args => LyrValue.FromBool(Directory.Exists(args[0].AsString)));
+
+        registry.Register("std.io.file.copy", new[] { TypeTag.String, TypeTag.String },
+            TypeTag.Bool, args => LyrValue.FromBool(
+                TryIo(() => { File.Copy(args[0].AsString, args[1].AsString, true); return ""; })
+                is not null));
+
+        registry.Register("std.io.file.move", new[] { TypeTag.String, TypeTag.String },
+            TypeTag.Bool, args => LyrValue.FromBool(
+                TryIo(() => { File.Move(args[0].AsString, args[1].AsString, true); return ""; })
+                is not null));
+
+        // Ein bereits vorhandenes Verzeichnis ist Erfolg: der gewuenschte Zustand ist erreicht.
+        // '.NET' verhaelt sich bei CreateDirectory ohnehin so; das hier haelt es fest.
+        registry.Register("std.io.file.createDir", str, TypeTag.Bool,
+            args => LyrValue.FromBool(
+                TryIo(() => { Directory.CreateDirectory(args[0].AsString); return ""; })
+                is not null));
+
+        registry.Register("std.io.file.createDirAll", str, TypeTag.Bool,
+            args => LyrValue.FromBool(
+                TryIo(() => { Directory.CreateDirectory(args[0].AsString); return ""; })
+                is not null));
+
+        // Nur LEER — 'recursive: false'. Ein rekursives Loeschen gibt es in der Stdlib bewusst
+        // nicht; wer es braucht, schreibt die Schleife sichtbar hin.
+        registry.Register("std.io.file.removeDir", str, TypeTag.Bool,
+            args => LyrValue.FromBool(
+                TryIo(() => { Directory.Delete(args[0].AsString, false); return ""; })
+                is not null));
+
+        registry.RegisterArrayReturning("std.io.file.listDir", str, TypeTag.String,
+            args =>
+            {
+                try
+                {
+                    var namen = Directory.EnumerateFileSystemEntries(args[0].AsString)
+                        .Select(Path.GetFileName)
+                        .OfType<string>()
+                        .OrderBy(n => n, StringComparer.Ordinal)   // deterministisch, ADR-013
+                        .Select(LyrValue.FromString)
+                        .ToArray();
+                    return LyrValue.FromObject(namen);
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                              or ArgumentException)
+                {
+                    return LyrValue.FromObject([]);
+                }
+            });
+
+        registry.Register("std.io.file.tempDir", none, TypeTag.String,
+            _ => LyrValue.FromString(Path.GetTempPath()));
+
+        // ------------------------------------------------------ std.os, Erweiterung (M8b/S8)
+
+        registry.RegisterArrayReturning("std.os.args", none, TypeTag.String,
+            _ => LyrValue.FromObject(Environment.GetCommandLineArgs()
+                .Select(LyrValue.FromString).ToArray()));
+
+        registry.Register("std.os.setEnv", new[] { TypeTag.String, TypeTag.String }, TypeTag.Bool,
+            args =>
+            {
+                try
+                {
+                    Environment.SetEnvironmentVariable(args[0].AsString, args[1].AsString);
+                    return LyrValue.FromBool(true);
+                }
+                catch (Exception e) when (e is ArgumentException or System.Security.SecurityException)
+                {
+                    return LyrValue.FromBool(false);
+                }
+            });
+
+        registry.RegisterOptionalReturning("std.os.hostName", none, TypeTag.String,
+            _ => Optional(TryIo(() => Environment.MachineName)));
+
+        registry.RegisterOptionalReturning("std.os.userName", none, TypeTag.String,
+            _ => Optional(TryIo(() => Environment.UserName)));
+
+        registry.RegisterOptionalReturning("std.os.homeDir", none, TypeTag.String,
+            _ => Optional(TryIo(() =>
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile))));
+
+        registry.Register("std.os.cpuCount", none, TypeTag.I64,
+            _ => LyrValue.FromI64(Environment.ProcessorCount));
+
+        registry.Register("std.os.nowMillis", none, TypeTag.I64,
+            _ => LyrValue.FromI64(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
+        // Monoton und mit beliebigem Nullpunkt — deshalb NICHT mit nowMillis vergleichbar. Genau
+        // das ist der Zweck: eine Systemuhr kann waehrend einer Messung springen.
+        registry.Register("std.os.nowNanos", none, TypeTag.I64,
+            _ => LyrValue.FromI64(
+                (long)(System.Diagnostics.Stopwatch.GetTimestamp()
+                       * (1_000_000_000.0 / System.Diagnostics.Stopwatch.Frequency))));
+
+        registry.Register("std.os.sleep", new[] { TypeTag.I64 }, TypeTag.Void,
+            args =>
+            {
+                var millis = args[0].AsI64;
+                if (millis > 0) Thread.Sleep((int)Math.Min(millis, int.MaxValue));
+                return default;
+            });
+
+
         return registry;
     }
 

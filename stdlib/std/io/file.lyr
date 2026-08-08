@@ -11,6 +11,9 @@
 
 module std.io.file;
 
+// Fuer die Pfad-Helfer unten. 'std.string' importiert nichts, also kein Zyklus.
+import std.string { length, charAt, substring };
+
 // Der gesamte Inhalt als Text (UTF-8), oder `null`, wenn die Datei nicht existiert oder nicht
 // lesbar ist.
 pub fn readText(path: string): ?string;
@@ -29,3 +32,158 @@ pub fn remove(path: string): bool;
 // Die Zeilen einer Datei, oder ein leeres Array, wenn sie nicht lesbar ist. Zeilenenden werden
 // entfernt; ob die Datei mit CRLF oder LF geschrieben war, ist danach nicht mehr sichtbar.
 pub fn readLines(path: string): string[];
+
+// ---------------------------------------------------------- Erweiterung (M8b/S8)
+//
+// Alle Rueckgaben sind `?T` oder `bool`: eine Datei, die nicht existiert, ein Verzeichnis ohne
+// Leserecht, ein voller Datentraeger — das sind gewoehnliche Zustaende der Welt und keine
+// Programmierfehler. Ein `panic` waere hier falsch, und eine Exception braeuchte einen
+// Throwable-Typ je Fall.
+//
+// Die Capability haengt am MODULNAMEN (ADR-007): alles hier verlangt `FileAccess`, ohne dass eine
+// einzelne Funktion es sagen muesste.
+
+pub fn size(path: string): ?int;
+pub fn isFile(path: string): bool;
+pub fn isDirectory(path: string): bool;
+
+/// Kopiert. `false`, wenn die Quelle fehlt oder das Ziel nicht schreibbar ist.
+pub fn copy(from: string, to: string): bool;
+
+/// Verschiebt oder benennt um — dasselbe auf jedem Dateisystem.
+pub fn move(from: string, to: string): bool;
+
+pub fn createDir(path: string): bool;
+
+/// Legt auch fehlende Elternverzeichnisse an. Ein bereits vorhandenes Verzeichnis ist Erfolg,
+/// kein Fehler — der gewuenschte Zustand ist ja erreicht.
+pub fn createDirAll(path: string): bool;
+
+/// Loescht ein LEERES Verzeichnis. Ein rekursives Loeschen gibt es bewusst nicht: der Unterschied
+/// zwischen `rm -r pfad` und `rm -r pfad/` hat schon genug Datenverlust verursacht, und wer es
+/// braucht, schreibt die Schleife sichtbar hin.
+pub fn removeDir(path: string): bool;
+
+/// Die Eintraege eines Verzeichnisses — Namen, keine Pfade, alphabetisch sortiert.
+///
+/// Ein leeres Array bei einem nicht lesbaren Verzeichnis, kein `?string[]`: dieselbe Wahl wie bei
+/// `readLines`. Wer den Unterschied zwischen "leer" und "nicht lesbar" braucht, fragt vorher mit
+/// `isDirectory`.
+pub fn listDir(path: string): string[];
+
+/// Ein Pfad im Temp-Verzeichnis des Systems. Legt die Datei NICHT an.
+pub fn tempDir(): string;
+
+// ---------------------------------------------------------- Pfade (in Lyric)
+//
+// Ab hier ist nichts mehr nativ: ein Pfad ist ein String, und Trennzeichen zu suchen kann die
+// Sprache selbst. Der Host wuerde hier nur seine eigene Plattform-Konvention hineinbringen — und
+// die ist bei einem plattformneutralen Bytecode (ADR-013) genau das Falsche.
+
+/// Beide Trennzeichen gelten. Windows versteht `/`, und ein Skript, das auf beiden Systemen
+/// laufen soll, sollte nicht raten muessen, welches es gerade ist.
+fn istTrenner(c: char): bool {
+    return c == '/' || c == '\\';
+}
+
+/// Fuegt zwei Pfadteile zusammen — ohne doppeltes Trennzeichen und ohne fehlendes.
+pub fn joinPath(links: string, rechts: string): string {
+    if (length(links) == 0) {
+        return rechts;
+    }
+    if (length(rechts) == 0) {
+        return links;
+    }
+
+    let endetMitTrenner = istTrenner(charAt(links, length(links) - 1));
+    let beginntMitTrenner = istTrenner(charAt(rechts, 0));
+
+    if (endetMitTrenner && beginntMitTrenner) {
+        return links + substring(rechts, 1, length(rechts) - 1);
+    }
+    if (endetMitTrenner || beginntMitTrenner) {
+        return links + rechts;
+    }
+    return links + "/" + rechts;
+}
+
+// Der Index nach dem letzten Trennzeichen — 0, wenn es keines gibt.
+fn nachLetztemTrenner(path: string): int {
+    var i = length(path) - 1;
+    while (i >= 0) {
+        if (istTrenner(charAt(path, i))) {
+            return i + 1;
+        }
+        i = i - 1;
+    }
+    return 0;
+}
+
+/// Der letzte Bestandteil. `"a/b/c.txt"` wird `"c.txt"`.
+pub fn fileName(path: string): string {
+    let start = nachLetztemTrenner(path);
+    return substring(path, start, length(path) - start);
+}
+
+/// Alles vor dem letzten Trennzeichen. `""`, wenn es keines gibt.
+pub fn parentDir(path: string): string {
+    let start = nachLetztemTrenner(path);
+    if (start == 0) {
+        return "";
+    }
+    // Das Trennzeichen selbst faellt weg — ausser bei "/x", wo der Elternpfad die Wurzel ist.
+    if (start == 1) {
+        return substring(path, 0, 1);
+    }
+    return substring(path, 0, start - 1);
+}
+
+/// Die Endung OHNE Punkt. `""`, wenn es keine gibt.
+///
+/// Ein fuehrender Punkt zaehlt nicht: `".gitignore"` hat keine Endung, sondern heisst so. Diese
+/// Regel unterscheidet sich zwischen Sprachen, und sie hier hinzuschreiben ist billiger, als sie
+/// jemanden herausfinden zu lassen.
+pub fn extension(path: string): string {
+    let name = fileName(path);
+    var i = length(name) - 1;
+    while (i > 0) {
+        if (charAt(name, i) == '.') {
+            return substring(name, i + 1, length(name) - i - 1);
+        }
+        if (istTrenner(charAt(name, i))) {
+            return "";
+        }
+        i = i - 1;
+    }
+    return "";
+}
+
+/// Der Name ohne Endung. `"a/b/c.txt"` wird `"c"`.
+pub fn stem(path: string): string {
+    let name = fileName(path);
+    let ext = extension(name);
+    if (length(ext) == 0) {
+        return name;
+    }
+    return substring(name, 0, length(name) - length(ext) - 1);
+}
+
+/// Tauscht die Endung. Eine leere Endung entfernt sie.
+pub fn withExtension(path: string, ext: string): string {
+    let ordner = parentDir(path);
+    let basis = stem(path);
+    let neu = if (length(ext) == 0) basis else basis + "." + ext;
+    return if (length(ordner) == 0) neu else joinPath(ordner, neu);
+}
+
+/// Beginnt der Pfad an der Wurzel? Erkennt `/x` und `C:\x`.
+pub fn isAbsolute(path: string): bool {
+    if (length(path) == 0) {
+        return false;
+    }
+    if (istTrenner(charAt(path, 0))) {
+        return true;
+    }
+    // Laufwerksbuchstabe: 'C:' am Anfang.
+    return length(path) >= 2 && charAt(path, 1) == ':';
+}

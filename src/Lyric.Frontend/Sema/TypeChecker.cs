@@ -1083,10 +1083,39 @@ public sealed class TypeChecker
         return BadBinary(b, l, r);
     }
 
+    /// <summary>
+    /// Gibt einem <b>leeren</b> Array-Literal den Elementtyp aus seinem Kontext.
+    /// </summary>
+    /// <remarks>
+    /// <para><c>[]</c> hat für sich keinen Elementtyp — er kommt von aussen. Wo der erwartete Typ
+    /// beim Prüfen schon vorliegt (<c>let xs: int[] = []</c>), erledigt das die normale
+    /// Kontext-Weitergabe; wo er es nicht tut, muss er nachgereicht werden.</para>
+    /// <para>Zwei solche Stellen gibt es: Argumente (die zweiphasige Inferenz typt
+    /// Nicht-Lambda-Argumente ohne Kontext, D5) und <c>??</c> (dort wird nur
+    /// <see cref="IsAssignable"/> gefragt, nicht <see cref="CheckAssignable"/>). Deshalb steht das
+    /// hier als eigene Funktion und nicht zweimal ausgeschrieben.</para>
+    /// <para>Der Aufruf muss <b>vor</b> jeder Poison-Prüfung stehen: der Typ des leeren Literals
+    /// enthält einen <c>ErrorType</c>, ist aber kein gemeldeter Fehler, sondern eine offene
+    /// Stelle, die der Kontext gerade schliesst.</para>
+    /// </remarks>
+    private bool AdaptEmptyArray(Expr expr, LyrType to)
+    {
+        while (to is Optional optional) to = optional.Inner;
+
+        if (expr is not ArrayLitExpr { Elements.Length: 0 } || to is not ArrayOf) return false;
+
+        _result.SetType(expr, to);
+        return true;
+    }
+
     private LyrType CheckCoalesce(BinaryExpr b, LyrType l, LyrType r)
     {
         if (l is Optional o)
         {
+            // Erst anpassen, dann fragen: 'quelle() ?? []' scheiterte sonst an einem
+            // '<error>[]' auf der rechten Seite — obwohl der Zieltyp danebensteht.
+            if (AdaptEmptyArray(b.Right, o.Inner)) return o.Inner;
+
             if (IsAssignable(b.Right, r, o.Inner)) return o.Inner; // ?T ?? T → T
             if (IsAssignable(b.Right, r, l)) return l;              // ?T ?? ?T → ?T
             BadBinary(b, l, r);
@@ -2702,20 +2731,7 @@ public sealed class TypeChecker
 
     private void CheckAssignable(Expr expr, LyrType from, LyrType to, Span span)
     {
-        // Ein LEERES Array-Literal hat keinen eigenen Elementtyp — er kommt aus dem Kontext.
-        // 'let xs: int[] = []' ging, weil dort der erwartete Typ beim Pruefen vorliegt; 'f([])'
-        // nicht, weil die zweiphasige Inferenz Nicht-Lambda-Argumente ohne Kontext typt (D5). In
-        // der Seitentabelle stand dann 'int[]' mit ErrorType als Element, und das Lowering brach
-        // ab — ein Compiler-Absturz fuer "uebergib keine Elemente".
-        //
-        // Das steht VOR der Poison-Pruefung unten, und zwar notwendigerweise: der Typ des leeren
-        // Literals ENTHAELT einen ErrorType, wuerde dort also aussteigen. Hier ist er kein
-        // gemeldeter Fehler, sondern eine offene Stelle, die der Kontext gerade schliesst.
-        if (expr is ArrayLitExpr { Elements.Length: 0 } && to is ArrayOf)
-        {
-            _result.SetType(expr, to);
-            return;
-        }
+        if (AdaptEmptyArray(expr, to)) return;
 
         // Ein Fehler IN einem der Typen heisst: die Ursache ist gemeldet (Poison-Regel). Bisher
         // galt das nur, wenn der Typ SELBST ErrorType war — ein 'fn(int) -> <error>' ging durch

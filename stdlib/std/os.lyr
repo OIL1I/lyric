@@ -21,3 +21,48 @@ pub fn currentDir(): string;
 // Compiler den nachfolgenden Code als unerreichbar behandelt, und das kann er bei einem Native
 // nicht wissen. Wer sauber beenden will, gibt aus `main` zurück.
 pub fn exit(code: int): void;
+
+// ---------------------------------------------------------- Erweiterung (M8b/S8)
+
+/// Die Kommandozeilen-Argumente — auch ausserhalb von `main`.
+///
+/// `main(args)` bekommt sie zugestellt (§11), aber eine Funktion tief im Programm nicht. Sie
+/// dafuer durchzureichen ist Zeremonie; hier stehen sie fuer alle.
+pub fn args(): string[];
+
+/// Setzt eine Umgebungsvariable fuer diesen Prozess. Kindprozesse erben sie, das System nicht.
+pub fn setEnv(name: string, value: string): bool;
+
+pub fn hostName(): ?string;
+pub fn userName(): ?string;
+pub fn homeDir(): ?string;
+
+/// Wie viele Kerne die Maschine hat. Fuer Programme, die ihre Arbeit aufteilen wollen — auch wenn
+/// die VM selbst einfaedig ist (ADR-010).
+pub fn cpuCount(): int;
+
+/// Millisekunden seit dem 1.1.1970 UTC.
+///
+/// Bewusst eine Zahl und kein Datumstyp: `DateTime` ist ein eigenes Modul mit Zeitzonen, Kalendern
+/// und Formaten (v1.1). Fuer Messungen, Seeds und Zeitstempel reicht die Zahl, und sie ist auf
+/// jeder Plattform dieselbe.
+pub fn nowMillis(): int;
+
+/// Nanosekunden einer monotonen Uhr. NICHT mit `nowMillis` vergleichbar — der Nullpunkt ist
+/// beliebig. Fuer Zeitmessungen ist genau das richtig: eine Systemuhr kann waehrend der Messung
+/// springen.
+pub fn nowNanos(): int;
+
+/// Haelt den Prozess an. Die VM ist einfaedig, es gibt also nichts, was daneben weiterlaeuft.
+pub fn sleep(millis: int): void;
+
+// ---------------------------------------------------------- In Lyric
+
+/// Eine Umgebungsvariable mit Voreinstellung.
+pub fn envOr(name: string, fallback: string): string {
+    let value = env(name);
+    if (value == null) {
+        return fallback;
+    }
+    return value;
+}

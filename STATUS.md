@@ -11,9 +11,9 @@
 
 ## Aktueller Meilenstein
 
-**M8b — Stdlib-Erweiterung — läuft.** S1 bis S7 plus die Erreichbarkeitsanalyse.
+**M8b — Stdlib-Erweiterung — läuft.** S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2422 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2449 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -30,6 +30,20 @@ Erreichbarkeitsanalyse, dann M10 — die Embedding-API (`LangVm`, Marshalling, H
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M8b/S8 — `std.io.file` und `std.os`** (2026-08-08). `size`/`copy`/`move`/`listDir`/
+  `createDirAll`/`removeDir`/`tempDir`, dazu `args`/`setEnv`/`hostName`/`cpuCount`/`nowMillis`/
+  `nowNanos`/`sleep`. **Die Pfad-Helfer sind in Lyric** — ein Pfad ist ein String, und ein
+  Host-Native brächte hier seine eigene Plattform-Konvention mit; dieselbe `.lyrbc` muss überall
+  denselben Pfad ergeben. Beide Trennzeichen gelten, `.gitignore` hat keine Endung.
+  - **Zwei Fixes, beide erst durchs Ausprobieren gefunden:**
+  - `size` gab still `null` zurück, obwohl die Datei existierte. Es ist das **erste optionale
+    Native über einem Skalar** — alle bisherigen liefern `string` und tragen ihre Referenz selbst.
+    Bei `?int` markiert erst `LyrValue.Some` die Anwesenheit; jedes Bitmuster ist eine gültige
+    Zahl, es gibt also keins für „kein Wert" (Bytecode.md §5).
+  - **`?T[] ?? []`** ging nicht: `CheckCoalesce` fragt nur `IsAssignable`, nie `CheckAssignable` —
+    die Anpassung für leere Array-Literale wurde dort nie erreicht. Beide Stellen benutzen jetzt
+    dieselbe Funktion.
 
 - [x] **M8b/S6+S7 — `std.math` und `std.fmt`** (2026-08-08).
   - `gcd`/`lcm`/`powInt`/`divFloor`/`modFloor`, `clamp`/`sign`/`trunc`, `isNaN`/`isInfinite`,
@@ -401,6 +415,7 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   Vermutlich Absicht, steht aber in **keinem ADR** — beim Bau eines Testzählers aufgefallen. Wenn
   es Absicht ist, gehört es in `Sprache.md`; wenn nicht, ist es eine Lücke.
 
+- **`?T[] ?? []`** und **`size`** sind erledigt (M8b/S8).
 - **Flow-Narrowing greift im `if`-AUSDRUCK nicht**: `if (a == null) 0 else a` meldet
   `LYR-SEM0001`, obwohl die Statement-Form `if (a == null) { return 0; } return a;` funktioniert.
   Beim Bau von `std.fmt` hineingelaufen; die Umgehung ist die Statement-Form.
