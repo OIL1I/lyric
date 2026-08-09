@@ -187,12 +187,17 @@ TopLevelDecl    = ImportDecl
                             | GlobalBinding
                             | TypeAlias ) .
 
-GlobalBinding   = BindingStmt .                                      (* nur let, nicht var *)
+GlobalBinding   = BindingStmt .                                      (* nur let, nicht var — ADR-025 *)
 (* Globale und typgebundene Konstanten werden in DEKLARATIONSREIHENFOLGE initialisiert (Modul-,
    dann Quelltextreihenfolge). Ein Initialisierer darf nur Konstanten lesen, die vor ihm stehen —
    sonst LYR-SEM0057. Aus einem Funktionsrumpf ist jede Konstante lesbar, egal wo sie steht. *)
 TypeAlias       = 'type' IDENTIFIER '=' TypeExpr ';' .
 ```
+
+**Kein `var` auf Modulebene** (`LYR-PAR0027`, ADR-025). Das verbietet die **Neubindung des
+Namens**, nicht veränderlichen globalen Zustand: `let xs = [1, 2]; xs[0] = 9;` ist gültig, und ein
+Modul-`let` auf eine Klasse erlaubt jede Feldänderung — `let` bindet den Namen, nicht den Inhalt
+(ADR-020). Wer eine veränderliche globale Zahl braucht, hält sie in einem Objekt.
 
 Sichtbarkeit: `pub` exportiert, Default = modul-privat.
 

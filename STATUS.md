@@ -13,7 +13,7 @@
 
 **M8b — Stdlib-Erweiterung — läuft.** S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2460 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2465 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -30,6 +30,22 @@ Erreichbarkeitsanalyse, dann M10 — die Embedding-API (`LangVm`, Marshalling, H
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **ADR-025 — Modul-Bindungen sind unveränderlich** (2026-08-09). Die Regel galt seit P5b und
+  stand nur als Klammerkommentar in der Grammatik plus Parser-Meldung — ohne Begründung dort, wo
+  jemand sie findet.
+  - **Gemessen, was sie verhindert**: nur die Neubindung des *Namens*. `let xs = [1, 2]; xs[0] = 9;`
+    und `z.stand = 42` auf einem Modul-`let` sind gültig — `let` bindet den Namen, nicht den
+    Inhalt (ADR-020). Veränderlichen globalen Zustand gibt es also längst.
+  - **Warum sie trotzdem bleibt**, anders als bei ADR-020/023: sie gilt ausnahmslos, und der
+    Ausweg (ein Wrapper-Objekt) ist ein anderer Mechanismus, kein Schlupfloch. Dazu Sichtbarkeit
+    am Verwendungsort und die Hot-Reload-Frage, die M10 sonst zusätzlich beantworten müsste.
+  - **`StoreGlobal` existiert in IR und VM**; das Verbot sitzt in einer einzigen Parser-Zeile. Es
+    später aufzuheben bricht keinen Code, die Gegenrichtung gilt nicht — deshalb ist „vorerst
+    verbieten" die einzige revidierbare Entscheidung.
+  - Die Tests halten **beide** Seiten fest. Ein Test nur für das Verbot ließe offen, wie weit es
+    reicht, und genau diese Unklarheit hat zwei Regeln überleben lassen, die niemand mehr
+    begründen konnte.
 
 - [x] **Flow-Narrowing im `if`-Ausdruck** (2026-08-09). `if (a == null) 0 else a` war ein
   Typfehler, während `if (a == null) { return 0; } return a;` daneben funktionierte — derselbe
@@ -430,9 +446,6 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
   `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich
   sie am 2026-08-08 fälschlich als Bug gemeldet habe.
-- **Modul-Bindungen sind immer unveränderlich** (`var` auf Modulebene ist `LYR-PAR0027`).
-  Vermutlich Absicht, steht aber in **keinem ADR** — beim Bau eines Testzählers aufgefallen. Wenn
-  es Absicht ist, gehört es in `Sprache.md`; wenn nicht, ist es eine Lücke.
 
 - **`?T[] ?? []`** und **`size`** sind erledigt (M8b/S8).
 

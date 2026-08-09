@@ -781,6 +781,66 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-025 — Modul-Bindungen sind unveränderlich
+
+**Datum**: 2026-08-09. **Status**: Akzeptiert.
+
+**Entscheidung**: Auf Modulebene gibt es nur `let`, kein `var` (`LYR-PAR0027`). Der **Name** einer
+globalen Bindung lässt sich nicht neu binden.
+
+**Was das nicht heißt**: dass es keinen veränderlichen globalen Zustand gäbe. Gemessen am
+2026-08-09:
+
+```lyr
+let zahlen = [1, 2, 3];
+let z = Zaehler { };
+
+fn main(): int {
+    zahlen[0] = 99;      // geht
+    z.stand = 42;        // geht
+    return 0;
+}
+```
+
+Beides ist gültig — die Regel folgt ADR-020: `let` bindet den Namen, nicht den Inhalt. Wer einen
+veränderlichen Zähler braucht, schreibt sich einen Wrapper und ändert dessen Feld.
+
+**Begründung**: Bei ADR-020 und ADR-023 wurde je eine Regel gestrichen, weil sie inkonsistent
+war — sie verbot eine Schreibweise und erlaubte die gleichwertige daneben. **Diese Regel ist
+anders gelagert**, und der Unterschied ist der Grund, warum sie bleibt: sie gilt ausnahmslos, und
+der Ausweg ist kein Schlupfloch, sondern ein anderer Mechanismus.
+
+Drei Gründe:
+
+1. **Sichtbarkeit am Verwendungsort.** `n.stand = 5` sagt, dass hier ein geteiltes Objekt geändert
+   wird. `n = 5` sieht aus wie eine gewöhnliche Zuweisung; man muss die Deklaration suchen, um zu
+   merken, dass sie global ist. Für eine Sprache, deren erklärtes Ziel Einbettung in fremde Hosts
+   ist (Game-Engines, Editoren), ist das kein Stilargument.
+
+2. **M10 macht es scharf.** Hot-Reload muss beantworten, was beim Neuladen mit dem Wert geschieht.
+   Bei `let` ist die Antwort trivial: der Initialisierer läuft neu. Bei `var` wäre sie eine echte
+   Designentscheidung — und sie fiele mitten in einen Meilenstein, der genug eigene hat.
+
+3. **Die REPL zahlt schon dafür** (ADR-021): der Initialisierer einer Deklaration läuft bei jeder
+   Eingabe neu. Mit `var` wäre dieses Verhalten noch schwerer zu erklären, weil dann eine
+   *Zuweisung* aus einer früheren Eingabe verlorenginge.
+
+**Konsequenz**: Die Infrastruktur für das Gegenteil ist vollständig vorhanden — `StoreGlobal`
+existiert in IR und VM, das Verbot sitzt in einer einzigen Parser-Zeile. Es später aufzuheben
+bricht keinen bestehenden Code; die Gegenrichtung gilt nicht. Deshalb ist „vorerst verbieten" hier
+die einzige Entscheidung, die sich revidieren lässt.
+
+Der Preis ist Zeremonie: für einen Zähler eine Klasse zu deklarieren ist mehr Rauschen als
+`var n = 0`. Das ist bewusst in Kauf genommen und der Punkt, an dem eine spätere Revision ansetzen
+würde.
+
+**Dieses ADR entstand nachträglich.** Die Regel galt seit P5b, stand aber nur als Klammerkommentar
+in der Grammatik (`(* nur let, nicht var *)`) und als Parser-Meldung — ohne Begründung an einer
+Stelle, an der jemand sie findet. Genau dieser Zustand hat in diesem Projekt dreimal dazu geführt,
+dass eine Regel überlebte, die niemand mehr begründen konnte.
+
+---
+
 ### ADR-024 — `Equatable` und `Hashable` sind Interfaces in `std.core`
 
 **Datum**: 2026-08-07. **Status**: Akzeptiert.
