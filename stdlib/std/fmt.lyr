@@ -77,12 +77,9 @@ pub fn formatRadix(value: int, radix: int): string {
 fn ziffernZeichen(value: int): string {
     if (value < 10) {
         let c = digitToChar(value);
-        // Als Statement und nicht als `if`-Ausdruck: Flow-Narrowing greift dort nicht, `c` bliebe
-        // im else-Zweig ein `?char`.
-        if (c == null) {
-            return "?";
-        }
-        return fromChar(c);
+        // Seit dem Narrowing im `if`-AUSDRUCK geht die kurze Form: `c` ist im else-Zweig ein
+        // `char`. Vorher stand hier ein Umweg ueber zwei Statements.
+        return if (c == null) "?" else fromChar(c);
     }
     return fromChar((('a' as int) + value - 10) as char);
 }

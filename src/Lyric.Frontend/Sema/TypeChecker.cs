@@ -1927,11 +1927,35 @@ public sealed class TypeChecker
         return result;
     }
 
+    /// <summary>
+    /// Ein <c>if</c> als Ausdruck — mit Flow-Narrowing in beiden Zweigen, wie das Statement.
+    /// </summary>
+    /// <remarks>
+    /// <para>Hier stand nur <c>CheckExpr</c> je Zweig, ohne Narrowing. Damit war
+    /// <c>if (a == null) 0 else a</c> ein Typfehler (<c>LYR-SEM0001</c>), obwohl die
+    /// Statement-Form <c>if (a == null) { return 0; } return a;</c> daneben funktionierte — für
+    /// denselben Beweis über denselben Wert.</para>
+    /// <para>Die Maschinerie war vollständig da (<see cref="NarrowingFacts"/>, <c>Apply</c>); sie
+    /// war an dieser einen Stelle nicht angeschlossen. Beim Bau von <c>std.fmt</c>
+    /// hineingelaufen, wo <c>digitToChar</c> genau diese Form nahelegt.</para>
+    /// </remarks>
     private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope)
     {
         CheckCondition(iff.Condition, scope);
+
+        var (thenFacts, elseFacts) = NarrowingFacts(iff.Condition);
+        var snapshot = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
+
+        Apply(thenFacts);
         var thenT = CheckExpr(iff.Then, scope);
+
+        // Zurueck auf den Stand VOR dem then-Zweig: was dort galt, gilt im else-Zweig gerade
+        // nicht — das ist der ganze Punkt.
+        _narrowed = new Dictionary<Symbol, LyrType>(snapshot, ReferenceEqualityComparer.Instance);
+        Apply(elseFacts);
         var elseT = CheckExpr(iff.Else, scope);
+
+        _narrowed = snapshot;
         return Unify(iff.Then, thenT, iff.Else, elseT, iff.Span);
     }
 

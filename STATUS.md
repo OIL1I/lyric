@@ -13,7 +13,7 @@
 
 **M8b — Stdlib-Erweiterung — läuft.** S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2455 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2460 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -30,6 +30,17 @@ Erreichbarkeitsanalyse, dann M10 — die Embedding-API (`LangVm`, Marshalling, H
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **Flow-Narrowing im `if`-Ausdruck** (2026-08-09). `if (a == null) 0 else a` war ein
+  Typfehler, während `if (a == null) { return 0; } return a;` daneben funktionierte — derselbe
+  Beweis über denselben Wert, zwei Antworten.
+  - Die Maschinerie war **vollständig da** (`NarrowingFacts`, `Apply`); sie war an dieser einen
+    Stelle nicht angeschlossen. `CheckIfExpr` prüfte beide Zweige ohne Fakten.
+  - Der Snapshot muss zwischen den Zweigen **zurückgesetzt** werden: was im then-Zweig gilt, gilt
+    im else-Zweig gerade nicht.
+  - Ein Test hält fest, dass das Narrowing den Ausdruck **nicht verlässt** — sonst wäre es keine
+    Aussage über einen Zweig, sondern eine stillschweigende Umdeklaration.
+  - Die Umgehung in `std.fmt.ziffernZeichen` ist zurückgebaut.
 
 - [x] **`enumerate` und `zip` in `std.iter`** (2026-08-09). `TypeTable.Resolve` löste Arrays und
   Optionals als Typargument auf, **Tupel aber nicht** — `Iterator<(int, T)>` lief in „this type
@@ -424,9 +435,6 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   es Absicht ist, gehört es in `Sprache.md`; wenn nicht, ist es eine Lücke.
 
 - **`?T[] ?? []`** und **`size`** sind erledigt (M8b/S8).
-- **Flow-Narrowing greift im `if`-AUSDRUCK nicht**: `if (a == null) 0 else a` meldet
-  `LYR-SEM0001`, obwohl die Statement-Form `if (a == null) { return 0; } return a;` funktioniert.
-  Beim Bau von `std.fmt` hineingelaufen; die Umgehung ist die Statement-Form.
 
 - **Interface-Vererbung gibt es nicht** (`interface A :: [B]` ist ein Parser-Fehler; die
   Grammatik sieht für `InterfaceDecl` keine Konformanzliste vor). Aufgefallen beim Bau von
