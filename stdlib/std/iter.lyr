@@ -212,12 +212,51 @@ pub fn takeWhile<T>(source: Iterator<T>, keep: fn(T) -> bool): Iterator<T> {
     return TakeWhileIterator<T> { source = source, keep = keep };
 }
 
-// `enumerate` und `zip` fehlen noch. Beide brauchen ein TUPEL als Typargument eines generischen
-// Interfaces — `Iterator<(int, T)>` —, und das ist heute nicht lowerbar:
-//
-//     ir: this type argument is not supported by this compiler version yet
-//
-// Die Sema akzeptiert es, das Lowering nicht. Erst diese Grenze klaeren, dann bauen.
+pub class EnumerateIterator<T> :: [Iterator<(int, T)>] {
+    source: Iterator<T>,
+    index: int = 0,
+
+    pub mut fn next(): ?(int, T) {
+        let value = this.source.next();
+        if (value == null) {
+            return null;
+        }
+        let position = this.index;
+        this.index = this.index + 1;
+        return (position, value);
+    }
+}
+
+/// Nummeriert durch: aus `a, b, c` wird `(0, a), (1, b), (2, c)`.
+pub fn enumerate<T>(source: Iterator<T>): Iterator<(int, T)> {
+    return EnumerateIterator<T> { source = source };
+}
+
+pub class ZipIterator<A, B> :: [Iterator<(A, B)>] {
+    left: Iterator<A>,
+    right: Iterator<B>,
+
+    pub mut fn next(): ?(A, B) {
+        let a = this.left.next();
+        if (a == null) {
+            return null;
+        }
+        let b = this.right.next();
+        if (b == null) {
+            return null;
+        }
+        return (a, b);
+    }
+}
+
+/// Laeuft parallel ueber beide und endet mit dem KUERZEREN.
+///
+/// Der eine ueberzaehlige Aufruf auf `left` ist der Preis dafuer, dass beide Seiten dieselbe
+/// Schnittstelle haben: um ihn zu sparen, braeuchte `Iterator<T>` ein `peek`, und das gaebe es
+/// sonst nirgends.
+pub fn zip<A, B>(left: Iterator<A>, right: Iterator<B>): Iterator<(A, B)> {
+    return ZipIterator<A, B> { left = left, right = right };
+}
 
 pub class ChainIterator<T> :: [Iterator<T>] {
     first: Iterator<T>,

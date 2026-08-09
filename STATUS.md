@@ -13,7 +13,7 @@
 
 **M8b — Stdlib-Erweiterung — läuft.** S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2449 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2455 Tests grün, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -30,6 +30,18 @@ Erreichbarkeitsanalyse, dann M10 — die Embedding-API (`LangVm`, Marshalling, H
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **`enumerate` und `zip` in `std.iter`** (2026-08-09). `TypeTable.Resolve` löste Arrays und
+  Optionals als Typargument auf, **Tupel aber nicht** — `Iterator<(int, T)>` lief in „this type
+  argument is not supported by this compiler version yet". Die Sema akzeptierte es, das Lowering
+  nicht; derselbe Riss wie schon zehnmal.
+  - Der Fix ist **eine Zeile**, und er hat ausgerechnet die zwei Funktionen freigeschaltet, für
+    die Tupel (T1–T3) überhaupt eingeführt wurden.
+  - `FunctionType` ist gleich mit aufgenommen: kein heutiger Fall braucht ihn, aber die Liste wäre
+    sonst wieder eine Teilkopie — dreimal hat genau das in diesem Projekt Zeit gekostet
+    (`LowerWithOwner`, `LowerSubstituted`, `SubstituteType`).
+  - `zip` hat **zwei** Abbruchstellen (kurz links, kurz rechts) und deshalb zwei Tests: ein Test
+    deckt nur eine davon ab.
 
 - [x] **M8b/S8 — `std.io.file` und `std.os`** (2026-08-08). `size`/`copy`/`move`/`listDir`/
   `createDirAll`/`removeDir`/`tempDir`, dazu `args`/`setEnv`/`hostName`/`cpuCount`/`nowMillis`/
@@ -403,10 +415,6 @@ Release-Notiz (CONTRIBUTING §Releases — kein `CHANGELOG.md` vor v1.0).
   Signatur mit einem unbekannten Typ gibt einen Compiler-*Absturz* statt einer Diagnose. Gefunden
   beim Bau von S2, als `split` noch nicht lowerbar war.
 
-- **Ein Tupel als Typargument eines generischen Interfaces ist nicht lowerbar** —
-  `Iterator<(int, T)>` gibt `ir: this type argument is not supported by this compiler version
-  yet`. Die Sema akzeptiert es. **Blockiert `enumerate` und `zip`** in `std.iter`, ausgerechnet
-  die beiden Funktionen, für die Tupel (T1–T3) eingeführt wurden.
 - **Ein Block-Lambda liefert seinen Rückgabetyp nicht an die Inferenz**: `(n: int) => n` bindet
   `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
   `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich

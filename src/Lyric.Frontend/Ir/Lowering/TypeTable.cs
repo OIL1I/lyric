@@ -820,6 +820,20 @@ internal sealed class TypeTable
         if (node is ArrayType { Size: null } array) return new ArrayOf(Resolve(array.Element, span), null);
         if (node is NullableType option) return new Optional(Resolve(option.Inner, span));
 
+        // Ein Tupel als Typargument: 'Iterator<(int, T)>'. Das ist die Signatur von 'enumerate'
+        // und 'zip' — und damit von genau den beiden Funktionen, fuer die Tupel (T1–T3)
+        // ueberhaupt eingefuehrt wurden. Ohne diese Zeile war 'std.iter' an der Stelle blockiert,
+        // an der Tupel ihren Zweck erfuellen.
+        if (node is AST.TupleType tuple)
+            return new TupleOf(tuple.Elements.Select(e => Resolve(e, span)).ToArray());
+
+        // 'fn(A) -> B' als Typargument. Kein bekannter Fall braucht es heute; es steht hier, weil
+        // die Liste sonst wieder eine Teilkopie waere — dreimal hat genau das in diesem Projekt
+        // Zeit gekostet (LowerWithOwner, LowerSubstituted, SubstituteType).
+        if (node is FunctionType fn)
+            return new FnType(fn.Parameters.Select(p => Resolve(p, span)).ToArray(),
+                Resolve(fn.ReturnType, span));
+
         throw new UnsupportedConstructException(
             "this type argument is not supported by this compiler version yet", span);
     }

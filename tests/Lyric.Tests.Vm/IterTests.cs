@@ -21,8 +21,10 @@ namespace Lyric.Tests.Vm;
 /// hat. Der Test `Adapters_are_lazy` zählt deshalb die Aufrufe mit einem Seiteneffekt — ohne ihn
 /// wäre ein eifriger Adapter grün.</para>
 ///
-/// <para>Nicht enthalten: `enumerate` und `zip`. Beide brauchen ein Tupel als Typargument eines
-/// generischen Interfaces (`Iterator&lt;(int, T)&gt;`), und das ist nicht lowerbar.</para>
+/// <para>`enumerate` und `zip` waren bis 2026-08-08 <b>nicht</b> enthalten: beide brauchen ein
+/// Tupel als Typargument eines generischen Interfaces (`Iterator&lt;(int, T)&gt;`), und
+/// `TypeTable.Resolve` kannte Arrays und Optionals, aber keine Tupel. Ausgerechnet die zwei
+/// Funktionen, für die Tupel (T1–T3) eingeführt wurden. Der Fix war eine Zeile.</para>
 /// </summary>
 public class IterTests
 {
@@ -203,6 +205,101 @@ public class IterTests
                                       (n: int) => n % 2 == 1);
                 let quadrate = collect(map(ungerade, (n: int) => n * n));
                 return quadrate.get(quadrate.length() - 1);
+            }
+            """));
+
+    // ------------------------------------------------------------ enumerate und zip
+
+    /// <summary>
+    /// Nummeriert durch — und das Tupel kommt als Typargument eines generischen Interfaces zurück.
+    /// </summary>
+    /// <remarks>Das war die Blockade: <c>TypeTable.Resolve</c> löste Arrays und Optionals als
+    /// Typargument auf, Tupel aber nicht — und lief in „this type argument is not supported by
+    /// this compiler version yet". Die Sema akzeptierte es, das Lowering nicht; wieder derselbe
+    /// Riss.</remarks>
+    [Fact]
+    public void Enumerate_numbers_the_elements() =>
+        Assert.Equal(3, Run("""
+            import std.iter { ArrayIterator, enumerate, count };
+
+            fn main(): int {
+                let namen = ArrayIterator<string> { source = ["a", "b", "c"], index = 0 };
+                return count(enumerate(namen));
+            }
+            """));
+
+    [Fact]
+    public void The_index_starts_at_zero_and_counts_up() =>
+        // Die Summe der Indizes 0+1+2 ist 3; die Anzahl allein faende eine falsche Numerierung
+        // nicht.
+        Assert.Equal(3, Run("""
+            import std.iter { ArrayIterator, enumerate };
+
+            fn main(): int {
+                let namen = ArrayIterator<string> { source = ["a", "b", "c"], index = 0 };
+                var summe = 0;
+                for (paar in enumerate(namen)) {
+                    let (i, n) = paar;
+                    summe = summe + i;
+                }
+                return summe;
+            }
+            """));
+
+    [Fact]
+    public void Zip_stops_with_the_shorter_side() =>
+        // Drei links, zwei rechts: zwei Paare. Ohne die Pruefung nach dem RECHTEN Aufruf liefe
+        // der Iterator mit einem halben Paar weiter.
+        Assert.Equal(2, Run("""
+            import std.iter { ArrayIterator, zip, count };
+
+            fn main(): int {
+                let a = ArrayIterator<int> { source = [1, 2, 3], index = 0 };
+                let b = ArrayIterator<string> { source = ["x", "y"], index = 0 };
+                return count(zip(a, b));
+            }
+            """));
+
+    [Fact]
+    public void Zip_stops_with_the_shorter_side_the_other_way_round() =>
+        // Die Gegenrichtung: kurz links, lang rechts. Beide Abbruchstellen sind verschiedene
+        // Zeilen im Adapter, und ein Test deckt nur eine davon ab.
+        Assert.Equal(2, Run("""
+            import std.iter { ArrayIterator, zip, count };
+
+            fn main(): int {
+                let a = ArrayIterator<int> { source = [1, 2], index = 0 };
+                let b = ArrayIterator<string> { source = ["x", "y", "z"], index = 0 };
+                return count(zip(a, b));
+            }
+            """));
+
+    [Fact]
+    public void Zip_pairs_the_values_in_order() =>
+        Assert.Equal(140, Run("""
+            import std.iter { ArrayIterator, zip };
+
+            fn main(): int {
+                let a = ArrayIterator<int> { source = [1, 2, 3], index = 0 };
+                let b = ArrayIterator<int> { source = [10, 20, 30], index = 0 };
+                var summe = 0;
+                for (paar in zip(a, b)) {
+                    let (x, y) = paar;
+                    summe = summe + x * y;   // 10 + 40 + 90
+                }
+                return summe;
+            }
+            """));
+
+    [Fact]
+    public void Zip_with_an_empty_side_yields_nothing() =>
+        Assert.Equal(0, Run("""
+            import std.iter { ArrayIterator, zip, count };
+
+            fn main(): int {
+                let a = ArrayIterator<int> { source = [1, 2], index = 0 };
+                let b = ArrayIterator<int> { source = [], index = 0 };
+                return count(zip(a, b));
             }
             """));
 }
