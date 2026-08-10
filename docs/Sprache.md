@@ -763,9 +763,15 @@ eine Lockerung, die vorher korrekten Code still verändert.
 | `expr?.member` | optional chaining, Ergebnistyp `?U` |
 | `a ?? b` | Null-Coalescing |
 | `a ??= b` | Null-Coalescing-Assign |
-| `expr!` | Force-Unwrap, wirft `NullDereferenceError` bei null |
+| `expr!` | Force-Unwrap, **`panic`** bei null (`LYR-VM0007`) |
 
 Narrowing: `if (x != null) { … }` engt `x: ?T` im then-Zweig zu `x: T` ein.
+
+*(Korrektur 2026-08-10: hier stand „wirft `NullDereferenceError`". Gemessen tut `expr!` das nicht
+und hat es nie getan — es ist ein `panic` und von `try`/`catch` nicht fangbar. Die Zeile bleibt
+so, statt die Implementierung nachzuziehen: ein Force-Unwrap auf `null` ist ein gebrochener
+Aufrufer-Vertrag, und §9 weist genau den dem `panic` zu. Wer eine eigene Meldung will, nimmt
+`std.option.expect`.)*
 
 ---
 
@@ -802,7 +808,15 @@ Regeln (Sema):
   Send-Werte (`resume co, value`) gibt es in v1 nicht (§13).
 - In einer Coroutine ist nur nacktes `return;` erlaubt — frühes Ende, kein
   Terminal-Wert (`LYR-SEM0039`).
-- Coroutine endet, wenn der Body durchläuft. Weitere `resume`-Aufrufe werfen `CoroutineEndedError`.
+- Coroutine endet, wenn der Body durchläuft. Der `resume`-Aufruf, der das feststellt, und jeder
+  weitere sind ein **`panic`** (`LYR-VM0011`), kein fangbarer Fehler.
+
+*(Korrektur 2026-08-10: hier stand „werfen `CoroutineEndedError`". Gemessen panict es, und der Typ
+existiert nicht. Die Zeile ist an die Implementierung angeglichen und nicht umgekehrt — siehe die
+M8-Korrektur in `ROADMAP.md`. Anders als beim Force-Unwrap ist das hier **keine befriedigende
+Antwort**: eine durchgelaufene Coroutine ist kein Programmierfehler, sondern der Normalfall, und
+solange das Ende nicht beobachtbar ist, lässt sich `Coroutine<T>` nicht als `Iterator<T>`
+anbieten.)*
 
 ---
 

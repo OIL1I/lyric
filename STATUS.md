@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2468 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2486 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,14 +23,45 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: der Rest von M8b — `std.option`, `std.error`, `std.coroutine` —, dann M10, die
-Embedding-API (`LangVm`, Marshalling, Hot-Reload). `Set<T>` und die Erreichbarkeitsanalyse stehen.
+**Offen für v1.0**: **M10** — die Embedding-API (`LangVm`, Marshalling, Hot-Reload). Die
+Stdlib-Liste aus M8b ist damit abgearbeitet: `std.error` und `std.coroutine` sind gestrichen
+(S9), alles andere steht.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
 > selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M8b/S9 — `std.option`, drei Abbruch-Funktionen, `Exception`. `std.error` und
+  `std.coroutine` sind gestrichen** (2026-08-10). 2486 Tests grün.
+  - **`std.option`**: `map`, `andThen`, `filter`, `zip`, `contains`, `toArray`, `iter`, `expect` —
+    alles in Lyric, freie Funktionen über `?T`. **Kein Typ `Option<T>`**: `?T` *ist* er (§4).
+  - **Vier Namen aus `Doku.md` §22 fallen weg, weil die Sprache sie schon hat**: `unwrap` ist `!`,
+    `unwrapOr` ist `??` (und `??` lowert zu einer Verzweigung, ist also bereits faul),
+    `isSome`/`isNone` sind `!= null`/`== null`. Der letzte Fall ist nicht bloß Redundanz, sondern
+    **schädlich**: am Vergleich hängt das Flow-Narrowing, eine Funktion schnitte es ab.
+  - **`flatten` ist nicht formulierbar.** `??int` ist ein Parser-Fehler, `?(?int)` ist
+    `LYR-IR0001: optionals do not nest`. Die Funktion hat in Lyric keinen Eingabetyp — die Zeile
+    in §22 beschrieb eine andere Sprache. `andThen` ist der Ersatz: weil `f` schon `?U` liefert,
+    entsteht die Verschachtelung gar nicht erst.
+  - **`std.core` bekommt `assert`, `todo`, `unreachable`** — von §22 seit M8 versprochen, nie
+    gebaut — und **`Exception`**.
+  - **`std.error` gibt es nicht.** Übrig blieb genau eine Klasse; ein Modul dafür trägt seinen
+    Namen nicht. `NullDereferenceError` und `CoroutineEndedError` entstehen nicht: beide Fälle
+    bleiben `panic`. Gemessen, was die Alternative kostet — die Stdlib hat **null**
+    `throws`-Deklarationen, **ein** Force-Unwrap und **124** Stellen mit Division oder Index.
+    Geprüftes `throws` propagiert transitiv, also müssten `Ordered`, `Hashable` und `Display` als
+    Interfaces werfen. Der Preis trifft die ganze Bibliothek, der Nutzen eine Zeile.
+  - **`std.coroutine` gibt es nicht**, und der Grund ist verwertbar: die Brücke
+    `Coroutine<T>` → `Iterator<T>` ist nicht schreibbar, solange das Ende ein Panic ist. Der
+    `resume`-Aufruf, der den Rumpf durchlaufen lässt, ist **derselbe**, der daran stirbt — ein
+    „frag vorher"-Prädikat käme immer genau ein `resume` zu spät. Der Umbau (Sprungverteiler
+    liefert intern `?T`, `resume` packt aus und behält seinen Vertrag) ist Lowering-Arbeit in der
+    Größenordnung eines P-Slices. Nicht abgelehnt, nur nicht hier.
+  - **`Sprache.md` §7 und §8 haben gelogen** und sind korrigiert: `expr!` „wirft
+    `NullDereferenceError`" und `resume` „wirft `CoroutineEndedError`" — beides panict, und keiner
+    der Typen existierte je.
 
 - [x] **M9/S6 — der Abschluss-Slice. M9 ist getaggt** (2026-08-10). Der Meilenstein galt seit dem
   2026-08-07 als fertig, weil sein Gate lief. Vier seiner Lieferposten liefen nicht.
@@ -89,18 +120,6 @@ Embedding-API (`LangVm`, Marshalling, Hot-Reload). `Set<T>` und die Erreichbarke
     Aussage über einen Zweig, sondern eine stillschweigende Umdeklaration.
   - Die Umgehung in `std.fmt.ziffernZeichen` ist zurückgebaut.
 
-- [x] **`enumerate` und `zip` in `std.iter`** (2026-08-09). `TypeTable.Resolve` löste Arrays und
-  Optionals als Typargument auf, **Tupel aber nicht** — `Iterator<(int, T)>` lief in „this type
-  argument is not supported by this compiler version yet". Die Sema akzeptierte es, das Lowering
-  nicht; derselbe Riss wie schon zehnmal.
-  - Der Fix ist **eine Zeile**, und er hat ausgerechnet die zwei Funktionen freigeschaltet, für
-    die Tupel (T1–T3) überhaupt eingeführt wurden.
-  - `FunctionType` ist gleich mit aufgenommen: kein heutiger Fall braucht ihn, aber die Liste wäre
-    sonst wieder eine Teilkopie — dreimal hat genau das in diesem Projekt Zeit gekostet
-    (`LowerWithOwner`, `LowerSubstituted`, `SubstituteType`).
-  - `zip` hat **zwei** Abbruchstellen (kurz links, kurz rechts) und deshalb zwei Tests: ein Test
-    deckt nur eine davon ab.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -133,9 +152,12 @@ steht weiter aus.
 
 ## Woran wir gerade arbeiten
 
-**M8b läuft.** `Set<T>`, `std.string`, `std.math`, `std.fmt`, `std.io.file` und `std.os` stehen
-(S1–S8). Offen ist der Rest der Stdlib-Liste — die drei bis heute inhaltsleeren Module
-`std.option`/`std.error`/`std.coroutine`.
+**M8b ist inhaltlich durch.** `Set<T>`, `std.string`, `std.math`, `std.fmt`, `std.io.file`,
+`std.os` und zuletzt `std.option` stehen (S1–S9); `std.error` und `std.coroutine` sind mit
+Begründung gestrichen statt geliefert.
+
+**Als Nächstes M10**, oder vorher die vier Compiler-Lücken unten — sie sind beim Bau von S9
+aufgefallen und treffen jede Funktion höherer Ordnung in der Stdlib, nicht nur `std.option`.
 
 **Die Erreichbarkeitsanalyse ist da** — vorgezogen, weil `std.string` den Effekt zum ersten Mal
 schmerzhaft sichtbar gemacht hat: zwei Tests, die „ein Hello-World trägt keine String-Maschinerie"
@@ -168,6 +190,25 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 **Sprachlücken, vor v1 zu schließen:**
 
+- **Eine benannte Funktion ist kein Funktionswert.** `map(o, positiv)` ist
+  `LYR-IR0001: reference to 'positiv' (only parameters, locals and constants)`; nur Lambdas gehen,
+  also `map(o, (n: int) => positiv(n))`. **Das trifft jede Funktion höherer Ordnung in der
+  Stdlib** — die zwölf Adapter in `std.iter`, `sortBy` in `std.collections`, alles in
+  `std.option` — und nicht nur beim Schreiben: der Umweg ist die Form, die in jedem Beispiel
+  steht. Gefunden beim Bau von S9.
+- **Ein Lambda in einer f-String-Interpolation parst nicht.** `f"{map(o, (n: int) => n*2)}"`
+  scheitert mit `LYR-SEM0002` + `LYR-PAR0008`: das `:` in `(n: int)` wird als
+  Format-Spec-Trenner gelesen (§1.5). Dieselbe Mehrdeutigkeit wie `f<a>(b)` in §6.1, und
+  dieselbe Lösung — das `:` zählt nur auf Klammer-Tiefe 0. Trifft genau die Stelle, an der
+  jemand `map`/`filter` zuerst hinschreibt.
+- **`panic`s `never`-Rückgabetyp ist für die Flussanalyse unsichtbar.** Weder Narrowing
+  (`if (o == null) { panic(m); } return o;` → *cannot assign '?T' to 'T'*) noch
+  Rückgabe-Abdeckung (`if (o != null) { return o; } panic(m);` → `LYR-SEM0017`). Deshalb braucht
+  `std.option.expect` ein `return o!;` nach dem Panic — dieselbe Prüfung zweimal — und `todo`
+  ersetzt kein `return`. §9 nennt `never` als Rückgabetyp; heute ist er Dekoration.
+- **Ein `if`-Ausdruck vereinheitlicht `T` und `null` nicht zu `?T`**:
+  `if (n > 0) n * 10 else null` ist `LYR-SEM0016: incompatible branch types: 'int' vs 'null'`.
+  Die Widening-Regel `T` → `?T` (§4) greift an der Arm-Unifikation nicht.
 - **`b?.get()` geht nicht** — Optional-Chaining mit *Methodenaufruf*. Die Sema macht `?.get` zu
   einem `?fn() -> int` und stolpert dann über das `()`. Feldzugriff (`b?.v`) funktioniert.
 - **Die Konformanz prüft die Definition statt der Typargumente**: `Ones :: [Src<int>]` würde auch
@@ -260,7 +301,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`M9: der Abschluss-Slice — CI wieder grün, Auslieferung im Repo (S6)`
+`stdlib: std.option, Abbruch-Funktionen und Exception (M8b/S9)`
 
 ---
 

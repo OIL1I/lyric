@@ -316,7 +316,7 @@ var label: ?string = null;
 label ??= "default";
 
 // 5) Force-Unwrap mit !
-let must: User = user!;        // wirft NullDereferenceError bei null
+let must: User = user!;        // panic (LYR-VM0007), wenn null — nicht fangbar
 ```
 
 Alternativ Pattern-Match:
@@ -1111,7 +1111,7 @@ Die Regeln dazu:
 - Eine Coroutine endet mit nacktem `return;` (frühes Ende) oder wenn der Body
   durchläuft. `return wert;` gibt es in Coroutinen nicht — sie liefern Werte
   ausschließlich über `yield`. Weitere `resume`-Aufrufe nach dem Ende werfen
-  `CoroutineEndedError`.
+  ein `panic` (`LYR-VM0011`) — kein fangbarer Fehler.
 
 ### 19.1 Bidirektional? Post-v1.
 
@@ -1160,7 +1160,7 @@ Lyric hat **keine direkte FFI im Source** (kein `@extern`, kein `[DllImport]`). 
 
 | Capability | Modul | Standard im Standalone | Standard im Embedded |
 |---|---|---|---|
-| (immer) | `std.core`, `std.option`, `std.error`, `std.string`, `std.fmt`, `std.math`, `std.collections`, `std.iter`, `std.coroutine`, `std.io.console` | ✓ | ✓ |
+| (immer) | `std.core`, `std.option`, `std.string`, `std.fmt`, `std.math`, `std.collections`, `std.iter`, `std.io.console` | ✓ | ✓ |
 | `fileAccess` | `std.io.file` | ✓ | host-Entscheidung |
 | `networkAccess` | `std.io.net` | ✓ | host-Entscheidung |
 | `osAccess` | `std.os` | ✓ | host-Entscheidung |
@@ -1251,20 +1251,41 @@ Vollständige API-Doku entsteht in v1.0. Hier nur ein Überblick.
 
 | Modul | Inhalt | Capability |
 |---|---|---|
-| `std.core` | `panic`, `assert`, `todo`, `unreachable` | — |
-| `std.option` | `Option<T>`, `unwrap`, `unwrapOr`, `map`, `flatten` | — |
-| `std.error` | `Throwable`, `Exception`, gängige Errors | — |
+| `std.core` | `panic`, `assert`, `todo`, `unreachable`, `Exception`, `Display`, `Equatable`, `Hashable`, `Ordered` | — |
+| `std.option` | `map`, `andThen`, `filter`, `zip`, `contains`, `toArray`, `iter`, `expect` | — |
 | `std.string` | String-Manipulation | — |
 | `std.fmt` | `format`, `Formattable` | — |
 | `std.math` | `sqrt`, `pow`, `abs`, `sin`, `cos`, `pi`, `e` | — |
 | `std.collections` | `List<T>`, `Map<K,V>`, `Set<T>` | — |
-| `std.iter` | `Iterator<T>`, Standard-Impls | — |
-| `std.coroutine` | `Coroutine<T>`, `yield`/`resume`-Primitives | — |
+| `std.iter` | `Iterator<T>`, Adapter und Terminatoren | — |
 | `std.io.console` | `print`, `println`, `eprintln`, `readLine` | — |
 | `std.io.file` | `readText`, `writeText`, `exists`, `delete` | `fileAccess` |
 | `std.io.net` | basic HTTP, TCP | `networkAccess` |
 | `std.os` | env, args, exit, process | `osAccess` |
 | `std.dotnet` | .NET-Reflection-Brücke | `hostAccess` |
+
+> **`std.error` und `std.coroutine` gibt es nicht**, und das ist eine Entscheidung, keine Lücke.
+>
+> Beide standen hier mit einem Inhalt, der **bereits die Sprache ist**: `Throwable` ist ein
+> eingebautes Interface, `Coroutine<T>` ein eingebauter Typ, `yield` und `resume` sind
+> Schlüsselwörter. Sie noch einmal als Modul zu liefern wäre der Doppel-Mechanismus, den
+> `CONTRIBUTING.md` Rule 2 verbietet.
+>
+> Was von `std.error` übrig blieb, war **eine** Klasse — `Exception` —, und die steht jetzt in
+> `std.core`. Die beiden Fehler, die es sonst tragen sollte, gibt es nicht: ein Force-Unwrap auf
+> `null` und ein `resume` auf eine beendete Coroutine bleiben `panic` und nicht `throw`, nach
+> derselben Trennlinie wie [§17.1](#171-panic-vs-throw) — `throw` für Domain-Fehler, `panic` für
+> Programmierfehler.
+>
+> `std.coroutine` bräuchte als einzigen echten Inhalt die Brücke `Coroutine<T>` → `Iterator<T>`,
+> damit `for (x in co)` geht. Die ist heute **nicht schreibbar**: `next()` müsste das Ende als
+> `null` melden, und das Ende ist ein Panic. Der `resume`-Aufruf, der den Rumpf durchlaufen lässt,
+> ist derselbe, der daran stirbt — ein „frag vorher"-Prädikat käme immer genau ein `resume` zu
+> spät. Das aufzulösen ist ein eigener Umbau am Lowering, kein Stdlib-Modul.
+>
+> Ebenfalls gestrichen, weil die Sprache es schon hat: `Option<T>` ist `?T`, `unwrap` ist `!`,
+> `unwrapOr` ist `??`, `isSome`/`isNone` sind `!= null`/`== null` — und `flatten` ist gar nicht
+> formulierbar, weil Optionals nicht verschachteln.
 
 ---
 

@@ -19,6 +19,59 @@ pub fn panic(message: string): void;
 // haben.
 pub fn coroutineEnded(): void;
 
+// ------------------------------------------------------------- Abbruch mit Grund (Doku §22)
+//
+// Alle drei sind `panic` mit einer Aussage darueber, WER sich geirrt hat. Sie sind in Lyric
+// geschrieben und brauchen keine native Kante — `panic` ist bereits eine.
+//
+// **Einschraenkung, die man kennen muss**: sie sind `void`, und die Flussanalyse zieht aus
+// `panic`s `never`-Rueckgabetyp (§9) heute nichts. `fn f(): int { todo("x"); }` ist deshalb
+// `LYR-SEM0017` — sie ersetzen kein `return`. In einer Funktion mit Rueckgabewert steht dahinter
+// weiterhin ein Wert, den niemand liest.
+
+// Panic mit `message`, wenn `condition` falsch ist. Fuer Invarianten, die der Compiler nicht
+// prueft — der Aufrufer hat den Vertrag gebrochen, nicht diese Funktion.
+pub fn assert(condition: bool, message: string): void {
+    if (!condition) {
+        panic(message);
+    }
+}
+
+// Eine Stelle, die noch fehlt. Der Unterschied zu einem Kommentar ist, dass sie sich meldet:
+// beim Ausfuehren, nicht beim Lesen.
+pub fn todo(message: string): void {
+    panic("not implemented: " + message);
+}
+
+// Ein Zweig, den der Autor fuer unerreichbar haelt. Gegenstueck zu `todo`: `todo` heisst „kommt
+// noch", `unreachable` heisst „darf nie" — und wenn es doch passiert, stimmt eine Annahme nicht,
+// die woanders steht.
+pub fn unreachable(message: string): void {
+    panic("unreachable: " + message);
+}
+
+// ------------------------------------------------------------------- Exception (Doku §22)
+//
+// Der fertige `Throwable` fuer den Fall, dass jemand nur eine Meldung werfen will.
+//
+// **Warum hier und nicht in einem `std.error`**: das Modul haette genau diese eine Klasse
+// enthalten. `NullDereferenceError` und `CoroutineEndedError` gibt es nicht — beides bleibt ein
+// `panic` (§17.1: `throw` fuer Domain-Fehler, `panic` fuer Programmierfehler), und Typen, die
+// niemand wirft, waeren Attrappen. `FileNotFound` und `PermissionDenied` aus §9 und Doku §17 sind
+// Illustrationen in NUTZERCODE; sie hierherzuziehen machte die Beispiele falsch. `std.core` ist
+// „was die Sprache selbst braucht", und ein Basis-Throwable neben dem eingebauten `Throwable`
+// ist genau das.
+//
+// Das Feld heisst `text` und nicht `message`: `Throwable` verlangt eine METHODE `message()`, und
+// beide koennten nicht denselben Namen tragen.
+pub class Exception :: [Throwable] {
+    text: string,
+
+    pub fn message(): string {
+        return this.text;
+    }
+}
+
 // Display — was sich als Text darstellen laesst (M8/S1).
 //
 // Der Anker fuer 'println<T :: [Display]>' und fuer 'std.fmt'. Dass ein Builtin ihn erfuellen

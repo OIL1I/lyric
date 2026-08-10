@@ -568,6 +568,30 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > `std.dotnet` bleibt vorerst drin, ist aber der nächste Kandidat: es ist Interop und teilt sich
 > die Marshalling-Schicht mit **M10**. Zweimal entworfen wäre einmal zu viel.
 
+> **Korrektur (2026-08-10, M8b/S9): `std.error` und `std.coroutine` sind gestrichen.** Beide waren
+> als Modul geführt, und beider dokumentierter Inhalt **ist bereits die Sprache**: `Throwable` ist
+> ein eingebautes Interface mit synthetischem AST, `Coroutine<T>` ein eingebauter Typ, `yield` und
+> `resume` sind Schlüsselwörter. Ein Modul daneben wäre der Doppel-Mechanismus aus Rule 2.
+>
+> Von `std.error` blieb **eine** Klasse übrig (`Exception`); sie steht in `std.core`. Ein Modul für
+> eine Klasse trägt seinen Namen nicht. `NullDereferenceError` und `CoroutineEndedError` entstehen
+> nicht: beide Fälle bleiben `panic`, weil §17.1 `throw` den Domain-Fehlern und `panic` den
+> Programmierfehlern zuweist — und weil geprüftes `throws` (§9) transitiv propagiert. Gemessen am
+> 2026-08-10: die Stdlib enthält **null** `throws`-Deklarationen, ein Force-Unwrap und 124 Stellen
+> mit Division oder Index-Zugriff. Die Fehler fangbar zu machen hieße, `throws` durch die gesamte
+> Bibliothek und durch die Interfaces `Ordered`, `Hashable` und `Display` zu treiben, um ein
+> Konstrukt zu bedienen, das die Stdlib einmal benutzt. *(Dass §7 und §8 heute etwas anderes
+> behaupten, ist dort korrigiert.)*
+>
+> `std.coroutine` bräuchte als einzigen Inhalt die Brücke `Coroutine<T>` → `Iterator<T>`. Sie ist
+> nicht schreibbar, solange das Ende ein Panic ist: der `resume`-Aufruf, der den Rumpf durchlaufen
+> lässt, ist derselbe, der daran stirbt — ein Prädikat käme immer ein `resume` zu spät. Der Umbau
+> (der erzeugte Sprungverteiler liefert intern `?T`, `resume` packt aus und behält seinen Vertrag)
+> ist Lowering-Arbeit in der Größenordnung eines P-Slices und **keine Stdlib-Aufgabe**. Er ist
+> nicht abgelehnt, nur nicht hier.
+>
+> M8 verliert damit zwei Lieferposten und behält elf Module.
+
 ### M9 — REPL + Tests + Tooling (2–3 Wochen)
 
 **Ziel**: User-Experience rund.
