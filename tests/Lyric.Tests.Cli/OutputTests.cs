@@ -66,6 +66,15 @@ public sealed class OutputTests
 
     // ---------------------------------------------------------------- --verbose
 
+    /// <summary>
+    /// Die Tabelle listet genau die Phasen, die dieser Build faehrt — in Pipeline-Reihenfolge, mit
+    /// Trennlinie und Summe.
+    ///
+    /// <para>Die Erwartung kommt aus <see cref="Pipeline.OfThisBuild"/> und nicht als Literal:
+    /// <c>verify</c> laeuft nur in Debug-Builds, und ein hingeschriebenes <c>"verify"</c> machte
+    /// den Test von der Build-Konfiguration abhaengig. Genau das war er — in Debug gruen, in
+    /// Release (also in CI und in dem, was ausgeliefert wird) rot.</para>
+    /// </summary>
     [Fact]
     public void Verbose_lists_every_phase_in_pipeline_order_with_a_total()
     {
@@ -79,9 +88,36 @@ public sealed class OutputTests
             .Select(parts => parts[0])
             .ToArray();
 
-        Assert.Equal(
-            ["read", "parse", "load", "resolve", "check", "lower", "verify", "emit", "-----", "total"],
+        string[] expected =
+        [
+            .. Pipeline.OfThisBuild.Select(PhaseNames.Short),
+            "-----",
+            "total",
+        ];
+
+        Assert.Equal(expected,
             phases.Select(p => p.StartsWith("---", StringComparison.Ordinal) ? "-----" : p).ToArray());
+    }
+
+    /// <summary>
+    /// Der Verifier ist die einzige Phase, die ein Build ueberspringen darf — und in einem
+    /// Release-Build tut er es.
+    ///
+    /// <para>Ohne diesen Test waere der Test darueber auch dann gruen, wenn
+    /// <see cref="Pipeline.OfThisBuild"/> in <b>beiden</b> Konfigurationen dasselbe lieferte: er
+    /// vergleicht die Ausgabe gegen dieselbe Liste, aus der sie entsteht. Hier steht die
+    /// Aussage selbst, gegen den <c>#if</c>, den der Compiler wirklich gesehen hat.</para>
+    /// </summary>
+    [Fact]
+    public void Only_a_debug_build_runs_the_verifier()
+    {
+        var verifies = Pipeline.OfThisBuild.Contains(Phase.Verify);
+
+#if DEBUG
+        Assert.True(verifies);
+#else
+        Assert.False(verifies);
+#endif
     }
 
     [Fact]

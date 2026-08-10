@@ -134,8 +134,14 @@ public static class Program
     private static int Version(ToolSelection selection)
     {
         Console.Out.WriteLine($"lyric {ToolchainVersion.Value}");
+
+        // Spaltenbreite aus der Liste, nicht als Zahl: sie stand als '-6' da und passte auf
+        // 'lyrc'/'lyrvm', bis 'lyrrepl' dazukam und die Spalte sprengte (ADR-021). Ein fuenftes
+        // Werkzeug haette denselben Fehler ein zweites Mal ausgeloest.
+        var width = Tool.All.Max(tool => tool.Name.Length);
+
         foreach (var tool in Tool.All)
-            Console.Out.WriteLine($"  {tool.Name,-6} {selection.DisplayOf(tool)}");
+            Console.Out.WriteLine($"  {tool.Name.PadRight(width)} {selection.DisplayOf(tool)}");
         return ExitCodes.Success;
     }
 

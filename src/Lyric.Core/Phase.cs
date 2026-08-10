@@ -37,6 +37,36 @@ public enum Phase
     Emit,
 }
 
+/// <summary>
+/// Welche Phasen <b>dieser Build</b> wirklich durchlaeuft.
+///
+/// <para>Die Liste ist keine Konstante: der Verifier laeuft nur in Debug-Builds (Vorbild ist
+/// LLVMs Verifier in Assert-Builds, Begruendung bei <c>ModuleLowerer.VerifyByDefault</c>). Sie
+/// steht hier und nicht im Frontend, weil auch die Werkzeug-Tests sie brauchen — sie fahren die
+/// Binaries als Prozesse und referenzieren das Frontend bewusst nicht.</para>
+///
+/// <para>Zweimal hingeschrieben war sie schon: der Test der <c>--verbose</c>-Tabelle trug die
+/// Phasenliste als Literal und war deshalb in Release rot, waehrend Debug gruen blieb. Dieselbe
+/// Lehre wie bei <see cref="Unicode"/> — eine Regel, die zwei Stellen kennen muessen, gehoert an
+/// die eine, die beide sehen.</para>
+/// </summary>
+public static class Pipeline
+{
+    /// <summary>Prueft dieser Build die IR-Invarianten nach dem Lowering?</summary>
+    public static bool VerifiesIr =>
+#if DEBUG
+        true;
+#else
+        false;
+#endif
+
+    /// <summary>Die Phasen in Pipeline-Reihenfolge, ohne die, die dieser Build ueberspringt.</summary>
+    public static IReadOnlyList<Phase> OfThisBuild { get; } =
+        Enum.GetValues<Phase>()
+            .Where(phase => phase != Phase.Verify || VerifiesIr)
+            .ToArray();
+}
+
 /// <summary>Wie eine Phase in der Ausgabe heisst.</summary>
 public static class PhaseNames
 {

@@ -1,0 +1,66 @@
+<Project>
+
+  <!--
+    Die Auslieferung: vier Binaries, drei Bibliotheken, die Stdlib — in EINEM Verzeichnis.
+
+        dotnet msbuild build/publish.proj
+        dotnet msbuild build/publish.proj -p:PublishRoot=D:\irgendwo
+
+    Warum ein MSBuild-Projekt und kein publish.ps1: ein Skript waere eine zweite Build-Sprache
+    neben der, die ohnehin schon laeuft, und muesste die Konfiguration (Release, Framework,
+    Projektpfade) ein zweites Mal kennen. Hier steht sie einmal.
+
+    Warum nicht 'dotnet publish Lyric.slnx -o ...': das SDK lehnt ein gemeinsames Ausgabe-
+    verzeichnis fuer eine ganze Solution ab (NETSDK1194), und zwar zu Recht — bei Projekten mit
+    kollidierenden Dateinamen waere das Ergebnis von der Build-Reihenfolge abhaengig. Hier ist die
+    Ueberlappung erwuenscht und kontrolliert: die Binaries TEILEN sich lyrcore/lyrfe/lyrrt,
+    das ist der ganze Sinn eines gemeinsamen Ordners.
+  -->
+
+  <PropertyGroup>
+    <PublishRoot Condition="'$(PublishRoot)' == ''">$(MSBuildThisFileDirectory)..\artifacts\publish</PublishRoot>
+    <PublishRoot>$([System.IO.Path]::GetFullPath('$(PublishRoot)'))</PublishRoot>
+    <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Reihenfolge egal, aber NICHT parallel: vier Publishes in dasselbe Verzeichnis, die sich
+      lyrcore.dll teilen, wuerden einander die Datei unter den Haenden wegschreiben.
+    -->
+    <Binary Include="..\src\Lyric.Cli\Lyric.Cli.csproj" />
+    <Binary Include="..\src\Lyrc\Lyrc.csproj" />
+    <Binary Include="..\src\Lyrvm\Lyrvm.csproj" />
+    <Binary Include="..\src\Lyrrepl\Lyrrepl.csproj" />
+  </ItemGroup>
+
+  <Target Name="Publish" DependsOnTargets="Clean">
+    <MSBuild Projects="@(Binary)"
+             Targets="Publish"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration);PublishDir=$(PublishRoot)\" />
+
+    <ItemGroup>
+      <Published Include="$(PublishRoot)\**\*" />
+    </ItemGroup>
+
+    <Message Importance="high" Text=" " />
+    <Message Importance="high" Text="  $(PublishRoot)" />
+    <Message Importance="high" Text="    %(Published.Filename)%(Published.Extension)"
+             Condition="'%(Published.RecursiveDir)' == ''" />
+    <Message Importance="high" Text="    %(Published.RecursiveDir)%(Published.Filename)%(Published.Extension)"
+             Condition="'%(Published.RecursiveDir)' != ''" />
+    <Message Importance="high" Text=" " />
+  </Target>
+
+  <Target Name="Clean">
+    <!--
+      Vorher leeren, nicht daraufschreiben. Ein Publish-Verzeichnis, das ueber Umbauten hinweg
+      waechst, sammelt DLLs unter alten Namen ein — beim Umbau auf drei Assemblies lagen in bin/
+      genau deshalb noch die Dateien der vorherigen elf Projekte. Wer den Ordner ausliefert,
+      liefert die Leichen mit.
+    -->
+    <RemoveDir Directories="$(PublishRoot)" />
+  </Target>
+
+</Project>

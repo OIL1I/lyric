@@ -6,8 +6,8 @@ A statically typed, GC-managed application language with an embeddable bytecode 
 
 > **Status: pre-alpha, but it runs.** The compiler, the bytecode VM and the standard library
 > work end to end — every construct in [`docs/Sprache.md`](docs/Sprache.md) compiles and
-> executes. 1700+ tests are green. What is missing before v1.0 is the REPL, editor integration
-> and the embedding API (milestones M9 and M10).
+> executes. There is an interactive prompt (`lyric repl`) and a VS Code extension. What is
+> missing before v1.0 is the embedding API (milestone M10).
 >
 > Do not depend on it yet: `.lyrbc` has no compatibility promise before v1.0 (ADR-013), and the
 > language may still change where the spec turns out to be wrong.
@@ -112,11 +112,13 @@ lyric/
 │   ├── Lyric.Vm/            → lyrrt.dll    Interpreter
 │   ├── Lyrc/                → lyrc.exe     the compiler
 │   ├── Lyrvm/               → lyrvm.exe    the bundled runtime
+│   ├── Lyrrepl/             → lyrrepl.exe  the interactive prompt
 │   └── Lyric.Cli/           → lyric.exe    the driver
 ├── stdlib/                 Stdlib source (.lyr files)
 ├── tests/                  xUnit test projects
 ├── examples/               Example programs
-├── tooling/                Editor integration (TextMate grammar — M9, not built yet)
+├── build/                  publish.proj — the shipping definition
+├── tooling/                VS Code extension: TextMate grammar + run command
 └── docs/                   Documentation
 ```
 

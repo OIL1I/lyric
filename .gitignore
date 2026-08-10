@@ -4,8 +4,13 @@
 bin/
 obj/
 out/
-build/
 publish/
+artifacts/
+
+# 'build/' stand hier bis 2026-08-10 und war falsch: das Verzeichnis enthaelt kein Ergebnis,
+# sondern 'build/publish.proj' — die Auslieferungs-Definition, die README und der CI-Job beide
+# aufrufen. Beide riefen damit eine Datei auf, die in keinem Clone lag. Fuer .NET decken bin/,
+# obj/ und artifacts/ die Ausgaben ab; 'build/' ist eine Konvention aus anderen Oekosystemen.
 
 # Build configuration outputs
 *.user

@@ -59,6 +59,74 @@ public sealed class ReadmeTests : IDisposable
         Assert.DoesNotContain("milestone: M0", readme, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Was die README und der CI-Job als Kommando aufrufen, liegt auch im Repository.
+    ///
+    /// <para><b>Der Anlass ist ein Befund.</b> <c>build/publish.proj</c> war von
+    /// <c>.gitignore</c> erfasst (<c>build/</c>, gemeint waren Ausgaben) und lag deshalb in
+    /// keinem Clone. Der CI-Schritt „Publish toolchain" rief es trotzdem auf — er ist nie
+    /// gelaufen, weil <c>needs:</c> ihn uebersprang, solange die Tests rot waren. Die README
+    /// nennt dasselbe Kommando unter „Shipping": wer dem Text folgte, bekam einen Fehler.</para>
+    ///
+    /// <para>Die Datei existierte die ganze Zeit auf der Platte des Maintainers. <c>File.Exists</c>
+    /// haette also nichts gefunden — die Frage ist nicht, ob sie da ist, sondern ob sie
+    /// <b>ausgeliefert</b> wird. Nur git kann das beantworten.</para>
+    /// </summary>
+    [Fact]
+    public void Every_file_the_ci_job_invokes_is_in_the_repository()
+    {
+        var workflow = File.ReadAllText(Path.Combine(
+            Toolchain.RepositoryRoot, ".github", "workflows", "ci.yml"));
+
+        var invoked = Regex.Matches(workflow, @"dotnet msbuild (\S+)")
+            .Select(match => match.Groups[1].Value)
+            .Distinct()
+            .ToArray();
+
+        Assert.NotEmpty(invoked);
+
+        var readme = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "README.md"));
+
+        foreach (var path in invoked)
+        {
+            var tracked = Toolchain.Run("git", "ls-files", "--error-unmatch", path);
+            Assert.True(tracked.ExitCode == 0,
+                $"CI runs 'dotnet msbuild {path}', but that file is not tracked by git — "
+                + "a fresh clone cannot run it. Check .gitignore.");
+
+            // Dieselbe Datei steht unter „Shipping" in der README. Liefe der CI-Job kuenftig
+            // etwas anderes, waere die Anleitung fuer den Menschen die veraltete Haelfte.
+            Assert.Contains(path, readme, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// Der Projektbaum in der README nennt jedes Projekt aus <c>src/</c>.
+    ///
+    /// <para><b>Der Anlass ist ein Befund.</b> <c>Lyrrepl/</c> fehlte im Baum, waehrend der
+    /// Abschnitt zwei Bildschirme darunter „The four binaries" heisst — dieselbe Datei
+    /// widersprach sich selbst. Ein Baum ist eine zweite Beschreibung des Verzeichnisses daneben,
+    /// und zwei Beschreibungen driften; die TextMate-Grammatik haengt aus demselben Grund am
+    /// Lexer.</para>
+    /// </summary>
+    [Fact]
+    public void The_project_tree_in_the_readme_names_every_source_project()
+    {
+        var readme = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "README.md"));
+
+        var projects = Directory
+            .GetDirectories(Path.Combine(Toolchain.RepositoryRoot, "src"))
+            .Select(Path.GetFileName)
+            .Where(name => File.Exists(Path.Combine(
+                Toolchain.RepositoryRoot, "src", name!, name + ".csproj")))
+            .ToArray();
+
+        Assert.NotEmpty(projects);
+
+        foreach (var project in projects)
+            Assert.Contains($"{project}/", readme, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_example_count_in_the_readme_is_right()
     {

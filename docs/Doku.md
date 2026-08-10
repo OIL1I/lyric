@@ -1376,7 +1376,9 @@ gestartet und bekommt dafür bei `.lyr`-Eingabe eine temporäre `.lyrbc`-Datei.
 
 ### 23.5 Gemeinsame Optionen
 
-Diese versteht **jedes** der drei Programme gleich:
+Diese versteht **jedes** der drei nicht-interaktiven Programme gleich — `lyric`, `lyrc`, `lyrvm`.
+`lyrrepl` nimmt sie entgegen, ohne sie zu beachten: eine Sitzung hat keine Erfolgs-Meldung zu
+unterdrücken und keine Phasen zu messen. Nur `--version` gilt dort auch.
 
 | Option | Wirkung |
 |---|---|
@@ -1392,23 +1394,29 @@ verschwunden, bevor ein Lyric-Programm seine erste Zeile schreibt.
 `--verbose` ersetzt die Live-Zeile durch eine Tabelle und funktioniert auch ohne Terminal:
 
 ```
-  read     hello.lyr                                9.2 ms
-  parse    hello.lyr                               61.2 ms
-  load     std.string, std.io.console               5.3 ms
-  resolve  3 modules                               20.4 ms
-  check    3 modules                               54.7 ms
-  lower    1 function                              49.2 ms
-  verify   1 function                              51.7 ms
-  emit     1 function                              33.7 ms
+  read     hello.lyr                                3.8 ms
+  parse    hello.lyr                               16.4 ms
+  load     std.string, std.core, std.iter, ...     14.0 ms
+  resolve  7 modules                                9.2 ms
+  check    7 modules                               35.6 ms
+  lower    1 function                              60.4 ms
+  emit     1 function                              13.0 ms
   -----------------------------------------------------
-           total                                  353.4 ms
+           total                                  165.9 ms
 ```
+
+Eine **achte** Zeile `verify` erscheint, wenn du den Compiler selbst aus den Quellen im
+Debug-Modus gebaut hast: dann prüft er nach dem Lowering seine IR-Invarianten nach. Eine
+ausgelieferte Toolchain tut das nicht — dieselbe Wahl wie LLVM, dessen Verifier nur in
+Assert-Builds läuft. Verloren geht dabei nichts: der Bytecode wird beim **Laden** ohnehin
+vollständig validiert (`LYR-BC####`), ein Fehler fiele also weiterhin auf, nur mit einer
+gröberen Meldung.
 
 > `-v` ist **nicht** die Kurzform von `--verbose` — es ist `--version`. Die hat es zuerst gegeben.
 
 ### 23.6 Exit-Codes
 
-Gleich für alle drei Programme:
+Gleich für alle vier Programme:
 
 | Code | Bedeutung |
 |---|---|
@@ -1419,11 +1427,12 @@ Gleich für alle drei Programme:
 
 ### 23.7 Was in einer Installation liegt
 
-Eine ausgelieferte Toolchain ist ein Verzeichnis mit drei Programmen, drei Bibliotheken und der
+Eine ausgelieferte Toolchain ist ein Verzeichnis mit vier Programmen, drei Bibliotheken und der
 Stdlib:
 
 ```
-lyric.exe  lyrc.exe  lyrvm.exe     die drei Programme
+lyric.exe  lyrc.exe               Treiber und Compiler
+lyrvm.exe  lyrrepl.exe            Runtime und interaktive Schleife
 lyrcore.dll                        Diagnostik + Leseseite des Bytecode-Formats
 lyrfe.dll                          alles zwischen Quelltext und Bytes
 lyrrt.dll                          der Interpreter

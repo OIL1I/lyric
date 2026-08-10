@@ -590,6 +590,31 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > gefuellt. Was M9 nicht bringt, steht ausdruecklich in der v1.X-Tabelle: LSP, Formatter,
 > Attribute.
 
+> **Abgeschlossen erst 2026-08-10 (S6), und das ist der Punkt.** Der Eintrag darueber stand seit
+> dem 2026-08-07 da; **vier Lieferposten liefen zu diesem Zeitpunkt nicht**, und das Exit-Kriterium
+> („`lyric repl` produktiv") hat das nicht gemerkt, weil es die REPL misst und nicht den
+> Meilenstein:
+>
+> - **`dotnet test` war in Release rot**, seit 60 Pushes und damit seit *vor* M9/S1. Ein einziger
+>   Test trug die `--verbose`-Phasenliste als Literal, inklusive `verify` — das laeuft nur in
+>   Debug-Builds. Der Maintainer testete Debug, CI testete Release, und der Badge in der README
+>   zeigte die ganze Zeit auf den Fehlschlag.
+> - **`build/publish.proj` war von `.gitignore` erfasst** (`build/`) und lag in keinem Clone. Der
+>   CI-Job „Publish toolchain" ruft es auf und ist nie gelaufen, weil `needs:` ihn uebersprang. Die
+>   Auslieferung — Rule 3s Artefakt — war damit nie gebaut worden, nur behauptet.
+> - **README und `Doku.md` §23.7 behaupteten, M9 sei nicht gebaut**: „What is missing … is the
+>   REPL, editor integration", ein Projektbaum mit drei Binaries ueber einem Abschnitt „The four
+>   binaries", und ein Auslieferungs-Verzeichnis ohne `lyrrepl.exe`.
+>
+> **Das ist das sechste Mal dasselbe Muster** — nach M5 (`hello.lyr`), M6 (FizzBuzz/Fibonacci), P2
+> (`stats.lyr`), P3 (`shapes.lyr`), P4 (`bank.lyr`) und der Lieferposten-Inventur nach P5. Die
+> Regel dagegen war 2026-08-02 formuliert und stand in beiden Dateien; angewandt wurde sie bei M9
+> nicht. **Die Konsequenz ist keine neue Regel, sondern ein Zeitpunkt**: die Inventur gehoert vor
+> den Tag, nicht danach — ein Tag ist das einzige, was sich nicht stillschweigend nachbessern
+> laesst.
+>
+> Getaggt: `m9-complete` und annotiert `v0.9.0`, beide auf den S6-Commit.
+
 > **Korrektur (2026-08-06):** `lyric test` ist aus M9 gestrichen und wandert mit den Attributen
 > nach post-v1. Es sammelt `@test`-Funktionen — und `@test` hat keine Grammatik: `Sprache.md` §2.3
 > sieht an einer Deklaration kein Attribut vor, §10.1 versprach eines. Die Lücke bestand seit M1

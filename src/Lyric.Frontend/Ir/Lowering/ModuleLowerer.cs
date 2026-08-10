@@ -47,13 +47,12 @@ public static class ModuleLowerer
     /// vollständig validiert (<c>LYR-BC####</c>). Ein Lowering-Bug im Release-Compiler äußert sich
     /// also nicht als still falscher Code, sondern spätestens beim Laden — nur mit schlechterer
     /// Fehlermeldung als ein Verifier-Befund.</para>
+    ///
+    /// <para>Die Bedingung selbst steht in <see cref="Pipeline.VerifiesIr"/>: sie entscheidet
+    /// zugleich, welche Phasen <c>--verbose</c> auflistet, und diese Frage stellen auch die
+    /// Werkzeug-Tests.</para>
     /// </summary>
-    public static bool VerifyByDefault =>
-#if DEBUG
-        true;
-#else
-        false;
-#endif
+    public static bool VerifyByDefault => Pipeline.VerifiesIr;
 
     /// <summary>Lowert die Compilation. Liefert <c>null</c>, wenn Scope-Grenzen als
     /// <c>LYR-IR0001</c> gemeldet wurden — dann steht die Ursache in
