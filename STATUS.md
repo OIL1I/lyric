@@ -43,8 +43,13 @@ Embedding-API (`LangVm`, Marshalling, Hot-Reload). `Set<T>` und die Erreichbarke
   - **`build/publish.proj` lag in keinem Clone.** `.gitignore` hatte `build/` — gemeint waren
     Ausgaben, getroffen wurde die Auslieferungs-Definition. Der CI-Job „Publish toolchain" rief sie
     auf und ist **nie gelaufen**: `needs:` übersprang ihn, solange die Tests rot waren. Zwei Fehler,
-    die sich gegenseitig verdeckt haben. Der Publish ist jetzt einmal wirklich gefahren — 16
-    Einträge, und die ausgelieferte Toolchain läuft.
+    die sich gegenseitig verdeckt haben.
+  - **Und dann hat der Publish-Job beim ersten echten Lauf zwei weitere Schichten gefunden**, beide
+    nur auf einem frischen Baum sichtbar: ohne `Restore` bricht er mit „Assets file not found" ab,
+    und ein davorgestelltes `Restore`-Target machte das Kommando still zu einem reinen Restore —
+    die Datei hing unausgesprochen an „erstes Target gewinnt", `DefaultTargets` steht jetzt da.
+    **Mein lokaler Lauf war kein Beleg gewesen**: mein `obj/` war längst gefüllt. Geprüft wird
+    seitdem gegen einen echten `git clone` — klonen, README folgen, `hello.lyr` läuft.
   - **Die README behauptete, M9 sei nicht gebaut**: *„What is missing … is the REPL, editor
     integration"*, dazu `tooling/ … not built yet` und ein Projektbaum mit drei Binaries über einem
     Abschnitt namens „The four binaries". `Doku.md` §23.7 lieferte drei Programme aus.

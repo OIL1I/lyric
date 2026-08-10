@@ -1,4 +1,9 @@
-<Project>
+<!--
+  DefaultTargets ausgeschrieben und nicht dem "erstes Target gewinnt" ueberlassen: die Datei hing
+  genau daran, und das Einfuegen eines Restore-Targets davor hat sie still zu einem reinen Restore
+  gemacht — kein Fehler, nur kein Ergebnis.
+-->
+<Project DefaultTargets="Publish">
 
   <!--
     Die Auslieferung: vier Binaries, drei Bibliotheken, die Stdlib — in EINEM Verzeichnis.
@@ -34,7 +39,24 @@
     <Binary Include="..\src\Lyrrepl\Lyrrepl.csproj" />
   </ItemGroup>
 
-  <Target Name="Publish" DependsOnTargets="Clean">
+  <!--
+    Eigener Aufruf VOR dem Publish, nicht 'Targets="Restore;Publish"': MSBuild wertet ein Projekt
+    einmal aus, und die von Restore erzeugten Dateien (project.assets.json) muessen zu diesem
+    Zeitpunkt schon dastehen. In einem Durchgang kaeme das Publish zu frueh.
+
+    Warum ueberhaupt: ohne diesen Schritt laeuft das Kommando nur dort, wo schon einmal gebaut
+    wurde. Auf einem frischen Clone — also im CI und bei jedem, der der README folgt — bricht es
+    mit "Assets file ... not found" ab. Genau so ist es beim ersten echten Lauf des CI-Jobs
+    gescheitert; lokal war es gruen, weil obj/ langst gefuellt war.
+  -->
+  <Target Name="Restore">
+    <MSBuild Projects="@(Binary)"
+             Targets="Restore"
+             BuildInParallel="false"
+             Properties="Configuration=$(Configuration)" />
+  </Target>
+
+  <Target Name="Publish" DependsOnTargets="Clean;Restore">
     <MSBuild Projects="@(Binary)"
              Targets="Publish"
              BuildInParallel="false"
