@@ -151,10 +151,14 @@ VM, was ein Skript anfassen darf, und die Durchsetzung liegt bereits beim Laden.
 gehoert in denselben Slice — es ist Interop und teilt sich die Marshalling-Schicht.
 
 **Der `v0.9.0`-Tag ist gesetzt** (annotiert, die Message ist die Release-Notiz — CONTRIBUTING
-§Releases, kein `CHANGELOG.md` vor v1.0), dazu `m9-complete`. Beide zeigen auf den S6-Commit und
-**nicht** auf „M9: Politur" vom 2026-08-07: dort war `dotnet test` in Release rot und die
-Auslieferung nicht ausführbar. Einen Tag auf diesen Stand zu setzen wäre das „done by intent
-alone", das Rule 3 verbietet.
+§Releases, kein `CHANGELOG.md` vor v1.0), dazu `m9-complete`. Beide zeigen auf den **ersten Stand,
+auf dem alle drei CI-Jobs grün sind** — nicht auf „M9: Politur" vom 2026-08-07, wo `dotnet test`
+in Release rot war und die Auslieferung nicht baute. Einen Tag dorthin zu setzen wäre das „done by
+intent alone", das Rule 3 verbietet.
+
+Sie standen kurzzeitig einen Commit früher und sind verschoben worden: dort waren die Tests grün,
+der Publish-Job aber rot. **Ein Tag ist das Einzige, was sich nicht stillschweigend nachbessern
+lässt** — deshalb war das Verschieben richtig und wäre es eine Woche später nicht mehr gewesen.
 
 **Weiterhin ungetaggt: `m5-complete`, `m7-complete`, `m8-complete` und `v0.5.0`.** Rule 3 verlangt
 sie, die Meilensteine sind fertig, die Tags fehlen — bewusst offen gelassen, weil sie auf die
