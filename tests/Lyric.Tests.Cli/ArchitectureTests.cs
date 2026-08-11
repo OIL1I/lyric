@@ -218,8 +218,13 @@ public sealed class ArchitectureTests
         var root = Toolchain.RepositoryRoot;
         var project = File.ReadAllText(Path.Combine(root, "build", "publish.proj"));
 
+        // MSBuild schreibt '\' als Trenner, auch auf Linux — dort ist das ein gewoehnliches
+        // Zeichen im Dateinamen, und ohne Normalisierung findet dieser Test NICHTS und ist
+        // still leer. Genau so ist er beim ersten CI-Lauf gefallen: lokal (Windows) gruen,
+        // in CI rot. Dieselbe Fehlerklasse wie beim --verbose-Test aus M9/S6.
         var queue = new Queue<string>(Regex.Matches(project, @"<Binary Include=""([^""]+)""")
-            .Select(m => Path.GetFullPath(Path.Combine(root, "build", m.Groups[1].Value))));
+            .Select(m => Path.GetFullPath(
+                Path.Combine(root, "build", Normalize(m.Groups[1].Value)))));
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -237,9 +242,19 @@ public sealed class ArchitectureTests
 
             foreach (Match reference in Regex.Matches(text, @"<ProjectReference Include=""([^""]+)"""))
                 queue.Enqueue(Path.GetFullPath(Path.Combine(
-                    Path.GetDirectoryName(path)!, reference.Groups[1].Value)));
+                    Path.GetDirectoryName(path)!, Normalize(reference.Groups[1].Value))));
         }
 
+        // Ohne diese Zeile waere der Test still leer, wenn die Pfad-Aufloesung je wieder
+        // bricht — und "nichts gefunden" saehe aus wie "alles in Ordnung", solange die
+        // README nichts nennt.
+        Assert.NotEmpty(names);
         return names;
     }
+
+    /// <summary>MSBuild-Pfad zu Plattform-Pfad: die Projektdateien schreiben Windows-Trenner.
+    /// </summary>
+    private static string Normalize(string msbuildPath) =>
+        msbuildPath.Replace('\\', Path.DirectorySeparatorChar)
+                   .Replace('/', Path.DirectorySeparatorChar);
 }
