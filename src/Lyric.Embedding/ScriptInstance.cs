@@ -20,11 +20,13 @@ namespace Lyric.Embedding;
 /// </summary>
 public sealed class ScriptInstance
 {
+    private readonly LangVm _vm;
     private readonly LoadedProgram _program;
     private readonly string _prefix;
 
-    internal ScriptInstance(ScriptModule module, LoadedProgram program)
+    internal ScriptInstance(LangVm vm, ScriptModule module, LoadedProgram program)
     {
+        _vm = vm;
         Module = module;
         _program = program;
         _prefix = module.Name + ".";
@@ -32,6 +34,38 @@ public sealed class ScriptInstance
 
     /// <summary>Woraus diese Instanz entstanden ist.</summary>
     public ScriptModule Module { get; }
+
+    /// <summary>
+    /// Liest die Quelldatei erneut, uebersetzt sie und liefert eine <b>neue</b> Instanz
+    /// (M10/E5, Hot-Reload).
+    ///
+    /// <para><b>Die alte bleibt gueltig.</b> Das ist die ganze Zusage, und sie ist der Grund,
+    /// warum <c>Reload</c> mehr ist als „nochmal <c>CompileFile</c>": scheitert die Uebersetzung,
+    /// wirft dieser Aufruf, und der Host arbeitet mit dem weiter, was er hat. Ein Mod, der beim
+    /// Speichern einen Tippfehler enthaelt, darf das Spiel nicht anhalten — dieselbe Eigenschaft,
+    /// die die REPL seit ADR-021 hat („eine fehlerhafte Eingabe aendert nichts").</para>
+    ///
+    /// <para><b>Was neu laeuft und was bleibt</b>: die Modul-Konstanten werden neu berechnet, denn
+    /// eine neue Instanz ist ein neuer Zustand (ADR-025 — bei <c>let</c> ist die Antwort trivial,
+    /// der Initialisierer laeuft neu). <b>Host-Objekte ueberleben</b>, weil sie dem GC gehoeren
+    /// und nicht der Instanz (ADR-026): was der Host haelt, haelt er weiter.</para>
+    ///
+    /// <para>Der Host tauscht seine Referenz selbst: <c>instance = instance.Reload();</c>. Ein
+    /// stiller Tausch hinter einer unveraenderten Referenz waere bequemer und verstellte den
+    /// Blick darauf, dass hier ein Zustand weggeworfen wird.</para>
+    /// </summary>
+    /// <exception cref="ScriptException">Das Modul kam nicht von der Platte — im Speicher gibt es
+    /// nichts neu zu lesen.</exception>
+    /// <exception cref="EmbeddingException">Die neue Fassung uebersetzt nicht. Diese Instanz
+    /// bleibt benutzbar.</exception>
+    public ScriptInstance Reload()
+    {
+        if (Module.Origin is not { } path)
+            throw new ScriptException("LYR-EMB0008",
+                $"'{Module.Name}' was compiled from memory — there is no file to reload", null);
+
+        return _vm.Instantiate(_vm.CompileFile(path));
+    }
 
     /// <summary>Kennt dieses Skript eine <c>pub</c>-Funktion dieses Namens?</summary>
     public bool Defines(string function) => _program.IndexOfFunction(_prefix + function) >= 0;

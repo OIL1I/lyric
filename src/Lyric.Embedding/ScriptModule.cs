@@ -17,12 +17,22 @@ namespace Lyric.Embedding;
 /// </summary>
 public sealed class ScriptModule
 {
-    internal ScriptModule(string name, byte[] bytes, BytecodeModule loaded)
+    internal ScriptModule(string name, byte[] bytes, BytecodeModule loaded, string? origin)
     {
         Name = name;
         Bytes = bytes;
         Loaded = loaded;
+        Origin = origin;
     }
+
+    /// <summary>
+    /// Die Datei, aus der dieses Modul kam — <c>null</c> bei Quelltext aus dem Speicher.
+    ///
+    /// <para>Das ist die Voraussetzung fuer <see cref="ScriptInstance.Reload"/>: neu laden heisst,
+    /// dieselbe Quelle noch einmal zu lesen, und eine Zeichenkette im Speicher hat sich seit dem
+    /// letzten Mal nicht geaendert. Ein <c>Reload</c> darauf waere Arbeit ohne Aussage.</para>
+    /// </summary>
+    public string? Origin { get; }
 
     /// <summary>Der Modulname, unter dem es uebersetzt wurde.</summary>
     public string Name { get; }

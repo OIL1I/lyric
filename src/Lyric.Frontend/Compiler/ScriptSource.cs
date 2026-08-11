@@ -47,9 +47,17 @@ public sealed class ScriptSource
     /// </summary>
     public string? ModuleName { get; }
 
-    /// <summary>Eine Datei auf der Platte. Der Modulname folgt dem Pfad (§2.1).</summary>
-    public static ScriptSource FromDisk(string path) =>
-        new(Path.GetFileName(path), null, path, null);
+    /// <summary>
+    /// Eine Datei auf der Platte.
+    /// </summary>
+    /// <param name="moduleName">Wie das Modul heissen soll. <c>null</c> ueberlaesst es der
+    /// Voreinstellung des Resolvers (<c>main</c>) — das tut die CLI, deren Ausgabe seit M5 so
+    /// aussieht. Ein Host nennt ihn, weil er ihn spaeter zum Aufrufen braucht: bis 2026-08-11
+    /// meldete <c>LangVm.CompileFile</c> den Dateinamen, waehrend das Modul <c>main</c> hiess, und
+    /// ein <c>Call</c> darauf fand nichts. Aufgefallen erst beim Bau von <c>Reload</c> (E5) —
+    /// vorher hatte kein Test eine Datei uebersetzt UND daraus gerufen.</param>
+    public static ScriptSource FromDisk(string path, string? moduleName = null) =>
+        new(Path.GetFileName(path), moduleName, path, null);
 
     /// <summary>
     /// Quelltext aus dem Speicher unter einem vom Aufrufer gewaehlten Namen.

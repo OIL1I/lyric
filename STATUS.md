@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2609 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
+2617 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,8 +23,8 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: **M10 E5–E6** — `RegisterType<T>`,
-`Reload`, dann Doku und Inventur. E1–E4 stehen. `std.dotnet` ist gestrichen
+**Offen für v1.0**: **M10 E6** — `RegisterType<T>`,
+Doku und Inventur. E1–E5 stehen. `std.dotnet` ist gestrichen
 (2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -32,6 +32,23 @@ Meilenstein davor berührt hat.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M10/E5 — `Reload`** (2026-08-11). 2617 Tests grün. **Nur noch E6 bis v1.0.**
+  - `instance = instance.Reload()` liest die Quelldatei erneut. **Die tragende Zusage ist nicht
+    „es lädt neu", sondern dass die alte Fassung einen Fehlschlag überlebt** — sonst wäre `Reload`
+    ein Alias für `Instantiate(CompileFile(…))`, das ein Host selbst schreiben könnte. Ein Mod mit
+    einem Tippfehler hält das Spiel nicht an; dieselbe Eigenschaft, die die REPL seit ADR-021 hat.
+  - **Was neu läuft und was bleibt, musste E5 nicht entscheiden**: Modul-Konstanten werden neu
+    berechnet, weil eine neue Instanz ein neuer Zustand ist (ADR-025); Host-Objekte überleben,
+    weil sie dem GC gehören und nicht der Instanz (ADR-026). Die Welt bleibt stehen, nur das
+    Skript wird getauscht. Zwei ADRs, die vorher getroffen wurden, haben den Slice fast leer
+    gemacht — das ist der Ertrag davon, sie vorher zu treffen.
+  - **`CompileFile` meldete einen Modulnamen, den das Modul nicht trug.** Der Resolver nannte es
+    `main`, `ScriptModule.Name` den Dateinamen — ein `Call` darauf fand nichts. Der Riss stammt
+    aus E1 und war bis hierher unsichtbar: **kein Test hatte eine Datei übersetzt *und* daraus
+    gerufen.** `RunScript` lief über `main`, `Call` über Quelltext aus dem Speicher.
+  - Der explizite Tausch (`instance = instance.Reload()`) statt eines stillen hinter derselben
+    Referenz: hier wird ein Zustand weggeworfen, und das soll man am Aufruf sehen.
 
 - [x] **M10/E4b — Methoden auf Host-Typen. E4 ist damit fertig** (2026-08-11). 2609 Tests grün.
   - `RegisterType<T>("Entity", t => t.Getter("leben", …).Method("schaden", …, mutates: true))`
@@ -91,26 +108,6 @@ Meilenstein davor berührt hat.
     Host-Funktion kostet **keine Capability**: die Stufen aus ADR-007 gelten der Stdlib, was
     darüber hinausgeht, entscheidet der Host einzeln.
 
-- [x] **M10/E2 — `Call<T>` und die Skalar-Marshalling-Schicht** (2026-08-11). 2562 Tests grün.
-  - **`ScriptInstance.Call<T>`/`CallVoid`**, dazu `Defines`. Die Matrix deckt alle vierzehn
-    Skalartypen plus `string` hin und zurück ab — als Matrix und nicht als Beispielliste, weil bei
-    `AgreementTests` vier Abstürze allesamt *durch Zufall* gefunden wurden.
-  - **Verlustfrei oder gar nicht**: `300` als `int8` wird abgelehnt, nicht zu `44` gekürzt. Ein
-    Bruch für ein `int` ebenso. Innerhalb von Lyric wickelt Arithmetik definiert um (§6.6) — das
-    ist eine Rechnung des Programms und etwas anderes als eine stille Umdeutung an der Grenze.
-  - **`Call` sitzt auf einer Instanz, nicht auf der VM** — Abweichung von der ROADMAP-Skizze. Sie
-    las sich, als habe eine VM genau ein Skript; bei zwei müsste `Call` raten oder es gäbe ein
-    implizites „aktuelles Skript". **Die Instanz ist der Zustand**: der Konstanten-Initialisierer
-    läuft beim Erzeugen genau einmal, und zwei Instanzen desselben Moduls teilen nichts. Damit
-    fällt ADR-025s Reload-Zusage in E5 von selbst heraus.
-  - **`LoadedProgram` in der VM** trennt „laden und initialisieren" von „ausführen". `Run` ist
-    jetzt eine Zeile darauf; die alte Fassung ist **gelöscht** und nicht als Zweitkopie
-    stehengeblieben.
-  - **Ein Fund über E1**: der Modulname des Hosts erreichte den Compiler nie. `ScriptSource`
-    setzte nur den Anzeigenamen, die Identität blieb `main` — zwei Mods hätten beide `main`
-    geheißen, und ein Aufruf über den Namen fände die Funktion des falschen. Gefunden vom
-    **ersten** Test, der eine Funktion beim Namen rief.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -150,13 +147,12 @@ Begründung gestrichen statt geliefert.
 **M10 läuft.** E1–E3 stehen: `LangVm`, Capabilities, `Call<T>`, Marshalling, `RegisterFunction`.
 Ein Host kann heute ein Skript laden, sandboxen, Funktionen daraus rufen und eigene hineinreichen.
 
-**Als Nächstes E5** — `Reload`. ADR-026 liefert die Antwort schon mit: neu laden heißt neue
-`ScriptInstance`, und damit läuft der Konstanten-Initialisierer neu (ADR-025), während
-Host-Objekte dem GC gehören und einfach weiterleben.
+**Nur noch E6.** `Doku.md` §21 zeigt bis heute eine API, die es so nicht gibt — `Compile` ohne
+Modulnamen, `playSound` ohne Import, `builder.Field`, `vm.Call` statt einer Instanz. Vier Zusagen,
+die diese Meilenstein-Arbeit einzeln widerlegt hat; §21 wird gegen das Gebaute neu geschrieben.
 
-**Danach E6**: `Doku.md` §21 gegen das Gebaute neu schreiben — sie zeigt bis heute eine API, die es
-so nicht gibt (`Compile` ohne Modulnamen, `playSound` ohne Import, `builder.Field`) —, dann die
-Lieferposten-Inventur und **v1.0**.
+**Dann die Lieferposten-Inventur** — Punkt für Punkt, nicht am Exit-Kriterium allein. Genau das
+war bei M9 versäumt worden, und es hat vier stille Lücken gekostet. **Danach v1.0.**
 
 **Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
 über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
@@ -291,7 +287,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`M10/E4b: Methoden auf Host-Typen — E4 ist fertig`
+`M10/E5: Reload — die alte Fassung ueberlebt einen Fehlschlag`
 
 ---
 

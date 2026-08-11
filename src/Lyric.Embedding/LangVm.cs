@@ -204,12 +204,18 @@ public sealed class LangVm
     /// kollidierten still; ob zwei Mods dasselbe Modul sind, weiss nur der Host.</param>
     /// <exception cref="EmbeddingException">Die Uebersetzung hat Fehler gemeldet.</exception>
     public ScriptModule Compile(string source, string moduleName) =>
-        Build(ScriptSource.FromText(moduleName, source), moduleName);
+        Build(ScriptSource.FromText(moduleName, source), moduleName, origin: null);
 
     /// <summary>Uebersetzt eine Datei. Der Modulname folgt dem Pfad (§2.1).</summary>
     /// <inheritdoc cref="Compile(string, string)"/>
-    public ScriptModule CompileFile(string path) =>
-        Build(ScriptSource.FromDisk(path), Path.GetFileNameWithoutExtension(path));
+    public ScriptModule CompileFile(string path)
+    {
+        // Der Name wird HIER festgelegt und nicht dem Resolver ueberlassen: der Host braucht ihn
+        // zum Aufrufen, und die Voreinstellung waere 'main' — ein Name, den zwei geladene Dateien
+        // sich teilten.
+        var name = Path.GetFileNameWithoutExtension(path);
+        return Build(ScriptSource.FromDisk(path, name), name, origin: path);
+    }
 
     /// <summary>
     /// Fuehrt das <c>main</c> des Moduls aus und liefert seinen Exit-Code (§11).
@@ -269,7 +275,7 @@ public sealed class LangVm
         ArgumentNullException.ThrowIfNull(module);
         try
         {
-            return new ScriptInstance(module,
+            return new ScriptInstance(this, module,
                 LoadedProgram.Load(module.Loaded, _natives, _options.Capabilities));
         }
         catch (LyricPanic panic)
@@ -284,7 +290,7 @@ public sealed class LangVm
         }
     }
 
-    private ScriptModule Build(ScriptSource source, string name)
+    private ScriptModule Build(ScriptSource source, string name, string? origin)
     {
         var result = SourceCompiler.Compile(source, new CompilerOptions
         {
@@ -304,6 +310,7 @@ public sealed class LangVm
         // Beim Uebersetzen bereits laden und validieren, nicht erst beim Ausfuehren. Ein Host, der
         // zehn Mods laedt und den elften nie startet, soll trotzdem beim zehnten erfahren, dass er
         // kaputt ist — und nicht mitten im Spiel.
-        return new ScriptModule(name, result.Bytes, BytecodeReader.ReadOrThrow(result.Bytes));
+        return new ScriptModule(name, result.Bytes, BytecodeReader.ReadOrThrow(result.Bytes),
+            origin);
     }
 }

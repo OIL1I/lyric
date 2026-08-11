@@ -697,6 +697,22 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > mit beiden Seiten, `lyrembed` ist das zweite. **Die Zeile in §Zentrale Komponenten ist damit
 > falsch und hier korrigiert.**
 >
+> **E5 ist erledigt** (2026-08-11): `ScriptInstance.Reload()` liest die Quelldatei erneut und
+> liefert eine **neue** Instanz. Die tragende Zusage ist nicht „es laedt neu", sondern **die alte
+> Fassung ueberlebt einen Fehlschlag** — sonst waere `Reload` ein Alias fuer
+> `Instantiate(CompileFile(...))`, das ein Host selbst schreiben koennte. Ein Mod mit einem
+> Tippfehler haelt das Spiel nicht an; dieselbe Eigenschaft, die die REPL seit ADR-021 hat.
+>
+> Was neu laeuft und was bleibt, fiel aus zwei frueheren Entscheidungen heraus, ohne dass E5 etwas
+> dafuer tun musste: die Modul-Konstanten werden neu berechnet, weil eine neue Instanz ein neuer
+> Zustand ist (ADR-025), und **Host-Objekte ueberleben**, weil sie dem GC gehoeren und nicht der
+> Instanz (ADR-026). Die Welt bleibt stehen, nur das Skript wird getauscht.
+>
+> Dabei aufgefallen: **`CompileFile` meldete einen Modulnamen, den das Modul nicht trug.** Der
+> Resolver nannte es `main`, `ScriptModule.Name` den Dateinamen — ein `Call` darauf fand nichts.
+> Der Riss stammt aus E1 und war bis E5 unsichtbar, weil kein Test eine Datei uebersetzt UND
+> daraus gerufen hatte.
+>
 > **E4b ist erledigt** (2026-08-11): Methoden auf Host-Typen. `RegisterType<T>(name, t => t
 > .Getter(…).Method(…))` erzeugt eine Klassendeklaration, deren bodylose Methoden Natives mit dem
 > Empfaenger als Parameter 0 sind (ADR-014) — dieselbe Konvention wie bei jeder anderen Methode.
