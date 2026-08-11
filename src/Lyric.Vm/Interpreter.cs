@@ -34,79 +34,19 @@ public static class Interpreter
     /// <c>string[]</c>, das ein <c>fn main(args: string[])</c> bekommt; ein parameterloses
     /// <c>main</c> ignoriert sie.</param>
     public static LyrValue Run(BytecodeModule module, IReadOnlyList<string> arguments,
-        NativeRegistry? natives = null, Capability granted = Capability.All)
-    {
-        // ZUERST, vor allem anderen: was diese VM nicht gewaehrt, laeuft hier gar nicht erst an.
-        //
-        // Die Pruefung gehoert hierher und nicht in den Compiler. ADR-007 nennt die Resolve-Zeit,
-        // und dort gibt es die fruehe Meldung — aber ein '.lyrbc' kann von woanders kommen, und
-        // ein Host, der fremden Bytecode laedt, hat den Compiler nie gesehen. Der Bedarf steht
-        // deshalb IM Modul (ADR-013), und die Durchsetzung passiert beim Laden.
-        var missing = module.Capabilities & ~(ulong)granted;
-        if (missing != 0)
-            throw new LyricRuntimeException(VmDiagnostics.CapabilityDenied,
-                $"module requires capability '{CapabilityTable.Describe((Capability)missing)}', "
-                + "which this runtime does not grant");
-
-        if (module.Start is not { } start)
-            throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
-                "module has no start section — it is a library, not a program");
-
-        // Start indiziert den gemeinsamen Raum (erst Imports, dann Funktionen), 'prepared' nur die
-        // definierten Funktionen — siehe Bytecode.md §Start (Id 7). Ein Einstieg im Import-Bereich
-        // waere ein Modul, dessen main eine Host-Funktion ist; der Loader laesst das durch, die
-        // Runtime kann es nicht ausfuehren.
-        var entry = start - module.Imports.Count;
-        if (entry < 0)
-            throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
-                $"start index {start} points into the import table — an entry point must be a "
-                + "function defined in this module");
-
-        var prepared = new Prepared[module.Functions.Count];
-        for (var i = 0; i < prepared.Length; i++)
-            prepared[i] = Prepared.From(module.Functions[i],
-                module.Handlers.Where(h => h.Function == i).ToArray());
-
-        // Bindung beim Laden: fehlt ein Native, wird das Modul abgelehnt, bevor eine
-        // Instruktion laeuft.
-        var bound = (natives ?? new NativeRegistry()).Bind(module);
-        var dispatch = DispatchTable.Build(module);
-
-        // Globale Slots. Ein String-Slot startet mit dem leeren String statt mit einer leeren
-        // Referenz — dieselbe Regel wie bei Objektfeldern (§6.6): kein Wert ist je nicht da.
-        var globals = new LyrValue[module.Globals.Count];
-        for (var i = 0; i < globals.Length; i++)
-            if (module.Globals[i].Tag == TypeTag.String) globals[i] = LyrValue.FromString(string.Empty);
-
-        // Die Init-Funktion laeuft VOR dem Einstiegspunkt (Bytecode.md §Globals). Ihr Ergebnis
-        // wird verworfen — sie ist void; was zaehlt, sind die Slots, die sie hinterlaesst.
-        if (module.GlobalInit is { } init && init >= module.Imports.Count)
-            Execute(prepared, init - module.Imports.Count, module.Strings, module.Types,
-                dispatch, bound, globals);
-
-        // §11 kennt zwei Einstiegsformen. WELCHE vorliegt, steht in der Signatur — die
-        // Funktionstabelle traegt sie ohnehin, also braucht die Start-Sektion dafuer kein Flag.
-        //
-        // Der Loader hat bereits geprueft, dass ein Parameter ein 'string[]' ist; hier wird nur
-        // noch gezaehlt.
-        LyrValue[] entryArgs = module.Functions[entry].ParamCount == 0
-            ? []
-            : [ArgumentArray(arguments)];
-
-        return Execute(prepared, entry, module.Strings, module.Types, dispatch, bound, globals,
-            entryArgs);
-    }
+        NativeRegistry? natives = null, Capability granted = Capability.All) =>
+        LoadedProgram.Load(module, natives, granted).RunEntry(arguments);
 
     /// <summary>Die Programm-Argumente als Lyric-<c>string[]</c> — dieselbe Darstellung wie jedes
     /// andere Array (ein <c>LyrValue[]</c> hinter einer Referenz).</summary>
-    private static LyrValue ArgumentArray(IReadOnlyList<string> arguments)
+    internal static LyrValue ArgumentArray(IReadOnlyList<string> arguments)
     {
         var values = new LyrValue[arguments.Count];
         for (var i = 0; i < arguments.Count; i++) values[i] = LyrValue.FromString(arguments[i]);
         return LyrValue.FromObject(values);
     }
 
-    private static LyrValue Execute(Prepared[] prepared, int startIndex,
+    internal static LyrValue Execute(Prepared[] prepared, int startIndex,
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
         DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals,
         LyrValue[]? entryArguments = null)
@@ -896,7 +836,7 @@ public static class Interpreter
 
     /// <summary>Eine Funktion, einmal dekodiert. Der Sprung auf einen Block wird damit zu einem
     /// Array-Zugriff statt zu einer Suche im Byte-Strom.</summary>
-    private sealed class Prepared
+    internal sealed class Prepared
     {
         public required BytecodeFunction Source { get; init; }
         public required BytecodeInstruction[] Instructions { get; init; }

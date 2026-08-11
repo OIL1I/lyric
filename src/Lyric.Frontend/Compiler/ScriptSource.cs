@@ -22,9 +22,10 @@ public sealed class ScriptSource
     private readonly string? _path;
     private readonly string? _text;
 
-    private ScriptSource(string displayName, string? path, string? text)
+    private ScriptSource(string displayName, string? moduleName, string? path, string? text)
     {
         DisplayName = displayName;
+        ModuleName = moduleName;
         _path = path;
         _text = text;
     }
@@ -32,9 +33,23 @@ public sealed class ScriptSource
     /// <summary>Der Name fuer Diagnosen und die Fortschrittsanzeige.</summary>
     public string DisplayName { get; }
 
+    /// <summary>
+    /// Wie das Modul <b>heisst</b> — nicht, wie es angezeigt wird.
+    ///
+    /// <para>Die Unterscheidung ist noetig und war beim ersten Anlauf nicht da: der Anzeigename
+    /// landete in den Diagnosen, die Modul-Identitaet blieb <c>main</c>. Ein Host, der zwei Mods
+    /// laedt, haette zwei Module namens <c>main</c> gehabt — und ein Aufruf ueber den Namen
+    /// (M10/E2) faende die Funktion des falschen. Gefunden vom ersten Test, der eine Funktion
+    /// beim Namen rief.</para>
+    ///
+    /// <para><c>null</c> bei einer Datei: dort leitet §2.1 den Namen aus dem Pfad ab, und das ist
+    /// die Regel, die gelten soll.</para>
+    /// </summary>
+    public string? ModuleName { get; }
+
     /// <summary>Eine Datei auf der Platte. Der Modulname folgt dem Pfad (§2.1).</summary>
     public static ScriptSource FromDisk(string path) =>
-        new(Path.GetFileName(path), path, null);
+        new(Path.GetFileName(path), null, path, null);
 
     /// <summary>
     /// Quelltext aus dem Speicher unter einem vom Aufrufer gewaehlten Namen.
@@ -47,7 +62,7 @@ public sealed class ScriptSource
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
         ArgumentNullException.ThrowIfNull(text);
-        return new ScriptSource(moduleName, null, text);
+        return new ScriptSource(moduleName, moduleName, null, text);
     }
 
     /// <summary>Legt den Quelltext im <see cref="SourceManager"/> ab. <c>null</c>, wenn die Datei

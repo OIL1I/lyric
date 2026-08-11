@@ -697,6 +697,19 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > mit beiden Seiten, `lyrembed` ist das zweite. **Die Zeile in §Zentrale Komponenten ist damit
 > falsch und hier korrigiert.**
 >
+> **E2 ist erledigt** (2026-08-11): `ScriptInstance.Call<T>`/`CallVoid` und die
+> Skalar-Marshalling-Schicht (alle vierzehn Skalartypen plus `string`, verlustfrei oder gar nicht).
+> **Abweichung von der Skizze oben, mit Grund**: `Call` sitzt auf einer `ScriptInstance`, nicht auf
+> `LangVm`. Die Lieferposten-Zeile las sich, als habe eine VM genau ein Skript; sobald sie zwei hat
+> — ein Host mit zwei Mods ist der Normalfall —, müsste `Call` raten oder es gäbe ein implizites
+> „aktuelles Skript". Die Instanz ist zugleich der Ort, an dem die Modul-Konstanten leben, und
+> damit fällt ADR-025s Reload-Zusage in E5 von selbst heraus.
+>
+> Dabei aufgefallen: **der Modulname des Hosts erreichte den Compiler gar nicht.** `ScriptSource`
+> setzte nur den Anzeigenamen für Diagnosen, die Modul-Identität blieb `main` — zwei Mods hätten
+> beide `main` geheißen, und ein Aufruf über den Namen fände die Funktion des falschen. Gefunden
+> vom ersten Test, der eine Funktion beim Namen rief.
+>
 > **E1 ist erledigt** (2026-08-11): `LangVm` mit `Compile`/`CompileFile`/`Run`/`RunScript`,
 > Sandbox als Voreinstellung, `examples/embedded-host/`. Zwei Befunde beim Bauen — die Runtime-
 > Ausnahmen mussten an der Host-Grenze übersetzt werden (ein Host referenziert `lyrrt` nicht und

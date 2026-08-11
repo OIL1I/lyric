@@ -82,6 +82,30 @@ public class ExampleHostTests
         Assert.Contains("gibt es geheim.txt? false", output, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Das E2-Gate: der Host <b>ruft</b> Funktionen, und der Zustand zwischen den Aufrufen bleibt.
+    /// Drei Aufrufe mit wachsendem Ergebnis sagen beides in einer Zeile — ein einzelner Aufruf
+    /// liesse offen, ob die Modul-Konstante jedes Mal neu berechnet wird.
+    /// </summary>
+    [Fact]
+    public void The_example_host_calls_into_the_script_and_keeps_its_state()
+    {
+        var (_, output) = RunHost();
+
+        Assert.Contains("treffer(10) = 10", output, StringComparison.Ordinal);
+        Assert.Contains("treffer(5)  = 15", output, StringComparison.Ordinal);
+        Assert.Contains("treffer(1)  = 16", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>Ein Wert, der nicht verlustfrei ueber die Grenze passt, wird abgelehnt statt
+    /// abgeschnitten — und das Beispiel zeigt es, statt es zu verschweigen.</summary>
+    [Fact]
+    public void The_example_host_shows_a_value_refused_at_the_boundary()
+    {
+        var (_, output) = RunHost();
+        Assert.Contains("LYR-EMB0005", output, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_example_host_shows_a_compile_error_as_a_diagnostic()
     {

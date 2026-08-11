@@ -67,7 +67,44 @@ Console.WriteLine($"exit = {trusted.Run(trusted.Compile("""
     }
     """, "leser"))}");
 
-// 4. Ein Uebersetzungsfehler kommt als Daten zurueck, nicht als Text.
+// 4. Funktionen aus dem Skript rufen (E2). Ein Modul OHNE 'main' ist hier der Normalfall — der
+//    Host treibt es, nicht umgekehrt.
+Console.WriteLine();
+Console.WriteLine("== Funktionen rufen ==");
+
+var mod = sandboxed.Instantiate(sandboxed.Compile("""
+    class Punkte { stand: int = 0 }
+
+    let punkte = Punkte { };
+
+    pub fn treffer(wert: int): int {
+        punkte.stand = punkte.stand + wert;
+        return punkte.stand;
+    }
+
+    pub fn bewerten(name: string, quote: float): string {
+        return f"{name}: {quote:P0}";
+    }
+    """, "spiel"));
+
+Console.WriteLine($"treffer(10) = {mod.Call<long>("treffer", 10)}");
+Console.WriteLine($"treffer(5)  = {mod.Call<long>("treffer", 5)}");
+Console.WriteLine(mod.Call<string>("bewerten", "Ada", 0.75));
+
+// Der Zustand lebt zwischen den Aufrufen — das ist der Unterschied zu 'Run'.
+Console.WriteLine($"treffer(1)  = {mod.Call<long>("treffer", 1)}");
+
+// Was nicht ueber die Grenze passt, sagt es.
+try
+{
+    mod.Call<long>("treffer", 3.5);
+}
+catch (ScriptException mismatch)
+{
+    Console.WriteLine($"abgelehnt: {mismatch.Code} - {mismatch.Message}");
+}
+
+// 5. Ein Uebersetzungsfehler kommt als Daten zurueck, nicht als Text.
 Console.WriteLine();
 Console.WriteLine("== ein kaputtes Skript ==");
 try

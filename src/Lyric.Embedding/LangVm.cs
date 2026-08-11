@@ -100,6 +100,40 @@ public sealed class LangVm
     public int RunScript(string path, params string[] arguments) =>
         Run(CompileFile(path), arguments);
 
+    /// <summary>
+    /// Laedt ein Modul und laesst seinen Konstanten-Initialisierer laufen — die Form, aus der ein
+    /// Host <b>Funktionen ruft</b> (E2).
+    ///
+    /// <para>Getrennt von <see cref="Run"/>, weil die beiden verschiedene Fragen beantworten:
+    /// <c>Run</c> fuehrt ein Programm einmal aus, eine Instanz lebt weiter. Der Unterschied sind
+    /// die Modul-Konstanten — sie werden einmal berechnet, und jeder Aufruf danach sieht
+    /// denselben Stand.</para>
+    ///
+    /// <para>Ein Modul <b>ohne</b> Einstiegspunkt ist hier der Normalfall und kein Fehler: genau
+    /// dafuer ist die Start-Sektion optional.</para>
+    /// </summary>
+    /// <exception cref="ScriptException">Eine Capability fehlt, oder ein Import laesst sich nicht
+    /// binden.</exception>
+    public ScriptInstance Instantiate(ScriptModule module)
+    {
+        ArgumentNullException.ThrowIfNull(module);
+        try
+        {
+            return new ScriptInstance(module,
+                LoadedProgram.Load(module.Loaded, _natives, _options.Capabilities));
+        }
+        catch (LyricPanic panic)
+        {
+            // Der Konstanten-Initialisierer laeuft beim Laden und ist gewoehnlicher Lyric-Code —
+            // er kann panicken wie jeder andere.
+            throw new ScriptPanicException(panic.Code, panic.Message, panic);
+        }
+        catch (LyricRuntimeException runtime)
+        {
+            throw new ScriptException(runtime.Code, runtime.Message, runtime);
+        }
+    }
+
     private ScriptModule Build(ScriptSource source, string name)
     {
         var result = SourceCompiler.Compile(source, new CompilerOptions

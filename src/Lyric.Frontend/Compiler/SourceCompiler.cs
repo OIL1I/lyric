@@ -98,7 +98,7 @@ public static class SourceCompiler
                 return result;
             },
         };
-        compilation.AddModule(entry);
+        compilation.AddModule(entry, source.ModuleName);
 
         report?.BeginPhase(Phase.Load);
         var resolveStarted = Stopwatch.GetTimestamp();

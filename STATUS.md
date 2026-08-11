@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2519 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2562 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,8 +23,8 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: **M10 E2–E6** — `Call<T>` und Marshalling, `RegisterFunction`,
-`RegisterType<T>`, `Reload`, dann Doku und Inventur. E1 steht. `std.dotnet` ist gestrichen
+**Offen für v1.0**: **M10 E3–E6** — `RegisterFunction`,
+`RegisterType<T>`, `Reload`, dann Doku und Inventur. E1 und E2 stehen. `std.dotnet` ist gestrichen
 (2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -32,6 +32,26 @@ Meilenstein davor berührt hat.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M10/E2 — `Call<T>` und die Skalar-Marshalling-Schicht** (2026-08-11). 2562 Tests grün.
+  - **`ScriptInstance.Call<T>`/`CallVoid`**, dazu `Defines`. Die Matrix deckt alle vierzehn
+    Skalartypen plus `string` hin und zurück ab — als Matrix und nicht als Beispielliste, weil bei
+    `AgreementTests` vier Abstürze allesamt *durch Zufall* gefunden wurden.
+  - **Verlustfrei oder gar nicht**: `300` als `int8` wird abgelehnt, nicht zu `44` gekürzt. Ein
+    Bruch für ein `int` ebenso. Innerhalb von Lyric wickelt Arithmetik definiert um (§6.6) — das
+    ist eine Rechnung des Programms und etwas anderes als eine stille Umdeutung an der Grenze.
+  - **`Call` sitzt auf einer Instanz, nicht auf der VM** — Abweichung von der ROADMAP-Skizze. Sie
+    las sich, als habe eine VM genau ein Skript; bei zwei müsste `Call` raten oder es gäbe ein
+    implizites „aktuelles Skript". **Die Instanz ist der Zustand**: der Konstanten-Initialisierer
+    läuft beim Erzeugen genau einmal, und zwei Instanzen desselben Moduls teilen nichts. Damit
+    fällt ADR-025s Reload-Zusage in E5 von selbst heraus.
+  - **`LoadedProgram` in der VM** trennt „laden und initialisieren" von „ausführen". `Run` ist
+    jetzt eine Zeile darauf; die alte Fassung ist **gelöscht** und nicht als Zweitkopie
+    stehengeblieben.
+  - **Ein Fund über E1**: der Modulname des Hosts erreichte den Compiler nie. `ScriptSource`
+    setzte nur den Anzeigenamen, die Identität blieb `main` — zwei Mods hätten beide `main`
+    geheißen, und ein Aufruf über den Namen fände die Funktion des falschen. Gefunden vom
+    **ersten** Test, der eine Funktion beim Namen rief.
 
 - [x] **M10/E1 — `LangVm`: laden, ausfuehren, sandboxen** (2026-08-11). 2519 Tests grün.
   - **Neue Assembly `Lyric.Embedding` → `lyrembed.dll`**, das zweite Artefakt mit *beiden*
@@ -112,36 +132,6 @@ Meilenstein davor berührt hat.
     `NullDereferenceError`" und `resume` „wirft `CoroutineEndedError`" — beides panict, und keiner
     der Typen existierte je.
 
-- [x] **M9/S6 — der Abschluss-Slice. M9 ist getaggt** (2026-08-10). Der Meilenstein galt seit dem
-  2026-08-07 als fertig, weil sein Gate lief. Vier seiner Lieferposten liefen nicht.
-  - **CI war rot — seit 60 Pushes**, also seit *vor* M9/S1. Genau ein Test:
-    `Verbose_lists_every_phase_in_pipeline_order_with_a_total` trug die Phasenliste als Literal
-    inklusive `verify`, und `verify` läuft nur in Debug-Builds. Lokal grün, in CI und in allem, was
-    ausgeliefert wird, rot. **CONTRIBUTING sagt „`dotnet test` must pass" — das galt für die
-    falsche Konfiguration.** Die Bedingung liegt jetzt einmal in `Lyric.Core.Pipeline`, wo Frontend
-    und Werkzeug-Tests sie gemeinsam sehen; dasselbe Muster wie `Lyric.Core.Unicode`.
-  - **`build/publish.proj` lag in keinem Clone.** `.gitignore` hatte `build/` — gemeint waren
-    Ausgaben, getroffen wurde die Auslieferungs-Definition. Der CI-Job „Publish toolchain" rief sie
-    auf und ist **nie gelaufen**: `needs:` übersprang ihn, solange die Tests rot waren. Zwei Fehler,
-    die sich gegenseitig verdeckt haben.
-  - **Und dann hat der Publish-Job beim ersten echten Lauf zwei weitere Schichten gefunden**, beide
-    nur auf einem frischen Baum sichtbar: ohne `Restore` bricht er mit „Assets file not found" ab,
-    und ein davorgestelltes `Restore`-Target machte das Kommando still zu einem reinen Restore —
-    die Datei hing unausgesprochen an „erstes Target gewinnt", `DefaultTargets` steht jetzt da.
-    **Mein lokaler Lauf war kein Beleg gewesen**: mein `obj/` war längst gefüllt. Geprüft wird
-    seitdem gegen einen echten `git clone` — klonen, README folgen, `hello.lyr` läuft.
-  - **Die README behauptete, M9 sei nicht gebaut**: *„What is missing … is the REPL, editor
-    integration"*, dazu `tooling/ … not built yet` und ein Projektbaum mit drei Binaries über einem
-    Abschnitt namens „The four binaries". `Doku.md` §23.7 lieferte drei Programme aus.
-  - **Drei neue Tests**, jeder gegen genau den Riss, durch den es gefallen ist: die Phasenliste
-    kommt aus derselben Quelle wie die Ausgabe; was CI aufruft, muss git kennen; der Projektbaum
-    nennt jedes Projekt aus `src/`.
-  - Die `--verbose`-Tabelle in `Doku.md` ist **erzeugt statt abgeschrieben** — sie war doppelt
-    veraltet (drei Module statt sieben). Und `lyric --version` rechnet seine Spaltenbreite jetzt
-    aus `Tool.All`: sie stand als `-6` da und passte, bis `lyrrepl` kam.
-  - **Die Lehre ist die alte, zum sechsten Mal**: ein Meilenstein wurde an seinem Gate gemessen
-    statt an seinen Lieferposten. Die Regel dagegen steht seit M7 in dieser Datei.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -178,8 +168,11 @@ steht weiter aus.
 `std.os` und zuletzt `std.option` stehen (S1–S9); `std.error` und `std.coroutine` sind mit
 Begründung gestrichen statt geliefert.
 
-**M10 läuft.** E1 steht (`LangVm`, Capabilities, Beispiel-Host); als Nächstes **E2** — `Call<T>`
-und die Skalar-Marshalling-Schicht, geprüft als Matrix und nicht als Beispielliste.
+**M10 läuft.** E1 und E2 stehen (`LangVm`, Capabilities, `Call<T>`, Marshalling); als Nächstes
+**E3** — `RegisterFunction`. Der Seam dafür ist seit M6 da: Natives werden **beim Laden über den
+Namen** gebunden. Die offene Frage ist die Signatur — der Compiler kennt nur, was deklariert ist,
+also muss `RegisterFunction` die Deklaration in ein synthetisches Host-Modul **erzeugen**. `Doku.md`
+§21 zeigt ein Skript, das `playSound("hit")` ohne Import ruft; das ist so nicht baubar.
 
 **Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
 über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
@@ -308,7 +301,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`M10: LangVm — laden, ausfuehren, sandboxen (E1)`
+`M10: Call<T> und die Skalar-Marshalling-Schicht (E2)`
 
 ---
 
