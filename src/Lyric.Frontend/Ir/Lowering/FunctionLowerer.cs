@@ -1225,7 +1225,7 @@ internal sealed class FunctionLowerer
         var variable = _slots.DeclareFor(loopVar, elementType);
         _b.Emit(new StoreLocal(variable, value, stmt.Span));
 
-        _loops.Push(new LoopScope(ContinueTarget: condBlock, BreakTarget: exitBlock));
+        _loops.Push(new LoopScope(_b, condBlock, exitBlock));
         if (LowerStatements(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
         _loops.Pop();
 
@@ -1425,7 +1425,7 @@ internal sealed class FunctionLowerer
         _b.SealBlock(condExit, new CondBranch(condition, bodyBlock, exitBlock, stmt.Condition.Span));
 
         _b.SwitchTo(bodyBlock);
-        _loops.Push(new LoopScope(ContinueTarget: condBlock, BreakTarget: exitBlock));
+        _loops.Push(new LoopScope(_b, condBlock, exitBlock));
         if (LowerStatements(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
         _loops.Pop();
 
@@ -1433,23 +1433,48 @@ internal sealed class FunctionLowerer
         return true; // über die false-Kante der Bedingung immer erreichbar
     }
 
+    /// <summary>
+    /// <c>do { … } while (cond);</c> — der Rumpf laeuft mindestens einmal, die Bedingung steht
+    /// dahinter.
+    ///
+    /// <para><b>Und genau deshalb ist das die einzige Schleife, deren Bedingung unerreichbar sein
+    /// kann.</b> Terminiert der Rumpf auf jedem Pfad (<c>do { return 1; } while (true);</c>), kommt
+    /// niemand bei ihr an — und der Verifier lehnt einen unerreichbaren Block ab, weil es keinen
+    /// <c>SimplifyCfg</c>-Pass gibt. Bis 2026-08-11 war das ein Compiler-Absturz.</para>
+    ///
+    /// <para>Die Bloecke entstehen deshalb <b>bedarfsgesteuert</b> (siehe <see cref="LoopScope"/>).
+    /// Die Frage ist „hat jemand hierher gesprungen", nicht „faellt der Rumpf durch": ein
+    /// <c>break</c> erreicht den Ausgang auch aus einem Rumpf, der nicht durchfaellt.</para>
+    /// </summary>
     private bool LowerDoWhile(DoWhileStmt stmt)
     {
         var bodyBlock = _b.NewBlock();
-        var condBlock = _b.NewBlock(); // 'continue' springt zur Bedingung, nicht an den Body-Anfang
-        var exitBlock = _b.NewBlock();
         _b.Seal(new Branch(bodyBlock, stmt.Span));
 
         _b.SwitchTo(bodyBlock);
-        _loops.Push(new LoopScope(ContinueTarget: condBlock, BreakTarget: exitBlock));
-        if (LowerStatements(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
+        var loop = new LoopScope(_b);
+        _loops.Push(loop);
+        var fallsThrough = LowerStatements(stmt.Body);
         _loops.Pop();
 
-        _b.SwitchTo(condBlock);
-        var condition = LowerExpr(stmt.Condition);
-        _b.Seal(new CondBranch(condition, bodyBlock, exitBlock, stmt.Condition.Span));
+        // Die Bedingung wird gebraucht, wenn der Rumpf durchfaellt ODER ein 'continue' zu ihr
+        // springt. Sonst gibt es sie nicht — und mit ihr auch die false-Kante zum Ausgang nicht.
+        if (fallsThrough || loop.ContinueRequested)
+        {
+            var condBlock = loop.ContinueTarget;
+            if (fallsThrough) _b.Seal(new Branch(condBlock, stmt.Body.Span));
 
-        _b.SwitchTo(exitBlock);
+            _b.SwitchTo(condBlock);
+            var condition = LowerExpr(stmt.Condition);
+            _b.Seal(new CondBranch(condition, bodyBlock, loop.BreakTarget, stmt.Condition.Span));
+        }
+
+        // Kein Ausgang: die Schleife wird nie verlassen. Der Kontrollfluss faellt hier nicht durch,
+        // und das meldet diese Methode nach oben — statt einen Block zu hinterlassen, den niemand
+        // betritt.
+        if (!loop.BreakRequested) return false;
+
+        _b.SwitchTo(loop.BreakTarget);
         return true;
     }
 

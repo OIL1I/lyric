@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2640 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
+2646 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -32,6 +32,25 @@ siehe `## Was v1.0 noch fehlt`. M0–M10 stehen. `std.dotnet` ist gestrichen
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **Die zwei Abstürze aus der v1.0-Liste** (2026-08-11). 2646 Tests grün.
+  - **`do { return … } while (…)`** war ein Compiler-Absturz: Rumpf, Bedingung und Ausgang wurden
+    alle drei vorab angelegt, und terminierte der Rumpf, blieben zwei Blöcke ohne Prädecessoren —
+    was der Verifier ablehnt, weil es keinen `SimplifyCfg`-Pass gibt. Sie entstehen jetzt
+    **bedarfsgesteuert**.
+  - **Die Falle war die Bedingung, unter der man das entscheidet.** STATUS beschrieb den Fall
+    lange als „der Rumpf terminiert" — daran lässt er sich nicht festmachen:
+    `do { if (c) { break; } return 2; }` fällt **nicht** durch und erreicht den Ausgang trotzdem.
+    *Ist der Block erreichbar* und *fällt der Rumpf durch* sind zwei Fragen; nur die erste zählt.
+    Ein Test steht genau dafür da, und ein zu einfacher Fix wäre mit dem ersten grün und mit ihm
+    rot.
+  - **Dieselbe Lösung zum dritten Mal**: der Merge-Block von `match` (Inventur-Sweep) und der von
+    `try` (M8/S4) waren derselbe Fehler. Die Lehre stand schon 2026-08-07 in dieser Datei — *ein
+    Merge-Block gehört grundsätzlich bedarfsgesteuert*. `do-while` war der dritte Fall, und
+    niemand hatte ihn daraufhin angesehen.
+  - **Der zweite „Absturz" war keiner mehr.** `DeclaredTypes.Lower` liefert längst eine Diagnose
+    mit Position — auf dem Import-Pfad wie auf dem Host-Methoden-Pfad, beides nachgemessen. Der
+    STATUS-Eintrag war veraltet; ich hatte ihn im letzten Bericht ungeprüft als blockierend geführt.
 
 - [x] **M10/E6 — Doku, Inventur, Auslieferung. M10 ist abgeschlossen** (2026-08-11). 2640 Tests grün.
   - **`Doku.md` §21 ist neu geschrieben**, gegen den Beispiel-Host, den die Testsuite ausführt.
@@ -80,28 +99,6 @@ siehe `## Was v1.0 noch fehlt`. M0–M10 stehen. `std.dotnet` ist gestrichen
   - **Ein Test, den C# selbst überflüssig macht**: `Getter<TValue>(Func<T, TValue>)` erzwingt den
     Empfänger schon beim Übersetzen. Die Laufzeitprüfung deckt nur `Method(string, Delegate)` ab,
     das untypisiert sein muss, weil eine Methode beliebig viele Parameter hat.
-
-- [x] **M10/E4a — Host-Objekte, Format 3.0** (2026-08-11). 2602 Tests grün.
-  - **`TypeTag.Host = 0x47`**, Name inline. **Eigenes Tag neben `Ref`, und das ist der Kern**:
-    beide sind Referenzen, aber bei `Ref` kennt das *Modul* das Layout und der Host hält sich
-    heraus — bei `Host` ist es umgekehrt. Ein Host-Typ hat deshalb **keinen
-    Typtabellen-Eintrag**, womit ADR-026s Zusage „gegen einen Host-Typ wird nie ein `ldfld`
-    emittiert" **strukturell** wird statt geprüft: ohne Feldliste ist ein Feldzugriff nicht
-    kodierbar.
-  - **Format 3.0, nicht 2.6.** §2 erlaubt einer neuen Minor nur überspringbare Sektionen, und ein
-    Typ-Tag ist keine. Pre-1.0 ohne Migrationspfad erlaubt (ADR-013).
-  - **`RegisterType<T>`** macht einen .NET-Typ als opaken Lyric-Typ sichtbar. Ein Skript reicht
-    ihn weiter — Feldzugriff und Konstruktion sind Diagnosen. **Letztere ersetzt einen
-    Compiler-Absturz**: `Entity { }` war `cannot compare IrHostType with IrRefType`, jetzt
-    `LYR-SEM0061`.
-  - **Die Zusage ist Identität, nicht Gleichheit**: was der Host zurückbekommt, ist
-    `ReferenceEquals` dasselbe Objekt. Ein Test prüft genau das — mit Wert-Gleichheit wäre ein
-    Kopieren nicht zu bemerken.
-  - **Die Regel „ist das ein Host-Typ" stand erst an einer Stelle und musste an zwei.** Beim
-    Lowern der nativen Signatur wurde `Entity` ein Host-Typ, an der Aufrufstelle eine gewöhnliche
-    Referenz; der Verifier meldete es binnen einer Minute. Sie liegt jetzt in `HostTypes.NameOf`.
-  - **Der Versionstest trug `2` und `5` als Literale** und ist an `Format` gebunden — die vierte
-    Stelle dieser Art in dieser Sitzung.
 
 ## Messungen
 
@@ -197,19 +194,10 @@ Punkt für Punkt abzuarbeiten — nach der Regel, an der M9 gescheitert ist.
   **framework-abhängig** und ohne RID-Matrix — es braucht eine .NET-10-Laufzeit auf der Zielmaschine.
 - **Doku-Site** (statisches HTML aus den Docs). Es gibt keine.
 
-**Sprachlücken, die als „vor v1 zu schließen" notiert sind** — sie stehen einzeln unter
-`## Noch offen`. Die zwei, die ich für blockierend halte, weil sie **abstürzen** statt zu
-diagnostizieren:
-
-- `do { return … } while (…)` lässt den Compiler abstürzen (bewusst offen gelassen, aber ein
-  Absturz bleibt ein Absturz).
-- `DeclaredTypes.Lower` wirft ungefangen aus `ModuleLowerer.Lower` heraus — **teilweise behoben**:
-  der Import-Pfad in Pass 1 fängt seit M7, der Host-Methoden-Pfad seit E4b. Ob eine Lücke bleibt,
-  ist nachzumessen.
-
-Die übrigen sind Grenzen mit Diagnose (`b?.get()`, `Opt<int>.Some(5)`, `s = Small { n = 5 }`,
-`@noCapture`, Interface-Vererbung) — sie kosten Ausdrucksstärke, keinen Absturz. **Ob sie v1
-blockieren, ist eine Entscheidung und keine Messung.**
+**Die zwei Abstürze sind behoben** (2026-08-11). Was unter `## Noch offen` bleibt, sind Grenzen
+**mit Diagnose** (`b?.get()`, `Opt<int>.Some(5)`, `s = Small { n = 5 }`, `@noCapture`,
+Interface-Vererbung) — sie kosten Ausdrucksstärke, keinen Absturz. **Ob sie v1 blockieren, ist
+eine Entscheidung und keine Messung.**
 
 ## Noch offen
 
@@ -236,16 +224,6 @@ blockieren, ist eine Entscheidung und keine Messung.**
   generischen Instanz bleibt `LYR-SEM0052`; explizite Typargumente gibt es nur an
   Funktions-Aufrufen.
 - **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
-- **`do { return … } while (…)` laesst den Compiler abstuerzen.** Rumpf, Bedingung und Ausgang
-  werden alle drei vorab angelegt; terminiert der Rumpf, sind Bedingung und Ausgang unerreichbar,
-  und der Verifier lehnt ab. Der Fix braucht einen Umbau, weil `_loops.Push` die Sprungziele
-  vorab braucht — ein bedarfsgesteuerter Ausgang muesste wissen, ob ein `break` ihn benutzt.
-  *Bewusst offen gelassen*: eine Schleife, deren Rumpf immer terminiert, schleift nie; die Form
-  ist toter Code. Gefunden im Merge-Block-Sweep 2026-08-07.
-- **`DeclaredTypes.Lower` wirft ungefangen** aus `ModuleLowerer.Lower` heraus: eine native
-  Signatur mit einem unbekannten Typ gibt einen Compiler-*Absturz* statt einer Diagnose. Gefunden
-  beim Bau von S2, als `split` noch nicht lowerbar war.
-
 - **Ein Block-Lambda liefert seinen Rückgabetyp nicht an die Inferenz**: `(n: int) => n` bindet
   `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
   `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich
@@ -313,7 +291,7 @@ blockieren, ist eine Entscheidung und keine Messung.**
 
 ## Letzter relevanter Commit
 
-`M10/E6: Doku §21 neu, Inventur, lyrembed ausgeliefert — M10 fertig`
+`lowering: do-while legt Bedingung und Ausgang bedarfsgesteuert an`
 
 ---
 
