@@ -887,6 +887,81 @@ Kompakte Liste der zentralen Designentscheidungen. Bei Konflikt mit der ROADMAP-
 
 ---
 
+### ADR-026 — Ein Host-Objekt gehört dem GC, nicht dem Host
+
+**Datum**: 2026-08-11. **Status**: Akzeptiert.
+
+**Entscheidung**: Ein über `RegisterType<T>` sichtbar gemachtes Host-Objekt ist zur Laufzeit eine
+**direkte .NET-Referenz** in `LyrValue.Ref`. Es lebt, solange ein Lyric-Wert es erreicht; der
+.NET-GC sammelt es ein. **Es gibt kein Widerrufs-, Freigabe- oder Refcount-Protokoll** an der
+Host-Grenze.
+
+**Was das nicht heißt**: dass ein Host die Lebenszeit seiner Domänen-Objekte nicht steuern könnte.
+Er kann — nur nicht über den Speicher. Siehe „Der Zombie-Fall" unten.
+
+---
+
+**Die Frage sind eigentlich zwei**: *was ist der Wert zur Laufzeit*, und *wer darf sein Leben
+beenden*.
+
+**Zur Darstellung.** Ein Index als gewöhnlicher `int` ist **verworfen**, und zwar sofort: ein
+Skript kann rechnen. `spawn("goblin") + 1` erreichte ein Objekt, das ihm nie gegeben wurde. In
+einer Sprache, deren erklärter Zweck die Sandbox ist (ADR-007), ist das kein Kompromiss, sondern
+ein Loch. Zwischen einer direkten Referenz und einem Index *hinter einem opaken Typ* entscheidet
+die Sicherheit dagegen nicht — beide sind unfälschbar. Es entscheidet die Eigentümerschaft.
+
+**Zur Eigentümerschaft.** `CONTRIBUTING.md` Rule 2 nennt für *Memory management* genau einen
+Mechanismus: **„GC only (no manual/borrow/refcount)"**. Ein host-eigenes Lebenszeitmodell stellt
+daneben ein zweites: der Host entscheidet über Freigabe, das Skript muss tote Handles aushalten,
+und jede Host-Methode bekommt einen Gültigkeitszweig. Das ist dieselbe Parallelität, mit der
+`Result<T, E>` neben den Exceptions abgelehnt wurde — nur an der Grenze statt in der Sprache.
+
+**Die Branchenerfahrung zeigt in dieselbe Richtung**, ungewöhnlich eindeutig:
+
+| Einbettung | Modell | Ruf |
+|---|---|---|
+| Lua (`userdata`) | GC-eigen, `__gc`-Finalizer | die Einbettung, die Leute erfolgreich machen |
+| Wren (foreign class) | GC-eigen, Finalizer-Callback | dito — und Lyrics erklärtes Vorbild |
+| CPython C-API | Host zählt Referenzen | berühmt für genau einen Fehler |
+| JNI (global refs) | Host gibt frei | dito |
+
+§Projekt-Identität nennt **Lua und Wren** als Embedding-Vorbild. Beide sind GC-eigen.
+
+**Der Zombie-Fall**, das ernstzunehmende Gegenargument: eine Engine zerstört eine Entity, das
+Skript hält sie noch und sieht ein Objekt, das die Spielwelt vergessen hat. Das ist real — aber es
+ist eine Frage der **Domänen**-Lebenszeit, nicht der Speicher-Lebenszeit, und der Host beantwortet
+sie mit dem, was E3 ihm bereits gibt:
+
+```csharp
+vm.RegisterFunction("isAlive", (Entity e) => world.Contains(e));
+```
+
+Sie in die API zu heben hieße, das Lebenszeitmodell *einer* Sorte Host in die Sprache zu bauen.
+Ein Editor-Plugin und ein Build-Werkzeug haben es nicht.
+
+**Konsequenz — was es kostet.** Ein Skript, das Host-Objekte in Modul-`let`s ablegt, hält sie für
+die Lebensdauer der `ScriptInstance` fest. Der einzige Hebel des Hosts ist, die Instanz
+fallenzulassen; dann sammelt der GC alles daran ein. Das ist wenig Kontrolle — aber es ist eine,
+und sie ist ohne Handbuch verständlich.
+
+**Konsequenz — was es einbringt**, und das ist mehr als Bequemlichkeit: ein Zyklus über die Grenze
+(Host-Objekt hält Callback hält `ScriptInstance` hält Host-Objekt) wird eingesammelt. Unter
+Refcounting wäre er ein garantiertes Leck. Das ist derselbe Grund, aus dem ADR-002 den .NET-GC
+genommen hat, eine Ebene höher.
+
+**Konsequenz — die Pflicht, die daraus für E4 folgt.** Es muss garantiert sein, dass gegen einen
+Host-Typ **nie ein `ldfld` emittiert wird**. Ein `Ref`, das kein `LyrValue[]` ist, überlebt jedes
+Kopieren und Weiterreichen — genau wie ein `string`, der dort schon immer liegt —, aber ein
+Feldzugriff casted und stürzt ab. Das ist eine Sema-Zusage („ein Host-Typ hat keine Felder") plus
+ein Verifier-Test. **Dort kann E4 falsch werden, nicht bei der Lebenszeit.**
+
+**Revidierbarkeit**: Ein Widerrufsprotokoll später hinzuzufügen bricht keinen bestehenden Host —
+es wäre eine zusätzliche Zusage. Die Gegenrichtung gilt nicht: wer heute freigeben darf, verlässt
+sich darauf. Deshalb ist „GC-eigen, ohne Widerruf" hier die Entscheidung, die sich revidieren
+lässt.
+
+---
+
 ### ADR-025 — Modul-Bindungen sind unveränderlich
 
 **Datum**: 2026-08-09. **Status**: Akzeptiert.

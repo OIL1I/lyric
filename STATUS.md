@@ -161,9 +161,14 @@ Begründung gestrichen statt geliefert.
 **M10 läuft.** E1–E3 stehen: `LangVm`, Capabilities, `Call<T>`, Marshalling, `RegisterFunction`.
 Ein Host kann heute ein Skript laden, sandboxen, Funktionen daraus rufen und eigene hineinreichen.
 
-**Als Nächstes E4** — `RegisterType<T>` über opake Handles. **Die Frage davor ist noch offen**:
-Lebenszeit und Identität eines Host-Objekts über die Grenze — hält der Host es am Leben oder die
-VM? Sie gehört beantwortet, bevor E4 anfängt, nicht mittendrin.
+**Als Nächstes E4** — `RegisterType<T>`. **Die Lebenszeitfrage ist beantwortet** (ADR-026): ein
+Host-Objekt ist eine direkte .NET-Referenz und gehört dem GC; kein Widerrufs- oder
+Refcount-Protokoll an der Grenze. Rule 2 lässt nur einen Speicher-Mechanismus zu, und Lua und Wren
+— Lyrics erklärte Vorbilder — machen es genauso.
+
+**Der Aufwand liegt woanders, als der Plan vermutete**: eine native Signatur darf heute nur
+Primitive nennen (siehe unten). Und die Stelle, an der E4 wirklich falsch werden kann, ist nicht
+die Lebenszeit, sondern die Zusage, dass gegen einen Host-Typ **nie ein `ldfld` emittiert wird**.
 
 **Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
 über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
@@ -197,6 +202,16 @@ sie, die Meilensteine sind fertig, die Tags fehlen — bewusst offen gelassen, w
 damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Noch offen
+
+**Aus dem M10-Plan, beim Messen gefunden:**
+
+- **Eine native Signatur darf nur Primitive nennen.** `pub fn spawn(name: string): Entity;` ist
+  `LYR-IR0001: non-primitive type in a declared signature`. **Das ist E4s eigentlicher Aufwand**
+  und war im M10-Plan nicht sichtbar — die Lebenszeitfrage (ADR-026) war es, die Lowering- und
+  Registry-Arbeit dahinter nicht.
+- **Der Member-Trenner aus §3.2 ist für Block-Rümpfe geschrieben.** Eine bodylose Methode in einer
+  Klasse braucht `int;,` — Semikolon *und* Komma hintereinander. Es geht, aber es ist eine
+  Schreibweise, die niemand errät.
 
 **Sprachlücken, vor v1 zu schließen:**
 
