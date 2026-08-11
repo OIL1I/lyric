@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2617 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
+2640 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,8 +23,8 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: **M10 E6** — `RegisterType<T>`,
-Doku und Inventur. E1–E5 stehen. `std.dotnet` ist gestrichen
+**Offen für v1.0**: **der v1.0-Rest** — `RegisterType<T>`,
+siehe `## Was v1.0 noch fehlt`. M0–M10 stehen. `std.dotnet` ist gestrichen
 (2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -32,6 +32,21 @@ Doku und Inventur. E1–E5 stehen. `std.dotnet` ist gestrichen
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M10/E6 — Doku, Inventur, Auslieferung. M10 ist abgeschlossen** (2026-08-11). 2640 Tests grün.
+  - **`Doku.md` §21 ist neu geschrieben**, gegen den Beispiel-Host, den die Testsuite ausführt.
+    Vier Zusagen sind zurückgezogen: `Compile` ohne Modulnamen, `playSound("hit")` ohne Import,
+    `builder.Field`, `vm.Call`. Ein Test hält sie fern **und** prüft, dass §21 die API nennt, die
+    es gibt — ohne die Gegenprobe bliebe er grün, wenn der Abschnitt gelöscht würde.
+  - **Jeder Lyric-Schnipsel in §21 übersetzt**, gegen einen Host mit genau den Registrierungen,
+    die daneben stehen. Dieselbe Regel wie beim README-Beispiel seit M9: ein Beispiel, das nicht
+    übersetzt, ist eine Lüge in der Doku.
+  - **`lyrembed.dll` lag in keiner Auslieferung.** Sie stand in README und §21 als das, was ein
+    Host referenziert, und kein Binary referenziert sie — also landete sie nie im Artefakt.
+    **Es gab keinen Test über die Auslieferung**, nur über die `bin`-Verzeichnisse. Jetzt bindet
+    einer die README-Liste an `publish.proj`, geprüft in der Richtung, die den Fehler fängt.
+  - Die Lieferposten-Inventur steht in `ROADMAP.md` bei M10 — Punkt für Punkt, wie es die Regel
+    seit M7 verlangt und wie es bei M9 unterblieben ist.
 
 - [x] **M10/E5 — `Reload`** (2026-08-11). 2617 Tests grün. **Nur noch E6 bis v1.0.**
   - `instance = instance.Reload()` liest die Quelldatei erneut. **Die tragende Zusage ist nicht
@@ -88,26 +103,6 @@ Doku und Inventur. E1–E5 stehen. `std.dotnet` ist gestrichen
   - **Der Versionstest trug `2` und `5` als Literale** und ist an `Format` gebunden — die vierte
     Stelle dieser Art in dieser Sitzung.
 
-- [x] **M10/E3 — `RegisterFunction`** (2026-08-11). 2576 Tests grün.
-  - **Die Signatur wird erzeugt, nicht erfunden.** Aus dem .NET-Delegaten wird per Reflexion eine
-    bodylose `pub fn`-Deklaration in einem synthetischen Modul **`host`** — genau die Form, in der
-    die Stdlib ihre Natives seit M6 deklariert. Der Seam bindet sie beim Laden über den Namen;
-    sein Doc-Kommentar nannte `RegisterFunction` schon als künftigen Konsumenten. **Kein zweiter
-    Mechanismus.**
-  - **Das Skript importiert `host`** — und damit ist `Doku.md` §21 endgültig als nicht baubar
-    erwiesen: dort ruft ein Skript `playSound("hit")` ohne Import. §2.2 kennt keinen impliziten
-    Namensraum. §21 wird in E6 neu geschrieben.
-  - `vm.HostModuleSource` gibt den erzeugten Quelltext heraus: die beste Antwort auf „welche
-    Signatur hat meine Funktion in Lyric?" ist Lyric-Code. **Sortiert**, damit derselbe Satz
-    Funktionen dieselben Bytes ergibt (ADR-013).
-  - **Drei Fehlerquellen, drei verschiedene Nachrichten**: `EmbeddingException` (das Skript ist
-    kaputt), `ScriptPanicException` (das Skript hat einen Bug), **`HostFunctionException`** (der
-    Code des Hosts ist gescheitert — mit seinem eigenen Ausnahmetyp darin, nicht der Hülle der
-    Reflexion).
-  - Ein unpassender Typ wird **bei der Registrierung** abgelehnt, nicht erst beim Aufruf. Und eine
-    Host-Funktion kostet **keine Capability**: die Stufen aus ADR-007 gelten der Stdlib, was
-    darüber hinausgeht, entscheidet der Host einzeln.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -147,12 +142,9 @@ Begründung gestrichen statt geliefert.
 **M10 läuft.** E1–E3 stehen: `LangVm`, Capabilities, `Call<T>`, Marshalling, `RegisterFunction`.
 Ein Host kann heute ein Skript laden, sandboxen, Funktionen daraus rufen und eigene hineinreichen.
 
-**Nur noch E6.** `Doku.md` §21 zeigt bis heute eine API, die es so nicht gibt — `Compile` ohne
-Modulnamen, `playSound` ohne Import, `builder.Field`, `vm.Call` statt einer Instanz. Vier Zusagen,
-die diese Meilenstein-Arbeit einzeln widerlegt hat; §21 wird gegen das Gebaute neu geschrieben.
-
-**Dann die Lieferposten-Inventur** — Punkt für Punkt, nicht am Exit-Kriterium allein. Genau das
-war bei M9 versäumt worden, und es hat vier stille Lücken gekostet. **Danach v1.0.**
+**M10 ist abgeschlossen**, Inventur inklusive. **v1.0 ist es nicht** — was fehlt, steht unten
+unter `## Was v1.0 noch fehlt`: vier Meilenstein-Tags, ein `CHANGELOG.md`, plattformspezifische
+Binaries, eine Doku-Site, und die Entscheidung, welche der offenen Sprachlücken v1 blockieren.
 
 **Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
 über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
@@ -184,6 +176,40 @@ lässt** — deshalb war das Verschieben richtig und wäre es eine Woche später
 **Weiterhin ungetaggt: `m5-complete`, `m7-complete`, `m8-complete` und `v0.5.0`.** Rule 3 verlangt
 sie, die Meilensteine sind fertig, die Tags fehlen — bewusst offen gelassen, weil sie auf die
 damaligen Commits gehören und das eine eigene Entscheidung ist.
+
+## Was v1.0 noch fehlt
+
+**M0–M10 sind inhaltlich fertig.** Das Release ist es nicht, und die Liste ist kurz genug, um sie
+Punkt für Punkt abzuarbeiten — nach der Regel, an der M9 gescheitert ist.
+
+**Prozess (CONTRIBUTING):**
+
+- **Vier Meilenstein-Tags fehlen**: `m5-complete`, `m7-complete`, `m8-complete`, `m10-complete`.
+  Rule 3 verlangt sie; die Meilensteine sind fertig, die Tags fehlen. Dazu `v0.5.0` (laut
+  §Releases nach M7).
+- **`CHANGELOG.md`** — §Releases: *„From `v1.0.0` on: tag, GitHub release page, and a
+  `CHANGELOG.md` entry."* Vor v1.0 gab es bewusst keinen; ab v1.0 gibt es ihn.
+- **GitHub-Release-Seite** zum `v1.0.0`-Tag.
+
+**Artefakt (ROADMAP §v1.0):**
+
+- **Binaries für Windows/Linux/macOS** via `dotnet publish -r …`. `publish.proj` liefert heute
+  **framework-abhängig** und ohne RID-Matrix — es braucht eine .NET-10-Laufzeit auf der Zielmaschine.
+- **Doku-Site** (statisches HTML aus den Docs). Es gibt keine.
+
+**Sprachlücken, die als „vor v1 zu schließen" notiert sind** — sie stehen einzeln unter
+`## Noch offen`. Die zwei, die ich für blockierend halte, weil sie **abstürzen** statt zu
+diagnostizieren:
+
+- `do { return … } while (…)` lässt den Compiler abstürzen (bewusst offen gelassen, aber ein
+  Absturz bleibt ein Absturz).
+- `DeclaredTypes.Lower` wirft ungefangen aus `ModuleLowerer.Lower` heraus — **teilweise behoben**:
+  der Import-Pfad in Pass 1 fängt seit M7, der Host-Methoden-Pfad seit E4b. Ob eine Lücke bleibt,
+  ist nachzumessen.
+
+Die übrigen sind Grenzen mit Diagnose (`b?.get()`, `Opt<int>.Some(5)`, `s = Small { n = 5 }`,
+`@noCapture`, Interface-Vererbung) — sie kosten Ausdrucksstärke, keinen Absturz. **Ob sie v1
+blockieren, ist eine Entscheidung und keine Messung.**
 
 ## Noch offen
 
@@ -287,7 +313,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`M10/E5: Reload — die alte Fassung ueberlebt einen Fehlschlag`
+`M10/E6: Doku §21 neu, Inventur, lyrembed ausgeliefert — M10 fertig`
 
 ---
 

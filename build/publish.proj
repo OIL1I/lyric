@@ -6,7 +6,7 @@
 <Project DefaultTargets="Publish">
 
   <!--
-    Die Auslieferung: vier Binaries, drei Bibliotheken, die Stdlib — in EINEM Verzeichnis.
+    Die Auslieferung: vier Binaries, vier Bibliotheken, die Stdlib — in EINEM Verzeichnis.
 
         dotnet msbuild build/publish.proj
         dotnet msbuild build/publish.proj -p:PublishRoot=D:\irgendwo
@@ -37,6 +37,15 @@
     <Binary Include="..\src\Lyrc\Lyrc.csproj" />
     <Binary Include="..\src\Lyrvm\Lyrvm.csproj" />
     <Binary Include="..\src\Lyrrepl\Lyrrepl.csproj" />
+
+    <!--
+      Keine ausfuehrbare Datei, sondern die Bibliothek, gegen die ein HOST baut (M10). Sie gehoert
+      trotzdem hierher: 'Doku.md' §21 und die README nennen 'lyrembed.dll' als das, was man
+      referenziert — und bis 2026-08-11 landete sie in keiner Auslieferung, weil kein Binary sie
+      referenziert. Ein dokumentierter Lieferposten, der nicht im Artefakt liegt, ist genau die
+      Luecke, die M9 vier Mal hatte.
+    -->
+    <Binary Include="..\src\Lyric.Embedding\Lyric.Embedding.csproj" />
   </ItemGroup>
 
   <!--

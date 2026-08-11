@@ -684,6 +684,36 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 
 **Exit**: Beispiel-Host läuft. **v1.0 Release**.
 
+> **Lieferposten-Inventur (2026-08-11, E6).** Punkt für Punkt statt am Exit-Kriterium allein —
+> genau das war bei M9 versäumt worden und hat vier stille Lücken gekostet.
+>
+> | Lieferposten | Stand |
+> |---|---|
+> | `LangVm` mit Capabilities | ✅ als `HostOptions`; Voreinstellung ist Sandbox |
+> | `RegisterFunction(name, Delegate)` | ✅ E3, über ein synthetisches `host`-Modul |
+> | `RegisterType<T>(name, configurator)` | ✅ E4, mit `Getter`/`Method` — **kein `Field`** (s. u.) |
+> | `Compile(string source)` | ✅ **mit Modulnamen** — §2.1 leitet ihn sonst aus dem Pfad ab |
+> | `Run` / `RunScript` | ✅ E1 |
+> | `Call<TReturn>(name, args)` | ✅ E2, auf einer `ScriptInstance` statt auf der VM |
+> | `Reload(path)` | ✅ E5, als `instance.Reload()` |
+> | Marshalling Lyric ↔ .NET | ✅ E2 (Skalare, Strings) + E4 (Host-Objekte als opake Referenz) |
+> | `examples/embedded-host/` | ✅ testgebunden, läuft bei jedem Testlauf |
+> | Doku §Embedding | ✅ E6, gegen das Gebaute neu geschrieben |
+>
+> **Vier Zusagen aus §21 sind zurückgezogen, jede mit Grund**: `Compile` ohne Modulnamen,
+> `playSound("hit")` ohne Import (§2.2 kennt keinen impliziten Namensraum), `builder.Field`
+> (braucht einen Feldindex, den ein Host-Typ nicht hat) und `vm.Call` (eine VM kann zwei Skripte
+> halten). Ein Test hält sie fern.
+>
+> **Ein Befund der Inventur**: `lyrembed.dll` stand in README und §21 als das, was ein Host
+> referenziert — und lag in **keiner Auslieferung**, weil kein Binary sie referenziert. Behoben,
+> und ein Test bindet die README-Auslieferungsliste jetzt an `publish.proj`. Die Prüfrichtung ist
+> *von der README zur Publish-Liste*; umgekehrt wäre sie ebenfalls wahr gewesen und hätte nichts
+> gemerkt.
+>
+> **M10 ist damit abgeschlossen. v1.0 ist es nicht** — was noch fehlt, steht in `STATUS.md`.
+
+
 > **Zuschnitt (2026-08-11, vor E1).** M10 läuft in sechs Slices, jeder mit eigenem Gate:
 > **E1** `LangVm` + `Compile`/`Run` + Capabilities · **E2** `Call<T>` und Skalar-Marshalling ·
 > **E3** `RegisterFunction` · **E4** `RegisterType<T>` · **E5** `Reload` · **E6** Doku, Beispiel,
@@ -696,6 +726,9 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > ausliefert, fiele. ADR-021 hat den Fall bereits entschieden: `lyrrepl` war das erste Artefakt
 > mit beiden Seiten, `lyrembed` ist das zweite. **Die Zeile in §Zentrale Komponenten ist damit
 > falsch und hier korrigiert.**
+>
+> **E6 ist erledigt** (2026-08-11): `Doku.md` §21 gegen das Gebaute neu geschrieben, die
+> Lieferposten-Inventur oben, und `lyrembed.dll` liegt endlich in der Auslieferung.
 >
 > **E5 ist erledigt** (2026-08-11): `ScriptInstance.Reload()` liest die Quelldatei erneut und
 > liefert eine **neue** Instanz. Die tragende Zusage ist nicht „es laedt neu", sondern **die alte

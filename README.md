@@ -180,7 +180,7 @@ remembers, `:reset` forgets it.
 
 ### Shipping
 
-One command publishes all four binaries into a single directory:
+One command publishes the four binaries and the host library into a single directory:
 
 ```bash
 dotnet msbuild build/publish.proj
@@ -195,6 +195,7 @@ lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
 lyrcore.dll                        diagnostics + the read side of the bytecode format
 lyrfe.dll                          everything between source and bytes
 lyrrt.dll                          the interpreter
+lyrembed.dll                       the host API — reference this from a C# host
 *.runtimeconfig.json               which framework version to load
 stdlib/                            the standard library, as .lyr source
 ```

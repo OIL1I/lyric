@@ -4,6 +4,15 @@
     <AssemblyName>lyrembed</AssemblyName>
     <RootNamespace>Lyric.Embedding</RootNamespace>
     <Description>Die Embedding-API: ein .NET-Host laedt Lyric-Skripte und entscheidet, was sie duerfen.</Description>
+
+    <!--
+      Wie bei den Binaries (Directory.Build.targets), nur dass die dortige Regel an
+      OutputType == 'Exe' haengt: diese Assembly wird als PROJEKT ausgeliefert und erzeugt deshalb
+      selbst eine .deps.json. Fuer eine Bibliothek ist sie zur Laufzeit ohnehin bedeutungslos —
+      der konsumierende Host erzeugt seine eigene —, und die README sagt zu, dass im
+      Auslieferungsverzeichnis keine liegt.
+    -->
+    <GenerateDependencyFile Condition="'$(Configuration)' == 'Release'">false</GenerateDependencyFile>
   </PropertyGroup>
 
   <ItemGroup>

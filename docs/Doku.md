@@ -1179,62 +1179,168 @@ Der Host kontrolliert. Siehe [§21](#21-embedding-für-hosts).
 
 ## 21. Embedding (für Hosts)
 
-Wenn du Lyric in eine C#-Anwendung einbettest:
+Ein .NET-Host lädt Lyric-Skripte, entscheidet was sie dürfen, ruft Funktionen daraus auf und
+stellt ihnen eigene zur Verfügung. Die API liegt in `lyrembed.dll` (`Lyric.Embedding`).
+
+> Alles hier ist gegen [`examples/embedded-host/`](../examples/embedded-host/) geschrieben — ein
+> lauffähiger Host, den die Testsuite bei jedem Lauf ausführt. Was in diesem Abschnitt steht, ist
+> also nicht abgeschrieben, sondern abgelesen.
+
+### 21.1 Eine VM erzeugen
 
 ```csharp
+using Lyric.Core;
 using Lyric.Embedding;
 
-// 1. VM erzeugen mit Capabilities
-var vm = new LangVm(new Capabilities {
-    FileAccess     = false,
-    NetworkAccess  = false,
-    OsAccess       = false,
-    HostAccess     = false,
+var vm = new LangVm(new HostOptions
+{
+    Capabilities = Capability.FileAccess,   // Voreinstellung: KEINE
+    StdlibRoot   = "stdlib",
+    Output       = Console.Out,             // Voreinstellung: TextWriter.Null
 });
+```
 
-// 2. Host-Funktionen registrieren
-vm.RegisterFunction("playSound", (string name) => {
-    AudioEngine.Play(name);
-});
+**Ohne Argumente ist eine VM eine Sandbox**: `new LangVm()` gewährt keine Capability und schreibt
+nirgendwohin. Das ist Absicht — ein Host, der versehentlich Dateizugriff bekommt, merkt es nie,
+weil es ja funktioniert; der umgekehrte Fehler meldet sich sofort mit einer Diagnose, die sagt,
+welche Capability fehlt.
 
-vm.RegisterFunction<int, int, int>("damage", (entityId, amount) => {
-    var entity = World.Get(entityId);
-    return entity.TakeDamage(amount);
-});
+Zwei VMs im selben Prozess teilen **nichts**: weder Capabilities noch registrierte Funktionen noch
+geladene Module. Ein Host mit mehreren Mods gibt jedem seine eigene.
 
-// 3. Host-Typen registrieren
-vm.RegisterType<Vector3>(builder => {
-    builder.Field("x", v => v.X);
-    builder.Field("y", v => v.Y);
-    builder.Field("z", v => v.Z);
-    builder.Method("magnitude", v => v.Length());
-});
+### 21.2 Ein Skript übersetzen und ausführen
 
-// 4. Script laden und ausführen
-var bytecode = vm.Compile(File.ReadAllText("mods/enemy.lyr"));
-vm.Run(bytecode);
+```csharp
+var module   = vm.Compile("fn main(): int { return 42; }", "mod");  // Modulname ist Pflicht
+var vonDatei = vm.CompileFile("mods/enemy.lyr");                    // Name folgt dem Dateinamen
 
-// 5. Funktionen aus dem Script aufrufen
-var dmg = vm.Call<int>("calculateDamage", attackerId, defenderId);
+int exit = vm.Run(module);            // führt 'main' aus (§11)
+int auch = vm.RunScript("app.lyr");   // übersetzen + ausführen in einem Schritt
+```
 
-// 6. Hot-Reload
-File.WatcherEvent += (sender, args) => {
-    vm.Reload("mods/enemy.lyr");
+**Der Modulname ist bei `Compile` Pflicht.** [§2.1](#31-module-aus-dateien) leitet ihn sonst aus
+dem Dateipfad ab, und Quelltext aus dem Speicher hat keinen. Zwei Skripte unter demselben Namen
+kollidierten still; ob zwei Mods dasselbe Modul sind, weiß nur der Host.
+
+Ein Modul **ohne** `main` ist gültiger Bytecode und der Normalfall beim Einbetten — der Host treibt
+es, statt es zu starten. `Run` darauf ist ein Fehler, `Instantiate` nicht.
+
+### 21.3 Funktionen aus dem Skript rufen
+
+```csharp
+var mod = vm.Instantiate(vm.CompileFile("mods/enemy.lyr"));
+
+int schaden = mod.Call<long>("calculateDamage", attackerId, defenderId);
+string text = mod.Call<string>("beschreibung");
+mod.CallVoid("onTick");
+
+if (mod.Defines("onLoad")) mod.CallVoid("onLoad");
+```
+
+**`Call` sitzt auf einer Instanz, nicht auf der VM.** Sobald eine VM zwei Skripte hält — bei Mods
+der Normalfall — müsste `vm.Call(...)` raten, welches gemeint ist. Die Instanz ist zugleich der
+Ort, an dem der Zustand lebt: der Initialisierer der Modul-Konstanten läuft beim `Instantiate`
+genau einmal, und was er hinterlässt, überlebt jeden Aufruf.
+
+Über die Grenze gehen **Skalare und Strings**, verlustfrei oder gar nicht: `300` als `int8` wird
+abgelehnt statt auf `44` gekürzt. Dazu registrierte Host-Typen (§21.5).
+
+### 21.4 Eigene Funktionen anbieten
+
+```csharp
+vm.RegisterFunction("playSound", (string name) => AudioEngine.Play(name));
+vm.RegisterFunction("zufall", (long grenze) => rng.NextInt64(grenze));
+```
+
+Das Skript **importiert `host`**:
+
+```lyr
+import host { playSound, zufall };
+
+pub fn explodieren(staerke: int): int {
+    playSound("boom");
+    return zufall(staerke);
+}
+```
+
+Die Signatur wird aus dem Delegaten abgeleitet und als gewöhnliche Lyric-Deklaration in ein
+synthetisches Modul `host` geschrieben — dieselbe Form, in der die Stdlib ihre nativen Funktionen
+deklariert. Was dabei entsteht, gibt `vm.HostModuleSource` heraus; es ist die beste Antwort auf
+„welche Signatur hat meine Funktion in Lyric?", weil sie als Lyric-Code dasteht.
+
+**Registrieren vor dem Übersetzen.** Wer danach registriert, hat ein Skript übersetzt, das den
+Namen noch nicht kannte. Und eine Host-Funktion kostet **keine Capability** — der Host hat sie
+selbst hingestellt; die Stufen aus [§20.1](#201-capability-stufen) gelten der Stdlib.
+
+### 21.5 Eigene Typen anbieten
+
+```csharp
+vm.RegisterType<Spieler>("Spieler", t => t
+    .Getter("name",    (Spieler s) => s.Name)
+    .Getter("leben",   (Spieler s) => s.Leben)
+    .Method("schaden", (Spieler s, long wieviel) => s.Schaden(wieviel), mutates: true));
+
+vm.RegisterFunction("held", () => spieler);
+```
+
+```lyr
+import host { held };
+
+pub fn runde(treffer: int): int {
+    let s = held();
+    s.schaden(treffer);
+    return s.leben();
+}
+```
+
+**Das Objekt reist, es wird nicht kopiert.** Was der Host zurückbekommt, ist dasselbe Objekt —
+und der `.NET`-GC hält es am Leben, solange ein Lyric-Wert es erreicht. Es gibt kein Freigabe-
+oder Widerrufsprotokoll (ADR-026): Lyric hat einen Speicher-Mechanismus, und das ist der GC.
+
+**Was ein Skript damit nicht kann**: es hat keine Felder daran und kann keinen erzeugen
+(`LYR-SEM0061`). Sein Layout gehört dem Host; was das Skript damit tun darf, sind genau die
+Methoden, die der Host registriert hat.
+
+> **`Getter` und nicht `Field`.** In Lyric liest sich ein Host-„Feld" als `s.name()` mit Klammern.
+> Ein echter Feldzugriff bräuchte einen Feldindex, und den gibt es für einen Host-Typ nicht — das
+> ist dieselbe Eigenschaft, die verhindert, dass ein Skript in ein Host-Objekt hineinsieht.
+> Properties als Zucker für Methoden nennt ADR-003 als mögliche post-v1-Ergänzung.
+
+### 21.6 Hot-Reload
+
+```csharp
+watcher.Changed += (_, _) =>
+{
+    try { mod = mod.Reload(); }
+    catch (EmbeddingException fehler) { Zeige(fehler.Diagnostics); }
 };
 ```
 
-Im Script kann der Modder das nutzen wie normale Funktionen/Typen:
+`Reload` liest die Quelldatei erneut und liefert eine **neue** Instanz. **Scheitert die
+Übersetzung, bleibt die alte gültig** — ein Mod, den jemand mit einem Tippfehler speichert, hält
+das Spiel nicht an. Das ist die eigentliche Zusage; ohne sie wäre `Reload` nur ein Alias für
+`Instantiate(CompileFile(…))`.
 
-```lyr
-// mods/enemy.lyr
-pub fn calculateDamage(attackerId: int, defenderId: int): int {
-    let attacker = world.get(attackerId);
-    let defender = world.get(defenderId);
-    let baseDmg = attacker.strength - defender.defense;
-    playSound("hit");
-    return baseDmg;
-}
-```
+Die Modul-Konstanten werden dabei **neu berechnet** (ADR-025: der Initialisierer läuft neu),
+während **Host-Objekte weiterleben** (ADR-026: sie gehören dem GC, nicht der Instanz). Die Welt
+bleibt stehen, nur das Skript wird getauscht.
+
+Ein aus dem Speicher übersetztes Modul lässt sich nicht neu laden — dort gibt es nichts neu zu
+lesen.
+
+### 21.7 Was schiefgehen kann
+
+Vier Ausnahmen, und die Unterscheidung zählt: sie sind Nachrichten an verschiedene Leute.
+
+| Ausnahme | Bedeutet | Adressat |
+|---|---|---|
+| `EmbeddingException` | Das Skript übersetzt nicht. `Diagnostics` trägt Code und Position | Autor des Skripts |
+| `ScriptPanicException` | Das Skript hat seinen eigenen Vertrag gebrochen ([§17.1](#171-panic-vs-throw)) | Autor des Skripts |
+| `ScriptException` | Eine Capability fehlt, kein Einstiegspunkt, ein Wert passt nicht über die Grenze | Host-Konfiguration |
+| `HostFunctionException` | Der Code **des Hosts** ist gescheitert; die eigene Ausnahme hängt als `InnerException` daran | Host-Entwickler |
+
+Die Diagnosen kommen als **Daten**, nicht als vorgerenderter Text: ein Host zeigt sie in seiner
+eigenen Oberfläche — im Editor-Fenster einer Engine, in einer Mod-Konsole, als JSON.
 
 ---
 

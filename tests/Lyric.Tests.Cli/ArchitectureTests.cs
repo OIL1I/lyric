@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
@@ -173,4 +174,72 @@ public sealed class ArchitectureTests
             .OfType<string>()
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
+
+    /// <summary>
+    /// Was die README als Auslieferung abdruckt, liefert <c>build/publish.proj</c> auch.
+    ///
+    /// <para><b>Der Anlass ist ein Befund aus M10/E6.</b> <c>lyrembed.dll</c> stand in der README
+    /// und in <c>Doku.md</c> §21 als das, was ein Host referenziert — und landete in keiner
+    /// Auslieferung, weil kein Binary sie referenziert und sie selbst nicht in der Publish-Liste
+    /// stand. Ein dokumentierter Lieferposten ausserhalb des Artefakts; dieselbe Luecke hatte M9
+    /// vier Mal.</para>
+    ///
+    /// <para>Geprueft wird die Richtung, die den Fehler faengt: <b>von der README zur
+    /// Publish-Liste</b>. Umgekehrt („was publish.proj liefert, nennt die README") waere ebenfalls
+    /// wahr gewesen und haette nichts gemerkt.</para>
+    /// </summary>
+    [Fact]
+    public void Everything_the_readme_ships_is_actually_published()
+    {
+        var readme = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "README.md"));
+
+        // Der Block unter "### Shipping", zwischen der Ergebnis-Zusage und dem Satz danach.
+        var block = Regex.Match(readme, @"What ends up there, and nothing else:\s*```(.*?)```",
+            RegexOptions.Singleline);
+        Assert.True(block.Success, "README no longer prints what a publish produces");
+
+        var named = Regex.Matches(block.Groups[1].Value, @"\b([a-z.]+\.(?:dll|exe))\b")
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.NotEmpty(named);
+
+        var produced = PublishedAssemblies();
+        foreach (var file in named)
+            Assert.Contains(Path.GetFileNameWithoutExtension(file), produced,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Die Assembly-Namen, die ein Publish erzeugt: die Projekte aus
+    /// <c>publish.proj</c> plus alles, was sie transitiv referenzieren.</summary>
+    private static IReadOnlyCollection<string> PublishedAssemblies()
+    {
+        var root = Toolchain.RepositoryRoot;
+        var project = File.ReadAllText(Path.Combine(root, "build", "publish.proj"));
+
+        var queue = new Queue<string>(Regex.Matches(project, @"<Binary Include=""([^""]+)""")
+            .Select(m => Path.GetFullPath(Path.Combine(root, "build", m.Groups[1].Value))));
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (queue.Count > 0)
+        {
+            var path = queue.Dequeue();
+            if (!seen.Add(path) || !File.Exists(path)) continue;
+
+            var text = File.ReadAllText(path);
+            var assembly = Regex.Match(text, @"<AssemblyName>([^<]+)</AssemblyName>");
+            names.Add(assembly.Success
+                ? assembly.Groups[1].Value
+                : Path.GetFileNameWithoutExtension(path));
+
+            foreach (Match reference in Regex.Matches(text, @"<ProjectReference Include=""([^""]+)"""))
+                queue.Enqueue(Path.GetFullPath(Path.Combine(
+                    Path.GetDirectoryName(path)!, reference.Groups[1].Value)));
+        }
+
+        return names;
+    }
 }
