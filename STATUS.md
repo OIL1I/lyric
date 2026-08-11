@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2504 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2519 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,15 +23,40 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: **M10** — die Embedding-API (`LangVm`, Marshalling, Hot-Reload). Die
-Stdlib-Liste aus M8b ist damit abgearbeitet: `std.error` und `std.coroutine` sind gestrichen
-(S9), alles andere steht.
+**Offen für v1.0**: **M10 E2–E6** — `Call<T>` und Marshalling, `RegisterFunction`,
+`RegisterType<T>`, `Reload`, dann Doku und Inventur. E1 steht. `std.dotnet` ist gestrichen
+(2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
 > selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M10/E1 — `LangVm`: laden, ausfuehren, sandboxen** (2026-08-11). 2519 Tests grün.
+  - **Neue Assembly `Lyric.Embedding` → `lyrembed.dll`**, das zweite Artefakt mit *beiden*
+    Bibliotheken nach `lyrrepl`. Sie **muss** eigenständig sein: läge `LangVm` in `Lyric.Vm` — wie
+    die ROADMAP es bis heute behauptete —, müsste `lyrrt` das Frontend referenzieren, und der
+    Architektur-Test, der `lyrvm.exe` ohne `lyrfe.dll` und ohne `stdlib/` festhält, fiele.
+    **Die ROADMAP-Zeile ist korrigiert.**
+  - **Die Voreinstellung ist Sandbox** (`Capability.None`, keine Ausgabe). Ein Host, der
+    versehentlich Dateizugriff bekommt, merkt es nie — es funktioniert ja. Der umgekehrte Fehler
+    meldet sich sofort. **Die Voreinstellung muss die sein, deren Verletzung laut ist.**
+  - **`ScriptSource`**: die Pipeline war pfadgebunden, und das war keine Bequemlichkeit — §2.1
+    leitet den Modulnamen aus dem Pfad ab. Ein Skript aus dem Speicher hat keinen, **also nennt
+    ihn der Host**. Eine Naht, kein zweiter Weg: der Unterschied ist genau ein Schritt.
+  - **Zwei Befunde, beide erst durchs Bauen gefunden:**
+  - Die Runtime-Ausnahmen mussten an der Host-Grenze **übersetzt** werden. `LyricPanic` und
+    `LyricRuntimeException` leben in `lyrrt`, das ein Host nicht referenziert — ihm bliebe
+    `catch (Exception)`. Aufgefallen ist es, weil das Testprojekt bewusst **nur** `lyrembed`
+    referenziert; mit einer Referenz mehr wäre der Test grün und die Lücke unsichtbar geblieben.
+  - Der Beispiel-Host musste **in die Solution**. Ohne ihn dort baut `dotnet test` ihn kalt nicht
+    — vier Tests lokal grün, kalt rot. **Dieselbe Fehlerklasse wie `build/publish.proj`**: es
+    funktioniert auf dem Rechner, auf dem es entstanden ist, und der kanonische Pfad kennt es
+    nicht.
+  - Das Gate ist `examples/embedded-host/`: eine gesandboxte VM läuft, eine abgelehnte Capability
+    stoppt **vor der ersten Zeile**, eine zweite VM daneben darf mehr, ein Übersetzungsfehler
+    kommt als Diagnose zurück.
 
 - [x] **Die vier Compiler-Lücken aus S9 sind zu** (2026-08-11). 2504 Tests grün.
   - **Eine benannte Funktion ist jetzt ein Funktionswert**: `map(o, verdoppeln)` statt
@@ -117,22 +142,6 @@ Stdlib-Liste aus M8b ist damit abgearbeitet: `std.error` und `std.coroutine` sin
   - **Die Lehre ist die alte, zum sechsten Mal**: ein Meilenstein wurde an seinem Gate gemessen
     statt an seinen Lieferposten. Die Regel dagegen steht seit M7 in dieser Datei.
 
-- [x] **ADR-025 — Modul-Bindungen sind unveränderlich** (2026-08-09). Die Regel galt seit P5b und
-  stand nur als Klammerkommentar in der Grammatik plus Parser-Meldung — ohne Begründung dort, wo
-  jemand sie findet.
-  - **Gemessen, was sie verhindert**: nur die Neubindung des *Namens*. `let xs = [1, 2]; xs[0] = 9;`
-    und `z.stand = 42` auf einem Modul-`let` sind gültig — `let` bindet den Namen, nicht den
-    Inhalt (ADR-020). Veränderlichen globalen Zustand gibt es also längst.
-  - **Warum sie trotzdem bleibt**, anders als bei ADR-020/023: sie gilt ausnahmslos, und der
-    Ausweg (ein Wrapper-Objekt) ist ein anderer Mechanismus, kein Schlupfloch. Dazu Sichtbarkeit
-    am Verwendungsort und die Hot-Reload-Frage, die M10 sonst zusätzlich beantworten müsste.
-  - **`StoreGlobal` existiert in IR und VM**; das Verbot sitzt in einer einzigen Parser-Zeile. Es
-    später aufzuheben bricht keinen Code, die Gegenrichtung gilt nicht — deshalb ist „vorerst
-    verbieten" die einzige revidierbare Entscheidung.
-  - Die Tests halten **beide** Seiten fest. Ein Test nur für das Verbot ließe offen, wie weit es
-    reicht, und genau diese Unklarheit hat zwei Regeln überleben lassen, die niemand mehr
-    begründen konnte.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -169,8 +178,12 @@ steht weiter aus.
 `std.os` und zuletzt `std.option` stehen (S1–S9); `std.error` und `std.coroutine` sind mit
 Begründung gestrichen statt geliefert.
 
-**Die vier Compiler-Lücken aus S9 sind geschlossen** (2026-08-11). Damit ist der nächste Schritt
-**M10** — die Embedding-API.
+**M10 läuft.** E1 steht (`LangVm`, Capabilities, Beispiel-Host); als Nächstes **E2** — `Call<T>`
+und die Skalar-Marshalling-Schicht, geprüft als Matrix und nicht als Beispielliste.
+
+**Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
+über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
+ich noch keine Antwort habe, und sie gehört gestellt, bevor E4 anfängt.
 
 **Die Erreichbarkeitsanalyse ist da** — vorgezogen, weil `std.string` den Effekt zum ersten Mal
 schmerzhaft sichtbar gemacht hat: zwei Tests, die „ein Hello-World trägt keine String-Maschinerie"
@@ -295,7 +308,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`compiler: die vier Luecken aus S9 geschlossen`
+`M10: LangVm — laden, ausfuehren, sandboxen (E1)`
 
 ---
 

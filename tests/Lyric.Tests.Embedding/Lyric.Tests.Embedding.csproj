@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <!--
+      Nur die Embedding-Assembly, nicht Frontend und Runtime einzeln. Die Frage dieses Projekts
+      ist, was ein FREMDER Host sieht — und der bekommt lyrembed. Waeren lyrfe und lyrrt direkt
+      referenziert, koennte ein Test versehentlich an der Oberflaeche vorbeigreifen und gruen
+      bleiben, obwohl die Oberflaeche selbst die Frage nicht beantwortet.
+    -->
+    <ProjectReference Include="..\..\src\Lyric.Embedding\Lyric.Embedding.csproj" />
+
+    <!--
+      Der Beispiel-Host wird GEBAUT, aber nicht referenziert: der Gate-Test faehrt ihn als
+      Prozess. Dieselbe Entscheidung wie bei Lyric.Tests.Cli und aus demselben Grund — die Frage
+      ist, was ein fremder Konsument sieht, und in-process waere das nicht ehrlich beantwortet.
+    -->
+    <ProjectReference Include="..\..\examples\embedded-host\EmbeddedHost.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+</Project>

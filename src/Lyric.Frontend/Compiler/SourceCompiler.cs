@@ -29,41 +29,46 @@ public static class SourceCompiler
 {
     /// <summary>Resolve + Sema, ohne Lowering. Der Unterbau von <c>lyrc check</c>.</summary>
     public static CompileResult Check(string path, CompilerOptions? options = null) =>
-        Run(path, Stage.Check, options ?? new CompilerOptions());
+        Check(ScriptSource.FromDisk(path), options);
 
     /// <summary>Bis zur Mid-IR. Der Unterbau von <c>lyrc lower</c>.</summary>
     public static CompileResult Lower(string path, CompilerOptions? options = null) =>
-        Run(path, Stage.Lower, options ?? new CompilerOptions());
+        Lower(ScriptSource.FromDisk(path), options);
 
     /// <summary>Bis zu den <c>.lyrbc</c>-Bytes. Der Unterbau von <c>lyrc build</c> und von
     /// <c>lyric run</c> auf einer Quelldatei.</summary>
     public static CompileResult Compile(string path, CompilerOptions? options = null) =>
-        Run(path, Stage.Emit, options ?? new CompilerOptions());
+        Compile(ScriptSource.FromDisk(path), options);
+
+    /// <inheritdoc cref="Check(string, CompilerOptions?)"/>
+    public static CompileResult Check(ScriptSource source, CompilerOptions? options = null) =>
+        Run(source, Stage.Check, options ?? new CompilerOptions());
+
+    /// <inheritdoc cref="Lower(string, CompilerOptions?)"/>
+    public static CompileResult Lower(ScriptSource source, CompilerOptions? options = null) =>
+        Run(source, Stage.Lower, options ?? new CompilerOptions());
+
+    /// <inheritdoc cref="Compile(string, CompilerOptions?)"/>
+    public static CompileResult Compile(ScriptSource source, CompilerOptions? options = null) =>
+        Run(source, Stage.Emit, options ?? new CompilerOptions());
 
     private enum Stage { Check, Lower, Emit }
 
-    private static CompileResult Run(string path, Stage stage, CompilerOptions options)
+    private static CompileResult Run(ScriptSource source, Stage stage, CompilerOptions options)
     {
         var report = options.Progress;
         var sources = new SourceManager();
         var diagnostics = new DiagnosticEngine(sources);
 
-        report?.BeginPhase(Phase.Read, Path.GetFileName(path));
-        FileId id;
-        try
+        report?.BeginPhase(Phase.Read, source.DisplayName);
+        if (source.Open(sources, diagnostics) is not { } id)
         {
-            id = sources.AddFromDisk(path);
-        }
-        catch
-        {
-            diagnostics.Report(CliDiagnostics.FileUnreadable, Severity.Error, default,
-                $"failed to read file: {path}");
             report?.EndPhase();
             return new CompileResult(sources, diagnostics, null, null);
         }
         report?.EndPhase();
 
-        report?.BeginPhase(Phase.Parse, Path.GetFileName(path));
+        report?.BeginPhase(Phase.Parse, source.DisplayName);
         var entry = new Parser(sources, id, diagnostics).ParseModule();
         report?.EndPhase();
 

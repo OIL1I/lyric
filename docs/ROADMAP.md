@@ -61,6 +61,7 @@ lyric/
 │  │  ├─ Emit/                            #   Bytecode-Format: Schreibseite (ADR-017)
 │  │  └─ Compiler/                        #   Pipeline Quelle → IR → Bytes (ADR-017)
 │  ├─ Lyric.Vm/           → lyrrt.dll     # Interpreter, Value-Repr, GC-Hook
+│  ├─ Lyric.Embedding/   → lyrembed.dll  # Host-API: LangVm (M10)
 │  ├─ Lyrc/               → lyrc.exe      # Compiler (ADR-017)
 │  ├─ Lyrvm/              → lyrvm.exe     # Runtime  (ADR-017)
 │  └─ Lyric.Cli/          → lyric.exe     # Treiber  (ADR-017)
@@ -117,7 +118,7 @@ Jede Stufe ist als **Library** in der eigenen Assembly. CLI ist ein dünner Wrap
 
 - **`Lyric.Core.SourceManager`** — lädt Files, vergibt `FileId`, mappt Offset → (Zeile, Spalte).
 - **`Lyric.Core.DiagnosticEngine`** — sammelt, sortiert deterministisch, rendert Text/JSON.
-- **`Lyric.Vm.LangVm`** — Embedding-Hauptklasse. RegisterFunction, RegisterType, RegisterCapability, RunScript, Compile, Reload, Call.
+- **`Lyric.Embedding.LangVm`** (`lyrembed.dll`) — Embedding-Hauptklasse. Compile, Run, RunScript, Call, RegisterFunction, RegisterType, Reload. *(Stand bis 2026-08-11 als `Lyric.Vm.LangVm` hier — falsch: die Runtime darf das Frontend nicht referenzieren, siehe den Zuschnitt bei M10.)*
 - **`Lyric.Bytecode.Module`** — Bytecode-Container mit Header (Magic + Version + Capabilities-Bitset + Type-Table + Function-Table + Constant-Pool).
 
 ---
@@ -682,6 +683,25 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 - Dokumentation der API in `Doku.md` §Embedding.
 
 **Exit**: Beispiel-Host läuft. **v1.0 Release**.
+
+> **Zuschnitt (2026-08-11, vor E1).** M10 läuft in sechs Slices, jeder mit eigenem Gate:
+> **E1** `LangVm` + `Compile`/`Run` + Capabilities · **E2** `Call<T>` und Skalar-Marshalling ·
+> **E3** `RegisterFunction` · **E4** `RegisterType<T>` · **E5** `Reload` · **E6** Doku, Beispiel,
+> Inventur. `std.dotnet` ist gestrichen (Nachtrag bei M8).
+>
+> **`Lyric.Embedding` ist eine eigene Assembly** (`lyrembed.dll`) und **nicht** Teil von
+> `Lyric.Vm`, wie §Zentrale Komponenten oben es bis heute behauptet hat. Eine Embedding-API
+> übersetzt *und* führt aus; läge sie in `Lyric.Vm`, müsste `lyrrt` das Frontend referenzieren —
+> und der Architektur-Test, der festhält dass `lyrvm.exe` weder `lyrfe.dll` noch `stdlib/`
+> ausliefert, fiele. ADR-021 hat den Fall bereits entschieden: `lyrrepl` war das erste Artefakt
+> mit beiden Seiten, `lyrembed` ist das zweite. **Die Zeile in §Zentrale Komponenten ist damit
+> falsch und hier korrigiert.**
+>
+> **E1 ist erledigt** (2026-08-11): `LangVm` mit `Compile`/`CompileFile`/`Run`/`RunScript`,
+> Sandbox als Voreinstellung, `examples/embedded-host/`. Zwei Befunde beim Bauen — die Runtime-
+> Ausnahmen mussten an der Host-Grenze übersetzt werden (ein Host referenziert `lyrrt` nicht und
+> könnte sie sonst nur pauschal fangen), und der Beispiel-Host musste in die Solution, weil
+> `dotnet test` ihn sonst kalt nicht baut.
 
 ### v1.0 — Release
 

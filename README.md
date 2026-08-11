@@ -110,13 +110,14 @@ lyric/
 │   │                                       Lexing, AST, Parsing, Resolver, Sema,
 │   │                                       Ir, Emit (write side), Compiler
 │   ├── Lyric.Vm/            → lyrrt.dll    Interpreter
+│   ├── Lyric.Embedding/     → lyrembed.dll the host API — compile and run from C#
 │   ├── Lyrc/                → lyrc.exe     the compiler
 │   ├── Lyrvm/               → lyrvm.exe    the bundled runtime
 │   ├── Lyrrepl/             → lyrrepl.exe  the interactive prompt
 │   └── Lyric.Cli/           → lyric.exe    the driver
 ├── stdlib/                 Stdlib source (.lyr files)
 ├── tests/                  xUnit test projects
-├── examples/               Example programs
+├── examples/               Example programs, plus embedded-host/ (a C# host)
 ├── build/                  publish.proj — the shipping definition
 ├── tooling/                VS Code extension: TextMate grammar + run command
 └── docs/                   Documentation
