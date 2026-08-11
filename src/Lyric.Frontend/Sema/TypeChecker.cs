@@ -1833,6 +1833,20 @@ public sealed class TypeChecker
             return LyrType.Error;
         }
 
+        // Ein HOST-Typ laesst sich nicht konstruieren (M10/E4, ADR-026). Er hat kein Layout, das
+        // dieses Modul kennt — der Host erzeugt ihn, das Skript reicht ihn weiter. Ohne diese
+        // Diagnose ist es ein Compiler-ABSTURZ: das Lowering legt ein Objekt nach der (leeren)
+        // Klassendeklaration an, waehrend die Variable den Host-Typ traegt, und der Verifier
+        // meldet 'cannot compare IrHostType with IrRefType'. Gemessen am 2026-08-11.
+        if (Ir.Lowering.HostTypes.NameOf(ts, _comp) is { } hostName)
+        {
+            _de.Report("LYR-SEM0061", Severity.Error, si.Span,
+                $"'{hostName}' is a host type — only the host can create one; a script receives "
+                + "it and passes it on");
+            foreach (var f in si.Fields) CheckExpr(f.Value, scope);
+            return LyrType.Error;
+        }
+
         // Generischer Typ: explizite Typ-Argumente (Stack<int> { }); Feld-Inferenz ist nicht dabei.
         LyrType result;
         Dictionary<GenericParamSymbol, LyrType> subst;

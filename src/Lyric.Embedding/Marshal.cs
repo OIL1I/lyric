@@ -25,6 +25,16 @@ internal static class Marshal
     /// <summary>Ein .NET-Wert als Lyric-Wert des erwarteten Typs.</summary>
     public static LyrValue ToLyric(object? value, BytecodeType expected, string what)
     {
+        // Ein Host-Objekt (ADR-026) reist unveraendert: die VM sieht nur eine Referenz und fasst
+        // sie nie an — genau wie bei einem 'string', der seit M6 in 'Ref' liegt. Kein Kopieren,
+        // kein Wrappen; die Identitaet ist die Zusage.
+        if (expected.Tag == TypeTag.Host)
+        {
+            if (value is null)
+                throw Mismatch(what, expected, null, $"a '{expected.HostName}'");
+            return LyrValue.FromHostObject(value);
+        }
+
         if (expected.Tag == TypeTag.String)
         {
             if (value is string text) return LyrValue.FromString(text);
@@ -82,6 +92,15 @@ internal static class Marshal
                 + $"'{wanted.Name}' to give back", null);
         }
 
+        if (actual.Tag == TypeTag.Host)
+        {
+            var host = value.Ref;
+            if (host is not null && wanted.IsInstanceOfType(host)) return host;
+            throw new ScriptException("LYR-EMB0003",
+                $"{what}: the value is host type '{actual.HostName}', which is not a "
+                + $"'{wanted.Name}'", null);
+        }
+
         object boxed = actual.Tag switch
         {
             TypeTag.String => value.AsString,
@@ -129,6 +148,10 @@ internal static class Marshal
         TypeTag.Array => "an array",
         TypeTag.Optional => "an optional",
         TypeTag.Ref or TypeTag.Enum => "an object",
+
+        // Ein Host-Typ heisst so, wie der Host ihn registriert hat — mehr traegt er nicht, und
+        // genau dieser Name landet in der erzeugten Deklaration.
+        TypeTag.Host => type.HostName ?? "a host type",
         _ => type.Tag.ToString().ToLowerInvariant(),
     };
 

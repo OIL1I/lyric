@@ -174,7 +174,10 @@ public class RegisterFunctionTests
             () => vm.RegisterFunction("nimmt", (int[] xs) => xs.Length));
 
         Assert.Contains("cannot cross the boundary", thrown.Message, StringComparison.Ordinal);
-        Assert.Contains("E4", thrown.Message, StringComparison.Ordinal);
+
+        // Die Meldung nennt den Ausweg. Sie sagte bis E4 "Host objects come in E4" — seit es sie
+        // gibt, nennt sie 'RegisterType<T>', und das ist die nuetzlichere Auskunft.
+        Assert.Contains("RegisterType", thrown.Message, StringComparison.Ordinal);
     }
 
     [Fact]

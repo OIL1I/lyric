@@ -37,6 +37,7 @@ public sealed class LangVm
     private readonly HostOptions _options;
     private readonly NativeRegistry _natives;
     private readonly Dictionary<string, HostFunction> _hostFunctions = new(StringComparer.Ordinal);
+    private readonly Dictionary<Type, string> _hostTypes = [];
 
     /// <param name="options">Voreinstellung: <b>Sandbox</b> — keine Capability, keine Ausgabe.
     /// Siehe <see cref="HostOptions"/>.</param>
@@ -50,6 +51,35 @@ public sealed class LangVm
 
     /// <summary>Was Skripte dieser VM duerfen.</summary>
     public Capability Capabilities => _options.Capabilities;
+
+    /// <summary>
+    /// Macht einen .NET-Typ fuer Skripte dieser VM sichtbar — als opaken Typ <c>host.&lt;name&gt;</c>
+    /// (M10/E4, ADR-026).
+    ///
+    /// <para><b>Das Skript kann ihn weiterreichen und sonst nichts.</b> Es hat keinen Zugriff auf
+    /// Felder, und es kann keinen erzeugen (<c>LYR-SEM0061</c>) — sein Layout gehoert dem Host.
+    /// Was ein Skript damit tun darf, bestimmt der Host ueber
+    /// <see cref="RegisterFunction"/>.</para>
+    ///
+    /// <para><b>Der GC haelt ihn am Leben</b>, solange ein Lyric-Wert ihn erreicht; es gibt kein
+    /// Freigabe- oder Widerrufsprotokoll (ADR-026). Wer Domaenen-Lebenszeit braucht — „diese
+    /// Entity wurde zerstoert" —, registriert dafuer eine eigene Funktion.</para>
+    /// </summary>
+    /// <exception cref="ArgumentException">Der Name oder der Typ ist schon vergeben.</exception>
+    public void RegisterType<T>(string name) where T : class
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        if (_hostTypes.ContainsValue(name) || _hostFunctions.ContainsKey(name))
+            throw new ArgumentException($"the name '{name}' is already taken", nameof(name));
+
+        // Kein stilles Ueberschreiben, dieselbe Regel wie bei RegisterFunction: welcher von zwei
+        // Namen fuer denselben .NET-Typ gewinnt, waere sonst eine Frage der Reihenfolge.
+        if (!_hostTypes.TryAdd(typeof(T), name))
+            throw new ArgumentException(
+                $"'{typeof(T).Name}' is already registered as '{_hostTypes[typeof(T)]}'",
+                nameof(name));
+    }
 
     /// <summary>
     /// Macht eine .NET-Funktion fuer Skripte dieser VM sichtbar — als <c>host.&lt;name&gt;</c>.
@@ -67,7 +97,7 @@ public sealed class LangVm
     /// ueberqueren, oder der Name ist schon vergeben.</exception>
     public void RegisterFunction(string name, Delegate implementation)
     {
-        var function = HostFunction.From(name, implementation);
+        var function = HostFunction.From(name, implementation, _hostTypes);
 
         // Kein stilles Ueberschreiben. Zwei Registrierungen desselben Namens sind ein Fehler im
         // Host, und welche gewinnt, waere sonst eine Frage der Reihenfolge.
@@ -75,12 +105,10 @@ public sealed class LangVm
             throw new ArgumentException(
                 $"a host function named '{name}' is already registered", nameof(name));
 
-        var qualified = $"{HostModule}.{name}";
-        if (function.ReturnsValue)
-            _natives.Register(qualified, function.ParameterTags, function.ReturnTag,
-                function.Bridge);
-        else
-            _natives.Register(qualified, function.ParameterTags, TypeTag.Void, function.Bridge);
+        // Mit den VOLLEN Typen: ein Host-Typ ist nur ueber seinen Namen unterscheidbar, und der
+        // Tag-Vergleich beim Binden liesse 'Entity' und 'Sprite' durcheinander (ADR-026).
+        _natives.RegisterWithTypes($"{HostModule}.{name}",
+            function.ParameterTypes, function.ReturnType, function.Bridge);
     }
 
     /// <summary>Der Quelltext des synthetischen <c>host</c>-Moduls — <c>null</c>, solange nichts
@@ -93,19 +121,27 @@ public sealed class LangVm
     {
         get
         {
-            if (_hostFunctions.Count == 0) return null;
+            if (_hostFunctions.Count == 0 && _hostTypes.Count == 0) return null;
 
             // Sortiert und nicht in Registrierungsreihenfolge: derselbe Satz Funktionen ergibt
             // denselben Quelltext, also dieselben Bytes. ADR-013 verlangt reproduzierbare
             // Ausgabe, und ein Modul, dessen Inhalt von einer Aufrufreihenfolge abhaengt, waere
             // die eine Stelle, an der das nicht mehr gilt.
+            var types = string.Join(Environment.NewLine, _hostTypes.Values
+                .OrderBy(n => n, StringComparer.Ordinal)
+                // Eine LEERE Klasse in einem nativen Modul ist ein Host-Typ (ADR-026). Der
+                // leere Rumpf ist die Aussage: es gibt kein Layout, das dieses Modul kennt.
+                .Select(n => $"pub class {n} {{ }}"));
+
             var declarations = string.Join(Environment.NewLine, _hostFunctions.Values
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .Select(f => f.Declaration));
 
             return $"""
-                // Erzeugt von LangVm.RegisterFunction — was der Host diesem Skript anbietet.
+                // Erzeugt von LangVm — was der Host diesem Skript anbietet.
                 module {HostModule};
+
+                {types}
 
                 {declarations}
                 """;

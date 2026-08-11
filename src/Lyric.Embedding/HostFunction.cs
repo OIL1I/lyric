@@ -52,7 +52,8 @@ internal sealed class HostFunction
     /// <exception cref="ArgumentException">Ein Parameter- oder Rueckgabetyp kann die Grenze nicht
     /// ueberqueren. Die Meldung nennt ihn — E3 traegt dieselben Typen wie E2, also Skalare und
     /// Strings.</exception>
-    public static HostFunction From(string name, Delegate implementation)
+    public static HostFunction From(string name, Delegate implementation,
+        IReadOnlyDictionary<Type, string> hostTypes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(implementation);
@@ -65,7 +66,8 @@ internal sealed class HostFunction
 
         for (var i = 0; i < parameters.Length; i++)
         {
-            tags[i] = TypeOf(parameters[i].ParameterType, name, parameters[i].Name ?? $"p{i}");
+            tags[i] = TypeOf(parameters[i].ParameterType, name, parameters[i].Name ?? $"p{i}",
+                hostTypes);
             if (i > 0) text.Append(", ");
             text.Append(parameters[i].Name ?? $"p{i}").Append(": ")
                 .Append(Marshal.Describe(tags[i]));
@@ -73,7 +75,7 @@ internal sealed class HostFunction
 
         var returnType = method.ReturnType == typeof(void)
             ? BytecodeType.Scalar(TypeTag.Void)
-            : TypeOf(method.ReturnType, name, "the return value");
+            : TypeOf(method.ReturnType, name, "the return value", hostTypes);
 
         text.Append("): ").Append(Marshal.Describe(returnType)).Append(';');
 
@@ -110,8 +112,21 @@ internal sealed class HostFunction
             : Marshal.ToLyric(produced, _return, $"the result of host function '{Name}'");
     };
 
-    private static BytecodeType TypeOf(Type type, string function, string what)
+    /// <summary>Die vollen Typen — noetig, weil ein Host-Typ nur ueber seinen NAMEN
+    /// unterscheidbar ist (ADR-026).</summary>
+    public BytecodeType[] ParameterTypes => _parameters;
+
+    /// <inheritdoc cref="ParameterTypes"/>
+    public BytecodeType ReturnType => _return;
+
+    private static BytecodeType TypeOf(Type type, string function, string what,
+        IReadOnlyDictionary<Type, string> hostTypes)
     {
+        // Ein registrierter Host-Typ zuerst: er ist die eine Sorte Nicht-Skalar, die die Grenze
+        // ueberquert — als opake Referenz, ueber deren Inhalt das Skript nichts erfaehrt.
+        if (hostTypes.TryGetValue(type, out var hostName))
+            return new BytecodeType(TypeTag.Host, -1) { HostName = hostName };
+
         var tag = type switch
         {
             _ when type == typeof(long) => TypeTag.I64,
@@ -129,8 +144,7 @@ internal sealed class HostFunction
             _ when type == typeof(string) => TypeTag.String,
             _ => throw new ArgumentException(
                 $"host function '{function}': {what} has type '{type.Name}', which cannot cross "
-                + "the boundary — E3 carries scalars and strings, the same as E2. Host objects "
-                + "come in E4."),
+                + "the boundary — scalars, strings, and types registered with RegisterType<T>."),
         };
 
         return BytecodeType.Scalar(tag);

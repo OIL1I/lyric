@@ -37,6 +37,20 @@ public readonly struct LyrValue
     public static LyrValue FromF32(float value) => new(BitConverter.SingleToUInt32Bits(value), null);
     public static LyrValue FromString(string value) => new(0, value);
 
+    /// <summary>
+    /// Ein <b>Host-Objekt</b> (M10/E4, ADR-026): eine beliebige .NET-Referenz, in die die VM nie
+    /// hineinsieht.
+    ///
+    /// <para>Dasselbe Feld wie bei einem <c>string</c>, und aus demselben Grund unbedenklich: das
+    /// Typ-Tag im Instruktionsstrom entscheidet, wie ein Wert gelesen wird, und fuer einen
+    /// Host-Typ gibt es keine Instruktion, die hineinsieht — er hat keinen Typtabellen-Eintrag,
+    /// also kein Feld, das ein <c>ldfld</c> nennen koennte.</para>
+    ///
+    /// <para>Die Lebenszeit gehoert damit dem .NET-GC: das Objekt lebt, solange ein Lyric-Wert es
+    /// erreicht. Kein Freigabe-, kein Widerrufsprotokoll (ADR-026).</para>
+    /// </summary>
+    public static LyrValue FromHostObject(object value) => new(0, value);
+
     /// <summary>Eine Objekt-Referenz: ein Slot je Feld. Kein Typ-Tag im Wert — der
     /// Instruktionsstrom trägt es, und der Loader hat Typ- und Feldindex geprüft. Um die
     /// Lebenszeit kümmert sich der .NET-GC (ADR-002).</summary>

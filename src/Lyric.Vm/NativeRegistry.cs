@@ -20,7 +20,8 @@ public sealed class NativeRegistry
 
     private sealed record Native(
         TypeTag[] ParamTypes, TypeTag ReturnType, Func<LyrValue[], LyrValue> Implementation,
-        TypeTag? ReturnElement = null);
+        TypeTag? ReturnElement = null,
+        BytecodeType[]? FullParamTypes = null, BytecodeType? FullReturnType = null);
 
     public void Register(string name, TypeTag[] paramTypes, TypeTag returnType,
         Func<LyrValue[], LyrValue> implementation) =>
@@ -52,6 +53,21 @@ public sealed class NativeRegistry
     public void RegisterOptionalReturning(string name, TypeTag[] paramTypes, TypeTag inner,
         Func<LyrValue[], LyrValue> implementation) =>
         _natives[name] = new Native(paramTypes, TypeTag.Optional, implementation, inner);
+
+    /// <summary>
+    /// Ein Native, dessen Signatur <b>Host-Typen</b> enthaelt (M10/E4, ADR-026).
+    ///
+    /// <para>Braucht die vollen Typen und nicht nur die Tags: <c>Entity</c> und <c>Sprite</c>
+    /// tragen beide <see cref="TypeTag.Host"/> und waeren sonst ununterscheidbar — genau wie
+    /// <c>string[]</c> und <c>char[]</c> es ohne den Elementtag waeren. Der Name ist alles, was
+    /// Modul und Runtime von einem Host-Typ wissen; er ist damit auch alles, was beim Binden
+    /// verglichen werden kann.</para>
+    /// </summary>
+    public void RegisterWithTypes(string name, BytecodeType[] paramTypes, BytecodeType returnType,
+        Func<LyrValue[], LyrValue> implementation) =>
+        _natives[name] = new Native(
+            paramTypes.Select(p => p.Tag).ToArray(), returnType.Tag, implementation,
+            ReturnElement: null, FullParamTypes: paramTypes, FullReturnType: returnType);
 
     /// <summary>Ein gebundener Import: Implementierung plus das, was die Aufrufstelle wissen muss.
     /// Arität und Rückgabe stehen hier, damit der Interpreter im heißen Pfad nichts nachschlagen
@@ -88,11 +104,36 @@ public sealed class NativeRegistry
                     $"native '{import.Name}' returns a different array element type than the "
                     + "module expects");
 
+            // Und bei einem Host-Typ genuegt er erst recht nicht: der NAME unterscheidet ihn,
+            // sonst nichts (ADR-026). Ohne diese Pruefung koennte ein Modul, das eine 'Entity'
+            // erwartet, eine 'Sprite' bekommen — und der erste Zugriff darauf waere ein
+            // InvalidCastException tief im Host, weit weg von der Ursache.
+            if (native.FullParamTypes is { } declaredParams)
+            {
+                for (var p = 0; p < declaredParams.Length; p++)
+                    RequireSameHostType(import.Name, declaredParams[p], import.ParamTypes[p],
+                        $"parameter {p + 1}");
+
+                RequireSameHostType(import.Name, native.FullReturnType!, import.ReturnType,
+                    "the return type");
+            }
+
             bound[i] = new BoundNative(import.ParamTypes.Count,
                 import.ReturnType.Tag != TypeTag.Void, native.Implementation);
         }
 
         return bound;
+    }
+
+    private static void RequireSameHostType(string import, BytecodeType native,
+        BytecodeType expected, string what)
+    {
+        if (native.Tag != TypeTag.Host && expected.Tag != TypeTag.Host) return;
+        if (string.Equals(native.HostName, expected.HostName, StringComparison.Ordinal)) return;
+
+        throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
+            $"native '{import}': {what} is host type '{native.HostName ?? "(none)"}', but the "
+            + $"module expects '{expected.HostName ?? "(none)"}'");
     }
 
     /// <summary>

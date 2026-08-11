@@ -697,6 +697,19 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > mit beiden Seiten, `lyrembed` ist das zweite. **Die Zeile in §Zentrale Komponenten ist damit
 > falsch und hier korrigiert.**
 >
+> **E4a ist erledigt** (2026-08-11): Host-Objekte reisen durch ein Skript. `RegisterType<T>` macht
+> einen .NET-Typ als **opaken** Lyric-Typ sichtbar; das Skript reicht ihn weiter und kann sonst
+> nichts damit — kein Feldzugriff, keine Konstruktion (`LYR-SEM0061`).
+>
+> **Format 3.0**: `TypeTag.Host = 0x47` traegt seinen Namen inline. Eigenes Tag neben `Ref`, und
+> das ist der Kern — bei `Ref` kennt das *Modul* das Layout, bei `Host` der *Host*. Ein Host-Typ
+> hat deshalb **keinen Typtabellen-Eintrag**, womit ADR-026s Zusage „nie ein `ldfld`"
+> **strukturell** wird statt geprueft. Major-Bump, weil §2 einer neuen Minor nur ueberspringbare
+> Sektionen erlaubt und ein Typ-Tag keine ist.
+>
+> **Was E4a noch nicht hat**: Methoden auf einem Host-Typ (`e.damage(5)`) — das ist E4b samt
+> Builder-API und Beispiel-Host. Heute gehen freie Funktionen: `damage(e, 5)`.
+>
 > **E3 ist erledigt** (2026-08-11): `RegisterFunction` leitet die Lyric-Signatur aus dem
 > .NET-Delegaten ab und schreibt sie als bodylose `pub fn` in ein synthetisches Modul **`host`**,
 > das der Compiler wie jede Stdlib-Deklaration sieht. Der Native-Seam aus M6 traegt sie — gebunden

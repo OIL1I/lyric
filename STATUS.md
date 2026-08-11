@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2576 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2602 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,8 +23,8 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: **M10 E4–E6** — `RegisterType<T>`,
-`RegisterType<T>`, `Reload`, dann Doku und Inventur. E1–E3 stehen. `std.dotnet` ist gestrichen
+**Offen für v1.0**: **M10 E4b–E6** — `RegisterType<T>`,
+Methoden auf Host-Typen, `Reload`, dann Doku und Inventur. E1–E4a stehen. `std.dotnet` ist gestrichen
 (2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -32,6 +32,28 @@ Meilenstein davor berührt hat.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M10/E4a — Host-Objekte, Format 3.0** (2026-08-11). 2602 Tests grün.
+  - **`TypeTag.Host = 0x47`**, Name inline. **Eigenes Tag neben `Ref`, und das ist der Kern**:
+    beide sind Referenzen, aber bei `Ref` kennt das *Modul* das Layout und der Host hält sich
+    heraus — bei `Host` ist es umgekehrt. Ein Host-Typ hat deshalb **keinen
+    Typtabellen-Eintrag**, womit ADR-026s Zusage „gegen einen Host-Typ wird nie ein `ldfld`
+    emittiert" **strukturell** wird statt geprüft: ohne Feldliste ist ein Feldzugriff nicht
+    kodierbar.
+  - **Format 3.0, nicht 2.6.** §2 erlaubt einer neuen Minor nur überspringbare Sektionen, und ein
+    Typ-Tag ist keine. Pre-1.0 ohne Migrationspfad erlaubt (ADR-013).
+  - **`RegisterType<T>`** macht einen .NET-Typ als opaken Lyric-Typ sichtbar. Ein Skript reicht
+    ihn weiter — Feldzugriff und Konstruktion sind Diagnosen. **Letztere ersetzt einen
+    Compiler-Absturz**: `Entity { }` war `cannot compare IrHostType with IrRefType`, jetzt
+    `LYR-SEM0061`.
+  - **Die Zusage ist Identität, nicht Gleichheit**: was der Host zurückbekommt, ist
+    `ReferenceEquals` dasselbe Objekt. Ein Test prüft genau das — mit Wert-Gleichheit wäre ein
+    Kopieren nicht zu bemerken.
+  - **Die Regel „ist das ein Host-Typ" stand erst an einer Stelle und musste an zwei.** Beim
+    Lowern der nativen Signatur wurde `Entity` ein Host-Typ, an der Aufrufstelle eine gewöhnliche
+    Referenz; der Verifier meldete es binnen einer Minute. Sie liegt jetzt in `HostTypes.NameOf`.
+  - **Der Versionstest trug `2` und `5` als Literale** und ist an `Format` gebunden — die vierte
+    Stelle dieser Art in dieser Sitzung.
 
 - [x] **M10/E3 — `RegisterFunction`** (2026-08-11). 2576 Tests grün.
   - **Die Signatur wird erzeugt, nicht erfunden.** Aus dem .NET-Delegaten wird per Reflexion eine
@@ -98,30 +120,6 @@ Meilenstein davor berührt hat.
     stoppt **vor der ersten Zeile**, eine zweite VM daneben darf mehr, ein Übersetzungsfehler
     kommt als Diagnose zurück.
 
-- [x] **Die vier Compiler-Lücken aus S9 sind zu** (2026-08-11). 2504 Tests grün.
-  - **Eine benannte Funktion ist jetzt ein Funktionswert**: `map(o, verdoppeln)` statt
-    `map(o, (n: int) => verdoppeln(n))`. Der Fix brauchte **weder Instruktion noch Opcode** —
-    `MakeClosure` nimmt sein Environment seit P6 optional, und die VM entscheidet am
-    `HasEnvironment`-Bit, ob Slot 0 belegt wird. Eine Funktion ohne Captures ist eine Closure ohne
-    Umgebung; es fehlte nur die eine Stelle im Lowering. Eine **generische** Funktion bleibt
-    abgelehnt, mit Begründung in der Meldung: ihre Typargumente hätten keine Aufrufstelle.
-  - **Ein Lambda in einer f-String-Interpolation parst.** Der Lexer zählte `{ }`, aber nicht
-    `( )` und `[ ]` — deshalb las er das `:` in `(n: int)` als Format-Spec-Trenner. Der Gegentest
-    ist der wichtigere: eine Spec auf oberster Ebene muss weiterhin trennen, sonst wäre der Fix
-    grün und hätte jede Format-Spec der Sprache stillgelegt.
-  - **`panic` divergiert jetzt auch importiert — und meine Diagnose war falsch.** Notiert war
-    „`never` ist für die Flussanalyse unsichtbar". Gemessen war es das **nicht**:
-    `Flow.AlwaysReturns` behandelt einen divergierenden `ExprStmt` seit jeher. Die Ursache war,
-    dass es `panic` **zweimal** gibt — als Builtin im Wurzel-Scope und als native Deklaration in
-    `std.core` —, und nur das Builtin trug `never`. Wer `import std.core { panic }` schrieb, bekam
-    ein `void`. Zwei Symbole, eine Bedeutung, eine Antwort. Die Umgehung in `std.option.expect`
-    (`return o!;` nach dem Panic) ist zurückgebaut.
-  - **Ein `null`-Zweig macht den anderen optional** — und der `match` hatte eine **zweite**
-    Unifikation, die den Fall ebenfalls nicht kannte. Gemeldet war nur der `if`-Fall; der andere
-    fiel beim Nachmessen des Fixes auf. Die Regel liegt jetzt in einer Funktion, die beide rufen.
-    Dazu die Lowering-Seite: `LowerIfExpr` lowerte seine Zweige **ohne** erwarteten Typ, also
-    scheiterte das `null` dort erneut — derselbe Sema/Backend-Riss wie schon elfmal.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -161,14 +159,11 @@ Begründung gestrichen statt geliefert.
 **M10 läuft.** E1–E3 stehen: `LangVm`, Capabilities, `Call<T>`, Marshalling, `RegisterFunction`.
 Ein Host kann heute ein Skript laden, sandboxen, Funktionen daraus rufen und eigene hineinreichen.
 
-**Als Nächstes E4** — `RegisterType<T>`. **Die Lebenszeitfrage ist beantwortet** (ADR-026): ein
-Host-Objekt ist eine direkte .NET-Referenz und gehört dem GC; kein Widerrufs- oder
-Refcount-Protokoll an der Grenze. Rule 2 lässt nur einen Speicher-Mechanismus zu, und Lua und Wren
-— Lyrics erklärte Vorbilder — machen es genauso.
+**Als Nächstes E4b** — Methoden auf einem Host-Typ (`e.damage(5)` statt `damage(e, 5)`), die
+Builder-API und der Beispiel-Host. Die erzeugte Deklaration braucht dafür die `;,`-Schreibweise
+aus §3.2; in generiertem Code ist das erträglich.
 
-**Der Aufwand liegt woanders, als der Plan vermutete**: eine native Signatur darf heute nur
-Primitive nennen (siehe unten). Und die Stelle, an der E4 wirklich falsch werden kann, ist nicht
-die Lebenszeit, sondern die Zusage, dass gegen einen Host-Typ **nie ein `ldfld` emittiert wird**.
+**Danach E5** (`Reload`) **und E6** (Doku §21 gegen das Gebaute, Lieferposten-Inventur).
 
 **Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
 über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
@@ -205,10 +200,6 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 **Aus dem M10-Plan, beim Messen gefunden:**
 
-- **Eine native Signatur darf nur Primitive nennen.** `pub fn spawn(name: string): Entity;` ist
-  `LYR-IR0001: non-primitive type in a declared signature`. **Das ist E4s eigentlicher Aufwand**
-  und war im M10-Plan nicht sichtbar — die Lebenszeitfrage (ADR-026) war es, die Lowering- und
-  Registry-Arbeit dahinter nicht.
 - **Der Member-Trenner aus §3.2 ist für Block-Rümpfe geschrieben.** Eine bodylose Methode in einer
   Klasse braucht `int;,` — Semikolon *und* Komma hintereinander. Es geht, aber es ist eine
   Schreibweise, die niemand errät.
@@ -307,7 +298,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`M10: RegisterFunction — der Host stellt dem Skript Funktionen hin (E3)`
+`M10/E4a: Host-Objekte reisen durch ein Skript, Format 3.0`
 
 ---
 
