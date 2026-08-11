@@ -163,8 +163,37 @@ public static class ModuleLowerer
                 foreach (var member in members)
                 {
                     if (member is not FunctionDecl method) continue;
-                    if (method.Generics.Length > 0 || method.Body is null) continue;
+                    if (method.Generics.Length > 0) continue;
                     if (type.Members.LookupLocal(method.Name) is not FunctionSymbol symbol) continue;
+
+                    // Eine bodylose Methode auf einem HOST-Typ ist ein Native mit dem Empfaenger
+                    // als Parameter 0 (M10/E4b) — dieselbe Konvention wie bei jeder anderen
+                    // Methode (ADR-014), nur dass die Implementierung beim Host liegt. Ohne diesen
+                    // Fall wuerde sie hier stillschweigend uebersprungen, und der Aufruf im Skript
+                    // faende keine Id.
+                    if (method.Body is null)
+                    {
+                        if (HostTypes.NameOf(type, compilation) is not { } owner) continue;
+
+                        try
+                        {
+                            var host = HostTypeResolver(module, compilation);
+                            var receiver = new IrHostType(owner);
+                            imports.Declare(symbol, new IrImport(
+                                NameMangling.ForMethod(module, typeName, method.Name),
+                                [receiver, .. method.Parameters
+                                    .Select(p => DeclaredTypes.Lower(p.Type, host))],
+                                DeclaredTypes.Lower(method.ReturnType, host)));
+                        }
+                        catch (UnsupportedConstructException ex)
+                        {
+                            de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span,
+                                ex.Message);
+                            failed = true;
+                        }
+
+                        continue;
+                    }
 
                     ids[symbol] = new FunctionId(pending.Count);
                     pending.Add((method, NameMangling.ForMethod(module, typeName, method.Name),

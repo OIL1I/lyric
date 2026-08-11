@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2602 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
+2609 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,8 +23,8 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: **M10 E4b–E6** — `RegisterType<T>`,
-Methoden auf Host-Typen, `Reload`, dann Doku und Inventur. E1–E4a stehen. `std.dotnet` ist gestrichen
+**Offen für v1.0**: **M10 E5–E6** — `RegisterType<T>`,
+`Reload`, dann Doku und Inventur. E1–E4 stehen. `std.dotnet` ist gestrichen
 (2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -32,6 +32,22 @@ Methoden auf Host-Typen, `Reload`, dann Doku und Inventur. E1–E4a stehen. `std
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M10/E4b — Methoden auf Host-Typen. E4 ist damit fertig** (2026-08-11). 2609 Tests grün.
+  - `RegisterType<T>("Entity", t => t.Getter("leben", …).Method("schaden", …, mutates: true))`
+    erzeugt eine Klassendeklaration, deren bodylose Methoden Natives mit dem **Empfänger als
+    Parameter 0** sind (ADR-014). Im Skript: `e.schaden(30)`.
+  - **Es gibt kein `Field`.** `Doku.md` §21 versprach `builder.Field("x", v => v.X)` — das braucht
+    ein `ldfld`, und ein Host-Typ hat keinen Typtabellen-Eintrag. `Getter` ist die ehrliche Form:
+    in Lyric `e.name()`, nicht `e.name`.
+  - **`LowerImportCall` verglich Argumentzahl gegen Parameterzahl** und kannte den Empfänger
+    nicht — die Meldung log dabei („with default or variadic arguments"). Er wird jetzt
+    durchgereicht.
+  - Die Regel „was ist ein Host-Typ" heißt seit E4b **kein Feld und kein Methodenrumpf**, vorher
+    „leerer Rumpf". *Kein Feld* war immer die Aussage; es gab nur noch keine Methoden.
+  - **Ein Test, den C# selbst überflüssig macht**: `Getter<TValue>(Func<T, TValue>)` erzwingt den
+    Empfänger schon beim Übersetzen. Die Laufzeitprüfung deckt nur `Method(string, Delegate)` ab,
+    das untypisiert sein muss, weil eine Methode beliebig viele Parameter hat.
 
 - [x] **M10/E4a — Host-Objekte, Format 3.0** (2026-08-11). 2602 Tests grün.
   - **`TypeTag.Host = 0x47`**, Name inline. **Eigenes Tag neben `Ref`, und das ist der Kern**:
@@ -95,31 +111,6 @@ Methoden auf Host-Typen, `Reload`, dann Doku und Inventur. E1–E4a stehen. `std
     geheißen, und ein Aufruf über den Namen fände die Funktion des falschen. Gefunden vom
     **ersten** Test, der eine Funktion beim Namen rief.
 
-- [x] **M10/E1 — `LangVm`: laden, ausfuehren, sandboxen** (2026-08-11). 2519 Tests grün.
-  - **Neue Assembly `Lyric.Embedding` → `lyrembed.dll`**, das zweite Artefakt mit *beiden*
-    Bibliotheken nach `lyrrepl`. Sie **muss** eigenständig sein: läge `LangVm` in `Lyric.Vm` — wie
-    die ROADMAP es bis heute behauptete —, müsste `lyrrt` das Frontend referenzieren, und der
-    Architektur-Test, der `lyrvm.exe` ohne `lyrfe.dll` und ohne `stdlib/` festhält, fiele.
-    **Die ROADMAP-Zeile ist korrigiert.**
-  - **Die Voreinstellung ist Sandbox** (`Capability.None`, keine Ausgabe). Ein Host, der
-    versehentlich Dateizugriff bekommt, merkt es nie — es funktioniert ja. Der umgekehrte Fehler
-    meldet sich sofort. **Die Voreinstellung muss die sein, deren Verletzung laut ist.**
-  - **`ScriptSource`**: die Pipeline war pfadgebunden, und das war keine Bequemlichkeit — §2.1
-    leitet den Modulnamen aus dem Pfad ab. Ein Skript aus dem Speicher hat keinen, **also nennt
-    ihn der Host**. Eine Naht, kein zweiter Weg: der Unterschied ist genau ein Schritt.
-  - **Zwei Befunde, beide erst durchs Bauen gefunden:**
-  - Die Runtime-Ausnahmen mussten an der Host-Grenze **übersetzt** werden. `LyricPanic` und
-    `LyricRuntimeException` leben in `lyrrt`, das ein Host nicht referenziert — ihm bliebe
-    `catch (Exception)`. Aufgefallen ist es, weil das Testprojekt bewusst **nur** `lyrembed`
-    referenziert; mit einer Referenz mehr wäre der Test grün und die Lücke unsichtbar geblieben.
-  - Der Beispiel-Host musste **in die Solution**. Ohne ihn dort baut `dotnet test` ihn kalt nicht
-    — vier Tests lokal grün, kalt rot. **Dieselbe Fehlerklasse wie `build/publish.proj`**: es
-    funktioniert auf dem Rechner, auf dem es entstanden ist, und der kanonische Pfad kennt es
-    nicht.
-  - Das Gate ist `examples/embedded-host/`: eine gesandboxte VM läuft, eine abgelehnte Capability
-    stoppt **vor der ersten Zeile**, eine zweite VM daneben darf mehr, ein Übersetzungsfehler
-    kommt als Diagnose zurück.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -159,11 +150,13 @@ Begründung gestrichen statt geliefert.
 **M10 läuft.** E1–E3 stehen: `LangVm`, Capabilities, `Call<T>`, Marshalling, `RegisterFunction`.
 Ein Host kann heute ein Skript laden, sandboxen, Funktionen daraus rufen und eigene hineinreichen.
 
-**Als Nächstes E4b** — Methoden auf einem Host-Typ (`e.damage(5)` statt `damage(e, 5)`), die
-Builder-API und der Beispiel-Host. Die erzeugte Deklaration braucht dafür die `;,`-Schreibweise
-aus §3.2; in generiertem Code ist das erträglich.
+**Als Nächstes E5** — `Reload`. ADR-026 liefert die Antwort schon mit: neu laden heißt neue
+`ScriptInstance`, und damit läuft der Konstanten-Initialisierer neu (ADR-025), während
+Host-Objekte dem GC gehören und einfach weiterleben.
 
-**Danach E5** (`Reload`) **und E6** (Doku §21 gegen das Gebaute, Lieferposten-Inventur).
+**Danach E6**: `Doku.md` §21 gegen das Gebaute neu schreiben — sie zeigt bis heute eine API, die es
+so nicht gibt (`Compile` ohne Modulnamen, `playSound` ohne Import, `builder.Field`) —, dann die
+Lieferposten-Inventur und **v1.0**.
 
 **Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
 über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
@@ -298,7 +291,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`M10/E4a: Host-Objekte reisen durch ein Skript, Format 3.0`
+`M10/E4b: Methoden auf Host-Typen — E4 ist fertig`
 
 ---
 

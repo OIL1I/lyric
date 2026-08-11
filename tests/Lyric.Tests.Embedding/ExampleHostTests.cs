@@ -120,6 +120,36 @@ public class ExampleHostTests
         Assert.Contains("gespielt: boom, nachhall", output, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Das E4b-Gate im Beispiel: ein Host-Objekt mit Methoden, und der Host sieht die Wirkung an
+    /// seinem eigenen Objekt.
+    /// </summary>
+    [Fact]
+    public void The_example_host_shows_a_host_object_with_methods()
+    {
+        var (_, output) = RunHost();
+
+        // Die erzeugte Klasse steht im Beispiel — inklusive der ';,'-Schreibweise, die §3.2 fuer
+        // eine bodylose Methode verlangt.
+        Assert.Contains("pub mut fn schaden(wieviel: int): void;,", output,
+            StringComparison.Ordinal);
+
+        Assert.Contains("runde(30) -> 70", output, StringComparison.Ordinal);
+        Assert.Contains("runde(12) -> 58", output, StringComparison.Ordinal);
+
+        // Der Host sieht dieselbe Zahl an seinem eigenen Objekt — die Identitaetszusage aus
+        // ADR-026, im Beispiel sichtbar gemacht.
+        Assert.Contains("der Host sieht: 58", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>Und das Beispiel zeigt auch, was das Skript NICHT darf.</summary>
+    [Fact]
+    public void The_example_host_shows_a_host_type_cannot_be_constructed()
+    {
+        var (_, output) = RunHost();
+        Assert.Contains("LYR-SEM0061", output, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_example_host_shows_a_compile_error_as_a_diagnostic()
     {

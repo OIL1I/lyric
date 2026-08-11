@@ -218,6 +218,114 @@ public class HostTypeTests
         Assert.Throws<ArgumentException>(() => vm.RegisterType<Sprite>("Entity"));
     }
 
+    // ------------------------------------------------------------------ Methoden (E4b)
+
+    /// <summary>
+    /// Das E4b-Gate: <c>e.damage(5)</c> statt <c>damage(e, 5)</c>. Der Empfaenger ist Parameter 0
+    /// (ADR-014) — dieselbe Konvention wie bei jeder anderen Methode, nur dass die
+    /// Implementierung beim Host liegt.
+    /// </summary>
+    [Fact]
+    public void A_script_calls_methods_on_a_host_object()
+    {
+        var welt = new Entity("ork") { Hp = 100 };
+
+        var vm = Vm();
+        vm.RegisterType<Entity>("Entity", t => t
+            .Getter("leben", (Entity e) => e.Hp)
+            .Getter("name", (Entity e) => e.Name)
+            .Method("schaden", (Entity e, long wieviel) => { e.Hp -= wieviel; }, mutates: true));
+        vm.RegisterFunction("hole", () => welt);
+
+        var instance = vm.Instantiate(vm.Compile("""
+            import host { hole };
+
+            pub fn los(): int {
+                let e = hole();
+                e.schaden(30);
+                e.schaden(5);
+                return e.leben();
+            }
+
+            pub fn wer(): string { return hole().name(); }
+            """, "mod"));
+
+        Assert.Equal(65, instance.Call<long>("los"));
+        Assert.Equal(65, welt.Hp);
+        Assert.Equal("ork", instance.Call<string>("wer"));
+    }
+
+    /// <summary>
+    /// Zwei Host-Typen mit <b>gleichnamigen</b> Methoden. Ohne den Typ im gemangelten Namen
+    /// bekaeme der eine die Implementierung des anderen — und mit nur einem Typ waere der Test
+    /// dafuer blind. Dieselbe Lehre wie beim Dispatch-Test aus M8/S4.
+    /// </summary>
+    [Fact]
+    public void Two_host_types_may_have_methods_of_the_same_name()
+    {
+        var vm = Vm();
+        vm.RegisterType<Entity>("Entity", t => t.Getter("bezeichnung", (Entity e) => e.Name));
+        vm.RegisterType<Sprite>("Sprite", t => t.Getter("bezeichnung", (Sprite s) => s.File));
+        vm.RegisterFunction("entity", () => new Entity("ork"));
+        vm.RegisterFunction("sprite", () => new Sprite("ork.png"));
+
+        var instance = vm.Instantiate(vm.Compile("""
+            import host { entity, sprite };
+            pub fn a(): string { return entity().bezeichnung(); }
+            pub fn b(): string { return sprite().bezeichnung(); }
+            """, "mod"));
+
+        Assert.Equal("ork", instance.Call<string>("a"));
+        Assert.Equal("ork.png", instance.Call<string>("b"));
+    }
+
+    [Fact]
+    public void The_generated_class_carries_its_methods()
+    {
+        var vm = Vm();
+        vm.RegisterType<Entity>("Entity", t => t
+            .Getter("leben", (Entity e) => e.Hp)
+            .Method("schaden", (Entity e, long n) => { e.Hp -= n; }, mutates: true));
+
+        var source = vm.HostModuleSource;
+
+        Assert.NotNull(source);
+        Assert.Contains("pub fn leben(): int;,", source, StringComparison.Ordinal);
+        Assert.Contains("pub mut fn schaden(n: int): void;,", source, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Der erste Parameter MUSS der Empfaenger sein — sonst haette der Host eine Methode auf
+    /// <c>Entity</c> geschrieben, die ein <c>Sprite</c> erwartet, und das fiele erst beim Binden
+    /// auf.
+    ///
+    /// <para>Ueber <c>Getter&lt;TValue&gt;(Func&lt;T, TValue&gt;)</c> ist der Fall gar nicht
+    /// schreibbar — dort erzwingt C#s Typsystem den Empfaenger, und das ist die bessere Stelle
+    /// dafuer. Die Pruefung zur Laufzeit deckt <c>Method(string, Delegate)</c> ab, das
+    /// untypisiert ist, weil eine Methode beliebig viele Parameter haben darf.</para>
+    /// </summary>
+    [Fact]
+    public void A_method_whose_first_parameter_is_not_the_receiver_is_refused()
+    {
+        var vm = Vm();
+        vm.RegisterType<Sprite>("Sprite");
+
+        var thrown = Assert.Throws<ArgumentException>(() => vm.RegisterType<Entity>("Entity",
+            t => t.Method("falsch", (Sprite s) => s.File)));
+
+        Assert.Contains("must be the receiver", thrown.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_duplicate_method_name_on_one_type_is_an_error()
+    {
+        var vm = Vm();
+
+        Assert.Throws<ArgumentException>(() => vm.RegisterType<Entity>("Entity", t => t
+            .Getter("leben", (Entity e) => e.Hp)
+            .Getter("leben", (Entity e) => e.Hp)));
+    }
+
     /// <summary>Ein nicht registrierter .NET-Typ bleibt draussen — mit einer Meldung, die den
     /// Ausweg nennt.</summary>
     [Fact]

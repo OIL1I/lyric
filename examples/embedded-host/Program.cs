@@ -131,7 +131,58 @@ var mod2 = engine.Instantiate(engine.Compile("""
 Console.WriteLine($"explodieren(8) = {mod2.Call<long>("explodieren", 8)}");
 Console.WriteLine($"gespielt: {string.Join(", ", gespielt)}");
 
-// 6. Ein Uebersetzungsfehler kommt als Daten zurueck, nicht als Text.
+// 6. Host-TYPEN (E4). Ein .NET-Objekt reist durch das Skript, ohne dass das Skript hineinsehen
+//    kann — die Referenz gehoert dem GC, das Layout dem Host (ADR-026).
+Console.WriteLine();
+Console.WriteLine("== Host-Typen ==");
+
+var spieler = new Spieler("Ada");
+
+var welt = new LangVm(new HostOptions { StdlibRoot = stdlib, Output = Console.Out });
+welt.RegisterType<Spieler>("Spieler", t => t
+    .Getter("name", (Spieler s) => s.Name)
+    .Getter("leben", (Spieler s) => s.Leben)
+    .Method("schaden", (Spieler s, long wieviel) => s.Schaden(wieviel), mutates: true));
+welt.RegisterFunction("held", () => spieler);
+
+// Was der Host anbietet, steht wieder als Lyric-Code da:
+Console.WriteLine(welt.HostModuleSource);
+
+var kampf = welt.Instantiate(welt.Compile("""
+    import host { held };
+
+    pub fn runde(treffer: int): int {
+        let s = held();
+        s.schaden(treffer);
+        return s.leben();
+    }
+
+    pub fn wer(): string { return held().name(); }
+    """, "kampf"));
+
+Console.WriteLine($"{kampf.Call<string>("wer")} startet mit {spieler.Leben}");
+Console.WriteLine($"runde(30) -> {kampf.Call<long>("runde", 30)}");
+Console.WriteLine($"runde(12) -> {kampf.Call<long>("runde", 12)}");
+Console.WriteLine($"der Host sieht: {spieler.Leben}");
+
+// Was das Skript NICHT darf: es kann keinen erzeugen und hat keine Felder daran.
+try
+{
+    welt.Compile("""
+        import host;
+        pub fn los(): int { return host.Spieler { }.leben(); }
+        """, "schummeln");
+
+    Console.WriteLine("FEHLER: das haette nicht uebersetzen duerfen");
+    return 1;
+}
+catch (EmbeddingException refused)
+{
+    foreach (var d in refused.Diagnostics)
+        Console.WriteLine($"abgelehnt: {d.Code}: {d.Message}");
+}
+
+// 7. Ein Uebersetzungsfehler kommt als Daten zurueck, nicht als Text.
 Console.WriteLine();
 Console.WriteLine("== ein kaputtes Skript ==");
 try
@@ -145,3 +196,13 @@ catch (EmbeddingException broken)
 }
 
 return 0;
+
+/// <summary>Ein gewoehnliches .NET-Objekt — der Host gibt es dem Skript, ohne ihm sein Innenleben
+/// zu zeigen.</summary>
+public sealed class Spieler(string name)
+{
+    public string Name { get; } = name;
+    public long Leben { get; private set; } = 100;
+
+    public void Schaden(long wieviel) => Leben -= wieviel;
+}

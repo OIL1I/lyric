@@ -697,6 +697,19 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > mit beiden Seiten, `lyrembed` ist das zweite. **Die Zeile in §Zentrale Komponenten ist damit
 > falsch und hier korrigiert.**
 >
+> **E4b ist erledigt** (2026-08-11): Methoden auf Host-Typen. `RegisterType<T>(name, t => t
+> .Getter(…).Method(…))` erzeugt eine Klassendeklaration, deren bodylose Methoden Natives mit dem
+> Empfaenger als Parameter 0 sind (ADR-014) — dieselbe Konvention wie bei jeder anderen Methode.
+> Im Skript liest es sich als `e.schaden(30)`.
+>
+> **Es gibt kein `Field`.** `Doku.md` §21 versprach `builder.Field("x", v => v.X)`; das braucht ein
+> `ldfld`, und ein Host-Typ hat keinen Typtabellen-Eintrag (ADR-026). `Getter` ist die ehrliche
+> Form — in Lyric `e.name()` und nicht `e.name`. Properties als Zucker nennt ADR-003 als moegliche
+> post-v1-Ergaenzung.
+>
+> Die Regel „was ist ein Host-Typ" heisst seit E4b **kein Feld und kein Methodenrumpf**, vorher
+> „leerer Rumpf". „Kein Feld" war immer die Aussage — es gab nur noch keine Methoden.
+>
 > **E4a ist erledigt** (2026-08-11): Host-Objekte reisen durch ein Skript. `RegisterType<T>` macht
 > einen .NET-Typ als **opaken** Lyric-Typ sichtbar; das Skript reicht ihn weiter und kann sonst
 > nichts damit — kein Feldzugriff, keine Konstruktion (`LYR-SEM0061`).

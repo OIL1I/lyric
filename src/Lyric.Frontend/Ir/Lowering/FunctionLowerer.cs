@@ -3473,9 +3473,13 @@ internal sealed class FunctionLowerer
         if (bound is not FunctionSymbol symbol)
             throw NotSupported($"call to '{calleeName}' (not a function or method)", expr.Span);
 
-        // Nativ hinterlegt (Stdlib): eigener Instruktionstyp, eigener Indexraum.
+        // Nativ hinterlegt (Stdlib oder Host): eigener Instruktionstyp, eigener Indexraum.
+        //
+        // Bei einer METHODE auf einem Host-Typ (M10/E4b) traegt der Import den Empfaenger als
+        // Parameter 0 — dieselbe Konvention wie jede andere Methode (ADR-014). Er steht in
+        // 'receiver', weil der Aufruf 'e.schaden(30)' ihn nicht in der Argumentliste hat.
         if (_imports.IsNative(symbol))
-            return LowerImportCall(_imports.Intern(symbol), expr.Arguments, expr.Span);
+            return LowerImportCall(_imports.Intern(symbol), expr.Arguments, expr.Span, receiver);
 
         // 'panic' ist ein Sprach-Built-in (§9) und hat deshalb kein Modul, in dem es deklariert
         // waere — der Resolver legt es in den Wurzel-Scope. Gebunden wird es wie jeder andere
@@ -3734,14 +3738,20 @@ internal sealed class FunctionLowerer
 
     /// <summary>Aufruf einer nativ hinterlegten Funktion. Die Signatur kommt aus der Import-Tabelle,
     /// nicht aus einer Funktion — ein Import hat keinen Rumpf.</summary>
-    private TempId? LowerImportCall(ImportId target, Expr[] arguments, Span span)
+    /// <param name="receiver">Bei einer Methode auf einem Host-Typ der Empfaenger; er wird
+    /// Parameter 0 (ADR-014). <c>null</c> bei jeder freien Funktion.</param>
+    private TempId? LowerImportCall(ImportId target, Expr[] arguments, Span span,
+        TempId? receiver = null)
     {
         var import = _imports.Used[target.Value];
-        if (arguments.Length != import.ParamTypes.Length)
+        var offset = receiver is null ? 0 : 1;
+
+        if (arguments.Length + offset != import.ParamTypes.Length)
             throw NotSupported($"call to '{import.Name}' with default or variadic arguments", span);
 
-        var args = new TempId[arguments.Length];
-        for (var i = 0; i < arguments.Length; i++) args[i] = LowerExpr(arguments[i]);
+        var args = new TempId[arguments.Length + offset];
+        if (receiver is { } self) args[0] = self;
+        for (var i = 0; i < arguments.Length; i++) args[i + offset] = LowerExpr(arguments[i]);
 
         if (IsVoid(import.ReturnType))
         {

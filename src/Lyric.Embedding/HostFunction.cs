@@ -52,8 +52,30 @@ internal sealed class HostFunction
     /// <exception cref="ArgumentException">Ein Parameter- oder Rueckgabetyp kann die Grenze nicht
     /// ueberqueren. Die Meldung nennt ihn — E3 traegt dieselben Typen wie E2, also Skalare und
     /// Strings.</exception>
+    /// <summary>Eine <b>Methode</b> auf einem Host-Typ: der Empfaenger ist Parameter 0 (ADR-014),
+    /// und die erzeugte Deklaration steht im Klassenrumpf statt auf Modulebene.</summary>
+    public static HostFunction Method(string owner, string name, Delegate implementation,
+        bool mutates, IReadOnlyDictionary<Type, string> hostTypes)
+    {
+        var function = From(name, implementation, hostTypes, skipFirstParameter: true,
+            mutates: mutates);
+
+        // Der Empfaenger muss der registrierte Typ sein — sonst haette der Host eine Methode auf
+        // 'Entity' geschrieben, die ein 'Sprite' erwartet, und das faellt sonst erst beim Binden
+        // auf.
+        var receiver = implementation.Method.GetParameters().FirstOrDefault();
+        if (receiver is null || !hostTypes.TryGetValue(receiver.ParameterType, out var actual)
+            || !string.Equals(actual, owner, StringComparison.Ordinal))
+            throw new ArgumentException(
+                $"host method '{owner}.{name}': the first parameter must be the receiver of type "
+                + $"'{owner}'");
+
+        return function;
+    }
+
     public static HostFunction From(string name, Delegate implementation,
-        IReadOnlyDictionary<Type, string> hostTypes)
+        IReadOnlyDictionary<Type, string> hostTypes, bool skipFirstParameter = false,
+        bool mutates = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(implementation);
@@ -61,23 +83,35 @@ internal sealed class HostFunction
         var method = implementation.Method;
         var parameters = method.GetParameters();
 
+        // Der Empfaenger einer Methode steht im .NET-Delegaten vorn und in der Lyric-Deklaration
+        // gar nicht — dort ist er 'this'. Die Typen brauchen ihn trotzdem: die Registry bindet
+        // gegen die gelowerte Signatur, und die traegt ihn als Parameter 0.
+        var declared = skipFirstParameter ? parameters.Skip(1).ToArray() : parameters;
+
         var tags = new BytecodeType[parameters.Length];
-        var text = new StringBuilder("pub fn ").Append(name).Append('(');
+        var text = new StringBuilder("pub ")
+            .Append(mutates ? "mut fn " : "fn ").Append(name).Append('(');
 
         for (var i = 0; i < parameters.Length; i++)
-        {
             tags[i] = TypeOf(parameters[i].ParameterType, name, parameters[i].Name ?? $"p{i}",
                 hostTypes);
+
+        for (var i = 0; i < declared.Length; i++)
+        {
             if (i > 0) text.Append(", ");
-            text.Append(parameters[i].Name ?? $"p{i}").Append(": ")
-                .Append(Marshal.Describe(tags[i]));
+            var tag = tags[skipFirstParameter ? i + 1 : i];
+            text.Append(declared[i].Name ?? $"p{i}").Append(": ").Append(Marshal.Describe(tag));
         }
 
         var returnType = method.ReturnType == typeof(void)
             ? BytecodeType.Scalar(TypeTag.Void)
             : TypeOf(method.ReturnType, name, "the return value", hostTypes);
 
-        text.Append("): ").Append(Marshal.Describe(returnType)).Append(';');
+        // Das ';,' ist kein Tippfehler: §3.2s Member-Trenner ist fuer Block-Rumpfe geschrieben,
+        // und eine bodylose Methode braucht beides. In ERZEUGTEM Code ist das ertraeglich —
+        // niemand tippt es. Als Wart steht es in STATUS.
+        text.Append("): ").Append(Marshal.Describe(returnType))
+            .Append(skipFirstParameter ? ";," : ";");
 
         return new HostFunction(name, implementation, tags,
             parameters.Select(p => p.ParameterType).ToArray(), returnType, text.ToString());

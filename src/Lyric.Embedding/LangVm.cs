@@ -38,6 +38,8 @@ public sealed class LangVm
     private readonly NativeRegistry _natives;
     private readonly Dictionary<string, HostFunction> _hostFunctions = new(StringComparer.Ordinal);
     private readonly Dictionary<Type, string> _hostTypes = [];
+    private readonly Dictionary<string, List<HostFunction>> _hostMethods =
+        new(StringComparer.Ordinal);
 
     /// <param name="options">Voreinstellung: <b>Sandbox</b> — keine Capability, keine Ausgabe.
     /// Siehe <see cref="HostOptions"/>.</param>
@@ -66,7 +68,11 @@ public sealed class LangVm
     /// Entity wurde zerstoert" —, registriert dafuer eine eigene Funktion.</para>
     /// </summary>
     /// <exception cref="ArgumentException">Der Name oder der Typ ist schon vergeben.</exception>
-    public void RegisterType<T>(string name) where T : class
+    /// <param name="configure">Was ein Skript mit dem Typ tun darf. Ohne Konfigurator ist er
+    /// rein opak — weiterreichbar und sonst nichts; freie Funktionen (<see cref="RegisterFunction"/>)
+    /// koennen trotzdem damit arbeiten.</param>
+    public void RegisterType<T>(string name, Action<HostTypeBuilder<T>>? configure = null)
+        where T : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
@@ -79,6 +85,31 @@ public sealed class LangVm
             throw new ArgumentException(
                 $"'{typeof(T).Name}' is already registered as '{_hostTypes[typeof(T)]}'",
                 nameof(name));
+
+        if (configure is null) return;
+
+        var builder = new HostTypeBuilder<T>();
+        configure(builder);
+
+        var methods = new List<HostFunction>();
+        foreach (var (methodName, implementation, mutates) in builder.Methods)
+        {
+            var method = HostFunction.Method(name, methodName, implementation, mutates, _hostTypes);
+
+            if (methods.Any(m => string.Equals(m.Name, method.Name, StringComparison.Ordinal)))
+                throw new ArgumentException(
+                    $"'{name}' already has a method named '{methodName}'", nameof(configure));
+
+            methods.Add(method);
+
+            // Der Name folgt derselben Mangling-Regel wie jede andere Methode:
+            // <modul>.<Typ>.<methode>. Dass er hier hingeschrieben statt berechnet wird, ist die
+            // eine Doppelung dieses Slices — ein Test haelt beide Seiten aneinander.
+            _natives.RegisterWithTypes($"{HostModule}.{name}.{methodName}",
+                method.ParameterTypes, method.ReturnType, method.Bridge);
+        }
+
+        _hostMethods[name] = methods;
     }
 
     /// <summary>
@@ -129,23 +160,40 @@ public sealed class LangVm
             // die eine Stelle, an der das nicht mehr gilt.
             var types = string.Join(Environment.NewLine, _hostTypes.Values
                 .OrderBy(n => n, StringComparer.Ordinal)
-                // Eine LEERE Klasse in einem nativen Modul ist ein Host-Typ (ADR-026). Der
-                // leere Rumpf ist die Aussage: es gibt kein Layout, das dieses Modul kennt.
-                .Select(n => $"pub class {n} {{ }}"));
+                // Eine Klasse OHNE FELDER in einem nativen Modul ist ein Host-Typ (ADR-026): es
+                // gibt kein Layout, das dieses Modul kennt. Methoden aendern daran nichts — sie
+                // sind Natives und liegen beim Host.
+                .Select(DeclareType));
 
             var declarations = string.Join(Environment.NewLine, _hostFunctions.Values
                 .OrderBy(f => f.Name, StringComparer.Ordinal)
                 .Select(f => f.Declaration));
 
+            // Leere Abschnitte fallen weg: ein Modul ohne Typen soll nicht mit zwei Leerzeilen
+            // anfangen. Es ist erzeugter Code, aber ein Host DRUCKT ihn (HostModuleSource ist
+            // oeffentlich, weil er die beste Antwort auf "welche Signatur?" ist).
+            var body = string.Join(Environment.NewLine + Environment.NewLine,
+                new[] { types, declarations }.Where(part => part.Length > 0));
+
             return $"""
                 // Erzeugt von LangVm — was der Host diesem Skript anbietet.
                 module {HostModule};
 
-                {types}
-
-                {declarations}
+                {body}
                 """;
         }
+    }
+
+    private string DeclareType(string name)
+    {
+        if (!_hostMethods.TryGetValue(name, out var methods) || methods.Count == 0)
+            return $"pub class {name} {{ }}";
+
+        var body = string.Join(Environment.NewLine, methods
+            .OrderBy(m => m.Name, StringComparer.Ordinal)
+            .Select(m => "    " + m.Declaration));
+
+        return $"pub class {name} {{{Environment.NewLine}{body}{Environment.NewLine}}}";
     }
 
     /// <summary>
