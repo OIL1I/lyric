@@ -181,9 +181,12 @@ Punkt für Punkt abzuarbeiten — nach der Regel, an der M9 gescheitert ist.
 
 **Prozess (CONTRIBUTING):**
 
-- **Vier Meilenstein-Tags fehlen**: `m5-complete`, `m7-complete`, `m8-complete`, `m10-complete`.
-  Rule 3 verlangt sie; die Meilensteine sind fertig, die Tags fehlen. Dazu `v0.5.0` (laut
-  §Releases nach M7).
+- ~~Meilenstein-Tags~~ **erledigt** (2026-08-11): `m5-complete`, `m7-complete`, `m8-complete`,
+  `m10-complete` und `v0.5.0` sind nachgezogen. Sie zeigen auf die **historischen**
+  Abschluss-Commits, nicht auf HEAD — ein Tag markiert, wann ein Meilenstein fertig war, und ihn
+  ans Ende zu hängen machte die Historie unbrauchbar. (`m9-complete` ist die begründete Ausnahme:
+  er wurde bewusst verschoben, weil M9 zu dem Zeitpunkt inhaltlich *nicht* fertig war.) Rule 3 ist
+  damit für M0–M10 erfüllt.
 - **`CHANGELOG.md`** — §Releases: *„From `v1.0.0` on: tag, GitHub release page, and a
   `CHANGELOG.md` entry."* Vor v1.0 gab es bewusst keinen; ab v1.0 gibt es ihn.
 - **GitHub-Release-Seite** zum `v1.0.0`-Tag.
