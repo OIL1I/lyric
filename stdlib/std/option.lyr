@@ -124,12 +124,13 @@ pub fn iter<T>(o: ?T): OptionIterator<T> {
 // also DASS etwas fehlte, nie WAS. Bei drei Optionals in einer Funktion ist das der Unterschied
 // zwischen einer Zeile und einer Suche.
 //
-// Das `!` nach dem `panic` ist keine doppelte Pruefung aus Versehen: `panic` hat zwar den
-// Rueckgabetyp `never` (§9), aber die Flussanalyse nutzt ihn nicht — ohne das `!` ist `o` hier
-// weiterhin `?T` und die Zuweisung ein Typfehler. Vermerkt in STATUS.md §Noch offen.
+// Kein `o!` nach dem `panic` noetig: `panic` hat den Rueckgabetyp `never` (§9), und die
+// Flussanalyse engt `o` dahinter auf `T` ein. Bis 2026-08-11 galt das nur fuer das eingebaute
+// `panic` und nicht fuer das importierte aus `std.core` — dieselbe Funktion unter zwei Symbolen,
+// von denen nur eines den Typ trug.
 pub fn expect<T>(o: ?T, message: string): T {
     if (o == null) {
         panic(message);
     }
-    return o!;
+    return o;
 }

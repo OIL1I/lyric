@@ -94,7 +94,14 @@ NullLit         = 'null' .
 
 String-Interpolation `f"hello {name}"` ist v1-Pflicht (anders als bei Oil). Die Format-Spec ist
 die von .NET und wird unverändert durchgereicht: `{x:N2}`, `{x:F3}`, `{x:D5}`, `{x:X}`, `{x:E2}`,
-`{x:P1}`. Für Typen, für die .NET keine Standardformate kennt (`string`, `bool`, `char`), ist die
+`{x:P1}`.
+
+Das `:` trennt die Spec **nur auf oberster Klammer-Ebene** des interpolierten Ausdrucks. Innerhalb
+von `( )`, `[ ]` oder `{ }` ist es ein gewöhnliches `:` — sonst wäre `f"{map(o, (n: int) => n)}"`
+kein gültiges Programm, weil die Parameter-Annotation eines Lambdas die Spec eröffnete. Dieselbe
+Auflösung wie bei `f<a>(b)` in §6.1: die Mehrdeutigkeit wird an der Verschachtelungstiefe
+entschieden, nicht am Zeichen. *(Bis 2026-08-11 zählte der Lexer nur `{ }` — ein Lambda in einer
+Interpolation war ein Syntaxfehler.)* Für Typen, für die .NET keine Standardformate kennt (`string`, `bool`, `char`), ist die
 Spec eine **Breite**: `{name:10}` füllt rechts auf, `{name:-10}` links.
 
 Ausgabe ist immer **invariant**, nie kulturabhängig — dasselbe Programm gibt auf jeder Maschine
@@ -730,6 +737,14 @@ Die Typregeln der Operatoren (von der Sema durchgesetzt):
 - **Vergleiche/Logik** liefern `bool`; `&&`/`||` verlangen `bool`-Operanden.
 - **Nullable** (§7): `T` → `?T` implizit; `?T` → `T` nur via `!`, `??` oder
   Pattern-Match. Flow-Narrowing (`if (x != null)`) siehe §7.
+- **Zweig-Unifikation**: bei `IfExpr` (§6.2) und `MatchExpr` gibt es keinen vorgegebenen Zieltyp —
+  der Ergebnistyp entsteht aus den Zweigen. Ein `null`-Zweig macht den anderen optional:
+  `if (c) 5 else null` ist `?int`, `match (n) { 0 => null, _ => 99 }` ebenso. Ist der andere Zweig
+  bereits `?T`, bleibt es dabei — Optionals verschachteln nicht. Zwei Zweige ohne gemeinsamen Typ
+  sind weiterhin `LYR-SEM0016`.
+- **Eine deklarierte Funktion ist ein Wert** ihres Funktionstyps: `let f: fn(int) -> int = verdoppeln;`
+  und `map(xs, verdoppeln)` sind gültig. **Eine generische Funktion nicht** — ihre Typargumente
+  hätten keine Aufrufstelle, aus der sie kommen könnten; dort braucht es ein Lambda.
 
 ### 6.6 Numerische Laufzeit-Semantik
 

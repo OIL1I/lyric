@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2486 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2504 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -32,6 +32,30 @@ Stdlib-Liste aus M8b ist damit abgearbeitet: `std.error` und `std.coroutine` sin
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **Die vier Compiler-Lücken aus S9 sind zu** (2026-08-11). 2504 Tests grün.
+  - **Eine benannte Funktion ist jetzt ein Funktionswert**: `map(o, verdoppeln)` statt
+    `map(o, (n: int) => verdoppeln(n))`. Der Fix brauchte **weder Instruktion noch Opcode** —
+    `MakeClosure` nimmt sein Environment seit P6 optional, und die VM entscheidet am
+    `HasEnvironment`-Bit, ob Slot 0 belegt wird. Eine Funktion ohne Captures ist eine Closure ohne
+    Umgebung; es fehlte nur die eine Stelle im Lowering. Eine **generische** Funktion bleibt
+    abgelehnt, mit Begründung in der Meldung: ihre Typargumente hätten keine Aufrufstelle.
+  - **Ein Lambda in einer f-String-Interpolation parst.** Der Lexer zählte `{ }`, aber nicht
+    `( )` und `[ ]` — deshalb las er das `:` in `(n: int)` als Format-Spec-Trenner. Der Gegentest
+    ist der wichtigere: eine Spec auf oberster Ebene muss weiterhin trennen, sonst wäre der Fix
+    grün und hätte jede Format-Spec der Sprache stillgelegt.
+  - **`panic` divergiert jetzt auch importiert — und meine Diagnose war falsch.** Notiert war
+    „`never` ist für die Flussanalyse unsichtbar". Gemessen war es das **nicht**:
+    `Flow.AlwaysReturns` behandelt einen divergierenden `ExprStmt` seit jeher. Die Ursache war,
+    dass es `panic` **zweimal** gibt — als Builtin im Wurzel-Scope und als native Deklaration in
+    `std.core` —, und nur das Builtin trug `never`. Wer `import std.core { panic }` schrieb, bekam
+    ein `void`. Zwei Symbole, eine Bedeutung, eine Antwort. Die Umgehung in `std.option.expect`
+    (`return o!;` nach dem Panic) ist zurückgebaut.
+  - **Ein `null`-Zweig macht den anderen optional** — und der `match` hatte eine **zweite**
+    Unifikation, die den Fall ebenfalls nicht kannte. Gemeldet war nur der `if`-Fall; der andere
+    fiel beim Nachmessen des Fixes auf. Die Regel liegt jetzt in einer Funktion, die beide rufen.
+    Dazu die Lowering-Seite: `LowerIfExpr` lowerte seine Zweige **ohne** erwarteten Typ, also
+    scheiterte das `null` dort erneut — derselbe Sema/Backend-Riss wie schon elfmal.
 
 - [x] **M8b/S9 — `std.option`, drei Abbruch-Funktionen, `Exception`. `std.error` und
   `std.coroutine` sind gestrichen** (2026-08-10). 2486 Tests grün.
@@ -109,17 +133,6 @@ Stdlib-Liste aus M8b ist damit abgearbeitet: `std.error` und `std.coroutine` sin
     reicht, und genau diese Unklarheit hat zwei Regeln überleben lassen, die niemand mehr
     begründen konnte.
 
-- [x] **Flow-Narrowing im `if`-Ausdruck** (2026-08-09). `if (a == null) 0 else a` war ein
-  Typfehler, während `if (a == null) { return 0; } return a;` daneben funktionierte — derselbe
-  Beweis über denselben Wert, zwei Antworten.
-  - Die Maschinerie war **vollständig da** (`NarrowingFacts`, `Apply`); sie war an dieser einen
-    Stelle nicht angeschlossen. `CheckIfExpr` prüfte beide Zweige ohne Fakten.
-  - Der Snapshot muss zwischen den Zweigen **zurückgesetzt** werden: was im then-Zweig gilt, gilt
-    im else-Zweig gerade nicht.
-  - Ein Test hält fest, dass das Narrowing den Ausdruck **nicht verlässt** — sonst wäre es keine
-    Aussage über einen Zweig, sondern eine stillschweigende Umdeklaration.
-  - Die Umgehung in `std.fmt.ziffernZeichen` ist zurückgebaut.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -156,8 +169,8 @@ steht weiter aus.
 `std.os` und zuletzt `std.option` stehen (S1–S9); `std.error` und `std.coroutine` sind mit
 Begründung gestrichen statt geliefert.
 
-**Als Nächstes M10**, oder vorher die vier Compiler-Lücken unten — sie sind beim Bau von S9
-aufgefallen und treffen jede Funktion höherer Ordnung in der Stdlib, nicht nur `std.option`.
+**Die vier Compiler-Lücken aus S9 sind geschlossen** (2026-08-11). Damit ist der nächste Schritt
+**M10** — die Embedding-API.
 
 **Die Erreichbarkeitsanalyse ist da** — vorgezogen, weil `std.string` den Effekt zum ersten Mal
 schmerzhaft sichtbar gemacht hat: zwei Tests, die „ein Hello-World trägt keine String-Maschinerie"
@@ -190,25 +203,6 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 **Sprachlücken, vor v1 zu schließen:**
 
-- **Eine benannte Funktion ist kein Funktionswert.** `map(o, positiv)` ist
-  `LYR-IR0001: reference to 'positiv' (only parameters, locals and constants)`; nur Lambdas gehen,
-  also `map(o, (n: int) => positiv(n))`. **Das trifft jede Funktion höherer Ordnung in der
-  Stdlib** — die zwölf Adapter in `std.iter`, `sortBy` in `std.collections`, alles in
-  `std.option` — und nicht nur beim Schreiben: der Umweg ist die Form, die in jedem Beispiel
-  steht. Gefunden beim Bau von S9.
-- **Ein Lambda in einer f-String-Interpolation parst nicht.** `f"{map(o, (n: int) => n*2)}"`
-  scheitert mit `LYR-SEM0002` + `LYR-PAR0008`: das `:` in `(n: int)` wird als
-  Format-Spec-Trenner gelesen (§1.5). Dieselbe Mehrdeutigkeit wie `f<a>(b)` in §6.1, und
-  dieselbe Lösung — das `:` zählt nur auf Klammer-Tiefe 0. Trifft genau die Stelle, an der
-  jemand `map`/`filter` zuerst hinschreibt.
-- **`panic`s `never`-Rückgabetyp ist für die Flussanalyse unsichtbar.** Weder Narrowing
-  (`if (o == null) { panic(m); } return o;` → *cannot assign '?T' to 'T'*) noch
-  Rückgabe-Abdeckung (`if (o != null) { return o; } panic(m);` → `LYR-SEM0017`). Deshalb braucht
-  `std.option.expect` ein `return o!;` nach dem Panic — dieselbe Prüfung zweimal — und `todo`
-  ersetzt kein `return`. §9 nennt `never` als Rückgabetyp; heute ist er Dekoration.
-- **Ein `if`-Ausdruck vereinheitlicht `T` und `null` nicht zu `?T`**:
-  `if (n > 0) n * 10 else null` ist `LYR-SEM0016: incompatible branch types: 'int' vs 'null'`.
-  Die Widening-Regel `T` → `?T` (§4) greift an der Arm-Unifikation nicht.
 - **`b?.get()` geht nicht** — Optional-Chaining mit *Methodenaufruf*. Die Sema macht `?.get` zu
   einem `?fn() -> int` und stolpert dann über das `()`. Feldzugriff (`b?.v`) funktioniert.
 - **Die Konformanz prüft die Definition statt der Typargumente**: `Ones :: [Src<int>]` würde auch
@@ -301,7 +295,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`stdlib: std.option, Abbruch-Funktionen und Exception (M8b/S9)`
+`compiler: die vier Luecken aus S9 geschlossen`
 
 ---
 

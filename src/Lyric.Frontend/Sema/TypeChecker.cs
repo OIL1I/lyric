@@ -77,7 +77,28 @@ public sealed class TypeChecker
         // andere an ein Interface aus der Stdlib.
         _indexable = comp.FindModule(["std", "collections"])?.Members
             .LookupLocal("Indexable") as TypeSymbol;
+
+        // `panic` gibt es ZWEIMAL: als Builtin im Wurzel-Scope (damit es ohne Import aufrufbar
+        // ist) und als native Deklaration in `std.core` (die ihm Signatur und Native-Bindung
+        // gibt). Beide meinen dieselbe Funktion, aber nur das Builtin trug den `never`-Typ —
+        // wer `import std.core { panic }` schrieb, bekam ein `void` zurueck, und damit sah die
+        // Flussanalyse die Divergenz nicht.
+        //
+        // Gemessen am 2026-08-11: `if (o != null) { return o; } panic(m);` war `LYR-SEM0017`,
+        // dieselbe Funktion mit dem ungeimportierten `panic` war in Ordnung. Zwei Symbole, eine
+        // Bedeutung, eine Antwort — die Stelle, an der `never` entsteht, muss beide kennen.
+        _stdPanic = comp.FindModule(["std", "core"])?.Members
+            .LookupLocal("panic") as FunctionSymbol;
     }
+
+    /// <summary>Die native Deklaration aus <c>std.core</c>. Siehe Konstruktor.</summary>
+    private readonly FunctionSymbol? _stdPanic;
+
+    /// <summary>Ist <paramref name="f"/> das <c>panic</c> aus §9 — egal ueber welchen der beiden
+    /// Namen es erreicht wurde?</summary>
+    private bool IsPanic(FunctionSymbol f) =>
+        (_panic is not null && ReferenceEquals(f, _panic))
+        || (_stdPanic is not null && ReferenceEquals(f, _stdPanic));
 
     public TypeResult Check()
     {
@@ -930,7 +951,7 @@ public sealed class TypeChecker
     {
         var fn = (FunctionDecl)f.Declaration!;
         var ps = fn.Parameters.Select(p => ResolveType(p.Type, _comp.Builtins)).ToArray();
-        var ret = ReferenceEquals(f, _panic) ? LyrType.Never // §9: panic hat den unbenennbaren Typ never
+        var ret = IsPanic(f) ? LyrType.Never // §9: panic hat den unbenennbaren Typ never
             : fn.ReturnType is not null ? ResolveType(fn.ReturnType, _comp.Builtins) : LyrType.Void;
         return new FnType(ps, ret);
     }
@@ -1959,11 +1980,45 @@ public sealed class TypeChecker
         return Unify(iff.Then, thenT, iff.Else, elseT, iff.Span);
     }
 
+    /// <summary>
+    /// Ein <c>null</c>-Zweig macht den anderen optional: <c>if (c) 5 else null</c> ist
+    /// <c>?int</c>. Liefert <c>null</c>, wenn keine Seite das <c>null</c>-Literal ist.
+    ///
+    /// <para>Der Fall geht ueber <c>IsAssignable</c> in <b>beide</b> Richtungen nicht — <c>null</c>
+    /// ist kein <c>int</c>, und <c>int</c> ist kein <c>null</c>. Die Widening-Regel
+    /// <c>T</c> → <c>?T</c> (§4) steht in der Spec, griff aber nur dort, wo ein Zieltyp bereits
+    /// feststand (Zuweisung, Parameter, Rueckgabe). Bei einer Arm-Unifikation gibt es keinen —
+    /// der Ergebnistyp entsteht erst hier.</para>
+    ///
+    /// <para>Steht hier und nicht zweimal, weil <c>if</c>-Ausdruck und <c>match</c>-Ausdruck
+    /// getrennte Unifikationen haben. Beim Fund (M8b/S9) war nur der <c>if</c>-Fall gemeldet; der
+    /// <c>match</c>-Fall fiel beim Nachmessen des Fixes auf. Dieselbe Frage an zwei Stellen mit
+    /// zwei Antworten — das Muster, das dieses Projekt achtmal Zeit gekostet hat.</para>
+    /// </summary>
+    private static LyrType? WidenAgainstNull(LyrType a, LyrType b)
+    {
+        if (a is NullType && b is not NullType) return b is Optional ? b : new Optional(b);
+        if (b is NullType && a is not NullType) return a is Optional ? a : new Optional(a);
+        return null;   // auch der Fall null/null: dort bleibt es beim `Equal` weiter oben
+    }
+
     private LyrType Unify(Expr ae, LyrType a, Expr be, LyrType b, Span span)
     {
         if (LyrType.Equal(a, b)) return a;
         if (a.IsError) return b;
         if (b.IsError) return a;
+
+        // Ein `null`-Zweig macht den anderen optional: `if (c) 5 else null` ist `?int`.
+        //
+        // Der Fall geht ueber `IsAssignable` nicht, und zwar in beide Richtungen nicht — `null`
+        // ist nicht `int`, und `int` ist nicht `null`. Die Widening-Regel `T` -> `?T` (§4) steht
+        // in der Spec, griff aber nur dort, wo ein Zieltyp schon feststand (Zuweisung, Parameter,
+        // Rueckgabe). Bei der Arm-Unifikation gibt es keinen, also musste er hier entstehen.
+        //
+        // `?T` gegen `T` braucht keine eigene Zeile: dort traegt `IsAssignable` das Widening
+        // bereits, weil eine der beiden Seiten der fertige Zieltyp ist.
+        if (WidenAgainstNull(a, b) is { } widened) return widened;
+
         if (IsAssignable(be, b, a)) return a;
         if (IsAssignable(ae, a, b)) return b;
         _de.Report("LYR-SEM0016", Severity.Error, span, $"incompatible branch types: '{TypeFacts.Display(a)}' vs '{TypeFacts.Display(b)}'");
@@ -2153,6 +2208,7 @@ public sealed class TypeChecker
             if (bodies[i].IsError) continue;
             if (result.IsError) { result = bodies[i]; continue; }
             if (LyrType.Equal(result, bodies[i])) continue;
+            if (WidenAgainstNull(result, bodies[i]) is { } widened) { result = widened; continue; }
             _de.Report("LYR-SEM0016", Severity.Error, span, $"match arms have incompatible types: '{TypeFacts.Display(result)}' vs '{TypeFacts.Display(bodies[i])}'");
             break;
         }

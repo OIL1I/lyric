@@ -1555,6 +1555,37 @@ internal sealed class FunctionLowerer
                 return Narrow(expr, capturedValue, capturedType);
             }
 
+            // Eine deklarierte Funktion als WERT: 'map(o, verdoppeln)' statt
+            // 'map(o, (n: int) => verdoppeln(n))'.
+            //
+            // Sie ist eine Closure ohne Umgebung — mehr nicht. 'MakeClosure' nimmt sein
+            // Environment seit P6 optional (der haeufige Fall '(x) => x > 0' faengt nichts), und
+            // die VM entscheidet am 'HasEnvironment'-Bit, ob Slot 0 belegt wird. Es brauchte
+            // also weder eine Instruktion noch eine Opcode-Aenderung, sondern nur diese Stelle:
+            // bis 2026-08-11 stand hier ein 'LYR-IR0001', obwohl die Sema den Ausdruck laengst
+            // als 'fn(…) -> …' typte.
+            //
+            // 'Reachability' kennt 'MakeClosure' bereits als Wurzel — eine nur so referenzierte
+            // Funktion faellt der Erreichbarkeitsanalyse also nicht zum Opfer.
+            if (symbol is FunctionSymbol function)
+            {
+                // VOR der Typberechnung: `TypeOfExpr` auf einer generischen Signatur wirft selbst,
+                // und zwar mit „type parameter 'T' reached lowering unsubstituted" — einer
+                // Meldung ueber das Innenleben des Compilers statt ueber das Programm.
+                if (function.Declaration is FunctionDecl { Generics.Length: > 0 })
+                    throw NotSupported(
+                        $"a generic function ('{expr.Name}') as a value — the type arguments have "
+                        + "no call site to come from; wrap it in a lambda", expr.Span);
+
+                if (TypeOfExpr(expr) is not IrFunctionType signature
+                    || !TryResolveFunction(function, out var target))
+                    throw NotSupported($"reference to '{expr.Name}' as a value", expr.Span);
+
+                var closure = _slots.NewTemp(signature);
+                _b.Emit(new MakeClosure(closure, target, null, signature, expr.Span));
+                return closure;
+            }
+
             throw NotSupported($"reference to '{expr.Name}' (only parameters, locals and constants)",
                 expr.Span);
         }
@@ -1715,12 +1746,15 @@ internal sealed class FunctionLowerer
         var elseBlock = _b.NewBlock();
         _b.Seal(new CondBranch(condition, thenBlock, elseBlock, expr.Span));
 
+        // `LowerExprAs` und nicht `LowerExpr`: der Zweigtyp muss nicht der Ergebnistyp sein.
+        // `if (c) 5 else null` ist `?int`, und beide Zweige brauchen den Zieltyp — das `null`,
+        // weil es keinen eigenen hat, und die `5`, weil sie verpackt werden muss.
         _b.SwitchTo(thenBlock);
-        _b.Emit(new StoreLocal(slot, LowerExpr(expr.Then), expr.Then.Span));
+        _b.Emit(new StoreLocal(slot, LowerExprAs(expr.Then, type), expr.Then.Span));
         var thenExit = _b.CurrentId;
 
         _b.SwitchTo(elseBlock);
-        _b.Emit(new StoreLocal(slot, LowerExpr(expr.Else), expr.Else.Span));
+        _b.Emit(new StoreLocal(slot, LowerExprAs(expr.Else, type), expr.Else.Span));
         var elseExit = _b.CurrentId;
 
         var mergeBlock = _b.NewBlock();

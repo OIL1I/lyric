@@ -23,7 +23,21 @@ public sealed class Lexer
     private sealed class ModeFrame
     {
         public required LexMode Mode { get; init; }
-        public int BraceDepth { get; set; } // nur für FStringInterp genutzt
+
+        // Alle drei nur für FStringInterp genutzt. Der interpolierte Ausdruck endet am '}' und
+        // wechselt am ':' in die Format-Spec — beides gilt aber nur, wenn keine Klammer offen ist.
+        //
+        // Die Klammern zu zählen war der Fix für einen Fund aus M8b/S9: `f"{map(o, (n: int) => …)}"`
+        // war ein Syntaxfehler, weil das ':' der Parameter-Annotation als Spec-Trenner gelesen
+        // wurde. Geschweifte Klammern zählte der Lexer bereits; runde und eckige nicht, und genau
+        // die bringt ein Lambda mit.
+        public int BraceDepth { get; set; }
+        public int ParenDepth { get; set; }
+        public int BracketDepth { get; set; }
+
+        /// <summary>Steht der Ausdruck auf oberster Ebene — also endet ein '}' hier wirklich die
+        /// Interpolation, und trennt ein ':' hier wirklich die Format-Spec ab?</summary>
+        public bool AtTopLevel => BraceDepth == 0 && ParenDepth == 0 && BracketDepth == 0;
     }
 
     private readonly Stack<ModeFrame> _modeStack = new();
@@ -148,7 +162,32 @@ public sealed class Lexer
                 return new Token(TokenKind.FStringInterpEnd, new Span(_file, _pos - 1, _pos));
             }
 
-            if (Current == ':' && CurrentFrame.BraceDepth == 0)
+            // Runde und eckige Klammern mitzählen, damit '}' und ':' oben und unten dieselbe Frage
+            // beantworten: steht hier die oberste Ebene des interpolierten Ausdrucks?
+            //
+            // Eine schliessende Klammer ohne oeffnende zaehlt NICHT ins Negative — sie ist ein
+            // Syntaxfehler, den der Parser meldet, und ein negativer Zaehler machte daraus einen
+            // Lexer-Fehler an einer anderen Stelle.
+            if (Current is '(' or '[')
+            {
+                var opened = Current;
+                _pos++;
+                if (opened == '(') CurrentFrame.ParenDepth++; else CurrentFrame.BracketDepth++;
+                return new Token(opened == '(' ? TokenKind.LParen : TokenKind.LBracket,
+                    new Span(_file, _pos - 1, _pos));
+            }
+
+            if (Current is ')' or ']')
+            {
+                var closed = Current;
+                _pos++;
+                if (closed == ')') { if (CurrentFrame.ParenDepth > 0) CurrentFrame.ParenDepth--; }
+                else { if (CurrentFrame.BracketDepth > 0) CurrentFrame.BracketDepth--; }
+                return new Token(closed == ')' ? TokenKind.RParen : TokenKind.RBracket,
+                    new Span(_file, _pos - 1, _pos));
+            }
+
+            if (Current == ':' && CurrentFrame.AtTopLevel)
             {
                 _pos++;
                 _modeStack.Push(new ModeFrame { Mode = LexMode.FStringFormatSpec });
