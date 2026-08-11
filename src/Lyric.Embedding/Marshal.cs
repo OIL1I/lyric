@@ -58,9 +58,18 @@ internal static class Marshal
     }
 
     /// <summary>Ein Lyric-Wert als .NET-Wert vom Typ <typeparamref name="T"/>.</summary>
-    public static T FromLyric<T>(LyrValue value, BytecodeType actual, string what)
+    public static T FromLyric<T>(LyrValue value, BytecodeType actual, string what) =>
+        (T)FromLyric(value, actual, typeof(T), what)!;
+
+    /// <summary>
+    /// Wie <see cref="FromLyric{T}"/>, aber mit dem Zieltyp als Wert.
+    ///
+    /// <para>Gebraucht fuer Host-Funktionen (E3): deren Parametertypen stehen erst zur Laufzeit
+    /// fest, und ein <c>FromLyric&lt;object&gt;</c> reichte nicht — es lieferte fuer ein
+    /// <c>int32</c> ein <c>long</c>, und der Delegat erwartet ein <c>int</c>.</para>
+    /// </summary>
+    public static object? FromLyric(LyrValue value, BytecodeType actual, Type wanted, string what)
     {
-        var wanted = typeof(T);
 
         // 'void' hat keinen Wert. Ein Host, der trotzdem einen will, hat die Signatur falsch
         // gelesen — und ein stiller default(T) verstellte ihm den Blick darauf.
@@ -84,11 +93,11 @@ internal static class Marshal
             _ => value.AsI64,
         };
 
-        if (boxed is T exact) return exact;
+        if (wanted.IsInstanceOfType(boxed)) return boxed;
 
         try
         {
-            return (T)Convert.ChangeType(boxed, wanted, CultureInfo.InvariantCulture);
+            return Convert.ChangeType(boxed, wanted, CultureInfo.InvariantCulture);
         }
         catch (Exception cause) when (cause is InvalidCastException or OverflowException
                                           or FormatException)

@@ -697,6 +697,19 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 > mit beiden Seiten, `lyrembed` ist das zweite. **Die Zeile in §Zentrale Komponenten ist damit
 > falsch und hier korrigiert.**
 >
+> **E3 ist erledigt** (2026-08-11): `RegisterFunction` leitet die Lyric-Signatur aus dem
+> .NET-Delegaten ab und schreibt sie als bodylose `pub fn` in ein synthetisches Modul **`host`**,
+> das der Compiler wie jede Stdlib-Deklaration sieht. Der Native-Seam aus M6 traegt sie — gebunden
+> beim Laden ueber den Namen. Kein zweiter Mechanismus.
+>
+> **Das Skript muss `host` importieren**, und damit ist `Doku.md` §21 endgueltig als nicht baubar
+> erwiesen: dort ruft ein Skript `playSound("hit")` ohne Import. §2.2 kennt keinen impliziten
+> Namensraum, und einen fuer genau eine Sorte Funktion einzufuehren waere ein Sonderweg. §21 wird
+> in E6 gegen das Gebaute neu geschrieben.
+>
+> Eine Host-Funktion kostet **keine Capability** — der Host hat sie selbst hingestellt. Die Stufen
+> aus ADR-007 gelten der Stdlib; was darueber hinausgeht, entscheidet der Host einzeln.
+>
 > **E2 ist erledigt** (2026-08-11): `ScriptInstance.Call<T>`/`CallVoid` und die
 > Skalar-Marshalling-Schicht (alle vierzehn Skalartypen plus `string`, verlustfrei oder gar nicht).
 > **Abweichung von der Skizze oben, mit Grund**: `Call` sitzt auf einer `ScriptInstance`, nicht auf

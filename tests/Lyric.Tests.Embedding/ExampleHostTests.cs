@@ -106,6 +106,20 @@ public class ExampleHostTests
         Assert.Contains("LYR-EMB0005", output, StringComparison.Ordinal);
     }
 
+    /// <summary>Das E3-Gate: das Skript ruft zurueck in den Host, und der Host sieht den
+    /// Seiteneffekt.</summary>
+    [Fact]
+    public void The_example_host_lets_the_script_call_back_into_it()
+    {
+        var (_, output) = RunHost();
+
+        // Die erzeugte Deklaration steht im Beispiel — sie ist die Antwort auf "welche Signatur
+        // hat meine Funktion in Lyric?".
+        Assert.Contains("pub fn playSound(name: string): void;", output, StringComparison.Ordinal);
+        Assert.Contains("explodieren(8) = 4", output, StringComparison.Ordinal);
+        Assert.Contains("gespielt: boom, nachhall", output, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_example_host_shows_a_compile_error_as_a_diagnostic()
     {

@@ -104,7 +104,34 @@ catch (ScriptException mismatch)
     Console.WriteLine($"abgelehnt: {mismatch.Code} - {mismatch.Message}");
 }
 
-// 5. Ein Uebersetzungsfehler kommt als Daten zurueck, nicht als Text.
+// 5. Der Host stellt dem Skript eigene Funktionen hin (E3). Sie kosten KEINE Capability — der
+//    Host hat sie ja selbst hingestellt.
+Console.WriteLine();
+Console.WriteLine("== Host-Funktionen ==");
+
+var engine = new LangVm(new HostOptions { StdlibRoot = stdlib, Output = Console.Out });
+var gespielt = new List<string>();
+
+engine.RegisterFunction("playSound", (string name) => gespielt.Add(name));
+engine.RegisterFunction("zufall", (long grenze) => grenze / 2);   // deterministisch fuers Beispiel
+
+// Was der Host anbietet, steht als Lyric-Code da — erzeugt, nicht abgeschrieben:
+Console.WriteLine(engine.HostModuleSource);
+
+var mod2 = engine.Instantiate(engine.Compile("""
+    import host { playSound, zufall };
+
+    pub fn explodieren(staerke: int): int {
+        playSound("boom");
+        if (staerke > 5) { playSound("nachhall"); }
+        return zufall(staerke);
+    }
+    """, "effekte"));
+
+Console.WriteLine($"explodieren(8) = {mod2.Call<long>("explodieren", 8)}");
+Console.WriteLine($"gespielt: {string.Join(", ", gespielt)}");
+
+// 6. Ein Uebersetzungsfehler kommt als Daten zurueck, nicht als Text.
 Console.WriteLine();
 Console.WriteLine("== ein kaputtes Skript ==");
 try

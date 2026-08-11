@@ -82,6 +82,23 @@ public static class SourceCompiler
         var stdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
             sources, diagnostics);
 
+        // Erst die mitgegebenen Module, dann die Platte. Verkettet und nicht als zweiter
+        // Lader-Mechanismus daneben: 'Compilation' kennt genau einen Delegaten, und das soll so
+        // bleiben.
+        var provided = options.NativeModules;
+        if (provided is { Count: > 0 })
+        {
+            var fromDisk = stdlib;
+            stdlib = modulePath =>
+            {
+                var name = string.Join('.', modulePath);
+                if (!provided.TryGetValue(name, out var text)) return fromDisk(modulePath);
+
+                var id = sources.AddVirtual(name, text);
+                return (new Parser(sources, id, diagnostics).ParseModule(), true);
+            };
+        }
+
         var compilation = new Compilation(sources, diagnostics)
         {
             // Source-first: die Stdlib ist gewoehnlicher Lyric-Quelltext und wird bei Bedarf geladen.
@@ -188,6 +205,21 @@ public sealed record CompilerOptions
     /// dann ohne jede Ausgabe-Abhaengigkeit, was die Bibliothek fuer M10s Embedding-API
     /// benutzbar haelt.</summary>
     public TerminalOutput? Progress { get; init; }
+
+    /// <summary>
+    /// Zusaetzliche <b>native</b> Module, die nicht auf der Platte liegen: Modulpfad
+    /// (<c>a.b.c</c>) → Lyric-Quelltext.
+    ///
+    /// <para>Gebraucht von <c>LangVm.RegisterFunction</c> (M10/E3): eine Host-Funktion braucht
+    /// eine <b>Deklaration</b>, damit der Compiler ihre Signatur kennt — genau wie jedes Native
+    /// der Stdlib, das als bodylose <c>pub fn</c> in einer <c>.lyr</c>-Datei steht. Der
+    /// Unterschied ist allein, dass diese Datei im Speicher liegt.</para>
+    ///
+    /// <para>Sie werden <b>vor</b> der Stdlib befragt, damit ein Host-Modul ein gleichnamiges auf
+    /// der Platte verdeckt statt umgekehrt. Ueberschreiben ist hier die Absicht: der Host
+    /// entscheidet, was sein Skript sieht.</para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? NativeModules { get; init; }
 }
 
 /// <summary>

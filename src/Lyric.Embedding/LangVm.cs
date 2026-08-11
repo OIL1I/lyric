@@ -30,8 +30,13 @@ namespace Lyric.Embedding;
 /// </summary>
 public sealed class LangVm
 {
+    /// <summary>Der Modulname, unter dem registrierte Host-Funktionen sichtbar sind. Ein Skript
+    /// schreibt <c>import host;</c> oder <c>import host { playSound };</c>.</summary>
+    public const string HostModule = "host";
+
     private readonly HostOptions _options;
     private readonly NativeRegistry _natives;
+    private readonly Dictionary<string, HostFunction> _hostFunctions = new(StringComparer.Ordinal);
 
     /// <param name="options">Voreinstellung: <b>Sandbox</b> — keine Capability, keine Ausgabe.
     /// Siehe <see cref="HostOptions"/>.</param>
@@ -45,6 +50,67 @@ public sealed class LangVm
 
     /// <summary>Was Skripte dieser VM duerfen.</summary>
     public Capability Capabilities => _options.Capabilities;
+
+    /// <summary>
+    /// Macht eine .NET-Funktion fuer Skripte dieser VM sichtbar — als <c>host.&lt;name&gt;</c>.
+    ///
+    /// <para><b>Vor dem Uebersetzen aufzurufen.</b> Die Signatur wird aus dem Delegaten abgeleitet
+    /// und als Deklaration in ein synthetisches Modul <c>host</c> geschrieben; der Compiler sieht
+    /// sie dort wie jede Stdlib-Deklaration. Wer nach dem <see cref="Compile"/> registriert, hat
+    /// ein Skript uebersetzt, das den Namen noch nicht kannte.</para>
+    ///
+    /// <para>Das Skript muss <c>host</c> <b>importieren</b>. §2.2 kennt keinen impliziten
+    /// Namensraum, und einen dafuer einzufuehren waere ein Sonderweg fuer genau eine Sorte
+    /// Funktion — <c>Doku.md</c> §21 zeigte das bis heute anders, und das war nie baubar.</para>
+    /// </summary>
+    /// <exception cref="ArgumentException">Ein Parameter- oder Rueckgabetyp kann die Grenze nicht
+    /// ueberqueren, oder der Name ist schon vergeben.</exception>
+    public void RegisterFunction(string name, Delegate implementation)
+    {
+        var function = HostFunction.From(name, implementation);
+
+        // Kein stilles Ueberschreiben. Zwei Registrierungen desselben Namens sind ein Fehler im
+        // Host, und welche gewinnt, waere sonst eine Frage der Reihenfolge.
+        if (!_hostFunctions.TryAdd(name, function))
+            throw new ArgumentException(
+                $"a host function named '{name}' is already registered", nameof(name));
+
+        var qualified = $"{HostModule}.{name}";
+        if (function.ReturnsValue)
+            _natives.Register(qualified, function.ParameterTags, function.ReturnTag,
+                function.Bridge);
+        else
+            _natives.Register(qualified, function.ParameterTags, TypeTag.Void, function.Bridge);
+    }
+
+    /// <summary>Der Quelltext des synthetischen <c>host</c>-Moduls — <c>null</c>, solange nichts
+    /// registriert ist.
+    ///
+    /// <para>Oeffentlich, weil er die beste Antwort auf „welche Signatur hat meine Funktion in
+    /// Lyric?" ist: er steht als Lyric-Code da und ist genau das, wogegen das Skript uebersetzt.
+    /// </para></summary>
+    public string? HostModuleSource
+    {
+        get
+        {
+            if (_hostFunctions.Count == 0) return null;
+
+            // Sortiert und nicht in Registrierungsreihenfolge: derselbe Satz Funktionen ergibt
+            // denselben Quelltext, also dieselben Bytes. ADR-013 verlangt reproduzierbare
+            // Ausgabe, und ein Modul, dessen Inhalt von einer Aufrufreihenfolge abhaengt, waere
+            // die eine Stelle, an der das nicht mehr gilt.
+            var declarations = string.Join(Environment.NewLine, _hostFunctions.Values
+                .OrderBy(f => f.Name, StringComparer.Ordinal)
+                .Select(f => f.Declaration));
+
+            return $"""
+                // Erzeugt von LangVm.RegisterFunction — was der Host diesem Skript anbietet.
+                module {HostModule};
+
+                {declarations}
+                """;
+        }
+    }
 
     /// <summary>
     /// Uebersetzt Quelltext aus dem Speicher.
@@ -139,6 +205,9 @@ public sealed class LangVm
         var result = SourceCompiler.Compile(source, new CompilerOptions
         {
             StdlibRoot = _options.StdlibRoot,
+            NativeModules = HostModuleSource is { } host
+                ? new Dictionary<string, string>(StringComparer.Ordinal) { [HostModule] = host }
+                : null,
         });
 
         // 'Ok' und nicht 'Bytes is not null': eine Uebersetzung kann Bytes liefern UND Fehler

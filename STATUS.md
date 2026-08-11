@@ -14,7 +14,7 @@
 **M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
 S1 bis S8 plus die Erreichbarkeitsanalyse.
 
-2562 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
+2576 Tests grün **in Debug und Release**, Bytecode-Format **2.5**, **vier** Binaries, Version **0.9.0**.
 
 **Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
 Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
@@ -23,8 +23,8 @@ selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der 
 Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
 Meilenstein davor berührt hat.
 
-**Offen für v1.0**: **M10 E3–E6** — `RegisterFunction`,
-`RegisterType<T>`, `Reload`, dann Doku und Inventur. E1 und E2 stehen. `std.dotnet` ist gestrichen
+**Offen für v1.0**: **M10 E4–E6** — `RegisterType<T>`,
+`RegisterType<T>`, `Reload`, dann Doku und Inventur. E1–E3 stehen. `std.dotnet` ist gestrichen
 (2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
@@ -32,6 +32,26 @@ Meilenstein davor berührt hat.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **M10/E3 — `RegisterFunction`** (2026-08-11). 2576 Tests grün.
+  - **Die Signatur wird erzeugt, nicht erfunden.** Aus dem .NET-Delegaten wird per Reflexion eine
+    bodylose `pub fn`-Deklaration in einem synthetischen Modul **`host`** — genau die Form, in der
+    die Stdlib ihre Natives seit M6 deklariert. Der Seam bindet sie beim Laden über den Namen;
+    sein Doc-Kommentar nannte `RegisterFunction` schon als künftigen Konsumenten. **Kein zweiter
+    Mechanismus.**
+  - **Das Skript importiert `host`** — und damit ist `Doku.md` §21 endgültig als nicht baubar
+    erwiesen: dort ruft ein Skript `playSound("hit")` ohne Import. §2.2 kennt keinen impliziten
+    Namensraum. §21 wird in E6 neu geschrieben.
+  - `vm.HostModuleSource` gibt den erzeugten Quelltext heraus: die beste Antwort auf „welche
+    Signatur hat meine Funktion in Lyric?" ist Lyric-Code. **Sortiert**, damit derselbe Satz
+    Funktionen dieselben Bytes ergibt (ADR-013).
+  - **Drei Fehlerquellen, drei verschiedene Nachrichten**: `EmbeddingException` (das Skript ist
+    kaputt), `ScriptPanicException` (das Skript hat einen Bug), **`HostFunctionException`** (der
+    Code des Hosts ist gescheitert — mit seinem eigenen Ausnahmetyp darin, nicht der Hülle der
+    Reflexion).
+  - Ein unpassender Typ wird **bei der Registrierung** abgelehnt, nicht erst beim Aufruf. Und eine
+    Host-Funktion kostet **keine Capability**: die Stufen aus ADR-007 gelten der Stdlib, was
+    darüber hinausgeht, entscheidet der Host einzeln.
 
 - [x] **M10/E2 — `Call<T>` und die Skalar-Marshalling-Schicht** (2026-08-11). 2562 Tests grün.
   - **`ScriptInstance.Call<T>`/`CallVoid`**, dazu `Defines`. Die Matrix deckt alle vierzehn
@@ -102,36 +122,6 @@ Meilenstein davor berührt hat.
     Dazu die Lowering-Seite: `LowerIfExpr` lowerte seine Zweige **ohne** erwarteten Typ, also
     scheiterte das `null` dort erneut — derselbe Sema/Backend-Riss wie schon elfmal.
 
-- [x] **M8b/S9 — `std.option`, drei Abbruch-Funktionen, `Exception`. `std.error` und
-  `std.coroutine` sind gestrichen** (2026-08-10). 2486 Tests grün.
-  - **`std.option`**: `map`, `andThen`, `filter`, `zip`, `contains`, `toArray`, `iter`, `expect` —
-    alles in Lyric, freie Funktionen über `?T`. **Kein Typ `Option<T>`**: `?T` *ist* er (§4).
-  - **Vier Namen aus `Doku.md` §22 fallen weg, weil die Sprache sie schon hat**: `unwrap` ist `!`,
-    `unwrapOr` ist `??` (und `??` lowert zu einer Verzweigung, ist also bereits faul),
-    `isSome`/`isNone` sind `!= null`/`== null`. Der letzte Fall ist nicht bloß Redundanz, sondern
-    **schädlich**: am Vergleich hängt das Flow-Narrowing, eine Funktion schnitte es ab.
-  - **`flatten` ist nicht formulierbar.** `??int` ist ein Parser-Fehler, `?(?int)` ist
-    `LYR-IR0001: optionals do not nest`. Die Funktion hat in Lyric keinen Eingabetyp — die Zeile
-    in §22 beschrieb eine andere Sprache. `andThen` ist der Ersatz: weil `f` schon `?U` liefert,
-    entsteht die Verschachtelung gar nicht erst.
-  - **`std.core` bekommt `assert`, `todo`, `unreachable`** — von §22 seit M8 versprochen, nie
-    gebaut — und **`Exception`**.
-  - **`std.error` gibt es nicht.** Übrig blieb genau eine Klasse; ein Modul dafür trägt seinen
-    Namen nicht. `NullDereferenceError` und `CoroutineEndedError` entstehen nicht: beide Fälle
-    bleiben `panic`. Gemessen, was die Alternative kostet — die Stdlib hat **null**
-    `throws`-Deklarationen, **ein** Force-Unwrap und **124** Stellen mit Division oder Index.
-    Geprüftes `throws` propagiert transitiv, also müssten `Ordered`, `Hashable` und `Display` als
-    Interfaces werfen. Der Preis trifft die ganze Bibliothek, der Nutzen eine Zeile.
-  - **`std.coroutine` gibt es nicht**, und der Grund ist verwertbar: die Brücke
-    `Coroutine<T>` → `Iterator<T>` ist nicht schreibbar, solange das Ende ein Panic ist. Der
-    `resume`-Aufruf, der den Rumpf durchlaufen lässt, ist **derselbe**, der daran stirbt — ein
-    „frag vorher"-Prädikat käme immer genau ein `resume` zu spät. Der Umbau (Sprungverteiler
-    liefert intern `?T`, `resume` packt aus und behält seinen Vertrag) ist Lowering-Arbeit in der
-    Größenordnung eines P-Slices. Nicht abgelehnt, nur nicht hier.
-  - **`Sprache.md` §7 und §8 haben gelogen** und sind korrigiert: `expr!` „wirft
-    `NullDereferenceError`" und `resume` „wirft `CoroutineEndedError`" — beides panict, und keiner
-    der Typen existierte je.
-
 ## Messungen
 
 Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
@@ -168,11 +158,12 @@ steht weiter aus.
 `std.os` und zuletzt `std.option` stehen (S1–S9); `std.error` und `std.coroutine` sind mit
 Begründung gestrichen statt geliefert.
 
-**M10 läuft.** E1 und E2 stehen (`LangVm`, Capabilities, `Call<T>`, Marshalling); als Nächstes
-**E3** — `RegisterFunction`. Der Seam dafür ist seit M6 da: Natives werden **beim Laden über den
-Namen** gebunden. Die offene Frage ist die Signatur — der Compiler kennt nur, was deklariert ist,
-also muss `RegisterFunction` die Deklaration in ein synthetisches Host-Modul **erzeugen**. `Doku.md`
-§21 zeigt ein Skript, das `playSound("hit")` ohne Import ruft; das ist so nicht baubar.
+**M10 läuft.** E1–E3 stehen: `LangVm`, Capabilities, `Call<T>`, Marshalling, `RegisterFunction`.
+Ein Host kann heute ein Skript laden, sandboxen, Funktionen daraus rufen und eigene hineinreichen.
+
+**Als Nächstes E4** — `RegisterType<T>` über opake Handles. **Die Frage davor ist noch offen**:
+Lebenszeit und Identität eines Host-Objekts über die Grenze — hält der Host es am Leben oder die
+VM? Sie gehört beantwortet, bevor E4 anfängt, nicht mittendrin.
 
 **Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
 über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
@@ -301,7 +292,7 @@ damaligen Commits gehören und das eine eigene Entscheidung ist.
 
 ## Letzter relevanter Commit
 
-`M10: Call<T> und die Skalar-Marshalling-Schicht (E2)`
+`M10: RegisterFunction — der Host stellt dem Skript Funktionen hin (E3)`
 
 ---
 
