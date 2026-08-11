@@ -1,5 +1,6 @@
 using Lyric.AST;
 using Lyric.Core;
+using Lyric.Resolver;
 using Lyric.Sema;
 
 namespace Lyric.Ir.Lowering;
@@ -21,7 +22,7 @@ internal static class DeclaredTypes
 {
     private static readonly IrType VoidType = new IrScalarType(IrScalar.Void);
 
-    public static IrType Lower(TypeNode? node)
+    public static IrType Lower(TypeNode? node, Func<TypeNode, string?>? hostType = null)
     {
         if (node is null) return VoidType; // fehlender Rückgabetyp = void
 
@@ -32,7 +33,13 @@ internal static class DeclaredTypes
         // '?T' in einer nativen Signatur: 'readText' liefert '?string', 'env' auch. Ein
         // Fehlschlag, der ein gewoehnlicher Zustand der Welt ist, gehoert in den Rueckgabewert
         // und nicht in eine Exception — dafuer muss der Typ ausdrueckbar sein.
-        if (node is NullableType option) return new IrOptionalType(Lower(option.Inner));
+        if (node is NullableType option) return new IrOptionalType(Lower(option.Inner, hostType));
+
+        // Ein HOST-Typ (M10/E4, ADR-026). Er ist die eine Sorte Nicht-Primitiv, die eine native
+        // Signatur nennen darf — und zwar genau deshalb, weil der Host sein Layout kennt und das
+        // Modul nicht. Die Begruendung im Absatz darueber ("ein Array hat kein Layout") zieht die
+        // Linie an derselben Stelle, nur von der anderen Seite.
+        if (hostType?.Invoke(node) is { } name) return new IrHostType(name);
 
         // 'T[]' in einer nativen Signatur. Der Elementtyp bleibt primitiv: ein Array von
         // Objekten wuerde vom Host verlangen, ein Modul-Layout zu kennen.

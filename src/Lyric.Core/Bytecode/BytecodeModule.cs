@@ -63,6 +63,10 @@ public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
     /// über einen Tabellen-Index, weil keiner von beiden rekursiv sein kann (ADR-016).</summary>
     public BytecodeType? Element { get; init; }
 
+    /// <summary>Der registrierte Name eines Host-Typs (<see cref="TypeTag.Host"/>). <c>null</c>
+    /// bei allem anderen — ein Host-Typ hat keinen Tabellen-Eintrag, aus dem er kaeme.</summary>
+    public string? HostName { get; init; }
+
     /// <summary>Parametertypen, wenn <see cref="Tag"/> <c>Fn</c> ist; <see cref="Element"/> haelt
     /// dann den Rueckgabetyp. Beides inline, weil ein Funktionstyp keinen Tabellen-Eintrag hat —
     /// er traegt seine Signatur selbst.</summary>

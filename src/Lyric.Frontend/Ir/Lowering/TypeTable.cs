@@ -616,6 +616,13 @@ internal sealed class TypeTable
 
     public IrType Lower(LyrType type, Core.Span span) => type switch
     {
+        // Host-Typ VOR der gewoehnlichen Klasse: eine leere Klasse in einem nativen Modul ist
+        // keine Referenz auf ein Modul-Layout, sondern eine auf ein Host-Objekt (ADR-026). Die
+        // Frage beantwortet 'HostTypes' fuer beide Stellen, an denen sie sich stellt.
+        NamedRef { Symbol.Kind: TypeSymbolKind.Class } h
+            when HostTypes.NameOf(h.Symbol, Compilation) is { } hostName
+            => new IrHostType(hostName),
+
         NamedRef { Symbol.Kind: TypeSymbolKind.Class } n => RefTo(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Struct } n => StructOf(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Enum } n => EnumOf(n.Symbol),

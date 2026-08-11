@@ -60,8 +60,11 @@ public sealed class ModuleInfoTests
         using var document = JsonDocument.Parse(info.Out);
         var format = document.RootElement.GetProperty("format");
 
-        Assert.Equal(2, format.GetProperty("major").GetInt32());
-        Assert.Equal(5, format.GetProperty("minor").GetInt32());
+        // Aus 'Format' und nicht als Literal: die Frage ist, ob 'info' meldet, was der Writer
+        // schreibt — nicht, ob jemand beim Bump zwei Zahlen nachzieht. Genau diese Sorte Literal
+        // hat in dieser Sitzung schon dreimal einen Test rot gemacht, ohne dass etwas kaputt war.
+        Assert.Equal(Lyric.Bytecode.Format.VersionMajor, format.GetProperty("major").GetInt32());
+        Assert.Equal(Lyric.Bytecode.Format.VersionMinor, format.GetProperty("minor").GetInt32());
     }
 
     [Fact]

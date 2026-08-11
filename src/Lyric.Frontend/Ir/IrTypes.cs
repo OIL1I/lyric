@@ -44,6 +44,11 @@ namespace Lyric.Ir
                     return x.Type == y.Type;
                 case (IrStructType x, IrStructType y):
                     return x.Type == y.Type;
+                case (IrHostType x, IrHostType y):
+                    // Ueber den Namen, weil es keine Id gibt. Zwei Host-Typen sind derselbe, wenn
+                    // der Host sie unter demselben Namen registriert hat — mehr weiss das Modul
+                    // ueber sie nicht, und mehr braucht es auch nicht.
+                    return string.Equals(x.Name, y.Name, StringComparison.Ordinal);
                 case (IrFunctionType x, IrFunctionType y):
                     // Strukturell, und das terminiert: ein Funktionstyp kann sich nur ueber einen
                     // benannten Typ selbst enthalten, und der vergleicht ueber seine Id.
@@ -139,6 +144,26 @@ public sealed record IrInterfaceType(TypeId Type) : IrType;
 /// Voraussetzung fuer Korrektheit.</para>
 /// </summary>
 public sealed record IrStructType(TypeId Type) : IrType;
+
+/// <summary>
+/// Ein <b>Host-Objekt</b> (M10/E4, ADR-026): eine Referenz, deren Layout der <b>Host</b> kennt und
+/// das Modul nicht.
+///
+/// <para><b>Der Gegensatz zu <see cref="IrRefType"/> ist der ganze Sinn.</b> Beide sind
+/// Referenzen; bei <c>IrRefType</c> kennt das Modul das Layout und der Host haelt sich heraus,
+/// hier ist es umgekehrt. Deshalb traegt dieser Typ <b>keine <c>TypeId</c></b>, sondern einen
+/// Namen: es gibt keinen Typtabellen-Eintrag, weil es kein Layout gibt, das dort stehen koennte.
+/// </para>
+///
+/// <para>Damit ist ADR-026s Zusage — „gegen einen Host-Typ wird nie ein <c>ldfld</c> emittiert" —
+/// <b>strukturell</b> und nicht geprueft: ohne Feldliste ist ein Feldzugriff nicht einmal
+/// kodierbar. Eine Regel, die durchgesetzt werden muss, kann jemand vergessen; eine Form, die den
+/// Fehler nicht ausdruecken kann, nicht.</para>
+///
+/// <para>Zur Laufzeit ist es ein gewoehnliches <c>LyrValue.Ref</c> — genau wie ein
+/// <c>string</c>, der dort seit M6 liegt, ohne dass die VM je hineinsieht.</para>
+/// </summary>
+public sealed record IrHostType(string Name) : IrType;
 
 /// <summary>
 /// Ein <b>Funktionswert</b>: das, was in <c>fn(int) -> bool</c> steht, und was eine Closure ist.

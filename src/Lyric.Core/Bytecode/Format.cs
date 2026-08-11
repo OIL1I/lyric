@@ -16,8 +16,8 @@ public static class Format
     /// Eintrag trägt jetzt ein Kind-Byte). §2 erlaubt einer neuen Minor nur überspringbare
     /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
     /// ausdrücklich.</remarks>
-    public const ushort VersionMajor = 2;
-    public const ushort VersionMinor = 5;
+    public const ushort VersionMajor = 3;
+    public const ushort VersionMinor = 0;
 }
 
 /// <summary>
@@ -140,6 +140,33 @@ public enum TypeTag : byte
     /// koennte, und zwei gleich geformte Funktionstypen sind derselbe Typ.
     /// </summary>
     Fn = 0x46,
+
+    /// <summary>
+    /// Ein <b>Host-Objekt</b> (M10/E4, ADR-026); ein <c>uleb128</c>-Index in den String-Pool mit
+    /// dem registrierten Typnamen folgt.
+    ///
+    /// <para><b>Eigenes Tag neben <see cref="Ref"/>, und das ist der Kern.</b> Beide sind
+    /// Referenzen, aber sie zeigen in entgegengesetzte Richtungen:</para>
+    ///
+    /// <list type="table">
+    ///   <item><term><see cref="Ref"/></term><description>Layout kennt das <b>Modul</b>; der Host
+    ///     fasst es nicht an.</description></item>
+    ///   <item><term><see cref="Host"/></term><description>Layout kennt der <b>Host</b>; das Modul
+    ///     fasst es nicht an.</description></item>
+    /// </list>
+    ///
+    /// <para>Ein Host-Typ hat deshalb <b>keinen Eintrag in der Typtabelle</b> — es gibt kein
+    /// Layout, das dort stehen koennte. Damit ist ADR-026s Zusage „gegen einen Host-Typ wird nie
+    /// ein <c>ldfld</c> emittiert" <b>strukturell</b> statt geprueft: ohne Feldliste ist ein
+    /// Feldzugriff nicht kodierbar. Eine Regel, die man durchsetzen muss, kann man vergessen; eine
+    /// Form, die den Fehler nicht ausdruecken kann, nicht.</para>
+    ///
+    /// <para>Der <b>Name</b> steht dabei, damit die Runtime beim Binden pruefen kann, dass eine
+    /// Native wirklich denselben Host-Typ meint — <c>Entity</c> und <c>Sprite</c> waeren sonst
+    /// ununterscheidbar, genau wie <c>string[]</c> und <c>char[]</c> es ohne den Elementtag
+    /// waeren.</para>
+    /// </summary>
+    Host = 0x47,
 }
 
 /// <summary>Art eines Types-Eintrags. Varianten eines Enums sind selbst

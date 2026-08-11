@@ -518,6 +518,12 @@ public static class BytecodeWriter
         if (type is IrInterfaceType i) w.ULeb(i.Type.Value);
         if (type is IrStructType v) w.ULeb(v.Type.Value);
 
+        // Der Name INLINE und nicht als String-Pool-Index: 'WriteType' ist statisch und kennt den
+        // Pool nicht, und ihn durch sechs Aufrufstellen zu faedeln waere Aufwand fuer eine
+        // Ersparnis von wenigen Bytes je Modul. Dieselbe Wahl wie bei 'Fn', dem anderen
+        // zusammengesetzten Typ ohne Tabellen-Eintrag.
+        if (type is IrHostType h) w.String(h.Name);
+
         // Strukturell: Parameterzahl, Parametertypen, Rueckgabetyp. Als einziger zusammengesetzter
         // Typ ohne Tabellen-Eintrag — er hat keine Deklaration, an der eine Id haengen koennte.
         if (type is IrFunctionType f)
@@ -555,6 +561,7 @@ public static class BytecodeWriter
         IrInterfaceType => TypeTag.Interface,
         IrStructType => TypeTag.Struct,
         IrFunctionType => TypeTag.Fn,
+        IrHostType => TypeTag.Host,
         _ => throw new InternalCompilationException(
             $"bytecode: type not encodable: {type.GetType().Name}")
     };

@@ -1,4 +1,4 @@
-# Lyric — `.lyrbc` Bytecode-Format v2.5
+# Lyric — `.lyrbc` Bytecode-Format v3.0
 
 > Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
 > Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
@@ -7,7 +7,13 @@
 > **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
 > Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
 >
-> **Stand**: Format-Version **2.5**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
+> **Warum 3.0 und nicht 2.6** (2026-08-11): §2 erlaubt einer neuen Minor nur **überspringbare**
+> Sektionen. Ein neues Typ-Tag (`0x47`, Host-Objekt) ist nicht überspringbar — eine ältere Runtime,
+> die es liest, kann nicht weitermachen, und das ist auch richtig so: sie könnte das Modul nicht
+> ausführen. Nach der eigenen Regel ist das ein **Major**-Bump. Pre-1.0 ist er ohne Migrationspfad
+> erlaubt (ADR-013), und es gibt weder eine zweite Runtime noch ausgelieferte `.lyrbc`.
+>
+> **Stand**: Format-Version **3.0**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
 > Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
 > (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals**,
 > **Enums**, **Interfaces mit vtable-Dispatch**, **Structs mit Wert-Semantik** und
@@ -379,6 +385,7 @@ Zusammengesetzte Typen ab `0x40`:
 | `0x46` | `Fn` | `uleb128` Parameterzahl, dann die Parametertypen, dann der Rückgabetyp |
 | `0x45` | Struct (Wert-Semantik) | `uleb128` Index eines Struct-Eintrags der Types-Sektion |
 | `0x46` | Fn (Funktionswert) | `uleb128` Parameterzahl, dann die Parametertypen, dann der Rückgabetyp — alles inline |
+| `0x47` | Host-Objekt (ADR-026) | der registrierte Typname, inline als längenpräfigierter UTF-8-String |
 
 Ein Wert mit Tag `0x44` traegt neben der Referenz seinen konkreten Typindex — siehe
 §5 „Darstellung eines Interface-Wertes".

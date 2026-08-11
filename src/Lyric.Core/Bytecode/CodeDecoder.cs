@@ -119,6 +119,13 @@ public static class CodeDecoder
                 reader.ULeb();
                 return;
 
+            // Der Host-Typ traegt seinen Namen inline (Bytecode.md §3). Ihn hier zu ueberspringen
+            // heisst, die Laenge zu lesen und so viele Bytes zu verwerfen — ein vergessener Fall
+            // waere ein um Bytes verschobener Strom, kein sauberer Fehler.
+            case TypeTag.Host:
+                reader.String();
+                return;
+
             // Tragen ihren inneren Typ inline.
             case TypeTag.Array or TypeTag.Optional:
                 SkipType(reader, offset);

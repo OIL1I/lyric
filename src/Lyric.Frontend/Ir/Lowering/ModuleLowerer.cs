@@ -94,10 +94,12 @@ public static class ModuleLowerer
                     // Nutzer soll eine Diagnose mit Position sehen statt eines Compiler-Absturzes.
                     try
                     {
+                        var host = HostTypeResolver(module, compilation);
                         imports.Declare(symbol, new IrImport(
                         NameMangling.ForFunction(module, function.Name),
-                            function.Parameters.Select(p => DeclaredTypes.Lower(p.Type)).ToArray(),
-                            DeclaredTypes.Lower(function.ReturnType)));
+                            function.Parameters
+                                .Select(p => DeclaredTypes.Lower(p.Type, host)).ToArray(),
+                            DeclaredTypes.Lower(function.ReturnType, host)));
                     }
                     catch (UnsupportedConstructException ex)
                     {
@@ -345,6 +347,15 @@ public static class ModuleLowerer
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }
+
+    /// <summary>Erkennt einen Host-Typ in der Signatur einer nativen Deklaration — die Regel
+    /// selbst steht in <see cref="HostTypes"/>, weil dieselbe Frage auch an der Aufrufstelle
+    /// gestellt wird.</summary>
+    private static Func<TypeNode, string?> HostTypeResolver(ModuleSymbol module,
+        Compilation compilation) => node =>
+        node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
+            ? HostTypes.NameOf(module.Members.LookupLocal(named.Path[0]) as TypeSymbol, compilation)
+            : null;
 
     /// <summary>
     /// Was dieses Programm an Capabilities verlangt: die Vereinigung ueber alle geladenen Module

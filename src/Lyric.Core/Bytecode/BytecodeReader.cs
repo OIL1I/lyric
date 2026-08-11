@@ -137,6 +137,11 @@ public static class BytecodeReader
         // Bytes verschobener Strom, kein sauberer Fehler.
         if (tag is TypeTag.Ref or TypeTag.Enum or TypeTag.Interface or TypeTag.Struct)
             return new BytecodeType(tag, payload.ULebAsCount());
+        // Ein Host-Typ traegt seinen NAMEN inline und keinen Tabellen-Index: er hat kein Layout,
+        // das dort stehen koennte (ADR-026). Der Name ist alles, was Modul und Runtime von ihm
+        // wissen — und genug, um beim Binden zu pruefen, dass beide denselben meinen.
+        if (tag is TypeTag.Host)
+            return new BytecodeType(tag, -1) { HostName = payload.String() };
         // fn(A, B) -> R traegt seine Signatur inline: Parameterzahl, Parametertypen, Rueckgabe.
         if (tag is TypeTag.Fn)
         {

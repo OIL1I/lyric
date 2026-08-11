@@ -260,6 +260,7 @@ public static class IrPrinter
         IrEnumType e => $"enum {e.Type}",
         IrInterfaceType i => $"dyn {i.Type}",
         IrStructType v => $"val {v.Type}",
+        IrHostType h => $"host {h.Name}",
         IrFunctionType f => $"fn({string.Join(", ", f.Parameters.Select(TypeStr))}) -> {TypeStr(f.Return)}",
         _ => throw new InternalCompilationException($"ir-printer: type not printable: {t.GetType().Name}")
     };
