@@ -1164,7 +1164,6 @@ Lyric hat **keine direkte FFI im Source** (kein `@extern`, kein `[DllImport]`). 
 | `fileAccess` | `std.io.file` | ✓ | host-Entscheidung |
 | `networkAccess` | `std.io.net` | ✓ | host-Entscheidung |
 | `osAccess` | `std.os` | ✓ | host-Entscheidung |
-| `hostAccess` | `std.dotnet` | ✓ | host-Entscheidung |
 
 Wenn ein Modul versucht ein permission-gated Modul zu importieren ohne dass die Capability gewährt ist, gibt es einen Fehler `LYR-CAP0001 module 'std.io.file' requires capability 'fileAccess' which is not granted`.
 
@@ -1262,7 +1261,6 @@ Vollständige API-Doku entsteht in v1.0. Hier nur ein Überblick.
 | `std.io.file` | `readText`, `writeText`, `exists`, `delete` | `fileAccess` |
 | `std.io.net` | basic HTTP, TCP | `networkAccess` |
 | `std.os` | env, args, exit, process | `osAccess` |
-| `std.dotnet` | .NET-Reflection-Brücke | `hostAccess` |
 
 > **`std.error` und `std.coroutine` gibt es nicht**, und das ist eine Entscheidung, keine Lücke.
 >
@@ -1286,6 +1284,12 @@ Vollständige API-Doku entsteht in v1.0. Hier nur ein Überblick.
 > Ebenfalls gestrichen, weil die Sprache es schon hat: `Option<T>` ist `?T`, `unwrap` ist `!`,
 > `unwrapOr` ist `??`, `isSome`/`isNone` sind `!= null`/`== null` — und `flatten` ist gar nicht
 > formulierbar, weil Optionals nicht verschachteln.
+>
+> **`std.dotnet` ist ebenfalls gestrichen** (v1.X, entschieden 2026-08-11). Eine
+> Reflection-Brücke lässt das **Skript** entscheiden, welche .NET-Typen es anfasst; das
+> Embedding-Modell aus [§21](#21-embedding-für-hosts) lässt das den **Host** entscheiden. Wer
+> beides anbietet, baut die Sandbox und die Tür daneben. Das Capability-Bit `hostAccess` bleibt
+> reserviert.
 
 ---
 

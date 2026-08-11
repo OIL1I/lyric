@@ -567,6 +567,17 @@ Coroutinen, Generics — vom IR über das Bytecode-Format bis in die VM.
 >
 > `std.dotnet` bleibt vorerst drin, ist aber der nächste Kandidat: es ist Interop und teilt sich
 > die Marshalling-Schicht mit **M10**. Zweimal entworfen wäre einmal zu viel.
+>
+> **Nachtrag (2026-08-11, beim M10-Plan): `std.dotnet` ist gestrichen** und steht in der
+> v1.X-Tabelle. Der Grund ist nicht Aufwand, sondern Richtung: es ist eine Reflection-Brücke —
+> beliebige .NET-Typen zur Laufzeit, ohne Deklaration — und damit die **Umkehrung** dessen, was
+> M10 baut. Dort entscheidet der Host, was ein Skript sehen darf (ADR-007); mit `std.dotnet`
+> entschiede das Skript. Beides zugleich anzubieten hiesse, die Sandbox mit der einen Hand zu
+> bauen und mit der anderen eine Tür danebenzusetzen.
+>
+> Das Capability-Bit `hostAccess` (Wert `0x8`) **bleibt reserviert** — dieselbe Regel wie bei
+> `networkAccess`: eine Nummer, die später etwas anderes bedeutet, macht jedes ältere `.lyrbc`
+> falsch (`Bytecode.md` §Capabilities).
 
 > **Korrektur (2026-08-10, M8b/S9): `std.error` und `std.coroutine` sind gestrichen.** Beide waren
 > als Modul geführt, und beider dokumentierter Inhalt **ist bereits die Sprache**: `Throwable` ist

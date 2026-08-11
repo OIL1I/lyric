@@ -174,7 +174,7 @@ seit M8/S6 fest und ist Vertrag — eine Nummer, die später etwas anderes bedeu
 | 0 | `0x1` | `fileAccess` | `std.io.file` |
 | 1 | `0x2` | `networkAccess` | `std.io.net` |
 | 2 | `0x4` | `osAccess` | `std.os` |
-| 3 | `0x8` | `hostAccess` | `std.dotnet` |
+| 3 | `0x8` | `hostAccess` | *(reserviert — `std.dotnet` ist v1.X)* |
 
 `0` heißt „verlangt nichts" — das trifft auf jedes Programm zu, das nur die immer erlaubten Module
 benutzt (Doku §20.1). Untermodule erben: `std.os.env` verlangt `osAccess`.
