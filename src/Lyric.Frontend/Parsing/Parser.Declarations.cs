@@ -191,6 +191,21 @@ public sealed partial class Parser
         {
             if (_buffer.Check(TokenKind.RParen)) break; // trailing comma
             var start = _buffer.Current.Span;
+
+            // Attribute sind post-v1 (Sprache.md §10) — auch AN EINEM PARAMETER. Ohne diesen Fall
+            // liest der Parser '@noCapture' als Parameternamen, verliert danach den Rumpf und
+            // meldet 'has no body; only standard-library modules may declare native functions':
+            // eine Auskunft ueber native Deklarationen an jemanden, der ein Attribut schreiben
+            // wollte. Dieselbe Meldung wie an einer Deklaration, damit beide Stellen dasselbe
+            // sagen.
+            while (_buffer.Check(TokenKind.AtIdentifier))
+            {
+                _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
+                    "attributes are not part of v1 (Sprache.md §10); '@noCapture' and the others "
+                    + "arrive after v1.0");
+                _buffer.Advance();
+            }
+
             var isParams = _buffer.Match(TokenKind.Params);
             var name = ExpectName("LYR-PAR0026", "parameter name");
             _buffer.Expect(TokenKind.Colon, "LYR-PAR0031", "expected ':' after parameter name");
@@ -350,6 +365,25 @@ public sealed partial class Parser
         _buffer.Advance(); // 'interface'
         var name = ExpectName("LYR-PAR0026", "interface name");
         var generics = _buffer.Check(TokenKind.Less) ? ParseGenericParams() : [];
+
+        // 'interface B :: [A]' — Interface-Vererbung gibt es in Lyric nicht (§7 sieht fuer
+        // InterfaceDecl keine Konformanzliste vor). Ohne diesen Fall laeuft der Parser in eine
+        // Folgemeldung ueber Parameter-Klammern, die mit der Ursache nichts zu tun hat.
+        //
+        // Die Meldung nennt den Ausweg, weil es einen gibt: 'std.core' loest genau das mit zwei
+        // Constraints nebeneinander ('K :: [Hashable<K>, Equatable<K>]', ADR-024) — Hashable
+        // braeuchte die Vererbung nur, um Equatable zu implizieren.
+        if (_buffer.Check(TokenKind.ColonColon))
+        {
+            _de.Report("LYR-PAR0039", Severity.Error, _buffer.Current.Span,
+                "an interface cannot extend another one — Lyric has no interface inheritance "
+                + "(Sprache.md §7). Require both where you need both: '<T :: [A, B]>'");
+            // Die Liste wird trotzdem GELESEN und verworfen: sonst stolpert der Parser gleich
+            // noch einmal ueber '[A]' und meldet zwei Fehler fuer eine Ursache. Eine Diagnose je
+            // Ursache — dieselbe Regel, aus der 'SynchronizeTopLevel' entstanden ist.
+            ParseInterfaceList();
+        }
+
         _buffer.Expect(TokenKind.LBrace, "LYR-PAR0017", "expected '{' to open interface body");
         var members = new List<FunctionDecl>();
         ParseMethodSequence(members);

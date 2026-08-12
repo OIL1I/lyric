@@ -14,7 +14,7 @@
 **M0–M10 sind abgeschlossen und getaggt** (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 **v1.0 ist noch nicht erreicht** — was fehlt, steht unter `## Was v1.0 noch fehlt`.
 
-2656 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries plus
+2668 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries plus
 `lyrembed.dll`, Version **0.9.0**.
 
 **Was der Stand kann**: die ganze Sprache aus `Sprache.md` übersetzt und läuft; eine
@@ -28,6 +28,20 @@ daraus ruft und eigene Funktionen und Typen hineinreicht.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **Zwei Diagnosen, die auf die falsche Ursache zeigten** (2026-08-11). 2668 Tests grün.
+  - **Ein Attribut an einem Parameter** wurde als Parametername gelesen; danach fehlte der Rumpf,
+    und der Compiler sprach von *nativen Deklarationen* — zu jemandem, der `@noCapture` schreiben
+    wollte. Jetzt dieselbe Meldung wie an einer Deklaration (`LYR-PAR0038`, §10), und der Rumpf
+    bleibt erhalten: ein Test prüft, dass es bei **einer** Meldung bleibt.
+  - **`interface B :: [A]`** lief in eine Meldung über Parameter-Klammern. Jetzt `LYR-PAR0039`,
+    und sie nennt den Ausweg, weil es einen gibt: `std.core` löst dasselbe mit zwei Constraints
+    nebeneinander (ADR-024). Die Konformanzliste wird gelesen und verworfen — **eine Diagnose je
+    Ursache**, sonst stolperte der Parser gleich noch einmal über `[A]`.
+  - Beides kostet keine Ausdrucksstärke: beide Formen bleiben abgelehnt. Es kostete Zeit — eine
+    Diagnose, die auf die falsche Stelle zeigt, ist teurer als gar keine, weil man dort sucht.
+  - Die Gegenprobe steht daneben: `class K :: [A]` bleibt gültig. Ohne sie wäre die halbe Stdlib
+    ein Syntaxfehler, und der Test wäre trotzdem grün.
 
 - [x] **Die Konformanz prüft ihre Typargumente** (2026-08-11). 2656 Tests grün.
   - **Der ernsteste Befund dieser Arbeit, und er stand als Lässlichkeit in dieser Datei.** Bis
@@ -81,23 +95,6 @@ daraus ruft und eigene Funktionen und Typen hineinreicht.
     einer die README-Liste an `publish.proj`, geprüft in der Richtung, die den Fehler fängt.
   - Die Lieferposten-Inventur steht in `ROADMAP.md` bei M10 — Punkt für Punkt, wie es die Regel
     seit M7 verlangt und wie es bei M9 unterblieben ist.
-
-- [x] **M10/E5 — `Reload`** (2026-08-11). 2617 Tests grün. **Nur noch E6 bis v1.0.**
-  - `instance = instance.Reload()` liest die Quelldatei erneut. **Die tragende Zusage ist nicht
-    „es lädt neu", sondern dass die alte Fassung einen Fehlschlag überlebt** — sonst wäre `Reload`
-    ein Alias für `Instantiate(CompileFile(…))`, das ein Host selbst schreiben könnte. Ein Mod mit
-    einem Tippfehler hält das Spiel nicht an; dieselbe Eigenschaft, die die REPL seit ADR-021 hat.
-  - **Was neu läuft und was bleibt, musste E5 nicht entscheiden**: Modul-Konstanten werden neu
-    berechnet, weil eine neue Instanz ein neuer Zustand ist (ADR-025); Host-Objekte überleben,
-    weil sie dem GC gehören und nicht der Instanz (ADR-026). Die Welt bleibt stehen, nur das
-    Skript wird getauscht. Zwei ADRs, die vorher getroffen wurden, haben den Slice fast leer
-    gemacht — das ist der Ertrag davon, sie vorher zu treffen.
-  - **`CompileFile` meldete einen Modulnamen, den das Modul nicht trug.** Der Resolver nannte es
-    `main`, `ScriptModule.Name` den Dateinamen — ein `Call` darauf fand nichts. Der Riss stammt
-    aus E1 und war bis hierher unsichtbar: **kein Test hatte eine Datei übersetzt *und* daraus
-    gerufen.** `RunScript` lief über `main`, `Call` über Quelltext aus dem Speicher.
-  - Der explizite Tausch (`instance = instance.Reload()`) statt eines stillen hinter derselben
-    Referenz: hier wird ein Zustand weggeworfen, und das soll man am Aufruf sehen.
 
 ## Messungen
 
@@ -223,7 +220,6 @@ eine Entscheidung und keine Messung.**
   der Constraint-Teil ist erledigt und dieser nicht.* Auch eine *statische Methode* auf einer
   generischen Instanz bleibt `LYR-SEM0052`; explizite Typargumente gibt es nur an
   Funktions-Aufrufen.
-- **`@noCapture` wird nicht durchgesetzt** — Lambda-Parameter tragen keine Attribute im AST.
 - **Ein Block-Lambda liefert seinen Rückgabetyp nicht an die Inferenz**: `(n: int) => n` bindet
   `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
   `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich
@@ -231,10 +227,10 @@ eine Entscheidung und keine Messung.**
 
 - **`?T[] ?? []`** und **`size`** sind erledigt (M8b/S8).
 
-- **Interface-Vererbung gibt es nicht** (`interface A :: [B]` ist ein Parser-Fehler; die
-  Grammatik sieht für `InterfaceDecl` keine Konformanzliste vor). Aufgefallen beim Bau von
-  ADR-024, das sie voraussetzte. Ob v1 sie braucht, ist offen — `Hashable` bräuchte sie nur, um
-  `Equatable` zu implizieren.
+- **Interface-Vererbung gibt es nicht** (`interface A :: [B]` ist `LYR-PAR0039` mit einer
+  Meldung, die den Ausweg nennt). Aufgefallen beim Bau von ADR-024, das sie voraussetzte. Ob v1
+  sie braucht, ist offen — `Hashable` bräuchte sie nur, um `Equatable` zu implizieren. Kein
+  Programm ist ohne sie unschreibbar: `std.core` verlangt beides nebeneinander.
 - **`string < string` und `==` auf Nutzertypen sind abgelehnt** (`LYR-SEM0003` / `LYR-SEM0055`).
   Bewusst und vorübergehend: Operator-Overloading ist das erste Thema nach v1.0 (v1.4), und die
   Diagnose zeigt darauf. Bis dahin eine gewöhnliche Methode.
@@ -291,7 +287,7 @@ eine Entscheidung und keine Messung.**
 
 ## Letzter relevanter Commit
 
-`sema: Konformanz prueft ihre Typargumente — eine stille falsche Antwort weniger`
+`parser: zwei Diagnosen zeigen jetzt auf ihre eigene Ursache`
 
 ---
 
