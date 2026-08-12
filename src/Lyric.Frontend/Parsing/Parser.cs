@@ -117,7 +117,17 @@ public sealed partial class Parser
             if (Operators.TryMapAssign(op, out var compound))
             {
                 _buffer.Advance();
-                var value = ParseExpr(rightBp);
+
+                // Rechts vom '=' ist wieder eine WERT-Position, also ist Struct-Init dort erlaubt
+                // (§6.2: „in jeder Wert-Position"). 'ParseExprStmt' schaltet den Flag fuer die
+                // ganze Anweisung ab, weil ein Statement nicht mit 'Foo { … }' anfangen darf —
+                // mehrdeutig mit einem Block. Die Mehrdeutigkeit betrifft aber nur den ANFANG:
+                // hinter einem '=' kann kein Block stehen.
+                //
+                // Bis 2026-08-11 griff die Sperre durch, und 's = Small { n = 5 };' war
+                // 'LYR-SEM0052: Small is a type, not a value — did you mean Small { . }?' — ein
+                // Vorschlag, genau das zu schreiben, was dort schon stand. Bekannt seit P3.
+                var value = ParseSubExpr(rightBp);
                 left = new AssignExpr(left, compound, value, Span.Union(left.Span, value.Span));
                 continue;
             }
@@ -435,11 +445,11 @@ public sealed partial class Parser
     /// Parst einen Ausdruck in einem Delimiter (Klammer/Argument/Index/Array/Hole):
     /// dort ist Struct-Init immer erlaubt, egal was der ambient-Flag außen sagt.
     /// </summary>
-    private Expr ParseSubExpr()
+    private Expr ParseSubExpr(int minBindingPower = 0)
     {
         var saved = _allowStructInit;
         _allowStructInit = true;
-        var expr = ParseExpr(0);
+        var expr = ParseExpr(minBindingPower);
         _allowStructInit = saved;
         return expr;
     }

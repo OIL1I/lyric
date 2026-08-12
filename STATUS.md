@@ -14,7 +14,7 @@
 **M0–M10 sind abgeschlossen und getaggt** (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 **v1.0 ist noch nicht erreicht** — was fehlt, steht unter `## Was v1.0 noch fehlt`.
 
-2668 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries plus
+2675 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries plus
 `lyrembed.dll`, Version **0.9.0**.
 
 **Was der Stand kann**: die ganze Sprache aus `Sprache.md` übersetzt und läuft; eine
@@ -28,6 +28,22 @@ daraus ruft und eigene Funktionen und Typen hineinreicht.
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **`s = Small { n = 5 };` geht** (2026-08-11). 2675 Tests grün.
+  - §6.2 erlaubt den Ausdruck „in jeder Wert-Position", und die rechte Seite einer Zuweisung ist
+    eine. `ParseExprStmt` schaltete die Mehrdeutigkeits-Sperre aber für die **ganze** Anweisung
+    ab — sie gilt dem *Anfang*, weil dort ein Block stehen könnte. Hinter einem `=` kann keiner
+    stehen.
+  - **Die Meldung war das eigentliche Ärgernis**: `'Small' is a type, not a value — did you mean
+    'Small { . }'?` schlug genau das vor, was dort schon stand. Bekannt seit P3, und am
+    2026-08-07 ist der Maintainer beim Schreiben einer Messprobe erneut hineingelaufen, ohne ihn
+    wiederzuerkennen.
+  - **Die Gegenprobe ist die wichtigere Hälfte**: am Statement-Anfang bleibt es gesperrt, ein
+    Block bleibt ein Block, und `c = a < b` bleibt ein Vergleich. Ein Fix, der die Sperre ganz
+    entfernte, kostete keine Diagnose, sondern eine falsche Deutung.
+  - **`Opt<int>.Some(5)` ist *nicht* dieselbe Ursache** — gemessen, nicht vermutet. Ich hatte
+    beide als einen Posten geschätzt; der Fix hier hat dort nichts bewegt. Der Aufwand steht
+    korrigiert unter `## Noch offen`.
 
 - [x] **Zwei Diagnosen, die auf die falsche Ursache zeigten** (2026-08-11). 2668 Tests grün.
   - **Ein Attribut an einem Parameter** wurde als Parametername gelesen; danach fehlte der Rumpf,
@@ -80,21 +96,6 @@ daraus ruft und eigene Funktionen und Typen hineinreicht.
   - **Der zweite „Absturz" war keiner mehr.** `DeclaredTypes.Lower` liefert längst eine Diagnose
     mit Position — auf dem Import-Pfad wie auf dem Host-Methoden-Pfad, beides nachgemessen. Der
     STATUS-Eintrag war veraltet; ich hatte ihn im letzten Bericht ungeprüft als blockierend geführt.
-
-- [x] **M10/E6 — Doku, Inventur, Auslieferung. M10 ist abgeschlossen** (2026-08-11). 2640 Tests grün.
-  - **`Doku.md` §21 ist neu geschrieben**, gegen den Beispiel-Host, den die Testsuite ausführt.
-    Vier Zusagen sind zurückgezogen: `Compile` ohne Modulnamen, `playSound("hit")` ohne Import,
-    `builder.Field`, `vm.Call`. Ein Test hält sie fern **und** prüft, dass §21 die API nennt, die
-    es gibt — ohne die Gegenprobe bliebe er grün, wenn der Abschnitt gelöscht würde.
-  - **Jeder Lyric-Schnipsel in §21 übersetzt**, gegen einen Host mit genau den Registrierungen,
-    die daneben stehen. Dieselbe Regel wie beim README-Beispiel seit M9: ein Beispiel, das nicht
-    übersetzt, ist eine Lüge in der Doku.
-  - **`lyrembed.dll` lag in keiner Auslieferung.** Sie stand in README und §21 als das, was ein
-    Host referenziert, und kein Binary referenziert sie — also landete sie nie im Artefakt.
-    **Es gab keinen Test über die Auslieferung**, nur über die `bin`-Verzeichnisse. Jetzt bindet
-    einer die README-Liste an `publish.proj`, geprüft in der Richtung, die den Fehler fängt.
-  - Die Lieferposten-Inventur steht in `ROADMAP.md` bei M10 — Punkt für Punkt, wie es die Regel
-    seit M7 verlangt und wie es bei M9 unterblieben ist.
 
 ## Messungen
 
@@ -210,16 +211,14 @@ eine Entscheidung und keine Messung.**
 
 - **`b?.get()` geht nicht** — Optional-Chaining mit *Methodenaufruf*. Die Sema macht `?.get` zu
   einem `?fn() -> int` und stolpert dann über das `()`. Feldzugriff (`b?.v`) funktioniert.
-- **Parser: `s = Small { n = 5 };`** scheitert mit `LYR-PAR0016`, obwohl §6.2 den Ausdruck „in jeder
-  Wert-Position" erlaubt — die Mehrdeutigkeits-Sperre gilt dem *Anfang* eines `ExprStmt`, greift
-  aber auf die ganze Zuweisung durch. *(Bekannt seit P3 — und am 2026-08-07 beim Schreiben einer
-  Messprobe erneut hineingelaufen, ohne ihn wiederzuerkennen. Er kostet real Zeit.)*
-- **`Opt<int>.Some(5)` ist nicht ausdrückbar.** Scheitert im **Parser** (`LYR-PAR0002: expected
-  an expression, got Dot`) — `Opt<int>` wird in Wert-Position nicht als Typpfad gelesen. *Stand
-  bis 2026-08-07 zusammen mit dem M4-Constraint-Rest in einem Punkt; sie hängen nicht zusammen,
-  der Constraint-Teil ist erledigt und dieser nicht.* Auch eine *statische Methode* auf einer
-  generischen Instanz bleibt `LYR-SEM0052`; explizite Typargumente gibt es nur an
-  Funktions-Aufrufen.
+- **`Opt<int>.Some(5)` ist nicht ausdrückbar** — `LYR-SEM0052`, nicht mehr im Parser wie hier
+  lange stand. Der Parser liest `Opt` als Bezeichner und `<` als Vergleich; ein generischer
+  Typpfad in Wert-Position existiert als AST-Form nicht. **Gemessen am 2026-08-11, dass es
+  *nicht* dieselbe Ursache ist wie `s = Small { n = 5 }`** — der Fix dort hat hieran nichts
+  geändert. Was es braucht: ein AST-Knoten für „Typpfad mit Argumenten", die Parser-Erkennung
+  (`SkipTypeArgs` plus folgendes `.`, wie §6.1 es für `(` bereits tut), die Sema-Auflösung zur
+  `GenericInstance` und das Lowering der Variante. **Ein Tag, nicht eine Stunde.** Dieselbe Form
+  fehlt einer statischen Methode auf einer generischen Instanz.
 - **Ein Block-Lambda liefert seinen Rückgabetyp nicht an die Inferenz**: `(n: int) => n` bindet
   `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
   `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich
@@ -287,7 +286,7 @@ eine Entscheidung und keine Messung.**
 
 ## Letzter relevanter Commit
 
-`parser: zwei Diagnosen zeigen jetzt auf ihre eigene Ursache`
+`parser: Struct-Init rechts vom '=' — die Sperre gilt dem Anfang`
 
 ---
 
