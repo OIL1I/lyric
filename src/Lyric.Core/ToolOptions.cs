@@ -1,46 +1,36 @@
 namespace Lyric.Core;
 
-/// <summary>Wann eine Fortschrittsanzeige erscheint.</summary>
+/// <summary>When a progress display appears.</summary>
 public enum ProgressMode
 {
-    /// <summary>Nur, wenn stderr ein Terminal ist und der Lauf lange genug dauert.</summary>
+    /// <summary>Only when stderr is a terminal and the run takes long enough.</summary>
     Auto,
 
-    /// <summary>Nie. Fuer Faelle, in denen die Terminal-Erkennung danebenliegt.</summary>
+    /// <summary>Never, for cases where terminal detection is wrong.</summary>
     Never,
 
-    /// <summary>Immer, auch ohne Terminal. Existiert fuer die Tests — ohne einen erzwingbaren
-    /// Pfad liesse sich „der Fortschritt fasst stdout nicht an" nicht pruefen, und genau das ist
-    /// die Zusage, die kaputtgehen kann.</summary>
+    /// <summary>Always, terminal or not. Makes the animated path testable.</summary>
     Always,
 }
 
 /// <summary>
-/// Die Optionen, die <b>alle drei</b> Binaries verstehen muessen.
+/// The options every binary of the suite understands, parsed and interpreted in one place.
 ///
-/// <para>Einmal geparst und einmal interpretiert (ADR-017 sinngemaess): waeren es drei Kopien,
-/// gaebe <c>lyrc check --json</c> JSON und <c>lyric check --json</c> still nicht — derselbe Bug wie
-/// beim dreifach kopierten Compiler-Vorspann in M6, nur eine Ebene tiefer. Deshalb in
-/// <c>Lyric.Core</c>, dem einzigen gemeinsamen Vorfahr; <c>lyrvm</c> darf nichts
-/// Compiler-seitiges referenzieren.</para>
-///
-/// <para><see cref="Parse"/> liefert die <b>Restargumente</b> mit, damit jedes Binary danach
-/// seinen eigenen Parser darauf laufen lassen kann — dieselbe Form wie
-/// <c>VmSelection.Parse</c>.</para>
+/// <para><see cref="Parse"/> also returns the remaining arguments, so each binary can run its own
+/// parser over them.</para>
 /// </summary>
 public sealed record ToolOptions
 {
-    /// <summary>Diagnosen als JSON statt als Klartext. Geht wie der Klartext auf <b>stderr</b>:
-    /// stdout gehoert dem Programm bzw. dem angeforderten Dump (Runner-Vertrag §9.3).</summary>
+    /// <summary>Diagnostics as JSON instead of plain text. Goes to stderr like the plain text;
+    /// stdout belongs to the program or to the requested dump.</summary>
     public bool Json { get; init; }
 
-    /// <summary>Unterdrueckt Erfolgs-Meldungen (<c>path: ok</c>, <c>path: N bytes</c>) und den
-    /// Fortschritt. Diagnosen bleiben — ein <c>--quiet</c>, das Fehler schluckt, waere
-    /// gefaehrlich statt leise.</summary>
+    /// <summary>Suppresses success messages and the progress display. Diagnostics remain.
+    /// </summary>
     public bool Quiet { get; init; }
 
-    /// <summary>Zeitaufschluesselung je Phase statt der Live-Zeile. Funktioniert auch ohne
-    /// Terminal und benutzt keine Escape-Sequenzen.</summary>
+    /// <summary>A per-phase timing breakdown instead of the live line. Works without a terminal
+    /// and uses no escape sequences.</summary>
     public bool Verbose { get; init; }
 
     public ProgressMode Progress { get; init; } = ProgressMode.Auto;
@@ -48,10 +38,10 @@ public sealed record ToolOptions
     public static ToolOptions Default => new();
 
     /// <summary>
-    /// Zieht die gemeinsamen Flags aus der Kommandozeile.
+    /// Takes the shared flags out of the command line.
     ///
-    /// <para>Alles ab dem ersten <c>--</c> bleibt unangetastet: dahinter stehen die Argumente des
-    /// Lyric-Programms, und ein <c>--quiet</c> darin gehoert dem Programm, nicht uns.</para>
+    /// <para>Everything from the first <c>--</c> onwards is left untouched; a <c>--quiet</c> there
+    /// belongs to the Lyric program.</para>
     /// </summary>
     public static (ToolOptions Options, string[] Remaining, string? Error) Parse(string[] args)
     {
@@ -68,9 +58,7 @@ public sealed record ToolOptions
                     options = options with { Json = true };
                     break;
 
-                // Keine Kurzform '-v': die ist in allen drei Binaries bereits '--version' und
-                // steht so in Doku.md §23. rustc loest dasselbe mit '-V'/'-v' — das waere hier
-                // eine Bruchaenderung an einer schon ausgelieferten Oberflaeche.
+                // No '-v' short form: it is already '--version' in every binary.
                 case "--verbose":
                     options = options with { Verbose = true };
                     break;

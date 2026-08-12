@@ -1,31 +1,29 @@
 namespace Lyric.Core;
 
 /// <summary>
-/// Die Schritte der Pipeline aus <c>ROADMAP.md</c> §Pipeline, so wie sie ein Nutzer sieht.
+/// The pipeline steps as a user sees them.
 ///
-/// <para>Bewusst <b>nicht</b> feiner: die Phasengrenzen liegen genau dort, wo
-/// <c>SourceCompiler</c> die Bibliotheken ohnehin nacheinander aufruft. Eine feinere Granularitaet
-/// muesste einen Fortschritts-Begriff durch Lexer, Parser, Resolver und Sema reichen — ein
-/// Querschnittsbelang quer durch sechs Bibliotheken, fuer eine Anzeige.</para>
+/// <para>The boundaries are where <c>SourceCompiler</c> calls the libraries in turn. Anything
+/// finer would have to thread a progress notion through lexer, parser, resolver and sema.</para>
 /// </summary>
 public enum Phase
 {
-    /// <summary>Quelldatei von der Platte lesen.</summary>
+    /// <summary>Read the source file from disk.</summary>
     Read,
 
-    /// <summary>Tokenisieren und parsen.</summary>
+    /// <summary>Tokenize and parse.</summary>
     Parse,
 
-    /// <summary>Importierte Module nachladen (Stdlib, spaeter auch User-Module).</summary>
+    /// <summary>Load imported modules.</summary>
     Load,
 
-    /// <summary>Namen aufloesen, Symboltabellen bauen.</summary>
+    /// <summary>Resolve names, build symbol tables.</summary>
     Resolve,
 
-    /// <summary>Typpruefung.</summary>
+    /// <summary>Type checking.</summary>
     Check,
 
-    /// <summary>AST → Mid-IR.</summary>
+    /// <summary>AST to mid-level IR.</summary>
     Lower,
 
     /// <summary>IR-Invarianten pruefen. Eigene Phase, weil <c>STATUS.md</c> seit M5 behauptet, das

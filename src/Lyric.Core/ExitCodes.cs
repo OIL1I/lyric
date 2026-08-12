@@ -1,32 +1,27 @@
 namespace Lyric.Core;
 
 /// <summary>
-/// Die Prozess-Exit-Codes der Toolchain — normativ, nicht Geschmack.
+/// The process exit codes of the toolchain, normative for every runtime.
 ///
-/// <para><c>Sprache.md</c> §11 macht den Rueckgabewert von <c>main</c> zum Exit-Code, §9 macht
-/// einen <c>panic</c> zum Abbruch, und der Runner-Vertrag in <c>docs/Bytecode.md</c> verlangt
-/// dieselben Zahlen von <b>jeder</b> Runtime — auch von einer fremden. Sie liegen deshalb in
-/// <c>Lyric.Core</c>, dem einzigen Projekt, das <c>lyrc</c>, <c>lyrvm</c> und <c>lyric</c>
-/// gemeinsam haben (ADR-017). Eine Kopie je Binary waeren drei Wahrheiten darueber, was 101
-/// bedeutet.</para>
+/// <para>They live in <c>Lyric.Core</c>, the only project <c>lyrc</c>, <c>lyrvm</c> and
+/// <c>lyric</c> share, so the numbers exist once.</para>
 ///
-/// <para>Bewusst in Kauf genommen: ein Programm, das selbst <c>return 101;</c> schreibt, ist von
-/// einem <c>panic</c> nicht unterscheidbar. Das ist unvermeidbar, sobald man beides in einen
-/// Byte-Kanal presst, und Rust lebt mit derselben Kollision.</para>
+/// <para>A program returning <c>101</c> itself is indistinguishable from a panic; that is
+/// unavoidable once both travel through one byte channel.</para>
 /// </summary>
 public static class ExitCodes
 {
-    /// <summary>Alles gut.</summary>
+    /// <summary>Success.</summary>
     public const int Success = 0;
 
-    /// <summary>Lade-, Validierungs-, Compile- oder IO-Fehler: das Programm lief nie an.</summary>
+    /// <summary>Load, validation, compile or IO error: the program never started.</summary>
     public const int Failure = 1;
 
-    /// <summary>Falscher Kommandozeilen-Aufruf. Getrennt von <see cref="Failure"/>, damit ein
-    /// Skript „du hast mich falsch gerufen" von „deine Datei ist kaputt" unterscheiden kann.</summary>
+    /// <summary>Wrong command-line invocation. Separate from <see cref="Failure"/> so a caller can
+    /// tell a misuse from a broken file.</summary>
     public const int Usage = 2;
 
-    /// <summary>Ein <c>panic</c> (§9). Nicht 1, damit ein Skript einen Absturz von einem
-    /// regulaeren <c>return 1;</c> unterscheiden kann — Rusts Konvention.</summary>
+    /// <summary>A panic. Not 1, so a caller can tell it from a regular <c>return 1;</c>.
+    /// </summary>
     public const int Panic = 101;
 }

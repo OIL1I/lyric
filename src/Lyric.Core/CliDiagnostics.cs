@@ -1,52 +1,46 @@
 namespace Lyric.Core;
 
 /// <summary>
-/// Der <c>LYR-CLI####</c>-Katalog (ROADMAP §Diagnostik-Code-Bereiche, eingefuehrt in M0).
+/// The <c>LYR-CLI####</c> catalogue.
 ///
-/// <para>Liegt in <c>Lyric.Core</c>, weil ihn seit ADR-017 <b>alle drei</b> Binaries brauchen —
-/// <c>lyrc</c>, <c>lyrvm</c> und <c>lyric</c> — und Core der einzige gemeinsame Vorfahr ist.
-/// <c>lyrvm</c> darf nichts Compiler-seitiges referenzieren, der Katalog kann also nicht in
-/// <c>Lyric.Compiler</c> wohnen; drei Kopien waeren drei Wahrheiten darueber, was
-/// <c>LYR-CLI0002</c> bedeutet.</para>
+/// <para>It lives in <c>Lyric.Core</c>, the only project every binary shares; <c>lyrvm</c>
+/// references nothing compiler-side.</para>
 ///
-/// <para>Codes sind stabile Bezeichner: eine Nummer wird nicht neu vergeben, wenn ein Fall
-/// wegfaellt.</para>
+/// <para>Codes are stable identifiers: a number is not reused when a case disappears.</para>
 /// </summary>
 public static class CliDiagnostics
 {
-    /// <summary>Eine angegebene Datei liess sich nicht lesen.</summary>
+    /// <summary>A given file could not be read.</summary>
     public const string FileUnreadable = "LYR-CLI0001";
 
-    /// <summary>Ein Kommando wurde ohne sein Pflicht-Argument gerufen.</summary>
+    /// <summary>A command was invoked without its required argument.</summary>
     public const string MissingArgument = "LYR-CLI0002";
 
-    /// <summary>Unbekanntes Kommando oder unbekannte Option.</summary>
+    /// <summary>Unknown command or option.</summary>
     public const string UnknownCommand = "LYR-CLI0003";
 
-    /// <summary>Die Datei hat die falsche Art fuer dieses Kommando — etwa <c>lyrvm run</c> auf
-    /// einer <c>.lyr</c>-Quelle. Bewusst ein Fehler und keine stille Weiterleitung: eine Runtime,
-    /// die Quelltext frisst, ist keine Runtime mehr (ADR-017).</summary>
+    /// <summary>The file has the wrong kind for this command, such as <c>lyrvm run</c> on a
+    /// <c>.lyr</c> source. An error rather than a silent forward.</summary>
     public const string WrongFileKind = "LYR-CLI0004";
 
-    /// <summary>Die ueber <c>--vm</c> oder <c>LYRIC_VM</c> benannte Runtime existiert nicht.</summary>
+    /// <summary>The runtime named by <c>--vm</c> or <c>LYRIC_VM</c> does not exist.</summary>
     public const string VmNotFound = "LYR-CLI0005";
 
-    /// <summary>Die Fremd-Runtime liess sich nicht starten.</summary>
+    /// <summary>The external runtime could not be started.</summary>
     public const string VmLaunchFailed = "LYR-CLI0006";
 
-    // LYR-CLI0007 war "Programm-Argumente noch nicht einloesbar". Seit 'fn main(args: string[])'
-    // laeuft, gibt es den Fall nicht mehr; die Nummer bleibt vergeben und wird nicht neu benutzt —
-    // eine wiederverwendete Diagnose-Nummer macht jede aeltere Fehlermeldung im Netz falsch.
+    // LYR-CLI0007 is retired. The number stays taken and is not reused: a reused diagnostic
+    // number would make every older report of it wrong.
 
-    /// <summary>Die Ausgabedatei liess sich nicht schreiben.</summary>
+    /// <summary>The output file could not be written.</summary>
     public const string OutputUnwritable = "LYR-CLI0008";
 
-    /// <summary>Eine per <c>--function</c> benannte Funktion steht nicht im Modul. Bewusst ein
-    /// Fehler statt leerer Ausgabe: leer sieht aus wie „die Funktion ist leer".</summary>
+    /// <summary>A function named by <c>--function</c> is not in the module. An error rather than
+    /// empty output, which would read as an empty function.</summary>
     public const string UnknownFunction = "LYR-CLI0009";
 
-    /// <summary>Meldet eine positionslose CLI-Diagnose und rendert sie sofort — CLI-Fehler haengen
-    /// an keinem Quelltext-Span, es gibt also nichts zu sammeln oder zu sortieren.</summary>
+    /// <summary>Reports a CLI diagnostic and renders it immediately. It has no source span, so
+    /// there is nothing to collect or order.</summary>
     public static int Fail(TextWriter error, string code, string message, int exitCode)
     {
         var engine = new DiagnosticEngine(new SourceManager());
