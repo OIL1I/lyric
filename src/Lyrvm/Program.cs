@@ -5,16 +5,12 @@ using Lyric.Vm;
 namespace Lyric.Cli.Runtime;
 
 /// <summary>
-/// <c>lyrvm</c> — die mitgelieferte Runtime (ADR-017) und zugleich die Referenz-Implementierung
-/// des Runner-Vertrags aus <c>docs/Bytecode.md</c> §9.
+/// <c>lyrvm</c> — the bundled runtime and the reference implementation of the runner contract in
+/// <c>docs/Bytecode.md</c> §8.
 ///
-/// <para>Kennt ausschliesslich <c>.lyrbc</c>. <c>run</c> auf einer <c>.lyr</c>-Quelle ist ein
-/// Fehler und keine stille Weiterleitung an den Compiler: eine Runtime, die Quelltext frisst, ist
-/// keine Runtime mehr, und die Trennung waere nach zwei Wochen wieder weich.</para>
-///
-/// <para>Dieses Projekt referenziert nichts Compiler-seitiges — kein Lexer, kein Parser, keine
-/// Sema, keine IR, keinen Bytecode-Writer. Das ist der Punkt der ganzen Uebung und der Grund,
-/// warum <c>tests/Lyric.Tests.Cli</c> es maschinell festhaelt.</para>
+/// <para>It accepts <c>.lyrbc</c> only; <c>run</c> on a <c>.lyr</c> source is an error, not a
+/// forward to the compiler. The project references nothing compiler-side: no lexer, parser, sema,
+/// IR or bytecode writer.</para>
 /// </summary>
 public static class Program
 {
@@ -44,9 +40,8 @@ public static class Program
 
     private static int Run(byte[] bytes, string[] args, TerminalOutput terminal)
     {
-        // Punkt 4 des Runner-Vertrags (Bytecode.md §9): alles nach dem ersten '--' gehoert dem
-        // Programm. Ein parameterloses 'main' ignoriert es — das ist kein Fehler, sondern
-        // dieselbe Freiheit, die jede Shell hat.
+        // Runner contract (Bytecode.md §8.5): everything after the first '--' belongs to the
+        // program. A parameterless 'main' ignores it.
         var programArguments = ProgramArguments(args);
 
         terminal.BeginPhase(Phase.Read, Path.GetFileName(args[1]));
@@ -54,12 +49,8 @@ public static class Program
         terminal.EndPhase();
         if (module is null) return ExitCodes.Failure;
 
-        // Die Anzeige muss weg, BEVOR die erste Instruktion laeuft — sonst landet die erste
-        // Ausgabe des Programms neben einer halben Fortschrittszeile.
-        // '--grant' schraenkt ein, was das Modul anfassen darf (ADR-007). Ohne die Option
-        // gewaehrt der Standalone-Modus alles (Doku §20.2): wer sein eigenes Programm startet,
-        // hat keine Trust-Boundary zu sich selbst. Mit ihr laesst sich fremder Bytecode
-        // sandboxed fahren, ohne dass es dafuer einen Host in C# braucht.
+        // '--grant' limits what the module may reach. Without it the standalone mode grants
+        // everything.
         var granted = Capability.All;
         var grantIndex = Array.IndexOf(args, "--grant");
         if (grantIndex >= 0)
@@ -80,8 +71,8 @@ public static class Program
         return VmHost.Execute(module, programArguments, Console.Out, Console.Error, granted);
     }
 
-    /// <summary>Laedt vollstaendig — ADR-013 prueft beim Laden, nicht beim Ausfuehren — und druckt
-    /// das Modul lesbar. Mit <c>--function</c> nur eine Funktion, Modulkopf bleibt.</summary>
+    /// <summary>Loads the module completely, then prints it readably. <c>--function</c> narrows
+    /// the output to one function; the module header stays.</summary>
     private static int Disasm(byte[] bytes, string[] args, TerminalOutput terminal)
     {
         var module = VmHost.Load(bytes, Console.Error);
@@ -97,8 +88,7 @@ public static class Program
         return ExitCodes.Success;
     }
 
-    /// <summary>Format-Validierung und Import-Bindung, ohne eine Instruktion auszufuehren. Fuer
-    /// eine Fremd-Runtime ist das der Konformanz-Test gegen ein gegebenes Modul.</summary>
+    /// <summary>Format validation and import binding, without executing an instruction.</summary>
     private static int Verify(byte[] bytes, string[] args, TerminalOutput terminal)
     {
         var code = VmHost.Verify(bytes, Console.Out, Console.Error);
@@ -106,8 +96,8 @@ public static class Program
         return code;
     }
 
-    /// <summary>Kopfdaten und Tabellen-Zaehler. Nutzlast, nicht Plauderei — <c>--quiet</c> darf
-    /// das nicht schlucken.</summary>
+    /// <summary>Header fields and table counts. This is payload, so <c>--quiet</c> does not
+    /// suppress it.</summary>
     private static int Info(byte[] bytes, string[] args, TerminalOutput terminal)
     {
         var module = VmHost.Load(bytes, Console.Error);
@@ -120,8 +110,8 @@ public static class Program
     }
 
     /// <summary>
-    /// Der gemeinsame Vorspann: Argument da, Endung stimmt, Datei lesbar. Alle Kommandos nehmen
-    /// genau ein <c>.lyrbc</c>.
+    /// The shared preamble: the argument is present, the extension matches, the file is readable.
+    /// Every command takes exactly one <c>.lyrbc</c>.
     /// </summary>
     private static int WithModule(string[] args, string command, TerminalOutput terminal,
         Func<byte[], string[], TerminalOutput, int> run)
@@ -151,15 +141,14 @@ public static class Program
         return run(bytes, args, terminal);
     }
 
-    /// <summary>Alles nach dem ersten <c>--</c>. Der Vertrag trennt so die Argumente des Runners
-    /// von denen des Lyric-Programms.</summary>
+    /// <summary>Everything after the first <c>--</c>: the Lyric program's arguments.</summary>
     private static string[] ProgramArguments(string[] args)
     {
         var separator = Array.IndexOf(args, "--");
         return separator < 0 ? [] : args[(separator + 1)..];
     }
 
-    /// <summary>Wert einer Option, die vor dem <c>--</c> steht.</summary>
+    /// <summary>The value of an option that appears before the <c>--</c>.</summary>
     private static string? Flag(string[] args, string name)
     {
         for (var i = 0; i < args.Length - 1; i++)

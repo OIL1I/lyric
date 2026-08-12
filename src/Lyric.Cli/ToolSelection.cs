@@ -1,30 +1,26 @@
 namespace Lyric.Cli;
 
 /// <summary>
-/// Welche Werkzeuge benutzt dieser Lauf (ADR-019)?
+/// Which tools this run uses.
 ///
-/// <para>Gestaffelt und fuer jedes Werkzeug gleich: <c>--&lt;flag&gt; &lt;pfad&gt;</c> schlaegt
-/// Umgebungsvariable schlaegt „mitgeliefert". Vorher gab es diese Staffelung nur fuer die Runtime;
-/// die Verallgemeinerung kostet nichts und nimmt die formelle Sprachspezifikation vorweg, nach der
-/// auch ein zweiter Compiler denkbar ist.</para>
+/// <para>The same precedence for every tool: <c>--&lt;flag&gt; &lt;path&gt;</c> beats the
+/// environment variable, which beats the bundled executable.</para>
 /// </summary>
 public sealed record ToolSelection(IReadOnlyDictionary<Tool, string?> Overrides)
 {
-    /// <summary>Der Pfad, unter dem dieses Werkzeug gestartet wird.</summary>
+    /// <summary>The path this tool is started from.</summary>
     public string PathOf(Tool tool) =>
         tool.Resolve(Overrides.TryGetValue(tool, out var path) ? path : null);
 
-    /// <summary>Der Name fuer <c>--version</c>: „bundled" oder der gewaehlte Pfad.</summary>
+    /// <summary>The name for <c>--version</c>: "bundled", or the selected path.</summary>
     public string DisplayOf(Tool tool) =>
         tool.Display(Overrides.TryGetValue(tool, out var path) ? path : null);
 
     /// <summary>
-    /// Liest die Werkzeug-Flags heraus und gibt den Rest unveraendert zurueck.
+    /// Takes the tool flags out and returns the rest unchanged.
     ///
-    /// <para>Alles, was hier nicht erkannt wird, wandert <b>unbesehen</b> an das Werkzeug weiter —
-    /// deshalb versteht <c>lyric build</c> jede Option, die <c>lyrc build</c> versteht, ohne dass
-    /// diese Datei sie kennen muesste. Nach <c>--</c> wird nichts mehr angefasst: dort beginnen die
-    /// Argumente des Lyric-Programms.</para>
+    /// <para>Anything not recognised here is passed on to the tool untouched. Nothing after
+    /// <c>--</c> is inspected; that is where the Lyric program's arguments start.</para>
     /// </summary>
     public static (ToolSelection Selection, string[] Remaining, string? Error) Parse(string[] args)
     {
@@ -47,6 +43,6 @@ public sealed record ToolSelection(IReadOnlyDictionary<Tool, string?> Overrides)
         return (new ToolSelection(overrides), rest.ToArray(), null);
     }
 
-    /// <summary>Alles mitgeliefert — der Normalfall.</summary>
+    /// <summary>Every tool bundled.</summary>
     public static ToolSelection Bundled => new(new Dictionary<Tool, string?>());
 }

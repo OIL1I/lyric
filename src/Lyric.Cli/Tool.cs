@@ -3,41 +3,24 @@ using Lyric.Core;
 
 namespace Lyric.Cli;
 
-/// <summary>
-/// Ein Werkzeug der Suite — <c>lyrc</c>, <c>lyrvm</c>, spaeter <c>lyrtest</c> (ADR-019).
-///
-/// <para><c>lyric</c> selbst uebersetzt und fuehrt nichts aus; es waehlt Werkzeuge, uebersetzt
-/// bequeme Kommandos in technische und reicht durch, was zurueckkommt. Was die Werkzeuge koennen,
-/// steht in ihnen und nicht hier ein zweites Mal.</para>
+/// <summary>A tool of the suite: its name, its selection flag and its environment variable.
 /// </summary>
 public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
 {
-    /// <summary>Der Compiler: Quelltext zu <c>.lyrbc</c>.</summary>
+    /// <summary>The compiler: source to <c>.lyrbc</c>.</summary>
     public static readonly Tool Compiler = new("lyrc", "--compiler", "LYRIC_COMPILER");
 
-    /// <summary>Die Runtime: fuehrt ein <c>.lyrbc</c> aus.</summary>
+    /// <summary>The runtime: executes a <c>.lyrbc</c>.</summary>
     public static readonly Tool Runtime = new("lyrvm", "--vm", "LYRIC_VM");
 
-    /// <summary>Die interaktive Schleife (ADR-021). Das erste Werkzeug mit BEIDEN Bibliotheken —
-    /// eine REPL uebersetzt und fuehrt aus, und der Zustand muss dazwischen leben.</summary>
+    /// <summary>The interactive prompt. It holds both libraries, because it compiles and executes
+    /// and keeps state between entries.</summary>
     public static readonly Tool Repl = new("lyrrepl", "--repl", "LYRIC_REPL");
 
     public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl];
 
-    /// <summary>
-    /// Wo das Werkzeug liegt: <c>--flag &lt;pfad&gt;</c> schlaegt Umgebungsvariable schlaegt „neben
-    /// der eigenen exe".
-    ///
-    /// <para>Dieselbe Staffelung fuer jedes Werkzeug, und dieselbe wie bisher fuer die Runtime
-    /// allein. <b>Warum ueberhaupt austauschbar</b>: ADR-013 sieht ausdruecklich vor, dass jemand
-    /// eine zweite Runtime allein aus der Spec schreibt; fuer den Compiler gilt dasselbe, sobald
-    /// die Sprache formell spezifiziert ist (post-v1). Ein Sonderweg nur fuer die Runtime waere
-    /// heute bequemer und spaeter im Weg.</para>
-    ///
-    /// <para>Bewusst <b>kein</b> Registry und keine Konfigurationsdatei: persistente Konfiguration
-    /// zoege Projektdateien nach sich, und die ein Projektsystem. Ein Pfad in einer Variablen
-    /// erledigt denselben Job zustandsfrei.</para>
-    /// </summary>
+    /// <summary>Where the tool lives: <c>--flag &lt;path&gt;</c> beats the environment variable,
+    /// which beats the executable next to this one.</summary>
     public string Resolve(string? fromFlag)
     {
         if (!string.IsNullOrWhiteSpace(fromFlag)) return fromFlag;
@@ -49,7 +32,7 @@ public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
             OperatingSystem.IsWindows() ? $"{Name}.exe" : Name);
     }
 
-    /// <summary>Der Name fuer Meldungen: „mitgeliefert" oder der Pfad, den jemand gewaehlt hat.</summary>
+    /// <summary>The name for messages: "bundled", or the path that was selected.</summary>
     public string Display(string? fromFlag) =>
         string.IsNullOrWhiteSpace(fromFlag)
         && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(EnvironmentVariable))
@@ -57,14 +40,11 @@ public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
             : Resolve(fromFlag);
 
     /// <summary>
-    /// Startet das Werkzeug und wartet.
+    /// Starts the tool and waits for it.
     ///
-    /// <para>stdin/stdout/stderr werden <b>nicht</b> umgeleitet, sondern geerbt. Das ist keine
-    /// Bequemlichkeit: ein umgeleiteter Strom ist kein Terminal, und damit verlieren die Werkzeuge
-    /// TTY-Erkennung, Farben und die Fortschrittszeile — alles, was in der Progress-Slice gebaut
-    /// wurde. Ein Lyric-Programm verloere zusaetzlich seine Interaktivitaet und die
-    /// Ausgabereihenfolge relativ zu stderr, und beides sichert der Runner-Vertrag zu
-    /// (docs/Bytecode.md §9).</para>
+    /// <para>stdin, stdout and stderr are inherited, not redirected, so the child keeps TTY
+    /// detection, colour and interactivity, and the stream separation of the runner contract
+    /// (docs/Bytecode.md §8.3) holds.</para>
     /// </summary>
     public static int Run(string executable, IEnumerable<string> arguments, TextWriter error)
     {

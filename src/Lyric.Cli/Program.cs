@@ -3,22 +3,15 @@ using Lyric.Core;
 namespace Lyric.Cli;
 
 /// <summary>
-/// <c>lyric</c> — der Einstiegspunkt der Werkzeug-Suite (ADR-019).
+/// <c>lyric</c> — the driver of the tool suite.
 ///
-/// <para><b>Dieses Programm compiliert nichts und fuehrt nichts aus.</b> Es waehlt Werkzeuge,
-/// uebersetzt bequeme Kommandos in technische und reicht durch, was zurueckkommt: <c>lyric run
-/// app.lyr</c> ist <c>lyrc build</c> gefolgt von <c>lyrvm run</c>. Genau deshalb hat es keine
-/// Referenz auf <c>lyrfe</c> oder <c>lyrrt</c>, und ein Architektur-Test haelt das fest.</para>
+/// <para>It compiles nothing and executes nothing. It selects tools, translates convenience
+/// commands into tool commands and passes results through: <c>lyric run app.lyr</c> is
+/// <c>lyrc build</c> followed by <c>lyrvm run</c>. It references neither <c>lyrfe</c> nor
+/// <c>lyrrt</c>.</para>
 ///
-/// <para><b>Warum das die Revision von ADR-017 ist.</b> Dort lief die mitgelieferte Runtime
-/// in-process, begruendet mit einem gesparten Prozessstart von „~50–70 ms". Gemessen am
-/// 2026-08-06: 283 ms in-process gegen 290 ms ueber den Subprozess — der Unterschied liegt im
-/// Rauschen. Bezahlt wurden dafuer zwei Ausfuehrungspfade, die gegeneinander getestet werden
-/// mussten, und vier Kommandos, die es zweimal gab.</para>
-///
-/// <para>Die Debug-Dumps (<c>tokenize</c>, <c>parse</c>, <c>lower</c>) gibt es hier bewusst
-/// <b>nicht</b>: sie sind Compiler-Interna und wohnen in <c>lyrc</c>. Dieses Programm nimmt
-/// Vorgaben an, wo ein Werkzeug eine Entscheidung verlangt — das ist sein ganzer Zweck.</para>
+/// <para>The debug dumps (<c>tokenize</c>, <c>parse</c>, <c>lower</c>) live in <c>lyrc</c> and are
+/// not reachable from here.</para>
 /// </summary>
 public static class Program
 {
@@ -39,9 +32,6 @@ public static class Program
             "build" or "check" => Forward(Tool.Compiler, selection, args),
             "disasm" => Forward(Tool.Runtime, selection, args),
 
-            // Der Dispatch ist die ganze Verdrahtung — 'lyric repl' hat keinen eigenen Code
-            // (ADR-021). Genau das war der Test dafuer, ob ADR-019s Entwurf traegt: ein viertes
-            // Werkzeug fuegt sich ein, ohne den Treiber anzufassen.
             "repl" => Forward(Tool.Repl, selection, args),
             _ => CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
                 $"unknown command: {args[0]} — try 'lyric --help'", ExitCodes.Usage),
@@ -49,13 +39,9 @@ public static class Program
     }
 
     /// <summary>
-    /// Uebersetzen und ausfuehren. Bei einem fertigen <c>.lyrbc</c> entfaellt der erste Schritt.
+    /// Compile and execute. A path that already ends in <c>.lyrbc</c> skips the compile step.
     ///
-    /// <para>Das Zwischenergebnis ist eine <b>temporaere Datei</b>, die danach verschwindet. Ein
-    /// Cache waere beim zweiten Lauf schneller, braeuchte aber ein Verzeichnis, eine
-    /// Invalidierungsregel (die auch Stdlib-Aenderungen erfassen muss) und ein <c>clean</c> — ein
-    /// eigener Mechanismus mit einer eigenen klassischen Fehlerquelle. Er laesst sich spaeter
-    /// darueberlegen, ohne hier etwas zu aendern.</para>
+    /// <para>The intermediate module is a temporary file and is deleted when the run ends.</para>
     /// </summary>
     private static int Run(string[] args, ToolSelection selection)
     {
@@ -70,9 +56,7 @@ public static class Program
         var path = positional[1];
         var passThrough = positional[2..];
 
-        // Das Werkzeug VOR dem ersten Aufruf pruefen. Sonst meldete sich eine falsch konfigurierte
-        // Runtime erst nach einem vollstaendigen Compile-Lauf, und die Meldung kaeme aus dem
-        // Prozess-Start statt aus der Konfiguration.
+        // Checked before the compile step so a misconfigured runtime is reported without one.
         if (Missing(selection, Tool.Runtime) is { } runtimeError) return runtimeError;
 
         if (path.EndsWith(".lyrbc", StringComparison.OrdinalIgnoreCase))
@@ -80,16 +64,14 @@ public static class Program
 
         if (Missing(selection, Tool.Compiler) is { } compilerError) return compilerError;
 
-        // Der Name traegt den der Quelle, damit ein Backtrace aus der Runtime lesbar bleibt.
+        // The name carries the source file name so a backtrace from the runtime stays readable.
         var module = Path.Combine(Path.GetTempPath(),
             $"{Path.GetFileNameWithoutExtension(path)}-{Guid.NewGuid():N}.lyrbc");
 
         try
         {
-            // '--quiet' ist die Vorgabe, die diesen Einstiegspunkt ausmacht: wer 'run' tippt,
-            // will sein Programm sehen und nicht die Groesse eines Zwischenartefakts, das gleich
-            // wieder verschwindet. Steht es in passThrough schon drin, schadet es nicht — und wer
-            // die Meldung will, ruft 'lyric build' oder gleich 'lyrc'.
+            // '--quiet' suppresses the compiler's summary of an artifact that is about to be
+            // deleted. Passing it twice is harmless.
             var built = Tool.Run(selection.PathOf(Tool.Compiler),
                 ["build", path, "-o", module, "--quiet", .. passThrough], Console.Error);
             if (built != ExitCodes.Success) return built;
@@ -98,9 +80,8 @@ public static class Program
         }
         finally
         {
-            // Auch wenn das Programm gepanickt hat: die Datei gehoert diesem Lauf und keiner
-            // spaeteren Sitzung.
-            try { File.Delete(module); } catch (IOException) { /* nicht schlimmer machen */ }
+            // Runs on every path, including a panic in the executed program.
+            try { File.Delete(module); } catch (IOException) { /* nothing further to do */ }
         }
     }
 
@@ -112,9 +93,8 @@ public static class Program
             ["run", module, .. options, .. tail], Console.Error);
     }
 
-    /// <summary>Ein Kommando, das ein Werkzeug schon kann — unveraendert weitergereicht. Was
-    /// <c>lyrc build</c> an Optionen versteht, versteht <c>lyric build</c> damit auch, ohne dass
-    /// diese Datei sie kennen muss.</summary>
+    /// <summary>Passes a command through to a tool unchanged, including every option the driver
+    /// does not know.</summary>
     private static int Forward(Tool tool, ToolSelection selection, string[] args)
     {
         if (Missing(selection, tool) is { } error) return error;
@@ -135,9 +115,7 @@ public static class Program
     {
         Console.Out.WriteLine($"lyric {ToolchainVersion.Value}");
 
-        // Spaltenbreite aus der Liste, nicht als Zahl: sie stand als '-6' da und passte auf
-        // 'lyrc'/'lyrvm', bis 'lyrrepl' dazukam und die Spalte sprengte (ADR-021). Ein fuenftes
-        // Werkzeug haette denselben Fehler ein zweites Mal ausgeloest.
+        // Column width from the list, so a new tool cannot outgrow it.
         var width = Tool.All.Max(tool => tool.Name.Length);
 
         foreach (var tool in Tool.All)
