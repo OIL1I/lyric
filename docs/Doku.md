@@ -308,14 +308,18 @@ if (user != null) {
 // 2) Optional-Chaining: Ergebnis ist ?string
 let maybeName: ?string = user?.name;
 
-// 3) Coalescing
+// 3) Auch mit Aufruf. Ist user null, wird displayName() nicht gerufen — und ein Argument
+//    darin auch nicht ausgewertet.
+let maybeLabel: ?string = user?.displayName();
+
+// 4) Coalescing
 let name: string = user?.name ?? "unknown";
 
-// 4) Coalescing-Assign
+// 5) Coalescing-Assign
 var label: ?string = null;
 label ??= "default";
 
-// 5) Force-Unwrap mit !
+// 6) Force-Unwrap mit !
 let must: User = user!;        // panic (LYR-VM0007), wenn null — nicht fangbar
 ```
 

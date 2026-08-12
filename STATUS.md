@@ -29,6 +29,39 @@ daraus ruft und eigene Funktionen und Typen hineinreicht.
 
 ## Zuletzt fertig geworden
 
+- [x] **`b?.get()` geht** (2026-08-12). 2661 Tests grün, Debug und Release.
+  - Die Sema machte aus `?.get` ein `?fn() -> int` und meldete dann `LYR-SEM0013: not callable` —
+    eine Auskunft über einen Zwischentyp, den niemand hingeschrieben hat. Jetzt packt `CheckCall`
+    den Empfänger aus, wenn der Callee ein `?.`-Glied ist, und legt das Optional um das
+    *Ergebnis*. Der Ausweg (`if (b != null) { b.get() }`) war dreimal so lang.
+  - **Der Aufruf läuft durch dieselbe Auflösung wie jeder andere.** Alle fünf Dispatch-Wege
+    tragen ihn ohne eine Zeile Zusatzcode: konkrete Klasse, generische Instanz, Interface
+    (dynamisch), Constraint-Typparameter und primitiver Empfänger mit Extension. Ein zweiter Pfad
+    hätte jeden davon ein weiteres Mal beantworten müssen — die Sorte Zweitkopie, die in diesem
+    Projekt neunmal auseinandergelaufen ist.
+  - **Der erste Anlauf war genau diese Zweitkopie**, nur getarnt: ein Sonderfall im
+    Callee-`switch`, der den ausgepackten Empfänger anhängte. Er stand **vor** der Generics- und
+    der Interface-Erkennung und verdeckte sie — `b?.get()` auf einem `Box<int>` wurde zu
+    *„external or bodiless"*, eine Diagnose auf die falsche Ursache. Aufgefallen nur, weil ich
+    danach gefragt habe statt es anzunehmen.
+  - Jetzt hängen die zwei Abweichungen **am AST-Knoten**: der ausgepackte Empfänger am Ziel, der
+    Rückgabetyp am Aufruf. Die Fallunterscheidung fragt den Empfängertyp über eine Stelle, die
+    in der Kette auspackt. Als Parameter hätte es vier weitere Signaturen gekostet, die keine
+    davon interessiert.
+  - **Dabei fiel eine ältere Unstimmigkeit auf**: `b?.w` auf ein Feld `w: ?int` ergab `??int`,
+    und der Fehler kam eine Ebene zu spät als „cannot assign '?int' to 'int'". Optionals
+    verschachteln nicht (§4) — beide Stellen kollabieren jetzt, Sema *und* Lowering. Wieder
+    **eine Frage, zwei Stellen**; diesmal beide beim ersten Anlauf gefunden, weil der
+    Verifier-Befund (`call dest t61 is i64 but Box.leer returns ?i64`) direkt darauf zeigte.
+  - Ein leerer Empfänger wertet **die Argumente nicht aus**. Der Test misst das mit einem
+    Seiteneffekt; ohne ihn bliebe er grün, wenn sie vor der Prüfung berechnet würden.
+  - **Wo es aufhört, sagt es das** (`LYR-SEM0062`): hält das Glied einen Funktions-*Wert*
+    (`f: fn() -> int`), gibt es zwei Fragen und ein `?` — ob der Empfänger da ist und ob das Feld
+    belegt ist. Wer dort auspackte, beantwortete die zweite stillschweigend mit ja; bei
+    `f: ?fn() -> int` ist das ein Aufruf auf null. Die Meldung nennt den Ausweg, und ein Test
+    prüft, dass der Ausweg compiliert — sonst wäre sie ein Hinweis ins Leere.
+  - §7 in `Sprache.md` und das Nullable-Kapitel der `Doku.md` sagen die Aufruf-Form jetzt an.
+
 - [x] **`s = Small { n = 5 };` geht** (2026-08-11). 2675 Tests grün.
   - §6.2 erlaubt den Ausdruck „in jeder Wert-Position", und die rechte Seite einer Zuweisung ist
     eine. `ParseExprStmt` schaltete die Mehrdeutigkeits-Sperre aber für die **ganze** Anweisung
@@ -195,8 +228,7 @@ Punkt für Punkt abzuarbeiten — nach der Regel, an der M9 gescheitert ist.
 - **Doku-Site** (statisches HTML aus den Docs). Es gibt keine.
 
 **Die zwei Abstürze sind behoben** (2026-08-11). Was unter `## Noch offen` bleibt, sind Grenzen
-**mit Diagnose** (`b?.get()`, `Opt<int>.Some(5)`, `s = Small { n = 5 }`, `@noCapture`,
-Interface-Vererbung) — sie kosten Ausdrucksstärke, keinen Absturz. **Ob sie v1 blockieren, ist
+**mit Diagnose** (`Opt<int>.Some(5)`, `@noCapture`, Interface-Vererbung) — sie kosten Ausdrucksstärke, keinen Absturz. **Ob sie v1 blockieren, ist
 eine Entscheidung und keine Messung.**
 
 ## Noch offen
@@ -209,8 +241,6 @@ eine Entscheidung und keine Messung.**
 
 **Sprachlücken, vor v1 zu schließen:**
 
-- **`b?.get()` geht nicht** — Optional-Chaining mit *Methodenaufruf*. Die Sema macht `?.get` zu
-  einem `?fn() -> int` und stolpert dann über das `()`. Feldzugriff (`b?.v`) funktioniert.
 - **`Opt<int>.Some(5)` ist nicht ausdrückbar** — `LYR-SEM0052`, nicht mehr im Parser wie hier
   lange stand. Der Parser liest `Opt` als Bezeichner und `<` als Vergleich; ein generischer
   Typpfad in Wert-Position existiert als AST-Form nicht. **Gemessen am 2026-08-11, dass es

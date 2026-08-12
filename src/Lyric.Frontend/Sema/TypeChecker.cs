@@ -1248,6 +1248,36 @@ public sealed class TypeChecker
     private LyrType CheckCall(CallExpr call, SymbolTable scope)
     {
         var calleeType = CheckExpr(call.Callee, scope);
+
+        // 'b?.get()' — Optional-Chaining mit AUFRUF (§7). 'b?.get' ist ein '?fn() -> int', und
+        // ohne diesen Fall meldete die Sema '„?fn() -> int" is not callable': eine Auskunft
+        // ueber einen Zwischentyp, den niemand hingeschrieben hat.
+        //
+        // Der Aufruf wird gegen die ausgepackte Signatur geprueft, das ERGEBNIS wird optional —
+        // ist der Empfaenger leer, findet kein Aufruf statt und es gibt nichts zurueckzugeben.
+        //
+        // NUR fuer eine Methode. Haelt das Glied einen Funktions-WERT ('f: fn() -> int'), gibt es
+        // zwei Fragen und ein '?': ob der Empfaenger da ist, und ob das Feld belegt ist. Wer hier
+        // auspackte, beantwortete stillschweigend die zweite mit ja — bei 'f: ?fn() -> int' waere
+        // das ein Aufruf auf null. Die Sprache hat kein '?()' (§7), also gibt es die Form nicht,
+        // und sie muss das sagen statt es zu raten.
+        var optionalCall = false;
+        if (call.Callee is MemberExpr { IsOptional: true } chainCallee && calleeType is Optional o)
+        {
+            if (_result.RefOf(chainCallee) is FunctionSymbol && o.Inner is FnType method)
+            {
+                optionalCall = true;
+                calleeType = method;
+            }
+            else if (o.Inner is FnType)
+            {
+                foreach (var a in call.Arguments) CheckExpr(a, scope);
+                return Report(call.Span, "LYR-SEM0062",
+                    $"'?.' with a call works on a method; '{chainCallee.Member}' holds a function "
+                    + "value — read it into a variable first, then call that");
+            }
+        }
+
         if (calleeType is not FnType fn)
         {
             foreach (var a in call.Arguments) CheckExpr(a, scope); // trotzdem typen (keine Folgefehler)
@@ -1342,7 +1372,10 @@ public sealed class TypeChecker
         }
 
         CheckCallArgs(call, substituted, argTypes, decl);
-        return substituted.Return;
+
+        // War der Empfaenger optional, ist es auch das Ergebnis — kollabiert, denn Optionals
+        // verschachteln nicht (§4).
+        return optionalCall ? Optionalized(substituted.Return) : substituted.Return;
     }
 
     private static LyrType? ExpectedParamAt(FnType fn, FunctionDecl? decl, int i)
@@ -1419,10 +1452,20 @@ public sealed class TypeChecker
         if (baseType is ArrayOf && mem.Member == "length") return LyrType.Int;
 
         if (InstanceMemberOf(baseType, mem, mem.Span) is { } mt)
-            return mem.IsOptional ? new Optional(mt) : mt;
+            return mem.IsOptional ? Optionalized(mt) : mt;
         if (targetType.IsError) return LyrType.Error;
         return Report(mem.Span, "LYR-SEM0012", $"'{TypeFacts.Display(targetType)}' has no member '{mem.Member}'");
     }
+
+    /// <summary>
+    /// <c>T</c> → <c>?T</c>, aber <c>?T</c> bleibt <c>?T</c>.
+    ///
+    /// <para>Optionals verschachteln nicht (§4; das Lowering meldet <c>??T</c> als
+    /// <c>LYR-IR0001</c>). Ohne die Kollabierung war <c>b?.v</c> auf einem Feld vom Typ
+    /// <c>?int</c> ein <c>??int</c> — die Sema liess es durch, und der Fehler kam erst als
+    /// „cannot assign '?int' to 'int'" eine Ebene zu spaet.</para>
+    /// </summary>
+    private static LyrType Optionalized(LyrType t) => t is Optional ? t : new Optional(t);
 
     // Instanz-Member über die drei „Objekt"-Typen: konkret (NamedRef), generische Instanz
     // (Member-Typ mit T→Argument substituiert), oder Typ-Param (Member aus den Constraints).

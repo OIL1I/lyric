@@ -72,6 +72,27 @@ internal sealed class FunctionLowerer
     /// sein <c>newobj</c> — korrekt, aber offensichtlich sinnlos, und in jeder Disassembly zu
     /// sehen.</para>
     /// </summary>
+    /// <summary>
+    /// Was ein Aufruf in einer <c>?.</c>-Kette anders sieht (§7) — und sonst nichts.
+    ///
+    /// <para><c>_chainReceivers</c> bildet den EMPFAENGER-Ausdruck auf den schon ausgepackten Wert
+    /// ab: <c>LowerExprOrVoid</c> gibt ihn zurueck, statt <c>b</c> ein zweites Mal auszuwerten.
+    /// <c>_chainResults</c> bildet den AUFRUF-Ausdruck auf den Rueckgabetyp der Methode ab, weil
+    /// die Sema dem Ausdruck den Ketten-Typ gegeben hat (<c>?int</c> statt <c>int</c>).</para>
+    ///
+    /// <para><b>Warum am Knoten und nicht als Parameter?</b> Weil beide Angaben sonst durch
+    /// LowerVirtualCall, LowerGenericMethodCall, LowerConstraintCall und LowerImportCall
+    /// durchgereicht werden muessten — vier Signaturen fuer eine Ausnahme, die keine der vier
+    /// interessiert. Verschachtelte Ketten (<c>a?.f(b?.g())</c>) tragen verschiedene Knoten und
+    /// stehen sich deshalb nicht im Weg; die Eintraege werden nach dem Aufruf wieder entfernt.
+    /// </para>
+    /// </summary>
+    private readonly Dictionary<Expr, TempId> _chainReceivers =
+        new(ReferenceEqualityComparer.Instance);
+
+    private readonly Dictionary<Expr, IrType> _chainResults =
+        new(ReferenceEqualityComparer.Instance);
+
     private readonly HashSet<TempId> _fresh = new();
 
     /// <summary>Die angehobenen Lambdas des Moduls. Ein Lambda im Rumpf meldet sich hier an und
@@ -1485,7 +1506,8 @@ internal sealed class FunctionLowerer
 
     /// <summary>Liefert null nur für den Aufruf einer void-Funktion — der einzige Ausdruck ohne
     /// Wert. Sonst immer ein Temp.</summary>
-    private TempId? LowerExprOrVoid(Expr expr) => expr switch
+    private TempId? LowerExprOrVoid(Expr expr) =>
+        _chainReceivers.TryGetValue(expr, out var alreadyUnwrapped) ? alreadyUnwrapped : expr switch
     {
         IntLiteralExpr e => LowerIntLiteral(e),
         FloatLiteralExpr e => LowerFloatLiteral(e),
@@ -2783,6 +2805,102 @@ internal sealed class FunctionLowerer
     /// Verzweigung — der Feldzugriff darf bei einer leeren Referenz <b>nicht</b> laufen, und ein
     /// Opcode koennte das nicht ausdruecken, ohne selbst zu verzweigen.</para>
     /// </summary>
+    /// <summary>
+    /// <c>b?.get()</c> — der Empfaenger ist optional, also ist es auch das Ergebnis (§7).
+    ///
+    /// <para>Bis 2026-08-11 war das <c>LYR-SEM0013: '?fn() -> int' is not callable</c> — eine
+    /// Auskunft ueber einen Zwischentyp, den niemand hingeschrieben hat. Der Ausweg war
+    /// <c>if (b != null) { b.get() }</c>, dreimal so lang.</para>
+    ///
+    /// <para><b>Der Aufruf laeuft durch dieselbe Aufloesung wie jeder andere</b> — nur mit einem
+    /// bereits ausgepackten Empfaenger. Ein eigener Pfad hier haette Virtual-Dispatch, Natives,
+    /// Extensions und Generics ein zweites Mal beantworten muessen; das ist die Sorte
+    /// Zweitkopie, die in diesem Projekt neunmal auseinandergelaufen ist.</para>
+    /// </summary>
+    private TempId LowerOptionalCall(CallExpr expr, MemberExpr callee)
+    {
+        if (TypeOfExpr(expr) is not IrOptionalType result)
+            throw NotSupported("'?.' with a call whose result is not an optional", expr.Span);
+
+        if (TypeOfExpr(callee.Target) is not IrOptionalType target)
+            throw NotSupported("'?.' on a non-optional", expr.Span);
+
+        // Der eigentliche Rueckgabetyp der Methode. 'TypeOfExpr(expr)' taugt dafuer nicht: die
+        // Sema hat dem Aufruf den Ketten-Typ '?int' gegeben, die Methode liefert aber 'int'.
+        if (_types.TypeOf(callee) is not Sema.Optional { Inner: FnType signature })
+            throw NotSupported("'?.' with a call on something that is not a method", expr.Span);
+
+        var returned = LowerType(signature.Return, expr.Span);
+
+        var slot = _slots.DeclareSynthetic("chain", result);
+        var option = LowerExpr(callee.Target);
+
+        var test = _slots.NewTemp(BoolType);
+        _b.Emit(new OptIsSome(test, option, expr.Span));
+
+        var whenSome = _b.NewBlock();
+        var whenNone = _b.NewBlock();
+        var merge = _b.NewBlock();
+        _b.Seal(new CondBranch(test, whenSome, whenNone, expr.Span));
+
+        _b.SwitchTo(whenSome);
+        var unwrapped = _slots.NewTemp(target.Inner);
+
+        // Kann nicht panicken: der Zweig steht hinter dem 'optissome'. Dieselbe Arbeitsteilung
+        // wie beim Feldzugriff und beim Flow-Narrowing.
+        _b.Emit(new OptGet(unwrapped, option, target.Inner, expr.Span));
+
+        // Der Aufruf laeuft danach durch LowerCall wie jeder andere. Was er anders sieht, sind
+        // genau zwei Dinge, und beide haengen am AST-Knoten statt an einer Parameterkette: der
+        // Empfaenger liegt schon ausgepackt vor, und der Rueckgabetyp ist der der Methode.
+        //
+        // Ein eigener Aufrufpfad haette Virtual-Dispatch, Generics, Constraints, Natives und
+        // Extensions ein zweites Mal beantworten muessen. Ein erster Versuch tat das ueber einen
+        // Sonderfall im 'switch' — und verdeckte prompt die Generics-Erkennung, sodass
+        // 'b?.get()' auf einem 'Box<int>' als 'external or bodiless' gemeldet wurde. Eine
+        // Diagnose auf die falsche Ursache; die Sorte Fehler, die dieses Projekt schon mehrfach
+        // gekostet hat.
+        TempId? produced;
+        _chainReceivers[callee.Target] = unwrapped;
+        _chainResults[expr] = returned;
+        try
+        {
+            produced = LowerCall(expr);
+        }
+        finally
+        {
+            _chainReceivers.Remove(callee.Target);
+            _chainResults.Remove(expr);
+        }
+
+        if (produced is not { } value)
+            throw NotSupported("'?.' with a call that returns nothing", expr.Span);
+
+        // Liefert die METHODE selbst schon ein Optional ('fn leer(): ?int'), ist ihr Ergebnis
+        // bereits der Ergebnistyp — die Sema hat '??int' zu '?int' kollabiert (§4). Ein zweites
+        // Verpacken erzeugte eine Ebene, die es in der Sprache nicht gibt.
+        var stored = value;
+        if (returned is not IrOptionalType)
+        {
+            stored = _slots.NewTemp(result);
+            _b.Emit(new OptSome(stored, value, result.Inner, expr.Span));
+        }
+
+        _b.Emit(new StoreLocal(slot, stored, expr.Span));
+        _b.Seal(new Branch(merge, expr.Span));
+
+        _b.SwitchTo(whenNone);
+        var none = _slots.NewTemp(result);
+        _b.Emit(new OptNone(none, result.Inner, expr.Span));
+        _b.Emit(new StoreLocal(slot, none, expr.Span));
+        _b.Seal(new Branch(merge, expr.Span));
+
+        _b.SwitchTo(merge);
+        var dest = _slots.NewTemp(result);
+        _b.Emit(new LoadLocal(dest, slot, result, expr.Span));
+        return dest;
+    }
+
     private TempId LowerOptionalMember(MemberExpr expr)
     {
         var resultType = TypeOfExpr(expr);
@@ -2813,9 +2931,17 @@ internal sealed class FunctionLowerer
         var value = _slots.NewTemp(fieldType);
         _b.Emit(new LoadField(value, unwrapped, type, field, fieldType, expr.Span));
 
-        var wrapped = _slots.NewTemp(resultType);
-        _b.Emit(new OptSome(wrapped, value, result.Inner, expr.Span));
-        _b.Emit(new StoreLocal(slot, wrapped, expr.Span));
+        // Ist das FELD selbst optional ('w: ?int'), ist sein Wert bereits der Ergebnistyp: die
+        // Sema hat '??int' zu '?int' kollabiert (§4). Ein zweites Verpacken erzeugte eine Ebene,
+        // die es in der Sprache nicht gibt.
+        var stored = value;
+        if (fieldType is not IrOptionalType)
+        {
+            stored = _slots.NewTemp(resultType);
+            _b.Emit(new OptSome(stored, value, result.Inner, expr.Span));
+        }
+
+        _b.Emit(new StoreLocal(slot, stored, expr.Span));
         _b.Seal(new Branch(merge, expr.Span));
 
         _b.SwitchTo(whenNone);
@@ -3296,7 +3422,7 @@ internal sealed class FunctionLowerer
         if (owner.Members.LookupLocal(member.Member) is not FunctionSymbol method
             || method.Declaration is not FunctionDecl declaration)
         {
-            if (_types.TypeOf(member.Target) is TypeParamType parameter)
+            if (ReceiverType(member.Target) is TypeParamType parameter)
                 foreach (var constraint in parameter.Param.Constraints)
                     if (_typeTable.ConstraintInterface(constraint) is { } iface
                         && iface.Members.LookupLocal(member.Member) is FunctionSymbol)
@@ -3373,6 +3499,13 @@ internal sealed class FunctionLowerer
 
     private TempId? LowerCall(CallExpr expr)
     {
+        // 'b?.get()' — Optional-Chaining mit Aufruf (§7). Dieselbe Verzweigung wie beim
+        // Feldzugriff, nur dass im 'some'-Zweig ein Aufruf statt eines 'ldfld' steht. Der Aufruf
+        // selbst landet danach wieder hier, mit ausgepacktem Empfaenger.
+        if (expr.Callee is MemberExpr { IsOptional: true } chained
+            && !_chainReceivers.ContainsKey(chained.Target))
+            return LowerOptionalCall(expr, chained);
+
         // Der Empfänger ist Parameter 0 (ADR-014). Bei `p.get()` wird 'p' also zum ersten Argument;
         // bei `P.new(…)` gibt es keinen, und der Aufruf ist ein gewöhnlicher Call. Beide Formen
         // laufen danach durch denselben Pfad — der Unterschied steckt allein in der Argumentliste.
@@ -3401,7 +3534,7 @@ internal sealed class FunctionLowerer
             // Empfaenger ist ein Interface-Wert: welche Implementierung laeuft, steht erst zur
             // Laufzeit fest. Das ist der einzige dynamische Dispatch der Sprache.
             case MemberExpr member
-                when _types.TypeOf(member.Target) is NamedRef
+                when ReceiverType(member.Target) is NamedRef
                      { Symbol.Kind: TypeSymbolKind.Interface } iface:
                 return LowerVirtualCall(member, iface.Symbol, expr);
 
@@ -3409,7 +3542,7 @@ internal sealed class FunctionLowerer
             // Dispatch, nur dass die Slot-Tabelle an der INSTANZ haengt — 'Iterator<int>' und
             // 'Iterator<string>' sind verschiedene Eintraege.
             case MemberExpr member
-                when SubstituteType(_types.TypeOf(member.Target)) is GenericInstance
+                when SubstituteType(ReceiverType(member.Target)) is GenericInstance
                      { Definition.Kind: TypeSymbolKind.Interface } genericIface:
                 return LowerVirtualCall(member, genericIface, expr);
 
@@ -3417,9 +3550,9 @@ internal sealed class FunctionLowerer
             // { x.price(); }'. Die Sema bindet 'price' an das Interface — dort hat es keinen
             // Rumpf. In einer Instanz steht T aber fest, also gibt es eine echte Methode.
             case MemberExpr member
-                when _types.TypeOf(member.Target) is TypeParamType parameter
+                when ReceiverType(member.Target) is TypeParamType parameter
                      && _substitution.ContainsKey(parameter.Param):
-                return LowerConstraintCall(member, SubstituteType(_types.TypeOf(member.Target)),
+                return LowerConstraintCall(member, SubstituteType(ReceiverType(member.Target)),
                     expr);
 
             // Eine INTERFACE-DEFAULT-Methode auf einem konkreten Empfaenger: 'it.isFree()', wo
@@ -3432,7 +3565,7 @@ internal sealed class FunctionLowerer
             // 'Eigenes Member schlaegt Default' (§3.5) steckt in der LookupLocal-Bedingung: hat
             // der konkrete Typ die Methode selbst, faellt dieser Fall durch zum direkten Aufruf.
             case MemberExpr member
-                when _types.TypeOf(member.Target) is NamedRef
+                when ReceiverType(member.Target) is NamedRef
                      { Symbol: { Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct
                          or TypeSymbolKind.Enum } concrete }
                      && concrete.Members.LookupLocal(member.Member) is not FunctionSymbol
@@ -3441,7 +3574,7 @@ internal sealed class FunctionLowerer
                     receiver: LowerExprAs(member.Target, _typeTable.InterfaceOf(provider)));
 
             case MemberExpr member
-                when _types.TypeOf(member.Target) is NamedRef
+                when ReceiverType(member.Target) is NamedRef
                      { Symbol.Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct
                          or TypeSymbolKind.Enum }:
                 calleeName = member.Member;
@@ -3452,11 +3585,12 @@ internal sealed class FunctionLowerer
             // Der Empfaenger ist eine Instanz eines generischen Typs: 'Box<int>.get()'. Die
             // Methode gehoert der INSTANZ, nicht der Definition — ihr Rueckgabetyp kann T sein.
             case MemberExpr member
-                when SubstituteType(_types.TypeOf(member.Target)) is GenericInstance owner
+                when SubstituteType(ReceiverType(member.Target)) is GenericInstance owner
                      && owner.Definition.Kind is TypeSymbolKind.Class or TypeSymbolKind.Struct:
                 return LowerGenericMethodCall(member, owner, expr);
 
             // Shape.Circle(2.0) — eine Tuple-Variante. Kein Call, sondern eine Konstruktion.
+
             case MemberExpr member when _types.RefOf(member) is EnumVariantSymbol:
                 return LowerVariantCall(member, expr.Arguments, expr.Span);
 
@@ -3469,7 +3603,7 @@ internal sealed class FunctionLowerer
             // Dispatch. Welche Funktion laeuft, steht statisch fest — das ist der ganze Unterschied
             // zwischen einer inhaerenten Extension und einer ueber ein Interface.
             case MemberExpr member
-                when _types.TypeOf(member.Target) is PrimitiveType
+                when ReceiverType(member.Target) is PrimitiveType
                      && _types.RefOf(member) is FunctionSymbol:
                 calleeName = member.Member;
                 bound = _types.RefOf(member);
@@ -4032,7 +4166,22 @@ internal sealed class FunctionLowerer
 
     private static bool IsVoid(IrType type) => type is IrScalarType { Kind: IrScalar.Void };
 
-    private IrType TypeOfExpr(Expr expr) => LowerType(_types.TypeOf(expr), expr.Span);
+    private IrType TypeOfExpr(Expr expr) =>
+        _chainResults.TryGetValue(expr, out var chained)
+            ? chained
+            : LowerType(_types.TypeOf(expr), expr.Span);
+
+    /// <summary>
+    /// Sema-Typ eines Aufruf-Empfaengers, ausgepackt wenn er aus einer <c>?.</c>-Kette stammt.
+    ///
+    /// <para>Die Fallunterscheidung in <see cref="LowerCall"/> fragt den STATISCHEN Typ des Ziels,
+    /// und der ist in der Kette <c>?Box</c> und nicht <c>Box</c>. Ohne diese Stelle faende sie
+    /// weder die Klasse noch die generische Instanz noch das Interface.</para>
+    /// </summary>
+    private LyrType ReceiverType(Expr target) =>
+        _chainReceivers.ContainsKey(target) && _types.TypeOf(target) is Sema.Optional option
+            ? option.Inner
+            : _types.TypeOf(target);
 
     /// <summary>
     /// Sema-Typ → IR-Typ. Hier sitzt der Substitutions-Haken der Monomorphisierung, und sonst

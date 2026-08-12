@@ -776,11 +776,21 @@ eine Lockerung, die vorher korrekten Code still verändert.
 |---|---|
 | `?T` | äquivalent zu `Option<T>` |
 | `expr?.member` | optional chaining, Ergebnistyp `?U` |
+| `expr?.method(a)` | optional chaining mit Aufruf; bei `null` werden die Argumente **nicht** ausgewertet |
 | `a ?? b` | Null-Coalescing |
 | `a ??= b` | Null-Coalescing-Assign |
 | `expr!` | Force-Unwrap, **`panic`** bei null (`LYR-VM0007`) |
 
 Narrowing: `if (x != null) { … }` engt `x: ?T` im then-Zweig zu `x: T` ein.
+
+Optionals verschachteln nicht (§4): ist das Glied selbst optional — ein Feld `w: ?int` oder eine
+Methode `fn f(): ?int` — bleibt das Ergebnis von `x?.w` bzw. `x?.f()` ein `?int` und wird kein
+`??int`. „Empfänger war null" und „Glied war null" sind danach nicht mehr unterscheidbar; das ist
+gewollt und der Preis dafür, dass `?T` genau eine Ebene hat.
+
+`x?.m()` verlangt, dass `m` eine **Methode** ist. Hält das Glied einen Funktions-*Wert*
+(`f: fn() -> int`), gibt es zwei Fragen und nur ein `?`, und es gibt kein `?()` — die Form ist
+abgelehnt (`LYR-SEM0062`). Der Ausweg ist `let g = x?.f;` und danach ein gewöhnlicher Aufruf.
 
 *(Korrektur 2026-08-10: hier stand „wirft `NullDereferenceError`". Gemessen tut `expr!` das nicht
 und hat es nie getan — es ist ein `panic` und von `try`/`catch` nicht fangbar. Die Zeile bleibt
