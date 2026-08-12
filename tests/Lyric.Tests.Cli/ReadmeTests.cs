@@ -41,11 +41,16 @@ public sealed class ReadmeTests : IDisposable
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("", result.Err);
 
-        // Die Ausgabe steht im README direkt unter dem Programm. Stimmt sie nicht mehr, ist
-        // entweder das Beispiel oder die Behauptung falsch — beides soll auffallen.
-        Assert.Contains("|v| = 3.00", result.Out);
-        Assert.Contains("area = 19.63", result.Out);
-        Assert.Contains("area = 12.00", result.Out);
+        // Die erwartete Ausgabe wird aus dem README GELESEN, nicht hier hineingeschrieben: der
+        // Block direkt unter dem Programm ist die Behauptung, und genau die soll geprueft werden.
+        // Stuende sie hier, pruefte der Test seine eigene Kopie und liesse den README driften.
+        var claimed = Regex.Match(readme[(block.Index + block.Length)..],
+            @"```\r?\n(.*?)```", RegexOptions.Singleline);
+        Assert.True(claimed.Success, "README does not show the example's output");
+
+        foreach (var line in claimed.Groups[1].Value
+                     .Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            Assert.Contains(line.Trim(), result.Out, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -4,63 +4,41 @@ A statically typed, GC-managed application language with an embeddable bytecode 
 
 ![CI](https://github.com/OIL1I/lyric/actions/workflows/ci.yml/badge.svg)
 
-> **Status: pre-alpha, but it runs.** The compiler, the bytecode VM and the standard library
-> work end to end — every construct in [`docs/Sprache.md`](docs/Sprache.md) compiles and
-> executes. There is an interactive prompt (`lyric repl`) and a VS Code extension. What is
-> missing before v1.0 is the embedding API (milestone M10).
->
-> Do not depend on it yet: `.lyrbc` has no compatibility promise before v1.0 (ADR-013), and the
-> language may still change where the spec turns out to be wrong.
+Source files use `.lyr`, compiled modules use `.lyrbc`.
 
-## What is Lyric?
+## Status
 
-Lyric is designed for two use cases that share the same language and runtime:
+Pre-1.0. The compiler, the bytecode VM and the standard library work end to end; every construct
+in [`docs/Grammar.md`](docs/Grammar.md) compiles and runs. The bytecode format carries no
+compatibility promise before v1.0 and may change with a major bump.
 
-- **Standalone applications** — CLI tools, desktop apps, servers.
-- **Embedded scripting** — drop the VM into a C# host (game engine, editor,
-  build tool) and let users write scripts with controlled capabilities.
+Current version: **0.9.0**.
 
-The design borrows from C# (familiar surface syntax), Swift/Rust (modern
-type system, no classical inheritance, pattern matching), and Lua/Wren
-(capability-based sandbox, embeddability).
+## Targets
 
-### Quick taste
+- **Standalone applications** — CLI tools, desktop applications, servers.
+- **Embedded scripting** — the VM as a library in a C# host, with capability-gated access to
+  files, network and OS.
 
-This program runs as-is — `lyric run taste.lyr`:
+## Example
 
 ```lyr
 import std.io.console { println };
-import std.math { sqrt, pi };
 import std.collections { emptyList };
-
-struct Vector3 {
-    x: float,
-    y: float,
-    z: float,
-
-    fn length(): float {
-        return sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
-    }
-}
 
 enum Shape {
     Circle(float),
-    Rectangle(float, float),
-    Empty;
+    Rectangle(float, float);
 
     fn area(): float {
         return match (this) {
-            Circle(r)       => pi * r * r,
+            Circle(r)       => 3.14159 * r * r,
             Rectangle(w, h) => w * h,
-            Empty           => 0.0,
         };
     }
 }
 
 fn main(): int {
-    let v = Vector3 { x = 1.0, y = 2.0, z = 2.0 };
-    println(f"|v| = {v.length():N2}");
-
     let shapes = emptyList<Shape>();
     shapes.push(Shape.Circle(2.5));
     shapes.push(Shape.Rectangle(3.0, 4.0));
@@ -73,76 +51,17 @@ fn main(): int {
 ```
 
 ```
-|v| = 3.00
 area = 19.63
 area = 12.00
 ```
 
-### What works today
+The [`examples/`](examples/) directory has 22 programs; the test suite runs every one of them.
 
-Classes, structs with value semantics, enums with payloads and `match`, interfaces with vtable
-dispatch, generics via monomorphization, closures, coroutines, exceptions with `defer`, tuples,
-`extend` blocks, optionals with flow narrowing — and a standard library with strings, formatting,
-collections, math, files and OS access behind capabilities.
+## Requirements
 
-The [`examples/`](examples/) directory has 22 programs, all of them exercised by the test suite.
-[`examples/wc.lyr`](examples/wc.lyr) is a word-count clone that produces the same numbers as
-POSIX `wc`.
+.NET 10 SDK.
 
-## Documentation
-
-| File | Purpose |
-|---|---|
-| [`docs/Doku.md`](docs/Doku.md) | User-facing documentation with examples (start here) |
-| [`docs/Sprache.md`](docs/Sprache.md) | Formal language specification (EBNF) |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | Milestones, architecture, design decisions |
-| [`docs/IDEAS.md`](docs/IDEAS.md) | Post-v1 idea pile (no commitments) |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Project rules and process |
-
-## Project layout
-
-```
-lyric/
-├── src/
-│   ├── Lyric.Core/          → lyrcore.dll  Diagnostics, SourceManager, Span,
-│   │                                       and the read side of the bytecode format
-│   ├── Lyric.Frontend/      → lyrfe.dll    Everything between source and bytes:
-│   │                                       Lexing, AST, Parsing, Resolver, Sema,
-│   │                                       Ir, Emit (write side), Compiler
-│   ├── Lyric.Vm/            → lyrrt.dll    Interpreter
-│   ├── Lyric.Embedding/     → lyrembed.dll the host API — compile and run from C#
-│   ├── Lyrc/                → lyrc.exe     the compiler
-│   ├── Lyrvm/               → lyrvm.exe    the bundled runtime
-│   ├── Lyrrepl/             → lyrrepl.exe  the interactive prompt
-│   └── Lyric.Cli/           → lyric.exe    the driver
-├── stdlib/                 Stdlib source (.lyr files)
-├── tests/                  xUnit test projects
-├── examples/               Example programs, plus embedded-host/ (a C# host)
-├── build/                  publish.proj — the shipping definition
-├── tooling/                VS Code extension: TextMate grammar + run command
-└── docs/                   Documentation
-```
-
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the M0–M10 milestone plan.
-
-## The four binaries
-
-Like `dotnet`/`csc` or `cargo`/`rustc`, the toolchain separates the friendly driver from the
-tools it drives. In daily use you only need `lyric`.
-
-| Binary | Role |
-|---|---|
-| `lyric` | Driver. `run`, `build`, `check`, `disasm`, `repl` — it dispatches, it does not compile |
-| `lyrc` | Compiler. `build`, `check`, plus the `lower`/`parse`/`tokenize` debug dumps |
-| `lyrvm` | Runtime. `run`, `disasm`, `verify` on `.lyrbc` only — it does not compile |
-| `lyrrepl` | The interactive prompt. The only tool that holds both sides at once (ADR-021) |
-
-Because `.lyrbc` is a specified format ([`docs/Bytecode.md`](docs/Bytecode.md)), a third party can
-write their own runtime. Point the driver at it with `lyric run app.lyr --vm ./their-runtime`, or
-set `LYRIC_VM`. What such a runtime has to honor is the four-point runner contract in
-[`docs/Bytecode.md` §9](docs/Bytecode.md).
-
-## Building
+## Build and run
 
 ```bash
 dotnet build
@@ -156,13 +75,39 @@ dotnet test
 dotnet run --project src/Lyric.Cli -- run examples/hello.lyr
 ```
 
-Or, after publishing:
+Publish the toolchain into one directory:
 
 ```bash
-lyric run examples/wc.lyr -- README.md
+dotnet msbuild build/publish.proj
 ```
 
-### The prompt
+The output lands in `artifacts/publish/` and is framework-dependent; it requires a .NET 10 runtime
+on the target machine. Pass `-p:PublishRoot=<dir>` to publish elsewhere. The target directory is
+wiped first. What ends up there, and nothing else:
+
+```
+lyric.exe  lyrc.exe               driver and compiler
+lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
+lyrcore.dll                        diagnostics and the bytecode reader
+lyrfe.dll                          lexer through emitter
+lyrrt.dll                          interpreter
+lyrembed.dll                       host API
+*.runtimeconfig.json               framework version to load
+stdlib/                            standard library, as .lyr source
+```
+
+`lyrvm.exe` ships neither `lyrfe.dll` nor `stdlib/`: a runtime consumes bytecode, not source.
+
+## Binaries
+
+| Binary | Role |
+|---|---|
+| `lyric` | Driver: `run`, `build`, `check`, `disasm`, `repl` — dispatches to the tools below |
+| `lyrc` | Compiler: `build`, `check`, and the `lower`/`parse`/`tokenize` dumps |
+| `lyrvm` | Runtime: `run`, `disasm`, `verify` on `.lyrbc` |
+| `lyrrepl` | Interactive prompt |
+
+`lyrembed.dll` is the host library: compile and run Lyric from C#.
 
 ```
 $ lyric repl
@@ -170,50 +115,75 @@ Lyric 0.9.0 — :help for commands, :quit to leave
 lyr> let x = 5
 lyr> x * 2
 10
-lyr> fn double(n: int): int { return n * 2; }
-lyr> double(21)
-42
 ```
 
-Declarations stay for later entries; statements run once. `:list` shows what the session
-remembers, `:reset` forgets it.
+Declarations persist across entries; statements run once. `:list` shows the session, `:reset`
+clears it.
 
-### Shipping
+`.lyrbc` is a specified format, so a third-party runtime can replace `lyrvm`. Point the driver at
+it with `lyric run app.lyr --vm ./their-runtime`, or set `LYRIC_VM`.
 
-One command publishes the four binaries and the host library into a single directory:
-
-```bash
-dotnet msbuild build/publish.proj
-```
-
-The result lands in `artifacts/publish/` and is framework-dependent — it needs a
-.NET 10 runtime on the target machine. What ends up there, and nothing else:
+## Repository layout
 
 ```
-lyric.exe  lyrc.exe               driver and compiler
-lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
-lyrcore.dll                        diagnostics + the read side of the bytecode format
-lyrfe.dll                          everything between source and bytes
-lyrrt.dll                          the interpreter
-lyrembed.dll                       the host API — reference this from a C# host
-*.runtimeconfig.json               which framework version to load
-stdlib/                            the standard library, as .lyr source
+lyric/
+├── src/
+│   ├── Lyric.Core/       → lyrcore.dll   diagnostics, source manager, bytecode reader
+│   ├── Lyric.Frontend/   → lyrfe.dll     lexer, parser, resolver, sema, IR, emitter
+│   ├── Lyric.Vm/         → lyrrt.dll     interpreter
+│   ├── Lyric.Embedding/  → lyrembed.dll  host API
+│   ├── Lyrc/             → lyrc.exe
+│   ├── Lyrvm/            → lyrvm.exe
+│   ├── Lyrrepl/          → lyrrepl.exe
+│   └── Lyric.Cli/        → lyric.exe
+├── stdlib/               standard library, written in Lyric
+├── tests/                xUnit test projects
+├── examples/             22 example programs, plus embedded-host/
+├── build/                publish.proj
+├── tooling/              VS Code extension
+└── docs/                 specifications and documentation sources
 ```
 
-No PDBs, no `.deps.json`, no XML doc files. `lyrvm.exe` deliberately ships
-neither `lyrfe.dll` nor `stdlib/`: a runtime gets finished bytes, never source
-(ADR-013, ADR-017). A test enforces that.
+## Documentation
 
-Pass `-p:PublishRoot=<dir>` to publish elsewhere. The target directory is wiped
-first — a publish directory that grows across refactors accumulates DLLs under
-names that no longer exist.
+| Document | Contents |
+|---|---|
+| [`docs/Grammar.md`](docs/Grammar.md) | Formal grammar |
+| [`docs/Bytecode.md`](docs/Bytecode.md) | Formal `.lyrbc` format specification |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution rules and process |
 
-## Why "Lyric"?
+## Versioning
 
-The name is a placeholder picked during initial design. It is short, typeable,
-and not collision-prone with established language names. The file extension is
-`.lyr`. If a better name surfaces before v1.0, it will be renamed via
-search-and-replace; nothing in the design depends on the name.
+From v1.0 the project follows semantic versioning with three components, `vMAJOR.MINOR.PATCH`:
+
+| Component | Increments on |
+|---|---|
+| MAJOR | incompatible language, standard library or bytecode format change |
+| MINOR | backwards-compatible additions |
+| PATCH | backwards-compatible fixes |
+
+Before v1.0 the bytecode format may change incompatibly with a major bump of its own version,
+which is independent of the toolchain version.
+
+## Branches
+
+| Branch | Purpose |
+|---|---|
+| `main` | Always green. Every commit passes CI on Linux and Windows. |
+| `feature/<name>` | New work. Merged into `main` through a pull request. |
+| `fix/<name>` | Corrections. Same process. |
+
+CI runs on `main`, on `feature/**` and `fix/**`, and on every pull request against `main`.
+
+## Releases
+
+Two channels:
+
+- **Stable** — created by pushing an annotated tag `vX.Y.Z`. The release workflow verifies on
+  Linux and Windows, packages `win-x64`, `linux-x64` and `osx-arm64`, and publishes the archives
+  as a GitHub release.
+- **Nightly** — built from `main` once a day and published as the `nightly` prerelease. The
+  `nightly` tag moves to the commit that was built. No compatibility promise.
 
 ## License
 
