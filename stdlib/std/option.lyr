@@ -1,35 +1,30 @@
-// std.option — Rechnen mit `?T`, ohne vorher zu pruefen.
+// std.option — computing with `?T` without testing first.
 //
-// **Es gibt hier keinen Typ `Option<T>`.** `?T` IST er (Sprache.md §4), und ein zweiter waere der
-// Doppel-Mechanismus, den CONTRIBUTING Rule 2 verbietet. Was hier steht, sind Funktionen ueber dem
-// eingebauten Typ — nichts, was ihn ersetzt.
+// There is no `Option<T>` type here: `?T` is it. What follows are functions over the built-in type.
 //
-// **Was hier bewusst FEHLT**, weil die Sprache es schon hat:
+// Not here, because the language already has it:
 //
-// | nicht hier | weil |
+// | absent | equivalent |
 // |---|---|
-// | `unwrap` | ist `o!` |
-// | `unwrapOr` | ist `o ?? fallback` — und `??` lowert zu einer Verzweigung, ist also schon faul |
-// | `isSome` / `isNone` | ist `o != null` / `o == null` — und daran haengt das Flow-Narrowing (§7).
-// |   | Eine Funktion wuerde es ABSCHNEIDEN: nach `if (isSome(o))` bliebe `o` ein `?T`. |
-// | `flatten` | verschachtelte Optionals gibt es nicht (`??T` ist ein Parser-Fehler, `?(?T)` ist
-// |   | LYR-IR0001). `andThen` ist der Ersatz: weil `f` schon `?U` liefert, entsteht nie ein `??U`. |
+// | `unwrap` | `o!` |
+// | `unwrapOr` | `o ?? fallback`, which lowers to a branch and is therefore already lazy |
+// | `isSome` / `isNone` | `o != null` / `o == null`, which is what flow narrowing keys on. A
+// |   | function would cut it off: after `if (isSome(o))`, `o` would still be a `?T`. |
+// | `flatten` | optionals do not nest. `andThen` takes its place: `f` already returns `?U`, so a
+// |   | `??U` never arises. |
 
 module std.option;
 
-// `Equatable` fuer `contains`, `panic` fuer `expect`. Kein Zyklus: `std.core` importiert nur
-// `std.string`, und das importiert nichts.
+// `Equatable` for `contains`, `panic` for `expect`. No cycle: `std.core` imports only
+// `std.string`, which imports nothing.
 import std.core { Equatable, panic };
 
-// `Iterator` fuer die Bruecke unten. `std.iter` importiert seinerseits nur `std.core`.
+// `Iterator` for the bridge below. `std.iter` imports only `std.core`.
 import std.iter { Iterator };
 
-// ------------------------------------------------------------------------ rechnen
+// ------------------------------------------------------------------------ computing
 
-// Wendet `f` auf den Wert an, wenn einer da ist.
-//
-// Der Normalfall: weiterrechnen, ohne die Pruefung hinzuschreiben. `map(alter, (n: int) => n + 1)`
-// statt drei Zeilen `if`.
+// Applies `f` to the value when there is one.
 pub fn map<T, U>(o: ?T, f: fn(T) -> U): ?U {
     if (o == null) {
         return null;
@@ -37,11 +32,10 @@ pub fn map<T, U>(o: ?T, f: fn(T) -> U): ?U {
     return f(o);
 }
 
-// Wie `map`, aber `f` darf selbst scheitern.
+// As `map`, but `f` may itself fail.
 //
-// **Das ist der Ersatz fuer `flatten`.** Ein `map` mit einem `f`, das `?U` liefert, ergaebe `??U`
-// — den Typ gibt es nicht. Hier liefert `f` bereits `?U`, und das Ergebnis ist dasselbe `?U`:
-// die Verschachtelung entsteht gar nicht erst, statt hinterher aufgeloest zu werden.
+// This takes the place of `flatten`. A `map` whose `f` returns `?U` would produce a `??U`, which is
+// not a type; here `f` already returns `?U` and the result is that same `?U`.
 pub fn andThen<T, U>(o: ?T, f: fn(T) -> ?U): ?U {
     if (o == null) {
         return null;
@@ -49,7 +43,7 @@ pub fn andThen<T, U>(o: ?T, f: fn(T) -> ?U): ?U {
     return f(o);
 }
 
-// Behaelt den Wert nur, wenn `pred` ihn annimmt.
+// Keeps the value only when `pred` accepts it.
 pub fn filter<T>(o: ?T, pred: fn(T) -> bool): ?T {
     if (o == null) {
         return null;
@@ -60,10 +54,8 @@ pub fn filter<T>(o: ?T, pred: fn(T) -> bool): ?T {
     return null;
 }
 
-// Beide da → ein Tupel; sonst `null`.
-//
-// Der Weg, zwei Optionals in EINER Pruefung aufzuloesen statt in zwei geschachtelten `if`. Das
-// Ergebnis zerlegt ein `let (a, b) = …` (§5).
+// Both present yields a tuple, otherwise `null`. The result is taken apart with
+// `let (a, b) = …`.
 pub fn zip<T, U>(a: ?T, b: ?U): ?(T, U) {
     if (a == null) {
         return null;
@@ -74,7 +66,7 @@ pub fn zip<T, U>(a: ?T, b: ?U): ?(T, U) {
     return (a, b);
 }
 
-// `true`, wenn ein Wert da ist UND er gleich `value` ist.
+// `true` when a value is present and equals `value`.
 pub fn contains<T :: [Equatable<T>]>(o: ?T, value: T): bool {
     if (o == null) {
         return false;
@@ -82,9 +74,9 @@ pub fn contains<T :: [Equatable<T>]>(o: ?T, value: T): bool {
     return o.equals(value);
 }
 
-// ------------------------------------------------------------------------ uebergaenge
+// ------------------------------------------------------------------------ transitions
 
-// Null oder ein Element — die Bruecke zu allem, was ein Array nimmt.
+// Zero or one element: the bridge to anything that takes an array.
 pub fn toArray<T>(o: ?T): T[] {
     if (o == null) {
         return [];
@@ -92,11 +84,10 @@ pub fn toArray<T>(o: ?T): T[] {
     return [o];
 }
 
-// Ein Iterator ueber null oder einen Wert.
+// An iterator over zero or one value.
 //
-// Damit laufen saemtliche Adapter aus `std.iter` auf einem Optional, ohne dass `std.iter` etwas
-// von `?T` wissen muss — `for (x in iter(o))` ersetzt das `if`, und `map`/`filter`/`chain` von
-// dort gelten unveraendert.
+// Every adapter in `std.iter` then works on an optional without `std.iter` knowing anything about
+// `?T`.
 pub class OptionIterator<T> :: [Iterator<T>] {
     value: ?T,
     done: bool,
@@ -105,8 +96,8 @@ pub class OptionIterator<T> :: [Iterator<T>] {
         if (this.done) {
             return null;
         }
-        // Auch wenn `value` leer ist: EIN Aufruf, dann Schluss. Ohne das Setzen liefe ein leeres
-        // Optional zwar richtig, ein gefuelltes aber endlos.
+        // Set even when `value` is empty: one call, then done. Without it a present value would
+        // be yielded forever.
         this.done = true;
         return this.value;
     }
@@ -116,18 +107,13 @@ pub fn iter<T>(o: ?T): OptionIterator<T> {
     return OptionIterator<T> { value = o, done = false };
 }
 
-// ------------------------------------------------------------------------ auspacken
+// ------------------------------------------------------------------------ unwrapping
 
-// Wie `o!`, aber mit eigener Meldung.
+// As `o!`, but with a message of your own. `LYR-VM0007` reports that a value was missing, never
+// which one.
 //
-// Das Einzige, was `!` nicht kann: `LYR-VM0007` sagt „force-unwrapped a '?T' that had no value",
-// also DASS etwas fehlte, nie WAS. Bei drei Optionals in einer Funktion ist das der Unterschied
-// zwischen einer Zeile und einer Suche.
-//
-// Kein `o!` nach dem `panic` noetig: `panic` hat den Rueckgabetyp `never` (§9), und die
-// Flussanalyse engt `o` dahinter auf `T` ein. Bis 2026-08-11 galt das nur fuer das eingebaute
-// `panic` und nicht fuer das importierte aus `std.core` — dieselbe Funktion unter zwei Symbolen,
-// von denen nur eines den Typ trug.
+// No `o!` after the `panic`: `panic` returns `never`, and the flow analysis narrows `o` to `T`
+// beyond it.
 pub fn expect<T>(o: ?T, message: string): T {
     if (o == null) {
         panic(message);

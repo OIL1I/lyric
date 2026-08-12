@@ -1,64 +1,61 @@
-// std.os — Umgebung und Prozess.
+// std.os — environment and process.
 //
-// **Permission-gated** (ADR-007, Doku §20.1): ein Import verlangt `osAccess`. Im Standalone-Modus
-// ist die Capability gewährt, im Embedded entscheidet der Host. Was ein Modul verlangt, steht in
-// seinem Bytecode; durchgesetzt wird es beim Laden, nicht beim Aufruf.
+// Capability-gated: an import requires `osAccess`. Standalone grants it, an embedded host decides.
+// What a module requires is recorded in its bytecode and enforced at load time.
 
 module std.os;
 
-// "windows", "linux", "macos" oder "unknown".
+// "windows", "linux", "macos" or "unknown".
 pub fn platform(): string;
 
-// Eine Umgebungsvariable, oder `null`, wenn sie nicht gesetzt ist. Kein `panic`: ob eine Variable
-// existiert, ist eine gewöhnliche Frage über die Umgebung und kein Programmierfehler.
+// An environment variable, or `null` when it is not set. Not a `panic`: whether a variable exists
+// is an ordinary question about the environment.
 pub fn env(name: string): ?string;
 
-// Das aktuelle Arbeitsverzeichnis.
+// The current working directory.
 pub fn currentDir(): string;
 
-// Beendet den Prozess sofort mit diesem Code. Kein `defer` läuft mehr, kein `catch` greift —
-// deshalb ist der Rückgabetyp `void` und nicht `never`: `never` würde versprechen, dass der
-// Compiler den nachfolgenden Code als unerreichbar behandelt, und das kann er bei einem Native
-// nicht wissen. Wer sauber beenden will, gibt aus `main` zurück.
+// Ends the process immediately with this code. No `defer` runs and no `catch` applies. The return
+// type is `void` rather than `never`, which would let the compiler treat the following code as
+// unreachable. To exit cleanly, return from `main`.
 pub fn exit(code: int): void;
 
-// ---------------------------------------------------------- Erweiterung (M8b/S8)
+// ----------------------------------------------------------------------------------
 
-/// Die Kommandozeilen-Argumente — auch ausserhalb von `main`.
+/// The command-line arguments, also outside `main`.
 ///
-/// `main(args)` bekommt sie zugestellt (§11), aber eine Funktion tief im Programm nicht. Sie
-/// dafuer durchzureichen ist Zeremonie; hier stehen sie fuer alle.
+/// `main(args)` receives them, but a function deeper in the program does not; here they are
+/// available without threading them through.
 pub fn args(): string[];
 
-/// Setzt eine Umgebungsvariable fuer diesen Prozess. Kindprozesse erben sie, das System nicht.
+/// Sets an environment variable for this process. Child processes inherit it; the system does
+/// not.
 pub fn setEnv(name: string, value: string): bool;
 
 pub fn hostName(): ?string;
 pub fn userName(): ?string;
 pub fn homeDir(): ?string;
 
-/// Wie viele Kerne die Maschine hat. Fuer Programme, die ihre Arbeit aufteilen wollen — auch wenn
-/// die VM selbst einfaedig ist (ADR-010).
+/// How many cores the machine has, for programs that split their work. The VM itself is
+/// single-threaded.
 pub fn cpuCount(): int;
 
-/// Millisekunden seit dem 1.1.1970 UTC.
+/// Milliseconds since 1970-01-01 UTC.
 ///
-/// Bewusst eine Zahl und kein Datumstyp: `DateTime` ist ein eigenes Modul mit Zeitzonen, Kalendern
-/// und Formaten (v1.1). Fuer Messungen, Seeds und Zeitstempel reicht die Zahl, und sie ist auf
-/// jeder Plattform dieselbe.
+/// A number rather than a date type: dates, time zones and calendars are their own module. The
+/// number is the same on every platform.
 pub fn nowMillis(): int;
 
-/// Nanosekunden einer monotonen Uhr. NICHT mit `nowMillis` vergleichbar — der Nullpunkt ist
-/// beliebig. Fuer Zeitmessungen ist genau das richtig: eine Systemuhr kann waehrend der Messung
-/// springen.
+/// Nanoseconds from a monotonic clock. Not comparable with `nowMillis`; the origin is arbitrary.
+/// A system clock can jump during a measurement, a monotonic one cannot.
 pub fn nowNanos(): int;
 
-/// Haelt den Prozess an. Die VM ist einfaedig, es gibt also nichts, was daneben weiterlaeuft.
+/// Suspends the process. The VM is single-threaded, so nothing runs alongside.
 pub fn sleep(millis: int): void;
 
-// ---------------------------------------------------------- In Lyric
+// ---------------------------------------------------------------- written in Lyric
 
-/// Eine Umgebungsvariable mit Voreinstellung.
+/// An environment variable with a default.
 pub fn envOr(name: string, fallback: string): string {
     let value = env(name);
     if (value == null) {
