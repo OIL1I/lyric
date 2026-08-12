@@ -1,93 +1,81 @@
 namespace Lyric.Bytecode;
 
 /// <summary>
-/// Die Konstanten des <c>.lyrbc</c>-Formats. Einzige Quelle für Magic, Version, Sektions-Ids,
-/// Typ-Tags und Opcodes — <c>docs/Bytecode.md</c> ist gegen diese Datei geschrieben, und ein Test
-/// bindet beide aneinander, damit die Spec nicht driftet.
+/// The constants of the <c>.lyrbc</c> format: magic, version, section ids, type tags and opcodes.
+/// A test binds <c>docs/Bytecode.md</c> to this file so the two cannot drift.
 /// </summary>
 public static class Format
 {
-    /// <summary>"LYRB" — vier Bytes, nicht als Text interpretiert.</summary>
+    /// <summary>"LYRB" — four bytes, not interpreted as text.</summary>
     public static ReadOnlySpan<byte> Magic => "LYRB"u8;
 
-    /// <summary>Eine unbekannte Major-Version wird abgelehnt, eine unbekannte Minor toleriert
-    /// (neue Sektionen sind überspringbar). Bis v1.0 darf Major frei springen — ADR-013.</summary>
-    /// <remarks>Auf 2.0 gehoben, weil die Types-Sektion für Enums ihre <b>Form</b> ändert (ein
-    /// Eintrag trägt jetzt ein Kind-Byte). §2 erlaubt einer neuen Minor nur überspringbare
-    /// Ergänzungen — eine geänderte Sektions-Form ist keine. ADR-013 deckt den Bruch vor v1.0
-    /// ausdrücklich.</remarks>
+    /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
+    /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
     public const ushort VersionMinor = 0;
 }
 
 /// <summary>
-/// Sektions-Ids. Jede Sektion trägt ihre Byte-Länge, unbekannte Ids werden übersprungen — das ist
-/// der Mechanismus, der die Source-Map strippbar macht und das Format erweiterbar hält, ohne die
-/// Major-Version zu brechen. Sektionen erscheinen höchstens einmal und in aufsteigender Id-Reihenfolge
-/// (Determinismus).
+/// Section ids. Every section carries its byte length and an unknown id is skipped, which is what
+/// makes the source map strippable and the format extensible without a major bump. Sections appear
+/// at most once and in ascending id order.
 /// </summary>
 public enum SectionId : byte
 {
     Capabilities = 1,
 
-    /// <summary>Konstantenpool. Hält <b>nur Strings</b>: Zahlen sind als LEB128-Immediate nicht
-    /// größer als ein Pool-Index und sparen die Indirektion.</summary>
+    /// <summary>The constant pool. Strings only: as a LEB128 immediate a number is no larger than
+    /// a pool index and saves the indirection.</summary>
     Strings = 2,
 
-    /// <summary>Layouts zusammengesetzter Typen: Name, Feldzahl, Feldtypen. Der Feldindex <b>ist</b>
-    /// die Position in der Feldliste; Feldnamen stehen nicht im Bytecode. Über den Index sind auch
-    /// rekursive Typen (<c>class Node { next: Node }</c>) kodierbar, die strukturell nicht endlich
-    /// wären.</summary>
+    /// <summary>Layouts of composite types: name, field count, field types. The field index is
+    /// the position in the field list; field names are not in the bytecode. Through the index a
+    /// recursive type is encodable, which structurally it would not be.</summary>
     Types = 3,
 
-    /// <summary>Host-/Native-Funktionen mit symbolischem Namen und Signatur (ADR-013, WASM-Modell).</summary>
+    /// <summary>Host and native functions with a symbolic name and signature.</summary>
     Imports = 4,
 
     Functions = 5,
 
-    /// <summary>Optional und strippbar: PC → Datei/Zeile.</summary>
+    /// <summary>Optional and strippable: PC to file and line.</summary>
     SourceMap = 6,
 
-    /// <summary>Einstiegspunkt: <c>uleb128</c>-Index der Funktion, die eine Runtime aufruft
-    /// (WASM-Modell). Fehlt bei Bibliotheks-Modulen. Ohne diese Sektion müsste eine Runtime den
-    /// Einstieg über eine Namenskonvention raten — was ADR-013s Ziel widerspricht, dass die Spec
-    /// allein zum Implementieren reicht.</summary>
+    /// <summary>Entry point: the <c>uleb128</c> index of the function a runtime calls. Absent for
+    /// a library module. Without the section a runtime would have to guess the entry point from a
+    /// naming convention.</summary>
     Start = 7,
 
     /// <summary>
-    /// Interface-Implementierungen: welche Funktion erfuellt welchen Methoden-Slot welches
-    /// Interfaces fuer welche Klasse. Die vtable-Zeilen, aus denen <c>callvirt</c> sein Ziel holt.
+    /// Interface implementations: which function fills which method slot of which interface for
+    /// which type. The vtable rows <c>callvirt</c> takes its target from.
     ///
-    /// <para>Eigene Sektion und <b>nicht</b> ein Feld im Klassen-Eintrag: §2 erlaubt einer neuen
-    /// Minor nur ueberspringbare Ergaenzungen. Ein zusaetzliches Feld im Layout-Eintrag waere eine
-    /// Formaenderung wie bei Enums (die 2.0 erzwang); eine neue Sektions-Id ist genau die
-    /// Erweiterung, fuer die der Mechanismus da ist.</para>
+    /// <para>Its own section rather than a field in the layout entry: a new minor may only add
+    /// skippable sections, and an extra field would change an existing section's shape.</para>
     /// </summary>
     Impls = 8,
 
     /// <summary>
-    /// Geschuetzte Regionen je Funktion: welcher Blockbereich von welchem Handler abgedeckt ist.
+    /// Protected regions per function: which block range is covered by which handler.
     ///
-    /// <para>Eigene Sektion und <b>kein</b> Feld im Funktions-Eintrag: §2 erlaubt einer neuen Minor
-    /// nur ueberspringbare Ergaenzungen, und ein zusaetzliches Feld im Funktionskopf waere eine
-    /// Formaenderung. Dieselbe Ueberlegung wie bei Impls.</para>
+    /// <para>Its own section for the same reason as Impls: a field in the function header would
+    /// change an existing section's shape.</para>
     /// </summary>
     Handlers = 9,
 
     /// <summary>
-    /// Globale Slots — Modul-<c>let</c> und <c>static let</c> — samt der Funktion, die sie fuellt.
+    /// Global slots — module-level <c>let</c> and <c>static let</c> — with the function that fills
+    /// them.
     ///
-    /// <para>Ein Wert und keine Konstante: <c>static let ZERO: Vector3 = Vector3 { … }</c> ist ein
-    /// Ausdruck, kein Literal (ADR-014). Ihn im Bytecode als Wert abzulegen ginge nur fuer
-    /// Skalare; eine Init-Funktion kann alles, was das Lowering sonst auch kann. CIL loest es mit
-    /// <c>.cctor</c> genauso.</para>
+    /// <para>A function rather than stored values: an initializer is an expression, and storing it
+    /// as a value would only work for scalars.</para>
     /// </summary>
     Globals = 10,
 }
 
 /// <summary>
-/// Typ-Tags, ein Byte. Werte ab 0x40 sind für zusammengesetzte Typen reserviert, damit deren
-/// Einführung die bestehenden Tags nicht verschiebt.
+/// Type tags, one byte. Values from 0x40 are reserved for composite types, so adding one does not
+/// shift the existing tags.
 /// </summary>
 public enum TypeTag : byte
 {
@@ -97,120 +85,99 @@ public enum TypeTag : byte
     Bool = 0x0B, Char = 0x0C, String = 0x0D,
     Void = 0x0E,
 
-    /// <summary>Referenz auf einen Typ der Types-Sektion; ein <c>uleb128</c>-Index folgt.
-    /// Zuweisung kopiert den Verweis, nicht das Objekt. Wert-Semantik (<c>struct</c>) bekommt ein
-    /// eigenes Tag — am Bytecode muss ablesbar bleiben, ob eine Zuweisung kopiert.</summary>
+    /// <summary>A reference to a Types entry; a <c>uleb128</c> index follows. Assignment copies
+    /// the reference, not the object. Value semantics get their own tag, so the bytecode says
+    /// whether an assignment copies.</summary>
     Ref = 0x40,
 
-    /// <summary>Array; der Elementtyp folgt <b>inline</b> als weiterer Typ, nicht als
-    /// Tabellen-Index. Möglich, weil ein Array-Typ nicht rekursiv sein kann — <c>int[][]</c> ist
-    /// endlich tief, <c>class Node { next: Node }</c> nicht.</summary>
+    /// <summary>An array; the element type follows inline rather than as a table index, which
+    /// works because an array type cannot be recursive.</summary>
     Array = 0x41,
 
-    /// <summary>Optional (<c>?T</c>); der innere Typ folgt inline. <b>Nicht schachtelbar</b> —
-    /// <c>??T</c> gibt es nicht, sonst wäre „kein Wert" mehrdeutig.</summary>
+    /// <summary>An optional (<c>?T</c>); the inner type follows inline. Not nestable: <c>??T</c>
+    /// does not exist, or "no value" would be ambiguous.</summary>
     Optional = 0x42,
 
-    /// <summary>Enum; ein <c>uleb128</c>-Index auf einen Enum-Eintrag der Types-Sektion folgt.
-    /// Anders als Array und Optional über einen Index, weil ein Enum wie eine Klasse eine
-    /// Deklaration hat und rekursiv sein darf.</summary>
+    /// <summary>An enum; a <c>uleb128</c> index into the Types section follows. Through an index
+    /// rather than inline, because an enum has a declaration and may be recursive.</summary>
     Enum = 0x43,
 
     /// <summary>
-    /// Interface-Typ (<c>dyn</c>); ein <c>uleb128</c>-Index auf einen Interface-Eintrag folgt.
+    /// An interface type; a <c>uleb128</c> index into an interface entry follows.
     ///
-    /// <para>Ein Wert dieses Typs ist ein <b>Fat Pointer</b>: Objekt plus konkreter Typindex.
-    /// Siehe §4 „Darstellung eines Interface-Wertes".</para>
+    /// <para>A value of this type is a fat pointer: the object plus its concrete type index.</para>
     /// </summary>
     Interface = 0x44,
 
     /// <summary>
-    /// <c>struct</c> — <b>Wert-Semantik</b>; ein <c>uleb128</c>-Index auf einen Struct-Eintrag der
-    /// Types-Sektion folgt.
+    /// A <c>struct</c> with value semantics; a <c>uleb128</c> index into a struct entry follows.
     ///
-    /// <para>Eigenes Tag neben <see cref="Ref"/>, weil am Bytecode ablesbar bleiben muss, ob eine
-    /// Zuweisung kopiert. Das war schon bei der Einfuehrung von <c>0x40</c> so vorgesehen.</para>
+    /// <para>Its own tag beside <see cref="Ref"/>, so the bytecode says whether an assignment
+    /// copies.</para>
     /// </summary>
     Struct = 0x45,
 
     /// <summary>
-    /// Ein Funktionswert: <c>fn(A, B) -&gt; R</c>. Kodiert <b>strukturell</b> — Parameterzahl,
-    /// dann die Parametertypen, dann der Rueckgabetyp —, weil er als einziger zusammengesetzter
-    /// Typ keinen Eintrag in der Typtabelle hat: er hat keine Deklaration, an der eine Id haengen
-    /// koennte, und zwei gleich geformte Funktionstypen sind derselbe Typ.
+    /// A function value: <c>fn(A, B) -&gt; R</c>. Encoded structurally — parameter count, parameter
+    /// types, return type — because it is the one composite type without a table entry: it has no
+    /// declaration to hang an id on, and two identically shaped function types are the same type.
     /// </summary>
     Fn = 0x46,
 
     /// <summary>
-    /// Ein <b>Host-Objekt</b> (M10/E4, ADR-026); ein <c>uleb128</c>-Index in den String-Pool mit
-    /// dem registrierten Typnamen folgt.
+    /// A host object; a <c>uleb128</c> index into the string pool with the registered type name
+    /// follows.
     ///
-    /// <para><b>Eigenes Tag neben <see cref="Ref"/>, und das ist der Kern.</b> Beide sind
-    /// Referenzen, aber sie zeigen in entgegengesetzte Richtungen:</para>
+    /// <para>Both this and <see cref="Ref"/> are references, but their layouts belong to opposite
+    /// sides: a <see cref="Ref"/> layout is known to the module, a <see cref="Host"/> layout to the
+    /// host.</para>
     ///
-    /// <list type="table">
-    ///   <item><term><see cref="Ref"/></term><description>Layout kennt das <b>Modul</b>; der Host
-    ///     fasst es nicht an.</description></item>
-    ///   <item><term><see cref="Host"/></term><description>Layout kennt der <b>Host</b>; das Modul
-    ///     fasst es nicht an.</description></item>
-    /// </list>
+    /// <para>A host type therefore has no entry in the type table, so a field access against one is
+    /// not encodable at all rather than merely forbidden.</para>
     ///
-    /// <para>Ein Host-Typ hat deshalb <b>keinen Eintrag in der Typtabelle</b> — es gibt kein
-    /// Layout, das dort stehen koennte. Damit ist ADR-026s Zusage „gegen einen Host-Typ wird nie
-    /// ein <c>ldfld</c> emittiert" <b>strukturell</b> statt geprueft: ohne Feldliste ist ein
-    /// Feldzugriff nicht kodierbar. Eine Regel, die man durchsetzen muss, kann man vergessen; eine
-    /// Form, die den Fehler nicht ausdruecken kann, nicht.</para>
-    ///
-    /// <para>Der <b>Name</b> steht dabei, damit die Runtime beim Binden pruefen kann, dass eine
-    /// Native wirklich denselben Host-Typ meint — <c>Entity</c> und <c>Sprite</c> waeren sonst
-    /// ununterscheidbar, genau wie <c>string[]</c> und <c>char[]</c> es ohne den Elementtag
-    /// waeren.</para>
+    /// <para>The name travels with it so the runtime can check at binding time that a native means
+    /// the same host type; two host types are otherwise indistinguishable.</para>
     /// </summary>
     Host = 0x47,
 }
 
-/// <summary>Art eines Types-Eintrags. Varianten eines Enums sind selbst
-/// <see cref="Layout"/>-Einträge — der Enum nennt nur ihre Indizes.</summary>
+/// <summary>The kind of a Types entry. The variants of an enum are <see cref="Layout"/> entries
+/// themselves; the enum only names their indices.</summary>
 public enum TypeKind : byte
 {
     Layout = 0,
     Enum = 1,
 
-    /// <summary>Ein Interface. Traegt keine Felder, sondern die Namen seiner Methoden-Slots — der
-    /// <b>Index</b> in dieser Liste ist der Slot, auf den <c>callvirt</c> zeigt. Die Namen stehen
-    /// nur fuer Disassembler und Diagnose darin.</summary>
+    /// <summary>An interface. It carries no fields but the names of its method slots; the index
+    /// in that list is the slot <c>callvirt</c> addresses.</summary>
     Interface = 2,
 
     /// <summary>
-    /// Ein <c>struct</c>: dasselbe Feld-Layout wie <see cref="Layout"/>, aber <b>Wert-Semantik</b>.
+    /// A <c>struct</c>: the field layout of <see cref="Layout"/> with value semantics.
     ///
-    /// <para>Eigener Kind-Wert und nicht bloss ein anderes Typ-Tag an der Verwendungsstelle: der
-    /// Loader muss <c>structcopy</c> gegen den Eintrag pruefen koennen, und „ist dieser Typ ein
-    /// Wert-Typ" ist eine Eigenschaft der Deklaration, nicht der Verwendung.</para>
+    /// <para>Its own kind rather than only a different tag at the use site, so the loader can check
+    /// <c>structcopy</c> against the entry. Being a value type is a property of the declaration.
+    /// </para>
     /// </summary>
     Struct = 3,
 }
 
 /// <summary>
-/// Opcodes, ein Byte.
+/// Opcodes, one byte.
 ///
-/// <para><b>Ein Opcode pro Operation, der Typ steht als Tag-Byte dahinter</b> — nicht ein Opcode
-/// pro (Operation × Typ) wie in der JVM. Bei zehn numerischen Typen wären das hundert Opcodes für
-/// die Arithmetik allein; die Tabelle bliebe nicht mehr lesbar, und lesbar muss sie sein, weil
-/// ADR-013 verlangt, dass jemand allein aus der Spec eine zweite Runtime schreiben kann. Der Tag
-/// steht im <b>Instruktionsstrom</b>, nicht im Laufzeitwert: es bleibt statischer Dispatch, kein
-/// polymorpher Opcode.</para>
+/// <para>One opcode per operation with the type as a tag byte behind it, rather than one opcode per
+/// (operation × type). The tag is in the instruction stream, not in the runtime value, so dispatch
+/// stays static.</para>
 ///
-/// <para><b>Sprungziele sind Block-Indizes</b>, nicht Byte-Offsets. Der Funktionskopf trägt die
-/// Block-Offset-Tabelle, damit der Loader ein Ziel mit <c>index &lt; blockCount</c> prüfen kann —
-/// ADR-013s „Validierung beim Load statt beim Call". Byte-Offsets bräuchten Fixup-Patching beim
-/// Schreiben und eine Basic-Block-Rekonstruktion beim Prüfen (das CIL-Problem).</para>
+/// <para>Jump targets are block indices, not byte offsets. The function header carries the block
+/// offset table, so the loader checks a target with <c>index &lt; blockCount</c> instead of
+/// verifying a byte offset against instruction boundaries.</para>
 /// </summary>
 public enum Op : byte
 {
-    /// <summary><c>const &lt;type&gt; &lt;immediate&gt;</c> — Immediate je nach Typ: Ganzzahlen als
-    /// uleb128 des Zweierkomplement-Bitmusters, f32/f64 als IEEE-754-Bitmuster (4/8 Byte LE),
-    /// bool als ein Byte, char als uleb128-Codepoint, string als uleb128-Pool-Index.</summary>
+    /// <summary><c>const &lt;type&gt; &lt;immediate&gt;</c> — the immediate depends on the type:
+    /// integers as the uleb128 two's-complement bit pattern, f32/f64 as the IEEE-754 bit pattern,
+    /// bool as one byte, char as a uleb128 code point, string as a uleb128 pool index.</summary>
     Const = 0x01,
 
     LoadLocal = 0x02,  // ldloc <uleb128 slot>
@@ -220,21 +187,20 @@ public enum Op : byte
     Add = 0x10, Sub = 0x11, Mul = 0x12, Div = 0x13, Rem = 0x14,
     Shl = 0x15, Shr = 0x16, BitAnd = 0x17, BitOr = 0x18, BitXor = 0x19,
 
-    /// <summary>Vergleiche: das Tag nennt den <b>Operandentyp</b>, das Ergebnis ist immer bool.</summary>
+    /// <summary>Comparisons: the tag names the operand type, the result is always bool.</summary>
     Lt = 0x20, Le = 0x21, Gt = 0x22, Ge = 0x23, Eq = 0x24, Ne = 0x25,
 
     Neg = 0x30,
-    /// <summary>Logisches Nicht. <b>Ohne</b> Typ-Tag — nur bool ist gültig, ein Tag wäre reine
-    /// Redundanz. Die einzige Ausnahme von der Tag-Regel, hier bewusst dokumentiert.</summary>
+    /// <summary>Logical not, without a type tag: only bool is valid. The one exception to the tag
+    /// rule.</summary>
     Not = 0x31,
     BitNot = 0x32,
 
-    /// <summary><c>conv &lt;from&gt; &lt;to&gt;</c> — nur Numerik ↔ Numerik (Sprache.md §6.5).</summary>
+    /// <summary><c>conv &lt;from&gt; &lt;to&gt;</c> — numeric to numeric only.</summary>
     Convert = 0x33,
 
-    /// <summary><c>call &lt;uleb128 index&gt;</c> in den gemeinsamen Indexraum: erst Imports, dann
-    /// definierte Funktionen (WASM-Modell). Heute gibt es keine Imports, also ist der Index
-    /// identisch zur <c>FunctionId</c> der IR.</summary>
+    /// <summary><c>call &lt;uleb128 index&gt;</c> into the shared index space: imports first, then
+    /// defined functions.</summary>
     Call = 0x40,
 
     Return = 0x41,      // ret     — void
@@ -243,22 +209,22 @@ public enum Op : byte
     CondBranch = 0x44,  // condbr <uleb128 ifTrue> <uleb128 ifFalse>
     Unreachable = 0x45,
 
-    /// <summary><c>newobj &lt;uleb128 type&gt;</c> — legt eine Instanz an, Felder auf ihren Nullwert.</summary>
+    /// <summary><c>newobj &lt;uleb128 type&gt;</c> — allocates an instance with every field at its zero value.</summary>
     NewObject = 0x50,
 
-    /// <summary><c>ldfld &lt;uleb128 type&gt; &lt;uleb128 field&gt;</c> — ersetzt die Referenz durch
-    /// den Feldwert.</summary>
+    /// <summary><c>ldfld &lt;uleb128 type&gt; &lt;uleb128 field&gt;</c> — replaces the reference
+    /// with the field value.</summary>
     LoadField = 0x51,
 
-    /// <summary><c>stfld &lt;uleb128 type&gt; &lt;uleb128 field&gt;</c> — nimmt Referenz und Wert,
-    /// die <b>Referenz liegt unter dem Wert</b> (CIL-Reihenfolge, Bytecode.md §5).
+    /// <summary><c>stfld &lt;uleb128 type&gt; &lt;uleb128 field&gt;</c> — takes the reference and
+    /// the value, with the reference below the value.
     ///
-    /// <para>Der Typ-Index ist zur Laufzeit redundant und steht trotzdem da: nur so prüft der
-    /// Loader den Feldindex gegen ein Layout, ohne eine Datenfluss-Analyse zu fahren.</para></summary>
+    /// <para>The type index is redundant at runtime and present so the loader can check the
+    /// field index against a layout without a data-flow analysis.</para></summary>
     StoreField = 0x52,
 
     /// <summary><c>newarr &lt;elementType&gt; &lt;uleb128 count&gt;</c> — nimmt <c>count</c> Werte
-    /// vom Stack, das erste Element zuunterst. Ein Literal ist damit eine Instruktion, nicht
+    /// off the stack, the first element lowest, so an array literal is one instruction rather
     /// <c>count</c> Stores.</summary>
     NewArray = 0x58,
 
@@ -266,17 +232,16 @@ public enum Op : byte
     StoreElem = 0x5A, // stelem  — Array, Index, Wert (Referenz zuunterst)
     ArrayLen = 0x5B,  // arrlen  — Laenge als i64
 
-    /// <summary><c>arrcat</c> / <c>arrrep</c> bilden <c>xs + ys</c> und <c>xs * n</c> ab
-    /// (Sprache.md §6.5) — eingebaute Sprachsemantik. Beide liefern ein <b>neues</b> Array:
-    /// <c>T[]</c> wächst nicht (ADR-016).</summary>
+    /// <summary><c>arrcat</c> and <c>arrrep</c> implement <c>xs + ys</c> and <c>xs * n</c>. Each
+    /// produces a new array; a <c>T[]</c> does not grow.</summary>
     ArrayConcat = 0x5C,
     ArrayRepeat = 0x5D,
 
     /// <summary>
-    /// Optionals (Sprache.md §7). <c>??</c>, <c>??=</c> und <c>?.</c> haben <b>keine</b> eigenen
-    /// Opcodes: sie werten ihre rechte Seite nur bedingt aus und lowern deshalb zu Verzweigungen
-    /// über <see cref="OptIsSome"/> — wie <c>&amp;&amp;</c> und <c>||</c>. Ein Opcode müsste einen
-    /// unausgewerteten Ausdruck transportieren, und das kann eine Stack-Maschine nicht.
+    /// Optionals. <c>??</c>, <c>??=</c> and <c>?.</c> have no opcodes of their own: they evaluate
+    /// their right-hand side only conditionally and therefore lower to branches over
+    /// <see cref="OptIsSome"/>, like <c>&amp;&amp;</c> and <c>||</c>. An opcode would have to carry
+    /// an unevaluated expression.
     /// </summary>
     OptNone = 0x60,   // optnone <innerType>
     OptSome = 0x61,   // optsome <innerType>
@@ -284,12 +249,11 @@ public enum Op : byte
     OptGet = 0x63,    // optget — Force-Unwrap 'expr!', panickt bei "kein Wert"
 
     /// <summary>
-    /// Enums (Sprache.md §3.4). <c>match</c> hat <b>keinen</b> Opcode: es liest mit
-    /// <see cref="EnumTag"/> das Tag und verzweigt darüber wie jede andere Fallunterscheidung.
-    /// Eine Sprungtabelle wäre eine Optimierung, keine Semantik.
+    /// Enums. <c>match</c> has no opcode: it reads the tag with <see cref="EnumTag"/> and
+    /// branches on it like any other case distinction.
     ///
-    /// <para>Dieselbe Form wie beim Optional — <c>optissome</c> prüft, <c>optget</c> löst ein;
-    /// hier prüft <c>enumtag</c> und <c>enumas</c> löst ein.</para>
+    /// <para>The same shape as the optional: <c>optissome</c> tests and <c>optget</c> resolves;
+    /// here <c>enumtag</c> tests and <c>enumas</c> resolves.</para>
     /// </summary>
     NewVariant = 0x68, // newvariant <uleb128 variantType>
     EnumTag = 0x69,    // enumtag
@@ -298,73 +262,67 @@ public enum Op : byte
     // --- Interfaces (Format 2.1) -------------------------------------------------------------
 
     /// <summary><c>mkiface &lt;uleb128 concreteType&gt; &lt;uleb128 interfaceType&gt;</c> — hebt
-    /// eine Objektreferenz auf ihren Interface-Typ. Der konkrete Typ steht zur Compile-Zeit fest;
-    /// die Instruktion heftet ihn an den Wert, damit <c>callvirt</c> ihn spaeter findet.
+    /// an object reference to its interface type. The concrete type is known at compile time and
+    /// is attached to the value, so <c>callvirt</c> finds it later.
     ///
-    /// <para>Beide Indizes stehen dran, obwohl die Runtime nur den ersten braucht: so prueft der
-    /// Loader die Implementierungs-Beziehung gegen die Impls-Sektion, ohne eine Datenflussanalyse
-    /// zu fahren — ADR-013s „Validierung beim Load statt beim Call", dieselbe Begruendung wie beim
-    /// Typ- und Feldindex am <c>ldfld</c>.</para></summary>
+    /// <para>Both indices are present although the runtime needs only the first: it lets the
+    /// loader check the implementation relation against the Impls section without a data-flow
+    /// analysis.</para></summary>
     MakeInterface = 0x70,
 
-    /// <summary><c>callvirt &lt;uleb128 interfaceType&gt; &lt;uleb128 slot&gt;</c> — ruft die
+    /// <summary><c>callvirt &lt;uleb128 interfaceType&gt; &lt;uleb128 slot&gt;</c> — calls the
     /// Implementierung des Slots am konkreten Typ des Empfaengers. Der Empfaenger liegt zuunterst
     /// wie bei jedem Methodenaufruf (Parameter 0, ADR-014).</summary>
     CallVirt = 0x71,
 
     // --- Structs (Format 2.2) ----------------------------------------------------------------
 
-    /// <summary><c>structcopy &lt;uleb128 structType&gt;</c> — nimmt einen Struct-Wert und legt
-    /// eine <b>unabhaengige Kopie</b> davon ab.
+    /// <summary><c>structcopy &lt;uleb128 structType&gt;</c> — takes a struct value and leaves an
+    /// independent copy.
     ///
-    /// <para>Die Kopie ist rekursiv ueber verschachtelte Structs und flach ueber alles andere: ein
-    /// Feld vom Typ <c>class</c> oder <c>T[]</c> traegt eine Referenz, und die wird geteilt, nicht
-    /// dupliziert (Sprache.md §3.2 — kopiert wird der Wert, nicht die Welt dahinter).</para>
+    /// <para>The copy is recursive across nested structs and shallow across everything else: a
+    /// field of class or array type carries a reference, and that reference is shared.</para>
     ///
-    /// <para><b>Warum eine eigene Instruktion</b> und nicht ein implizites Kopieren im
-    /// <c>stloc</c>: sonst haenge die Bedeutung von <c>stloc</c> am Typ seines Ziel-Slots, und der
-    /// Opcode waere polymorph. Explizit ist es in der Disassembly sichtbar und beim Lesen des
+    /// <para>An explicit instruction rather than an implicit copy inside <c>stloc</c>, whose
+    /// meaning would otherwise depend on the type of its target slot.</para></summary>
     /// Formats eindeutig — dieselbe Entscheidung wie bei <c>mkiface</c>.</para></summary>
     StructCopy = 0x72,
 
     // --- Exceptions (Format 2.3) -------------------------------------------------------------
 
-    /// <summary><c>throw</c> — nimmt den Wert vom Stack und beginnt das Abwickeln. Terminator:
+    /// <summary><c>throw</c> — takes the value off the stack and begins unwinding. Terminator:
     /// nach ihm laeuft im Block nichts mehr.</summary>
     Throw = 0x73,
 
-    /// <summary><c>endfinally</c> — Ende einer <c>finally</c>-Region; die Abwicklung geht dort
-    /// weiter, wo sie unterbrochen wurde. Terminator.
+    /// <summary><c>endfinally</c> — end of a <c>finally</c> region; unwinding continues where it
+    /// was interrupted.
     ///
-    /// <para>Lyric selbst hat kein <c>finally</c> (ADR-009); diese Region entsteht ausschliesslich
-    /// aus <c>defer</c>. Das Format braucht den Traeger trotzdem, weil „laeuft auch beim
-    /// Abwickeln" anders nicht ausdrueckbar ist.</para></summary>
+    /// <para>The language has no <c>finally</c>; such a region arises only from <c>defer</c>. The
+    /// format needs the carrier because "runs while unwinding too" is not otherwise
+    /// expressible.</para></summary>
     EndFinally = 0x74,
 
     // --- Globals (Format 2.4) ------------------------------------------------------------------
 
-    /// <summary><c>ldglobal &lt;uleb128 index&gt;</c> — liest einen globalen Slot.</summary>
+    /// <summary><c>ldglobal &lt;uleb128 index&gt;</c> — reads a global slot.</summary>
     LoadGlobal = 0x75,
 
-    /// <summary><c>stglobal &lt;uleb128 index&gt;</c> — schreibt einen globalen Slot.
+    /// <summary><c>stglobal &lt;uleb128 index&gt;</c> — writes a global slot.
     ///
-    /// <para>Nur die Init-Funktion benutzt das: Globale sind in Lyric ausschliesslich <c>let</c>
-    /// (Sprache.md §2.3), also gibt es nach der Initialisierung keinen Schreiber mehr. Der Opcode
-    /// existiert trotzdem, weil das Fuellen selbst ein Schreibvorgang ist — ihn zu verstecken
-    /// hiesse, der Init-Funktion eine Sonderrolle im Instruktionssatz zu geben.</para></summary>
+    /// <para>Only the initializer uses it: globals are <c>let</c>, so there is no writer after
+    /// initialization. The opcode is general because filling a slot is a write.</para></summary>
     StoreGlobal = 0x76,
 
     /// <summary>
-    /// Baut einen Closure-Wert aus einem Funktionsindex (Immediate) und einem Environment
-    /// (Stack). Das Gegenstueck zu <see cref="CallIndirect"/>, genau wie
-    /// <see cref="MakeInterface"/> zu <see cref="CallVirt"/> — und zur Laufzeit dieselbe
-    /// Darstellung: ein Fat Pointer aus Objektreferenz und Index.
+    /// Builds a closure value from a function index (the immediate) and an environment.
+    /// The same shape as <see cref="MakeInterface"/> is to <see cref="CallVirt"/>, and the same
+    /// runtime representation: a fat pointer of reference and index.
     /// </summary>
     MakeClosure = 0x77,
 
     /// <summary>
-    /// Ruft einen Closure-Wert. Das Immediate ist die Argumentzahl <b>ohne</b> das Environment;
-    /// das schiebt die Runtime als Argument 0 davor, wenn eines vorhanden ist.
+    /// Calls a closure value. The immediate is the argument count without the environment,
+    /// which the runtime passes as argument 0 when one is present.
     /// </summary>
     CallIndirect = 0x78,
 }

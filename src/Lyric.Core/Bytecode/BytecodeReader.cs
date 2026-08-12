@@ -4,21 +4,20 @@ using Lyric.Core;
 namespace Lyric.Bytecode;
 
 /// <summary>
-/// <c>.lyrbc</c>-Bytes → <see cref="BytecodeModule"/>, mit vollständiger Validierung <b>beim Laden</b>.
+/// <c>.lyrbc</c> bytes to a <see cref="BytecodeModule"/>, validated completely at load time.
 ///
-/// <para>Das ist ADR-013s Modell (von WASM übernommen): ein Modul wird beim Laden einmal komplett
-/// geprüft und läuft danach ohne Sicherheitschecks. Jeder Fehler hier ist ein Grund, das Modul gar
-/// nicht erst anzunehmen — deshalb bricht der Leser beim ersten Befund ab, anders als der
-/// IR-Verifier, der sammelt. Bei einer kaputten Datei ist der zweite Befund meist Folge des ersten.</para>
+/// <para>A module is checked once while loading and runs afterwards without safety checks. Every
+/// failure here is a reason not to accept the module, so the reader stops at the first finding
+/// rather than collecting: in a broken file the second is usually a consequence of the first.
+/// </para>
 ///
-/// <para>Der Leser ist die Stelle, an der nicht vertrauenswürdige Bytes ins System kommen. Er darf
-/// auf keiner Eingabe mit einer .NET-Ausnahme aussteigen, sondern nur mit einer
-/// <c>LYR-BC####</c>-Diagnose.</para>
+/// <para>This is where untrusted bytes enter the system. No input may produce a .NET exception,
+/// only a <c>LYR-BC####</c> diagnostic.</para>
 /// </summary>
 public static class BytecodeReader
 {
-    /// <summary>Liest und validiert. Liefert <c>null</c> und meldet <c>LYR-BC####</c>, wenn die
-    /// Datei kein gültiges Modul ist.</summary>
+    /// <summary>Reads and validates. Returns <c>null</c> and reports <c>LYR-BC####</c> when the
+    /// file is not a valid module.</summary>
     public static BytecodeModule? Read(byte[] bytes, DiagnosticEngine de)
     {
         try
@@ -27,8 +26,8 @@ public static class BytecodeReader
         }
         catch (MalformedBytecodeException ex)
         {
-            // Kein Span: der Fehler sitzt in einer Binärdatei, nicht in Quelltext. Die
-            // DiagnosticEngine rendert solche Diagnosen ohne Positionszeile.
+            // No span: the failure is in a binary file, and such diagnostics render without a
+            // position line.
             de.Report(ex.Code, Severity.Error, default, ex.Message);
             return null;
         }
@@ -63,8 +62,7 @@ public static class BytecodeReader
             var length = reader.ULebAsCount();
             var payload = new ByteReader(reader.Raw(length));
 
-            // Aufsteigend und höchstens einmal — das ist Teil der Determinismus-Zusage und
-            // erlaubt einem Leser, in einem Durchlauf zu arbeiten.
+            // Ascending and at most once, which lets a reader work in a single pass.
             if (id <= previousId)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                     $"section id {id} is out of order (previous was {previousId})");
@@ -127,22 +125,20 @@ public static class BytecodeReader
         return values;
     }
 
-    /// <summary>Ein Typ: Tag, bei einer Referenz gefolgt vom Typ-Index. Die <b>einzige</b> Lesestelle
-    /// für Typen — Gegenstück zu <c>BytecodeWriter.WriteType</c>.</summary>
+    /// <summary>A type: the tag, followed by the type index for a reference. The only place types
+    /// are read; the counterpart of <c>BytecodeWriter.WriteType</c>.</summary>
     private static BytecodeType ReadType(ByteReader payload)
     {
         var tag = payload.Tag();
-        // Ref, Enum und Interface tragen ihren Tabellen-Index dahinter — anders als Array und
-        // Optional, deren Elementtyp inline steht. Eine hier vergessene Tag-Art ist ein um
-        // Bytes verschobener Strom, kein sauberer Fehler.
+        // Ref, Enum and Interface carry a table index; Array and Optional carry their element
+        // type inline. A tag missed here shifts the stream by bytes.
         if (tag is TypeTag.Ref or TypeTag.Enum or TypeTag.Interface or TypeTag.Struct)
             return new BytecodeType(tag, payload.ULebAsCount());
-        // Ein Host-Typ traegt seinen NAMEN inline und keinen Tabellen-Index: er hat kein Layout,
-        // das dort stehen koennte (ADR-026). Der Name ist alles, was Modul und Runtime von ihm
-        // wissen — und genug, um beim Binden zu pruefen, dass beide denselben meinen.
+        // A host type carries its name inline and no table index: it has no layout. The name is
+        // enough to check at binding time that module and runtime mean the same type.
         if (tag is TypeTag.Host)
             return new BytecodeType(tag, -1) { HostName = payload.String() };
-        // fn(A, B) -> R traegt seine Signatur inline: Parameterzahl, Parametertypen, Rueckgabe.
+        // fn(A, B) -> R carries its signature inline: parameter count, parameter types, return.
         if (tag is TypeTag.Fn)
         {
             var count = payload.ULebAsCount();
@@ -151,12 +147,12 @@ public static class BytecodeReader
             return new BytecodeType(tag, -1) { Parameters = parameters, Element = ReadType(payload) };
         }
 
-        // Der Elementtyp steht inline und rekursiv (Bytecode.md §3).
+        // The element type is inline and recursive.
         if (tag is TypeTag.Array or TypeTag.Optional)
         {
             var inner = ReadType(payload);
-            // ??T gibt es nicht: die Laufzeit-Darstellung unterscheidet "kein Wert" an der leeren
-            // Referenz, und die kann nur eine Ebene tragen (Bytecode.md §5).
+            // ??T does not exist: the runtime marks "no value" by an empty reference, which
+            // carries one level only.
             if (tag == TypeTag.Optional && inner.Tag == TypeTag.Optional)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                     "nested optional '??T' — optionals do not nest");
@@ -167,9 +163,8 @@ public static class BytecodeReader
     }
 
     /// <summary>
-    /// Die Typ-Tabelle. Bereichsprüfungen der Feld-Referenzen laufen erst in
-    /// <c>Validate</c>: ein Typ darf sich selbst und spätere Typen nennen (<c>class Node { next:
-    /// Node }</c>), also ist beim Lesen des Feldes noch nicht bekannt, wie groß die Tabelle wird.
+    /// The type table. Range checks on field references happen in <c>Validate</c>: a type may name
+    /// itself and later types, so while reading a field the final table size is not known.
     /// </summary>
     private static IReadOnlyList<BytecodeTypeDef> ReadTypes(ByteReader payload, IReadOnlyList<string> strings)
     {
@@ -224,7 +219,7 @@ public static class BytecodeReader
             for (var f = 0; f < fieldCount; f++)
             {
                 var type = ReadType(payload);
-                // void hat keine Breite und keinen Nullwert — es ist kein Wert (Bytecode.md §3).
+                // void has no width and no zero value; it is not a value.
                 if (type.Tag == TypeTag.Void)
                     throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                         $"type '{strings[nameIndex]}': field {f} is void");
@@ -304,9 +299,8 @@ public static class BytecodeReader
         return functions;
     }
 
-    /// <summary>
-    /// Die Impls-Sektion: je Zeile Klasse, Interface, Slot-Anzahl, Funktionsindizes.
-    /// </summary>
+    /// <summary>The Impls section: per row the type, the interface, the slot count and the
+    /// function indices.</summary>
     private static IReadOnlyList<BytecodeImpl> ReadImpls(ByteReader payload)
     {
         var count = payload.ULebAsCount();
@@ -325,7 +319,8 @@ public static class BytecodeReader
         return impls;
     }
 
-    /// <summary>Die Handlers-Sektion: je Zeile Funktion, Blockbereich, Art, Typ, Handler, Slot.</summary>
+    /// <summary>The Handlers section: per row the function, block range, kind, type, handler and
+    /// slot.</summary>
     private static IReadOnlyList<BytecodeHandler> ReadHandlers(ByteReader payload)
     {
         var count = payload.ULebAsCount();
@@ -348,7 +343,7 @@ public static class BytecodeReader
             handlers.Add(new BytecodeHandler
             {
                 Function = function, Start = start, End = end, Kind = kind,
-                // 0 heisst "keiner"; der echte Index steht um eins erhoeht im Strom.
+                // 0 means none; the real index is stored incremented by one.
                 CatchType = catchType - 1, Handler = handler, Slot = slot - 1,
             });
         }
@@ -356,8 +351,8 @@ public static class BytecodeReader
         return handlers;
     }
 
-    /// <summary>Prüfungen, die erst gehen, wenn alles gelesen ist — Call-Ziele brauchen die
-    /// Signaturen anderer Funktionen, Sprungziele die Blockanzahl.</summary>
+    /// <summary>Checks that need the whole module: call targets need other functions' signatures,
+    /// jump targets need the block count.</summary>
     private static void Validate(BytecodeModule module)
     {
         if (module.Start is { } start
@@ -390,15 +385,14 @@ public static class BytecodeReader
         }
     }
 
-    /// <summary>Jede Referenz in einer Signatur oder einem Layout zeigt in die Typ-Tabelle. Läuft
-    /// über alle Typen auf einmal, weil Vorwärts- und Selbstverweise erlaubt sind — beim Lesen war
-    /// die endgültige Größe der Tabelle noch nicht bekannt.</summary>
+    /// <summary>Every reference in a signature or layout points into the type table. Checked over
+    /// all types at once, because forward and self references are allowed.</summary>
     private static void ValidateTypeReferences(BytecodeModule module)
     {
         void Check(BytecodeType type, string where)
         {
-            // Ein Array-Typ trägt seinen Elementtyp inline; eine Referenz darin muss genauso in
-            // die Tabelle zeigen wie eine direkte.
+            // An array carries its element type inline; a reference inside it points into the
+            // table like a direct one.
             while ((type.IsArray || type.IsOptional) && type.Element is { } inner) type = inner;
 
             if (type.IsRef && (type.TypeIndex < 0 || type.TypeIndex >= module.Types.Count))
@@ -411,8 +405,8 @@ public static class BytecodeReader
             for (var f = 0; f < module.Types[i].FieldTypes.Count; f++)
                 Check(module.Types[i].FieldTypes[f], $"type '{module.Types[i].Name}' field {f}");
 
-            // Eine Variante muss ein Layout sein und einen Tag-Slot haben — sonst laesen ldfld
-            // und enumas gegen ein Layout, das es nicht gibt.
+            // A variant must be a layout and must have a tag slot, or ldfld and enumas would read
+            // against a layout that does not exist.
             foreach (var variant in module.Types[i].Variants)
             {
                 if (variant < 0 || variant >= module.Types.Count)
@@ -466,8 +460,8 @@ public static class BytecodeReader
                         $"function '{function.Name}' at {instruction.Offset}: string index " +
                         $"{instruction.Immediate} is outside the pool ({module.Strings.Count})");
 
-                // ADR-013s Kern: Typ- und Feldindex werden hier geprüft, damit der Feldzugriff zur
-                // Laufzeit ein Array-Zugriff ohne Prüfung sein darf.
+                // The type and field indices are checked here so a field access at runtime is an
+                // unchecked array access.
                 case Op.NewObject or Op.LoadField or Op.StoreField or Op.NewVariant or Op.EnumAs
                     or Op.MakeInterface or Op.CallVirt or Op.StructCopy
                     when instruction.Immediate >= (ulong)module.Types.Count:
@@ -483,9 +477,8 @@ public static class BytecodeReader
                         $"'{module.Types[(int)instruction.Immediate].Name}' " +
                         $"({module.Types[(int)instruction.Immediate].FieldTypes.Count} field(s))");
 
-                // mkiface: das zweite Immediate ist das Interface, und es muss eines sein — mit
-                // einer Impl-Zeile fuer genau dieses Paar. Ohne die Pruefung entstuende ein
-                // Interface-Wert, dessen Dispatch spaeter ins Leere liefe.
+                // mkiface: the second immediate must be an interface with an Impls row for
+                // exactly this pair, or the resulting value would dispatch nowhere.
                 case Op.MakeInterface
                     when instruction.Immediate2 >= (ulong)module.Types.Count
                          || !module.Types[(int)instruction.Immediate2].IsInterface:
@@ -514,15 +507,15 @@ public static class BytecodeReader
                         $"{instruction.Immediate2} is outside interface " +
                         $"'{module.Types[(int)instruction.Immediate].Name}'");
 
-                // Ein structcopy auf einem Referenztyp waere ein stiller Semantikbruch: die
-                // Laufzeit kopierte klaglos ein Slot-Array, das geteilt gehoert.
+                // A structcopy on a reference type would silently copy a slot array that is meant
+                // to be shared.
                 case Op.StructCopy when !module.Types[(int)instruction.Immediate].IsStruct:
                     throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                         $"function '{function.Name}' at {instruction.Offset}: structcopy targets " +
                         $"'{module.Types[(int)instruction.Immediate].Name}', which is not a struct");
 
-                // Der Zielindex steht im Immediate ab Bit 1 — das unterste Bit sagt, ob ein
-                // Environment auf dem Stack liegt (Bytecode.md §Closures).
+                // The target index sits from bit 1 upward; the lowest bit says whether an
+                // environment is on the stack.
                 case Op.MakeClosure
                     when (instruction.Immediate >> 1) >=
                          (ulong)(module.Imports.Count + module.Functions.Count):
@@ -547,10 +540,8 @@ public static class BytecodeReader
         }
     }
 
-    /// <summary>
-    /// Die vtable-Zeilen (ADR-013: geprueft beim Laden, nicht beim Aufruf). Danach darf
-    /// <c>callvirt</c> ein Array-Zugriff ohne Pruefung sein.
-    /// </summary>
+    /// <summary>The vtable rows, checked at load time so <c>callvirt</c> is an unchecked array
+    /// access afterwards.</summary>
     private static void ValidateImpls(BytecodeModule module)
     {
         var callable = module.Imports.Count + module.Functions.Count;
@@ -592,10 +583,8 @@ public static class BytecodeReader
         }
     }
 
-    /// <summary>
-    /// Die geschuetzten Regionen (ADR-013: geprueft beim Laden). Danach darf das Abwickeln zur
-    /// Laufzeit ohne Pruefung durch die Tabelle laufen.
-    /// </summary>
+    /// <summary>The protected regions, checked at load time so unwinding walks the table
+    /// unchecked.</summary>
     private static void ValidateHandlers(BytecodeModule module)
     {
         foreach (var h in module.Handlers)
@@ -616,7 +605,7 @@ public static class BytecodeReader
                     $"handler in '{module.Functions[h.Function].Name}': handler block " +
                     $"{h.Handler} is outside {blocks} block(s)");
 
-            // Ein Handler in seinem eigenen Bereich waere eine Endlosschleife beim Abwickeln.
+            // A handler inside its own range would not terminate while unwinding.
             if (h.Handler >= h.Start && h.Handler < h.End)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                     $"handler in '{module.Functions[h.Function].Name}': handler block " +
@@ -639,9 +628,7 @@ public static class BytecodeReader
         }
     }
 
-    /// <summary>
-    /// Globale Slots und ihre Init-Funktion (ADR-013: geprueft beim Laden).
-    /// </summary>
+    /// <summary>Global slots and their initializer, checked at load time.</summary>
     private static void ValidateGlobals(BytecodeModule module)
     {
         foreach (var global in module.Globals)
@@ -654,17 +641,16 @@ public static class BytecodeReader
             throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
                 $"global initializer {init} is outside {callable} callable(s)");
 
-        // Slots ohne Fueller waeren uninitialisiert, und jeder Wert in Lyric hat einen (§6.6).
+        // Slots without an initializer would be uninitialized, and every value has one.
         if (module.Globals.Count > 0 && module.GlobalInit is null)
             throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                 $"module declares {module.Globals.Count} global(s) but no initializer");
     }
 
     /// <summary>
-    /// Die tragende Invariante des Formats: <b>der Operanden-Stack ist an jeder Blockgrenze leer</b>.
-    /// Werte, die Blöcke überqueren, laufen durch Local-Slots. Das macht die Tiefe statisch
-    /// bestimmbar — die VM kann ihren Frame beim Laden dimensionieren und braucht zur Laufzeit
-    /// keine Überlauf-Prüfung.
+    /// The format's invariant: the operand stack is empty at every block boundary, and values that
+    /// cross blocks travel through local slots. Depth is therefore statically determined, so the
+    /// VM sizes its frame at load time and needs no runtime overflow check.
     /// </summary>
     private static void ValidateStack(BytecodeModule module, BytecodeFunction function,
         IReadOnlyList<BytecodeInstruction> instructions)
@@ -680,8 +666,8 @@ public static class BytecodeReader
                 var instruction = instructions[i];
                 var (arity, returnsValue) = CalleeShape(module, instruction);
 
-                // newvariant nimmt die Nutzfelder seiner Variante; Slot 0 ist das Tag und wird
-                // nicht vom Stack genommen.
+                // newvariant takes its variant's payload fields; slot 0 is the tag and does not
+                // come off the stack.
                 var variantArity = instruction.Opcode == Op.NewVariant
                     ? module.Types[(int)instruction.Immediate].FieldTypes.Count - 1
                     : 0;
@@ -713,9 +699,8 @@ public static class BytecodeReader
     private static (int Arity, bool ReturnsValue) CalleeShape(BytecodeModule module,
         BytecodeInstruction instruction)
     {
-        // callvirt: die Signatur steht am Interface-Slot. Welche Implementierung laeuft, ist
-        // dynamisch — aber alle haben dieselbe Form, sonst waere die Konformanz verletzt. Also
-        // reicht irgendeine Impl-Zeile fuer dieses Interface, um Arity und Rueckgabe zu kennen.
+        // callvirt: the signature belongs to the interface slot. Every implementation shares it,
+        // so any Impls row for this interface gives the arity and the return kind.
         if (instruction.Opcode == Op.CallVirt)
         {
             var iface = (int)instruction.Immediate;
@@ -736,7 +721,7 @@ public static class BytecodeReader
 
         if (instruction.Opcode != Op.Call) return (0, false);
 
-        // Gemeinsamer Indexraum: erst Imports, dann definierte Funktionen (WASM-Modell).
+        // Shared index space: imports first, then defined functions.
         var index = (int)instruction.Immediate;
         if (index < module.Imports.Count)
         {
