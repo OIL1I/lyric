@@ -1,203 +1,154 @@
-# Lyric — `.lyrbc` Bytecode-Format v3.0
+# Lyric `.lyrbc` Bytecode Format 3.0
 
-> Dieses Dokument ist **normativ** (ADR-013). Der C#-Serializer in `src/Lyric.Bytecode/` ist eine
-> Implementierung dieser Spec, nicht ihre Definition. Ziel-Test: jemand kann allein aus diesem
-> Dokument einen Disassembler oder eine zweite Runtime schreiben, ohne den C#-Code zu lesen.
->
-> **Stabilität**: Bis Lyric v1.0 darf sich das Format inkompatibel ändern — Major-Version-Bump ohne
-> Migrationspfad. Ein Stabilitätsversprechen gibt es erst ab v1.0.
->
-> **Warum 3.0 und nicht 2.6** (2026-08-11): §2 erlaubt einer neuen Minor nur **überspringbare**
-> Sektionen. Ein neues Typ-Tag (`0x47`, Host-Objekt) ist nicht überspringbar — eine ältere Runtime,
-> die es liest, kann nicht weitermachen, und das ist auch richtig so: sie könnte das Modul nicht
-> ausführen. Nach der eigenen Regel ist das ein **Major**-Bump. Pre-1.0 ist er ohne Migrationspfad
-> erlaubt (ADR-013), und es gibt weder eine zweite Runtime noch ausgelieferte `.lyrbc`.
->
-> **Stand**: Format-Version **3.0**. Deckt den Sprachumfang ab, den das IR-Lowering heute erzeugt:
-> Skalare, Locals, modulinterne und native Calls, strukturierter Kontrollfluss, **Klassen**
-> (Referenz-Typen mit Feldern und Methoden, Empfaenger als Parameter 0), **Arrays**, **Optionals**,
-> **Enums**, **Interfaces mit vtable-Dispatch**, **Structs mit Wert-Semantik** und
-> **Exceptions** (`throw`/`try`/`catch`), **globale Konstanten** und **Closures**.
+This document is normative. The C# serializer implements it; it does not define it. A disassembler
+or a second runtime can be written from this document alone.
+
+Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
+migration path. A stability promise begins at v1.0.
+
+Format version **3.0** covers: scalars, locals, module-internal and native calls, structured
+control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
+value semantics, exceptions, global constants, closures and host objects.
 
 ---
 
-## 1. Grundregeln der Kodierung
+## 1. Encoding
 
-| Sache | Regel |
+| Item | Rule |
 |---|---|
-| Fixbreiten-Ganzzahlen | **Little-Endian**, explizit — nicht die Byte-Reihenfolge der Host-Maschine |
-| Variable Ganzzahlen | **LEB128**, unsigned, höchstens 10 Gruppen (64 Bit) |
-| Strings | Länge in **Bytes** als LEB128, dann UTF-8 ohne BOM und ohne Nullterminator |
-| Floats | **IEEE-754-Bitmuster**, little-endian (4 bzw. 8 Byte) — nicht der Dezimalwert |
-| Bool | ein Byte, `0x00` = false, alles andere = true |
+| Fixed-width integers | little-endian, explicitly — not host byte order |
+| Variable integers | LEB128, unsigned, at most 10 groups (64 bits) |
+| Strings | byte length as LEB128, then UTF-8 without BOM and without terminator |
+| Floats | IEEE-754 bit pattern, little-endian (4 or 8 bytes) |
+| Bool | one byte, `0x00` is false, anything else is true |
 
-**LEB128 (unsigned)**: sieben Nutzbits je Byte, beginnend beim niedrigstwertigen. Bit 7 (`0x80`)
-gesetzt heißt „ein weiteres Byte folgt". Ein Leser, der mehr als zehn Bytes liest, muss die Datei
-ablehnen.
+**LEB128 (unsigned)**: seven payload bits per byte, least significant first. Bit 7 (`0x80`) set
+means another byte follows. A reader that consumes more than ten bytes must reject the file.
 
-**Determinismus**: Derselbe Compiler-Input erzeugt **byte-identischen** Output. Dafür gilt:
+**Determinism**: the same compiler input produces byte-identical output.
 
-- Der String-Pool steht in **Erst-Verwendungs-Reihenfolge** (nicht Hash-Reihenfolge).
-- Sektionen erscheinen **höchstens einmal** und in **aufsteigender Id-Reihenfolge**.
-- Keine Zeitstempel, keine absoluten Pfade.
+- The string pool is in first-use order.
+- Sections appear at most once, in ascending id order.
+- No timestamps, no absolute paths.
 
 ---
 
-## 2. Datei-Aufbau
+## 2. File layout
 
 ```
-magic            4 Byte    'L' 'Y' 'R' 'B'  (0x4C 0x59 0x52 0x42)
+magic            4 bytes   'L' 'Y' 'R' 'B'  (0x4C 0x59 0x52 0x42)
 version.major    u16       little-endian
 version.minor    u16       little-endian
-sections         *         beliebig viele, siehe unten
+sections         *         any number, see below
 ```
 
-Eine Sektion:
+A section:
 
 ```
 id               u8
-byteLength       uleb128   Länge des Inhalts, ohne id und ohne dieses Feld
-payload          byteLength Bytes
+byteLength       uleb128   length of the payload, excluding id and this field
+payload          byteLength bytes
 ```
 
-Ein Leser **muss** eine Sektion mit unbekannter Id überspringen (die Länge macht das möglich) und
-**muss** eine Datei ablehnen, deren Sektions-Ids nicht streng aufsteigen.
+A reader must skip a section with an unknown id and must reject a file whose section ids do not
+strictly ascend.
 
-**Versionierung**: Eine unbekannte **Major**-Version wird abgelehnt. Eine unbekannte **Minor** ist
-zu tolerieren — neue Minor-Versionen dürfen nur überspringbare Sektionen hinzufügen.
+**Versioning**: an unknown major version is rejected. An unknown minor version is tolerated; a new
+minor version may only add skippable sections.
 
-### Sektions-Ids
+### Section ids
 
-| Id | Name | Pflicht | Inhalt |
+| Id | Name | Required | Contents |
 |---|---|---|---|
-| 1 | Capabilities | nein | `uleb128` Bitset |
-| 2 | Strings | nein | Konstantenpool, **nur Strings** |
-| 3 | Types | nein | Layouts zusammengesetzter Typen |
-| 4 | Imports | nein | Host-/Native-Funktionen |
-| 5 | Functions | nein | definierte Funktionen samt Code |
-| 6 | SourceMap | nein | optional und **strippbar**: PC → Datei/Zeile |
-| 7 | Start | nein | Einstiegspunkt: `uleb128`-Index der aufzurufenden Funktion |
-| 8 | Impls | nein | Interface-Implementierungen (vtables) |
-| 9 | Handlers | nein | geschützte Regionen je Funktion |
-| 10 | Globals | nein | globale Slots samt ihrer Initialisierungs-Funktion |
+| 1 | Capabilities | no | `uleb128` bitset |
+| 2 | Strings | no | constant pool, strings only |
+| 3 | Types | no | layouts of composite types |
+| 4 | Imports | no | host and native functions |
+| 5 | Functions | no | defined functions with their code |
+| 6 | SourceMap | no | strippable: PC to file and line |
+| 7 | Start | no | entry point: `uleb128` function index |
+| 8 | Impls | no | interface implementations (vtables) |
+| 9 | Handlers | no | protected regions per function |
+| 10 | Globals | no | global slots and their initializer |
 
-Fehlt eine Sektion, gilt sie als leer.
-
-**Warum nur Strings im Konstantenpool**: Zahlen sind als LEB128-Immediate nicht größer als ein
-Pool-Index und sparen die Indirektion. Der Pool hat damit genau eine Aufgabe.
-
-**Warum es die Types-Sektion gibt**: Skalare Typen sind ein Byte (§3) und brauchen keine Tabelle.
-Zusammengesetzte brauchen eine, aus zwei Gründen. Erstens **rekursive Typen**: `class Node { next:
-Node }` ist strukturell nicht endlich kodierbar, über einen Index schon. Zweitens **Größe**: das
-Layout eines Typs steht einmal da statt an jeder Instruktion, die ihn erwähnt. JVM (Constant Pool)
-und CIL (TypeDef-Tabelle) lösen es genauso.
+A missing section counts as empty.
 
 ### Types (Id 3)
 
-`uleb128` Anzahl, dann je Typ:
+`uleb128` count, then per type:
 
 ```
-nameIndex        uleb128   Index in den String-Pool
-kind             u8        0 = Layout, 1 = Enum, 2 = Interface, 3 = Struct
+nameIndex        uleb128   index into the string pool
+kind             u8        0 = layout, 1 = enum, 2 = interface, 3 = struct
 ```
 
-**kind 0 — Layout** (class, struct, und jede einzelne Enum-Variante):
+**kind 0 — layout** (class, struct, and each individual enum variant):
 
 ```
 fieldCount       uleb128
-fieldTypes       fieldCount × Typ (§3), in Deklarationsreihenfolge
+fieldTypes       fieldCount × type (§3), in declaration order
 ```
 
-**kind 1 — Enum**: nennt seine Varianten, jede davon ein eigener Layout-Eintrag.
+**kind 1 — enum**: names its variants, each of which is its own layout entry.
 
 ```
 variantCount     uleb128
-variantTypes     variantCount × uleb128   Index in diese Tabelle
+variantTypes     variantCount × uleb128   index into this table
 ```
 
-Der **Feldindex ist die Position in der Feldliste** — Feldnamen stehen nicht im Bytecode. Sie sind
-Metadaten; der Zugriff ist ein Offset. Dieselbe Entscheidung wie „Sprungziele sind Block-Indizes".
-Der Name des Typs steht nur für Diagnose und Disassembler darin.
+Slot 0 of every variant is its tag: the `i64` index of the variant in its enum's `variantTypes`
+list, zero-based in declaration order. Payload fields start at slot 1.
 
-Ein Leser **muss** ablehnen: einen Feldtyp `void` (§3), einen Typ-Index außerhalb der Tabelle, und
-einen Enum, dessen Variante kein Layout ist. Rekursion über Referenzen ist dagegen ausdrücklich
-erlaubt — ein Typ darf sich selbst als Feldtyp nennen, auch vorwärts.
-
-**Warum jede Variante ein eigener Typ ist**: Varianten haben verschiedene Felder — `Circle(float)`
-trägt eine Zahl, `Triangle { a, b, c }` drei. Ein gemeinsames Layout müsste entweder den Payload
-boxen (eine Allokation mehr und ein Slot ohne festen Typ) oder auf Maximalgröße auslegen (Slot 1
-wäre je nach Variante ein anderer Typ). Beides bricht die Regel, dass jedes Feld genau einen Typ
-hat. Mit einem Layout pro Variante bleibt sie intakt — und `match` ist ohnehin der Ort, an dem die
-Variante bekannt wird, also steht der richtige Typ genau dort zur Verfügung. Rust schichtet aus
-demselben Grund so.
-
-**Slot 0 jeder Variante ist ihr Tag**: der `i64`-Index der Variante in der `variantTypes`-Liste
-ihres Enums, 0-basiert in Deklarationsreihenfolge. Die Nutzfelder beginnen bei Slot 1.
-
-**kind 3 — Struct**: dasselbe Feld-Layout wie kind 0, aber **Wert-Semantik**.
+**kind 3 — struct**: the same field layout as kind 0, with value semantics.
 
 ```
 fieldCount       uleb128
-fieldTypes       fieldCount × Typ (§3), in Deklarationsreihenfolge
+fieldTypes       fieldCount × type (§3), in declaration order
 ```
 
-Ein Struct-Wert ist zur Laufzeit **dieselbe Slot-Folge** wie ein Klassenobjekt; `ldfld` und
-`stfld` arbeiten unverändert darauf. Der Unterschied steckt allein in den **Bindepunkten**: wo ein
-Struct-Wert eine neue Heimat bekommt, steht ein `structcopy` (§5).
+A struct value is the same slot sequence as a class object at runtime; `ldfld` and `stfld` operate
+on it unchanged. Value semantics live entirely in `structcopy` (§5).
 
-Ein eigener Kind-Wert statt nur eines anderen Typ-Tags an der Verwendungsstelle: „ist dieser Typ
-ein Wert-Typ" ist eine Eigenschaft der **Deklaration**, und der Loader muss `structcopy` dagegen
-prüfen können.
+A struct must not contain itself as a field, directly or indirectly. Recursion through a class, an
+array or an interface is permitted; those are references.
 
-Ein Struct darf sich **nicht** — auch nicht über Umwege — selbst als Feld enthalten: es wäre
-unendlich groß. Ein Leser darf das ablehnen; der Lyric-Compiler tut es schon in der Sema
-(`LYR-SEM0056`). Über eine `class`, ein `T[]` oder ein Interface ist Rekursion dagegen erlaubt —
-das sind Referenzen.
-
-**kind 2 — Interface**: nennt statt Feldern die Namen seiner Methoden-Slots.
+**kind 2 — interface**: names its method slots instead of fields.
 
 ```
-slotCount        uleb128   mindestens 1
-slotNames        slotCount × String
+slotCount        uleb128   at least 1
+slotNames        slotCount × string
 ```
 
-Der **Index** in dieser Liste ist der Slot, auf den `callvirt` zeigt. Die Namen stehen — anders als
-Feldnamen — tatsächlich im Bytecode, weil ein Disassembler sonst nur `ty3#1` zeigen könnte und eine
-Runtime beim Binden von Host-Implementierungen keinen Anhaltspunkt hätte.
+The index into this list is the slot that `callvirt` addresses. `slotCount` must be at least 1. An
+interface must not appear on the left of an Impls row.
 
-`slotCount` muss mindestens 1 sein: auf einem Interface ohne Methoden gäbe es nichts zu
-dispatchen. Ein Interface darf links in keiner Impls-Zeile stehen — Interfaces implementieren
-keine Interfaces.
+The field index is the position in the field list; field names do not appear in the bytecode. The
+type name is present for diagnostics and disassembly.
+
+A reader must reject: a field type of `void`, a type index outside the table, and an enum whose
+variant is not a layout. A type may name itself as a field type, including forward.
 
 ### Capabilities (Id 1)
 
-Ein `uleb128`-Bitset: **was das Modul verlangt**, nicht was ihm gewährt wird. Die Zuordnung steht
-seit M8/S6 fest und ist Vertrag — eine Nummer, die später etwas anderes bedeutet, macht jedes
-ältere `.lyrbc` falsch:
+A `uleb128` bitset stating what the module requires.
 
-| Bit | Wert | Stufe | Modul |
+| Bit | Value | Capability | Module |
 |---|---|---|---|
 | 0 | `0x1` | `fileAccess` | `std.io.file` |
 | 1 | `0x2` | `networkAccess` | `std.io.net` |
 | 2 | `0x4` | `osAccess` | `std.os` |
-| 3 | `0x8` | `hostAccess` | *(reserviert — `std.dotnet` ist v1.X)* |
+| 3 | `0x8` | `hostAccess` | reserved |
 
-`0` heißt „verlangt nichts" — das trifft auf jedes Programm zu, das nur die immer erlaubten Module
-benutzt (Doku §20.1). Untermodule erben: `std.os.env` verlangt `osAccess`.
+`0` means the module requires nothing. Submodules inherit: `std.os.env` requires `osAccess`.
 
-**Durchgesetzt wird beim Laden**, zusammen mit der übrigen Validierung. Verlangt ein Modul mehr,
-als die Runtime gewährt, wird es abgelehnt (`LYR-CAP0001`), bevor eine Instruktion läuft. ADR-007
-nennt die Resolve-Zeit, und dort gibt es die frühe Meldung — aber ein `.lyrbc` kann von woanders
-kommen, und ein Host, der fremden Bytecode lädt, hat den Compiler nie gesehen. Deshalb steht der
-Bedarf im Modul.
-
-Der Standalone-Modus gewährt alles; `lyrvm run … --grant file,os` schränkt ein.
+Enforcement happens at load time. A module that requires more than the runtime grants is rejected
+(`LYR-CAP0001`) before any instruction runs.
 
 ### Strings (Id 2)
 
 ```
 count            uleb128
-values           count × String
+values           count × string
 ```
 
 ### Imports (Id 4)
@@ -205,165 +156,127 @@ values           count × String
 ```
 count            uleb128
 entries          count × {
-                   name         String
+                   name         string
                    paramCount   uleb128
-                   paramTypes   paramCount × TypeTag
-                   returnType   TypeTag
+                   paramTypes   paramCount × type tag
+                   returnType   type tag
                  }
 ```
 
-Host-Funktionen werden **symbolisch** referenziert (Name + Signatur), nicht über Adressen; die
-Bindung an konkrete Implementierungen macht der Host beim Laden. In Format 1.1 ist die Tabelle
-immer leer — das Lowering kennt noch keine externen Calls.
+Host functions are referenced symbolically by name and signature. Binding to implementations
+happens at load time.
 
 ### Functions (Id 5)
 
 ```
 count            uleb128
 entries          count × {
-                   nameIndex    uleb128   Index in den String-Pool
+                   nameIndex    uleb128   index into the string pool
                    paramCount   uleb128
-                   returnType   TypeTag
+                   returnType   type tag
                    slotCount    uleb128
-                   slotTypes    slotCount × TypeTag
+                   slotTypes    slotCount × type tag
                    maxStack     uleb128
                    blockCount   uleb128
-                   blockOffsets blockCount × uleb128   Byte-Offset in 'code'
+                   blockOffsets blockCount × uleb128   byte offset into 'code'
                    codeLength   uleb128
-                   code         codeLength Bytes
+                   code         codeLength bytes
                  }
 ```
 
-- Die **ersten `paramCount` Slots sind die Parameter**, in Deklarations-Reihenfolge. Es gilt
-  `paramCount ≤ slotCount`.
-- `maxStack` ist die maximale Tiefe des Operanden-Stacks in dieser Funktion. Eine Runtime darf
-  ihren Frame danach dimensionieren und zur Laufzeit auf Überlauf-Prüfungen verzichten.
-- `blockOffsets[i]` ist der Byte-Offset von Block `i` in `code`. Jeder Offset **muss** auf einer
-  Instruktionsgrenze liegen.
-- **Block 0 ist der Einstiegsblock** der Funktion. Die Ausführung beginnt bei `blockOffsets[0]`.
+- The first `paramCount` slots are the parameters, in declaration order. `paramCount ≤ slotCount`.
+- `maxStack` is the maximum operand stack depth in this function. A runtime may size its frame
+  from it and omit runtime overflow checks.
+- `blockOffsets[i]` is the byte offset of block `i` in `code`. Every offset must fall on an
+  instruction boundary.
+- Block 0 is the entry block. Execution begins at `blockOffsets[0]`.
 
 ### Start (Id 7)
 
 ```
-functionIndex    uleb128   in den gemeinsamen Indexraum: erst Imports, dann Funktionen
+functionIndex    uleb128   into the shared index space: imports first, then functions
 ```
 
-Der Einstiegspunkt des Programms — in Lyric `main` (Sprache.md §11). Eine Runtime ruft ihn ohne
-Argumente auf; sein Rückgabewert ist der Prozess-Exit-Code (die niederwertigsten 8 Bit).
+The entry point. A runtime calls it without arguments unless its signature takes `string[]` (§8);
+its return value is the process exit code, masked with `& 0xFF`.
 
-Fehlt die Sektion, ist das Modul eine **Bibliothek** und hat keinen Einstieg. Ohne diese Sektion
-müsste eine Runtime den Einstieg über eine Namenskonvention raten — dann wäre das Format nicht mehr
-allein aus dieser Spec implementierbar, und genau das fordert ADR-013.
-
----
+Without this section the module is a library and has no entry point.
 
 ### Impls (Id 8)
 
-Die **vtables**: welche Funktion erfüllt welchen Methoden-Slot welches Interfaces für welchen Typ.
+The vtables: which function fills which method slot of which interface for which type.
 
 ```
 implCount        uleb128
-implCount mal:
-  typeIndex      uleb128   der implementierende Typ (Klasse oder Enum)
-  interfaceIndex uleb128   ein Interface-Eintrag
-  methodCount    uleb128   muss gleich slotCount des Interfaces sein
-  methods        methodCount uleb128, je ein Index in den gemeinsamen
-                 Aufruf-Indexraum (erst Imports, dann Funktionen)
+implCount × {
+  typeIndex      uleb128   the implementing type (class or enum)
+  interfaceIndex uleb128   an interface entry
+  methodCount    uleb128   must equal the interface's slotCount
+  methods        methodCount × uleb128, each an index into the shared call
+                 index space (imports first, then functions)
+}
 ```
 
-Eine Zeile je (Typ, Interface)-Paar; dasselbe Paar zweimal ist ein Fehler, weil der Dispatch sonst
-mehrdeutig wäre. Ein Typ, der nicht Klasse oder Enum ist, darf links nicht stehen — Interfaces
-implementieren keine Interfaces.
+One row per (type, interface) pair; the same pair twice is an error. A type that is neither class
+nor enum must not appear on the left.
 
-**Die Auflösungsreihenfolge steckt bereits in den Zeilen.** `Sprache.md` §3.5 gibt „eigenes Member
-vor Interface-Default" vor; der Compiler löst das auf und trägt die gewonnene Funktion ein. Eine
-Runtime sucht nichts — sie liest einen Index.
-
-Alle Implementierungen desselben Slots haben dieselbe Signatur. Eine Runtime darf sich darauf
-verlassen und die Argumentzahl aus *irgendeiner* Zeile des Interfaces ableiten; sie muss das sogar,
-weil `callvirt` seinen Empfänger vom Stack holen muss, *bevor* die Zielfunktion feststeht.
-
-Eigene Sektion und **kein** Feld im Klassen-Eintrag: §2 erlaubt einer neuen Minor nur überspringbare
-Ergänzungen. Ein zusätzliches Feld im Layout-Eintrag wäre eine Formänderung wie bei den Enums (die
-2.0 erzwang); eine neue Sektions-Id ist genau die Erweiterung, für die der Mechanismus da ist.
-
----
+All implementations of the same slot share a signature. A runtime may derive the argument count
+from any row of the interface, and must, because `callvirt` takes its receiver off the stack
+before the target function is known.
 
 ### Handlers (Id 9)
 
-Die **geschützten Regionen**: welcher Blockbereich einer Funktion von welchem Handler abgedeckt ist.
+The protected regions: which block range of a function is covered by which handler.
 
 ```
 handlerCount     uleb128
-handlerCount mal:
-  function       uleb128   Index in die Functions-Sektion
-  startBlock     uleb128   erster geschützter Block
-  endBlock       uleb128   erster NICHT mehr geschützter Block
+handlerCount × {
+  function       uleb128   index into the Functions section
+  startBlock     uleb128   first protected block
+  endBlock       uleb128   first block no longer protected
   kind           u8        0 = catch, 1 = finally
-  catchType      uleb128   0 = fängt alles; sonst Typ-Index + 1
-  handlerBlock   uleb128   wohin gesprungen wird
-  slot           uleb128   0 = bindet nichts; sonst Slot-Index + 1
+  catchType      uleb128   0 = catches everything; otherwise type index + 1
+  handlerBlock   uleb128   where control transfers
+  slot           uleb128   0 = binds nothing; otherwise slot index + 1
+}
 ```
 
-**Block-Indizes, keine Byte-Bereiche** — dieselbe Entscheidung wie bei den Sprungzielen: einen
-Bereich prüft man mit zwei Vergleichen gegen die Blockzahl, statt Byte-Offsets gegen
-Instruktionsgrenzen zu verifizieren.
+Ranges are block indices, not byte ranges.
 
-**Die Reihenfolge ist der Vertrag: innerste Region zuerst.** Beim Abwickeln nimmt eine Runtime den
-ersten Eintrag, dessen Bereich den Fehlerort deckt und dessen Typ passt. Bei geschachtelten
-`try`-Blöcken entscheidet damit die Liste, nicht eine Rechnung über Bereichsgrößen.
+**The order is the contract: innermost region first.** While unwinding, a runtime takes the first
+entry whose range covers the fault site and whose type matches.
 
-**Der gefangene Wert geht in einen Slot, nicht auf den Stack.** CIL schiebt ihn beim Betreten des
-Handlers auf den Operanden-Stack; das ginge hier nicht, weil der Stack an jeder Blockgrenze leer ist
-(§4) und ein Handler-Block eine Blockgrenze ist. Über einen Slot bleibt die Invariante intakt.
+The caught value goes into a slot, not onto the stack. When entering a handler the operand stack
+is cleared.
 
-Eine Runtime **muss** ablehnen: einen Bereich außerhalb der Blockzahl, `startBlock >= endBlock`,
-einen Handler-Block **innerhalb seines eigenen Bereichs** (das Abwickeln terminierte nicht), einen
-Typ- oder Slot-Index außerhalb seiner Tabelle, und eine `finally`-Region mit Typ oder Slot.
-
-**Beim Sprung in einen Handler ist der Operanden-Stack zu leeren.** Der abgebrochene Ausdruck kann
-Zwischenwerte hinterlassen haben.
-
----
+A runtime must reject: a range outside the block count, `startBlock >= endBlock`, a handler block
+inside its own range, a type or slot index outside its table, and a `finally` region carrying a
+type or a slot.
 
 ### Globals (Id 10)
 
-Globale Slots — in Lyric die Modul-`let` und `static let` (`Sprache.md` §2.3, §3.2).
-
 ```
 globalCount      uleb128
-globalTypes      globalCount × Typ (§3)
-initFunction     uleb128   0 = keine; sonst Index + 1 in den gemeinsamen
-                 Aufruf-Indexraum (erst Imports, dann Funktionen)
+globalTypes      globalCount × type (§3)
+initFunction     uleb128   0 = none; otherwise index + 1 into the shared call
+                 index space (imports first, then functions)
 ```
 
-Eine Runtime **muss** die Init-Funktion aufrufen, **bevor** sie den Einstiegspunkt (§Start)
-aufruft. Sie nimmt keine Argumente, liefert nichts und hinterlässt gefüllte Slots.
+A runtime must call the initializer before the entry point. It takes no arguments, returns
+nothing, and leaves the slots filled. The order within its body is the initialization order.
 
-**Warum eine Funktion und nicht Werte in der Sektion**: ein Initialisierer ist ein *Ausdruck*, kein
-Literal — `static let ZERO: Vector3 = Vector3 { … }` legt ein Objekt an. Als Wert wäre nur der
-skalare Teil darstellbar, der Rest bräuchte doch wieder Code. Eine Funktion kann alles, was der
-Instruktionssatz ohnehin kann, und der bekommt keinen Sonderfall. CIL löst es mit `.cctor` genauso.
+A reader must reject: a global type of `void`, an init index outside the call space, and a
+non-empty global list without an init function.
 
-**Die Reihenfolge im Rumpf ist die Initialisierungsreihenfolge.** Ein Slot darf einen früher
-gefüllten lesen, einen späteren nicht — dort stünde ein Wert, den niemand geschrieben hat. Das
-Format erzwingt das nicht (es sähe nur ein `ldglobal`), der Lyric-Compiler lehnt es als
-`LYR-SEM0057` ab.
-
-Ein Leser **muss** ablehnen: einen globalen Typ `void`, einen Init-Index außerhalb des
-Aufrufraums, und eine nichtleere Globals-Liste **ohne** Init-Funktion — die Slots wären
-uninitialisiert, und jeder Wert in Lyric hat einen (§6.6 der Sprachspec).
-
-Ein Slot vom Typ `string` beginnt wie ein Objektfeld mit dem leeren String, nicht mit einer leeren
-Referenz.
+A slot of type `string` starts as the empty string, not as an empty reference.
 
 ---
 
-## 3. Typ-Tags
+## 3. Type tags
 
-Ein Byte.
+One byte.
 
-| Tag | Typ | | Tag | Typ |
+| Tag | Type | | Tag | Type |
 |---|---|---|---|---|
 | `0x01` | `i8` | | `0x08` | `u64` |
 | `0x02` | `i16` | | `0x09` | `f32` |
@@ -373,99 +286,85 @@ Ein Byte.
 | `0x06` | `u16` | | `0x0D` | `string` |
 | `0x07` | `u32` | | `0x0E` | `void` |
 
-Zusammengesetzte Typen ab `0x40`:
+Composite types from `0x40`:
 
-| Tag | Bedeutung | Folgt |
+| Tag | Meaning | Followed by |
 |---|---|---|
-| `0x40` | Referenz auf einen Typ der Types-Sektion | `uleb128` Typ-Index |
-| `0x41` | Array | der Elementtyp, wieder als Typ (§3) |
-| `0x42` | Optional (`?T`) | der innere Typ, wieder als Typ (§3) |
-| `0x43` | Enum | `uleb128` Index eines Enum-Eintrags der Types-Sektion |
-| `0x44` | Interface (`dyn`) | `uleb128` Index eines Interface-Eintrags der Types-Sektion |
-| `0x46` | `Fn` | `uleb128` Parameterzahl, dann die Parametertypen, dann der Rückgabetyp |
-| `0x45` | Struct (Wert-Semantik) | `uleb128` Index eines Struct-Eintrags der Types-Sektion |
-| `0x46` | Fn (Funktionswert) | `uleb128` Parameterzahl, dann die Parametertypen, dann der Rückgabetyp — alles inline |
-| `0x47` | Host-Objekt (ADR-026) | der registrierte Typname, inline als längenpräfigierter UTF-8-String |
+| `0x40` | reference to a Types entry | `uleb128` type index |
+| `0x41` | array | the element type, again as a type (§3) |
+| `0x42` | optional (`?T`) | the inner type, again as a type (§3) |
+| `0x43` | enum | `uleb128` index of an enum entry |
+| `0x44` | interface | `uleb128` index of an interface entry |
+| `0x45` | struct (value semantics) | `uleb128` index of a struct entry |
+| `0x46` | function value | `uleb128` parameter count, the parameter types, then the return type, all inline |
+| `0x47` | host object | the registered type name, inline as a length-prefixed UTF-8 string |
 
-Ein Wert mit Tag `0x44` traegt neben der Referenz seinen konkreten Typindex — siehe
-§5 „Darstellung eines Interface-Wertes".
+An array's element type is inline rather than a table index: `int[][]` is `0x41 0x41 0x04`. An
+array type cannot be recursive, so it needs no table entry.
 
-Der Elementtyp eines Arrays steht **inline**, nicht als Tabellen-Index: `int[][]` ist damit
-`0x41 0x41 0x04`. Das geht, weil ein Array-Typ nicht rekursiv sein kann — ein Array enthält seinen
-eigenen Elementtyp nie direkt, anders als ein `class Node { next: Node }`. Genau deshalb braucht er
-keine Tabelle.
+`void` is valid only as a return type, never as a slot, field or value type.
 
-`void` ist ausschließlich als Rückgabetyp gültig, nie als Slot-, Feld- oder Wert-Typ.
+A value tagged `0x40` is a reference: assignment copies the reference. A value tagged `0x45` is a
+value type: the same slot sequence, but every binding copies.
 
-Ein Wert mit Tag `0x40` ist eine **Referenz**: Zuweisung kopiert den Verweis, nicht das Objekt.
-Ein Wert mit Tag `0x45` ist ein **Wert-Typ**: dieselbe Slot-Folge, aber jede Bindung kopiert. Zwei
-Tags und nicht eines, damit am Bytecode ablesbar bleibt, ob eine Zuweisung kopiert.
-
-Lyrics `int`/`uint`/`float` sind Aliasse für `i64`/`u64`/`f64` und erscheinen im Bytecode als solche.
+Lyric's `int`, `uint` and `float` are aliases for `i64`, `u64` and `f64` and appear as those.
 
 ---
 
-## 4. Ausführungsmodell
+## 4. Execution model
 
-Eine **Stack-Maschine** mit zwei getrennten Speichern je Aufruf:
+A stack machine with two separate stores per call:
 
-- **Local-Slots**: indiziert, typisiert, beliebig les- und schreibbar.
-- **Operanden-Stack**: die Instruktionen arbeiten darauf.
+- **Local slots** — indexed, typed, readable and writable in any order.
+- **Operand stack** — what the instructions work on.
 
-### Die tragende Invariante
+### The invariant
 
-> **Der Operanden-Stack ist an jeder Blockgrenze leer.**
+> The operand stack is empty at every block boundary.
 
-Werte, die Blöcke überqueren, laufen durch Local-Slots. Daraus folgt:
+Values that cross blocks travel through local slots. It follows that stack depth at any point is
+statically determined without data-flow analysis, that a reader can verify it at load time and
+omit every runtime check afterwards, and that jumps need no stack adjustment.
 
-- Die Stack-Tiefe an jedem Punkt ist **statisch** bestimmbar, ohne Datenflussanalyse.
-- Ein Leser kann sie beim Laden prüfen und danach jede Laufzeitprüfung weglassen — das ist ADR-013s
-  „Validierung beim Load statt beim Call".
-- Sprünge brauchen keine Stack-Angleichung, weil an beiden Enden die Tiefe 0 ist.
+### Jump targets
 
-### Sprungziele
-
-Sprünge nennen **Block-Indizes**, keine Byte-Offsets. Der Funktionskopf trägt die Offset-Tabelle.
-Ein Ziel prüft man mit `index < blockCount` — kein Abgleich gegen Instruktionsgrenzen nötig.
+Jumps name block indices, not byte offsets. The function header carries the offset table. A target
+is checked with `index < blockCount`.
 
 ---
 
-## 5. Instruktionen
+## 5. Instructions
 
-Jede Instruktion beginnt mit einem Opcode-Byte. `T` steht für ein Typ-Tag-Byte (§3).
+Every instruction starts with an opcode byte. `T` denotes a type tag byte (§3). The type travels
+as a tag next to the opcode, not encoded into it; the tag is in the instruction stream, not in the
+runtime value, so dispatch stays static.
 
-**Der Typ steht als Tag am Opcode, nicht im Opcode.** Bei zehn numerischen Typen ergäbe eine
-Spezialisierung wie in der JVM (`iadd`/`ladd`/`fadd`/…) rund hundert Arithmetik-Opcodes; die
-Tabelle bliebe nicht mehr lesbar. Der Tag steht im **Instruktionsstrom**, nicht im Laufzeitwert —
-der Dispatch bleibt statisch, es gibt keinen polymorphen Opcode.
+### Values and slots
 
-### Werte und Slots
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+| Opcode | Mnemonic | Operands | Stack | Effect |
 |---|---|---|---|---|
-| `0x01` | `const` | `T`, Immediate | → +1 | Konstante laden, siehe unten |
-| `0x02` | `ldloc` | `uleb128` slot | → +1 | Slot lesen |
-| `0x03` | `stloc` | `uleb128` slot | −1 | oberster Wert in den Slot |
-| `0x04` | `pop` | — | −1 | obersten Wert verwerfen |
+| `0x01` | `const` | `T`, immediate | +1 | load a constant, see below |
+| `0x02` | `ldloc` | `uleb128` slot | +1 | read a slot |
+| `0x03` | `stloc` | `uleb128` slot | −1 | store the top value into the slot |
+| `0x04` | `pop` | — | −1 | discard the top value |
 
-**`const`-Immediate** je nach Tag:
+`const` immediate by tag:
 
 | Tag | Immediate |
 |---|---|
-| `i8`…`i64`, `u8`…`u64` | `uleb128` des **Zweierkomplement-Bitmusters**, nullerweitert auf 64 Bit |
-| `f32` | 4 Byte IEEE-754, little-endian |
-| `f64` | 8 Byte IEEE-754, little-endian |
-| `bool` | 1 Byte |
-| `char` | `uleb128` Unicode-Codepoint |
-| `string` | `uleb128` Index in den String-Pool |
+| `i8`…`i64`, `u8`…`u64` | `uleb128` of the two's-complement bit pattern, zero-extended to 64 bits |
+| `f32` | 4 bytes IEEE-754, little-endian |
+| `f64` | 8 bytes IEEE-754, little-endian |
+| `bool` | 1 byte |
+| `char` | `uleb128` Unicode code point |
+| `string` | `uleb128` index into the string pool |
 
-Der Wert **muss** in die Breite des Tags passen: `const i8` mit einem Immediate > `0xFF` ist
-ungültig. `const void` ist ungültig.
+The value must fit the width of the tag. `const void` is invalid.
 
-### Arithmetik und Bitoperationen
+### Arithmetic and bit operations
 
-Alle nehmen zwei Werte desselben Typs und legen einen Wert dieses Typs zurück (−2 +1).
-Das Tag nennt den Operandentyp.
+Each takes two values of the same type and leaves one of that type (−2 +1). The tag names the
+operand type.
 
 | Opcode | Mnemonic | | Opcode | Mnemonic |
 |---|---|---|---|---|
@@ -475,15 +374,14 @@ Das Tag nennt den Operandentyp.
 | `0x13` | `div T` | | `0x18` | `or T` |
 | `0x14` | `rem T` | | `0x19` | `xor T` |
 
-`add`…`rem` verlangen einen numerischen Typ, `shl`…`xor` einen ganzzahligen. Signed und unsigned
-sind **verschiedene** Operationen — `div i64` und `div u64` sind nicht austauschbar. Es gibt keine
-String-Konkatenation als Instruktion: `string + string` ist in Lyric eingebaute Semantik, lowert
-aber zu einem Call.
+`add` through `rem` require a numeric type, `shl` through `xor` an integer type. Signed and
+unsigned are distinct operations. There is no string concatenation instruction; it lowers to a
+call.
 
-### Vergleiche
+### Comparisons
 
-Zwei Werte desselben Typs → ein `bool` (−2 +1). **Das Tag nennt den Operandentyp**, nicht den
-Ergebnistyp.
+Two values of the same type produce a `bool` (−2 +1). The tag names the operand type, not the
+result type.
 
 | Opcode | Mnemonic | | Opcode | Mnemonic |
 |---|---|---|---|---|
@@ -491,325 +389,228 @@ Ergebnistyp.
 | `0x21` | `le T` | | `0x24` | `eq T` |
 | `0x22` | `gt T` | | `0x25` | `ne T` |
 
-`lt`/`le`/`gt`/`ge` verlangen einen numerischen Typ. `eq`/`ne` sind zusätzlich auf `bool`, `char`
-und `string` gültig.
+`lt`, `le`, `gt` and `ge` require a numeric type. `eq` and `ne` are additionally valid on `bool`,
+`char` and `string`.
 
-### Unäre Operationen und Konvertierung
+### Unary operations and conversion
 
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+| Opcode | Mnemonic | Operands | Stack | Effect |
 |---|---|---|---|---|
-| `0x30` | `neg` | `T` | −1 +1 | Vorzeichen, numerisch |
-| `0x31` | `not` | — | −1 +1 | logisches Nicht |
-| `0x32` | `bitnot` | `T` | −1 +1 | Bitweises Nicht, ganzzahlig |
-| `0x33` | `conv` | `T_from`, `T_to` | −1 +1 | numerische Konvertierung |
+| `0x30` | `neg` | `T` | −1 +1 | negation, numeric |
+| `0x31` | `not` | — | −1 +1 | logical not |
+| `0x32` | `bitnot` | `T` | −1 +1 | bitwise not, integer |
+| `0x33` | `conv` | `T_from`, `T_to` | −1 +1 | numeric conversion |
 
-**`not` trägt als Einziger kein Typ-Tag** — nur `bool` ist gültig, ein Tag wäre reine Redundanz.
-Das ist die einzige Ausnahme von der Tag-Regel.
+`not` carries no type tag; only `bool` is valid. It is the only exception to the tag rule.
 
-`conv` ist nur zwischen numerischen Typen gültig, und `T_from ≠ T_to`: eine
-Identitäts-Konvertierung erzeugt der Compiler nicht.
+`conv` is valid between numeric types only, with `T_from ≠ T_to`.
 
-### Aufrufe und Kontrollfluss
+### Calls and control flow
 
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+| Opcode | Mnemonic | Operands | Stack | Effect |
 |---|---|---|---|---|
-| `0x40` | `call` | `uleb128` index | −n [+1] | Aufruf, siehe unten |
-| `0x41` | `ret` | — | 0 | Rückkehr ohne Wert |
-| `0x42` | `retval` | — | −1 | Rückkehr mit dem obersten Wert |
-| `0x43` | `br` | `uleb128` block | 0 | unbedingter Sprung |
-| `0x44` | `condbr` | `uleb128` ifTrue, `uleb128` ifFalse | −1 | verzweigt nach dem obersten `bool` |
-| `0x45` | `unreachable` | — | 0 | darf nie erreicht werden |
+| `0x40` | `call` | `uleb128` index | −n [+1] | call, see below |
+| `0x41` | `ret` | — | 0 | return without a value |
+| `0x42` | `retval` | — | −1 | return the top value |
+| `0x43` | `br` | `uleb128` block | 0 | unconditional jump |
+| `0x44` | `condbr` | `uleb128` ifTrue, `uleb128` ifFalse | −1 | branch on the top `bool` |
+| `0x45` | `unreachable` | — | 0 | must never be reached |
 
-**`call`** nimmt `paramCount` Werte vom Stack (der erste Parameter zuunterst) und legt genau dann
-einen Wert zurück, wenn der Rückgabetyp nicht `void` ist.
+`call` takes `paramCount` values off the stack, the first parameter lowest, and leaves one value
+exactly when the return type is not `void`.
 
-Der Index adressiert einen **gemeinsamen Indexraum**: zuerst alle Imports, dann alle definierten
-Funktionen. Bei `importCount = 0` ist der Index also die Position in der Function-Tabelle.
+The index addresses a shared index space: all imports first, then all defined functions.
 
-`ret`/`retval` müssen zum Rückgabetyp der Funktion passen. Jeder Block endet mit genau einer
-Instruktion aus `ret`, `retval`, `br`, `condbr`, `unreachable`.
+`ret` and `retval` must match the function's return type. Every block ends with exactly one of
+`ret`, `retval`, `br`, `condbr`, `unreachable`, `throw` or `endfinally`.
 
-### Objekte
+### Objects
 
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+| Opcode | Mnemonic | Operands | Stack | Effect |
 |---|---|---|---|---|
-| `0x50` | `newobj` | `uleb128` type | +1 | legt eine Instanz an, Felder auf ihren Nullwert |
-| `0x51` | `ldfld` | `uleb128` type, `uleb128` field | −1 +1 | ersetzt die Referenz durch den Feldwert |
-| `0x52` | `stfld` | `uleb128` type, `uleb128` field | −2 | schreibt das Feld |
+| `0x50` | `newobj` | `uleb128` type | +1 | allocate an instance, fields at their zero value |
+| `0x51` | `ldfld` | `uleb128` type, `uleb128` field | −1 +1 | replace the reference with the field value |
+| `0x52` | `stfld` | `uleb128` type, `uleb128` field | −2 | store the field |
 
-**Stack-Reihenfolge bei `stfld`**: die Referenz liegt **unter** dem Wert. Also erst die Referenz
-auf den Stack legen, dann den Wert; `stfld` nimmt beide. Das ist dieselbe Reihenfolge wie in CIL
-und die einzige, die ohne Vertauschen auskommt, wenn man Ziel-Ausdruck vor Wert-Ausdruck auswertet
-— was Sprache.md §6.4 für Zuweisungen verlangt.
+**Stack order for `stfld`**: the reference lies below the value. Push the reference first, then the
+value.
 
-**Warum der Typ-Index bei `ldfld`/`stfld` mitsteht**, obwohl die Referenz ihn schon kennt: eine
-Runtime muss den Feldindex **beim Laden** gegen ein Layout prüfen können (§6), nicht erst beim
-Zugriff. Ohne den Typ im Instruktionsstrom bräuchte der Validator eine Datenfluss-Analyse, um
-herauszufinden, welcher Typ an dieser Stelle auf dem Stack liegt. Der Index ist redundant zur
-Laufzeit und genau deshalb billig — er wird nach der Validierung nicht mehr gelesen.
+The type index accompanies `ldfld` and `stfld` so a reader can check the field index against a
+layout at load time without data-flow analysis.
 
-### Enums
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
-|---|---|---|---|---|
-| `0x68` | `newvariant` | `uleb128` variantType | −n +1 | legt eine Variante an; `n` = ihre Nutzfeldzahl |
-| `0x69` | `enumtag` | — | −1 +1 | Tag der Variante als `i64` |
-| `0x6A` | `enumas` | `uleb128` variantType | −1 +1 | engt auf eine Variante ein; **`panic`** bei falschem Tag |
-
-`newvariant` nimmt die Nutzfelder vom Stack (das erste zuunterst) und setzt Slot 0 selbst auf den
-Tag — der Compiler muss ihn nicht mitschicken, er steht im Typ.
-
-**`match` hat keinen eigenen Opcode.** Es liest mit `enumtag` das Tag und verzweigt darüber wie
-jede andere Fallunterscheidung; ein Sprungtabellen-Opcode wäre eine Optimierung, keine Semantik.
-Nach der Verzweigung ist die Variante bekannt, und `enumas` macht daraus einen Wert ihres Typs —
-danach ist der Feldzugriff ein gewöhnliches `ldfld` mit dem Layout der Variante.
-
-Das ist dieselbe Form wie beim Optional: `optissome` prüft, `optget` löst ein. Hier prüft `enumtag`
-und `enumas` löst ein. Beide Einlösungen können nicht scheitern, wenn der Compiler den Beweis
-geführt hat — `enumas` panickt trotzdem bei falschem Tag, weil `.lyrbc` auch aus fremder Quelle
-kommen kann.
-
-### Interfaces
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
-|---|---|---|---|---|
-| `0x70` | `mkiface` | `uleb128` concreteType, `uleb128` interfaceType | −1 +1 | hebt eine Objektreferenz auf ihren Interface-Typ |
-| `0x71` | `callvirt` | `uleb128` interfaceType, `uleb128` slot | −n +0/1 | ruft die Implementierung des Slots am konkreten Typ des Empfängers |
-
-`mkiface` trägt **beide** Indizes, obwohl eine Runtime nur den konkreten braucht: so prüft der
-Loader die Implementierungs-Beziehung gegen die Impls-Sektion, ohne eine Datenflussanalyse zu
-fahren. Dieselbe Begründung wie beim Typ- und Feldindex am `ldfld` (§6).
-
-`callvirt` erwartet den Empfänger als **Argument 0**, also zuunterst — dieselbe Konvention wie bei
-jedem Methodenaufruf (`Sprache.md` ADR-014). `n` ist die Argumentzahl des Slots einschließlich
-Empfänger.
-
-**Es gibt keinen Downcast.** `Sprache.md` §6.5 lässt `as` ausschließlich zwischen Numerik zu; ein
-Interface-Wert kann nicht zurück auf seine Klasse geprüft werden. Deshalb braucht er auch keine
-Laufzeit-Typprüfung und keinen Fehlerfall.
-
-### Structs
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
-|---|---|---|---|---|
-| `0x72` | `structcopy` | `uleb128` structType | −1 +1 | legt eine unabhängige Kopie eines Struct-Wertes ab |
-
-**Es gibt kein `newstruct`.** Ein Struct-Wert wird mit `newobj` erzeugt wie ein Klassenobjekt —
-zur Laufzeit ist es dieselbe Slot-Folge. Die gesamte Wert-Semantik steckt in `structcopy` und
-darin, **wo** ein Compiler es setzt.
-
-**Die Kopie ist rekursiv über verschachtelte Structs und flach über alles andere.** Ein Feld vom
-Typ `class`, `T[]` oder `dyn` trägt eine Referenz, und die wird *geteilt*: kopiert wird der Wert,
-nicht die Welt dahinter (`Sprache.md` §3.2). Ein Feld vom Typ `struct` ist dagegen selbst ein Wert
-und muss mitkopiert werden — sonst sähe man eine Änderung an `a.inner.x` auch bei `b`. Die
-Rekursion terminiert ohne Zyklen-Erkennung, weil ein Struct sich nicht selbst enthalten kann.
-
-**Wo ein Compiler `structcopy` setzen muss**: an jedem Punkt, an dem ein Struct-Wert aus einer
-bestehenden Stelle in eine neue gebunden wird — Initialisierung, Zuweisung, Argument, Rückgabe,
-Feld- und Elementzuweisung. Ein frisch erzeugter Wert (`newobj`, Rückgabe eines Aufrufs) braucht
-es nicht: er hat noch keinen anderen Besitzer.
-
-Ein `structcopy` auf einem Typ, der **kein** Struct-Eintrag ist, muss ein Leser ablehnen. Es wäre
-kein Fehler, den die Laufzeit bemerkt — sie kopierte klaglos ein Slot-Array, das geteilt gehört,
-und die Semantik bräche still.
-
-### Closures
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
-|---|---|---|---|---|
-| `0x77` | `mkclosure` | `uleb128` target≪1 \| hasEnv | −(0/1) +1 | baut einen Funktionswert |
-| `0x78` | `callind` | `uleb128` argc≪1 \| retval | −(1+argc) +(0/1) | ruft einen Funktionswert |
-
-Ein Funktionswert ist zur Laufzeit ein **Fat Pointer** aus Environment-Referenz und Funktionsindex
-— dieselbe Bauart wie ein Interface-Wert (§Interfaces) und aus demselben Grund: die Referenz ist
-belegt, das Wortfeld daneben frei. Eine Closure **ohne Captures trägt keine Referenz** und kostet
-deshalb keine Allokation.
-
-`mkclosure` nimmt sein Environment vom Stack, `callind` stellt es beim Aufruf als **Argument 0**
-voran — genau die Position, die bei einer Methode der Empfänger belegt. Eine angehobene Lambda ist
-damit eine ganz gewöhnliche Funktion, und eine Runtime braucht für `callind` keinen zweiten
-Frame-Aufbau.
-
-**Beide Operanden tragen ein Flag im untersten Bit.** Der eigentliche Wert steht ab Bit 1. Das ist
-kein Sparen an Bytes, sondern eine Anforderung aus ADR-013: ein Leser muss die **Stack-Wirkung
-jeder Instruktion beim Laden** kennen, und sie geht hier nicht aus dem Opcode allein hervor — eine
-Closure hat ein Environment oder keins, und ein Funktionswert trägt seine Signatur nicht im
-Instruktionsstrom. Bei `call` steht beides in der Zielsignatur; hier gibt es keine.
-
-Ein Leser **muss** ablehnen: einen `mkclosure`-Zielindex außerhalb des Aufrufraums (erst Imports,
-dann Funktionen — dieselbe Rechnung wie bei `call`).
-
-Der Funktionsindex wird im Wert **um eins erhöht** gehalten. Sonst wäre eine Closure auf Funktion 0
-ohne Environment bitgleich mit „kein Wert", und ein `?fn(…)` könnte beides nicht unterscheiden.
-
-### Globals
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
-|---|---|---|---|---|
-| `0x75` | `ldglobal` | `uleb128` index | −0 +1 | liest einen globalen Slot |
-| `0x76` | `stglobal` | `uleb128` index | −1 +0 | schreibt einen globalen Slot |
-
-Wie `ldloc`/`stloc`, nur modulweit statt frameweit. Der Index ist beim Laden geprüft, der Zugriff
-zur Laufzeit deshalb ungeprüft.
-
-`stglobal` benutzt in Lyric ausschließlich die Init-Funktion: Globale sind dort immer `let`. Der
-Opcode ist trotzdem allgemein — das Füllen selbst ist ein Schreibvorgang, und ihn zu verstecken
-hieße, der Init-Funktion eine Sonderrolle im Instruktionssatz zu geben.
-
-### Exceptions
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
-|---|---|---|---|---|
-| `0x73` | `throw` | `uleb128` concreteType | −1 +0 | beginnt das Abwickeln; **Terminator** |
-| `0x74` | `endfinally` | — | −0 +0 | Ende einer `finally`-Region; **Terminator** |
-
-`throw` trägt den **konkreten Typ** des geworfenen Wertes als `Typ-Index + 1`, oder `0` für „steht
-erst zur Laufzeit fest" — dann ist der Wert interface-typisiert und führt seinen Typ als Fat Pointer
-mit (§Darstellung eines Interface-Wertes).
-
-**Dass der statische Typ überhaupt reicht, ist eine Eigenschaft dieser Sprache**: Lyric hat keine
-Inheritance (ADR-003). Eine Klasse ist genau ihr Typ, es gibt keine Untertypen — also ist der Typ an
-der Wurfstelle derselbe, den ein `catch` vergleicht, und der **Typvergleich beim Abwickeln ist
-Gleichheit**, kein Untertyp-Test. In C# oder Java wäre das falsch und man bräuchte ein Typ-Tag im
-Objekt.
-
-`endfinally` gibt die Abwicklung dorthin zurück, wo sie unterbrochen wurde: die Suche geht beim
-**nächsten** Handler derselben Funktion weiter, mit demselben Ursprungsblock. Ohne diesen Index
-fände dieselbe Region sich selbst wieder.
-
-Eine `finally`-Region wird **nur beim Abwickeln** betreten. Auf dem normalen Pfad hat ein Compiler
-die Aufräumarbeit bereits inline gesetzt; ein `endfinally` ohne laufende Abwicklung ist deshalb ein
-Fehler. **Lyric selbst hat kein `finally`** (ADR-009) — eine solche Region entsteht ausschließlich
-aus `defer`. Das Format braucht
-den Träger trotzdem, weil „läuft auch beim Abwickeln" anders nicht ausdrückbar ist; die *Sprache*
-bleibt bei einem Schlüsselwort.
-
-Verlässt eine Exception den Einstiegspunkt, ohne gefangen zu werden, bricht die Runtime ab wie bei
-einem `panic` (§9 der Sprachspec). Statisch sollte das nicht vorkommen — die Sema erzwingt, dass ein
-Aufruf einer `throws`-Funktion deklariert oder umgeben wird, und `main` darf nichts deklarieren.
-
-### Darstellung eines Interface-Wertes
-
-Diese Spec schreibt Runtimes sonst keine Datenstrukturen vor. Hier tut sie es, aus demselben Grund
-wie bei den Optionals: das beobachtbare Verhalten muss überall gleich sein.
-
-Ein Wert vom Tag `0x44` trägt **zwei** Dinge: die Objektreferenz und den **Index seines konkreten
-Typs** in der Types-Sektion. Wie eine Runtime das ablegt, ist ihre Sache — als Paar, als zwei
-Register, als Zeiger auf einen Deskriptor.
-
-**Verboten ist**, den konkreten Typ aus dem Objekt selbst zu lesen. Ein Objekt trägt in diesem
-Format kein Typ-Tag (§Objekte), und ein `mkiface` ist die einzige Stelle, an der der Typ bekannt
-ist. Eine Runtime, die stattdessen ein Tag ins Objekt schriebe, verschöbe jeden Feldindex und wäre
-nicht mehr formatkonform.
-
-Die Referenzimplementierung nutzt dafür die bei einer Referenz ohnehin ungenutzten Zahl-Bits ihres
-Wert-Typs — ein Fat Pointer, wie Rusts `dyn Trait`. Das ist eine Empfehlung, keine Vorschrift.
-
-### Optionals
-
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
-|---|---|---|---|---|
-| `0x60` | `optnone` | innerer Typ (§3) | +1 | legt „kein Wert" ab |
-| `0x61` | `optsome` | innerer Typ (§3) | −1 +1 | verpackt den obersten Wert |
-| `0x62` | `optissome` | — | −1 +1 | `bool`: liegt ein Wert vor? |
-| `0x63` | `optget` | — | −1 +1 | packt aus; **`panic`**, wenn kein Wert |
-
-`??`, `??=` und `?.` haben **keine** eigenen Opcodes. Sie werten ihre rechte Seite bzw. den
-Member-Zugriff nur bedingt aus und lowern deshalb zu Verzweigungen über `optissome` — genau wie
-`&&` und `||`. Ein Opcode dafür müsste einen unausgewerteten Ausdruck transportieren, und das kann
-eine Stack-Maschine nicht.
-
-`optget` bildet den Force-Unwrap `expr!` ab (Sprache.md §7).
-
-**Ein Optional ist nicht schachtelbar**: `??T` gibt es nicht. Ein Leser **muss** einen inneren Typ
-mit Tag `0x42` ablehnen. Ohne diese Regel wäre „kein Wert" mehrdeutig — die Darstellung unten
-könnte die Ebenen nicht unterscheiden.
+**Zero value of a field**: numbers `0`, `bool` false, `char` U+0000, `string` the empty string,
+references the null reference. No field is ever uninitialized.
 
 ### Arrays
 
-| Opcode | Mnemonic | Operanden | Stack | Wirkung |
+| Opcode | Mnemonic | Operands | Stack | Effect |
 |---|---|---|---|---|
-| `0x58` | `newarr` | Elementtyp (§3) | −n +1 | nimmt `n` Werte vom Stack, legt ein Array daraus an |
-| `0x59` | `ldelem` | — | −2 +1 | Array, Index → Element |
-| `0x5A` | `stelem` | — | −3 | Array, Index, Wert |
-| `0x5B` | `arrlen` | — | −1 +1 | Länge als `i64` |
-| `0x5C` | `arrcat` | — | −2 +1 | Konkatenation zweier Arrays → neues Array |
-| `0x5D` | `arrrep` | — | −2 +1 | Array, Anzahl → neues Array, so oft wiederholt |
+| `0x58` | `newarr` | element type (§3), `uleb128` count | −n +1 | take `n` values off the stack and build an array |
+| `0x59` | `ldelem` | — | −2 +1 | array, index → element |
+| `0x5A` | `stelem` | — | −3 | array, index, value |
+| `0x5B` | `arrlen` | — | −1 +1 | length as `i64` |
+| `0x5C` | `arrcat` | — | −2 +1 | concatenate two arrays into a new one |
+| `0x5D` | `arrrep` | — | −2 +1 | array, count → new array, repeated |
 
-**`newarr` nimmt die Elementzahl als Immediate** (`uleb128`, nach dem Elementtyp) und dann so viele
-Werte vom Stack, das erste Element zuunterst. Ein Literal `[3, 7, 1]` ist damit eine Instruktion und
-nicht drei `stelem` — der häufige Fall bleibt kurz.
+`newarr` takes the element count as an immediate after the element type, then that many values off
+the stack, the first element lowest.
 
-**Index-Verletzungen sind ein `panic`** (Sprache.md §9), kein undefiniertes Verhalten. Das gilt für
-`ldelem`, `stelem` und `pop` auf einem leeren Array. Anders als Typ- und Feldindizes (§6) ist ein
-Element-Index **nicht** beim Laden prüfbar — er ist ein Laufzeitwert. Das ist der Unterschied
-zwischen „der Compiler hat Unsinn erzeugt" und „das Programm hat sich verrechnet"; nur das Erste
-darf beim Laden abgefangen werden.
+An index violation is a panic, not undefined behaviour. This applies to `ldelem` and `stelem`. An
+element index is a runtime value and is not checkable at load time.
 
-**`T[]` wächst nicht** (ADR-016). Die Länge steht bei der Erzeugung fest. `arrcat` und `arrrep`
-liefern deshalb jeweils ein **neues** Array und ändern ihre Operanden nicht — sie bilden `xs + ys`
-bzw. `xs * n` aus Sprache.md §6.5 ab, und das ist eingebaute Sprachsemantik, keine Bibliothek.
-Wachsende Container (`List<T>`) sind gewöhnliche Klassen der Stdlib und brauchen im Format nichts
-Eigenes: sie halten ein `T[]` und kopieren um.
+An array does not grow; its length is fixed at creation. `arrcat` and `arrrep` each produce a new
+array and leave their operands unchanged. `arrrep` with count `0` yields an empty array; a negative
+count is a panic.
 
-`arrrep` mit Anzahl `0` liefert ein leeres Array; eine negative Anzahl ist ein `panic`.
+### Optionals
 
-### Darstellung eines Optionals
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x60` | `optnone` | inner type (§3) | +1 | push "no value" |
+| `0x61` | `optsome` | inner type (§3) | −1 +1 | wrap the top value |
+| `0x62` | `optissome` | — | −1 +1 | `bool`: is a value present? |
+| `0x63` | `optget` | — | −1 +1 | unwrap; panics when there is no value |
 
-Diese Spec schreibt Runtimes normalerweise keine Datenstrukturen vor. Hier tut sie es, weil die
-Wahl beobachtbar ist: `optissome` muss auf **jeder** Runtime dasselbe liefern.
+An optional does not nest. A reader must reject an inner type tagged `0x42`.
 
-Ein Wert ist genau dann „kein Wert", wenn seine **Referenz leer** ist. Für `?string`, `?T[]` und
-`?Klasse` fällt das mit der natürlichen Darstellung zusammen — die Referenz ist der Wert. Für
-`?int`, `?bool` und `?char` gibt es keine freien Bitmuster: jedes `i64` ist eine gültige Zahl. Eine
-Runtime **muss** deshalb einen von Nutzdaten unterscheidbaren Marker führen, der „hat einen Wert"
-bedeutet, und den Zahlenwert daneben halten.
+**Representation.** A value is "no value" exactly when its reference is empty. For `?string`,
+`?T[]` and `?class` this coincides with the natural representation. For `?int`, `?bool` and
+`?char` there is no free bit pattern, so a runtime must carry a marker distinguishable from the
+payload and hold the number beside it. A runtime must not reserve a bit pattern as null: `?int`
+must carry all 2^64 `int` values.
 
-Was sie ausdrücklich **nicht** darf: ein Bitmuster als „null" reservieren. `?int` muss alle
-2⁶⁴ `int`-Werte tragen können — sonst wäre `-1` je nach Runtime mal ein Wert und mal keiner.
+### Enums
 
-Ein Objekt trägt **kein** Typ-Tag zur Laufzeit. Der Instruktionsstrom weiß statisch, was vorliegt;
-dieselbe Entscheidung wie bei den Werten (§4). Interface-Dispatch braucht später eine Typ-Identität
-— die gehört dann an die vtable, nicht an jeden einzelnen Wert.
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x68` | `newvariant` | `uleb128` variantType | −n +1 | allocate a variant; `n` is its payload field count |
+| `0x69` | `enumtag` | — | −1 +1 | the variant's tag as `i64` |
+| `0x6A` | `enumas` | `uleb128` variantType | −1 +1 | narrow to a variant; panics on a mismatched tag |
 
-**Nullwert eines Feldes**: Zahlen `0`, `bool` false, `char` U+0000, `string` die leere
-Zeichenkette, Referenzen die Null-Referenz. Kein Feld ist je „uninitialisiert" — `.lyrbc` ist ein
-plattformneutraler Vertrag (ADR-013), und „undefiniert wie in C" ist an keiner Stelle zulässig
-(Sprache.md §6.6). In Format 1.2 kann eine Null-Referenz allerdings nie beobachtet werden: das
-Lowering erzeugt `newobj` und die Feld-Initialisierung immer zusammen, und Optionals (`?T`) sind
-noch nicht gelowert.
+`newvariant` takes the payload fields off the stack, the first lowest, and sets slot 0 to the tag
+itself.
+
+`match` has no opcode. It reads the tag with `enumtag` and branches on it; after the branch
+`enumas` produces a value of the variant's type, and field access is an ordinary `ldfld` against
+the variant's layout.
+
+### Interfaces
+
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x70` | `mkiface` | `uleb128` concreteType, `uleb128` interfaceType | −1 +1 | lift an object reference to its interface type |
+| `0x71` | `callvirt` | `uleb128` interfaceType, `uleb128` slot | −n +0/1 | call the slot's implementation for the receiver's concrete type |
+
+`mkiface` carries both indices so a loader can check the implementation relation against the Impls
+section without data-flow analysis.
+
+`callvirt` expects the receiver as argument 0, lowest on the stack. `n` is the slot's argument
+count including the receiver.
+
+There is no downcast; an interface value cannot be narrowed back to its class.
+
+**Representation.** A value tagged `0x44` carries two things: the object reference and the index of
+its concrete type in the Types section. How a runtime stores that is its own choice. Reading the
+concrete type out of the object is not permitted — an object carries no type tag in this format,
+and `mkiface` is the only point at which the concrete type is known.
+
+### Structs
+
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x72` | `structcopy` | `uleb128` structType | −1 +1 | produce an independent copy of a struct value |
+
+There is no `newstruct`; a struct value is created with `newobj`.
+
+The copy is recursive across nested structs and shallow across everything else. A field of class,
+array or interface type carries a reference, and that reference is shared. A field of struct type
+is itself a value and is copied. The recursion terminates without cycle detection because a struct
+cannot contain itself.
+
+A compiler must emit `structcopy` wherever a struct value is bound into a new location:
+initialization, assignment, argument, return, field and element assignment. A freshly created
+value — from `newobj` or as the result of a call — does not need one.
+
+A reader must reject `structcopy` on a type that is not a struct entry.
+
+### Exceptions
+
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x73` | `throw` | `uleb128` concreteType | −1 | begin unwinding; terminator |
+| `0x74` | `endfinally` | — | 0 | end of a `finally` region; terminator |
+
+`throw` carries the concrete type of the thrown value as type index + 1, or `0` when the type is
+known only at runtime — the value is then interface-typed and carries its type with it.
+
+The type comparison while unwinding is equality, not a subtype test: the language has no
+inheritance, so the type at the throw site is the type a `catch` compares against.
+
+`endfinally` returns control to the point where unwinding was interrupted; the search continues at
+the next handler of the same function with the same origin block. A `finally` region is entered
+only while unwinding; `endfinally` without an active unwind is an error.
+
+An exception that leaves the entry point uncaught aborts the runtime like a panic.
+
+### Globals
+
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x75` | `ldglobal` | `uleb128` index | +1 | read a global slot |
+| `0x76` | `stglobal` | `uleb128` index | −1 | write a global slot |
+
+As `ldloc` and `stloc`, but module-wide instead of frame-wide. The index is checked at load time
+and the access is unchecked at runtime.
+
+### Closures
+
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x77` | `mkclosure` | `uleb128` target≪1 \| hasEnv | −(0/1) +1 | build a function value |
+| `0x78` | `callind` | `uleb128` argc≪1 \| retval | −(1+argc) +(0/1) | call a function value |
+
+A function value is a pair of environment reference and function index. A closure without captures
+carries no reference and costs no allocation.
+
+`mkclosure` takes its environment off the stack; `callind` passes it as argument 0, the position a
+receiver occupies for a method.
+
+Both operands carry a flag in the lowest bit, with the value from bit 1 upward, so that the stack
+effect of each instruction is known at load time: a closure either has an environment or not, and a
+function value does not carry its signature in the instruction stream.
+
+The function index is stored incremented by one, so that a closure over function 0 without an
+environment is distinguishable from "no value".
+
+A reader must reject a `mkclosure` target index outside the call space.
 
 ---
 
-## 6. Validierung beim Laden
+## 6. Load-time validation
 
-Eine Runtime **muss** ein Modul vollständig prüfen, bevor sie es ausführt, und darf es danach ohne
-Sicherheitsprüfungen laufen lassen. Ablehnungsgründe und ihre Diagnostik-Codes:
+A runtime must validate a module completely before executing it, and may then run it without
+safety checks.
 
-| Code | Grund |
+| Code | Reason |
 |---|---|
-| `LYR-BC0001` | Magic fehlt — keine `.lyrbc`-Datei |
-| `LYR-BC0002` | unbekannte Major-Version |
-| `LYR-BC0003` | Datei endet mitten in einer Struktur; Sektions-Länge passt nicht zum Inhalt |
-| `LYR-BC0004` | Index zeigt ins Leere: String-Pool, Funktion, Block, Slot, **Typ oder Feld** |
-| `LYR-BC0005` | unbekannter Opcode, unbekanntes Typ-Tag, Sektionen nicht aufsteigend |
-| `LYR-BC0006` | Stack-Disziplin: Unterlauf, Tiefe ≠ 0 an einer Blockgrenze, Tiefe > `maxStack` |
+| `LYR-BC0001` | magic missing — not a `.lyrbc` file |
+| `LYR-BC0002` | unknown major version |
+| `LYR-BC0003` | file ends inside a structure; section length does not match its contents |
+| `LYR-BC0004` | index out of range: string pool, function, block, slot, type or field |
+| `LYR-BC0005` | unknown opcode, unknown type tag, sections not ascending |
+| `LYR-BC0006` | stack discipline: underflow, depth ≠ 0 at a block boundary, depth > `maxStack` |
 
-Der Start-Index wird wie jeder andere Index geprüft (`LYR-BC0004`).
+For `newobj`, `ldfld` and `stfld`, load-time checking means: the type index lies within the Types
+section, and for `ldfld` and `stfld` the field index lies within the field count of that exact
+type. Field access at runtime is then an unchecked array access.
 
-Für `newobj`/`ldfld`/`stfld` heißt „beim Laden geprüft" konkret: der Typ-Index liegt in der
-Types-Sektion, und bei `ldfld`/`stfld` liegt der Feldindex innerhalb der Feldzahl **genau dieses**
-Typs. Danach ist ein Feldzugriff zur Laufzeit ein Array-Zugriff ohne Prüfung — das ist der ganze
-Zweck von ADR-013s „Validierung beim Load statt beim Call".
-
-Der Leser bricht beim ersten Befund ab. Anders als der IR-Verifier sammelt er nicht: bei einer
-kaputten Datei ist der zweite Befund meist Folge des ersten.
+The reader stops at the first finding.
 
 ---
 
-## 7. Beispiel
+## 7. Example
 
-Quelle:
+Source:
 
 ```lyr
 fn add(a: int, b: int): int {
@@ -834,28 +635,28 @@ fn main.add -> i64 {
 }
 ```
 
-Die vollständige Datei, 46 Bytes:
+A minimal module containing only that function, 46 bytes:
 
 ```
 4C 59 52 42                  magic "LYRB"
-02 00                        version.major = 2
+03 00                        version.major = 3
 00 00                        version.minor = 0
 
-01                           § Sektion 1 — Capabilities
+01                           § section 1 — Capabilities
 01                             byteLength = 1
 00                             bitset = 0
 
-02                           § Sektion 2 — Strings
+02                           § section 2 — Strings
 0A                             byteLength = 10
 01                             count = 1
-08                             [0] Länge = 8 Byte
+08                             [0] length = 8 bytes
 6D 61 69 6E 2E 61 64 64          "main.add"
 
-04                           § Sektion 4 — Imports
+04                           § section 4 — Imports
 01                             byteLength = 1
 00                             count = 0
 
-05                           § Sektion 5 — Functions
+05                           § section 5 — Functions
 12                             byteLength = 18
 01                             count = 1
 00                             nameIndex = 0            -> "main.add"
@@ -873,127 +674,79 @@ Die vollständige Datei, 46 Bytes:
 42                               retval
 ```
 
-Die Slot-Tabelle hat zwei Einträge, nicht fünf: die Zwischenwerte bleiben auf dem Operanden-Stack
-und brauchen keinen Slot. Ein Emitter, der jedes Zwischenergebnis in einen Slot schreibt, ist
-ebenfalls konform — er erzeugt nur größeren und langsameren Code.
+The slot table has two entries: intermediate values stay on the operand stack and need no slot. An
+emitter that writes every intermediate into a slot is also conformant.
 
 ---
 
-## 8. Was in Format 2.0 fehlt
+## 8. Runner contract
 
-Absichtlich, weil das Lowering es noch nicht erzeugt: `struct` (Wert-Semantik), `enum`, Arrays,
-Tupel, Nullable, Exceptions, Coroutinen-State-Machines, Closures, generische Instanzen und
-Interface-Dispatch. Jedes davon braucht neue Opcodes oder Sektionen und damit eine neue
-Format-Version — mit Ausnahme von `enum` und `struct`, die die Types-Sektion mitbenutzen können.
+This section is normative for any runtime used as `lyric --vm <path>`.
 
-Ebenfalls offen, aber ohne Format-Änderung nachrüstbar: die Source-Map-Sektion (Id 6 ist reserviert
-und beschrieben, wird aber noch nicht geschrieben) und Copy-Propagation im Emitter — heute erzeugt
-ein Temp mit mehreren Lesern ein `ldloc`/`stloc`-Paar, das ein Optimierer einsparen könnte.
-
----
-
-## 9. Runner-Vertrag
-
-Dieser Abschnitt ist **normativ** und gilt für jede Runtime, die als `lyric --vm <pfad>` eingesetzt
-werden soll (ADR-017). Er ist die Antwort auf die Frage, die §1–§8 offen lassen: eine Spec sagt, was
-in der Datei steht — nicht, wie man eine Runtime *aufruft*, die sie ausführt. Ohne diesen Abschnitt
-wäre „austauschbare Runtime" eine Behauptung.
-
-Er hat vier Punkte, und die Kürze ist Absicht (siehe „Was hier bewusst fehlt").
-
-### 9.1 Aufruf
+### 8.1 Invocation
 
 ```
-<vm> run <datei.lyrbc> [-- <programm-args>]
+<vm> run <file.lyrbc> [-- <program-args>]
 ```
 
-Der erste Parameter ist wörtlich `run`. Alles nach dem ersten `--` gehört dem Lyric-Programm, nicht
-der Runtime. Eine Runtime, die weitere Kommandos anbietet (`disasm`, `verify`, …), darf das — der
-Vertrag verlangt nur, dass `run` existiert und sich so verhält.
+The first parameter is literally `run`. Everything after the first `--` belongs to the Lyric
+program. A runtime may offer further commands.
 
-### 9.2 Exit-Codes
+### 8.2 Exit codes
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| `0`–`255` | Rückgabewert von `main`, maskiert mit `& 0xFF` (`Sprache.md` §11) |
-| `101` | `panic` (§9 der Sprachspec) |
-| `1` | Lade-, Validierungs- oder IO-Fehler — das Programm lief nie an |
-| `2` | Aufruf-Fehler: fehlendes Argument, unbekanntes Kommando, falsche Dateiart |
+| `0`–`255` | return value of `main`, masked with `& 0xFF` |
+| `101` | panic |
+| `1` | load, validation or IO error — the program never started |
+| `2` | invocation error: missing argument, unknown command, wrong file kind |
 
-`101`, `1` und `2` kollidieren mit einem Programm, das diese Werte selbst zurückgibt. Das ist
-unvermeidbar, sobald beides durch einen Byte-Kanal läuft; Rust lebt mit derselben Kollision. Wer die
-Unterscheidung braucht, liest stderr.
+`101`, `1` and `2` collide with a program returning those values. Callers that need the
+distinction read stderr.
 
-### 9.3 Ströme
+### 8.3 Streams
 
-- **stdout** trägt ausschließlich die Ausgabe des Lyric-Programms.
-- **stderr** trägt ausschließlich Diagnosen, Panic-Meldungen und Backtraces.
+- **stdout** carries the output of the Lyric program only.
+- **stderr** carries diagnostics, panic messages and backtraces only.
 
-Keine Vermischung in beide Richtungen. Ohne diese Trennung kann ein aufrufendes Werkzeug die
-Ausgabe eines Programms nicht von der Klage der Runtime unterscheiden.
+No mixing in either direction.
 
-### 9.4 Versionsauskunft
+### 8.4 Version output
 
 ```
 <vm> --version
 ```
 
-liefert freien Text auf stdout und Exit-Code `0`. Der Treiber reicht ihn durch und **interpretiert
-ihn nicht**. Es gibt bewusst kein maschinenlesbares Format: siehe unten.
+produces free-form text on stdout and exit code `0`. The driver passes it through and does not
+interpret it.
 
-### Was hier bewusst fehlt
+### 8.5 Program arguments
 
-**Kein Capability-Probe.** Der naheliegende fünfte Punkt wäre ein `<vm> --lyrbc-versions`, damit ein
-Treiber vorab sagen kann „deine Runtime spricht nur 1.4, dieses Modul ist 2.0". Er entfällt, weil
-§2 bereits verlangt, dass jede Runtime eine unbekannte Major-Version **beim Laden** ablehnt, und §6
-dasselbe für Import-Namen und -Signaturen tut. Die Fremd-Runtime liefert die präzise Meldung also
-von allein. Ein Probe wäre ein zweiter Kompatibilitäts-Mechanismus neben der Load-Zeit-Validierung —
-und der teurere, weil ihn jede Runtime nachbauen müsste.
+Everything after the first `--` belongs to the Lyric program. A runtime delivers it to the entry
+point when its signature calls for it:
 
-**Kein Handshake, kein Daemon, kein IPC.** Ein Lauf ist ein Prozessstart.
-
-**Keine Vorgabe zur Disassembly.** `lyric disasm` benutzt immer den mitgelieferten Disassembler,
-auch wenn eine Fremd-Runtime gewählt ist: das *Format* ist spezifiziert, seine Textdarstellung ist
-es nicht.
-
-### Konformanz prüfen
-
-Die mitgelieferte Runtime ist die Referenz-Implementierung dieses Abschnitts. Für ein gegebenes
-Modul beantwortet
-
-```
-lyrvm verify <datei.lyrbc>
-```
-
-die Frage „würde diese Runtime das Modul annehmen" — Format-Validierung (§6) und Import-Bindung,
-ohne eine Instruktion auszuführen. Eine zweite Runtime, die dasselbe Urteil fällt, ist an dieser
-Stelle konform.
-
-### Programm-Argumente
-
-Alles nach dem ersten `--` gehört dem Lyric-Programm. Eine Runtime stellt es dem Einstiegspunkt
-zu, **wenn** dessen Signatur es verlangt:
-
-| Einstieg | was die Runtime tut |
+| Entry point | Behaviour |
 |---|---|
-| `fn main(): int` | die Argumente werden ignoriert — kein Fehler, dieselbe Freiheit hat jede Shell |
-| `fn main(args: string[]): int` | die Runtime baut ein `string[]` und legt es in Parameter-Slot 0 |
+| `fn main(): int` | arguments are ignored |
+| `fn main(args: string[]): int` | the runtime builds a `string[]` into parameter slot 0 |
 
-**Welche Form vorliegt, steht in der Signatur** und nicht in der Start-Sektion: die
-Funktionstabelle trägt Parameterzahl und -typen ohnehin, ein Flag daneben wäre eine zweite
-Wahrheit über dieselbe Frage.
+Which form is present is read from the signature in the function table.
 
-Ein Leser **muss** ablehnen: einen Einstieg mit mehr als einem Parameter, und einen mit einem
-Parameter, der nicht `string[]` ist. Sonst schriebe die Runtime ein Array in einen Slot, der etwas
-anderes erwartet — und das fällt erst zur Laufzeit auf, als falsch gelesener Wert.
+A reader must reject an entry point with more than one parameter, and one whose single parameter
+is not `string[]`.
 
-### Module ohne Einstiegspunkt
+### 8.6 Modules without an entry point
 
-Ein Modul **ohne** Start-Sektion ist eine **Bibliothek**: gültiger Bytecode, aber kein Programm.
-`run` darauf ist ein Fehler (`LYR-VM0001`), `verify` und `info` sind es nicht — `info` zeigt
-`entry (library - no start section)`.
+A module without a Start section is a library: valid bytecode, not a program. `run` on it is an
+error (`LYR-VM0001`); `verify` and `info` are not.
 
-Das ist kein Randfall, sondern der Normalfall für eingebetteten Code: ein Host lädt ein Modul und
-ruft daraus einzelne Funktionen (`onStart`, `onUpdate`), ohne dass es je ein `main` gäbe. Die
-Host-API dafür kommt in M10; das **Format** stellt sich hier nicht in den Weg, weil die
-Start-Sektion seit jeher optional ist.
+### 8.7 Conformance
+
+For a given module,
+
+```
+lyrvm verify <file.lyrbc>
+```
+
+answers whether this runtime would accept it — format validation (§6) and import binding, without
+executing an instruction.
