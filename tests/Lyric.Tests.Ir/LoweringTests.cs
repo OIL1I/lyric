@@ -581,7 +581,7 @@ public class LoweringTests
             """);
 
         Assert.False(de.HasErrors);
-        Assert.Single(ir!.Functions.Where(f => f.Name == "id<int>"));
+        Assert.Single(ir!.Functions, f => f.Name == "id<int>");
     }
 
     [Fact]

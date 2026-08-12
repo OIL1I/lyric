@@ -77,12 +77,21 @@ public sealed class ExtensionTests
             .Select(c => c.GetProperty("command").GetString()!)
             .ToHashSet(StringComparer.Ordinal);
 
+        // 'command' kann im Manifest fehlen. Dann ist der Eintrag ohnehin kaputt, und die Meldung
+        // soll das sagen — nicht „null steht nicht in der Liste".
+        void MustBeDeclared(JsonElement entry)
+        {
+            var command = entry.GetProperty("command").GetString();
+            Assert.NotNull(command);
+            Assert.Contains(command, declared);
+        }
+
         foreach (var binding in contributes.GetProperty("keybindings").EnumerateArray())
-            Assert.Contains(binding.GetProperty("command").GetString(), declared);
+            MustBeDeclared(binding);
 
         foreach (var menu in contributes.GetProperty("menus").EnumerateObject())
             foreach (var item in menu.Value.EnumerateArray())
-                Assert.Contains(item.GetProperty("command").GetString(), declared);
+                MustBeDeclared(item);
     }
 
     [Fact]

@@ -20,7 +20,7 @@ public sealed class OutputTests
 
     [Theory]
     [MemberData(nameof(CommandTests.RunnableExamples), MemberType = typeof(CommandTests))]
-    public void Progress_never_touches_stdout(string example, int _, bool __)
+    public void Progress_never_touches_stdout(string example, int expected, bool _)
     {
         // Die Zusage, an der alles haengt: die Anzeige lebt auf stderr. Waere sie auf stdout,
         // koennte kein Werkzeug die Ausgabe eines Lyric-Programms mehr maschinell lesen.
@@ -29,6 +29,11 @@ public sealed class OutputTests
 
         Assert.Equal(quiet.StdOut, loud.StdOut);
         Assert.Equal(quiet.ExitCode, loud.ExitCode);
+
+        // Und beide liefern das, was die Matrix zusagt. Ohne diese Zeile waeren zwei gleich
+        // kaputte Laeufe gruen — der Vergleich allein sagt nur, dass '--progress' nichts
+        // veraendert, nicht dass das Programm laeuft.
+        Assert.Equal(expected, quiet.ExitCode);
     }
 
     [Fact]
