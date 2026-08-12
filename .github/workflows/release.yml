@@ -1,0 +1,101 @@
+name: Release
+
+# Stable channel. Runs on an annotated tag vX.Y.Z; a tag that does not match is ignored.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+
+  package:
+    name: Package (${{ matrix.rid }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64,   os: windows-latest }
+          - { rid: linux-x64, os: ubuntu-latest }
+          - { rid: osx-arm64, os: macos-latest }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish toolchain
+        run: dotnet msbuild build/publish.proj -p:PublishRoot=${{ github.workspace }}/out
+
+      - name: Archive
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          name="lyric-${version}-${{ matrix.rid }}"
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "dist/${name}.zip" "./out/*"
+          else
+            tar -czf "dist/${name}.tar.gz" -C out .
+          fi
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.rid }}
+          path: dist/*
+          retention-days: 7
+
+  publish:
+    name: Publish release
+    needs: package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

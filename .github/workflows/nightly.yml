@@ -1,0 +1,114 @@
+name: Nightly
+
+# Dev channel. Builds the current main once a day and replaces the 'nightly' prerelease.
+# workflow_dispatch triggers the same run on demand.
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+
+  package:
+    name: Package (${{ matrix.rid }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64,   os: windows-latest }
+          - { rid: linux-x64, os: ubuntu-latest }
+          - { rid: osx-arm64, os: macos-latest }
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish toolchain
+        run: dotnet msbuild build/publish.proj -p:PublishRoot=${{ github.workspace }}/out
+
+      - name: Archive
+        shell: bash
+        run: |
+          name="lyric-nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}-${{ matrix.rid }}"
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "dist/${name}.zip" "./out/*"
+          else
+            tar -czf "dist/${name}.tar.gz" -C out .
+          fi
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.rid }}
+          path: dist/*
+          retention-days: 7
+
+  publish:
+    name: Publish nightly
+    needs: package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      # One moving tag, one prerelease. The tag is forced onto the current commit so the
+      # 'nightly' release always points at what was built.
+      - name: Move the nightly tag
+        run: |
+          git tag -f nightly "$GITHUB_SHA"
+          git push -f origin nightly
+
+      - name: Replace the nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --repo "$GITHUB_REPOSITORY" --yes || true
+          gh release create nightly dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "nightly ($(date -u +%Y-%m-%d))" \
+            --notes "Automated build of main at ${GITHUB_SHA::7}. Unstable: no compatibility promise." \
+            --prerelease

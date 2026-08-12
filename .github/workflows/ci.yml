@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**', 'fix/**']
   pull_request:
     branches: [main]
 
@@ -45,8 +45,7 @@ jobs:
           retention-days: 7
 
   publish:
-    # Die Auslieferung ist selbst ein Lieferposten und wird deshalb gebaut, nicht behauptet.
-    # Sie laeuft NACH den Tests: ein Artefakt aus einem roten Build waere schlimmer als keins.
+    # Runs after the tests so no artifact is produced from a red build.
     name: Publish toolchain
     needs: build-and-test
     runs-on: ubuntu-latest
