@@ -109,6 +109,28 @@ public sealed class ExtensionTests
         Assert.Contains(" run ", call);
         Assert.DoesNotContain("lyrc", call);
         Assert.DoesNotContain("lyrvm", call);
+
+        // Der Befehl wird GEQUOTET und in PowerShell mit '&' aufgerufen — beides zusammen, denn
+        // jedes fuer sich ist kaputt. Ohne Quoting scheitert 'C:\Program Files\lyric\lyric.exe'
+        // an 'C:\Program'; ohne '&' ist '"lyric" run x' in PowerShell ein String-Literal, das
+        // ausgegeben statt ausgefuehrt wird — der Lauf passierte einfach nicht.
+        //
+        // Am 2026-08-12 war genau das der Anlass, das Quoting zu entfernen. Der Test steht hier,
+        // damit die eine Haelfte nicht wieder fuer die andere geopfert wird.
+        Assert.Contains("quote(executable)", call, StringComparison.Ordinal);
+        Assert.Contains("callPrefix()", call, StringComparison.Ordinal);
+    }
+
+    /// <summary>Und das <c>&amp;</c> gilt nur fuer PowerShell — in cmd.exe und jeder POSIX-Shell
+    /// waere es ein Syntaxfehler.</summary>
+    [Fact]
+    public void The_call_operator_is_limited_to_powershell()
+    {
+        var code = File.ReadAllText(Path.Combine(Dir, "extension.js"));
+
+        Assert.Contains("vscode.env.shell", code, StringComparison.Ordinal);
+        Assert.Contains("pwsh", code, StringComparison.Ordinal);
+        Assert.Contains("powershell", code, StringComparison.Ordinal);
     }
 
     [Fact]

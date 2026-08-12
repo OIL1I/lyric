@@ -34,6 +34,26 @@ function quote(path) {
     return `"${path}"`;
 }
 
+/**
+ * Was vor den Befehl gehört, damit die Shell ihn als Befehl liest und nicht als Text.
+ *
+ * **PowerShell braucht `&`.** Dort ist `"lyric" run x` ein String-Literal, das ausgegeben und
+ * nicht ausgeführt wird — der Lauf passierte einfach nicht. Das trifft schon den Default
+ * `executable: "lyric"`, also jeden, der die Extension unverändert benutzt.
+ *
+ * **Das Quoting deshalb wegzulassen wäre der falsche Ausweg**: dann läuft `C:\Program
+ * Files\lyric\lyric.exe` nicht mehr, und zwar mit einer Fehlermeldung über `C:\Program`. Ein
+ * Pfad mit Leerzeichen ist unter Windows der Normalfall.
+ *
+ * `vscode.env.shell` ist die Default-Shell, und `createTerminal` ohne `shellPath` nimmt genau
+ * die — beide sehen dasselbe. Für cmd.exe und jede POSIX-Shell ist ein vorangestelltes `&`
+ * falsch, deshalb die Fallunterscheidung statt „immer `&`".
+ */
+function callPrefix() {
+    const shell = (vscode.env.shell || "").toLowerCase();
+    return /(^|[\\/])(pwsh|powershell)(\.exe)?$/.test(shell) ? "& " : "";
+}
+
 function activate(context) {
     const run = vscode.commands.registerCommand("lyric.run", async () => {
         const editor = vscode.window.activeTextEditor;
@@ -61,7 +81,8 @@ function activate(context) {
         // ausführt (ADR-019). Wer die Tools einzeln will, ruft sie im Terminal selbst.
         const shell = lyricTerminal();
         shell.show(true);
-        shell.sendText(`${quote(executable)} run ${quote(editor.document.fileName)}`);
+        const file = quote(editor.document.fileName);
+        shell.sendText(`${callPrefix()}${quote(executable)} run ${file}`);
     });
 
     context.subscriptions.push(run);
