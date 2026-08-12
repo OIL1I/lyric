@@ -1615,21 +1615,46 @@ public sealed class TypeChecker
     private void CheckConstraints(GenericParamSymbol[] generics, LyrType[] args, Span span)
     {
         var n = Math.Min(generics.Length, args.Length);
-        for (var i = 0; i < n; i++) CheckSatisfies(generics[i], args[i], span);
+
+        // Die VOLLE Abbildung, nicht ein Parameter nach dem anderen: ein Constraint darf die
+        // uebrigen Typ-Parameter nennen (`<K, V :: [Map<K, V>]>`), und ohne die anderen Bindungen
+        // liesse sich `Map<K, V>` nicht zu `Map<string, int>` aufloesen.
+        var map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
+        for (var i = 0; i < n; i++) map[generics[i]] = args[i];
+
+        for (var i = 0; i < n; i++) CheckSatisfies(generics[i], args[i], map, span);
     }
 
     private void CheckInferredConstraints(GenericParamSymbol[] generics, Dictionary<GenericParamSymbol, LyrType> map, Span span)
     {
         foreach (var g in generics)
-            if (map.TryGetValue(g, out var arg)) CheckSatisfies(g, arg, span);
+            if (map.TryGetValue(g, out var arg)) CheckSatisfies(g, arg, map, span);
     }
 
-    private void CheckSatisfies(GenericParamSymbol param, LyrType arg, Span span)
+    /// <summary>
+    /// Erfuellt <paramref name="arg"/> die Constraints von <paramref name="param"/>?
+    /// </summary>
+    /// <param name="substitution">Die Bindungen aller Typ-Parameter dieser Aufrufstelle. Ein
+    /// Constraint traegt sein eigenes Typargument (`&lt;T :: [Eq&lt;T&gt;]&gt;`, ADR-024), und
+    /// `Eq&lt;T&gt;` ist erst mit `T := int` die Frage, die wirklich gestellt wird.</param>
+    private void CheckSatisfies(GenericParamSymbol param, LyrType arg,
+        Dictionary<GenericParamSymbol, LyrType> substitution, Span span)
     {
         foreach (var c in param.Constraints)
-            if (ConstraintInterface(c) is { } iface && !Satisfies(arg, iface))
-                _de.Report("LYR-SEM0028", Severity.Error, span,
-                    $"type '{TypeFacts.Display(arg)}' does not satisfy constraint '{iface.Name}' on '{param.Name}'");
+        {
+            if (ConstraintInterface(c) is not { } iface) continue;
+
+            // Der Constraint als TYP, nicht nur als Symbol: 'Src<string>' und 'Src<int>' sind
+            // dasselbe Symbol und verschiedene Anforderungen.
+            var wanted = Substitute(
+                ResolveType(c, _currentModule?.Members ?? _comp.Builtins), substitution);
+
+            if (Satisfies(arg, iface, wanted)) continue;
+
+            _de.Report("LYR-SEM0028", Severity.Error, span,
+                $"type '{TypeFacts.Display(arg)}' does not satisfy constraint "
+                + $"'{TypeFacts.Display(wanted)}' on '{param.Name}'");
+        }
     }
 
     private TypeSymbol? ConstraintInterface(TypeNode c) => Conformance.InterfaceOf(c, _binding);
@@ -1642,29 +1667,65 @@ public sealed class TypeChecker
     // niemand 'int' erweitert hatte; der Fehler kam dann als LYR-IR0001 aus dem Lowering, weit
     // weg von der Ursache. Jetzt ist es dieselbe Frage wie bei jedem anderen Typ und wird von
     // derselben Funktion beantwortet.
-    private bool Satisfies(LyrType arg, TypeSymbol iface) => arg switch
+    /// <param name="wanted">Das Interface <b>mit seinen Typargumenten</b>, etwa
+    /// <c>Src&lt;string&gt;</c>. <c>iface</c> allein waere nur das Symbol <c>Src</c> — und dann
+    /// erfuellte <c>Ones :: [Src&lt;int&gt;]</c> auch ein <c>Src&lt;string&gt;</c>.</param>
+    private bool Satisfies(LyrType arg, TypeSymbol iface, LyrType wanted) => arg switch
     {
-        NamedRef nr => ImplementsWithExtensions(nr.Symbol, iface),
-        GenericInstance gi => ImplementsWithExtensions(gi.Definition, iface),
-        TypeParamType tp => tp.Param.Constraints.Any(c => ReferenceEquals(ConstraintInterface(c), iface)),
+        NamedRef nr => ImplementsWithExtensions(nr.Symbol, iface, wanted, EmptySubst),
+
+        // Bei einer Instanz zaehlen ihre eigenen Argumente: 'class Box<T> :: [Src<T>]' erfuellt
+        // fuer 'Box<int>' genau 'Src<int>'.
+        GenericInstance gi => ImplementsWithExtensions(gi.Definition, iface, wanted, SubstMap(gi)),
+
+        TypeParamType tp => tp.Param.Constraints.Any(c =>
+            ReferenceEquals(ConstraintInterface(c), iface)
+            && Matches(ResolveType(c, _currentModule?.Members ?? _comp.Builtins), EmptySubst, wanted)),
+
         PrimitiveType prim when BuiltinSymbol(prim) is { } builtin =>
-            ImplementsWithExtensions(builtin, iface),
+            ImplementsWithExtensions(builtin, iface, wanted, EmptySubst),
         _ => true // extern/Error: opak durchlassen
     };
 
     // Konformanz via deklarierte Interfaces ODER ein sichtbarer `extend T :: [I]`-Block (§3.6).
-    private bool ImplementsWithExtensions(TypeSymbol ts, TypeSymbol iface)
+    private bool ImplementsWithExtensions(TypeSymbol ts, TypeSymbol iface, LyrType wanted,
+        Dictionary<GenericParamSymbol, LyrType> ofInstance)
     {
-        if (Conformance.Implements(ts, iface, _binding)) return true;
+        foreach (var node in DeclaredInterfaceNodes(ts))
+            if (ReferenceEquals(Conformance.InterfaceOf(node, _binding), iface)
+                && Matches(ResolveType(node, DeclarationScope(ts)), ofInstance, wanted))
+                return true;
+
         foreach (var block in _comp.Extensions.Blocks)
         {
             if (!ReferenceEquals(block.Target, ts)) continue;
             if (_currentModule is not null && !_comp.Sees(_currentModule, block.Module)) continue;
             foreach (var node in block.Decl.Interfaces)
-                if (ReferenceEquals(Conformance.InterfaceOf(node, _binding), iface)) return true;
+                if (ReferenceEquals(Conformance.InterfaceOf(node, _binding), iface)
+                    && Matches(ResolveType(node, DeclarationScope(ts)), ofInstance, wanted))
+                    return true;
         }
         return false;
     }
+
+    /// <summary>
+    /// Stimmt eine deklarierte Konformanz mit dem ueberein, was der Constraint verlangt?
+    ///
+    /// <para>Ein Interface OHNE Typargumente vergleicht wie bisher ueber das Symbol — dort gibt es
+    /// nichts zu unterscheiden, und <c>ResolveType</c> liefert einen <c>NamedRef</c>. Erst bei
+    /// einer generischen Instanz zaehlen die Argumente.</para>
+    /// </summary>
+    private static bool Matches(LyrType declared, Dictionary<GenericParamSymbol, LyrType> subst,
+        LyrType wanted)
+    {
+        var resolved = Substitute(declared, subst);
+        if (resolved is not GenericInstance && wanted is not GenericInstance) return true;
+        return LyrType.Equal(resolved, wanted);
+    }
+
+    /// <summary>Der Scope, in dem die Konformanzliste eines Typs steht — dort sind seine eigenen
+    /// Typ-Parameter sichtbar (<c>class Box&lt;T&gt; :: [Src&lt;T&gt;]</c>).</summary>
+    private SymbolTable DeclarationScope(TypeSymbol ts) => ts.Members;
 
     private LyrType BindMember(MemberExpr mem, (LyrType type, Symbol? sym) r)
     {
@@ -2961,14 +3022,22 @@ public sealed class TypeChecker
         // 'Satisfies' fuer Constraints mit. Ein Constraint akzeptierte damit eine
         // Extension-Konformanz, eine Zuweisung nicht — genau die Sorte Spaltung, vor der der
         // Kommentar oben warnt.
+        //
+        // 'to' wird als Ganzes weitergereicht und nicht nur sein Symbol: 'Src<int>' und
+        // 'Src<string>' sind dasselbe Symbol und verschiedene Typen. Ohne das ist eine Zuweisung
+        // an ein generisches Interface unsicher — dieselbe Luecke, die bei den Constraints ein
+        // 'i64' in einen 'string'-Slot geschrieben hat.
         if (TypeFacts.SymbolOf(from) is { } source)
-            return ImplementsWithExtensions(source, target);
+            return ImplementsWithExtensions(source, target, to,
+                from is GenericInstance instance ? SubstMap(instance) : EmptySubst);
 
         // Ein Typ-Parameter erfuellt, was seine Constraints verlangen — er hat kein eigenes
         // Symbol, deshalb steht er hier neben und nicht in SymbolOf.
         return from is TypeParamType parameter
                && parameter.Param.Constraints.Any(c =>
-                   Conformance.InterfaceOf(c, _binding) is { } it && ReferenceEquals(it, target));
+                   Conformance.InterfaceOf(c, _binding) is { } it && ReferenceEquals(it, target)
+                   && Matches(ResolveType(c, _currentModule?.Members ?? _comp.Builtins),
+                       EmptySubst, to));
     }
 
     private static bool LiteralAdaptsTo(Expr expr, PrimitiveType target)

@@ -11,27 +11,42 @@
 
 ## Aktueller Meilenstein
 
-**M9 ist abgeschlossen und getaggt** (`m9-complete`, `v0.9.0`). **M8b — Stdlib-Erweiterung — läuft.**
-S1 bis S8 plus die Erreichbarkeitsanalyse.
+**M0–M10 sind abgeschlossen und getaggt** (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+**v1.0 ist noch nicht erreicht** — was fehlt, steht unter `## Was v1.0 noch fehlt`.
 
-2646 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries, Version **0.9.0**.
+2656 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries plus
+`lyrembed.dll`, Version **0.9.0**.
 
-**Die Vorgabe für M8b**: *so viel wie möglich in Lyric selbst.* Nativ bleibt nur, was eine echte
-Host-Grenze ist — stdin, Datei-I/O, Zeit, `sqrt`/`sin`/`cos`. Alles andere ist Lyric-Code:
-`Map`, Merge Sort, der FNV-Hash für Strings, sämtliche Iterator-Adapter. Dass eine Stdlib sich
-selbst tragen kann, ist die eigentliche Aussage dieses Meilensteins — und der schärfste Test der
-Sprache, den es bisher gab: **zehn Compiler-Lücken** sind dabei aufgefallen, die kein
-Meilenstein davor berührt hat.
-
-**Offen für v1.0**: **der v1.0-Rest** — `RegisterType<T>`,
-siehe `## Was v1.0 noch fehlt`. M0–M10 stehen. `std.dotnet` ist gestrichen
-(2026-08-11): eine Reflection-Brücke lässt das *Skript* entscheiden, was M10 dem *Host* gibt.
+**Was der Stand kann**: die ganze Sprache aus `Sprache.md` übersetzt und läuft; eine
+Standardbibliothek, die sich weitgehend selbst trägt (`Map`, `Set`, Merge Sort, sämtliche
+Iterator-Adapter und der String-Hash sind in Lyric geschrieben); vier Werkzeuge samt REPL; eine
+VS-Code-Extension; und eine Embedding-API, mit der ein C#-Host Skripte lädt, sandboxt, Funktionen
+daraus ruft und eigene Funktionen und Typen hineinreicht.
 
 > **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
 > selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
 > Design-Kontext. Alles andere steht in `git log`.
 
 ## Zuletzt fertig geworden
+
+- [x] **Die Konformanz prüft ihre Typargumente** (2026-08-11). 2656 Tests grün.
+  - **Der ernsteste Befund dieser Arbeit, und er stand als Lässlichkeit in dieser Datei.** Bis
+    heute verglich die Konformanz nur das Interface-*Symbol*: `class Ones :: [Src<int>]` erfüllte
+    ein `<T :: [Src<string>]>`, und der Rumpf legte einen `i64` in einen `string`-Slot.
+  - **In Debug fing es der Verifier. In Release — also in dem, was ausgeliefert wird — lief es
+    durch** und lieferte eine stille falsche Antwort; der Bytecode-Loader fing es ebenfalls nicht.
+    Kein fehlendes Feature, sondern ein Typprüfer, der ein Programm annimmt, dessen Typen nicht
+    halten. Dass .NET den Schaden eindämmt (leerer String statt Speicherfehler), ist Glück der
+    Wertdarstellung.
+  - **Dieselbe Lücke saß an zwei Stellen**: beim Constraint *und* bei der Zuweisung an einen
+    Interface-Typ — beide liefen über denselben Vergleich. Zum neunten Mal in diesem Projekt
+    dasselbe Muster.
+  - Die volle Substitutionsabbildung wird durchgereicht statt eines Parameters nach dem anderen:
+    ein Constraint darf die übrigen Typ-Parameter nennen (`<K, V :: [Map<K, V>]>`), und
+    `Eq<T>` ist erst mit `T := int` die Frage, die wirklich gestellt wird.
+  - **Zehn Tests, beide Richtungen.** `Map<K :: [Hashable<K>, Equatable<K>]>` und `Iterator<T>`
+    sind die schwersten Nutzer generischer Constraints in der Stdlib und blieben unberührt — ohne
+    die Gegenproben wäre ein Fix, der zu viel ablehnt, nicht von einem richtigen zu unterscheiden.
 
 - [x] **Die zwei Abstürze aus der v1.0-Liste** (2026-08-11). 2646 Tests grün.
   - **`do { return … } while (…)`** war ein Compiler-Absturz: Rumpf, Bedingung und Ausgang wurden
@@ -83,22 +98,6 @@ siehe `## Was v1.0 noch fehlt`. M0–M10 stehen. `std.dotnet` ist gestrichen
     gerufen.** `RunScript` lief über `main`, `Call` über Quelltext aus dem Speicher.
   - Der explizite Tausch (`instance = instance.Reload()`) statt eines stillen hinter derselben
     Referenz: hier wird ein Zustand weggeworfen, und das soll man am Aufruf sehen.
-
-- [x] **M10/E4b — Methoden auf Host-Typen. E4 ist damit fertig** (2026-08-11). 2609 Tests grün.
-  - `RegisterType<T>("Entity", t => t.Getter("leben", …).Method("schaden", …, mutates: true))`
-    erzeugt eine Klassendeklaration, deren bodylose Methoden Natives mit dem **Empfänger als
-    Parameter 0** sind (ADR-014). Im Skript: `e.schaden(30)`.
-  - **Es gibt kein `Field`.** `Doku.md` §21 versprach `builder.Field("x", v => v.X)` — das braucht
-    ein `ldfld`, und ein Host-Typ hat keinen Typtabellen-Eintrag. `Getter` ist die ehrliche Form:
-    in Lyric `e.name()`, nicht `e.name`.
-  - **`LowerImportCall` verglich Argumentzahl gegen Parameterzahl** und kannte den Empfänger
-    nicht — die Meldung log dabei („with default or variadic arguments"). Er wird jetzt
-    durchgereicht.
-  - Die Regel „was ist ein Host-Typ" heißt seit E4b **kein Feld und kein Methodenrumpf**, vorher
-    „leerer Rumpf". *Kein Feld* war immer die Aussage; es gab nur noch keine Methoden.
-  - **Ein Test, den C# selbst überflüssig macht**: `Getter<TValue>(Func<T, TValue>)` erzwingt den
-    Empfänger schon beim Übersetzen. Die Laufzeitprüfung deckt nur `Method(string, Delegate)` ab,
-    das untypisiert sein muss, weil eine Methode beliebig viele Parameter hat.
 
 ## Messungen
 
@@ -214,8 +213,6 @@ eine Entscheidung und keine Messung.**
 
 - **`b?.get()` geht nicht** — Optional-Chaining mit *Methodenaufruf*. Die Sema macht `?.get` zu
   einem `?fn() -> int` und stolpert dann über das `()`. Feldzugriff (`b?.v`) funktioniert.
-- **Die Konformanz prüft die Definition statt der Typargumente**: `Ones :: [Src<int>]` würde auch
-  für `Src<string>` akzeptiert.
 - **Parser: `s = Small { n = 5 };`** scheitert mit `LYR-PAR0016`, obwohl §6.2 den Ausdruck „in jeder
   Wert-Position" erlaubt — die Mehrdeutigkeits-Sperre gilt dem *Anfang* eines `ExprStmt`, greift
   aber auf die ganze Zuweisung durch. *(Bekannt seit P3 — und am 2026-08-07 beim Schreiben einer
@@ -294,7 +291,7 @@ eine Entscheidung und keine Messung.**
 
 ## Letzter relevanter Commit
 
-`lowering: do-while legt Bedingung und Ausgang bedarfsgesteuert an`
+`sema: Konformanz prueft ihre Typargumente — eine stille falsche Antwort weniger`
 
 ---
 
