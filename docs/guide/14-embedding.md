@@ -1,0 +1,118 @@
+# Embedding
+
+`lyrembed.dll` lets a C# host compile and run Lyric. Reference it and create a VM:
+
+```csharp
+using Lyric.Embedding;
+
+var vm = new LangVm(new HostOptions
+{
+    StdlibRoot = "stdlib",
+    Capabilities = Capability.None,
+});
+```
+
+`HostOptions` decides what scripts may reach: the standard library location, the granted
+capabilities, and where their output goes. A module that requires a capability it was not granted
+is rejected at load time, before any instruction runs.
+
+## Compiling and running
+
+```csharp
+var module = vm.Compile(source, "game");
+var exitCode = vm.Run(module);
+```
+
+`Compile` takes the source and the module name. The name is not optional; it is what the script's
+own declarations are qualified with.
+
+To call individual functions instead of running a `main`, create an instance:
+
+```csharp
+var instance = vm.Instantiate(module);
+
+instance.CallVoid("onStart");
+var next = instance.Call<long>("onUpdate", 16L);
+```
+
+An instance holds the globals. Two instances of the same module do not share state. `Instantiate`
+is what a host uses for scripts that have no entry point at all — the common case for embedded
+code.
+
+## Reloading
+
+```csharp
+var reloaded = instance.Reload();
+```
+
+`Reload()` produces a fresh instance from the same module with its globals initialized again. The
+old instance stays valid; nothing about it changes.
+
+## Registering functions
+
+```csharp
+vm.RegisterFunction("playSound", (string name) => audio.Play(name));
+vm.RegisterFunction("random", (long limit) => rng.NextInt64(limit));
+```
+
+A script reaches them through the `host` module:
+
+```lyr
+import host { playSound, random };
+
+fn main(): int {
+    playSound("hit");
+    return random(6) as int;
+}
+```
+
+There is no implicit namespace: without the import the names are unknown.
+
+## Registering types
+
+`RegisterType` exposes a C# class to scripts. Scripts receive such an object and pass it on; they
+cannot construct one and cannot read its fields.
+
+```csharp
+vm.RegisterType<Player>("Player", t => t
+    .Getter("name", (Player p) => p.Name)
+    .Getter("health", (Player p) => p.Health)
+    .Method("damage", (Player p, long amount) => p.Damage(amount), mutates: true));
+
+vm.RegisterFunction("hero", () => world.Hero);
+```
+
+On the script side a host value looks like any other:
+
+```lyr
+import host { hero, playSound };
+
+fn main(): int {
+    let player = hero();
+
+    if (player.health() > 0) {
+        player.damage(10);
+        playSound("ouch");
+    }
+    return player.health() as int;
+}
+```
+
+A host member is read as a call — `player.name()`, not `player.name`. A host type has no field
+layout the script could index into, so every access is a method.
+
+The object travels; it is not copied. The .NET garbage collector keeps it alive as long as a Lyric
+value can reach it. There is no release or revocation protocol.
+
+## Errors
+
+A script that fails throws on the host side:
+
+| Exception | Cause |
+|---|---|
+| `ScriptException` | compilation or a runtime error inside the script |
+| `ScriptPanicException` | the script panicked |
+| `EmbeddingException` | the host used the API wrongly — an unknown function, a signature mismatch |
+
+These are declared in `Lyric.Embedding`; a host does not reference the runtime assembly to catch
+them.

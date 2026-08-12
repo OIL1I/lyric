@@ -307,6 +307,11 @@ eine Entscheidung und keine Messung.**
 - **`lyric check` läuft nur bis zur Sema** (`SourceCompiler.cs:132`). Ein Programm mit einer
   Lowering-Grenze meldet `ok` und stirbt bei `run`. Am 2026-08-12 beim Messen der Enum-Lücke
   aufgefallen, und es hat die Messung zuerst harmlos aussehen lassen.
+- **Ein `type`-Alias trägt nur an zwei Stellen.** Als Parametertyp und als lokale Annotation geht
+  er; als **Rückgabetyp** und als **Feldtyp** ist er `LYR-IR0001` („a type alias is not supported
+  by this compiler version yet"). Am 2026-08-12 beim Schreiben des User-Guides gefunden — das
+  Beispiel, das die Doku zeigen wollte, übersetzte nicht. Die Sema löst den Alias auf, das
+  Lowering nicht.
 - **`static fn` in einem Enum-Rumpf parst nicht** — `LYR-PAR0008` („expected ')' after
   parameters") plus zwei Folgemeldungen, alle drei über etwas anderes als die Ursache. Am
   2026-08-12 beim Messen der Enum-Lücke aufgefallen. ~1 h.

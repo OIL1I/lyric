@@ -148,9 +148,12 @@ lyric/
 
 | Document | Contents |
 |---|---|
+| [`docs/guide/`](docs/guide/) | User guide — start here to learn the language |
 | [`docs/Grammar.md`](docs/Grammar.md) | Formal grammar |
 | [`docs/Bytecode.md`](docs/Bytecode.md) | Formal `.lyrbc` format specification |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution rules and process |
+
+Every Lyric snippet in the guide is compiled by the test suite.
 
 ## Versioning
 

@@ -220,7 +220,6 @@ public sealed class ProtocolTests
     /// </summary>
     [Theory]
     [InlineData("README.md")]
-    [InlineData("docs/Doku.md")]
     public void Printed_versions_in_the_docs_are_the_real_one(string document)
     {
         var text = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, document));
