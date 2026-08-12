@@ -6,16 +6,13 @@ using Lyric.Vm;
 namespace Lyric.Embedding;
 
 /// <summary>
-/// Eine vom Host registrierte Funktion (M10/E3): die Lyric-Signatur, der .NET-Delegat, und die
-/// Bruecke dazwischen.
+/// A function registered by the host: the Lyric signature, the .NET delegate, and the bridge
+/// between them.
 ///
-/// <para><b>Warum eine Deklaration entsteht.</b> Der Compiler kennt nur, was deklariert ist —
-/// <c>Doku.md</c> §21 zeigt ein Skript, das <c>playSound("hit")</c> ohne Import ruft, und das ist
-/// so nicht baubar (§2.2: ein unaufloesbares Modul ist ein Fehler). Die Stdlib loest dasselbe
-/// Problem seit M6: eine bodylose <c>pub fn</c> in einer <c>.lyr</c>-Datei sagt die Signatur, die
-/// <see cref="NativeRegistry"/> liefert den Delegaten, gebunden <b>beim Laden</b> ueber den Namen.
-/// <c>RegisterFunction</c> geht denselben Weg — die Datei liegt nur im Speicher statt auf der
-/// Platte. Ein zweiter Mechanismus daneben waere Rule 2.</para>
+/// <para>A declaration is generated for it, the same shape the standard library uses: a bodyless
+/// <c>pub fn</c> states the signature, <see cref="NativeRegistry"/> supplies the delegate, and the
+/// two are bound by name at load time. The generated file lives in memory rather than on disk.
+/// </para>
 /// </summary>
 internal sealed class HostFunction
 {
@@ -37,7 +34,7 @@ internal sealed class HostFunction
 
     public string Name { get; }
 
-    /// <summary>Die Zeile, die im synthetischen Host-Modul landet.</summary>
+    /// <summary>The line that ends up in the synthetic host module.</summary>
     public string Declaration { get; }
 
     public TypeTag[] ParameterTags => _parameters.Select(p => p.Tag).ToArray();
@@ -46,23 +43,19 @@ internal sealed class HostFunction
 
     public bool ReturnsValue => _return.Tag != TypeTag.Void;
 
-    /// <summary>
-    /// Leitet die Lyric-Signatur aus dem .NET-Delegaten ab.
-    /// </summary>
-    /// <exception cref="ArgumentException">Ein Parameter- oder Rueckgabetyp kann die Grenze nicht
-    /// ueberqueren. Die Meldung nennt ihn — E3 traegt dieselben Typen wie E2, also Skalare und
-    /// Strings.</exception>
-    /// <summary>Eine <b>Methode</b> auf einem Host-Typ: der Empfaenger ist Parameter 0 (ADR-014),
-    /// und die erzeugte Deklaration steht im Klassenrumpf statt auf Modulebene.</summary>
+    /// <summary>Derives the Lyric signature from the .NET delegate.</summary>
+    /// <exception cref="ArgumentException">A parameter or return type cannot cross the boundary.
+    /// The message names it.</exception>
+    /// <summary>A method on a host type: the receiver is parameter 0, and the generated
+    /// declaration sits in the class body rather than at module level.</summary>
     public static HostFunction Method(string owner, string name, Delegate implementation,
         bool mutates, IReadOnlyDictionary<Type, string> hostTypes)
     {
         var function = From(name, implementation, hostTypes, skipFirstParameter: true,
             mutates: mutates);
 
-        // Der Empfaenger muss der registrierte Typ sein — sonst haette der Host eine Methode auf
-        // 'Entity' geschrieben, die ein 'Sprite' erwartet, und das faellt sonst erst beim Binden
-        // auf.
+        // The receiver must be the registered type; otherwise the mismatch would only surface at
+        // binding time.
         var receiver = implementation.Method.GetParameters().FirstOrDefault();
         if (receiver is null || !hostTypes.TryGetValue(receiver.ParameterType, out var actual)
             || !string.Equals(actual, owner, StringComparison.Ordinal))
@@ -83,9 +76,9 @@ internal sealed class HostFunction
         var method = implementation.Method;
         var parameters = method.GetParameters();
 
-        // Der Empfaenger einer Methode steht im .NET-Delegaten vorn und in der Lyric-Deklaration
-        // gar nicht — dort ist er 'this'. Die Typen brauchen ihn trotzdem: die Registry bindet
-        // gegen die gelowerte Signatur, und die traegt ihn als Parameter 0.
+        // The receiver is first in the .NET delegate and absent from the Lyric declaration, where
+        // it is 'this'. The type list still carries it: the registry binds against the lowered
+        // signature, which has it as parameter 0.
         var declared = skipFirstParameter ? parameters.Skip(1).ToArray() : parameters;
 
         var tags = new BytecodeType[parameters.Length];
@@ -107,9 +100,8 @@ internal sealed class HostFunction
             ? BytecodeType.Scalar(TypeTag.Void)
             : TypeOf(method.ReturnType, name, "the return value", hostTypes);
 
-        // Das ';,' ist kein Tippfehler: §3.2s Member-Trenner ist fuer Block-Rumpfe geschrieben,
-        // und eine bodylose Methode braucht beides. In ERZEUGTEM Code ist das ertraeglich —
-        // niemand tippt es. Als Wart steht es in STATUS.
+        // The ';,' is intentional: the member separator is written for block bodies, and a
+        // bodyless method needs both tokens.
         text.Append("): ").Append(Marshal.Describe(returnType))
             .Append(skipFirstParameter ? ";," : ";");
 
@@ -117,7 +109,7 @@ internal sealed class HostFunction
             parameters.Select(p => p.ParameterType).ToArray(), returnType, text.ToString());
     }
 
-    /// <summary>Die Form, die die <see cref="NativeRegistry"/> erwartet.</summary>
+    /// <summary>The shape <see cref="NativeRegistry"/> expects.</summary>
     public Func<LyrValue[], LyrValue> Bridge => arguments =>
     {
         var boxed = new object?[arguments.Length];
@@ -125,10 +117,8 @@ internal sealed class HostFunction
             boxed[i] = Marshal.FromLyric(arguments[i], _parameters[i], _parameterTypes[i],
                 $"argument {i + 1} of host function '{Name}'");
 
-        // DynamicInvoke und nicht ein getypter Aufruf: die Signatur steht erst zur Laufzeit fest,
-        // und ein Ausdrucksbaum je Registrierung waere Aufwand fuer einen Pfad, der ohnehin ueber
-        // die Prozessgrenze eines Skripts geht. Wird es je gemessen und zu teuer, ist ein
-        // kompilierter Delegat eine reine Optimierung hinter derselben Oberflaeche.
+        // DynamicInvoke rather than a typed call: the signature is only known at runtime. A
+        // compiled delegate would be an optimization behind the same surface.
         object? produced;
         try
         {
@@ -136,8 +126,8 @@ internal sealed class HostFunction
         }
         catch (TargetInvocationException wrapped) when (wrapped.InnerException is { } cause)
         {
-            // Die Ausnahme des HOSTS, nicht die Huelle der Reflection. Ein Host, der in seiner
-            // eigenen Funktion wirft, will seinen Typ zurueck — nicht TargetInvocationException.
+            // Unwrapped, so a host that throws in its own function gets its own exception type
+            // back rather than TargetInvocationException.
             throw new HostFunctionException(Name, cause);
         }
 
@@ -146,8 +136,7 @@ internal sealed class HostFunction
             : Marshal.ToLyric(produced, _return, $"the result of host function '{Name}'");
     };
 
-    /// <summary>Die vollen Typen — noetig, weil ein Host-Typ nur ueber seinen NAMEN
-    /// unterscheidbar ist (ADR-026).</summary>
+    /// <summary>The full types. A host type is distinguished by its name.</summary>
     public BytecodeType[] ParameterTypes => _parameters;
 
     /// <inheritdoc cref="ParameterTypes"/>
@@ -156,8 +145,8 @@ internal sealed class HostFunction
     private static BytecodeType TypeOf(Type type, string function, string what,
         IReadOnlyDictionary<Type, string> hostTypes)
     {
-        // Ein registrierter Host-Typ zuerst: er ist die eine Sorte Nicht-Skalar, die die Grenze
-        // ueberquert — als opake Referenz, ueber deren Inhalt das Skript nichts erfaehrt.
+        // A registered host type first: it is the one non-scalar that crosses the boundary, as an
+        // opaque reference.
         if (hostTypes.TryGetValue(type, out var hostName))
             return new BytecodeType(TypeTag.Host, -1) { HostName = hostName };
 
@@ -186,12 +175,11 @@ internal sealed class HostFunction
 }
 
 /// <summary>
-/// Der Host hat in seiner eigenen registrierten Funktion geworfen.
+/// The host threw inside one of its own registered functions.
 ///
-/// <para>Eigene Klasse, damit ein Host die drei Faelle auseinanderhalten kann: sein Skript ist
-/// kaputt (<see cref="EmbeddingException"/>), sein Skript hat einen Bug
-/// (<see cref="ScriptPanicException"/>), oder <b>sein eigener Code</b> ist gescheitert. Die
-/// urspruengliche Ausnahme haengt als <see cref="Exception.InnerException"/> daran.</para>
+/// <para>Separate from <see cref="EmbeddingException"/> (the script does not compile) and
+/// <see cref="ScriptPanicException"/> (the script panicked). The original exception hangs off
+/// <see cref="Exception.InnerException"/>.</para>
 /// </summary>
 public sealed class HostFunctionException : Exception
 {
@@ -199,6 +187,6 @@ public sealed class HostFunctionException : Exception
         : base($"the host function '{function}' threw {cause.GetType().Name}: {cause.Message}",
             cause) => Function = function;
 
-    /// <summary>Der Name, unter dem die Funktion registriert wurde.</summary>
+    /// <summary>The name the function was registered under.</summary>
     public string Function { get; }
 }

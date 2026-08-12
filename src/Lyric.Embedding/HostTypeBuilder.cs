@@ -1,18 +1,13 @@
 namespace Lyric.Embedding;
 
 /// <summary>
-/// Was ein Skript mit einem Host-Typ tun darf (M10/E4b).
+/// What a script may do with a host type.
 ///
-/// <para><b>Es gibt kein <c>Field</c>.</b> <c>Doku.md</c> §21 versprach
-/// <c>builder.Field("x", v =&gt; v.X)</c>, und das ist nicht baubar: ein Feldzugriff braucht ein
-/// <c>ldfld</c>, und ein Host-Typ hat keinen Typtabellen-Eintrag, aus dem ein Feldindex kaeme
-/// (ADR-026). <see cref="Getter"/> ist die ehrliche Form — in Lyric liest sie sich als
-/// <c>e.name()</c> und nicht als <c>e.name</c>. Properties als Zucker fuer Methoden nennt ADR-003
-/// als moegliche post-v1-Ergaenzung; bis dahin ist ein Host-„Feld" eine Methode.</para>
+/// <para>There is no field access: a host type has no type-table entry, so there is no field
+/// index. <see cref="Getter"/> produces a method, read in Lyric as <c>e.name()</c>.</para>
 ///
-/// <para><b>Der Empfaenger ist der erste Parameter des Delegaten</b> — dieselbe Konvention wie im
-/// Lowering jeder anderen Methode (ADR-014). Was der Host schreibt, ist damit genau das, was die
-/// VM aufruft.</para>
+/// <para>The receiver is the first parameter of the delegate, the same position it occupies in
+/// every other method.</para>
 /// </summary>
 public sealed class HostTypeBuilder<T> where T : class
 {
@@ -20,10 +15,9 @@ public sealed class HostTypeBuilder<T> where T : class
 
     internal HostTypeBuilder() { }
 
-    /// <summary>Eine Methode: <c>e.damage(5)</c>.</summary>
-    /// <param name="mutates">Ob sie den Empfaenger aendert. Wirkt sich auf das <c>mut</c> in der
-    /// erzeugten Deklaration aus — bei einer <c>class</c> ist es laut Doku §10.2 ohnehin nur ein
-    /// Lesbarkeits-Marker, aber ein falscher waere trotzdem eine falsche Aussage.</param>
+    /// <summary>A method: <c>e.damage(5)</c>.</summary>
+    /// <param name="mutates">Whether it changes the receiver. Controls the <c>mut</c> in the
+    /// generated declaration.</param>
     public HostTypeBuilder<T> Method(string name, Delegate implementation, bool mutates = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
@@ -32,12 +26,7 @@ public sealed class HostTypeBuilder<T> where T : class
         return this;
     }
 
-    /// <summary>
-    /// Ein lesender Zugriff: <c>e.name()</c>.
-    ///
-    /// <para>Dasselbe wie eine parameterlose <see cref="Method"/> — der eigene Name steht dafuer,
-    /// dass der Host beim Schreiben sieht, was er meint. Dass es in Lyric trotzdem ein Aufruf mit
-    /// Klammern ist, steht oben.</para>
+    /// <summary>A read: <c>e.name()</c>. The same as a parameterless <see cref="Method"/>.
     /// </summary>
     public HostTypeBuilder<T> Getter<TValue>(string name, Func<T, TValue> read) =>
         Method(name, read);
