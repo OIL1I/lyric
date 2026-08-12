@@ -3,12 +3,10 @@ using System.Buffers.Binary;
 namespace Lyric.Bytecode.Encoding;
 
 /// <summary>
-/// Lese-Primitiven, spiegelbildlich zu <c>ByteWriter</c> (der in Lyric.Bytecode.Emit liegt —
-/// ADR-017 trennt Lese- und Schreibseite, damit die Runtime die IR nicht mitzieht).
+/// Read primitives, mirroring <c>ByteWriter</c> on the emit side.
 ///
-/// <para><b>Jede</b> Methode prüft vorher, ob genug Bytes da sind. Der Leser ist die Stelle, an der
-/// nicht vertrauenswürdige Bytes ins System kommen — er darf auf keiner Eingabe mit einer
-/// <c>IndexOutOfRangeException</c> aussteigen, sondern nur mit
+/// <para>Every method checks first that enough bytes remain. This is where untrusted bytes enter
+/// the system, so no input may produce an <c>IndexOutOfRangeException</c> — only a
 /// <see cref="MalformedBytecodeException"/>.</para>
 /// </summary>
 internal sealed class ByteReader
@@ -54,8 +52,8 @@ internal sealed class ByteReader
         while (true)
         {
             var b = U8();
-            // 64 Bit brauchen höchstens 10 Gruppen zu 7 Bit. Ohne diese Schranke könnte eine
-            // manipulierte Datei den Leser beliebig lange fortsetzen lassen.
+            // 64 bits need at most 10 groups of 7. Without the bound a crafted file could keep
+            // the reader going indefinitely.
             if (shift > 63)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                     $"uleb128 at byte {_position} is longer than 64 bits");
@@ -66,7 +64,7 @@ internal sealed class ByteReader
         }
     }
 
-    /// <summary>uleb128, das als Index oder Länge dient — muss in <c>int</c> passen.</summary>
+    /// <summary>A uleb128 used as an index or a length; it must fit an <c>int</c>.</summary>
     public int ULebAsCount()
     {
         var value = ULeb();

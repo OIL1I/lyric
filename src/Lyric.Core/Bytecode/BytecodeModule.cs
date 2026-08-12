@@ -1,15 +1,13 @@
 namespace Lyric.Bytecode;
 
 /// <summary>
-/// Ein gelesenes <c>.lyrbc</c>-Modul.
+/// A module read from <c>.lyrbc</c>.
 ///
-/// <para>Bewusst <b>kein</b> <c>IrModule</c>: der Weg dorthin zurück existiert nicht. Der Bytecode
-/// ist stack-basiert, die IR temp-basiert — beim Emittieren verschwinden die Temps in Stack-Slots
-/// und Local-Slots, und diese Information ist nicht rekonstruierbar. Der Round-Trip-Test vergleicht
-/// deshalb Bytes gegen Bytes, nicht IR gegen IR.</para>
+/// <para>Not an <c>IrModule</c>: the bytecode is stack-based and the IR temp-based, and the temps
+/// disappear into stack and local slots while emitting. The round-trip test therefore compares
+/// bytes against bytes.</para>
 ///
-/// <para>Diese Struktur ist zugleich das, was der Loader der VM in M6 braucht — der Disassembler
-/// ist nur eine Textausgabe darüber.</para>
+/// <para>This is what the VM's loader consumes; the disassembler is text output over it.</para>
 /// </summary>
 public sealed class BytecodeModule
 {
@@ -21,55 +19,53 @@ public sealed class BytecodeModule
     public required IReadOnlyList<BytecodeImport> Imports { get; init; }
     public required IReadOnlyList<BytecodeFunction> Functions { get; init; }
 
-    /// <summary>Die vtable-Zeilen aus der Impls-Sektion. Leer, wenn das Modul keine Interfaces
-    /// benutzt.</summary>
+    /// <summary>The vtable rows from the Impls section. Empty when the module uses no
+    /// interfaces.</summary>
     public IReadOnlyList<BytecodeImpl> Impls { get; init; } = [];
 
-    /// <summary>Die geschuetzten Regionen aus der Handlers-Sektion, innerste zuerst.</summary>
+    /// <summary>The protected regions from the Handlers section, innermost first.</summary>
     public IReadOnlyList<BytecodeHandler> Handlers { get; init; } = [];
 
-    /// <summary>Typ je globalem Slot. Der Index ist die Identitaet.</summary>
+    /// <summary>The type of each global slot. The index is the identity.</summary>
     public IReadOnlyList<BytecodeType> Globals { get; init; } = [];
 
-    /// <summary>Die Funktion, die die Globals fuellt, im gemeinsamen Indexraum — oder
-    /// <c>null</c>. Eine Runtime ruft sie <b>vor</b> dem Einstiegspunkt.</summary>
+    /// <summary>The function that fills the globals, in the shared index space, or <c>null</c>.
+    /// A runtime calls it before the entry point.</summary>
     public int? GlobalInit { get; init; }
 
-    /// <summary>Index der Einstiegsfunktion im gemeinsamen Indexraum (erst Imports, dann
-    /// Funktionen), oder <c>null</c> bei einem Bibliotheks-Modul. Aus der Start-Sektion.</summary>
+    /// <summary>Index of the entry function in the shared index space, or <c>null</c> for a
+    /// library module.</summary>
     public int? Start { get; init; }
 }
 
 /// <summary>
-/// Ein Typ an einer Signaturstelle: das Tag und, bei einer Referenz, der Index in die
-/// Typ-Tabelle.
+/// A type in a signature position: the tag and, for a reference, the index into the type table.
 ///
-/// <para>Eigener Typ statt eines nackten <see cref="TypeTag"/>, weil ein Tag seit Format 1.2 nicht
-/// mehr für sich steht — <c>0x40</c> ohne seinen Index ist keine vollständige Typangabe. Ein Feld,
-/// das man zu lesen vergisst, wäre ein um ein Byte verschobener Strom.</para>
+/// <para>Its own type rather than a bare <see cref="TypeTag"/>, because a tag alone is not a
+/// complete type: <c>0x40</c> without its index is incomplete.</para>
 /// </summary>
-/// <remarks>Ein <c>record class</c>, kein <c>struct</c>: <see cref="Element"/> ist wieder ein
-/// <see cref="BytecodeType"/>, und ein Struct darf sich nicht selbst enthalten.</remarks>
+/// <remarks>A <c>record class</c> rather than a <c>struct</c>: <see cref="Element"/> is another
+/// <see cref="BytecodeType"/>, and a struct cannot contain itself.</remarks>
 public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
 {
     public static BytecodeType Scalar(TypeTag tag) => new(tag, -1);
-    /// <summary>Trägt einen Index in die Types-Tabelle: Referenz auf eine Klasse oder auf ein
-    /// Enum. Beide werden beim Laden gegen dieselbe Tabelle geprüft.</summary>
+    /// <summary>Carries an index into the Types table: a reference to a class or an enum.
+    /// </summary>
     public bool IsRef => Tag is TypeTag.Ref or TypeTag.Enum;
     public bool IsArray => Tag == TypeTag.Array;
     public bool IsOptional => Tag == TypeTag.Optional;
 
-    /// <summary>Innerer Typ, wenn <see cref="IsArray"/> oder <see cref="IsOptional"/>. Inline statt
-    /// über einen Tabellen-Index, weil keiner von beiden rekursiv sein kann (ADR-016).</summary>
+    /// <summary>The inner type when <see cref="IsArray"/> or <see cref="IsOptional"/>. Inline
+    /// rather than through a table index, because neither can be recursive.</summary>
     public BytecodeType? Element { get; init; }
 
-    /// <summary>Der registrierte Name eines Host-Typs (<see cref="TypeTag.Host"/>). <c>null</c>
-    /// bei allem anderen — ein Host-Typ hat keinen Tabellen-Eintrag, aus dem er kaeme.</summary>
+    /// <summary>The registered name of a host type. <c>null</c> for everything else; a host type
+    /// has no table entry to take a name from.</summary>
     public string? HostName { get; init; }
 
-    /// <summary>Parametertypen, wenn <see cref="Tag"/> <c>Fn</c> ist; <see cref="Element"/> haelt
-    /// dann den Rueckgabetyp. Beides inline, weil ein Funktionstyp keinen Tabellen-Eintrag hat —
-    /// er traegt seine Signatur selbst.</summary>
+    /// <summary>Parameter types when <see cref="Tag"/> is <c>Fn</c>; <see cref="Element"/> then
+    /// holds the return type. Both inline, because a function type carries its own signature.
+    /// </summary>
     public IReadOnlyList<BytecodeType> Parameters { get; init; } = [];
 
     public override string ToString() => Tag switch
@@ -83,23 +79,23 @@ public sealed record BytecodeType(TypeTag Tag, int TypeIndex)
     };
 }
 
-/// <summary>Layout eines zusammengesetzten Typs. Der Feldindex ist die Position in
-/// <see cref="FieldTypes"/>; Feldnamen stehen nicht im Bytecode.</summary>
+/// <summary>The layout of a composite type. The field index is the position in
+/// <see cref="FieldTypes"/>; field names are not in the bytecode.</summary>
 public sealed class BytecodeTypeDef
 {
     public required string Name { get; init; }
     public required IReadOnlyList<BytecodeType> FieldTypes { get; init; }
 
-    /// <summary>Die Varianten, wenn dies ein <b>Enum</b>-Eintrag ist — sonst leer. Jede Variante ist
-    /// selbst ein Layout-Eintrag; Slot 0 darin ist ihr Tag, der Index in dieser Liste.</summary>
+    /// <summary>The variants when this is an enum entry, otherwise empty. Each variant is itself
+    /// a layout entry whose slot 0 is its tag, the index in this list.</summary>
     public IReadOnlyList<int> Variants { get; init; } = [];
 
-    /// <summary>Die Methoden-Slots, wenn dies ein <b>Interface</b>-Eintrag ist — sonst leer. Der
-    /// Index ist der Slot, auf den <c>callvirt</c> zeigt; die Namen stehen fuer Disassembler und
-    /// Host-Bindung im Bytecode.</summary>
+    /// <summary>The method slots when this is an interface entry, otherwise empty. The index is
+    /// the slot <c>callvirt</c> addresses; the names are in the bytecode for the disassembler and
+    /// for host binding.</summary>
     public IReadOnlyList<string> MethodSlots { get; init; } = [];
 
-    /// <summary>Wert-Semantik? Layout wie eine Klasse, aber jede Bindung kopiert.</summary>
+    /// <summary>Value semantics: the layout of a class, but every binding copies.</summary>
     public bool IsStruct { get; init; }
 
     public bool IsEnum => Variants.Count > 0;
@@ -107,8 +103,8 @@ public sealed class BytecodeTypeDef
     public bool IsInterface => MethodSlots.Count > 0;
 }
 
-/// <summary>Eine geschuetzte Region einer Funktion. Bereiche sind <b>Block-Indizes</b>
-/// <c>[Start, End)</c>, nicht Byte-Offsets — dieselbe Entscheidung wie bei den Sprungzielen.</summary>
+/// <summary>A protected region of a function. Ranges are block indices <c>[Start, End)</c>, not
+/// byte offsets.</summary>
 public sealed class BytecodeHandler
 {
     public required int Function { get; init; }
@@ -118,20 +114,20 @@ public sealed class BytecodeHandler
     /// <summary>0 = catch, 1 = finally.</summary>
     public required int Kind { get; init; }
 
-    /// <summary>Der gefangene Typ, oder <c>-1</c> fuer catch-all bzw. finally.</summary>
+    /// <summary>The caught type, or <c>-1</c> for catch-all and for finally.</summary>
     public required int CatchType { get; init; }
 
     public required int Handler { get; init; }
 
-    /// <summary>Slot fuer den gefangenen Wert, oder <c>-1</c>. Ueber einen Slot statt ueber den
-    /// Stack, damit die Blockgrenzen-Invariante intakt bleibt.</summary>
+    /// <summary>Slot for the caught value, or <c>-1</c>. Through a slot rather than the stack, so
+    /// the block-boundary invariant holds.</summary>
     public required int Slot { get; init; }
 
     public bool IsFinally => Kind == 1;
 }
 
-/// <summary>Eine vtable-Zeile: Klasse erfuellt Interface, Slot fuer Slot mit einer Funktion aus dem
-/// gemeinsamen Indexraum (erst Imports, dann Funktionen).</summary>
+/// <summary>A vtable row: a type implements an interface, slot by slot, with functions from the
+/// shared index space.</summary>
 public sealed class BytecodeImpl
 {
     public required int Type { get; init; }
@@ -139,7 +135,7 @@ public sealed class BytecodeImpl
     public required IReadOnlyList<int> Methods { get; init; }
 }
 
-/// <summary>Host-/Native-Funktion, per Index aus <c>call</c> referenziert (ADR-013, WASM-Modell).</summary>
+/// <summary>A host or native function, referenced by index from <c>call</c>.</summary>
 public sealed class BytecodeImport
 {
     public required string Name { get; init; }
@@ -153,38 +149,37 @@ public sealed class BytecodeFunction
     public required int ParamCount { get; init; }
     public required BytecodeType ReturnType { get; init; }
 
-    /// <summary>Typ jedes Local-Slots. Die ersten <see cref="ParamCount"/> sind die Parameter —
-    /// dieselbe Konvention wie in der IR.</summary>
+    /// <summary>The type of each local slot. The first <see cref="ParamCount"/> are the
+    /// parameters.</summary>
     public required IReadOnlyList<BytecodeType> SlotTypes { get; init; }
 
-    /// <summary>Maximale Tiefe des Operanden-Stacks. Der Emitter rechnet sie aus, damit der Loader
-    /// die Frame-Größe kennt, ohne selbst analysieren zu müssen.</summary>
+    /// <summary>Maximum operand stack depth, computed by the emitter so the loader knows the
+    /// frame size without analysing.</summary>
     public required int MaxStack { get; init; }
 
-    /// <summary>Byte-Offset jedes Blocks in <see cref="Code"/>. Sprünge nennen Block-<i>Indizes</i>;
-    /// diese Tabelle löst sie auf. Damit prüft der Loader ein Sprungziel mit
-    /// <c>index &lt; Count</c> statt einen Byte-Offset gegen Instruktionsgrenzen verifizieren zu müssen.</summary>
+    /// <summary>The byte offset of each block in <see cref="Code"/>. Jumps name block indices, so
+    /// the loader checks a target with <c>index &lt; Count</c>.</summary>
     public required IReadOnlyList<int> BlockOffsets { get; init; }
 
     public required byte[] Code { get; init; }
 }
 
-/// <summary>Eine dekodierte Instruktion. Flach statt als Typhierarchie: es gibt nur eine Handvoll
-/// Operandenformen, und Decoder wie Disassembler wollen sie ohne Casts lesen.</summary>
+/// <summary>A decoded instruction. Flat rather than a type hierarchy: there are only a handful of
+/// operand shapes, and both readers want them without casts.</summary>
 public sealed record BytecodeInstruction
 {
     public required int Offset { get; init; }
     public required Op Opcode { get; init; }
 
-    /// <summary>Typ-Tag der Operation; bei <c>convert</c> der Quelltyp.</summary>
+    /// <summary>The operation's type tag; for <c>convert</c> the source type.</summary>
     public TypeTag? Type { get; init; }
-    /// <summary>Nur <c>convert</c>: der Zieltyp.</summary>
+    /// <summary><c>convert</c> only: the target type.</summary>
     public TypeTag? ToType { get; init; }
 
-    /// <summary>Slot-Index, Funktions-Index, Block-Index, Ganzzahl-Bitmuster, Codepoint oder
-    /// String-Pool-Index — je nach Opcode.</summary>
+    /// <summary>Slot index, function index, block index, integer bit pattern, code point or
+    /// string-pool index, depending on the opcode.</summary>
     public ulong Immediate { get; init; }
-    /// <summary>Nur <c>condbr</c>: der false-Zweig.</summary>
+    /// <summary><c>condbr</c> only: the false branch.</summary>
     public ulong Immediate2 { get; init; }
 
     public double FloatValue { get; init; }

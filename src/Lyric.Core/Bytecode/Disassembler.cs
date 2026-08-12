@@ -4,29 +4,25 @@ using System.Text;
 namespace Lyric.Bytecode;
 
 /// <summary>
-/// Textausgabe eines <see cref="BytecodeModule"/> — <c>lyric disasm</c>.
+/// Text output of a <see cref="BytecodeModule"/> — <c>lyric disasm</c>.
 ///
-/// <para>Bewusst nah am <c>IrPrinter</c>-Format gehalten (Blocklabels <c>bb0:</c>, dieselben
-/// Mnemonics und Typnamen), damit man Disassembly und IR-Dump nebeneinander legen und ohne
-/// Übersetzungsarbeit vergleichen kann. Genau das macht <c>lyric lower</c> zum Debug-Werkzeug für
-/// den Emitter.</para>
+/// <para>Kept close to the <c>IrPrinter</c> format (block labels <c>bb0:</c>, the same mnemonics
+/// and type names) so a disassembly and an IR dump can be compared side by side.</para>
 ///
-/// <para>Newline ist immer <c>'\n'</c>, nie <c>AppendLine</c> — sonst brechen die Snapshots auf
-/// der Linux-CI. Dieselbe Regel wie im <c>IrPrinter</c>.</para>
+/// <para>The newline is always <c>'\n'</c>, never <c>AppendLine</c>, so snapshots match across
+/// platforms.</para>
 /// </summary>
 public static class Disassembler
 {
     /// <summary>
-    /// Disassembliert das ganze Modul, oder mit <paramref name="onlyFunction"/> nur eine Funktion
-    /// samt Modulkopf.
+    /// Disassembles the whole module, or with <paramref name="onlyFunction"/> a single function
+    /// together with the module header.
     ///
-    /// <para>Der Kopf bleibt auch beim Filtern stehen: die Instruktionen einer Funktion verweisen
-    /// per Index auf Strings, Typen und Importe, und ohne die Tabellen davor ist die Ausgabe nicht
-    /// lesbar.</para>
+    /// <para>The header stays when filtering: the instructions reference strings, types and
+    /// imports by index.</para>
     ///
-    /// <para>Ein unbekannter Name liefert <c>null</c> — der Aufrufer macht daraus eine Diagnose.
-    /// Eine leere Ausgabe waere die schlechtere Antwort: sie sieht aus wie „die Funktion ist
-    /// leer".</para>
+    /// <para>An unknown name returns <c>null</c>; the caller turns that into a diagnostic rather
+    /// than printing nothing.</para>
     /// </summary>
     public static string? Dump(BytecodeModule module, string? onlyFunction)
     {
@@ -70,7 +66,7 @@ public static class Disassembler
                 ? $"  enum {type.Name} {{{string.Join(", ", type.Variants.Select(v => TypeRefName(module, (ulong)v)))}}}\n"
                 : $"  type {type.Name}({string.Join(", ", type.FieldTypes.Select(f => TypeName(module, f)))})\n");
 
-        // Die vtable-Zeilen. Sie stehen beim Kopf, weil callvirt sie braucht, um lesbar zu sein.
+        // The vtable rows, printed with the header because callvirt refers to them.
         foreach (var impl in module.Impls)
             sb.Append($"  impl {TypeRefName(module, (ulong)impl.Type)} :: " +
                       $"{TypeRefName(module, (ulong)impl.Interface)} [" +
@@ -194,9 +190,8 @@ public static class Disassembler
         _ => opcode.ToString().ToLowerInvariant(),
     };
 
-    /// <summary>Zeigt <c>Interface#slot (name)</c>. Der Slot ist das, was ausgefuehrt wird; der
-    /// Name steht daneben, weil er im Bytecode ohnehin vorliegt und die Zeile ohne ihn kaum
-    /// lesbar waere.</summary>
+    /// <summary>Prints <c>Interface#slot (name)</c>. The slot is what executes; the name is in the
+    /// bytecode anyway.</summary>
     private static string SlotName(BytecodeModule module, ulong iface, ulong slot)
     {
         var name = TypeRefName(module, iface);
@@ -211,14 +206,13 @@ public static class Disassembler
     private static string TypeRefName(BytecodeModule module, ulong index) =>
         index < (ulong)module.Types.Count ? module.Types[(int)index].Name : $"ty{N(index)}";
 
-    /// <summary>Feldnamen stehen nicht im Bytecode (Bytecode.md §2). Der Disassembler zeigt deshalb
-    /// <c>Typ#index</c> — ehrlicher als ein erfundener Name, und es ist genau das, was ausgeführt
-    /// wird.</summary>
+    /// <summary>Field names are not in the bytecode, so this prints <c>Type#index</c>, which is
+    /// what executes.</summary>
     private static string FieldName(BytecodeModule module, ulong type, ulong field) =>
         $"{TypeRefName(module, type)}#{N(field)}";
 
-    /// <summary>Ein Typ an einer Signaturstelle. Referenzen zeigen den Namen aus der Typ-Tabelle
-    /// statt nur den Index — der Disassembler wird gelesen, nicht ausgeführt.</summary>
+    /// <summary>A type in a signature position. References print the name from the type table
+    /// rather than only the index.</summary>
     private static string TypeName(BytecodeModule module, BytecodeType type) =>
         type.IsArray && type.Element is { } el ? $"{TypeName(module, el)}[]"
         : type.IsOptional && type.Element is { } opt ? $"?{TypeName(module, opt)}"
@@ -240,7 +234,7 @@ public static class Disassembler
     private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
     private static string N(ulong value) => value.ToString(CultureInfo.InvariantCulture);
 
-    // Escaping wie IrPrinter.Quote / AstDumper.Quote — konsistent halten.
+    // Escaping as in IrPrinter.Quote and AstDumper.Quote; keep the three consistent.
     private static string Quote(string value)
     {
         var sb = new StringBuilder("\"");

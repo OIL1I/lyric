@@ -1,47 +1,43 @@
 namespace Lyric.Bytecode;
 
 /// <summary>
-/// Diagnostik-Codes des Bytecode-Lesers (`LYR-BC####`).
+/// Diagnostic codes of the bytecode reader (<c>LYR-BC####</c>).
 ///
-/// <para>Anders als bei <c>LYR-IR0001</c> gibt es hier <b>mehrere</b> Codes, und das ist kein
-/// Widerspruch: die IR-Codes markieren vorübergehende Lücken im Backend, diese hier sind
-/// dauerhafte Fehlerklassen einer Datei, die es so immer geben wird. „Falsches Magic" und
-/// „Stack-Disziplin verletzt" verlangen vom Leser einer Fehlermeldung völlig Verschiedenes.</para>
+/// <para>They are permanent error classes of a file rather than temporary gaps in the backend, so
+/// there are several rather than one.</para>
 ///
-/// <para>Alle beschreiben denselben Moment: <b>Load-Zeit</b>. ADR-013 verlangt, dass ein Modul beim
-/// Laden vollständig validiert wird und danach ohne Sicherheitschecks laufen kann (WASM-Modell) —
-/// jeder dieser Codes ist ein Grund, ein Modul gar nicht erst anzunehmen.</para>
+/// <para>All describe load time: a module is validated completely before it runs, and each of
+/// these is a reason not to accept it at all.</para>
 /// </summary>
 public static class BytecodeDiagnostics
 {
-    /// <summary>Die Datei beginnt nicht mit <c>LYRB</c> — kein .lyrbc.</summary>
+    /// <summary>The file does not begin with <c>LYRB</c>.</summary>
     public const string BadMagic = "LYR-BC0001";
 
-    /// <summary>Major-Version unbekannt. Bis v1.0 gibt es dafür keinen Migrationspfad (ADR-013).</summary>
+    /// <summary>Unknown major version. Before v1.0 there is no migration path.</summary>
     public const string UnsupportedVersion = "LYR-BC0002";
 
-    /// <summary>Datei endet mitten in einer Struktur, oder eine Sektions-Länge passt nicht zu
-    /// ihrem Inhalt.</summary>
+    /// <summary>The file ends inside a structure, or a section length does not match its
+    /// contents.</summary>
     public const string Truncated = "LYR-BC0003";
 
-    /// <summary>Ein Index zeigt ins Leere: String-Pool, Funktion, Block oder Local-Slot.</summary>
+    /// <summary>An index is out of range: string pool, function, block or local slot.</summary>
     public const string IndexOutOfRange = "LYR-BC0004";
 
-    /// <summary>Unbekannter Opcode, Typ-Tag oder Sektions-Aufbau.</summary>
+    /// <summary>Unknown opcode, type tag or section layout.</summary>
     public const string UnknownEncoding = "LYR-BC0005";
 
-    /// <summary>Stack-Disziplin verletzt: Unterlauf, Tiefe ≠ 0 an einer Blockgrenze, oder mehr als
-    /// die im Funktionskopf angekündigte Maximaltiefe.</summary>
+    /// <summary>Stack discipline violated: underflow, depth ≠ 0 at a block boundary, or more than
+    /// the maximum announced in the function header.</summary>
     public const string StackDiscipline = "LYR-BC0006";
 }
 
 /// <summary>
-/// Eine Datei, die kein gültiges Modul ist. Trägt den Diagnostik-Code mit, damit der öffentliche
-/// Einstieg daraus eine Diagnose bauen kann, ohne den Text zu parsen.
+/// A file that is not a valid module. It carries the diagnostic code, so the public entry point
+/// can build a diagnostic without parsing the text.
 ///
-/// <para>Bewusst keine <c>InternalCompilationException</c>: eine kaputte Datei ist kein
-/// Compiler-Bug. Der Leser muss auf beliebigen Bytes robust sein — er ist die Stelle, an der
-/// nicht vertrauenswürdige Eingaben ins System kommen.</para>
+/// <para>Not an <c>InternalCompilationException</c>: a broken file is not a compiler bug, and the
+/// reader has to be robust on arbitrary bytes.</para>
 /// </summary>
 public sealed class MalformedBytecodeException : Exception
 {

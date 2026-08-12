@@ -3,21 +3,14 @@ using System.Text;
 namespace Lyric.Bytecode;
 
 /// <summary>
-/// Die Kopfdaten eines <c>.lyrbc</c>-Moduls in lesbarer und in maschinenlesbarer Form —
-/// der Unterbau von <c>lyrvm info</c>.
+/// The header data of a <c>.lyrbc</c> module in readable and machine-readable form; the basis of
+/// <c>lyrvm info</c>.
 ///
-/// <para>Warum das neben dem Disassembler existiert: der beantwortet „was tut dieser Code", nicht
-/// „ist diese Datei, was sie zu sein behauptet". Fuer ADR-013 ist die zweite Frage die wichtigere,
-/// weil <c>.lyrbc</c> ein Auslieferungsartefakt mit Spec ist — und weil sie das ist, was ein
-/// <b>zweiter</b> Implementierer zuerst stellt: „stimmt mein Reader mit deinem darueber ueberein,
-/// wie viele Eintraege in welcher Tabelle stehen?". <c>--json</c> macht daraus einen Diff.
-/// Jedes ernsthafte Binaerformat hat so ein Werkzeug: <c>objdump -h</c>, <c>wasm-objdump -h</c>,
-/// <c>ildasm /headers</c>.</para>
+/// <para>It answers whether a file is what it claims to be, which the disassembler does not; with
+/// <c>--json</c> two readers can be diffed against each other.</para>
 ///
-/// <para><b>Grenze</b>: Sektions-Byte-Groessen fehlen. <see cref="BytecodeModule"/> behaelt sie
-/// nicht — der Reader verwirft sie nach dem Parsen. Sie nachzuruesten hiesse, das Modell um
-/// Herkunftsdaten zu erweitern; das ist eine eigene Entscheidung und kein Nebenprodukt dieses
-/// Kommandos.</para>
+/// <para>Section byte sizes are not included: <see cref="BytecodeModule"/> discards them after
+/// parsing.</para>
 /// </summary>
 public static class ModuleInfo
 {
@@ -53,11 +46,8 @@ public static class ModuleInfo
         return sb.ToString();
     }
 
-    /// <summary>
-    /// Handgeschriebenes JSON, wie <see cref="Core.DiagnosticEngine.RenderJson"/> auch — dieselbe
-    /// Begruendung: eine Serializer-Abhaengigkeit fuer ein Dutzend Felder waere unverhaeltnismaessig,
-    /// und die Ausgabe soll byte-stabil sein, damit zwei Runtimes sie diffen koennen.
-    /// </summary>
+    /// <summary>Hand-written JSON, as in <see cref="Core.DiagnosticEngine.RenderJson"/>, so the
+    /// output is byte-stable and two runtimes can diff it.</summary>
     public static string Json(BytecodeModule module, string path)
     {
         var sb = new StringBuilder();
@@ -97,9 +87,8 @@ public static class ModuleInfo
         return sb.ToString();
     }
 
-    /// <summary>Der Name der Einstiegsfunktion. <see cref="BytecodeModule.Start"/> indiziert den
-    /// gemeinsamen Raum aus erst Imports, dann Funktionen — ein Einstieg im Import-Bereich waere
-    /// ein kaputtes Modul, das der Reader aber schon abgelehnt haette.</summary>
+    /// <summary>The name of the entry function. <see cref="BytecodeModule.Start"/> indexes the
+    /// shared space of imports first, then functions.</summary>
     private static string EntryName(BytecodeModule module)
     {
         if (module.Start is not { } start) return "(library — no start section)";

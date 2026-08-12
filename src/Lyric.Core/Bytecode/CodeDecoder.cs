@@ -3,11 +3,10 @@ using Lyric.Bytecode.Encoding;
 namespace Lyric.Bytecode;
 
 /// <summary>
-/// Dekodiert den Instruktionsstrom einer Funktion.
+/// Decodes the instruction stream of a function.
 ///
-/// <para>Eine Stelle für beide Leser: den Validator beim Laden und den Disassembler. Zwei
-/// Dekodierer wären derselbe Drift-Fehler wie zwei Opcode-Tabellen — einer könnte ein Immediate
-/// anders lang lesen als der andere und die Ausgabe wäre stillschweigend falsch.</para>
+/// <para>One place for both readers, the load-time validator and the disassembler, so an immediate
+/// cannot be read at two different lengths.</para>
 /// </summary>
 public static class CodeDecoder
 {
@@ -35,10 +34,9 @@ public static class CodeDecoder
                 Op.LoadGlobal or Op.StoreGlobal =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode, Immediate = reader.ULeb() },
 
-                // ldfld/stfld tragen Typ- UND Feldindex. Der Typ ist zur Laufzeit redundant, aber
-                // ohne ihn könnte der Loader den Feldindex nicht gegen ein Layout prüfen.
-                // mkiface traegt konkreten Typ UND Interface, callvirt Interface UND Slot —
-                // beide zwei uleb128, dieselbe Form wie ldfld.
+                // ldfld/stfld carry a type index and a field index; the type lets the loader check
+                // the field against a layout. mkiface carries concrete type and interface,
+                // callvirt interface and slot — two uleb128 each, the same shape.
                 Op.CondBranch or Op.LoadField or Op.StoreField or Op.MakeInterface
                     or Op.CallVirt => new BytecodeInstruction
                 {
@@ -51,19 +49,18 @@ public static class CodeDecoder
                     Offset = offset, Opcode = opcode, Type = reader.Tag(), ToType = reader.Tag(),
                 },
 
-                // Not trägt als einziger arithmetisch/logischer Opcode kein Tag: nur bool ist
-                // gültig, ein Tag wäre reine Redundanz. Die Array-Opcodes tragen ebenfalls keins:
-                // ihr Elementtyp steht in der Temp-Tabelle bzw. am Array selbst.
+                // 'not' is the only arithmetic or logical opcode without a tag: only bool is
+                // valid. The array opcodes carry none either; their element type is on the array.
                 Op.Not or Op.Pop or Op.Return or Op.ReturnValue or Op.Unreachable or
                 Op.EndFinally or
                 Op.LoadElem or Op.StoreElem or Op.ArrayLen or Op.ArrayConcat or Op.ArrayRepeat or
                 Op.OptIsSome or Op.OptGet or Op.EnumTag =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode },
 
-                // newarr trägt den Elementtyp (ggf. verschachtelt) und dann die Elementzahl.
+                // newarr carries the element type, possibly nested, then the element count.
                 Op.NewArray => DecodeNewArray(reader, offset),
 
-                // optnone/optsome tragen nur den inneren Typ; der Dekodierer ueberspringt ihn.
+                // optnone/optsome carry only the inner type, which the decoder skips.
                 Op.OptNone or Op.OptSome => DecodeWithType(reader, offset, opcode),
 
                 _ => new BytecodeInstruction { Offset = offset, Opcode = opcode, Type = reader.Tag() },
@@ -73,9 +70,8 @@ public static class CodeDecoder
         return instructions;
     }
 
-    /// <summary>Der Elementtyp eines <c>newarr</c> wird übersprungen, nicht ausgewertet: der
-    /// Dekodierer muss den Strom nur korrekt abschreiten. Wer den Typ braucht — der Disassembler —
-    /// liest ihn über <see cref="SkipType"/> hinaus selbst.</summary>
+    /// <summary>The element type of a <c>newarr</c> is skipped rather than read: the decoder only
+    /// has to walk the stream. A caller that needs the type reads it itself.</summary>
     private static BytecodeInstruction DecodeNewArray(ByteReader reader, int offset)
     {
         var start = reader.Position;
@@ -89,49 +85,42 @@ public static class CodeDecoder
         };
     }
 
-    /// <summary>Eine Instruktion, die nur einen Typ trägt (<c>optnone</c>, <c>optsome</c>).</summary>
+    /// <summary>An instruction that carries only a type (<c>optnone</c>, <c>optsome</c>).
+    /// </summary>
     private static BytecodeInstruction DecodeWithType(ByteReader reader, int offset, Op opcode)
     {
         SkipType(reader, offset);
         return new BytecodeInstruction { Offset = offset, Opcode = opcode };
     }
 
-    /// <summary>Überspringt einen Typ im Strom: ein Tag, dann bei <c>Ref</c> ein Index und bei
-    /// <c>Array</c>/<c>Optional</c> rekursiv der innere Typ.</summary>
     /// <summary>
-    /// Ueberspringt einen inline kodierten Typ im Instruktionsstrom.
+    /// Skips an inline-encoded type in the instruction stream.
     ///
-    /// <para><b>Total ueber alle Tags</b>, und das ist keine Stilfrage. Die erste Fassung war eine
-    /// <c>else if</c>-Kette, die jedes nicht genannte Tag stillschweigend als Skalar behandelte —
-    /// also den Index nicht las, den es traegt. Ein <c>?Enum</c> desynchronisierte damit den Strom
-    /// und meldete sich viele Bytes spaeter als „unknown opcode 0x00": ein Fehler, der nichts mehr
-    /// ueber seine Ursache sagt. Gefunden am 2026-08-05 beim Bau der Interfaces, vorhanden seit
-    /// P3b. Der <c>default</c>-Wurf sorgt dafuer, dass die naechste Tag-Art beim Uebersehen laut
-    /// wird statt still falsch.</para>
+    /// <para>Total over every tag, with a throwing <c>default</c>: a tag treated as a scalar when
+    /// it in fact carries an index desynchronizes the stream, and the failure then surfaces many
+    /// bytes later as an unknown opcode.</para>
     /// </summary>
     private static void SkipType(ByteReader reader, int offset)
     {
         var tag = reader.Tag();
         switch (tag)
         {
-            // Tragen einen uleb128-Tabellenindex hinter sich.
+            // Carry a uleb128 table index.
             case TypeTag.Ref or TypeTag.Enum or TypeTag.Interface or TypeTag.Struct:
                 reader.ULeb();
                 return;
 
-            // Der Host-Typ traegt seinen Namen inline (Bytecode.md §3). Ihn hier zu ueberspringen
-            // heisst, die Laenge zu lesen und so viele Bytes zu verwerfen — ein vergessener Fall
-            // waere ein um Bytes verschobener Strom, kein sauberer Fehler.
+            // A host type carries its name inline: read the length and discard that many bytes.
             case TypeTag.Host:
                 reader.String();
                 return;
 
-            // Tragen ihren inneren Typ inline.
+            // Carry their inner type inline.
             case TypeTag.Array or TypeTag.Optional:
                 SkipType(reader, offset);
                 return;
 
-            // fn(A, B) -> R: Parameterzahl, dann die Typen, dann die Rueckgabe.
+            // fn(A, B) -> R: parameter count, then the types, then the return type.
             case TypeTag.Fn:
             {
                 var count = reader.ULeb();
@@ -168,14 +157,14 @@ public static class CodeDecoder
             TypeTag.Bool => instruction with { BoolValue = reader.U8() != 0 },
             TypeTag.Void => throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                 $"const of type void at code offset {offset}"),
-            // Ganzzahlen, char und der String-Pool-Index teilen sich die uleb128-Form.
+            // Integers, char and the string-pool index share the uleb128 form.
             _ => instruction with { Immediate = reader.ULeb() },
         };
     }
 
-    /// <summary>Wie viele Werte nimmt die Instruktion vom Stack, wie viele legt sie zurück?
-    /// <paramref name="callArity"/> und <paramref name="callReturnsValue"/> gelten nur für
-    /// <c>call</c> und kommen aus der Signatur der Callee.</summary>
+    /// <summary>How many values the instruction takes off the stack and how many it leaves.
+    /// <paramref name="callArity"/> and <paramref name="callReturnsValue"/> apply to <c>call</c>
+    /// and come from the callee's signature.</summary>
     public static (int Pops, int Pushes) StackEffect(BytecodeInstruction instruction,
         int callArity, bool callReturnsValue, int variantArity = 0) =>
         Effect(instruction, instruction.Immediate, callArity, callReturnsValue, variantArity);
@@ -198,8 +187,7 @@ public static class CodeDecoder
         Op.LoadField => (1, 1),
         Op.StoreField => (2, 0),
 
-        // newarr nimmt so viele Werte, wie sein Immediate sagt — die einzige Instruktion mit
-        // variabler Stack-Wirkung außer 'call'.
+        // newarr takes as many values as its immediate says.
         Op.NewArray => ((int)instruction.Immediate, 1),
         Op.LoadElem => (2, 1),
         Op.StoreElem => (3, 0),
@@ -209,31 +197,30 @@ public static class CodeDecoder
         Op.OptNone => (0, 1),
         Op.OptSome or Op.OptIsSome or Op.OptGet => (1, 1),
 
-        // newvariant nimmt die Nutzfelder der Variante — wie viele, steht in der Types-Sektion.
-        // Deshalb reicht der Aufrufer sie herein, genau wie bei 'call'.
+        // newvariant takes the variant's payload fields; how many is in the Types section, so the
+        // caller passes the count in.
         Op.NewVariant => (variantArity, 1),
         Op.EnumTag or Op.EnumAs => (1, 1),
 
-        // mkiface hebt einen Wert auf sein Interface: einer runter, einer rauf.
+        // mkiface lifts a value to its interface: one off, one on.
         Op.MakeInterface => (1, 1),
-        // structcopy ebenso: Original runter, Kopie rauf.
+        // structcopy likewise: original off, copy on.
         Op.StructCopy => (1, 1),
 
-        // Beide Closure-Opcodes tragen ein Flag im untersten Immediate-Bit (Bytecode.md
-        // §Closures), weil ihre Stack-Wirkung sonst nicht aus der Instruktion allein hervorgeht:
-        // eine Closure ohne Captures hat kein Environment, und ein Funktionswert traegt seine
-        // Signatur nicht im Bytecode.
+        // Both closure opcodes carry a flag in the lowest immediate bit, because their stack
+        // effect does not follow from the opcode alone: a closure without captures has no
+        // environment, and a function value does not carry its signature.
         Op.MakeClosure => ((immediate & 1) == 1 ? 1 : 0, 1),
         Op.CallIndirect => (1 + (int)(immediate >> 1), (immediate & 1) == 1 ? 1 : 0),
 
         Op.LoadGlobal => (0, 1),
         Op.StoreGlobal => (1, 0),
-        // callvirt nimmt den Empfaenger plus die Argumente — wie viele, weiss nur der Aufrufer aus
-        // der Signatur des Interface-Slots. Deshalb reicht er sie herein, genau wie bei 'call'.
+        // callvirt takes the receiver plus the arguments; the count comes from the interface
+        // slot's signature and is passed in.
         Op.CallVirt => (callArity, callReturnsValue ? 1 : 0),
 
         Op.Return or Op.Branch or Op.Unreachable or Op.EndFinally => (0, 0),
-        // throw nimmt den Wert und gibt nichts zurueck — der Block endet hier.
+        // throw takes the value and leaves nothing; the block ends here.
         Op.Throw => (1, 0),
         Op.ReturnValue or Op.CondBranch => (1, 0),
 
