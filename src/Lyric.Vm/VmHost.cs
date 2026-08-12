@@ -4,35 +4,28 @@ using Lyric.Core;
 namespace Lyric.Vm;
 
 /// <summary>
-/// Der vollstaendige Weg von <c>.lyrbc</c>-Bytes zu einem Prozess-Exit-Code: laden, validieren,
-/// ausfuehren, Panics und Laufzeitfehler rendern.
+/// The whole path from <c>.lyrbc</c> bytes to a process exit code: load, validate, execute, render
+/// panics and runtime errors.
 ///
-/// <para>Liegt bewusst <b>hier</b> und nicht in einem CLI-Projekt (ADR-017). Die Exit-Code-Regel
-/// ist normativ — <c>Sprache.md</c> §11 macht den Rueckgabewert von <c>main</c> zum Exit-Code,
-/// §9 macht einen <c>panic</c> zum Abbruch — und der Runner-Vertrag in <c>docs/Bytecode.md</c>
-/// verlangt sie identisch von <i>jeder</i> Runtime. Eine normative Regel gehoert in die
-/// Referenz-Runtime, nicht in einen von drei Kommandozeilen-Wrappern; saesse sie im CLI, haetten
-/// <c>lyrvm</c> und <c>lyric</c> je eine eigene Kopie und damit zwei Wahrheiten ueber „was heisst
-/// Exit-Code 101".</para>
+/// <para>It lives in the runtime rather than in a command-line project, so the exit-code rule of
+/// the runner contract exists once.</para>
 /// </summary>
 public static class VmHost
 {
     /// <summary>
-    /// Fuehrt ein bereits geladenes Modul aus und liefert den Prozess-Exit-Code.
+    /// Executes an already loaded module and returns the process exit code.
     ///
-    /// <para><paramref name="output"/> traegt ausschliesslich Programmausgabe,
-    /// <paramref name="error"/> ausschliesslich Diagnosen und Backtraces — der Runner-Vertrag
-    /// verbietet die Vermischung, weil ein aufrufendes Werkzeug sonst die Ausgabe eines
-    /// Lyric-Programms nicht von der Klage der Runtime trennen kann.</para>
+    /// <para><paramref name="output"/> carries program output only and
+    /// <paramref name="error"/> diagnostics and backtraces only; the runner contract forbids
+    /// mixing them.</para>
     /// </summary>
     public static int Execute(BytecodeModule module, TextWriter output, TextWriter error) =>
         Execute(module, [], output, error);
 
-    /// <param name="arguments">Die Programm-Argumente aus dem Runner-Vertrag (Bytecode.md §9) —
-    /// alles nach dem ersten <c>--</c>.</param>
-    /// <param name="granted">Welche Capabilities diese Ausfuehrung bekommt (ADR-007). Standalone
-    /// gewaehrt alles (Doku §20.2) — wer 'lyric run' tippt, fuehrt sein eigenes Programm aus, und
-    /// dort liegt keine Trust-Boundary. Ein Host im Embedded-Modus setzt es enger.</param>
+    /// <param name="arguments">The program arguments of the runner contract: everything after
+    /// the first <c>--</c>.</param>
+    /// <param name="granted">Which capabilities this execution receives. Standalone grants
+    /// everything; an embedded host sets it narrower.</param>
     public static int Execute(BytecodeModule module, IReadOnlyList<string> arguments,
         TextWriter output, TextWriter error, Capability granted = Capability.All)
     {
@@ -40,12 +33,12 @@ public static class VmHost
         {
             var natives = NativeRegistry.CreateDefault(output, error);
 
-            // §11: Exit-Code ist 0..255. Wie jedes POSIX-System nehmen wir das niedrigste Byte.
+            // The exit code is 0..255, so the lowest byte is taken.
             return (int)(Interpreter.Run(module, arguments, natives, granted).AsI64 & 0xFF);
         }
         catch (LyricPanic panic)
         {
-            // §9: ein panic druckt einen Backtrace und beendet die VM. Nicht catchbar.
+            // A panic prints a backtrace and ends the VM. It is not catchable.
             error.WriteLine($"panic [{panic.Code}]: {panic.Message}");
             foreach (var frame in panic.CallStack) error.WriteLine($"    in {frame}");
             return ExitCodes.Panic;
@@ -60,9 +53,8 @@ public static class VmHost
     }
 
     /// <summary>
-    /// Laedt Bytes und fuehrt sie aus. <c>null</c> als Lade-Ergebnis heisst: die Validierung hat
-    /// abgelehnt (ADR-013 prueft beim Laden, nicht beim Aufruf), die Diagnosen stehen dann schon
-    /// auf <paramref name="error"/>.
+    /// Loads bytes and executes them. A <c>null</c> load result means validation rejected the
+    /// module; the diagnostics are already on <paramref name="error"/>.
     /// </summary>
     public static int Execute(byte[] bytes, TextWriter output, TextWriter error)
     {
@@ -71,9 +63,9 @@ public static class VmHost
     }
 
     /// <summary>
-    /// Liest und validiert Bytes vollstaendig, ohne auszufuehren — die Grundlage von
-    /// <c>lyrvm verify</c> und <c>lyrvm disasm</c>. Rendert eigene Diagnosen und liefert
-    /// <c>null</c>, wenn das Modul abgelehnt wurde.
+    /// Reads and validates bytes completely without executing them; the basis of
+    /// <c>lyrvm verify</c> and <c>lyrvm disasm</c>. Renders its own diagnostics and returns
+    /// <c>null</c> when the module is rejected.
     /// </summary>
     public static BytecodeModule? Load(byte[] bytes, TextWriter error)
     {
@@ -84,13 +76,11 @@ public static class VmHost
     }
 
     /// <summary>
-    /// Alles, was diese Runtime beim Laden prueft, aber ohne eine Instruktion auszufuehren:
-    /// Format-Validierung <b>und</b> Import-Bindung.
+    /// Everything this runtime checks at load time without executing an instruction: format
+    /// validation and import binding.
     ///
-    /// <para>Die Import-Bindung gehoert dazu, weil sie sonst nirgends sichtbar wird: sie laeuft
-    /// heute erst am Anfang von <see cref="Interpreter.Run"/>. Ein Modul, das ein unbekanntes
-    /// Native importiert, ist aber schon vor dem Start ungueltig (ADR-013) — und genau das ist
-    /// die Frage, die eine Fremd-Runtime an ihre eigene Konformanz stellen muss.</para>
+    /// <para>Import binding is included because a module importing an unknown native is invalid
+    /// before it starts, and this is the question a conformance check asks.</para>
     /// </summary>
     public static int Verify(byte[] bytes, TextWriter output, TextWriter error)
     {

@@ -3,33 +3,29 @@ using Lyric.Bytecode;
 namespace Lyric.Vm;
 
 /// <summary>
-/// Die vtables, einmal beim Laden aus der Impls-Sektion aufgebaut.
+/// The vtables, built once at load time from the Impls section.
 ///
-/// <para>Ein <c>callvirt</c> kennt zwei Dinge statisch — Interface und Slot — und eins dynamisch:
-/// den konkreten Typ, den der Empfaenger als Fat Pointer mitfuehrt. Gesucht ist also
-/// (konkreter Typ, Interface) → Funktionsliste. Diese Klasse macht daraus einen Array-Zugriff.</para>
+/// <para>A <c>callvirt</c> knows the interface and the slot statically and the concrete type
+/// dynamically, carried by the receiver. The lookup is therefore
+/// (concrete type, interface) → function list, and this class makes it an array access.</para>
 ///
-/// <para><b>Warum flach und nicht als Dictionary im heissen Pfad</b>: der Interpreter darf beim
-/// Aufruf nichts pruefen und nichts hashen — der Loader hat bereits validiert, dass jedes
-/// <c>mkiface</c> eine Impl-Zeile hat und jeder Slot in Reichweite liegt (ADR-013). Die Tabelle
-/// ist eine dichte Matrix ueber (Typindex × Interfaceindex); bei den Groessenordnungen, die eine
-/// Skriptsprache erreicht, ist das billiger als jede Indirektion. Wird sie einmal zu duenn
-/// besetzt, ist der Umbau lokal — sie hat genau einen Aufrufer.</para>
+/// <para>A dense matrix over (type index × interface index): the loader has already validated
+/// that every <c>mkiface</c> has an Impls row and every slot is in range, so the call path
+/// neither checks nor hashes.</para>
 /// </summary>
 internal sealed class DispatchTable
 {
-    /// <summary>Zeile = konkreter Typ, Spalte = Interface, Zelle = Funktionsindex je Slot.
-    /// <c>null</c> heisst „implementiert nicht" — der Loader schliesst aus, dass ein
-    /// <c>callvirt</c> je dort landet.</summary>
+    /// <summary>Row = concrete type, column = interface, cell = function index per slot.
+    /// <c>null</c> means the type does not implement the interface; the loader rules out a
+    /// <c>callvirt</c> ever landing there.</summary>
     private readonly int[]?[,] _rows;
 
-    /// <summary>Zeile = Interface, Spalte = Slot, Zelle = Argumentzahl <b>inklusive</b> Empfaenger.
+    /// <summary>Row = interface, column = slot, cell = argument count including the receiver.
     ///
-    /// <para>Die Arity gehoert hierher und nicht an die Instruktion: der Interpreter muss den
-    /// Empfaenger vom Stack lesen, <i>bevor</i> er die Zielfunktion kennt — er braucht ja dessen
-    /// konkreten Typ, um sie ueberhaupt zu finden. Ohne vorab bekannte Tiefe waere das ein
-    /// Henne-Ei-Problem. Loesbar ist es, weil alle Implementierungen eines Slots dieselbe Signatur
-    /// haben; das hat die Sema als Konformanz geprueft.</para></summary>
+    /// <para>The arity lives here because the interpreter must take the receiver off the stack
+    /// before it knows the target function — it needs the receiver's concrete type to find it.
+    /// Every implementation of a slot shares its signature, so one number suffices.</para>
+    /// </summary>
     private readonly int[]?[] _arity;
 
     private DispatchTable(int[]?[,] rows, int[]?[] arity)
@@ -50,8 +46,7 @@ internal sealed class DispatchTable
             for (var i = 0; i < methods.Length; i++) methods[i] = impl.Methods[i];
             rows[impl.Type, impl.Interface] = methods;
 
-            // Die erste Zeile eines Interfaces legt die Signaturen fest; jede weitere muss
-            // dieselben haben, sonst waere die Konformanz verletzt.
+            // The first row of an interface fixes the signatures; every further row matches.
             if (arity[impl.Interface] is not null) continue;
 
             var counts = new int[impl.Methods.Count];
@@ -69,7 +64,7 @@ internal sealed class DispatchTable
         return new DispatchTable(rows, arity);
     }
 
-    /// <summary>Wie viele Werte der Aufruf vom Stack nimmt, Empfaenger eingerechnet.</summary>
+    /// <summary>How many values the call takes off the stack, receiver included.</summary>
     public int ArityOf(int interfaceType, int slot)
     {
         if (interfaceType >= 0 && interfaceType < _arity.Length
@@ -82,12 +77,9 @@ internal sealed class DispatchTable
     }
 
     /// <summary>
-    /// Der Funktionsindex im gemeinsamen Raum (erst Imports, dann Funktionen).
+    /// The function index in the shared space (imports first, then functions).
     ///
-    /// <para>Wirft nur, wenn die Load-Zeit-Validierung umgangen wurde — etwa weil ein Host das
-    /// Modul selbst zusammengesetzt hat. Im regulaeren Weg ist der Fall unerreichbar, und die
-    /// Meldung sagt das auch, damit niemand sie fuer eine erwartbare Laufzeitbedingung haelt.
-    /// </para>
+    /// <para>Throws only when load-time validation was bypassed, which the message says.</para>
     /// </summary>
     public int Resolve(int concreteType, int interfaceType, int slot)
     {
