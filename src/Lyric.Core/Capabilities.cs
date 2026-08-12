@@ -1,48 +1,40 @@
 namespace Lyric.Core;
 
 /// <summary>
-/// Die Capability-Stufen aus ADR-007. Ein Bit pro Stufe; die Werte sind
-/// <b>Bytecode-Vertrag</b> (Bytecode.md §Capabilities, Sektion Id 1) und dürfen sich nicht mehr
-/// ändern.
+/// The capability levels. One bit each; the values are part of the bytecode contract (section
+/// id 1) and do not change.
 /// </summary>
 [Flags]
 public enum Capability : ulong
 {
     None = 0,
 
-    /// <summary><c>std.io.file</c> — Lesen und Schreiben im Dateisystem.</summary>
+    /// <summary><c>std.io.file</c> — reading and writing the file system.</summary>
     FileAccess = 1UL << 0,
 
-    /// <summary><c>std.io.net</c> — Sockets. Das Modul selbst ist aus M8 gestrichen (v1.X), das
-    /// Bit steht trotzdem fest: eine Nummer, die später etwas anderes bedeutet, macht jedes
-    /// ältere <c>.lyrbc</c> falsch.</summary>
+    /// <summary><c>std.io.net</c> — sockets. The module does not exist yet; the bit is fixed
+    /// regardless, because a number that later means something else invalidates every older
+    /// <c>.lyrbc</c>.</summary>
     NetworkAccess = 1UL << 1,
 
-    /// <summary><c>std.os</c> — Umgebungsvariablen, Prozesse, Exit-Codes.</summary>
+    /// <summary><c>std.os</c> — environment variables, processes, exit codes.</summary>
     OsAccess = 1UL << 2,
 
-    /// <summary><c>std.dotnet</c> — Zugriff auf den Host über Reflection.</summary>
+    /// <summary><c>std.dotnet</c> — host access through reflection.</summary>
     HostAccess = 1UL << 3,
 
-    /// <summary>Was der Standalone-Modus gewährt (Doku §20.2): alles. Wer <c>lyric run</c> tippt,
-    /// führt sein eigenes Programm aus — die Trust-Boundary liegt dort nicht zwischen Host und
-    /// Skript, sondern gar nicht.</summary>
+    /// <summary>What the standalone mode grants: everything.</summary>
     All = FileAccess | NetworkAccess | OsAccess | HostAccess,
 }
 
 /// <summary>
-/// Welches Stdlib-Modul welche Capability verlangt (Doku §20.1).
+/// Which standard library module requires which capability.
 ///
-/// <para><b>Die Tabelle steht hier und nicht im Compiler</b>, weil beide Seiten sie brauchen und
-/// aus verschiedenen Gründen: der Compiler schreibt in die Capabilities-Sektion, <b>was ein Modul
-/// verlangt</b>, und die Runtime prüft beim Laden gegen das, <b>was sie gewährt</b>. Zwei Kopien
-/// wären zwei Wahrheiten darüber, was <c>std.os</c> kostet.</para>
+/// <para>Both sides need the table: the compiler writes what a module requires into the
+/// Capabilities section, and the runtime checks that against what it grants.</para>
 ///
-/// <para><b>Warum die Runtime die eigentliche Grenze ist.</b> ADR-007 nennt die Resolve-Zeit, und
-/// dort gibt es die frühe, freundliche Meldung. Aber ein <c>.lyrbc</c> kann von woanders kommen —
-/// ein Compiler-Check schützt einen Host nicht, der fremden Bytecode lädt. Deshalb steht der
-/// Bedarf <b>im Modul</b> (ADR-013: alles Nötige steht im Format), und die Durchsetzung passiert
-/// beim Laden, zusammen mit der übrigen Validierung.</para>
+/// <para>The requirement travels in the module, and enforcement happens at load time along with
+/// the rest of the validation, so a host loading foreign bytes is protected too.</para>
 /// </summary>
 public static class CapabilityTable
 {
@@ -54,9 +46,8 @@ public static class CapabilityTable
         ("std.dotnet", Capability.HostAccess),
     ];
 
-    /// <summary>Was dieses Modul verlangt. <see cref="Capability.None"/> für alles, was immer
-    /// erlaubt ist — <c>std.core</c>, <c>std.string</c>, <c>std.collections</c> und die übrigen
-    /// aus der ersten Zeile von Doku §20.1.</summary>
+    /// <summary>What this module requires. <see cref="Capability.None"/> for everything that is
+    /// always permitted.</summary>
     public static Capability Required(string moduleName)
     {
         foreach (var (module, needs) in Gated)
@@ -65,8 +56,8 @@ public static class CapabilityTable
         return Capability.None;
     }
 
-    /// <summary>Was ein Import dieses Namens verlangt — inklusive Untermodulen. <c>std.os.env</c>
-    /// erbt von <c>std.os</c>, weil sonst jedes neue Untermodul eine stille Lücke wäre.</summary>
+    /// <summary>What an import of this name requires, submodules included: <c>std.os.env</c>
+    /// inherits from <c>std.os</c>.</summary>
     public static Capability RequiredForImport(string moduleName)
     {
         var needed = Capability.None;
@@ -76,8 +67,8 @@ public static class CapabilityTable
         return needed;
     }
 
-    /// <summary>Der Name einer einzelnen Stufe, wie ihn Doku §20.1 schreibt — für Diagnosen.
-    /// Mehrere Bits werden mit <c>+</c> verbunden.</summary>
+    /// <summary>The name of a single level, for diagnostics. Several bits are joined with
+    /// <c>+</c>.</summary>
     public static string Describe(Capability capability)
     {
         if (capability == Capability.None) return "none";
@@ -90,8 +81,8 @@ public static class CapabilityTable
         return string.Join(" + ", parts);
     }
 
-    /// <summary>Eine Liste aus der Kommandozeile (<c>file,os</c>) in Bits. <c>null</c>, wenn ein
-    /// Name unbekannt ist — dann meldet der Aufrufer, statt still weniger zu gewähren.</summary>
+    /// <summary>A command-line list (<c>file,os</c>) as bits. <c>null</c> when a name is unknown,
+    /// so the caller reports rather than silently granting less.</summary>
     public static Capability? Parse(string list)
     {
         var granted = Capability.None;
