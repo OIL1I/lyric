@@ -1,99 +1,87 @@
 namespace Lyric.Vm;
 
 /// <summary>
-/// Laufzeit-Diagnostik (`LYR-VM####`).
+/// Runtime diagnostics (<c>LYR-VM####</c>).
 ///
-/// <para>Zwei Klassen, und die Trennung ist die entlang von <c>Sprache.md</c> §9:
-/// <b>Panics</b> sind Programmierfehler im laufenden Programm — nicht catchbar, mit Backtrace
-/// (<see cref="LyricPanic"/>). <b>Ladefehler</b> treten auf, bevor die erste Instruktion läuft; sie
-/// haben keinen Backtrace, weil es noch keinen Aufruf-Stack gibt
+/// <para>Two classes. A panic is a programming error in the running program: not catchable, with
+/// a backtrace (<see cref="LyricPanic"/>). A load error occurs before the first instruction and
+/// carries no backtrace, because there is no call stack yet
 /// (<see cref="LyricRuntimeException"/>).</para>
-///
-/// <para>Bewusst <b>kein</b> dritter Fehlermechanismus neben <c>panic</c> und typisierten
-/// Exceptions: Division durch Null ist ein Programmierfehler und damit ein Panic, kein
-/// Sonderfall der VM (Regel 2, ein Mechanismus pro Konzept).</para>
 /// </summary>
 public static class VmDiagnostics
 {
-    /// <summary>Das Modul hat keine Start-Sektion — es ist eine Bibliothek, kein Programm.</summary>
+    /// <summary>The module has no Start section: it is a library, not a program.</summary>
     public const string NoEntryPoint = "LYR-VM0001";
 
-    /// <summary>Ganzzahlige Division oder Restbildung durch Null. Panic: Fließkomma folgt IEEE
-    /// (Inf/NaN) und ist kein Fehler.</summary>
+    /// <summary>Integer division or remainder by zero. Floating point follows IEEE (Inf/NaN) and
+    /// is not an error.</summary>
     public const string DivisionByZero = "LYR-VM0002";
 
-    /// <summary>Eine <c>unreachable</c>-Instruktion wurde ausgeführt. Der Compiler hat behauptet,
-    /// dieser Punkt sei nicht erreichbar — ein Lowering-Bug, kein User-Fehler.</summary>
+    /// <summary>An <c>unreachable</c> instruction executed. The compiler claimed this point could
+    /// not be reached.</summary>
     public const string UnreachableExecuted = "LYR-VM0003";
 
-    /// <summary>Aufruftiefe überschritten. In Lyric die Form, in der sich Endlos-Rekursion zeigt.</summary>
+    /// <summary>Call depth exceeded; how unbounded recursion surfaces.</summary>
     public const string CallDepthExceeded = "LYR-VM0004";
 
-    /// <summary>Das Modul verlangt Imports, aber die Runtime bindet noch keine.</summary>
+    /// <summary>The module requires imports the runtime does not bind.</summary>
     public const string ImportsNotBound = "LYR-VM0005";
 
-    /// <summary>Das Modul verlangt eine Capability, die diese VM nicht gewaehrt (ADR-007).
+    /// <summary>The module requires a capability this VM does not grant.
     ///
-    /// <para>Der Code liegt im CAP-Bereich und nicht bei den VM-Fehlern: er beschreibt keine
-    /// kaputte Datei, sondern eine Richtlinienentscheidung des Hosts. Dasselbe Modul laeuft
-    /// anderswo einwandfrei.</para></summary>
+    /// <para>The code sits in the CAP range rather than with the VM errors: it describes a host
+    /// policy, not a broken file. The same module runs elsewhere.</para></summary>
     public const string CapabilityDenied = "LYR-CAP0001";
 
-    /// <summary>Element-Index außerhalb der Array-Grenzen. Anders als Typ- und Feldindizes ist er
-    /// ein Laufzeitwert und beim Laden nicht prüfbar (ADR-016) — also ein <c>panic</c> (§9).</summary>
+    /// <summary>Element index outside the array bounds. Unlike type and field indices it is a
+    /// runtime value and cannot be checked at load time.</summary>
     public const string IndexOutOfRange = "LYR-VM0006";
 
-    /// <summary>Force-Unwrap (<c>expr!</c>) auf einem <c>?T</c> ohne Wert (Sprache.md §7).</summary>
+    /// <summary>Force-unwrap (<c>expr!</c>) of a <c>?T</c> that holds no value.</summary>
     public const string NullDereference = "LYR-VM0007";
 
-    /// <summary><c>enumas</c> auf eine Variante, die der Wert nicht ist. Der Compiler beweist das
-    /// über <c>match</c>; die Prüfung bleibt, weil ein <c>.lyrbc</c> auch aus fremder Quelle
-    /// kommen kann.</summary>
+    /// <summary><c>enumas</c> to a variant the value is not. The compiler proves this through
+    /// <c>match</c>; the check remains because a <c>.lyrbc</c> may come from elsewhere.</summary>
     public const string WrongVariant = "LYR-VM0008";
 
-    /// <summary>Kein vtable-Eintrag fuer (konkreter Typ, Interface, Slot). Im regulaeren Weg
-    /// unerreichbar — der Loader prueft jedes <c>mkiface</c> gegen die Impls-Sektion (ADR-013).
-    /// Erreichbar nur, wenn ein Host ein Modul unter Umgehung des Readers zusammensetzt.</summary>
+    /// <summary>No vtable entry for (concrete type, interface, slot). Reachable only for a module
+    /// assembled without the reader; the loader checks every <c>mkiface</c> against the Impls
+    /// section.</summary>
     public const string NoImplementation = "LYR-VM0009";
 
-    /// <summary>Eine Exception hat den Einstiegspunkt verlassen, ohne gefangen zu werden.
+    /// <summary>An exception left the entry point uncaught.
     ///
-    /// <para>Statisch sollte das nicht vorkommen: die Sema erzwingt, dass ein Aufruf einer
-    /// <c>throws</c>-Funktion entweder selbst deklariert wird oder von einem <c>try</c> umgeben
-    /// ist, und <c>main</c> darf laut Entry-Contract (§11) nichts deklarieren. Erreichbar bleibt
-    /// es ueber ein von Hand gebautes Modul — und dann ist es ein Abbruch wie ein panic.</para>
+    /// <para>The sema requires a call to a <c>throws</c> function to be declared or wrapped, and
+    /// <c>main</c> may declare nothing, so this is reachable only for a hand-built module. It
+    /// aborts like a panic.</para>
     /// </summary>
     public const string UncaughtException = "LYR-VM0010";
 
-    /// <summary>Ein <c>panic(msg)</c> aus dem Programm (Sprache.md §9). Nicht catchbar; die
-    /// Meldung ist die des Aufrufers.</summary>
+    /// <summary>A <c>panic(msg)</c> from the program. Not catchable; the message is the
+    /// caller's.</summary>
     public const string Panicked = "LYR-VM0011";
 
-    /// <summary>Ein <c>char</c>-Ergebnis ausserhalb des Unicode-Bereichs: jenseits
-    /// <c>0x10FFFF</c> oder im Surrogate-Bereich <c>D800..DFFF</c> (ADR-022).
+    /// <summary>A <c>char</c> result outside the Unicode range: beyond <c>0x10FFFF</c> or in the
+    /// surrogate range <c>D800..DFFF</c>.
     ///
-    /// <para>Der Preis dafuer, dass <c>char</c> rechnen darf und <c>Sprache.md</c> §4 trotzdem
-    /// wahr bleibt: dort steht „ein Unicode-Codepoint", und ein Typ, dessen Zusage sich durch
-    /// Addition brechen laesst, macht die Zeile zur Dekoration. Geprueft wird beim <b>Erzeugen</b>,
-    /// nicht beim Benutzen — sonst faellt der Fehler weit entfernt von der Rechnung auf, die ihn
-    /// verursacht hat.</para></summary>
+    /// <para>Checked where the value is produced rather than where it is used, so the error
+    /// surfaces at the arithmetic that caused it.</para></summary>
     public const string InvalidCodepoint = "LYR-VM0012";
 }
 
 /// <summary>
-/// Ein <c>panic</c> (Sprache.md §9): das Programm hat einen Vertrag gebrochen und läuft nicht
-/// weiter. Nicht mit <c>try</c>/<c>catch</c> abfangbar — dafür gibt es typisierte Exceptions.
+/// A panic: the program broke a contract and does not continue. Not catchable with
+/// <c>try</c>/<c>catch</c>.
 ///
-/// <para>Trägt den Lyric-Aufruf-Stack mit. Der wird beim Verlassen der Interpreter-Schleife
-/// angehängt, weil nur dort die Frames bekannt sind; die Rechenoperation selbst weiß nichts von
-/// ihrem Aufrufer.</para>
+/// <para>Carries the Lyric call stack, attached while leaving the interpreter loop, which is
+/// where the frames are known.</para>
 /// </summary>
 public sealed class LyricPanic : Exception
 {
     public string Code { get; }
 
-    /// <summary>Funktionsnamen vom Ort des Panics aufwärts. Leer, solange der Panic die
-    /// Interpreter-Schleife noch nicht verlassen hat.</summary>
+    /// <summary>Function names from the panic site upwards. Empty until the panic leaves the
+    /// interpreter loop.</summary>
     public IReadOnlyList<string> CallStack { get; init; } = Array.Empty<string>();
 
     public LyricPanic(string code, string message) : base(message) => Code = code;
@@ -102,8 +90,8 @@ public sealed class LyricPanic : Exception
         new(Code, Message) { CallStack = callStack };
 }
 
-/// <summary>Das Modul kann gar nicht erst gestartet werden — kein Einstiegspunkt, ungebundene
-/// Imports. Kein Panic: es läuft noch nichts, was abstürzen könnte.</summary>
+/// <summary>The module cannot be started at all: no entry point, unbound imports. Not a panic,
+/// because nothing is running yet.</summary>
 public sealed class LyricRuntimeException : Exception
 {
     public string Code { get; }

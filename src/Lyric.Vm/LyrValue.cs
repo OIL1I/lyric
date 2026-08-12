@@ -3,21 +3,17 @@ using Lyric.Bytecode;
 namespace Lyric.Vm;
 
 /// <summary>
-/// Ein Laufzeitwert.
+/// A runtime value.
 ///
-/// <para><b>Ohne Typ-Tag</b> — und das ist kein Versehen, sondern die Auszahlung einer
-/// Format-Entscheidung: jeder Opcode trägt sein Typ-Tag im Instruktionsstrom (P5), also weiß der
-/// Interpreter an jeder Stelle statisch, was auf dem Stack liegt. Ein Tag im Wert wäre eine zweite,
-/// redundante Wahrheitsquelle und würde jede Operation um eine Prüfung verteuern.</para>
+/// <para>It carries no type tag: every opcode carries one in the instruction stream, so the
+/// interpreter knows statically what is on the stack.</para>
 ///
-/// <para>Zahlen liegen in <see cref="Bits"/>, nicht im Heap — bei Spielelogik ist das der
-/// Unterschied zwischen „gut genug" und GC-Druck bei jedem <c>+</c>. Nur Strings brauchen eine
-/// Referenz; um deren Lebenszeit kümmert sich der .NET-GC (ADR-002).</para>
+/// <para>Numbers live in <see cref="Bits"/> rather than on the heap. Only references need
+/// <see cref="Ref"/>, and the .NET garbage collector owns their lifetime.</para>
 ///
-/// <para><b>Kodierung der Ganzzahlen</b>: immer auf 64 Bit erweitert — vorzeichenbehaftete Typen
-/// vorzeichenerweitert, vorzeichenlose nullerweitert. Dadurch funktionieren Vergleiche und
-/// Division direkt auf <c>long</c>/<c>ulong</c>, ohne die Breite zu kennen. Nach jeder Rechnung
-/// stellt <see cref="Normalize"/> die Invariante wieder her.</para>
+/// <para>Integers are always widened to 64 bits: signed types sign-extended, unsigned types
+/// zero-extended, so comparisons and division work directly on <c>long</c>/<c>ulong</c> without
+/// knowing the width. <see cref="Normalize"/> restores the invariant after every operation.</para>
 /// </summary>
 public readonly struct LyrValue
 {
@@ -38,89 +34,77 @@ public readonly struct LyrValue
     public static LyrValue FromString(string value) => new(0, value);
 
     /// <summary>
-    /// Ein <b>Host-Objekt</b> (M10/E4, ADR-026): eine beliebige .NET-Referenz, in die die VM nie
-    /// hineinsieht.
+    /// A host object: an arbitrary .NET reference the VM never looks into.
     ///
-    /// <para>Dasselbe Feld wie bei einem <c>string</c>, und aus demselben Grund unbedenklich: das
-    /// Typ-Tag im Instruktionsstrom entscheidet, wie ein Wert gelesen wird, und fuer einen
-    /// Host-Typ gibt es keine Instruktion, die hineinsieht — er hat keinen Typtabellen-Eintrag,
-    /// also kein Feld, das ein <c>ldfld</c> nennen koennte.</para>
+    /// <para>It uses the same field as a <c>string</c>. No instruction reads inside it: a host
+    /// type has no type-table entry and therefore no field an <c>ldfld</c> could name.</para>
     ///
-    /// <para>Die Lebenszeit gehoert damit dem .NET-GC: das Objekt lebt, solange ein Lyric-Wert es
-    /// erreicht. Kein Freigabe-, kein Widerrufsprotokoll (ADR-026).</para>
+    /// <para>The .NET garbage collector owns its lifetime; the object lives as long as a Lyric
+    /// value reaches it.</para>
     /// </summary>
     public static LyrValue FromHostObject(object value) => new(0, value);
 
-    /// <summary>Eine Objekt-Referenz: ein Slot je Feld. Kein Typ-Tag im Wert — der
-    /// Instruktionsstrom trägt es, und der Loader hat Typ- und Feldindex geprüft. Um die
-    /// Lebenszeit kümmert sich der .NET-GC (ADR-002).</summary>
+    /// <summary>An object reference: one slot per field. The instruction stream carries the type,
+    /// and the loader has checked the type and field indices.</summary>
     public static LyrValue FromObject(LyrValue[] fields) => new(0, fields);
 
     /// <summary>
-    /// Marker für „dieses Optional hat einen Wert", wenn der Wert selbst keine Referenz ist.
+    /// Marker for "this optional holds a value" when the value itself is not a reference.
     ///
-    /// <para>Ein Objekt statt eines Bitmusters, weil es bei <c>?int</c> kein freies gibt: jedes
-    /// <c>i64</c> ist eine gültige Zahl. Ein reserviertes Muster hieße, dass ein bestimmter Wert
-    /// je nach Runtime mal ein Wert und mal keiner wäre — Bytecode.md §5 verbietet das
-    /// ausdrücklich. Global geteilt, also kostet „some" keine Allokation.</para>
+    /// <para>An object rather than a bit pattern: for <c>?int</c> there is no free pattern, since
+    /// every <c>i64</c> is a valid number. Shared globally, so "some" costs no allocation.</para>
     /// </summary>
     private static readonly object SomeMarker = new();
 
     /// <summary>
-    /// Ein Wert, der über ein Interface angesprochen wird: ein <b>Fat Pointer</b> aus dem Objekt
-    /// (<see cref="Ref"/>) und dem Index seines konkreten Typs (<see cref="Bits"/>).
+    /// A value addressed through an interface: a fat pointer of the object (<see cref="Ref"/>) and
+    /// the index of its concrete type (<see cref="Bits"/>).
     ///
-    /// <para>Das ist die Antwort auf ein Problem, das M6 und P1 geschaffen haben: ein Objekt trägt
-    /// <b>kein</b> Typ-Tag, also kann ein <c>callvirt</c> die konkrete Klasse nicht aus dem Objekt
-    /// zurückgewinnen. Sie an den Wert zu heften kostet nichts — <c>Bits</c> ist bei einer
-    /// Referenz ohnehin ungenutzt —, während ein Tag in Slot 0 jeden Feldindex verschoben und
-    /// jedes Objekt ein Wort gekostet hätte, auch die Mehrzahl ohne Interface. Rust macht es mit
-    /// <c>dyn Trait</c> genauso.</para>
+    /// <para>An object carries no type tag, so a <c>callvirt</c> cannot recover the concrete class
+    /// from it. Attaching the index to the value costs nothing, because <c>Bits</c> is unused next
+    /// to a reference.</para>
     ///
-    /// <para>Ein <c>?SomeInterface</c> ist damit ebenfalls unproblematisch: der Fat Pointer trägt
-    /// eine echte Referenz, also reicht sie wie bei jedem anderen Referenztyp als
-    /// Anwesenheits-Marker.</para>
+    /// <para>A <c>?SomeInterface</c> works unchanged: the fat pointer holds a real reference,
+    /// which serves as the presence marker.</para>
     /// </summary>
     public static LyrValue FromInterface(LyrValue instance, int concreteType) =>
         new((ulong)(uint)concreteType, instance.Ref);
 
-    /// <summary>Der konkrete Typindex eines Interface-Wertes — das, worüber <c>callvirt</c>
-    /// nachschlägt.</summary>
+    /// <summary>The concrete type index of an interface value: what <c>callvirt</c> looks up.
+    /// </summary>
     public int ConcreteType => (int)(uint)Bits;
 
     /// <summary>
-    /// Ein <b>Closure-Wert</b> (ADR-018): Environment plus Index der gehobenen Funktion.
+    /// A closure value: environment plus the index of the lifted function.
     ///
-    /// <para>Dieselbe Bauart wie <see cref="FromInterface"/>, und aus demselben Grund: die
-    /// Referenz nimmt das Environment auf, <c>Bits</c> ist daneben frei. Eine Closure ohne
-    /// Captures traegt damit gar keine Referenz und kostet keine Allokation — der haeufige Fall
-    /// bei einem Filter wie <c>(x) =&gt; x &gt; 0</c>.</para>
+    /// <para>The same shape as <see cref="FromInterface"/>: the reference holds the environment
+    /// and <c>Bits</c> is free beside it. A closure without captures holds no reference and costs
+    /// no allocation.</para>
     ///
-    /// <para>Der Index wird um eins erhoeht abgelegt. Sonst waere eine Closure auf Funktion 0
-    /// ohne Environment bitgleich mit <see cref="None"/>, und ein <c>?fn(…)</c> haette „kein
-    /// Wert" nicht mehr von „die erste Funktion" unterscheiden koennen.</para>
+    /// <para>The index is stored incremented by one, so a closure over function 0 without an
+    /// environment is not bit-identical to <see cref="None"/>.</para>
     /// </summary>
     public static LyrValue FromClosure(LyrValue environment, int function) =>
         new((ulong)(uint)(function + 1), environment.Ref);
 
-    /// <summary>Der Funktionsindex eines Closure-Wertes.</summary>
+    /// <summary>The function index of a closure value.</summary>
     public int ClosureFunction => (int)(uint)Bits - 1;
 
-    /// <summary>Traegt diese Closure ein Environment? Ohne Captures gibt es keins.</summary>
+    /// <summary>Does this closure carry an environment? Without captures there is none.</summary>
     public bool HasEnvironment => Ref is not null;
 
-    /// <summary>„Kein Wert" ist eine leere Referenz — einheitlich für alle <c>?T</c>.</summary>
+    /// <summary>"No value" is an empty reference, uniformly for every <c>?T</c>.</summary>
     public static LyrValue None => default;
 
-    /// <summary>Verpackt einen Wert. Ist er selbst eine Referenz, trägt sie sich selbst; sonst
-    /// markiert <see cref="SomeMarker"/> die Anwesenheit und die Zahl bleibt in <see cref="Bits"/>.</summary>
+    /// <summary>Wraps a value. A reference carries itself; otherwise <see cref="SomeMarker"/>
+    /// marks presence and the number stays in <see cref="Bits"/>.</summary>
     public static LyrValue Some(LyrValue value) =>
         value.Ref is not null ? value : new(value.Bits, SomeMarker);
 
     public bool IsSome => Ref is not null;
 
-    /// <summary>Packt aus. Das Gegenstück zu <see cref="Some"/>: der Marker verschwindet, eine
-    /// echte Referenz bleibt stehen.</summary>
+    /// <summary>Unwraps. The counterpart of <see cref="Some"/>: the marker disappears, a real
+    /// reference stays.</summary>
     public LyrValue Unwrap() => ReferenceEquals(Ref, SomeMarker) ? FromBits(Bits) : this;
 
     public long AsI64 => (long)Bits;
@@ -130,16 +114,13 @@ public readonly struct LyrValue
     public float AsF32 => BitConverter.UInt32BitsToSingle((uint)Bits);
     public string AsString => (string)(Ref ?? string.Empty);
 
-    /// <summary>Die Feld-Slots einer Instanz. Wirft bei einer Null-Referenz — die kann in Format
-    /// 1.2 nicht entstehen, weil das Lowering <c>newobj</c> und Feld-Initialisierung immer zusammen
-    /// erzeugt und Optionals noch nicht gelowert werden. Sobald <c>?T</c> dazukommt, wird daraus
-    /// eine echte Diagnose statt eines Wurfs.</summary>
+    /// <summary>The field slots of an instance. Throws on a null reference.</summary>
     public LyrValue[] AsObject => (LyrValue[])(Ref
         ?? throw new InvalidOperationException("null object reference"));
 
-    /// <summary>Stellt die Breiten-Invariante her: auf die Breite des Typs abschneiden, dann je
-    /// nach Vorzeichen wieder auf 64 Bit erweitern. Ohne diesen Schritt würde <c>add i8</c> mit
-    /// 200 + 100 nicht überlaufen, sondern 300 liefern.</summary>
+    /// <summary>Restores the width invariant: truncate to the type's width, then widen back to 64
+    /// bits according to its sign. Without it <c>add i8</c> of 200 + 100 would yield 300 instead of
+    /// overflowing.</summary>
     public static ulong Normalize(TypeTag tag, ulong bits) => tag switch
     {
         TypeTag.I8 => (ulong)(long)(sbyte)bits,
@@ -156,21 +137,16 @@ public readonly struct LyrValue
     };
 
     /// <summary>
-    /// Ein <c>char</c>-Ergebnis muss ein Unicode-Codepoint sein (ADR-022).
+    /// A <c>char</c> result must be a Unicode code point.
     ///
-    /// <para>Die Pruefung sitzt hier, weil <see cref="Normalize"/> der <b>einzige</b> Weg ist, auf
-    /// dem ein Skalar-Ergebnis entsteht: Arithmetik, Neg/BitNot, Cast und Konstante laufen alle
-    /// hier durch. An den vier Rufstellen einzeln zu pruefen hiesse, dieselbe Regel viermal zu
-    /// schreiben — und beim fuenften Opcode zu vergessen.</para>
-    ///
-    /// <para>Ein <c>char</c> ist damit <b>immer</b> gueltig. Alles, was ihn weiterverarbeitet
-    /// (<c>fromChar</c>, Formatierung, ein String-Aufbau), darf sich darauf verlassen und muss
-    /// nicht selbst pruefen.</para>
+    /// <para>The check sits in <see cref="Normalize"/>, the single path through which a scalar
+    /// result is produced: arithmetic, negation, bitwise not, cast and constants all pass here. A
+    /// <c>char</c> is therefore always valid, and everything consuming one may rely on it.</para>
     /// </summary>
     private static ulong CheckedCodepoint(ulong bits)
     {
-        // Signed gelesen: 'a' - 1000 ist negativ und muss als solches auffallen, nicht als
-        // riesige vorzeichenlose Zahl durchrutschen.
+        // Read signed: 'a' - 1000 is negative and must be seen as such, not as a large unsigned
+        // number.
         var value = (long)bits;
         if (Core.Unicode.IsCodepoint(value)) return bits;
 
@@ -182,12 +158,11 @@ public readonly struct LyrValue
         tag is TypeTag.I8 or TypeTag.I16 or TypeTag.I32 or TypeTag.I64;
 
     /// <summary>
-    /// Ganzzahl auf Bytecode-Ebene — <b>einschliesslich <c>Char</c></b> (ADR-022).
+    /// Integer at the bytecode level, including <c>Char</c>.
     ///
-    /// <para>Dieselbe Frage beantworten <c>TypeFacts.IsInteger</c> (Sema, auf <c>LyrType</c>) und
-    /// <c>IrVerifier.IsInteger</c> (auf <c>IrType</c>). Drei Repraesentationen, eine Regel — sie
-    /// muessen zusammen wandern. Fehlte <c>Char</c> hier, fiele <c>c as int</c> in
-    /// <c>Interpreter.Convert</c> in den Fliesskomma-Zweig und lieferte Unsinn.</para>
+    /// <para><c>TypeFacts.IsInteger</c> (on <c>LyrType</c>) and <c>IrVerifier.IsInteger</c> (on
+    /// <c>IrType</c>) answer the same question for the other two representations; the three move
+    /// together.</para>
     /// </summary>
     public static bool IsInteger(TypeTag tag) =>
         tag is TypeTag.I8 or TypeTag.I16 or TypeTag.I32 or TypeTag.I64

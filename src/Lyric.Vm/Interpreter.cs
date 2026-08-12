@@ -4,41 +4,36 @@ using Lyric.Core;
 namespace Lyric.Vm;
 
 /// <summary>
-/// Führt ein geladenes <see cref="BytecodeModule"/> aus.
+/// Executes a loaded <see cref="BytecodeModule"/>.
 ///
-/// <para><b>Keine Sicherheitsprüfungen im heißen Pfad.</b> Der Loader hat beim Lesen alles
-/// validiert — Slot- und Block-Indizes, Call-Ziele, Stack-Bilanz und maximale Tiefe
-/// (<c>LYR-BC####</c>). Die Schleife darf sich darauf verlassen; das ist der Gegenwert für die
-/// Load-Zeit-Validierung aus ADR-013. Was hier noch schiefgehen kann, sind Dinge, die statisch
-/// nicht entscheidbar sind: Division durch Null und zu tiefe Rekursion.</para>
+/// <para>No safety checks in the hot path: the loader validated slot and block indices, call
+/// targets, stack balance and maximum depth. What remains are the failures that are not statically
+/// decidable — division by zero and runaway recursion.</para>
 ///
-/// <para><b>Instruktionen werden einmal vordekodiert</b>, nicht bei jedem Durchlauf neu aus den
-/// Bytes gelesen. In einer Schleife würde sonst jede Iteration dieselben LEB128-Operanden wieder
-/// parsen. Dekodiert wird mit <see cref="CodeDecoder"/> — demselben, den Validator und
-/// Disassembler benutzen, damit keine zweite Lesart entstehen kann.</para>
+/// <para>Instructions are decoded once rather than re-read from the bytes on every pass, using
+/// <see cref="CodeDecoder"/>, the same decoder the validator and the disassembler use.</para>
 ///
-/// <para><b>Expliziter Frame-Stack statt .NET-Rekursion</b>: sonst begrenzte der CLR-Stack die
-/// Lyric-Rekursionstiefe, und ein Stack-Overflow wäre ein Prozessabbruch statt einer Diagnose.</para>
+/// <para>An explicit frame stack rather than .NET recursion, so the CLR stack does not bound
+/// Lyric recursion and an overflow is a diagnostic rather than a process abort.</para>
 /// </summary>
 public static class Interpreter
 {
-    /// <summary>Ab hier gilt Rekursion als entlaufen. Lyric hat keine Endrekursions-Optimierung,
-    /// also ist das die Form, in der sich eine fehlende Abbruchbedingung zeigt.</summary>
+    /// <summary>The depth at which recursion counts as runaway. There is no tail-call
+    /// optimization, so a missing base case surfaces here.</summary>
     private const int MaxCallDepth = 1024;
 
-    /// <summary>Führt die Start-Funktion aus und liefert ihren Rückgabewert.</summary>
+    /// <summary>Runs the start function and returns its value.</summary>
     public static LyrValue Run(BytecodeModule module, NativeRegistry? natives = null) =>
         Run(module, [], natives);
 
-    /// <param name="arguments">Die Argumente des Programms (Bytecode.md §9). Sie landen im
-    /// <c>string[]</c>, das ein <c>fn main(args: string[])</c> bekommt; ein parameterloses
-    /// <c>main</c> ignoriert sie.</param>
+    /// <param name="arguments">The program arguments. They go into the <c>string[]</c> a
+    /// <c>fn main(args: string[])</c> receives; a parameterless <c>main</c> ignores them.</param>
     public static LyrValue Run(BytecodeModule module, IReadOnlyList<string> arguments,
         NativeRegistry? natives = null, Capability granted = Capability.All) =>
         LoadedProgram.Load(module, natives, granted).RunEntry(arguments);
 
-    /// <summary>Die Programm-Argumente als Lyric-<c>string[]</c> — dieselbe Darstellung wie jedes
-    /// andere Array (ein <c>LyrValue[]</c> hinter einer Referenz).</summary>
+    /// <summary>The program arguments as a Lyric <c>string[]</c>: the same representation as any
+    /// other array.</summary>
     internal static LyrValue ArgumentArray(IReadOnlyList<string> arguments)
     {
         var values = new LyrValue[arguments.Count];
@@ -54,8 +49,8 @@ public static class Interpreter
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
 
-        // Der Einstieg bekommt seine Argumente in die Parameter-Slots gelegt — dieselbe
-        // Konvention wie bei jedem anderen Aufruf, nur dass hier kein Aufrufer sie schiebt.
+        // The entry point receives its arguments in the parameter slots, the same convention as
+        // any other call.
         if (entryArguments is not null)
             for (var i = 0; i < entryArguments.Length; i++) frame.Slots[i] = entryArguments[i];
 
@@ -65,8 +60,8 @@ public static class Interpreter
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
-            // Der Backtrace wird hier angehängt, nicht an der Wurfstelle: eine Rechenoperation
-            // kennt ihren Aufrufer nicht, die Schleife dagegen hält den ganzen Frame-Stack.
+            // The backtrace is attached here rather than at the throw site: the loop holds the
+            // frame stack, an arithmetic operation does not.
             var stack = new List<string> { frame.Fn.Source.Name };
             stack.AddRange(frames.Select(f => f.Fn.Source.Name));
             throw panic.WithCallStack(stack);
@@ -96,8 +91,8 @@ public static class Interpreter
                     frame.Slots[(int)instruction.Immediate] = frame.Pop();
                     break;
 
-                // Wie ldloc/stloc, nur modulweit. Der Index ist beim Laden geprueft (ADR-013),
-                // also ist auch das ein Array-Zugriff ohne Pruefung.
+                // As ldloc/stloc but module-wide. The index was checked at load time, so this is
+                // an unchecked array access.
                 case Op.LoadGlobal:
                     frame.Push(globals[(int)instruction.Immediate]);
                     break;
@@ -147,8 +142,8 @@ public static class Interpreter
 
                 case Op.Call:
                 {
-                    // Gemeinsamer Indexraum: erst Imports, dann definierte Funktionen (ADR-013).
-                    // Ein Import bekommt keinen Frame — er läuft im Host und kehrt sofort zurück.
+                    // Shared index space: imports first, then defined functions. An import gets no
+                    // frame; it runs in the host and returns immediately.
                     var index = (int)instruction.Immediate;
                     if (index < natives.Length)
                     {
@@ -167,7 +162,7 @@ public static class Interpreter
 
                     var callee = prepared[index - natives.Length];
                     var next = Frame.For(callee);
-                    // Argumente liegen in Aufrufreihenfolge auf dem Stack, das erste zuunterst.
+                    // Arguments lie on the stack in call order, the first lowest.
                     for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();
 
                     frames.Push(frame);
@@ -175,9 +170,8 @@ public static class Interpreter
                     break;
                 }
 
-                // Ende einer finally-Region: die Aufraeumarbeit ist getan, die Abwicklung geht
-                // weiter, wo sie unterbrochen wurde. Auf dem normalen Pfad wird dieser Block nie
-                // betreten — dort stehen die defer-Rumpfe inline.
+                // End of a finally region: unwinding continues where it was interrupted. On the
+                // normal path this block is never entered; the defer bodies stand inline there.
                 case Op.EndFinally:
                 {
                     if (frame.UnwindType < 0)
@@ -195,14 +189,14 @@ public static class Interpreter
 
                 case Op.Throw:
                 {
-                    // 0 heisst "steht erst zur Laufzeit fest" — dann ist der Wert ein Fat Pointer
-                    // und traegt seinen konkreten Typ selbst (P3).
+                    // 0 means the type is only known at runtime; the value is then a fat pointer
+                    // carrying its concrete type.
                     var thrown = frame.Pop();
                     var declared = (int)instruction.Immediate - 1;
                     var type = declared >= 0 ? declared : thrown.ConcreteType;
 
-                    // Frischer Wurf: die Suche beginnt beim ersten Handler und beim Block, in
-                    // dem geworfen wurde.
+                    // A fresh throw: the search starts at the first handler and the throwing
+                    // block.
                     frame.NextHandler = 0;
                     frame.UnwindBlock = BlockAt(frame, frame.Ip - 1);
 
@@ -212,21 +206,19 @@ public static class Interpreter
                     break;
                 }
 
-                // Wert-Semantik (Sprache.md §3.2). Der Compiler hat entschieden, WO kopiert wird;
-                // hier wird nur noch kopiert.
+                // Value semantics. The compiler decided where to copy; here it is only copied.
                 case Op.StructCopy:
                     frame.Push(CopyStruct(frame.Pop(), types, (int)instruction.Immediate));
                     break;
 
-                // Ein Interface-Wert ist ein Fat Pointer: dasselbe Objekt, plus der konkrete
-                // Typindex in den ungenutzten Bits. Keine Allokation, keine Layout-Aenderung —
-                // und ein Objekt, das nie ueber ein Interface laeuft, zahlt gar nichts.
+                // An interface value is a fat pointer: the same object plus its concrete type
+                // index in the unused bits. No allocation and no layout change.
                 case Op.MakeInterface:
                     frame.Push(LyrValue.FromInterface(frame.Pop(), (int)instruction.Immediate));
                     break;
 
-                // Unterstes Immediate-Bit: liegt ein Environment auf dem Stack? Ohne Captures
-                // nicht — dann ist die Closure reiner Funktionsindex (Bytecode.md §Closures).
+                // Lowest immediate bit: is an environment on the stack? Without captures there is
+                // none, and the closure is a bare function index.
                 case Op.MakeClosure:
                 {
                     var environment = (instruction.Immediate & 1) == 1 ? frame.Pop() : default;
@@ -234,10 +226,9 @@ public static class Interpreter
                     break;
                 }
 
-                // Aufruf ueber einen Funktionswert. Der Aufgerufene liegt UNTER seinen Argumenten;
-                // sein Environment wird als Argument 0 vorangestellt — genau die Position, die bei
-                // einer Methode der Empfaenger belegt (ADR-014). Deshalb braucht dieser Fall
-                // keinen eigenen Frame-Aufbau, nur eine andere Herkunft des Index.
+                // Call through a function value. The callee lies below its arguments, and its
+                // environment is passed as argument 0 — the position a receiver occupies for a
+                // method, so the frame is built the same way.
                 case Op.CallIndirect:
                 {
                     var argCount = (int)(instruction.Immediate >> 1);
@@ -274,15 +265,15 @@ public static class Interpreter
                     break;
                 }
 
-                // Der einzige dynamische Dispatch der Sprache. Empfaenger ist Argument 0 und liegt
-                // zuunterst; sein mitgefuehrter Typ waehlt die Zeile, das Immediate den Slot.
+                // The only dynamic dispatch of the language. The receiver is argument 0 and lies
+                // lowest; the type it carries selects the row, the immediate the slot.
                 case Op.CallVirt:
                 {
                     var iface = (int)instruction.Immediate;
                     var slot = (int)instruction.Immediate2;
 
-                    // Der Empfaenger liegt unter den Argumenten. Ihn zu erreichen, bevor die
-                    // Zielfunktion feststeht, geht nur ueber die vorab bekannte Arity.
+                    // The receiver lies below the arguments, reachable before the target is known
+                    // only through the arity recorded in the table.
                     var receiver = frame.Peek(dispatch.ArityOf(iface, slot) - 1);
                     var index = dispatch.Resolve(receiver.ConcreteType, iface, slot);
 
@@ -310,10 +301,9 @@ public static class Interpreter
                     break;
                 }
 
-                // Ein Objekt ist ein Slot-Array hinter LyrValue.Ref — kein Typ-Tag im Wert. Der
-                // Instruktionsstrom weiß statisch, was vorliegt, also ist ein Feldzugriff ein
-                // Array-Zugriff. Dass Typ- und Feldindex passen, hat der Loader geprüft (ADR-013);
-                // hier findet deshalb keine Prüfung mehr statt.
+                // An object is a slot array behind LyrValue.Ref, with no type tag in the value.
+                // The loader checked that the type and field indices match, so a field access is
+                // an unchecked array access.
                 case Op.NewObject:
                     frame.Push(LyrValue.FromObject(NewInstance(types[(int)instruction.Immediate])));
                     break;
@@ -324,17 +314,14 @@ public static class Interpreter
 
                 case Op.StoreField:
                 {
-                    // Bytecode.md §5: die Referenz liegt UNTER dem Wert, also kommt der Wert zuerst
-                    // herunter.
+                    // The reference lies below the value, so the value comes off first.
                     var value = frame.Pop();
                     frame.Pop().AsObject[(int)instruction.Immediate2] = value;
                     break;
                 }
 
-                // Arrays: dieselbe Darstellung wie Objekte (LyrValue[] hinter Ref) — ein Objekt ist
-                // ein Array mit Namen für seine Slots. Der Index ist hier aber ein LAUFZEITWERT und
-                // deshalb, anders als ein Feldindex, zur Laufzeit zu prüfen: ADR-013 lässt beim
-                // Laden nur prüfen, was der Compiler festgelegt hat.
+                // Arrays share the representation of objects. The index is a runtime value and is
+                // therefore checked here, unlike a field index.
                 case Op.NewArray:
                 {
                     var elements = new LyrValue[(int)instruction.Immediate];
@@ -389,9 +376,9 @@ public static class Interpreter
                     break;
                 }
 
-                // Optionals: "kein Wert" ist eine leere Referenz (Bytecode.md §5). Fuer ?string,
-                // ?T[] und ?Klasse faellt das mit der natuerlichen Darstellung zusammen; nur
-                // Skalare brauchen den Marker, den LyrValue.Some setzt.
+                // "No value" is an empty reference. For ?string, ?T[] and ?class that coincides
+                // with the natural representation; only scalars need the marker LyrValue.Some
+                // sets.
                 case Op.OptNone:
                     frame.Push(LyrValue.None);
                     break;
@@ -414,9 +401,8 @@ public static class Interpreter
                     break;
                 }
 
-                // Enums: eine Variante ist ein gewoehnliches Objekt, dessen Slot 0 ihr Tag traegt.
-                // Der Feldzugriff danach ist ein normales ldfld — deshalb braucht ein Enum keine
-                // eigene Wertdarstellung.
+                // A variant is an ordinary object whose slot 0 carries its tag, so field access is
+                // an ordinary ldfld and an enum needs no representation of its own.
                 case Op.NewVariant:
                 {
                     var layout = types[(int)instruction.Immediate];
@@ -470,20 +456,14 @@ public static class Interpreter
     // ------------------------------------------------------------------ Operationen
 
     /// <summary>
-    /// Eine frische Instanz: ein Slot je Feld, jeder auf dem Nullwert seines Typs.
+    /// A fresh instance: one slot per field, each at the zero value of its type.
     ///
-    /// <para>Kein Feld ist je „uninitialisiert" — <c>.lyrbc</c> ist ein plattformneutraler Vertrag
-    /// (ADR-013), und „undefiniert wie in C" ist an keiner Stelle zulässig (Sprache.md §6.6). Für
-    /// Zahlen, bool und char ist der Nullwert das Nullbitmuster und damit gratis; nur
-    /// <c>string</c> braucht die leere Zeichenkette, weil <c>Ref == null</c> sonst als
-    /// Null-Referenz durchginge.</para>
+    /// <para>No field is ever uninitialized. For numbers, bool and char the zero value is the zero
+    /// bit pattern; <c>string</c> needs the empty string, because <c>Ref == null</c> would
+    /// otherwise read as a null reference.</para>
     /// </summary>
-    /// <summary>
-    /// Ein Element-Index ist ein Laufzeitwert und deshalb hier zu prüfen — anders als Typ- und
-    /// Feldindizes, die der Loader erledigt hat (ADR-013). Eine Verletzung ist ein
-    /// <c>panic</c> (Sprache.md §9): das Programm hat sich verrechnet, der Compiler hat nichts
-    /// falsch gemacht.
-    /// </summary>
+    /// <summary>An element index is a runtime value and is checked here, unlike the type and
+    /// field indices the loader handled. A violation is a panic.</summary>
     private static int CheckedIndex(long index, int length, Frame frame)
     {
         if (index >= 0 && index < length) return (int)index;
@@ -492,9 +472,8 @@ public static class Interpreter
             $"index {index} is outside an array of length {length} in '{frame.Fn.Source.Name}'");
     }
 
-    /// <summary>Das Tag einer Variante: ihr Index in der Variantenliste ihres Enums
-    /// (Bytecode.md §2). Beim Laden gesucht statt im Bytecode mitgeführt — es ist redundant, und
-    /// eine zweite Quelle könnte driften.</summary>
+    /// <summary>The tag of a variant: its index in its enum's variant list. Looked up at load
+    /// time rather than carried in the bytecode.</summary>
     private static long TagOf(IReadOnlyList<BytecodeTypeDef> types, int variant)
     {
         for (var i = 0; i < types.Count; i++)
@@ -509,17 +488,14 @@ public static class Interpreter
     }
 
     /// <summary>
-    /// Eine unabhaengige Kopie eines <c>struct</c>-Wertes.
+    /// An independent copy of a <c>struct</c> value.
     ///
-    /// <para><b>Rekursiv ueber verschachtelte Structs, flach ueber alles andere.</b> Ein Feld vom
-    /// Typ <c>class</c>, <c>T[]</c> oder <c>dyn</c> traegt eine Referenz, und die wird
-    /// <i>geteilt</i>: kopiert wird der Wert, nicht die Welt dahinter. Ein Feld vom Typ
-    /// <c>struct</c> ist dagegen selbst ein Wert und muss mitkopiert werden, sonst saehe man die
-    /// Aenderung an <c>a.inner.x</c> auch bei <c>b</c>.</para>
+    /// <para>Recursive across nested structs, shallow across everything else: a field of class,
+    /// array or interface type carries a reference and shares it, while a struct field is itself a
+    /// value and is copied.</para>
     ///
-    /// <para>Die Rekursion terminiert ohne Zyklen-Erkennung, weil ein struct sich nicht selbst
-    /// enthalten kann — es waere unendlich gross, und die Sema lehnt es als <c>LYR-SEM0056</c> ab.
-    /// Genau deshalb ist diese Pruefung dort keine Bequemlichkeit.</para>
+    /// <para>The recursion terminates without cycle detection, because a struct cannot contain
+    /// itself (<c>LYR-SEM0056</c>).</para>
     /// </summary>
     private static LyrValue CopyStruct(LyrValue value, IReadOnlyList<BytecodeTypeDef> types,
         int typeIndex)
@@ -538,19 +514,17 @@ public static class Interpreter
     }
 
     /// <summary>
-    /// Sucht den Handler fuer einen geworfenen Wert und setzt den Kontrollfluss dorthin.
+    /// Finds the handler for a thrown value and moves control there.
     ///
-    /// <para>Von innen nach aussen: erst die Handler des aktuellen Frames, dann — nach dem
-    /// Verwerfen des Frames — die des Aufrufers. <see cref="IrFunction.Handlers"/> steht bereits
-    /// innerste-zuerst, also gewinnt der erste passende Eintrag; eine Bereichsgroessen-Rechnung
-    /// braucht es nicht.</para>
+    /// <para>Inside out: the handlers of the current frame first, then, after discarding the
+    /// frame, those of the caller. <see cref="IrFunction.Handlers"/> is already innermost-first,
+    /// so the first matching entry wins.</para>
     ///
-    /// <para><b>Typvergleich ist Gleichheit</b>, kein Untertyp-Test. Lyric hat keine Inheritance
-    /// (ADR-003): eine Klasse ist genau ihr Typ. Ein catch-all (<c>CatchType &lt; 0</c>) faengt
-    /// alles.</para>
+    /// <para>The type comparison is equality, not a subtype test: the language has no inheritance.
+    /// A catch-all (<c>CatchType &lt; 0</c>) matches everything.</para>
     ///
-    /// <para>Liefert <c>false</c>, wenn kein Frame einen Handler hat — dann verlaesst die
-    /// Exception den Einstiegspunkt.</para>
+    /// <para>Returns <c>false</c> when no frame has a handler; the exception then leaves the entry
+    /// point.</para>
     /// </summary>
     private static bool Resume(Stack<Frame> frames, ref Frame frame, LyrValue thrown, int type)
     {
@@ -561,16 +535,14 @@ public static class Interpreter
                 var handler = frame.Fn.Handlers[i];
                 if (frame.UnwindBlock < handler.Start || frame.UnwindBlock >= handler.End) continue;
 
-                // Der Stack ist an jeder Blockgrenze leer (Bytecode.md §4) — beim Sprung in einen
-                // Handler muss er das auch sein, sonst blieben Zwischenwerte des abgebrochenen
-                // Ausdrucks liegen.
+                // The stack is empty at every block boundary, so the intermediate values of the
+                // abandoned expression are discarded here.
                 frame.ClearStack();
 
                 if (handler.IsFinally)
                 {
-                    // Aufraeumen, dann weitersuchen. Der Zustand haengt am FRAME, nicht an einer
-                    // Seitenstruktur: er stirbt mit ihm, und ein zweiter Wurf aus dem
-                    // finally-Rumpf ueberschreibt ihn — was richtig ist, denn dann gilt der neue.
+                    // Clean up, then continue the search. The state hangs off the frame and dies
+                    // with it; a second throw from the finally body replaces it.
                     frame.Unwinding = thrown;
                     frame.UnwindType = type;
                     frame.NextHandler = i + 1;
@@ -580,11 +552,9 @@ public static class Interpreter
 
                 if (handler.CatchType >= 0 && handler.CatchType != type) continue;
 
-                // Ein TYPISIERTER Catch kennt den Typ statisch — sein Slot hat ihn, und dort
-                // gehoert die nackte Referenz hinein. Ein CATCH-ALL bindet 'Throwable', also
-                // einen Interface-Typ, und der braucht einen Fat Pointer (P3). Bauen kann ihn
-                // nur diese Stelle: der konkrete Typ steht erst hier fest, und die VM fuehrt ihn
-                // ohnehin mit, weil die Zeile darueber dagegen vergleicht.
+                // A typed catch knows the type statically and takes the bare reference. A
+                // catch-all binds 'Throwable', an interface type, which needs a fat pointer; only
+                // this place knows the concrete type to build it from.
                 if (handler.Slot >= 0)
                     frame.Slots[handler.Slot] = handler.CatchType >= 0
                         ? thrown
@@ -596,16 +566,15 @@ public static class Interpreter
 
             if (frames.Count == 0) return false;
 
-            // Eine Ebene nach aussen: dort faengt die Suche von vorn an, und der Ursprungsblock
-            // ist der Aufrufort.
+            // One level out: the search restarts there, with the call site as the origin block.
             frame = frames.Pop();
             frame.NextHandler = 0;
             frame.UnwindBlock = BlockAt(frame, frame.Ip - 1);
         }
     }
 
-    /// <summary>Der Block, in dem die Instruktion an <paramref name="index"/> steht. Der
-    /// Zeiger steht beim Wurf schon hinter der werfenden Instruktion.</summary>
+    /// <summary>The block the instruction at <paramref name="index"/> belongs to. On a throw the
+    /// pointer already stands past the throwing instruction.</summary>
     private static int BlockAt(Frame frame, int index)
     {
         var at = Math.Max(0, index);
@@ -631,15 +600,15 @@ public static class Interpreter
         TypeTag.F64 => LyrValue.FromF64(instruction.FloatValue),
         TypeTag.Bool => LyrValue.FromBool(instruction.BoolValue),
         TypeTag.String => LyrValue.FromString(strings[(int)instruction.Immediate]),
-        // Ganzzahlen und char: das Immediate IST schon das Bitmuster, muss aber auf die
-        // Breiten-Invariante gebracht werden (i8 kommt als 0x00..0xFF an).
+        // For integers and char the immediate is already the bit pattern, but has to be brought
+        // to the width invariant (i8 arrives as 0x00..0xFF).
         _ => LyrValue.FromBits(LyrValue.Normalize(instruction.Type!.Value, instruction.Immediate)),
     };
 
     private static LyrValue Binary(Op op, TypeTag tag, LyrValue lhs, LyrValue rhs)
     {
         if (tag == TypeTag.F64) return LyrValue.FromF64(FloatOp(op, lhs.AsF64, rhs.AsF64));
-        // f32 muss in einfacher Genauigkeit gerechnet werden, nicht in doppelter und dann gerundet.
+        // f32 is computed in single precision, not in double and then rounded.
         if (tag == TypeTag.F32) return LyrValue.FromF32((float)FloatOp(op, lhs.AsF32, rhs.AsF32));
 
         var signed = LyrValue.IsSigned(tag);
@@ -661,8 +630,8 @@ public static class Interpreter
                 {
                     var a = lhs.AsI64;
                     var b = rhs.AsI64;
-                    // MinValue / -1 überläuft im Zweierkomplement; .NET wirft dabei. Lyric wickelt
-                    // um wie jede andere Ganzzahl-Operation auch.
+                    // MinValue / -1 overflows in two's complement and .NET throws; Lyric wraps as
+                    // every other integer operation does.
                     if (b == -1) { result = op == Op.Div ? unchecked((ulong)(-a)) : 0UL; break; }
                     result = op == Op.Div ? unchecked((ulong)(a / b)) : unchecked((ulong)(a % b));
                 }
@@ -673,10 +642,8 @@ public static class Interpreter
                 break;
             }
 
-            // Sprache.md §6.5: der Schiebebetrag wird modulo der OPERANDENBREITE genommen, nicht
-            // modulo 64. Bei 64 zu maskieren und danach auf die Zielbreite zu normalisieren wäre
-            // eine Mischform: `1 << 9` ergäbe bei int8 dann 0, bei int64 aber 2 — dieselbe Regel
-            // mit verschiedenem Ergebnis je nach Typ.
+            // The shift amount is taken modulo the operand width, not modulo 64: masking at 64
+            // and normalizing afterwards would make `1 << 9` yield 0 for int8 and 2 for int64.
             case Op.Shl: result = unchecked(lhs.Bits << ShiftCount(tag, rhs.Bits)); break;
             case Op.Shr:
                 result = signed
@@ -695,8 +662,7 @@ public static class Interpreter
         return LyrValue.FromBits(LyrValue.Normalize(tag, result));
     }
 
-    /// <summary>Schiebebetrag modulo Operandenbreite (Sprache.md §6.5) — dieselbe Regel wie in
-    /// C#, Java und WASM.</summary>
+    /// <summary>Shift amount modulo the operand width.</summary>
     private static int ShiftCount(TypeTag tag, ulong count) =>
         (int)(count & (ulong)(BitWidth(tag) - 1));
 
@@ -751,8 +717,8 @@ public static class Interpreter
             };
         }
 
-        // bool und char vergleichen sich wie vorzeichenlose Ganzzahlen — nur eq/ne sind gültig,
-        // das hat der Verifier schon durchgesetzt.
+        // bool and char compare as unsigned integers; only eq/ne are valid, which the verifier
+        // has already enforced.
         return op switch
         {
             Op.Lt => lhs.Bits < rhs.Bits, Op.Le => lhs.Bits <= rhs.Bits,
@@ -794,13 +760,9 @@ public static class Interpreter
     }
 
     /// <summary>
-    /// Fließkomma → Ganzzahl: abschneiden Richtung Null, außerhalb des Wertebereichs auf die
-    /// Grenze klemmen, NaN auf 0. Das ist WASMs <c>trunc_sat</c>-Verhalten.
-    ///
-    /// <para>Die Alternative wäre, es undefiniert zu lassen wie C — dann liefert dieselbe
-    /// <c>.lyrbc</c>-Datei auf zwei Runtimes verschiedene Ergebnisse, und ADR-013s Versprechen
-    /// einer zweiten Implementierung wäre nichts wert. <b>Steht noch nicht in Sprache.md</b> und
-    /// gehört dort hinein.</para>
+    /// Float to integer: truncate towards zero, clamp outside the range, NaN to 0. This is WASM's
+    /// <c>trunc_sat</c> behaviour, defined rather than left to the platform so the same
+    /// <c>.lyrbc</c> gives the same result on every runtime.
     /// </summary>
     private static ulong FloatToInt(double value, TypeTag to)
     {
@@ -834,22 +796,22 @@ public static class Interpreter
 
     // ------------------------------------------------------------------ Frames
 
-    /// <summary>Eine Funktion, einmal dekodiert. Der Sprung auf einen Block wird damit zu einem
-    /// Array-Zugriff statt zu einer Suche im Byte-Strom.</summary>
+    /// <summary>A function, decoded once, so a jump to a block is an array access rather than a
+    /// search through the byte stream.</summary>
     internal sealed class Prepared
     {
         public required BytecodeFunction Source { get; init; }
         public required BytecodeInstruction[] Instructions { get; init; }
         public required int[] BlockStart { get; init; }
 
-        /// <summary>Die geschuetzten Regionen dieser Funktion, innerste zuerst.</summary>
+        /// <summary>The protected regions of this function, innermost first.</summary>
         public BytecodeHandler[] Handlers { get; init; } = [];
 
-        /// <summary>Zu welchem Block gehoert die Instruktion an Index <c>i</c>?
+        /// <summary>Which block the instruction at index <c>i</c> belongs to.
         ///
-        /// <para>Handler-Bereiche sind Block-Bereiche, der Frame kennt aber nur seinen
-        /// Instruktionszeiger. Die Zuordnung einmal beim Laden zu bauen macht die Handler-Suche
-        /// zu einem Array-Zugriff statt einer Suche in der Block-Offset-Tabelle.</para></summary>
+        /// <para>Handler ranges are block ranges while a frame holds an instruction pointer.
+        /// Building the mapping once at load time makes the handler search an array access.</para>
+        /// </summary>
         public int[] BlockOfInstruction { get; init; } = [];
 
         public static Prepared From(BytecodeFunction function, BytecodeHandler[] handlers)
@@ -862,8 +824,7 @@ public static class Interpreter
             for (var b = 0; b < blockStart.Length; b++)
                 blockStart[b] = indexByOffset[function.BlockOffsets[b]];
 
-            // Umkehrung der Block-Tabelle: jede Instruktion bekommt ihren Block. Einmal beim
-            // Laden, damit die Handler-Suche zur Laufzeit ein Array-Zugriff ist.
+            // Inverts the block table so every instruction knows its block.
             var blockOf = new int[instructions.Length];
             for (var b = 0; b < blockStart.Length; b++)
             {
@@ -887,27 +848,24 @@ public static class Interpreter
         public int Sp;
         public int Ip;
 
-        /// <summary>Die Exception, die gerade durch diesen Frame laeuft — <c>UnwindType &lt; 0</c>
-        /// heisst „keine".
+        /// <summary>The exception currently unwinding through this frame; <c>UnwindType &lt; 0</c>
+        /// means none.
         ///
-        /// <para>Gebraucht wird das nur zwischen dem Betreten einer <c>finally</c>-Region und
-        /// ihrem <c>endfinally</c>: solange laeuft gewoehnlicher Code, aber die Abwicklung ist
-        /// nicht abgeschlossen.</para></summary>
+        /// <para>Needed only between entering a <c>finally</c> region and its <c>endfinally</c>,
+        /// where ordinary code runs while the unwind is still in progress.</para></summary>
         public LyrValue Unwinding;
 
         public int UnwindType = -1;
 
-        /// <summary>Ab welchem Handler die Suche nach dem <c>endfinally</c> weitergeht. Ohne den
-        /// Index faende dieselbe finally-Region sich selbst wieder.</summary>
+        /// <summary>Which handler the search resumes at after the <c>endfinally</c>. Without the
+        /// index the same finally region would find itself again.</summary>
         public int NextHandler;
 
-        /// <summary>Der Block, in dem geworfen wurde. Bleibt ueber ein <c>finally</c> hinweg
-        /// stehen: die Handler-Bereiche sprechen ueber den Ursprung, nicht ueber die Stelle, an
-        /// der die Aufraeumarbeit endet.</summary>
+        /// <summary>The block the throw came from. It survives a <c>finally</c>, because handler
+        /// ranges talk about the origin.</summary>
         public int UnwindBlock;
 
-        /// <summary>Block 0 ist der Einstieg — die IR garantiert <c>Entry == bb0</c>, und das
-        /// Format schreibt es fest.</summary>
+        /// <summary>Block 0 is the entry block, as the format requires.</summary>
         public static Frame For(Prepared fn) => new()
         {
             Fn = fn,
@@ -919,13 +877,12 @@ public static class Interpreter
         public void Push(LyrValue value) => Stack[Sp++] = value;
         public LyrValue Pop() => Stack[--Sp];
 
-        /// <summary>Leert den Operanden-Stack. Beim Sprung in einen Handler noetig: der
-        /// abgebrochene Ausdruck kann Zwischenwerte hinterlassen haben, und ein Handler-Block
-        /// faengt wie jeder Block mit leerem Stack an.</summary>
+        /// <summary>Empties the operand stack, needed when jumping into a handler: a handler
+        /// block starts empty like every other block.</summary>
         public void ClearStack() => Sp = 0;
 
-        /// <summary>Liest ohne zu entnehmen; <paramref name="depth"/> 0 ist das oberste Element.
-        /// Gebraucht von <c>callvirt</c>, das seinen Empfaenger unter den Argumenten findet.</summary>
+        /// <summary>Reads without popping; <paramref name="depth"/> 0 is the top element. Used by
+        /// <c>callvirt</c>, whose receiver lies below the arguments.</summary>
         public LyrValue Peek(int depth) => Stack[Sp - 1 - depth];
     }
 }
