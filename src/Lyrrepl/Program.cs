@@ -3,11 +3,10 @@ using Lyric.Core;
 namespace Lyric.Cli.Repl;
 
 /// <summary>
-/// <c>lyrrepl</c> — die interaktive Schleife (ADR-021).
+/// <c>lyrrepl</c> — the interactive prompt.
 ///
-/// <para>Das vierte Werkzeug neben <c>lyrc</c>, <c>lyrvm</c> und dem Treiber, und das erste mit
-/// <b>beiden</b> Bibliotheken: eine REPL übersetzt und führt aus, und der Zustand muss dazwischen
-/// leben. <c>lyric run</c> löst das über zwei Subprozesse — hier geht das nicht.</para>
+/// <para>The only tool that holds both libraries: it compiles and executes, and the session state
+/// lives between the two.</para>
 /// </summary>
 public static class Program
 {
@@ -38,7 +37,7 @@ public static class Program
             Console.Write(Prompt);
             var line = Console.ReadLine();
 
-            // EOF (Ctrl+D, oder eine Pipe, die endet) ist kein Fehler, sondern das Ende.
+            // EOF (Ctrl+D, or a pipe that ends) terminates the loop.
             if (line is null) return ExitCodes.Success;
 
             var input = line.Trim();
@@ -54,9 +53,8 @@ public static class Program
         }
     }
 
-    /// <summary>Die Doppelpunkt-Kommandos. Sie beginnen mit <c>:</c>, weil das in Lyric kein
-    /// Anfang eines Statements ist — ein Kommando kann damit nie mit gültigem Code kollidieren.
-    /// </summary>
+    /// <summary>The colon commands. No Lyric statement starts with <c>:</c>, so a command cannot
+    /// collide with valid code.</summary>
     private static bool Command(string input, Session session, out int exit)
     {
         exit = ExitCodes.Success;
@@ -76,8 +74,7 @@ public static class Program
                 return false;
 
             case ":list" or ":l":
-                // Was die Sitzung ueber die Eingaben hinweg behalten hat. Ohne das raet man,
-                // welche Deklarationen noch gelten — besonders nach einem Fehlschlag.
+                // What the session kept across entries.
                 if (session.Declarations.Count == 0) Console.WriteLine("(nothing declared yet)");
                 else foreach (var declaration in session.Declarations) Console.WriteLine(declaration);
                 return false;
@@ -88,9 +85,8 @@ public static class Program
         }
     }
 
-    /// <summary>Wo die Stdlib liegt: <c>--stdlib</c>, sonst <c>LYRIC_STDLIB</c>, sonst neben dem
-    /// Binary. Dieselbe Staffelung wie bei <c>lyrc</c> — eine zweite waere eine zweite Wahrheit
-    /// darüber, wo die Bibliothek wohnt.</summary>
+    /// <summary>Where the standard library lives: <c>--stdlib</c>, then <c>LYRIC_STDLIB</c>,
+    /// then next to the binary — the same precedence as <c>lyrc</c>.</summary>
     private static string? StdlibRoot(string[] args)
     {
         var index = Array.IndexOf(args, "--stdlib");

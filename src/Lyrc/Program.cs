@@ -7,15 +7,13 @@ using Lyric.Lexing;
 namespace Lyric.Cli.Compiler;
 
 /// <summary>
-/// <c>lyrc</c> — der Compiler (ADR-017).
+/// <c>lyrc</c> — the compiler.
 ///
-/// <para>Technische Oberflaeche: ein Job pro Aufruf, keine Bequemlichkeit, keine Ausfuehrung.
-/// Die Debug-Dumps (<c>tokenize</c>, <c>parse</c>, <c>lower</c>) wohnen hier und <b>nicht</b> im
-/// Treiber — sie sind Compiler-Interna, und genau daran haengt der Unterschied zwischen
-/// „technisch" und „komfortabel".</para>
+/// <para>One job per invocation; it never executes anything. The debug dumps
+/// (<c>tokenize</c>, <c>parse</c>, <c>lower</c>) live here rather than in the driver.</para>
 ///
-/// <para>Alle Kommandos laufen ueber <see cref="SourceCompiler"/>. Dieses Programm enthaelt keine
-/// Pipeline-Logik, nur Argument-Auswertung und Ausgabe.</para>
+/// <para>Every command runs through <see cref="SourceCompiler"/>. This program holds no pipeline
+/// logic, only argument handling and output.</para>
 /// </summary>
 public static class Program
 {
@@ -44,7 +42,8 @@ public static class Program
         };
     }
 
-    /// <summary>Compiliert nach <c>.lyrbc</c>. Ohne <c>-o</c> neben die Quelle.</summary>
+    /// <summary>Compiles to <c>.lyrbc</c>. Without <c>-o</c> the output lands next to the
+    /// source.</summary>
     private static int Build(string path, string[] args, TerminalOutput terminal)
     {
         var output = Flag(args, "-o") ?? Flag(args, "--output")
@@ -68,7 +67,7 @@ public static class Program
         return ExitCodes.Success;
     }
 
-    /// <summary>Resolve + Sema, sonst nichts. Kein Lowering, keine Datei erzeugt.</summary>
+    /// <summary>Resolve and sema only: no lowering, no file produced.</summary>
     private static int Check(string path, string[] args, TerminalOutput terminal)
     {
         var result = SourceCompiler.Check(path, Options(args, terminal));
@@ -79,8 +78,8 @@ public static class Program
         return ExitCodes.Success;
     }
 
-    /// <summary>Debug-Ausgabe der Mid-IR. Lowert nur, wenn die Sema fehlerfrei war — auf
-    /// fehlerhaftem AST waere jedes Lowering-Ergebnis Raten.</summary>
+    /// <summary>Debug output of the mid-level IR. Lowers only when sema reported no errors.
+    /// </summary>
     private static int Lower(string path, string[] args, TerminalOutput terminal)
     {
         var result = SourceCompiler.Lower(path, Options(args, terminal));
@@ -121,16 +120,16 @@ public static class Program
         return diagnostics.HasErrors ? ExitCodes.Failure : ExitCodes.Success;
     }
 
-    /// <summary>Was der Compiler ausser der Datei braucht. <c>--stdlib</c> schlaegt
-    /// <c>LYRIC_STDLIB</c> — dieselbe Staffelung wie <c>--vm</c>/<c>LYRIC_VM</c> im Treiber.</summary>
+    /// <summary>What the compiler needs besides the file. <c>--stdlib</c> beats
+    /// <c>LYRIC_STDLIB</c>.</summary>
     private static CompilerOptions Options(string[] args, TerminalOutput terminal) => new()
     {
         StdlibRoot = Flag(args, "--stdlib"),
         Progress = terminal,
     };
 
-    /// <summary>Jedes Kommando hier nimmt genau eine Pflicht-Datei. Die Pruefung einmal statt
-    /// fuenfmal — die alte CLI hatte sie kopiert, mit fuenf leicht verschiedenen Meldungen.</summary>
+    /// <summary>Every command here takes exactly one required file; the check lives in one
+    /// place.</summary>
     private static int WithFile(string[] args, string command, TerminalOutput terminal,
         Func<string, string[], TerminalOutput, int> run)
     {
