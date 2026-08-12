@@ -2250,7 +2250,6 @@ internal sealed class FunctionLowerer
         // Bis 2026-08-06 wurde er immer angelegt, und der haeufigste Statement-Fall —
         // 'match (e) { A => { return 1; }, B => { return 2; } }' — war deshalb eine Scope-Grenze.
         BlockId? merge = null;
-        var reachesMerge = false;
 
         for (var i = 0; i < arms.Length; i++)
         {
@@ -2288,7 +2287,6 @@ internal sealed class FunctionLowerer
             {
                 merge ??= _b.NewBlock();
                 _b.Seal(new Branch(merge.Value, arm.Span));
-                reachesMerge = true;
             }
 
             if (next is { } fallthrough)
