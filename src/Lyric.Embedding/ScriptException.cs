@@ -1,38 +1,27 @@
 namespace Lyric.Embedding;
 
 /// <summary>
-/// Ein Skript ist zur Laufzeit gescheitert.
+/// A script failed at runtime.
 ///
-/// <para><b>Warum die Embedding-API eigene Ausnahmen hat.</b> Die Runtime wirft
-/// <c>LyricRuntimeException</c> und <c>LyricPanic</c>, und beide leben in <c>lyrrt</c> — einer
-/// Assembly, die ein Host <b>nicht referenziert</b>. Er bekaeme also Ausnahmen, die er nicht
-/// benennen und damit nicht gezielt fangen kann; uebrig bliebe <c>catch (Exception)</c>. Eine
-/// Oberflaeche, deren Fehler man nur pauschal fangen kann, ist keine.</para>
-///
-/// <para>Aufgefallen beim Schreiben des ersten Tests — und zwar deshalb, weil das Testprojekt
-/// bewusst <b>nur</b> <c>lyrembed</c> referenziert. Haette es lyrrt mitgenommen, waere der Test
-/// gruen gewesen und die Luecke unsichtbar geblieben.</para>
-///
-/// <para>Die urspruengliche Ausnahme haengt als <see cref="Exception.InnerException"/> daran;
-/// nichts geht verloren.</para>
+/// <para>Declared here rather than in the runtime assembly, which a host does not reference and
+/// whose exception types it therefore could not name in a <c>catch</c>. The original exception
+/// hangs off <see cref="Exception.InnerException"/>.</para>
 /// </summary>
 public class ScriptException : Exception
 {
     internal ScriptException(string code, string message, Exception? inner)
         : base(message, inner) => Code = code;
 
-    /// <summary>Der Diagnose-Code (<c>LYR-VM####</c>), stabil ueber Versionen hinweg.</summary>
+    /// <summary>The diagnostic code (<c>LYR-VM####</c>), stable across versions.</summary>
     public string Code { get; }
 }
 
 /// <summary>
-/// Das Skript hat seinen eigenen Vertrag gebrochen: Division durch Null, ein Force-Unwrap auf
-/// <c>null</c>, ein ausdrueckliches <c>panic</c> (§9, §17.1).
+/// The script panicked: division by zero, a force-unwrap of an absent value, an explicit
+/// <c>panic</c>.
 ///
-/// <para>Getrennt von <see cref="ScriptException"/>, weil die Unterscheidung fuer den Host zaehlt:
-/// „das Modul darf das nicht" ist eine Konfigurationsfrage und beantwortbar, „das Skript hat einen
-/// Bug" ist eine Meldung an dessen Autor. Sie einzuebnen hiesse, die Linie aus §17.1 an der
-/// Host-Grenze wieder aufzugeben.</para>
+/// <para>Separate from <see cref="ScriptException"/>, which covers a script the host is not
+/// permitted or able to run.</para>
 /// </summary>
 public sealed class ScriptPanicException : ScriptException
 {

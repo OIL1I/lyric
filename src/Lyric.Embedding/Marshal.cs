@@ -5,29 +5,21 @@ using Lyric.Vm;
 namespace Lyric.Embedding;
 
 /// <summary>
-/// Werte ueber die Host-Grenze: .NET → Lyric und zurueck (M10/E2).
+/// Values across the host boundary: .NET to Lyric and back.
 ///
-/// <para><b>Nur Skalare und Strings.</b> Das ist dieselbe Linie, die die
-/// <see cref="NativeRegistry"/> seit M6 zieht, und sie hat einen Grund: ein Objekt hat ein
-/// <b>Layout</b>, und das nach aussen zu geben machte die Feldreihenfolge eines Moduls zum
-/// oeffentlichen Vertrag. Dann koennte die Erreichbarkeitsanalyse nichts mehr streichen, und ein
-/// Format-Bump braeche jeden Host. Host-Typen kommen in E4 ueber opake Handles — nicht ueber
-/// Layout-Wissen.</para>
+/// <para>Scalars, strings and registered host types cross. A Lyric object does not: its field
+/// layout stays internal.</para>
 ///
-/// <para><b>Verlustfrei oder gar nicht.</b> Jede Wandlung prueft den Wertebereich des Zieltyps und
-/// wirft, statt still abzuschneiden. Ein <c>long</c>, das als <c>int8</c> ankommt und dabei zu
-/// <c>-1</c> wird, ist genau die Sorte Fehler, die erst drei Ebenen spaeter auffaellt. Innerhalb
-/// von Lyric wickelt Arithmetik definiert um (§6.6) — aber das ist eine Rechnung des Programms,
-/// keine stille Umdeutung an der Grenze.</para>
+/// <para>Every conversion checks the range of the target type and throws rather than truncating.
+/// </para>
 /// </summary>
 internal static class Marshal
 {
-    /// <summary>Ein .NET-Wert als Lyric-Wert des erwarteten Typs.</summary>
+    /// <summary>A .NET value as a Lyric value of the expected type.</summary>
     public static LyrValue ToLyric(object? value, BytecodeType expected, string what)
     {
-        // Ein Host-Objekt (ADR-026) reist unveraendert: die VM sieht nur eine Referenz und fasst
-        // sie nie an — genau wie bei einem 'string', der seit M6 in 'Ref' liegt. Kein Kopieren,
-        // kein Wrappen; die Identitaet ist die Zusage.
+        // A host object travels unchanged: the VM holds the reference and never touches it. No
+        // copy, no wrapper; identity is preserved.
         if (expected.Tag == TypeTag.Host)
         {
             if (value is null)
@@ -67,22 +59,19 @@ internal static class Marshal
         };
     }
 
-    /// <summary>Ein Lyric-Wert als .NET-Wert vom Typ <typeparamref name="T"/>.</summary>
+    /// <summary>A Lyric value as a .NET value of type <typeparamref name="T"/>.</summary>
     public static T FromLyric<T>(LyrValue value, BytecodeType actual, string what) =>
         (T)FromLyric(value, actual, typeof(T), what)!;
 
     /// <summary>
-    /// Wie <see cref="FromLyric{T}"/>, aber mit dem Zieltyp als Wert.
+    /// As <see cref="FromLyric{T}"/>, but with the target type passed as a value.
     ///
-    /// <para>Gebraucht fuer Host-Funktionen (E3): deren Parametertypen stehen erst zur Laufzeit
-    /// fest, und ein <c>FromLyric&lt;object&gt;</c> reichte nicht — es lieferte fuer ein
-    /// <c>int32</c> ein <c>long</c>, und der Delegat erwartet ein <c>int</c>.</para>
+    /// <para>Used for host functions, whose parameter types are only known at runtime.</para>
     /// </summary>
     public static object? FromLyric(LyrValue value, BytecodeType actual, Type wanted, string what)
     {
 
-        // 'void' hat keinen Wert. Ein Host, der trotzdem einen will, hat die Signatur falsch
-        // gelesen — und ein stiller default(T) verstellte ihm den Blick darauf.
+        // 'void' has no value; returning default(T) would hide a misread signature.
         if (actual.Tag == TypeTag.Void)
         {
             if (wanted == typeof(object) || Nullable.GetUnderlyingType(wanted) is not null)
@@ -127,8 +116,7 @@ internal static class Marshal
         }
     }
 
-    /// <summary>Wie ein Typ in einer Meldung heisst — die Lyric-Schreibweise, nicht die des
-    /// Tags.</summary>
+    /// <summary>How a type is named in a message: the Lyric spelling, not the tag's.</summary>
     public static string Describe(BytecodeType type) => type.Tag switch
     {
         TypeTag.Void => "void",
@@ -149,8 +137,8 @@ internal static class Marshal
         TypeTag.Optional => "an optional",
         TypeTag.Ref or TypeTag.Enum => "an object",
 
-        // Ein Host-Typ heisst so, wie der Host ihn registriert hat — mehr traegt er nicht, und
-        // genau dieser Name landet in der erzeugten Deklaration.
+        // A host type is named as the host registered it; that name is what the generated
+        // declaration carries.
         TypeTag.Host => type.HostName ?? "a host type",
         _ => type.Tag.ToString().ToLowerInvariant(),
     };
@@ -159,9 +147,8 @@ internal static class Marshal
     {
         double d => d,
         float f => f,
-        // Ganzzahlen sind hier erlaubt: '3' fuer einen 'float'-Parameter ist genau das, was ein
-        // Host schreibt, und es ist verlustfrei. Der umgekehrte Weg — '3.5' fuer ein 'int' —
-        // waere es nicht und ist unten ausgeschlossen.
+        // Integers are accepted for a float parameter: the widening is lossless. The reverse is
+        // rejected below.
         sbyte or byte or short or ushort or int or uint or long
             => Convert.ToDouble(value, CultureInfo.InvariantCulture),
         _ => throw Mismatch(what, expected, value, "a number"),
@@ -197,13 +184,8 @@ internal static class Marshal
         return asLong;
     }
 
-    /// <summary>
-    /// Passt der Wert in die Breite des Zieltyps?
-    ///
-    /// <para>Geprueft und nicht abgeschnitten: <c>300</c> als <c>int8</c> waere <c>44</c>, und das
-    /// merkt niemand. Innerhalb von Lyric wickelt Arithmetik um (§6.6) — das ist eine Rechnung
-    /// des Programms und etwas anderes als eine Umdeutung beim Uebergeben.</para>
-    /// </summary>
+    /// <summary>Does the value fit the width of the target type? Checked, not truncated:
+    /// <c>300</c> as <c>int8</c> would be <c>44</c>.</summary>
     private static bool FitsIn(long value, TypeTag tag, object original) => tag switch
     {
         TypeTag.I8 => value is >= sbyte.MinValue and <= sbyte.MaxValue,
@@ -213,9 +195,8 @@ internal static class Marshal
         TypeTag.U8 => value is >= 0 and <= byte.MaxValue,
         TypeTag.U16 => value is >= 0 and <= ushort.MaxValue,
         TypeTag.U32 => value is >= 0 and <= uint.MaxValue,
-        // 'uint' ist 64 Bit breit: jedes Bitmuster passt. Ein negatives 'long' waere aber ein
-        // anderer Wert als der, den der Host meinte — 'ulong' geht deshalb oben unveraendert
-        // durch, ein negatives Vorzeichen hier nicht.
+        // 'uint' is 64 bits wide, so every bit pattern fits; a negative 'long' would arrive as a
+        // different value and is rejected.
         TypeTag.U64 => original is ulong || value >= 0,
         _ => true,
     };
