@@ -988,6 +988,29 @@ pub interface Container<T> {
 }
 ```
 
+Bei einem **generischen Enum** stehen die Typargumente am Enum, nicht an der Variante — sie
+gehören ihm:
+
+```lyr
+pub enum Ergebnis<T> {
+    Ok(T),
+    Fehler { grund: string },
+}
+
+let a = Ergebnis<int>.Ok(5);
+let b = Ergebnis<int>.Fehler { grund = "leer" };
+
+let c: Ergebnis<int> = Ergebnis.Ok(7);   // auch ohne: der annotierte Typ sagt es
+
+return match (a) {
+    Ok(v) => v,
+    Fehler { grund } => 0,
+};
+```
+
+Weglassen geht nur, wo der erwartete Typ sie hergibt — wie bei `c`. In einer Argumentposition
+(`nimm(Ergebnis.Ok(7))`) reicht er nicht hin; dort schreibst du sie hin.
+
 ### 16.1 Constraints
 
 ```lyr

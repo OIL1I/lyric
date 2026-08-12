@@ -310,26 +310,35 @@ internal sealed class TypeTable
 
     public bool IsInterface(TypeId id) => _defs[id.Value].IsInterface;
 
-    /// <summary>Der Types-Index einer Variante. Sie ist ein eigener Layout-Eintrag (ADR-016s
-    /// Nachbar-Entscheidung, Bytecode.md §2); ihr Slot 0 ist das Tag.</summary>
-    public TypeId VariantOf(TypeSymbol enumSymbol, string variantName, Core.Span span)
+    /// <summary>
+    /// Der Types-Index einer Variante. Sie ist ein eigener Layout-Eintrag (ADR-016s
+    /// Nachbar-Entscheidung, Bytecode.md §2); ihr Slot 0 ist das Tag.
+    ///
+    /// <para><b>Der Eintrag kommt herein, er wird nicht hier bestimmt.</b> Bei einem generischen
+    /// Enum haengt die Variante an der INSTANZ — <c>Opt&lt;int&gt;.Some</c> und
+    /// <c>Opt&lt;string&gt;.Some</c> sind verschiedene Layouts. Wuerde diese Methode den Eintrag
+    /// selbst aus dem Symbol bestimmen, entschiede sie ein zweites Mal, welche Instanz gemeint
+    /// ist — und zwar ohne die Typargumente zu kennen.</para>
+    /// </summary>
+    public TypeId VariantOf(TypeId enumId, string variantName, Core.Span span)
     {
-        var id = Intern(enumSymbol);
-        var index = Array.IndexOf(_variantNames[id.Value], variantName);
-        if (index >= 0) return _defs[id.Value].Variants[index];
+        var index = Array.IndexOf(_variantNames[enumId.Value], variantName);
+        if (index >= 0) return _defs[enumId.Value].Variants[index];
 
         throw new UnsupportedConstructException(
-            $"'{enumSymbol.Name}' has no variant '{variantName}'", span);
+            $"'{_defs[enumId.Value].Name}' has no variant '{variantName}'", span);
     }
 
-    /// <summary>Die Tag-Nummer einer Variante — ihr Index in der Deklarationsreihenfolge.</summary>
-    public int TagOf(TypeSymbol enumSymbol, string variantName, Core.Span span)
+    /// <summary>Die Tag-Nummer einer Variante — ihr Index in der Deklarationsreihenfolge. Sie ist
+    /// fuer alle Instanzen dieselbe, weil sie aus der Deklaration kommt; der EINTRAG ist es
+    /// nicht.</summary>
+    public int TagOf(TypeId enumId, string variantName, Core.Span span)
     {
-        var index = Array.IndexOf(_variantNames[Intern(enumSymbol).Value], variantName);
+        var index = Array.IndexOf(_variantNames[enumId.Value], variantName);
         if (index >= 0) return index;
 
         throw new UnsupportedConstructException(
-            $"'{enumSymbol.Name}' has no variant '{variantName}'", span);
+            $"'{_defs[enumId.Value].Name}' has no variant '{variantName}'", span);
     }
 
     public TypeId Intern(TypeSymbol symbol) => Intern(symbol, []);
@@ -375,12 +384,7 @@ internal sealed class TypeTable
                 }
 
                 if (symbol.Kind == TypeSymbolKind.Enum)
-                {
-                    var id = InternEnum(symbol);
-                    _instances[instanceName] = id;
-                    _instanceSymbols.Add((symbol, id, typeArguments.ToArray()));
-                    return id;
-                }
+                    return InternEnum(symbol, instanceName, _instances, typeArguments.ToArray());
 
                 return InternLayout(symbol, instanceName, _instances,
                     typeArguments.ToArray());
@@ -501,19 +505,29 @@ internal sealed class TypeTable
     /// sich über eine Variante selbst nennen (<c>enum Tree { Leaf, Node(Tree, Tree) }</c>), und
     /// ohne die vorgezogene Id liefe das in eine Endlosschleife.</para>
     /// </summary>
-    private TypeId InternEnum(TypeSymbol symbol)
-    {
-        if (symbol.Generics.Length > 0)
-            throw new UnsupportedConstructException(
-                $"generic enum '{symbol.Name}' is not supported by this compiler version yet",
-                SpanOf(symbol));
+    private TypeId InternEnum(TypeSymbol symbol) => InternEnum(symbol, symbol.Name, null, null);
 
+    /// <param name="name">Bei einer Instanz der volle Name (<c>Opt&lt;int&gt;</c>). Er steht in
+    /// Disassembly und Diagnosen, und die Varianten erben ihn.</param>
+    /// <param name="registry">Bei einer Instanz die Instanz-Map, sonst <c>null</c>. Wie bei
+    /// <see cref="InternLayout"/>: ein generisches Enum darf sich <b>nicht</b> unter seinem Symbol
+    /// eintragen, sonst bekaeme <c>Opt&lt;string&gt;</c> die Id von <c>Opt&lt;int&gt;</c> — und
+    /// damit dessen Varianten-Layouts, also einen <c>i64</c>-Slot fuer einen String.</param>
+    private TypeId InternEnum(TypeSymbol symbol, string name, Dictionary<string, TypeId>? registry,
+        LyrType[]? instanceArguments)
+    {
         if (symbol.Declaration is not EnumDecl decl)
             throw new UnsupportedConstructException(
                 $"enum '{symbol.Name}' has no declaration to read its variants from", SpanOf(symbol));
 
+        // Id eintragen, BEVOR die Varianten interniert werden — ein Enum darf sich ueber eine
+        // Variante selbst nennen ('enum Tree<T> { Leaf, Node(Tree<T>, Tree<T>) }'), und ohne die
+        // vorgezogene Eintragung liefe genau das in eine Endlosschleife. Fuer den
+        // nicht-generischen Fall stand das schon so da; fuer die Instanz muss es in die REGISTRY,
+        // weil die Rekursion ueber den Instanznamen zurueckkommt und nicht ueber das Symbol.
         var id = new TypeId(_defs.Count);
-        _assigned[symbol] = id;
+        if (registry is null) _assigned[symbol] = id;
+        else { registry[name] = id; _instanceSymbols.Add((symbol, id, instanceArguments ?? [])); }
         _defs.Add(default);
         _variantNames[id.Value] = decl.Variants.Select(v => v.Name).ToArray();
 
@@ -521,9 +535,9 @@ internal sealed class TypeTable
         {
             var variants = new TypeId[decl.Variants.Length];
             for (var i = 0; i < decl.Variants.Length; i++)
-                variants[i] = InternVariant(symbol, decl.Variants[i]);
+                variants[i] = InternVariant(name, decl.Variants[i]);
 
-            _defs[id.Value] = new IrTypeDef(symbol.Name, [], []) { Variants = variants };
+            _defs[id.Value] = new IrTypeDef(name, [], []) { Variants = variants };
             return id;
         }
         catch (UnsupportedConstructException ex)
@@ -572,7 +586,7 @@ internal sealed class TypeTable
         return id;
     }
 
-    private TypeId InternVariant(TypeSymbol owner, EnumVariant variant)
+    private TypeId InternVariant(string ownerName, EnumVariant variant)
     {
         // Slot 0 ist das Tag. Es steht im Layout, damit der Feldzugriff nach dem 'enumas' ein
         // gewoehnliches ldfld bleibt — die Variante ist dann eine ganz normale Klasse.
@@ -596,7 +610,7 @@ internal sealed class TypeTable
             }
 
         var id = new TypeId(_defs.Count);
-        _defs.Add(new IrTypeDef($"{owner.Name}.{variant.Name}", types.ToArray(), names.ToArray()));
+        _defs.Add(new IrTypeDef($"{ownerName}.{variant.Name}", types.ToArray(), names.ToArray()));
         return id;
     }
 

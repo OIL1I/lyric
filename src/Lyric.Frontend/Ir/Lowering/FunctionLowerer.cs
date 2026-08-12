@@ -2132,22 +2132,38 @@ internal sealed class FunctionLowerer
 
     // ------------------------------------------------------------------ Enums (§3.4)
 
-    /// <summary>Der Enum-Typ, zu dem ein Wert gehört — oder eine Scope-Grenze.</summary>
-    private (TypeSymbol Symbol, IrEnumType Type) RequireEnum(Expr expr)
-    {
-        if (TypeFacts.SymbolOf(_types.TypeOf(expr)) is not { Kind: TypeSymbolKind.Enum } named)
-            throw NotSupported($"'{TypeFacts.Display(_types.TypeOf(expr))}' is not an enum", expr.Span);
+    /// <summary>
+    /// Der Enum-Eintrag, zu dem ein Wert gehört — oder eine Scope-Grenze.
+    ///
+    /// <para><b>Gefragt wird der Typ, nicht das Symbol.</b> <c>TypeFacts.SymbolOf</c> liefert bei
+    /// einer <c>GenericInstance</c> die Definition und wirft die Typargumente weg; damit landeten
+    /// <c>Opt&lt;int&gt;</c> und <c>Opt&lt;string&gt;</c> auf demselben Eintrag. Der Sema-Typ des
+    /// Ausdrucks trägt sie, also kommt er von dort.</para>
+    /// </summary>
+    private IrEnumType RequireEnum(Expr expr) => RequireEnum(_types.TypeOf(expr), expr.Span);
 
-        return (named, _typeTable.EnumOf(named));
-    }
+    private IrEnumType RequireEnum(LyrType type, Span span) => SubstituteType(type) switch
+    {
+        NamedRef { Symbol: { Kind: TypeSymbolKind.Enum } symbol } => _typeTable.EnumOf(symbol),
+        GenericInstance { Definition.Kind: TypeSymbolKind.Enum } instance
+            => new IrEnumType(_typeTable.Intern(instance.Definition, instance.Arguments)),
+        _ => throw NotSupported($"'{TypeFacts.Display(type)}' is not an enum", span),
+    };
 
     /// <summary><c>Shape.Circle(2.0)</c> und <c>Shape.Empty</c> — eine Tuple- bzw. Unit-Variante.
     /// Die Struct-Form <c>Triangle { a = … }</c> läuft über <see cref="LowerObjectInit"/>.</summary>
-    private TempId LowerVariantCall(MemberExpr callee, Expr[] arguments, Span span)
+    /// <param name="constructed">Der Ausdruck, dessen Typ die konstruierte INSTANZ ist: bei
+    /// <c>Shape.Circle(2.0)</c> der Aufruf, bei der Unit-Variante <c>Shape.Empty</c> das Member
+    /// selbst. Am Ziel steht sie nicht — <c>Opt.Some(5)</c> nennt seine Typargumente nirgends,
+    /// die Sema hat sie aus dem Kontext aufgeloest.</param>
+    private TempId LowerVariantCall(MemberExpr callee, Expr[] arguments, Expr constructed, Span span)
     {
-        var (symbol, type) = (RefEnumSymbol(callee.Target, callee.Span), (IrEnumType?)null);
-        var enumType = _typeTable.EnumOf(symbol);
-        var variant = _typeTable.VariantOf(symbol, callee.Member, span);
+        // Welche INSTANZ konstruiert wird, steht im Ergebnistyp des Aufrufs und nicht am Ziel:
+        // 'Opt.Some(5)' in einer Position mit erwartetem 'Opt<int>' nennt die Argumente nirgends,
+        // die Sema hat sie aber aufgeloest.
+        RefEnumSymbol(callee.Target, callee.Span);
+        var enumType = RequireEnum(_types.TypeOf(constructed), span);
+        var variant = _typeTable.VariantOf(enumType.Type, callee.Member, span);
 
         var fields = new TempId[arguments.Length];
         for (var i = 0; i < arguments.Length; i++) fields[i] = LowerExpr(arguments[i]);
@@ -2160,12 +2176,12 @@ internal sealed class FunctionLowerer
     /// <summary><c>Shape.Tri { a = 3, b = 4 }</c>. Wie beim Objekt-Literal wird in
     /// <b>Layout</b>-Reihenfolge geschrieben, ausgewertet aber in Quelltext-Reihenfolge — nur dass
     /// Slot 0 das Tag ist und die Nutzfelder bei 1 beginnen.</summary>
-    private TempId LowerStructVariant(StructInitExpr expr, TypeSymbol owner)
+    private TempId LowerStructVariant(StructInitExpr expr)
     {
         var variantName = expr.Path[^1];
-        var variant = _typeTable.VariantOf(owner, variantName, expr.Span);
+        var enumType = RequireEnum(_types.TypeOf(expr), expr.Span);
+        var variant = _typeTable.VariantOf(enumType.Type, variantName, expr.Span);
         var layout = _typeTable.Defs[variant.Value];
-        var enumType = _typeTable.EnumOf(owner);
 
         var values = new Dictionary<string, TempId>(StringComparer.Ordinal);
         foreach (var field in expr.Fields) values[field.Name] = LowerExpr(field.Value);
@@ -2228,13 +2244,13 @@ internal sealed class FunctionLowerer
 
         // Bei einem Enum wird über das Tag verglichen, nicht über den Wert — welche Variante
         // vorliegt, steht in Slot 0 und sonst nirgends.
-        TypeSymbol? enumSymbol = null;
+        TypeId? enumId = null;
         TempId subject = value;
         IrType subjectType = scrutineeType;
 
         if (scrutineeType is IrEnumType)
         {
-            enumSymbol = RequireEnum(scrutinee).Symbol;
+            enumId = RequireEnum(scrutinee).Type;
             var tag = _slots.NewTemp(new IrScalarType(IrScalar.I64));
             _b.Emit(new EnumTag(tag, value, span));
             subject = tag;
@@ -2268,13 +2284,13 @@ internal sealed class FunctionLowerer
             var next = unconditional ? (BlockId?)null : _b.NewBlock();
 
             if (unconditional) _b.Seal(new Branch(body, arm.Span));
-            else EmitPatternBranch(arm.Pattern, subject, subjectType, enumSymbol,
+            else EmitPatternBranch(arm.Pattern, subject, subjectType, enumId,
                 body, next!.Value, arm.Span);
 
             _b.SwitchTo(body);
 
             // Bindungen stehen vor dem Guard: 'n if n > 0' braucht 'n'.
-            BindPattern(arm.Pattern, value, subjectType, enumSymbol);
+            BindPattern(arm.Pattern, value, subjectType, enumId);
 
             if (arm.Guard is { } guard)
             {
@@ -2334,7 +2350,7 @@ internal sealed class FunctionLowerer
     /// <c>||</c>, die aus demselben Grund Kontrollfluss sind und keine Opcodes.</para>
     /// </summary>
     private void EmitPatternBranch(Pattern pattern, TempId subject, IrType subjectType,
-        TypeSymbol? enumSymbol, BlockId onMatch, BlockId onFail, Span span)
+        TypeId? enumId, BlockId onMatch, BlockId onFail, Span span)
     {
         switch (pattern)
         {
@@ -2352,7 +2368,7 @@ internal sealed class FunctionLowerer
                 return;
 
             case BindingPattern binding when _types.RefOf(pattern) is EnumVariantSymbol:
-                _b.Seal(new CondBranch(EmitTagTest(enumSymbol, binding.Name, subject, binding.Span),
+                _b.Seal(new CondBranch(EmitTagTest(enumId, binding.Name, subject, binding.Span),
                     onMatch, onFail, binding.Span));
                 return;
 
@@ -2361,7 +2377,7 @@ internal sealed class FunctionLowerer
                 return;
 
             case VariantPattern variant:
-                _b.Seal(new CondBranch(EmitTagTest(enumSymbol, variant.Path[^1], subject, variant.Span),
+                _b.Seal(new CondBranch(EmitTagTest(enumId, variant.Path[^1], subject, variant.Span),
                     onMatch, onFail, variant.Span));
                 return;
 
@@ -2418,7 +2434,7 @@ internal sealed class FunctionLowerer
                     var lastAlternative = i == or.Alternatives.Length - 1;
                     var nextAlternative = lastAlternative ? onFail : _b.NewBlock();
 
-                    EmitPatternBranch(or.Alternatives[i], subject, subjectType, enumSymbol,
+                    EmitPatternBranch(or.Alternatives[i], subject, subjectType, enumId,
                         onMatch, nextAlternative, or.Span);
 
                     if (!lastAlternative) _b.SwitchTo(nextAlternative);
@@ -2432,12 +2448,12 @@ internal sealed class FunctionLowerer
         }
     }
 
-    private TempId EmitTagTest(TypeSymbol? enumSymbol, string variant, TempId tag, Span span)
+    private TempId EmitTagTest(TypeId? enumId, string variant, TempId tag, Span span)
     {
-        if (enumSymbol is null)
+        if (enumId is not { } id)
             throw NotSupported("a variant pattern in a match over a non-enum", span);
 
-        var expected = EmitConst(new IntConst((ulong)_typeTable.TagOf(enumSymbol, variant, span)),
+        var expected = EmitConst(new IntConst((ulong)_typeTable.TagOf(id, variant, span)),
             new IrScalarType(IrScalar.I64), span);
 
         // Das Type-Feld eines Vergleichs ist sein ERGEBNIS-Typ (bool); den Operandentyp schlaegt
@@ -2450,7 +2466,7 @@ internal sealed class FunctionLowerer
     /// <summary>Bindet, was das Muster bindet: eine reine Bindung den Wert selbst, ein
     /// Varianten-Muster seine Felder.</summary>
     private void BindPattern(Pattern pattern, TempId value, IrType valueType,
-        TypeSymbol? enumSymbol)
+        TypeId? enumId)
     {
         if (pattern is BindingPattern binding && _types.RefOf(pattern) is LocalSymbol local)
         {
@@ -2490,7 +2506,7 @@ internal sealed class FunctionLowerer
             return;
         }
 
-        if (enumSymbol is not null) BindPatternFields(pattern, enumSymbol, value);
+        if (enumId is { } id) BindPatternFields(pattern, id, value);
     }
 
     /// <summary>Lowert den Rumpf eines Arms. Liefert „faellt durch".</summary>
@@ -2509,23 +2525,23 @@ internal sealed class FunctionLowerer
     /// <summary>Der Tag, auf den ein Muster passt. Eine Unit-Variante parst als
     /// <see cref="BindingPattern"/> — ob sie eine Bindung oder eine Variante ist, weiß erst die
     /// Sema, und die hat es entschieden.</summary>
-    private int TagOfPattern(TypeSymbol symbol, Pattern pattern) => pattern switch
+    private int TagOfPattern(TypeId enumId, Pattern pattern) => pattern switch
     {
-        VariantPattern v => _typeTable.TagOf(symbol, v.Path[^1], v.Span),
+        VariantPattern v => _typeTable.TagOf(enumId, v.Path[^1], v.Span),
         BindingPattern b when _types.RefOf(pattern) is EnumVariantSymbol
-            => _typeTable.TagOf(symbol, b.Name, b.Span),
+            => _typeTable.TagOf(enumId, b.Name, b.Span),
         WildcardPattern => throw NotSupported("'_' anywhere but in the last arm", pattern.Span),
         _ => throw NotSupported($"a {pattern.GetType().Name} in a match over an enum", pattern.Span),
     };
 
     /// <summary>Zerlegt eine Variante: <c>enumas</c> engt ein, danach ist jedes Feld ein
     /// gewöhnliches <c>ldfld</c> mit dem Layout der Variante.</summary>
-    private void BindPatternFields(Pattern pattern, TypeSymbol symbol, TempId value)
+    private void BindPatternFields(Pattern pattern, TypeId enumId, TempId value)
     {
         if (pattern is not VariantPattern variant) return;
         if (variant.TupleElements is null && variant.StructFields is null) return;
 
-        var variantType = _typeTable.VariantOf(symbol, variant.Path[^1], variant.Span);
+        var variantType = _typeTable.VariantOf(enumId, variant.Path[^1], variant.Span);
         var narrowed = _slots.NewTemp(new IrRefType(variantType));
         _b.Emit(new EnumAs(narrowed, value, variantType, variant.Span));
 
@@ -3082,10 +3098,12 @@ internal sealed class FunctionLowerer
     /// </summary>
     private TempId LowerObjectInit(StructInitExpr expr)
     {
-        // 'Shape.Tri { a = 3, b = 4 }' — eine Struct-Variante. Sieht aus wie ein Objekt-Literal,
-        // ist aber eine Varianten-Konstruktion und geht deshalb über newvariant.
-        if (_types.TypeOf(expr) is NamedRef { Symbol.Kind: TypeSymbolKind.Enum } owner)
-            return LowerStructVariant(expr, owner.Symbol);
+        // 'Shape.Tri { a = 3, b = 4 }' und 'Ev<int>.Hit { … }' — eine Struct-Variante. Sieht aus
+        // wie ein Objekt-Literal, ist aber eine Varianten-Konstruktion und geht deshalb ueber
+        // newvariant. Welche INSTANZ, steht im Typ des Ausdrucks.
+        if (SubstituteType(_types.TypeOf(expr)) is NamedRef { Symbol.Kind: TypeSymbolKind.Enum }
+            or GenericInstance { Definition.Kind: TypeSymbolKind.Enum })
+            return LowerStructVariant(expr);
 
         // Ein Initialisierer fuer eine Instanz eines generischen Typs ('Box<int> { v = 3 }'):
         // die Typargumente entscheiden ueber das Layout, also muessen sie beim Internieren dabei
@@ -3212,7 +3230,7 @@ internal sealed class FunctionLowerer
         // 'Shape.Empty' — eine Unit-Variante. Sie sieht aus wie ein Member-Zugriff, ist aber eine
         // Konstruktion ohne Argumente.
         if (_types.RefOf(expr) is EnumVariantSymbol)
-            return LowerVariantCall(expr, [], expr.Span);
+            return LowerVariantCall(expr, [], expr, expr.Span);
 
         // '.length' auf einem Array ist eingebaut (ADR-016), kein Feld und keine Methode.
         if (expr.Member == "length" && TypeOfExpr(expr.Target) is IrArrayType)
@@ -3561,6 +3579,13 @@ internal sealed class FunctionLowerer
 
         switch (expr.Callee)
         {
+            // Shape.Circle(2.0) und Opt<int>.Some(5) — eine Tuple-Variante. Kein Call, sondern
+            // eine Konstruktion, und das gilt unabhaengig davon, wie das Ziel geschrieben ist.
+            // Deshalb steht der Fall VOR dem statischen Aufruf: 'Opt<int>.Some' sieht wie eine
+            // statische Methode auf einer Instanz aus und ist keine.
+            case MemberExpr member when _types.RefOf(member) is EnumVariantSymbol:
+                return LowerVariantCall(member, expr.Arguments, expr, expr.Span);
+
             // 'Pair<int>.of(3)' — eine statische Methode auf einer generischen INSTANZ. Das Ziel
             // ist hier kein Wert, sondern ein Typpfad; einen Empfaenger gibt es nicht (ADR-014),
             // die Instanziierung aber schon. Der Fall steht ganz vorn, weil alle Faelle darunter
@@ -3627,11 +3652,6 @@ internal sealed class FunctionLowerer
                 when SubstituteType(ReceiverType(member.Target)) is GenericInstance owner
                      && owner.Definition.Kind is TypeSymbolKind.Class or TypeSymbolKind.Struct:
                 return LowerGenericMethodCall(member, owner, expr);
-
-            // Shape.Circle(2.0) — eine Tuple-Variante. Kein Call, sondern eine Konstruktion.
-
-            case MemberExpr member when _types.RefOf(member) is EnumVariantSymbol:
-                return LowerVariantCall(member, expr.Arguments, expr.Span);
 
             // Eine Extension auf einem Builtin (§3.6): 'n.double()' mit 'extend int'. Der
             // Empfaenger ist ein Skalar und deshalb KEIN NamedRef — ohne diesen Fall faellt er in

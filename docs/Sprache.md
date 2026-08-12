@@ -607,9 +607,10 @@ Ausdruck. Gebraucht wird die Form für eine statische Methode auf einem generisc
 war sie unerreichbar. Ohne Argumente ist es `LYR-SEM0063`: `Pair.of(3)` inferiert **nicht** aus
 den Argumenten, denn ein Typpfad verlangt sie ausdrücklich (§6.2).
 
-*(Nicht dabei: eine Variante eines generischen Enums. `Opt<int>.Some(5)` scheitert am Lowering,
-das generische Enums noch gar nicht kennt — `LYR-IR0001`. Das ist ein fehlendes Feature und keine
-Syntaxlücke.)*
+Dasselbe gilt für die Variante eines **generischen Enums**: `Opt<int>.Some(5)`, `Opt<int>.None`
+und — die Argumente gehören dem Enum, die Variante hängt hinten dran — `Ev<int>.Hit { at = 4 }`.
+Ohne geschriebene Argumente muss der erwartete Typ sie hergeben (`let o: Opt<int> = Opt.None;`);
+in einer Argumentposition tut er das nicht, dort müssen sie dastehen.
 | 2 | Prefix `!` (logical not) `-` `~` `++` `--` `resume` | rechts |
 | 3 | `as` | links |
 | 4 | `*` `/` `%` | links |

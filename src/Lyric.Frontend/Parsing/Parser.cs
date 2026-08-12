@@ -470,6 +470,13 @@ public sealed partial class Parser
         {
             i = SkipTypeArgs(i);
             if (i < 0) return false;
+
+            // Hinter den Argumenten darf NOCH ein Segment stehen: 'Ev<int>.Hit { … }' — die
+            // Argumente gehoeren dem Enum, die Variante haengt hinten dran. Ohne diese Zeile ist
+            // eine Struct-Variante eines generischen Enums nicht schreibbar.
+            if (_buffer.Peek(i).TokenKind == TokenKind.Dot
+                && _buffer.Peek(i + 1).TokenKind == TokenKind.Identifier)
+                i += 2;
         }
         return _buffer.Peek(i).TokenKind == TokenKind.LBrace;
     }
@@ -550,7 +557,14 @@ public sealed partial class Parser
 
         TypeNode[] typeArgs = [];
         if (_buffer.Check(TokenKind.Less))
+        {
             typeArgs = ParseTypeArguments(out _);
+
+            // 'Ev<int>.Hit { … }': die Variante steht HINTER den Argumenten des Enums.
+            while (_buffer.Match(TokenKind.Dot))
+                path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                    $"expected variant name, got {_buffer.Current.TokenKind}").Span).ToString());
+        }
 
         _buffer.Advance(); // '{' (durch IsStructInitAhead garantiert)
         var fields = new List<StructInitField>();

@@ -29,6 +29,33 @@ daraus ruft und eigene Funktionen und Typen hineinreicht.
 
 ## Zuletzt fertig geworden
 
+- [x] **Generische Enums** (2026-08-12). 2711 Tests grün, Debug und Release.
+  - `enum Opt<T>` war im Lowering **gar nicht vorhanden**: `TypeTable.InternEnum` warf, sobald so
+    ein Enum auch nur als Parametertyp auftauchte. Jetzt gehen `Opt<int>.Some(5)`, `.None`,
+    `Ev<int>.Hit { at = 4 }`, `match` mit Payload-Bindung und Guard, das rekursive
+    `Tree<T>`, ein generisches Enum in einer generischen Funktion und als Feld.
+  - **Es war kein fehlendes Feature, sondern fehlende Verdrahtung.** Die Substitution war da und
+    routete Enums bereits richtig; `InternVariant` hätte `Some(T)` schon immer zu `Some(int)`
+    gelowert. Was fehlte, waren vier Stellen, die die Instanz wegwarfen — allen voran
+    `TypeFacts.SymbolOf`, das bei einer `GenericInstance` die Definition liefert und die
+    Typargumente verliert.
+  - **Meine Schätzung war um den Faktor drei zu hoch.** Ich hatte „zwei bis drei Sessions"
+    gesagt, bevor ich `Intern` gelesen hatte. Es war eine. Der Fehler lag darin, die Größe aus
+    dem Symptom zu schätzen statt aus dem Code.
+  - **Die tragende Zusicherung**: `Opt<int>` und `Opt<string>` bekommen eigene Varianten-Layouts.
+    Teilten sie sich einen Eintrag, läge ein `i64` in einem String-Slot — in Debug ein
+    Verifier-Fund, in Release eine stille falsche Antwort. Genau die Asymmetrie, die die
+    Konformanz-Lücke vom 2026-08-11 so teuer gemacht hat.
+  - Der schärfste Fallstrick war die Rekursion: die Id muss in der Instanz-Registry stehen,
+    *bevor* die Varianten interniert werden — sonst fordert `Node(Tree<T>, …)` genau die Instanz
+    an, die gerade entsteht. `InternLayout` machte es vor.
+  - **Dabei eine ältere Unstimmigkeit beseitigt**: die Struct-Form las den erwarteten Typ seit
+    jeher (`let e: Ev<int> = Ev.Hit { … }`), die Tuple-Form nicht (`Opt.Some(7)` war ein Fehler).
+    Eine Frage, zwei Antworten, je nach Form der Variante. Beide laufen jetzt durch dieselbe
+    Auflösung.
+  - Bleibt: in einer **Argumentposition** reicht der Kontext nicht hin (`nimm(Opt.Some(5))`) —
+    der erwartete Typ wird dorthin nicht durchgereicht. Als Test festgehalten, nicht als Vermutung.
+
 - [x] **`Pair<int>.of(3)` geht** (2026-08-12) — eine statische Fabrik auf einem generischen Typ.
   - Der Parser las `Pair` als Bezeichner und `<` als Vergleich; danach stolperte er über den
     Punkt. **Die Erkennung kostet keine Mehrdeutigkeit**: das `<` gilt als Typargument-Liste, wenn
@@ -274,13 +301,12 @@ eine Entscheidung und keine Messung.**
 
 **Sprachlücken, vor v1 zu schließen:**
 
-- **Generische Enums gibt es im Lowering nicht** — `TypeTable.InternEnum` wirft `LYR-IR0001`,
-  sobald ein `enum Opt<T>` auch nur als Parametertyp auftaucht; keine Variante muss dafür
-  konstruiert werden. Damit ist `Opt<int>.Some(5)` **kein Syntax-Posten**: Parser und Sema tragen
-  die Form seit dem 2026-08-12, das Lowering nicht. Was fehlt: Varianten-Layouts pro
-  Instanziierung, Tags und das `match`/Pattern-Lowering unter Substitution. **Zwei bis drei
-  Sessions, nicht ein Tag** — die Schätzung in dieser Datei war falsch, und zwar um den Faktor,
-  der zwischen „Syntax" und „fehlendes Feature" liegt.
+- **Der erwartete Typ erreicht keine Argumentposition.** `let o: Opt<int> = Opt.Some(7)` geht,
+  `nimm(Opt.Some(7))` nicht — dort müssen die Typargumente dastehen. Betrifft jede Konstruktion,
+  die ihre Instanz aus dem Kontext zieht, nicht nur Enums.
+- **`lyric check` läuft nur bis zur Sema** (`SourceCompiler.cs:132`). Ein Programm mit einer
+  Lowering-Grenze meldet `ok` und stirbt bei `run`. Am 2026-08-12 beim Messen der Enum-Lücke
+  aufgefallen, und es hat die Messung zuerst harmlos aussehen lassen.
 - **`static fn` in einem Enum-Rumpf parst nicht** — `LYR-PAR0008` („expected ')' after
   parameters") plus zwei Folgemeldungen, alle drei über etwas anderes als die Ursache. Am
   2026-08-12 beim Messen der Enum-Lücke aufgefallen. ~1 h.

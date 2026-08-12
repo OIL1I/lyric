@@ -875,8 +875,8 @@ public sealed class TypeChecker
                 return LyrType.String;
             case ErrorExpr: return LyrType.Error;
 
-            case CallExpr call: return CheckCall(call, scope);
-            case MemberExpr mem: return CheckMember(mem, scope);
+            case CallExpr call: return CheckCall(call, scope, expected);
+            case MemberExpr mem: return CheckMember(mem, scope, expected);
             case StructInitExpr si: return CheckStructInit(si, scope, expected);
             case TypePathExpr tp: return CheckTypePath(tp, scope);
             case IfExpr iff: return CheckIfExpr(iff, scope);
@@ -956,6 +956,21 @@ public sealed class TypeChecker
             : fn.ReturnType is not null ? ResolveType(fn.ReturnType, _comp.Builtins) : LyrType.Void;
         return new FnType(ps, ret);
     }
+
+    /// <summary>
+    /// Der Aufgerufene eines Aufrufs, geprueft mit dem erwarteten ERGEBNIS-Typ im Ruecken.
+    ///
+    /// <para>Gebraucht wird das an genau einer Stelle: eine Enum-Variante ohne geschriebene
+    /// Typargumente. <c>Opt.Some(7)</c> nennt die Instanz nirgends, <c>let o: Opt&lt;int&gt; = …</c>
+    /// schon — und die Struct-Form <c>Ev.Hit { … }</c> las den Kontext seit jeher. Ohne diesen Weg
+    /// beantwortete dieselbe Frage zwei verschiedene Antworten, je nach Form der Variante.</para>
+    ///
+    /// <para>Der erwartete Typ gilt dem Aufruf, nicht dem Aufgerufenen; er wird deshalb NUR fuer
+    /// die Instanz-Auflösung benutzt und nicht als Erwartung an den Funktionstyp weitergereicht.
+    /// </para>
+    /// </summary>
+    private LyrType CheckTargetOfCall(Expr callee, SymbolTable scope, LyrType? expected) =>
+        callee is MemberExpr mem ? CheckExpr(mem, scope, expected) : CheckExpr(callee, scope);
 
     private LyrType CheckUnary(UnaryExpr u, SymbolTable scope)
     {
@@ -1246,9 +1261,11 @@ public sealed class TypeChecker
     // Zweiphasig (D5, C#-Modell): Nicht-Lambda-Argumente eager typen, daraus Typ-Args
     // inferieren, dann Lambdas mit dem substituierten Parametertyp als Kontext prüfen —
     // deren tatsächlicher Typ bindet die restlichen Typ-Args (U aus dem Lambda-Return).
-    private LyrType CheckCall(CallExpr call, SymbolTable scope)
+    /// <param name="expected">Der erwartete Typ des AUFRUFS. Er wird allein fuer eine
+    /// Enum-Variante gebraucht: 'let o: Opt<int> = Opt.Some(7);' nennt die Instanz nur links.</param>
+    private LyrType CheckCall(CallExpr call, SymbolTable scope, LyrType? expected = null)
     {
-        var calleeType = CheckExpr(call.Callee, scope);
+        var calleeType = CheckTargetOfCall(call.Callee, scope, expected);
 
         // 'b?.get()' — Optional-Chaining mit AUFRUF (§7). 'b?.get' ist ein '?fn() -> int', und
         // ohne diesen Fall meldete die Sema '„?fn() -> int" is not callable': eine Auskunft
@@ -1434,7 +1451,9 @@ public sealed class TypeChecker
         }
     }
 
-    private LyrType CheckMember(MemberExpr mem, SymbolTable scope)
+    /// <param name="expected">Nur fuer eine Enum-Variante ohne geschriebene Typargumente
+    /// gebraucht — sonst wirkungslos.</param>
+    private LyrType CheckMember(MemberExpr mem, SymbolTable scope, LyrType? expected = null)
     {
         // CheckTarget statt CheckExpr: hier ist ein Typ- oder Modulname erlaubt.
         var targetType = CheckTarget(mem.Target, scope);
@@ -1442,7 +1461,7 @@ public sealed class TypeChecker
         {
             case TypeSymbol ts:
                 return BindMember(mem, MemberOfType(ts, mem.Member, mem.Span,
-                    (targetType as NonValueType)?.Instance));
+                    (targetType as NonValueType)?.Instance ?? ExpectedInstance(expected, ts)));
             case ModuleSymbol mod: return BindMember(mem, MemberOfModule(mod, mem.Member, mem.Span));
             case ExternalSymbol: return LyrType.Error;
         }
@@ -1911,7 +1930,7 @@ public sealed class TypeChecker
 
             FunctionSymbol fn => (Of(FnTypeOf(fn)), fn),             // static fn (z. B. die Fabrik Point.new)
             GlobalSymbol g => (Of(TypeOfGlobalReference(g, span)), g), // static let
-            EnumVariantSymbol ev => (Of(VariantConstructorType(ev, ts, span)), ev),
+            EnumVariantSymbol ev => (Of(VariantConstructorType(ev, ts, span, instance)), ev),
 
             FieldSymbol => (Report(span, "LYR-SEM0055",
                 $"'{member}' is a field of '{ts.Name}' and belongs to an instance, not to the type"), null),
@@ -1930,14 +1949,21 @@ public sealed class TypeChecker
             _ => (Report(span, "LYR-SEM0012", $"module '{mod.FullName}' has no member '{member}'"), null)
         };
 
-    private LyrType VariantConstructorType(EnumVariantSymbol ev, TypeSymbol enumTs, Span span)
+    /// <param name="instance">Bei <c>Opt&lt;int&gt;.Some(5)</c> die Instanz. Sie ist der
+    /// ERGEBNISTYP der Konstruktion — den kann die Substitution nicht liefern, weil hier kein
+    /// Typparameter steht, sondern das nackte Enum-Symbol. Ohne sie meldete
+    /// <c>nimm(Opt&lt;int&gt;.Some(7))</c> „cannot assign 'Opt' to 'Opt&lt;int&gt;'".</param>
+    private LyrType VariantConstructorType(EnumVariantSymbol ev, TypeSymbol enumTs, Span span,
+        GenericInstance? instance = null)
     {
         var v = (EnumVariant)ev.Declaration!;
+        LyrType result = instance is not null ? instance : new NamedRef(enumTs);
+
         if (v.TupleFields is not null)
-            return new FnType(v.TupleFields.Select(t => ResolveType(t, enumTs.Members)).ToArray(), new NamedRef(enumTs));
+            return new FnType(v.TupleFields.Select(t => ResolveType(t, enumTs.Members)).ToArray(), result);
         if (v.StructFields is not null)
             return Report(span, "LYR-SEM0031", $"struct variant '{ev.Name}' must be constructed with '{ev.Name} {{ … }}'");
-        return new NamedRef(enumTs); // Unit-Variante als Wert
+        return result; // Unit-Variante als Wert
     }
 
     private LyrType FieldType(FieldSymbol fs) => ResolveType(((FieldDecl)fs.Declaration!).Type, _comp.Builtins);
@@ -2083,6 +2109,26 @@ public sealed class TypeChecker
     {
         _result.BindRef(si, ev);
         var v = (EnumVariant)ev.Declaration!;
+
+        // GESCHRIEBENE Argumente schlagen den Kontext: 'Ev<int>.Hit { … }' sagt selbst, welche
+        // Instanz gemeint ist, und das gilt auch da, wo gar kein Kontext ist ('let e = …').
+        // Ohne diesen Zweig war eine Struct-Variante eines generischen Enums nur in einer
+        // Position mit erwartetem Typ konstruierbar — und die Meldung nannte ausgerechnet den
+        // Kontext als einzige Quelle.
+        if (si.TypeArguments.Length > 0 && enumTs.Generics.Length > 0)
+        {
+            var written = si.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
+            if (written.Length != enumTs.Generics.Length)
+                _de.Report("LYR-SEM0026", Severity.Error, si.Span,
+                    $"generic enum '{enumTs.Name}' expects {enumTs.Generics.Length} type "
+                    + $"argument(s), got {written.Length}");
+            else
+            {
+                CheckConstraints(enumTs.Generics, written, si.Span);
+                instance = new GenericInstance(enumTs, written);
+            }
+        }
+
         var subst = instance is not null ? SubstMap(instance) : EmptySubst;
 
         LyrType result;
@@ -2091,7 +2137,8 @@ public sealed class TypeChecker
         {
             // Generisches Enum ohne Kontext-Instanz (bzw. Typ-Args an der Variante statt am Enum).
             _de.Report("LYR-SEM0026", Severity.Error, si.Span,
-                $"generic enum '{enumTs.Name}' expects {enumTs.Generics.Length} type argument(s) from context");
+                $"generic enum '{enumTs.Name}' expects {enumTs.Generics.Length} type argument(s) "
+                + "— write them ('Enum<int>.Variant { … }') or use it where the type is known");
             result = LyrType.Error;
         }
         else result = new NamedRef(enumTs);
