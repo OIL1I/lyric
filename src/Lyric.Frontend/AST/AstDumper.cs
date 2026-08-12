@@ -423,6 +423,12 @@ public static class AstDumper
                 Write(n.Value, indent + 1, sb);
                 break;
 
+            // --- Typpfad in Wert-Position: Pair<int>.of(3) ---
+            case TypePathExpr n:
+                Line(sb, indent, $"TypePath {string.Join('.', n.Path)}", n.Span);
+                foreach (var a in n.TypeArguments) { Line(sb, indent + 1, "TypeArg", a.Span); Write(a, indent + 2, sb); }
+                break;
+
             // --- Recovery ---
             case ErrorExpr n:
                 Line(sb, indent, "Error", n.Span);

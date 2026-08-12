@@ -79,6 +79,16 @@ public sealed record MatchExpr(Expr Scrutinee, MatchArm[] Arms, Span Span) : Exp
 // Wird nur in Wert-Position erkannt, nicht am Anfang eines ExprStmt (sonst mehrdeutig
 // mit einem Block). Feld-Trenner ist '=' (':' ist Typen vorbehalten).
 public sealed record StructInitExpr(string[] Path, TypeNode[] TypeArguments, StructInitField[] Fields, Span Span) : Expr(Span);
+
+// --- Typpfad in Wert-Position (§6.2 TypePath): 'Pair<int>.of(3)' ---
+//
+// Der NICHT-generische Fall braucht diesen Knoten nicht: 'P.neu()' ist ein IdentifierExpr, dessen
+// Symbol ein Typ ist, und CheckMember arbeitet ohnehin ueber das Symbol weiter. Erst mit
+// Typargumenten gibt es etwas zu tragen, das ein Bezeichner nicht ausdruecken kann.
+//
+// Er steht immer als Ziel eines MemberExpr — allein ist er kein Wert, sondern ein Typ, und
+// CheckExpr meldet ihn dort als LYR-SEM0052 wie jeden anderen Typnamen auch.
+public sealed record TypePathExpr(string[] Path, TypeNode[] TypeArguments, Span Span) : Expr(Span);
 public sealed record StructInitField(string Name, Expr Value, Span Span) : Node(Span);
 
 // --- Recovery ---

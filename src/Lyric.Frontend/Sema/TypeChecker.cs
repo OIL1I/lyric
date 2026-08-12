@@ -878,6 +878,7 @@ public sealed class TypeChecker
             case CallExpr call: return CheckCall(call, scope);
             case MemberExpr mem: return CheckMember(mem, scope);
             case StructInitExpr si: return CheckStructInit(si, scope, expected);
+            case TypePathExpr tp: return CheckTypePath(tp, scope);
             case IfExpr iff: return CheckIfExpr(iff, scope);
             case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
             case LambdaExpr lam: return CheckLambda(lam, scope, expected);
@@ -1439,7 +1440,9 @@ public sealed class TypeChecker
         var targetType = CheckTarget(mem.Target, scope);
         switch (TargetSymbol(mem.Target))
         {
-            case TypeSymbol ts: return BindMember(mem, MemberOfType(ts, mem.Member, mem.Span));
+            case TypeSymbol ts:
+                return BindMember(mem, MemberOfType(ts, mem.Member, mem.Span,
+                    (targetType as NonValueType)?.Instance));
             case ModuleSymbol mod: return BindMember(mem, MemberOfModule(mod, mem.Member, mem.Span));
             case ExternalSymbol: return LyrType.Error;
         }
@@ -1877,8 +1880,28 @@ public sealed class TypeChecker
         _ => []
     };
 
-    private (LyrType, Symbol?) MemberOfType(TypeSymbol ts, string member, Span span) =>
-        ts.Members.LookupLocal(member) switch
+    /// <param name="instance">Die Instanz aus einem Typpfad mit Argumenten
+    /// (<c>Pair&lt;int&gt;.of(3)</c>). Ist sie da, wird der Typ des Members durch sie
+    /// substituiert — sonst stuende <c>T</c> im Ergebnis, und der Fehler kaeme als
+    /// „cannot assign 'int' to 'T'" eine Ebene zu spaet.</param>
+    private (LyrType, Symbol?) MemberOfType(TypeSymbol ts, string member, Span span,
+        GenericInstance? instance = null)
+    {
+        // Ein generischer Typ OHNE Argumente in Wert-Position: '§6.2 TypePath' verlangt sie
+        // ausdruecklich („keine Feld-Inferenz"). Das hier zu sagen, statt es die Substitution
+        // stillschweigend nicht tun zu lassen, ist der Unterschied zwischen einer Meldung ueber
+        // die Ursache und einer ueber ihre Folge.
+        if (instance is null && ts.Generics.Length > 0
+            && ts.Members.LookupLocal(member) is FunctionSymbol or EnumVariantSymbol or GlobalSymbol)
+            return (Report(span, "LYR-SEM0063",
+                $"'{ts.Name}' is generic — write its type arguments: "
+                + $"'{ts.Name}<{string.Join(", ", ts.Generics.Select(g => g.Name))}>.{member}'"),
+                null);
+
+        var subst = instance is null ? EmptySubst : SubstMap(instance);
+        LyrType Of(LyrType t) => instance is null ? t : Substitute(t, subst);
+
+        return ts.Members.LookupLocal(member) switch
         {
             // ADR-014: ohne 'static' braucht die Methode einen Empfänger. Vorher lief `P.getHp()`
             // durch und hätte beim Lowering einen Feldzugriff ohne Objekt erzeugt.
@@ -1886,15 +1909,16 @@ public sealed class TypeChecker
                 $"'{fn.Name}' is an instance method and needs a receiver — " +
                 $"call it on a value, or declare it 'static fn {member}(…)'"), fn),
 
-            FunctionSymbol fn => (FnTypeOf(fn), fn),                 // static fn (z. B. die Fabrik Point.new)
-            GlobalSymbol g => (TypeOfGlobalReference(g, span), g),   // static let
-            EnumVariantSymbol ev => (VariantConstructorType(ev, ts, span), ev),
+            FunctionSymbol fn => (Of(FnTypeOf(fn)), fn),             // static fn (z. B. die Fabrik Point.new)
+            GlobalSymbol g => (Of(TypeOfGlobalReference(g, span)), g), // static let
+            EnumVariantSymbol ev => (Of(VariantConstructorType(ev, ts, span)), ev),
 
             FieldSymbol => (Report(span, "LYR-SEM0055",
                 $"'{member}' is a field of '{ts.Name}' and belongs to an instance, not to the type"), null),
 
             _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no static member '{member}'"), null)
         };
+    }
 
     private (LyrType, Symbol?) MemberOfModule(ModuleSymbol mod, string member, Span span) =>
         mod.Members.LookupLocal(member) switch
@@ -1989,6 +2013,37 @@ public sealed class TypeChecker
 
     // Pfad-Auflösung für Struct-Init: läuft durch Module UND Typ-Member (Enum-Varianten).
     // Liefert das Endsymbol plus — falls Enum-Variante — den umgebenden Enum-Typ.
+    /// <summary>
+    /// <c>Pair&lt;int&gt;</c> als Ziel eines Member-Zugriffs (§6.2 TypePath).
+    ///
+    /// <para>Das Ergebnis ist wie bei einem gewoehnlichen Typnamen ein <see cref="NonValueType"/> —
+    /// ein Typ ist kein Wert, und wer ihn allein hinschreibt, bekommt <c>LYR-SEM0052</c> wie
+    /// vorher. Neu ist nur, dass er die aufgeloeste Instanz mitfuehrt.</para>
+    /// </summary>
+    private LyrType CheckTypePath(TypePathExpr tp, SymbolTable scope)
+    {
+        var (sym, _) = ResolveInitPath(tp.Path, scope);
+        if (sym is not TypeSymbol ts)
+        {
+            foreach (var a in tp.TypeArguments) ResolveType(a, scope);
+            return Report(tp.Span, "LYR-SEM0011", $"unknown type '{string.Join('.', tp.Path)}'");
+        }
+
+        _result.BindRef(tp, ts);
+
+        var args = tp.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
+        if (args.Length != ts.Generics.Length)
+        {
+            _de.Report("LYR-SEM0026", Severity.Error, tp.Span,
+                $"generic type '{ts.Name}' expects {ts.Generics.Length} type argument(s), "
+                + $"got {args.Length}");
+            return new NonValueType(ts, "type");
+        }
+
+        CheckConstraints(ts.Generics, args, tp.Span);
+        return new NonValueType(ts, "type", new GenericInstance(ts, args));
+    }
+
     private (Symbol? sym, TypeSymbol? owner) ResolveInitPath(string[] path, SymbolTable scope)
     {
         var cur = scope.Lookup(path[0]);

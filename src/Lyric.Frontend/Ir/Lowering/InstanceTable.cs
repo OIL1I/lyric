@@ -108,7 +108,10 @@ internal sealed class InstanceTable
 
         var id = _ids.Next();
         _byKey[name] = id;
-        _pending.Add(new Pending(decl, name, id, owner.Definition, substitution, owner));
+        // Eine STATISCHE Methode bekommt kein 'this' (ADR-014). 'Owner' bleibt trotzdem gesetzt:
+        // ihr 'T' ist das des Typs, auch wenn kein Empfaenger es mitbringt.
+        _pending.Add(new Pending(decl, name, id, method.IsStatic ? null : owner.Definition,
+            substitution, owner));
         return id;
     }
 

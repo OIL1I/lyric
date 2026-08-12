@@ -29,6 +29,39 @@ daraus ruft und eigene Funktionen und Typen hineinreicht.
 
 ## Zuletzt fertig geworden
 
+- [x] **`Pair<int>.of(3)` geht** (2026-08-12) — eine statische Fabrik auf einem generischen Typ.
+  - Der Parser las `Pair` als Bezeichner und `<` als Vergleich; danach stolperte er über den
+    Punkt. **Die Erkennung kostet keine Mehrdeutigkeit**: das `<` gilt als Typargument-Liste, wenn
+    es balanciert schließt und ein `.` folgt — ein Punkt hinter einer Vergleichskette ist ohnehin
+    kein gültiger Ausdruck. Dieselbe Regel wie §6.1 sie seit 2026-08-07 für `f<int>()` zieht;
+    Rusts `::<>` wäre ein zweiter Mechanismus für dasselbe Konzept.
+  - **Die Sema war die eigentliche Lücke.** `MemberOfType` lieferte den Typ des Members
+    unsubstituiert — daher kam „cannot assign 'int' to 'T'", eine Meldung über die Folge. Jetzt
+    trägt `NonValueType` die aufgelöste Instanz, und ohne Argumente gibt es `LYR-SEM0063`, das die
+    Ursache nennt: §6.2 verlangt sie ausdrücklich, `Pair.of(3)` inferiert nicht.
+  - Im Lowering gefunden: `InstanceTable.RequestMethod` hängte auch einer **statischen** Methode
+    ein `this` an (ADR-014). Der Verifier sah „passes 1 arg(s), expected 2".
+  - **`std.collections` trug den Beleg als Kommentar** — `emptyList` ist eine freie Funktion,
+    „weil eine statische Methode auf einer generischen Instanz nicht ausdrückbar ist". Der Satz
+    stimmt nicht mehr und steht jetzt richtig da; die Funktion bleibt, weil der Umbau jeden
+    Aufrufer kostet und nichts bringt.
+  - **`Opt<int>.Some(5)` ist damit NICHT erledigt** und war nie derselbe Posten: das Lowering
+    kennt generische Enums überhaupt nicht (`TypeTable.InternEnum` wirft `LYR-IR0001`, schon wenn
+    eins nur als Parametertyp vorkommt). Gemessen, nicht vermutet — siehe `## Noch offen`.
+  - 24 neue Tests, davon 9 Parser-Gegenproben (`a < b > c.d` bleibt ein Vergleich) und eine, die
+    `lyrc ast` absichert: der `AstDumper` wirft bei jedem Knoten, den er nicht kennt.
+
+- [x] **`List<T>.clear()` und `.toArray()`** (2026-08-12, vom Maintainer angelegt).
+  - `toArray` ist der interessantere Teil: Rückgabe `T[]`, Backing `(?T)[]`, und **zwischen beiden
+    gibt es keine Umdeutung**. `!` packt einen einzelnen Wert aus, nicht ein Array elementweise —
+    `?T[]` ist ein *Array von Optionals* und kein optionales Array. Die erste Fassung versuchte
+    `return result!;` und war `LYR-SEM0005`.
+  - Gebaut wird jetzt von Anfang an als `T[]`. Die leere Liste hat kein erstes Element, aus dem
+    sich eins bauen ließe, und wird vorher abgefangen (`return [];`, seit M8b/S8).
+  - Sieben Tests, darunter: die Länge ist `count` und nicht `capacity` (derselbe Fehler, den `get`
+    schon einmal gemacht hat), die Kopie ist eine Kopie, und `clear` gibt das Backing wirklich
+    frei statt es hinter `count` stehen zu lassen.
+
 - [x] **`b?.get()` geht** (2026-08-12). 2661 Tests grün, Debug und Release.
   - Die Sema machte aus `?.get` ein `?fn() -> int` und meldete dann `LYR-SEM0013: not callable` —
     eine Auskunft über einen Zwischentyp, den niemand hingeschrieben hat. Jetzt packt `CheckCall`
@@ -241,14 +274,16 @@ eine Entscheidung und keine Messung.**
 
 **Sprachlücken, vor v1 zu schließen:**
 
-- **`Opt<int>.Some(5)` ist nicht ausdrückbar** — `LYR-SEM0052`, nicht mehr im Parser wie hier
-  lange stand. Der Parser liest `Opt` als Bezeichner und `<` als Vergleich; ein generischer
-  Typpfad in Wert-Position existiert als AST-Form nicht. **Gemessen am 2026-08-11, dass es
-  *nicht* dieselbe Ursache ist wie `s = Small { n = 5 }`** — der Fix dort hat hieran nichts
-  geändert. Was es braucht: ein AST-Knoten für „Typpfad mit Argumenten", die Parser-Erkennung
-  (`SkipTypeArgs` plus folgendes `.`, wie §6.1 es für `(` bereits tut), die Sema-Auflösung zur
-  `GenericInstance` und das Lowering der Variante. **Ein Tag, nicht eine Stunde.** Dieselbe Form
-  fehlt einer statischen Methode auf einer generischen Instanz.
+- **Generische Enums gibt es im Lowering nicht** — `TypeTable.InternEnum` wirft `LYR-IR0001`,
+  sobald ein `enum Opt<T>` auch nur als Parametertyp auftaucht; keine Variante muss dafür
+  konstruiert werden. Damit ist `Opt<int>.Some(5)` **kein Syntax-Posten**: Parser und Sema tragen
+  die Form seit dem 2026-08-12, das Lowering nicht. Was fehlt: Varianten-Layouts pro
+  Instanziierung, Tags und das `match`/Pattern-Lowering unter Substitution. **Zwei bis drei
+  Sessions, nicht ein Tag** — die Schätzung in dieser Datei war falsch, und zwar um den Faktor,
+  der zwischen „Syntax" und „fehlendes Feature" liegt.
+- **`static fn` in einem Enum-Rumpf parst nicht** — `LYR-PAR0008` („expected ')' after
+  parameters") plus zwei Folgemeldungen, alle drei über etwas anderes als die Ursache. Am
+  2026-08-12 beim Messen der Enum-Lücke aufgefallen. ~1 h.
 - **Ein Block-Lambda liefert seinen Rückgabetyp nicht an die Inferenz**: `(n: int) => n` bindet
   `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
   `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich

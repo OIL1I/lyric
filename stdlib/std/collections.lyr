@@ -141,11 +141,46 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         }
         this.data[index] = value;
     }
+
+    pub mut fn clear(): void {
+        let hole: ?T = null;
+        this.count = 0;
+        this.data = [hole] * 0;
+    }
+
+    // Eine Kopie als echtes Array. Der Rückgabetyp ist `T[]` und nicht `?T[]`: innerhalb von
+    // `count` ist jeder Slot belegt, und die leeren dahinter gehen niemanden etwas an.
+    //
+    // Gebaut wird von Anfang an als `T[]`. Ein `?T[]` hinterher umzudeuten gibt es nicht — `!`
+    // packt einen einzelnen Wert aus, nicht ein Array elementweise, und `?T[]` ist ein *Array von
+    // Optionals* und kein optionales Array. Deshalb braucht die Startbelegung ein echtes `T`, und
+    // das erste Element liefert es; die leere Liste hat keins und wird vorher abgefangen.
+    pub fn toArray(): T[] {
+        if (this.count == 0) {
+            return [];
+        }
+
+        // Kann nie fehlschlagen: `count > 0` heißt, Slot 0 ist belegt — dieselbe Zusicherung wie
+        // in `get`, und derselbe Beweis.
+        let first = this.data[0]!;
+        let result = [first] * this.count;
+
+        var i = 1;
+        while (i < this.count) {
+            result[i] = this.data[i]!;
+            i = i + 1;
+        }
+        return result;
+    }
 }
 
-// Eine leere Liste. Als freie Funktion und nicht als `static fn`, weil eine statische Methode auf
-// einer generischen Instanz (`List<int>.empty()`) nicht ausdrückbar ist — die Typargumente gibt
-// es nur am Funktions-Aufruf.
+// Eine leere Liste. Als freie Funktion und nicht als `static fn` — ursprünglich, weil eine
+// statische Methode auf einer generischen Instanz nicht ausdrückbar war.
+//
+// **Seit dem 2026-08-12 wäre `List<int>.empty()` schreibbar** (§6.2, Typpfad mit Argumenten in
+// Wert-Position). Es bleibt trotzdem eine freie Funktion: der Umbau kostet jeden Aufrufer eine
+// Änderung und bringt nichts, was diese Form nicht schon kann. Der Satz steht hier, damit der
+// Grund nicht weiter behauptet, was nicht mehr stimmt.
 pub fn emptyList<T>(): List<T> {
     let hole: ?T = null;
     return List<T> { data = [hole] * 0, count = 0 };

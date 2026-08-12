@@ -391,4 +391,127 @@ public class CollectionTests
                 return sum;
             }
             """));
+
+    // ------------------------------------------------------------------ clear und toArray
+    //
+    // Beide kamen am 2026-08-12 dazu. 'toArray' ist der interessantere Fall: sein Rueckgabetyp ist
+    // 'T[]' und das Backing ein '(?T)[]', und zwischen beiden gibt es KEINE Umdeutung — '!' packt
+    // einen einzelnen Wert aus, nicht ein Array elementweise. Die erste Fassung versuchte genau
+    // das ('return result!;') und war LYR-SEM0005.
+
+    [Fact]
+    public void ToArray_copies_the_used_slots_and_nothing_more() =>
+        // 3 Elemente, Summe 17 — Laenge UND Inhalt in einer Zahl, damit kein Teil davon
+        // unbemerkt danebenliegen kann.
+        Assert.Equal(3017, Run("""
+            import std.collections;
+
+            fn main(): int {
+                var xs = collections.emptyList<int>();
+                xs.push(3);
+                xs.push(5);
+                xs.push(9);
+
+                let a = xs.toArray();
+                return a.length * 1000 + a[0] + a[1] + a[2];
+            }
+            """));
+
+    /// <summary>
+    /// Die Laenge ist <c>count</c> und nicht <c>capacity</c>. Nach drei <c>push</c> stehen vier
+    /// Slots bereit — ein Array mit vier Elementen waere der Fehler, den <c>get</c> schon einmal
+    /// gemacht hat.
+    /// </summary>
+    [Fact]
+    public void ToArray_uses_count_and_not_capacity() =>
+        Assert.Equal(3, Run("""
+            import std.collections;
+
+            fn main(): int {
+                var xs = collections.emptyList<int>();
+                xs.push(1);
+                xs.push(2);
+                xs.push(3);
+                return xs.toArray().length;
+            }
+            """));
+
+    /// <summary>Die leere Liste hat kein erstes Element, aus dem sich ein <c>T[]</c> bauen liesse
+    /// — sie wird vorher abgefangen. Ohne diesen Test bliebe genau der Zweig ungeprueft.</summary>
+    [Fact]
+    public void ToArray_on_an_empty_list_is_an_empty_array() =>
+        Assert.Equal(0, Run("""
+            import std.collections;
+
+            fn main(): int {
+                let xs = collections.emptyList<int>();
+                return xs.toArray().length;
+            }
+            """));
+
+    /// <summary>Die Kopie ist eine Kopie: wer sie aendert, aendert die Liste nicht.</summary>
+    [Fact]
+    public void ToArray_returns_a_copy() =>
+        Assert.Equal(1, Run("""
+            import std.collections;
+
+            fn main(): int {
+                var xs = collections.emptyList<int>();
+                xs.push(1);
+
+                let a = xs.toArray();
+                a[0] = 99;
+                return xs.get(0);
+            }
+            """));
+
+    [Fact]
+    public void Clear_empties_the_list() =>
+        Assert.Equal(0, Run("""
+            import std.collections;
+
+            fn main(): int {
+                var xs = collections.emptyList<int>();
+                xs.push(1);
+                xs.push(2);
+                xs.clear();
+                return xs.length();
+            }
+            """));
+
+    /// <summary>
+    /// <c>clear</c> gibt das Backing wirklich frei und laesst es nicht nur hinter <c>count</c>
+    /// stehen — dieselbe Zusicherung wie bei <c>pop</c>, und aus demselben Grund: sonst hielte die
+    /// Liste jedes je eingefuegte Objekt am Leben.
+    /// </summary>
+    [Fact]
+    public void Clear_releases_the_backing_array() =>
+        Assert.Equal(0, Run("""
+            import std.collections;
+
+            fn main(): int {
+                var xs = collections.emptyList<int>();
+                xs.push(1);
+                xs.push(2);
+                xs.push(3);
+                xs.clear();
+                return xs.capacity();
+            }
+            """));
+
+    /// <summary>Und danach ist sie wieder benutzbar — ein geleertes Backing darf kein Sonderfall
+    /// fuer <c>push</c> sein.</summary>
+    [Fact]
+    public void A_cleared_list_still_grows() =>
+        Assert.Equal(7, Run("""
+            import std.collections;
+
+            fn main(): int {
+                var xs = collections.emptyList<int>();
+                xs.push(1);
+                xs.clear();
+                xs.push(7);
+                return xs.get(0);
+            }
+            """));
 }

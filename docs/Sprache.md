@@ -600,6 +600,16 @@ Einschränkung machte `std.collections` unbaubar.)*
 zwischen `<` und dem passenden `>` **ausschließlich** Tokens stehen, die in einem Typausdruck
 vorkommen können, und unmittelbar danach ein `(` folgt. Im Zweifel ist es ein Vergleich — C#
 entscheidet nach demselben Prinzip, Rust umgeht die Frage mit `::<>`.
+
+**Ein Typpfad mit Argumenten in Wert-Position** (`Pair<int>.of(3)`) folgt derselben Regel, nur mit
+`.` statt `(` dahinter — ein Punkt hinter einer Vergleichskette ist ohnehin kein gültiger
+Ausdruck. Gebraucht wird die Form für eine statische Methode auf einem generischen Typ; ohne sie
+war sie unerreichbar. Ohne Argumente ist es `LYR-SEM0063`: `Pair.of(3)` inferiert **nicht** aus
+den Argumenten, denn ein Typpfad verlangt sie ausdrücklich (§6.2).
+
+*(Nicht dabei: eine Variante eines generischen Enums. `Opt<int>.Some(5)` scheitert am Lowering,
+das generische Enums noch gar nicht kennt — `LYR-IR0001`. Das ist ein fehlendes Feature und keine
+Syntaxlücke.)*
 | 2 | Prefix `!` (logical not) `-` `~` `++` `--` `resume` | rechts |
 | 3 | `as` | links |
 | 4 | `*` `/` `%` | links |
@@ -629,6 +639,7 @@ Primary         = IntLit | FloatLit | StringLit | InterpolatedStr
                 | CharLit | BoolLit | NullLit
                 | 'this'
                 | IDENTIFIER
+                | TypePath                              (* nur mit Argumenten und nur vor '.': Pair<int>.of(3) *)
                 | AT_IDENT [ '(' [ ArgList ] ')' ]      (* reserviert, in v1 abgelehnt — §10 *)
                 | '(' Expr ')'
                 | IfExpr

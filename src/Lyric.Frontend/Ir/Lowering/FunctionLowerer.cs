@@ -3324,6 +3324,38 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
+    /// <summary>
+    /// <c>Pair&lt;int&gt;.of(3)</c> — eine statische Methode auf einer generischen Instanz.
+    ///
+    /// <para>Bis auf den fehlenden Empfaenger ist das <see cref="LowerGenericMethodCall"/>: dieselbe
+    /// Monomorphisierungs-Anforderung, dieselbe Substitution des Rueckgabetyps. Getrennt steht es
+    /// nur, weil ADR-014 den Empfaenger zu Parameter 0 macht — und den gibt es hier nicht.</para>
+    /// </summary>
+    private TempId? LowerGenericStaticCall(MemberExpr member, GenericInstance owner, CallExpr expr)
+    {
+        if (_types.RefOf(member) is not FunctionSymbol method)
+            throw NotSupported($"call to '{member.Member}' on " +
+                               $"'{TypeFacts.Display(owner)}'", expr.Span);
+
+        if (method.Declaration is not FunctionDecl declaration)
+            throw NotSupported($"call to '{member.Member}' (no declaration)", expr.Span);
+
+        var target = _instances.RequestMethod(method, declaration, owner, expr.Span);
+        var args = MaterializeArguments(declaration, expr.Arguments, member.Member, expr.Span);
+
+        var returns = ReturnTypeOfInstanceMethod(declaration, owner, expr.Span);
+        if (IsVoid(returns))
+        {
+            _b.Emit(new Call(null, target, args, expr.Span));
+            return null;
+        }
+
+        var dest = _slots.NewTemp(returns);
+        _b.Emit(new Call(dest, target, args, expr.Span));
+        _fresh.Add(dest);
+        return dest;
+    }
+
     /// <summary>Der Rueckgabetyp einer Methode, gesehen aus der Instanz: das <c>T</c> in
     /// <c>fn get(): T</c> ist das Typargument des Empfaengers.</summary>
     private IrType ReturnTypeOfInstanceMethod(FunctionDecl declaration, GenericInstance owner,
@@ -3529,6 +3561,15 @@ internal sealed class FunctionLowerer
 
         switch (expr.Callee)
         {
+            // 'Pair<int>.of(3)' — eine statische Methode auf einer generischen INSTANZ. Das Ziel
+            // ist hier kein Wert, sondern ein Typpfad; einen Empfaenger gibt es nicht (ADR-014),
+            // die Instanziierung aber schon. Der Fall steht ganz vorn, weil alle Faelle darunter
+            // den Typ des Ziel-AUSDRUCKS befragen, und ein Typpfad hat keinen.
+            case MemberExpr { Target: TypePathExpr } member
+                when _types.TypeOf(((MemberExpr)expr.Callee).Target)
+                     is Sema.NonValueType { Instance: { } owner }:
+                return LowerGenericStaticCall(member, owner, expr);
+
             // Empfaenger ist ein Interface-Wert: welche Implementierung laeuft, steht erst zur
             // Laufzeit fest. Das ist der einzige dynamische Dispatch der Sprache.
             case MemberExpr member

@@ -550,6 +550,20 @@ Modul-`let` mit sprechendem Präfix. Mehrere Fabriken sind kein Problem — sie 
 verschiedene Namen (`Enemy.new`, `Enemy.fromSave`), weil Lyric in v1 kein Overloading hat
 (ADR-015).
 
+Auf einem **generischen** Typ schreibst du die Typargumente an den Typ, nicht an den Aufruf:
+
+```lyr
+pub struct Pair<T> {
+    a: T, b: T,
+    static fn of(x: T): Pair<T> { return Pair<T> { a = x, b = x }; }
+}
+
+let p = Pair<int>.of(3);      // Pair<int>
+```
+
+Sie stehen dort, weil sie dem *Typ* gehören und nicht der Methode. Weglassen geht nicht: der
+Compiler inferiert sie an dieser Stelle nicht und sagt es (`LYR-SEM0063`).
+
 ### 10.4 Konstanten und ihre Reihenfolge
 
 Ein `let` auf Modulebene und ein `static let` in einem Typ sind dasselbe: ein Wert, der einmal

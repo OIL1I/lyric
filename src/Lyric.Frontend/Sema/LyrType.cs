@@ -101,6 +101,10 @@ public sealed record ErrorType : LyrType;
 /// <c>TypeChecker.CheckExpr</c> <c>LYR-SEM0052</c> und degradiert zu <see cref="ErrorType"/> —
 /// ab da gilt wieder die normale Poison-Regel.</para>
 /// </summary>
-public sealed record NonValueType(Symbol Symbol, string Kind) : LyrType;
+/// <param name="Instance">Bei <c>Pair&lt;int&gt;.of(3)</c> die aufgeloeste Instanz. Sie ist der
+/// ganze Unterschied zu <c>Pair.of(3)</c>: ohne sie liefert das Member seinen Typ mit
+/// <c>T</c> darin, und der Fehler kommt als „cannot assign 'int' to 'T'" eine Ebene zu spaet.
+/// <c>null</c> bei jedem nicht-generischen Typ und bei jedem Modul.</param>
+public sealed record NonValueType(Symbol Symbol, string Kind, GenericInstance? Instance = null) : LyrType;
 public sealed record NullType : LyrType;                            // Typ des null-Literals (nur ?T-zuweisbar)
 public sealed record NeverType : LyrType;                           // Rückgabetyp von panic (§9); Bottom-Typ, nicht benennbar

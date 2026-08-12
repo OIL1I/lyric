@@ -339,6 +339,7 @@ public sealed partial class Parser
                 return new NullLiteralExpr(cur.Span);
             case TokenKind.Identifier:
                 if (IsStructInitAhead()) return ParseStructInit();
+                if (IsTypePathAhead()) return ParseTypePath();
                 _buffer.Advance();
                 return new IdentifierExpr(_sm.Slice(cur.Span).ToString(), cur.Span);
             case TokenKind.This:
@@ -471,6 +472,48 @@ public sealed partial class Parser
             if (i < 0) return false;
         }
         return _buffer.Peek(i).TokenKind == TokenKind.LBrace;
+    }
+
+    /// <summary>
+    /// Lookahead ab einem Identifier: ist es ein Typpfad MIT Argumenten in Wert-Position,
+    /// <c>Pair&lt;int&gt;.of(3)</c>? Also ein (ggf. dotted) Pfad, ein balanciertes
+    /// <c>&lt;…&gt;</c>, und direkt danach ein <c>.</c>.
+    ///
+    /// <para>Das <c>&lt;</c> ist ohne Argumente kein Typpfad: <c>P.neu()</c> ist ein gewoehnlicher
+    /// Bezeichner, dessen Symbol ein Typ ist, und braucht diesen Weg nicht. Deshalb steht hier
+    /// <b>kein</b> optionales <c>&lt;</c> wie in <see cref="IsStructInitAhead"/>.</para>
+    ///
+    /// <para><b>Die Regel kostet keine Mehrdeutigkeit.</b> Ein <c>.</c> hinter einer
+    /// Vergleichskette (<c>a &lt; b &gt; .c</c>) ist ohnehin kein gueltiger Ausdruck — es gibt
+    /// dort nichts zu verwechseln. Dieselbe Entscheidung wie bei <c>f&lt;int&gt;()</c> in §6.1,
+    /// und aus demselben Grund: eine dritte Schreibweise (Rusts <c>::&lt;&gt;</c>) waere ein
+    /// zweiter Mechanismus fuer dasselbe Konzept.</para>
+    /// </summary>
+    private bool IsTypePathAhead()
+    {
+        var i = 1; // hinter dem aktuellen Identifier
+        while (_buffer.Peek(i).TokenKind == TokenKind.Dot
+               && _buffer.Peek(i + 1).TokenKind == TokenKind.Identifier)
+            i += 2;
+
+        if (_buffer.Peek(i).TokenKind != TokenKind.Less) return false;
+
+        i = SkipTypeArgs(i);
+        return i >= 0 && _buffer.Peek(i).TokenKind == TokenKind.Dot;
+    }
+
+    private Expr ParseTypePath()
+    {
+        var first = _buffer.Advance(); // erster IDENT
+        var path = new List<string> { _sm.Slice(first.Span).ToString() };
+
+        // Der Lookahead hat 'IDENT (. IDENT)* <' zugesichert, also endet die Schleife am '<'.
+        while (_buffer.Match(TokenKind.Dot))
+            path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                $"expected type name, got {_buffer.Current.TokenKind}").Span).ToString());
+
+        var typeArgs = ParseTypeArguments(out var close);
+        return new TypePathExpr(path.ToArray(), typeArgs, Span.Union(first.Span, close));
     }
 
     // Überspringt ab Peek(start)=='<' eine balancierte Typ-Argument-Gruppe (Tiefe über '<'/'>',
