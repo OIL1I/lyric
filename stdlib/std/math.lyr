@@ -199,7 +199,7 @@ pub fn logBase(value: float, base: float): float {
     return log(value) / log(base);
 }
 
-/// Kubikwurzel — auch für negative Werte.
+/// The cube root, negative values included.
 ///
 /// `pow(x, 1/3)` alone yields NaN for negative `x`: a fractional power is undefined there. The
 /// cube root is not, and the sign simply moves out.
@@ -242,7 +242,7 @@ pub fn toDegrees(radians: float): float {
 // Not cryptographic. Generating keys needs a source from the operating system, which belongs to
 // `std.os`. For simulations, games and test data this is enough and fast.
 //
-// **Der Seed kommt vom Aufrufer** — es gibt kein `newRandom()` ohne Argument. Eine Zeitquelle als
+// **The seed comes from the caller**: there is no `newRandom()` without an argument.
 // There is no default seed: it would make a run irreproducible, and silently so. A caller wanting
 // per-run randomness takes the time from `std.os` and says so.
 // hin.
@@ -250,7 +250,7 @@ pub fn toDegrees(radians: float): float {
 pub class Random {
     state: int,
 
-    /// Der nächste Rohwert. Kann jedes Vorzeichen haben.
+/// The next raw value. It may have either sign.
     pub mut fn nextInt(): int {
         var x = this.state;
         x = x ^ (x << 13);
@@ -260,7 +260,7 @@ pub class Random {
         return x;
     }
 
-    /// Gleichverteilt in `[lo, hi)`. Ein leerer Bereich liefert `lo`.
+    /// Uniformly distributed in `[lo, hi)`. An empty range yields `lo`.
     pub mut fn nextIntRange(lo: int, hi: int): int {
         if (hi <= lo) {
             return lo;
@@ -269,10 +269,9 @@ pub class Random {
         return lo + absInt(this.nextInt()) % (hi - lo);
     }
 
-    /// Gleichverteilt in `[0, 1)`.
+    /// Uniformly distributed in `[0, 1)`.
     pub mut fn nextFloat(): float {
         // 53 bits are exactly the mantissa of a float64; more would not be representable.
-        // weniger verschenkten Auflösung.
         let bits = absInt(this.nextInt()) % 9007199254740992;
         return (bits as float) / 9007199254740992.0;
     }

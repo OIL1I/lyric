@@ -26,7 +26,7 @@ public sealed class SymbolTable
         return true;
     }
 
-    /// <summary>Nur dieser Scope, ohne Parent-Kette.</summary>
+    /// <summary>This scope only, without the parent chain.</summary>
     public Symbol? LookupLocal(string name) =>
         _byName.TryGetValue(name, out var s) ? s : null;
 

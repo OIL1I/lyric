@@ -13,7 +13,7 @@ public sealed record Block(Stmt[] Statements, Span Span) : Stmt(Span);
 public sealed record BindingStmt(bool IsMutable, string Name, TypeNode? Type, Expr? Initializer, Span Span) : Stmt(Span);
 
 /// <summary>
-/// <c>let (a, b) = paar;</c> — bindet mehrere Namen aus einem Tupel (Sprache.md §4).
+/// <c>let (a, b) = pair;</c> — binds several names from a tuple.
 ///
 /// <para>Its own statement rather than a variant of <see cref="BindingStmt"/>: there one name
 /// stands, here several, and the initializer is required. The difference in type makes the two
@@ -35,8 +35,8 @@ public sealed record BreakStmt(Span Span) : Stmt(Span);
 public sealed record ContinueStmt(Span Span) : Stmt(Span);
 public sealed record ReturnStmt(Expr? Value, Span Span) : Stmt(Span);
 public sealed record YieldStmt(Expr? Value, Span Span) : Stmt(Span);
-// resume is an EXPRESSION (ResumeExpr in Expressions.cs); as a statement it runs
-// 'resume co;' über ExprStmt. Send-Werte ('resume co, v') sind post-v1 (D7).
+// resume is an EXPRESSION (ResumeExpr in Expressions.cs); as a statement 'resume co;' runs through
+// ExprStmt. Send values ('resume co, v') are post-v1.
 
 // The body is a block or an ExprStmt.
 public sealed record DeferStmt(Stmt Body, Span Span) : Stmt(Span);
@@ -46,12 +46,12 @@ public sealed record ThrowStmt(Expr Value, Span Span) : Stmt(Span);
 public sealed record MatchStmt(Expr Scrutinee, MatchArm[] Arms, Span Span) : Stmt(Span);
 
 public sealed record TryStmt(Block Body, CatchClause[] Catches, Span Span) : Stmt(Span);
-// BindingName == null  => '_' (catch-all ohne Binding)
+// BindingName == null means '_', a catch-all without a binding
 // BindingType == null: catch-all with a binding (Throwable); otherwise a typed catch.
 public sealed record CatchClause(string? BindingName, TypeNode? BindingType, Block Body, Span Span) : Node(Span);
 
-// Nur Call/Assign sind semantisch gültig (Sprache.md §5) — vom Parser generisch
-// parsed here, restricted by the sema.
+// Only calls and assignments are semantically valid; the parser accepts expressions generically here
+// and the sema restricts them.
 public sealed record ExprStmt(Expr Expr, Span Span) : Stmt(Span);
 
 public sealed record ErrorStmt(Span Span) : Stmt(Span); // recovery placeholder

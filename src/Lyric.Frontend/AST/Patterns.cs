@@ -13,12 +13,12 @@ public abstract record Pattern(Span Span) : Node(Span);
 
 public sealed record WildcardPattern(Span Span) : Pattern(Span);                        // _
 public sealed record LiteralPattern(Expr Literal, Span Span) : Pattern(Span);           // 42, "x", true, null, 'c', -1
-public sealed record BindingPattern(string Name, Span Span) : Pattern(Span);            // x  (Bindung ODER Unit-Variante → Sema)
+public sealed record BindingPattern(string Name, Span Span) : Pattern(Span);            // x: a binding OR a unit variant, decided by the sema
 public sealed record VariantPattern(string[] Path, Pattern[]? TupleElements, FieldPattern[]? StructFields, Span Span) : Pattern(Span);
 public sealed record TuplePattern(Pattern[] Elements, Span Span) : Pattern(Span);       // (a, b)
 public sealed record RangePattern(Expr Low, Expr High, bool IsInclusive, Span Span) : Pattern(Span); // 0..=9
 public sealed record OrPattern(Pattern[] Alternatives, Span Span) : Pattern(Span);      // a | b | c
-public sealed record FieldPattern(string Name, Pattern? Pattern, Span Span) : Node(Span); // x  ODER  x = Pattern
+public sealed record FieldPattern(string Name, Pattern? Pattern, Span Span) : Node(Span); // x, or x = Pattern
 public sealed record ErrorPattern(Span Span) : Pattern(Span);
 
 // MatchArm = Pattern [ 'if' Guard ] '=>' ( Expr | Block ).

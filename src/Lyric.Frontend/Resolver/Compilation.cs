@@ -44,11 +44,11 @@ public sealed class Compilation
     /// declaration; anywhere else it is an error (<c>LYR-SEM0051</c>).
     ///
     /// <para>The property follows the ORIGIN, not the content.
-    /// User native Funktionen erschleichen, indem er sein Modul <c>std.foo</c> nennt.</para>
+    /// a user could obtain native functions by naming their module <c>std.foo</c>.</para>
     /// </summary>
     public bool IsNative(ModuleSymbol module) => _native.Contains(module);
 
-    /// <summary>Sieht Modul <paramref name="from"/> Deklarationen aus <paramref name="to"/>?
+    /// <summary>Does module <paramref name="from"/> see declarations from <paramref name="to"/>?
     /// The same module, or an import of <paramref name="to"/>.</summary>
     public bool Sees(ModuleSymbol from, ModuleSymbol to)
     {
@@ -60,7 +60,7 @@ public sealed class Compilation
         //
         // The 'Display' extensions for the built-ins hang there too, so without this rule a
         // program would have to import 'std.core' just to satisfy the constraint of
-        // macht. Dasselbe Modell wie Roslyns Well-Known-Members.
+        // does. The same model as Roslyn's well-known members.
         if (to.FullName == "std.core") return true;
         foreach (var decl in AstOf(from).Declarations)
             if (decl is ImportDecl imp && FindModule(imp.Path) is { } t && ReferenceEquals(t, to))
@@ -108,7 +108,7 @@ public sealed class Compilation
         foreach (var path in WellKnownModules)
         {
             if (FindModule(path) is not null) continue;
-            if (ModuleLoader(path) is not { } wellKnown) continue; // ohne Stdlib-Pfad: entfällt
+            if (ModuleLoader(path) is not { } wellKnown) continue; // without a stdlib path this does not apply
             AddModule(wellKnown.Ast, string.Join('.', path), wellKnown.IsNative);
         }
 

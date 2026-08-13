@@ -26,31 +26,29 @@ public enum Phase
     /// <summary>AST to mid-level IR.</summary>
     Lower,
 
-    /// <summary>IR-Invarianten pruefen. Eigene Phase, weil <c>STATUS.md</c> seit M5 behauptet, das
-    /// sei ~90 % der Lowering-Zeit — eine Handmessung, die seither nie nachgeprueft wurde. Ab
-    /// jetzt steht die Zahl bei jedem <c>--verbose</c>-Lauf da.</summary>
+    /// <summary>Checking the IR invariants. A phase of its own, so the share it takes appears in every
+    /// <c>--verbose</c> run.</summary>
     Verify,
 
-    /// <summary>IR → <c>.lyrbc</c>-Bytes.</summary>
+/// <summary>IR to <c>.lyrbc</c> bytes.</summary>
     Emit,
 }
 
 /// <summary>
-/// Welche Phasen <b>dieser Build</b> wirklich durchlaeuft.
+/// Which phases THIS BUILD actually runs.
 ///
-/// <para>Die Liste ist keine Konstante: der Verifier laeuft nur in Debug-Builds (Vorbild ist
-/// LLVMs Verifier in Assert-Builds, Begruendung bei <c>ModuleLowerer.VerifyByDefault</c>). Sie
-/// steht hier und nicht im Frontend, weil auch die Werkzeug-Tests sie brauchen — sie fahren die
-/// Binaries als Prozesse und referenzieren das Frontend bewusst nicht.</para>
+/// <para>The list is no constant: the verifier runs in debug builds only, as LLVM's does in assert
+/// builds; the reasoning is at <c>ModuleLowerer.VerifyByDefault</c>. It stands here rather than in the
+/// frontend, because the tooling tests need it too — they drive the binaries as processes and
+/// deliberately do not reference the frontend.</para>
 ///
-/// <para>Zweimal hingeschrieben war sie schon: der Test der <c>--verbose</c>-Tabelle trug die
-/// Phasenliste als Literal und war deshalb in Release rot, waehrend Debug gruen blieb. Dieselbe
-/// Lehre wie bei <see cref="Unicode"/> — eine Regel, die zwei Stellen kennen muessen, gehoert an
-/// die eine, die beide sehen.</para>
+/// <para>Written twice, it drifts: the test of the <c>--verbose</c> table carried the phase list as a
+/// literal and was therefore red in release while debug stayed green. A rule two places have to know
+/// belongs at the one place both of them see.</para>
 /// </summary>
 public static class Pipeline
 {
-    /// <summary>Prueft dieser Build die IR-Invarianten nach dem Lowering?</summary>
+    /// <summary>Does this build check the IR invariants after the lowering?</summary>
     public static bool VerifiesIr =>
 #if DEBUG
         true;
@@ -58,17 +56,17 @@ public static class Pipeline
         false;
 #endif
 
-    /// <summary>Die Phasen in Pipeline-Reihenfolge, ohne die, die dieser Build ueberspringt.</summary>
+    /// <summary>The phases in pipeline order, without the ones this build skips.</summary>
     public static IReadOnlyList<Phase> OfThisBuild { get; } =
         Enum.GetValues<Phase>()
             .Where(phase => phase != Phase.Verify || VerifiesIr)
             .ToArray();
 }
 
-/// <summary>Wie eine Phase in der Ausgabe heisst.</summary>
+/// <summary>How a phase is named in the output.</summary>
 public static class PhaseNames
 {
-    /// <summary>Kurzform fuer die Zeittabelle (kleingeschrieben, wie ein Kommando).</summary>
+    /// <summary>The short form for the timing table, lower-case like a command.</summary>
     public static string Short(Phase phase) => phase switch
     {
         Phase.Read => "read",
@@ -82,7 +80,7 @@ public static class PhaseNames
         _ => throw new ArgumentOutOfRangeException(nameof(phase), phase, "unhandled phase"),
     };
 
-    /// <summary>Verlaufsform fuer die Live-Zeile („was tut der Compiler gerade").</summary>
+    /// <summary>The progressive form for the live line: what the compiler is doing right now.</summary>
     public static string Progressive(Phase phase) => phase switch
     {
         Phase.Read => "Reading",

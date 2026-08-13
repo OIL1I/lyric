@@ -5,7 +5,7 @@ namespace Lyric.Resolver;
 /// <summary>
 /// A side table binding AST reference nodes to their resolved symbols without touching the
 /// immutable AST.
-/// Typ-Namen (<see cref="NamedType"/> → Symbol). Spätere Slices ergänzen Ausdrücke.
+/// type names (<see cref="NamedType"/> to symbol).
 /// </summary>
 public sealed class BindingResult
 {

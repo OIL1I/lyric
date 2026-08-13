@@ -70,7 +70,7 @@ pub fn toChars(value: string): char[];
 // no `List<T>` and no `Iterator<T>` here; collecting happens into an array.
 // `string[]`.
 
-// ------------------------------------------------------------------ Zeichen pruefen
+// ------------------------------------------------------------------ character tests
 //
 // All take a `char` rather than a `string`: the question is asked of a character.
 
@@ -135,7 +135,7 @@ pub fn isBlank(value: string): bool {
     return true;
 }
 
-// ------------------------------------------------------------------ Suchen
+// ------------------------------------------------------------------ searching
 
 /// Searches from a position. `-1` when nothing is found, as in `indexOf`.
 pub fn indexOfFrom(value: string, needle: string, start: int): int {
@@ -155,7 +155,7 @@ pub fn indexOfFrom(value: string, needle: string, start: int): int {
     return -1;
 }
 
-/// Das LETZTE Vorkommen.
+/// The LAST occurrence.
 pub fn lastIndexOf(value: string, needle: string): int {
     let n = length(value);
     let m = length(needle);
@@ -173,7 +173,7 @@ pub fn lastIndexOf(value: string, needle: string): int {
     return -1;
 }
 
-/// Wie oft `needle` vorkommt — OHNE Ueberlappung.
+/// How often `needle` occurs, WITHOUT overlap.
 ///
 /// Overlapping occurrences are not counted: `count("aaa", "aa")` is 1, not 2. This matches
 /// `replace`.
@@ -391,7 +391,7 @@ pub fn parseBool(value: string): ?bool {
     return null;
 }
 
-/// `"3.5"`, `"-0.25"`, `"42"` werden Fliesskomma; alles andere `null`.
+/// `"3.5"`, `"-0.25"` and `"42"` become floating point; everything else is `null`.
 ///
 /// Without exponent notation (`1e9`), which would need a state machine of its own.
 pub fn parseFloat(value: string): ?float {
@@ -448,7 +448,7 @@ fn absFloat(value: float): float {
     return if (value < 0.0) 0.0 - value else value;
 }
 
-// ------------------------------------------------------------------ Bauen
+// ------------------------------------------------------------------ building
 
 pub fn fromChars(chars: char[]): string {
     var result = "";

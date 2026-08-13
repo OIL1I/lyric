@@ -384,7 +384,7 @@ pub fn position<T>(source: Iterator<T>, test: fn(T) -> bool): ?int {
     return null;
 }
 
-/// Alles in ein Array.
+/// Everything into an array.
 ///
 /// Quadratic: a `T[]` has a fixed length, so every append copies. For large iterators use
 /// `std.collections.collect`, which gathers into a doubling `List<T>`. It stands here because
@@ -399,7 +399,7 @@ pub fn collectArray<T>(source: Iterator<T>): T[] {
     return result;
 }
 
-/// Das kleinste Element — `null` bei leerer Quelle.
+/// The smallest element, or `null` for an empty source.
 pub fn minValue<T :: [Ordered<T>]>(source: Iterator<T>): ?T {
     var best = source.next();
     if (best == null) {

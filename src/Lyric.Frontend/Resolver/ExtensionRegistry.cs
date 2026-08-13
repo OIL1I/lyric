@@ -31,7 +31,7 @@ public sealed class ExtensionRegistry
         }
     }
 
-    /// <summary>Alle für <paramref name="target"/> registrierten Extension-Methoden
+    /// <summary>All extension methods registered for <paramref name="target"/>
     /// (unfiltered; the caller checks visibility).</summary>
     public IReadOnlyList<ExtensionMethod> MethodsFor(TypeSymbol target) =>
         _byTarget.TryGetValue(target, out var list) ? list : [];
@@ -43,7 +43,7 @@ public sealed class ExtensionBlock
 {
     public ExtendDecl Decl { get; }
     public ModuleSymbol Module { get; }
-    public SymbolTable MethodScope { get; } // FunctionSymbols der Extend-Methoden (für Body-Check + Cross-Calls)
+    public SymbolTable MethodScope { get; } // the FunctionSymbols of the extend methods, for the body check and cross-calls
     public FunctionSymbol[] Methods { get; }
     public TypeSymbol? Target { get; set; }
 

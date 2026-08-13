@@ -129,7 +129,7 @@ pub fn parentDir(path: string): string {
     return substring(path, 0, start - 1);
 }
 
-/// Die Endung OHNE Punkt. `""`, wenn es keine gibt.
+/// The extension WITHOUT the dot. `""` when there is none.
 ///
 /// A leading dot does not count: `".gitignore"` has no extension, that is its name. This rule
 /// differs between languages, so it is stated here.

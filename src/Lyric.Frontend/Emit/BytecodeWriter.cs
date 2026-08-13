@@ -7,7 +7,7 @@ namespace Lyric.Bytecode;
 /// <summary>
 /// <see cref="IrModule"/> → <c>.lyrbc</c>-Bytes.
 ///
-/// <para><b>Deterministisch</b> (ADR-013): gleicher Input erzeugt byte-identischen Output. Dafür
+/// <para>DETERMINISTIC: the same input produces byte-identical output. For that
 /// it takes three things: the string pool is built in first-use order rather than hash order, there
 /// are no timestamps, and sections appear in ascending id order.</para>
 ///
@@ -55,8 +55,8 @@ public static class BytecodeWriter
             foreach (var value in strings.InOrder) s.String(value);
         });
 
-        // Must precede Imports and Functions: section ids ascend, and both may
-        // Referenztypen in ihren Signaturen nennen.
+        // Must precede Imports and Functions: section ids ascend, and both may name reference types in
+        // their signatures.
         if (module.Types.Count > 0)
             WriteSection(writer, SectionId.Types, s =>
             {
@@ -71,10 +71,10 @@ public static class BytecodeWriter
 
                     if (type.IsInterface)
                     {
-                        // Ein Interface traegt keine Felder, sondern Slot-Namen. Sie stehen im
-                        // bytecode — unlike field names — because a disassembler could otherwise
-                        // only show 'ty3#1', and a third-party runtime binding
-                        // Host-Implementierungen keinen Anhaltspunkt haette.
+                        // An interface carries no fields but slot names. They stand in the bytecode —
+                        // unlike field names — because a disassembler could otherwise only show
+                        // 'ty3#1', and a third-party runtime would have nothing to bind host
+                        // implementations by.
                         s.ULeb(type.MethodSlots.Length);
                         foreach (var slot in type.MethodSlots) s.String(slot);
                         continue;
@@ -112,7 +112,7 @@ public static class BytecodeWriter
             foreach (var body in bodies) s.Raw(body);
         });
 
-        // Fehlt bei Bibliotheks-Modulen. Muss nach Functions stehen: Sektionen sind aufsteigend.
+        // Absent for library modules. Has to come after Functions: section ids ascend.
         //
         // The index runs into the SHARED space (imports first, then functions), the same one 'call'
         // uses.
@@ -131,7 +131,7 @@ public static class BytecodeWriter
                     s.ULeb(impl.Type.Value);
                     s.ULeb(impl.Interface.Value);
                     s.ULeb(impl.Methods.Length);
-                    // Funktionsindex im GEMEINSAMEN Raum (erst Imports, dann Funktionen) — wie
+                    // The function index in the SHARED space (imports first, then functions), the same
                     // as for 'call' and for the Start section. An import as a vtable entry is
                     // expressible; whether a runtime accepts one is its own business.
                     foreach (var method in impl.Methods)
@@ -140,7 +140,7 @@ public static class BytecodeWriter
             });
 
 
-        // Globale Slots samt ihrer Init-Funktion. Vor Handlers (9), hinter Start (7)? Nein:
+        // The global slots together with their init function.
         // Globals is 10 and therefore comes last; section ids ascend strictly.
         if (module.Globals.Count > 0)
             WriteSection(writer, SectionId.Globals, s =>
@@ -154,8 +154,8 @@ public static class BytecodeWriter
                     : 0UL);
             });
 
-        // Geschuetzte Regionen. Ganz zuletzt: Sektions-Ids steigen strikt, Handlers (9) liegt
-        // hinter Impls (8).
+        // The protected regions, last of all: section ids ascend strictly, and Handlers (9) comes after
+        // Impls (8).
         var handlers = module.Functions
             .SelectMany((fn, index) => fn.Handlers.Select(h => (Function: index, Handler: h)))
             .ToList();
@@ -252,12 +252,12 @@ public static class BytecodeWriter
                 {
                     case IrUnKind.Neg: code.Opcode(Op.Neg); code.Tag(TagOf(u.Type)); break;
                     case IrUnKind.BitNot: code.Opcode(Op.BitNot); code.Tag(TagOf(u.Type)); break;
-                    case IrUnKind.Not: code.Opcode(Op.Not); break; // nur bool, kein Tag nötig
+                    case IrUnKind.Not: code.Opcode(Op.Not); break; // bool only, so no tag is needed
                     default: throw new InternalCompilationException($"bytecode: unknown unop {u.Kind}");
                 }
                 break;
 
-            case Lyric.Ir.Convert cv: // qualifiziert: kollidiert mit System.Convert
+            case Lyric.Ir.Convert cv: // qualified: it collides with System.Convert
                 code.Opcode(Op.Convert);
                 code.Tag(TagOf(cv.From));
                 code.Tag(TagOf(cv.To));
@@ -265,7 +265,7 @@ public static class BytecodeWriter
 
             case LoadLocal l:
                 code.Opcode(Op.LoadLocal);
-                code.ULeb(l.Local.Value); // IR-LocalId == Slot-Index (die ersten n Slots sind die Locals)
+                code.ULeb(l.Local.Value); // the IR LocalId is the slot index; the first n slots are the locals
                 break;
 
             case StoreLocal s:
@@ -274,7 +274,7 @@ public static class BytecodeWriter
                 break;
 
             case CallImport k:
-                // Gemeinsamer Indexraum: erst Imports, dann Funktionen. Die Arithmetik sitzt hier,
+                // A shared index space: imports first, then functions. The arithmetic sits here,
                 // because the convention lives here; the IR keeps the two apart deliberately.
                 code.Opcode(Op.Call);
                 code.ULeb(k.Target.Value);
@@ -347,7 +347,7 @@ public static class BytecodeWriter
 
             case MakeClosure m:
                 code.Opcode(Op.MakeClosure);
-                // Zielindex im gemeinsamen Aufruf-Indexraum (erst Imports, dann Funktionen) —
+                // The target index in the shared call index space (imports first, then functions),
                 // the same arithmetic as for 'call'. The LOWEST BIT says whether an environment is
                 // on the stack: a reader must know the stack effect at load time, and a closure
                 // without captures has none.
@@ -452,7 +452,7 @@ public static class BytecodeWriter
         switch (layout.Placements[temp])
         {
             case Placement.Stack:
-                break; // bleibt liegen, die nächste Instruktion konsumiert ihn
+                break; // it stays; the next instruction consumes it
             case Placement.Slot:
                 code.Opcode(Op.StoreLocal);
                 code.ULeb(layout.TempSlots[temp]);
@@ -518,10 +518,10 @@ public static class BytecodeWriter
 
         // The name is INLINE rather than a string-pool index: 'WriteType' is static and does not
         // know the pool. The same choice as for 'Fn', the other
-        // zusammengesetzten Typ ohne Tabellen-Eintrag.
+        // composite type without a table entry.
         if (type is IrHostType h) w.String(h.Name);
 
-        // Strukturell: Parameterzahl, Parametertypen, Rueckgabetyp. Als einziger zusammengesetzter
+        // Structural: the parameter count, the parameter types and the return type. The only composite
         // type without a table entry — it has no declaration to hang an id on.
         if (type is IrFunctionType f)
         {

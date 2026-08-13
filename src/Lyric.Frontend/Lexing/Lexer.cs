@@ -164,9 +164,8 @@ public sealed class Lexer
             // Round and square brackets are counted too, so '}' and ':' answer the same question
             // here and above: is this the top level of the interpolated expression?
             //
-            // A closing bracket without an opening one does NOT count negative; it is a syntax
-            // error the parser reports.
-            // Lexer-Fehler an einer anderen Stelle.
+            // A closing bracket without an opening one does NOT count negative; it is a syntax error the
+            // parser reports rather than a lexer error somewhere else.
             if (Current is '(' or '[')
             {
                 var opened = Current;

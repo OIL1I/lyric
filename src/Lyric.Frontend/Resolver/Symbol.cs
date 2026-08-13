@@ -3,8 +3,8 @@ using Lyric.AST;
 namespace Lyric.Resolver;
 
 // Symbols are identity objects, without value equality, and are built incrementally
-// aufgebaut: erst deklariert, in späteren Slices um Typ-Infos angereichert. Daher
-// mutable Klassen, keine Records.
+// built up in stages: declared first, enriched with type information later. Hence mutable classes
+// rather than records.
 
 public enum Visibility
 {
@@ -20,7 +20,7 @@ public enum TypeSymbolKind
 public abstract class Symbol
 {
     public string Name { get; }
-    public Node? Declaration { get; } // AST-Knoten der Deklaration; null für Builtins/synthetische Symbole
+    public Node? Declaration { get; } // the AST node of the declaration; null for builtins and synthetic symbols
 
     protected Symbol(string name, Node? declaration)
     {
@@ -50,8 +50,8 @@ public sealed class TypeSymbol : Symbol
 {
     public TypeSymbolKind Kind { get; }
     public Visibility Visibility { get; }
-    public SymbolTable Members { get; } // Felder, Methoden, Enum-Varianten (leer bei Builtin/Alias)
-    public GenericParamSymbol[] Generics { get; set; } = []; // Typ-Parameter (nach Deklaration gesetzt)
+    public SymbolTable Members { get; } // fields, methods and enum variants; empty for a builtin or an alias
+    public GenericParamSymbol[] Generics { get; set; } = []; // the type parameters, set after the declaration
 
     public TypeSymbol(string name, TypeSymbolKind kind, Visibility visibility, SymbolTable members, Node? declaration)
         : base(name, declaration)
@@ -68,7 +68,7 @@ public sealed class FunctionSymbol : Symbol
     public bool IsMut { get; }
 
     /// <summary>A member without a receiver: no <c>this</c>, reachable only through the type.
-    /// Bei freien Funktionen immer <c>false</c>.</summary>
+    /// Always <c>false</c> for a free function.</summary>
     public bool IsStatic { get; }
 
     public GenericParamSymbol[] Generics { get; set; } = [];
@@ -126,10 +126,10 @@ public sealed class ImportBindingSymbol : Symbol
 }
 
 /// <summary>An import from a module outside the compilation.
-/// gebaut). Opak: verhindert „unbekannter Name"-Fehler, trägt aber keine Struktur.</summary>
+/// Opaque: it prevents "unknown name" errors but carries no structure.</summary>
 public sealed class ExternalSymbol : Symbol
 {
-    public string[] SourcePath { get; } // Modulpfad, aus dem es stammt
+    public string[] SourcePath { get; } // the module path it comes from
 
     public ExternalSymbol(string name, string[] sourcePath, Node? declaration) : base(name, declaration)
     {

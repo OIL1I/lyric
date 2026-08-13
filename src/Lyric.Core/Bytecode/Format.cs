@@ -182,7 +182,7 @@ public enum Op : byte
 
     LoadLocal = 0x02,  // ldloc <uleb128 slot>
     StoreLocal = 0x03, // stloc <uleb128 slot>
-    Pop = 0x04,        // verwirft den obersten Wert (verworfene Call-Rückgabe)
+    Pop = 0x04,        // discards the topmost value, such as a discarded call result
 
     Add = 0x10, Sub = 0x11, Mul = 0x12, Div = 0x13, Rem = 0x14,
     Shl = 0x15, Shr = 0x16, BitAnd = 0x17, BitOr = 0x18, BitXor = 0x19,
@@ -204,7 +204,7 @@ public enum Op : byte
     Call = 0x40,
 
     Return = 0x41,      // ret     — void
-    ReturnValue = 0x42, // retval  — nimmt den obersten Wert
+    ReturnValue = 0x42, // retval: takes the topmost value
     Branch = 0x43,      // br <uleb128 block>
     CondBranch = 0x44,  // condbr <uleb128 ifTrue> <uleb128 ifFalse>
     Unreachable = 0x45,
@@ -223,14 +223,14 @@ public enum Op : byte
     /// field index against a layout without a data-flow analysis.</para></summary>
     StoreField = 0x52,
 
-    /// <summary><c>newarr &lt;elementType&gt; &lt;uleb128 count&gt;</c> — nimmt <c>count</c> Werte
+    /// <summary><c>newarr &lt;elementType&gt; &lt;uleb128 count&gt;</c> — takes <c>count</c> values
     /// off the stack, the first element lowest, so an array literal is one instruction rather
     /// <c>count</c> Stores.</summary>
     NewArray = 0x58,
 
     LoadElem = 0x59,  // ldelem  — Array, Index -> Element
-    StoreElem = 0x5A, // stelem  — Array, Index, Wert (Referenz zuunterst)
-    ArrayLen = 0x5B,  // arrlen  — Laenge als i64
+    StoreElem = 0x5A, // stelem: array, index, value, with the reference lowest
+    ArrayLen = 0x5B,  // arrlen: the length as an i64
 
     /// <summary><c>arrcat</c> and <c>arrrep</c> implement <c>xs + ys</c> and <c>xs * n</c>. Each
     /// produces a new array; a <c>T[]</c> does not grow.</summary>
@@ -246,7 +246,7 @@ public enum Op : byte
     OptNone = 0x60,   // optnone <innerType>
     OptSome = 0x61,   // optsome <innerType>
     OptIsSome = 0x62, // optissome
-    OptGet = 0x63,    // optget — Force-Unwrap 'expr!', panickt bei "kein Wert"
+    OptGet = 0x63,    // optget: the force unwrap 'expr!', which panics on "no value"
 
     /// <summary>
     /// Enums. <c>match</c> has no opcode: it reads the tag with <see cref="EnumTag"/> and
@@ -257,7 +257,7 @@ public enum Op : byte
     /// </summary>
     NewVariant = 0x68, // newvariant <uleb128 variantType>
     EnumTag = 0x69,    // enumtag
-    EnumAs = 0x6A,     // enumas <uleb128 variantType> — panickt bei falschem Tag
+    EnumAs = 0x6A,     // enumas <uleb128 variantType>: panics on a wrong tag
 
     // --- Interfaces (Format 2.1) -------------------------------------------------------------
 
@@ -271,8 +271,8 @@ public enum Op : byte
     MakeInterface = 0x70,
 
     /// <summary><c>callvirt &lt;uleb128 interfaceType&gt; &lt;uleb128 slot&gt;</c> — calls the
-    /// Implementierung des Slots am konkreten Typ des Empfaengers. Der Empfaenger liegt zuunterst
-    /// wie bei jedem Methodenaufruf (Parameter 0, ADR-014).</summary>
+    /// implementation of the slot on the receiver's concrete type. The receiver lies lowest, as in every
+    /// method call, being parameter 0.</summary>
     CallVirt = 0x71,
 
     // --- Structs (Format 2.2) ----------------------------------------------------------------
@@ -285,13 +285,13 @@ public enum Op : byte
     ///
     /// <para>An explicit instruction rather than an implicit copy inside <c>stloc</c>, whose
     /// meaning would otherwise depend on the type of its target slot.</para></summary>
-    /// Formats eindeutig — dieselbe Entscheidung wie bei <c>mkiface</c>.</para></summary>
+    /// the format unambiguous — the same decision as for <c>mkiface</c>.</para></summary>
     StructCopy = 0x72,
 
     // --- Exceptions (Format 2.3) -------------------------------------------------------------
 
     /// <summary><c>throw</c> — takes the value off the stack and begins unwinding. Terminator:
-    /// nach ihm laeuft im Block nichts mehr.</summary>
+    /// nothing runs after it in the block.</summary>
     Throw = 0x73,
 
     /// <summary><c>endfinally</c> — end of a <c>finally</c> region; unwinding continues where it

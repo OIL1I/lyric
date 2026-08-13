@@ -89,7 +89,7 @@ public static class BytecodeReader
                     globalInit = init == 0 ? null : init - 1;
                     break;
                 }
-                default: break; // unbekannt oder reserviert: überspringen, dafür ist die Länge da
+                default: break; // unknown or reserved: skipped, which is what the length is for
             }
 
             if (!payload.AtEnd)

@@ -68,7 +68,7 @@ fn ziffernZeichen(value: int): string {
     if (value < 10) {
         let c = digitToChar(value);
         // The short form works because the `if` expression narrows `c` in the else branch.
-        // `char`. Vorher stand hier ein Umweg ueber zwei Statements.
+        // `char`.
         return if (c == null) "?" else fromChar(c);
     }
     return fromChar((('a' as int) + value - 10) as char);
@@ -92,7 +92,7 @@ pub fn formatHexPadded(value: int, width: int): string {
     return padStart(formatHex(value), width, '0');
 }
 
-// ------------------------------------------------------------------ Ausrichtung
+// ------------------------------------------------------------------ alignment
 
 pub fn padLeft(value: string, width: int): string {
     return padStart(value, width, ' ');
@@ -103,8 +103,8 @@ pub fn padRight(value: string, width: int): string {
 }
 
 /// Centres. On an odd remainder the extra character goes to the RIGHT.
-/// Festlegung, keine Selbstverstaendlichkeit, aber ohne sie liefert dieselbe Eingabe je nach
-/// Implementierung zwei verschiedene Ergebnisse.
+/// A decision rather than a matter of course, but without it the same input yields two different
+/// results depending on the implementation.
 pub fn center(value: string, width: int): string {
     let fehlend = width - length(value);
     if (fehlend <= 0) {

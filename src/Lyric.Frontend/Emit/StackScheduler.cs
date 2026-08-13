@@ -6,16 +6,16 @@ namespace Lyric.Bytecode;
 /// <summary>Where does a temp's value live while the bytecode runs?</summary>
 internal enum Placement
 {
-    /// <summary>It stays on the operand stack and is taken directly by the next
-    /// Instruktion konsumiert. Kein <c>stloc</c>/<c>ldloc</c>.</summary>
+    /// <summary>It stays on the operand stack and is taken directly by the next instruction. No
+    /// <c>stloc</c> or <c>ldloc</c>.</summary>
     Stack,
 
-    /// <summary>It moves into a local slot: <c>stloc</c> after the definition, <c>ldloc</c> at
-    /// jeder Verwendung.</summary>
+    /// <summary>It moves into a local slot: <c>stloc</c> after the definition, <c>ldloc</c> at every
+    /// use.</summary>
     Slot,
 
-    /// <summary>It is never read: a <c>pop</c> straight after the definition. In practice only
-    /// einer verworfenen Call-Rückgabe (<c>foo();</c> bei <c>foo(): int</c>).</summary>
+    /// <summary>It is never read: a <c>pop</c> straight after the definition. In practice only for a
+    /// discarded call result (<c>foo();</c> for <c>foo(): int</c>).</summary>
     Discard,
 }
 
@@ -59,7 +59,7 @@ internal static class StackScheduler
 
         var slotTypes = new List<IrType>(function.Locals.Select(l => l.Type));
         var tempSlots = new Dictionary<TempId, int>();
-        foreach (var temp in function.Temps) // nach TempId, also deterministisch
+        foreach (var temp in function.Temps) // by TempId, and therefore deterministic
         {
             if (placements[temp.Id] != Placement.Slot) continue;
             tempSlots[temp.Id] = slotTypes.Count;
@@ -79,7 +79,7 @@ internal static class StackScheduler
     /// A first approximation from counting alone: a temp may live on the stack only when it is read
     /// EXACTLY ONCE and IN THE SAME BLOCK. Multiple uses would not work, because the stack
     /// consumes; nor would a cross-block read, because the stack is empty at the boundary
-    /// leer). Kein Leser heißt <see cref="Placement.Discard"/>.
+    /// there. No reader means <see cref="Placement.Discard"/>.
     /// </summary>
     private static Dictionary<TempId, Placement> InitialPlacements(IrFunction function)
     {
@@ -145,7 +145,7 @@ internal static class StackScheduler
                         maxStack = Math.Max(maxStack, stack.Count + 1);
                         break;
                     case Placement.Slot:
-                        maxStack = Math.Max(maxStack, stack.Count + 1); // bis zum stloc
+                        maxStack = Math.Max(maxStack, stack.Count + 1); // up to the stloc
                         break;
                 }
             }
@@ -167,10 +167,10 @@ internal static class StackScheduler
     /// <summary>
     /// Consumes an instruction's operands. Three cases, and only three:
     /// <list type="bullet">
-    /// <item>alle Operanden liegen als <b>Suffix</b> des Stacks in genau dieser Reihenfolge → sie
-    /// werden gepoppt, es entstehen keine Loads;</item>
+    /// <item>all operands lie as a SUFFIX of the stack in exactly this order: they are popped and no
+    /// loads arise;</item>
     /// <item>no operand is on the stack: all arrive through <c>ldloc</c> on top and are</item>
-    /// sofort konsumiert; ein Rest darunter bleibt unberührt;</item>
+    /// consumed immediately, while anything below stays untouched;</item>
     /// <item>anything else (mixed, or on the stack in the wrong position): not emittable, because
     /// an <c>ldloc</c> above an operand already there would destroy the order. The affected temps
     /// are demoted to slots.</item>

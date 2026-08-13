@@ -11,16 +11,16 @@ using Lyric.Sema;
 namespace Lyric.Compiler;
 
 /// <summary>
-/// Die Pipeline Quelle → AST → Symbole → Typen → IR → <c>.lyrbc</c>-Bytes, als Bibliothek.
+/// The pipeline source to AST to symbols to types to IR to <c>.lyrbc</c> bytes, as a library.
 ///
 /// <para>One front end for the whole toolchain. With a copy of the preamble per command, only one
 /// of them wired up the <see cref="Compilation.ModuleLoader"/>, and <c>check</c> silently treated
 /// every standard library import as opaque.</para>
 ///
-/// <para>Diese Klasse <b>rendert nie selbst</b>. Sie sammelt in
+/// <para>This class NEVER RENDERS ITSELF. It collects into
 /// <see cref="CompileResult.Diagnostics"/> and leaves the output to the caller;
-/// <see cref="DiagnosticEngine.RenderText"/> renders the whole collection each time, so two
-/// Aufrufe waeren also doppelte Meldungen.</para>
+/// <see cref="DiagnosticEngine.RenderText"/> renders the whole collection each time, so two calls
+/// would be duplicate messages.</para>
 /// </summary>
 public static class SourceCompiler
 {
@@ -127,8 +127,8 @@ public static class SourceCompiler
         if (stage == Stage.Check || diagnostics.HasErrors)
             return new CompileResult(sources, diagnostics, null, null);
 
-        // Lowering limits arrive as LYR-IR0001 in the same engine and are rendered with
-        // Datei/Zeile/Spalte gerendert wie jeder andere Fehler auch.
+        // Lowering limits arrive as LYR-IR0001 in the same engine and are rendered with file, line and
+        // column like any other error.
         //
         // verify:false plus the separate VerifyOrThrow call is not a behaviour change:
         // ModuleLowerer.VerifyByDefault still decides whether verification runs. The split exists
@@ -185,8 +185,7 @@ public static class SourceCompiler
 /// <summary>
 /// What a compiler run needs besides the source file.
 ///
-/// <para>A record rather than a growing parameter list.
-/// Mehrdatei-Programme moeglich sind.</para>
+/// <para>A record rather than a growing parameter list.</para>
 /// </summary>
 public sealed record CompilerOptions
 {
@@ -208,9 +207,8 @@ public sealed record CompilerOptions
     /// a bodyless <c>pub fn</c> in a <c>.lyr</c> file. The only difference is that this file lives
     /// in memory.</para>
     ///
-    /// <para>They are consulted BEFORE the standard library, so a host module hides one of the
-    /// same name on disk rather than the other way round.
-    /// entscheidet, was sein Skript sieht.</para>
+    /// <para>They are consulted BEFORE the standard library, so a host module hides one of the same name
+    /// on disk rather than the other way round: the host decides what its script sees.</para>
     /// </summary>
     public IReadOnlyDictionary<string, string>? NativeModules { get; init; }
 }

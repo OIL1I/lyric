@@ -453,7 +453,7 @@ public sealed class NativeRegistry
                     var namen = Directory.EnumerateFileSystemEntries(args[0].AsString)
                         .Select(Path.GetFileName)
                         .OfType<string>()
-                        .OrderBy(n => n, StringComparer.Ordinal)   // deterministisch, ADR-013
+                        .OrderBy(n => n, StringComparer.Ordinal)   // deterministic
                         .Select(LyrValue.FromString)
                         .ToArray();
                     return LyrValue.FromObject(namen);
@@ -468,7 +468,7 @@ public sealed class NativeRegistry
         registry.Register("std.io.file.tempDir", none, TypeTag.String,
             _ => LyrValue.FromString(Path.GetTempPath()));
 
-        // ------------------------------------------------------ std.os, Erweiterung (M8b/S8)
+        // ------------------------------------------------------ std.os, extended
 
         registry.RegisterArrayReturning("std.os.args", none, TypeTag.String,
             _ => LyrValue.FromObject(Environment.GetCommandLineArgs()
@@ -523,7 +523,7 @@ public sealed class NativeRegistry
         return registry;
     }
 
-    // ------------------------------------------------------------------ Codepoint-Helfer
+    // ------------------------------------------------------------------ code point helpers
 
     private static long CodepointCount(string s)
     {
@@ -654,9 +654,9 @@ public sealed class NativeRegistry
         return LyrValue.FromObject(values);
     }
 
-    // ------------------------------------------------------------------ std.fmt-Helfer
+    // ------------------------------------------------------------------ std.fmt helpers
 
-    /// <summary>Eine Zahl nach einer .NET-Standard-Spec, invariant.
+    /// <summary>A number formatted by a .NET standard spec, invariantly.
     ///
     /// <para>An unknown specifier is a panic rather than an error value: it is a literal in the
     /// source and does not depend on the input.</para></summary>

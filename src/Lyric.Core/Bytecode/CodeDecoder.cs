@@ -137,7 +137,7 @@ public static class CodeDecoder
                 or TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64
                 or TypeTag.F32 or TypeTag.F64
                 or TypeTag.Bool or TypeTag.Char or TypeTag.String:
-                return; // Skalare stehen fuer sich
+                return; // scalars stand on their own
 
             default:
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,

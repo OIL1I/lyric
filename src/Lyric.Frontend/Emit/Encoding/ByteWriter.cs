@@ -4,7 +4,7 @@ using System.Text;
 namespace Lyric.Bytecode.Encoding;
 
 /// <summary>
-/// Schreib-Primitiven des Formats. Alles, was <c>docs/Bytecode.md</c> als Kodierung festlegt,
+/// The write primitives of the format. Everything the specification fixes as an encoding
 /// lives here, and only here.
 ///
 /// <para>Platform-neutral: fixed widths explicitly little-endian rather than the host byte order,

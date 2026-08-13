@@ -77,8 +77,6 @@ namespace Lyric.Ir
     /// into an infinite loop on <c>class Node { next: Node }</c>. This way equality is an <c>int</c>
     /// comparison and recursion is free.</para>
     /// </summary>
-    /// Endlosschleife. So ist Gleichheit ein <c>int</c>-Vergleich und Rekursion kostenlos.</para>
-    /// </summary>
     public sealed record IrRefType(TypeId Type) : IrType;
 
     /// <summary>

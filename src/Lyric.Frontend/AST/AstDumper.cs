@@ -113,7 +113,7 @@ public static class AstDumper
                 foreach (var e in n.Elements) Write(e, indent + 1, sb);
                 break;
 
-            // --- f-Strings ---
+            // --- f-strings ---
             case InterpolatedStringExpr n:
                 Line(sb, indent, "FString", n.Span);
                 foreach (var s in n.Segments) Write(s, indent + 1, sb);
@@ -126,7 +126,7 @@ public static class AstDumper
                 Write(n.Expr, indent + 1, sb);
                 break;
 
-            // --- Lambdas ---
+            // --- lambdas ---
             case LambdaExpr n:
                 Line(sb, indent, "Lambda", n.Span);
                 foreach (var p in n.Parameters) Write(p, indent + 1, sb);
@@ -232,7 +232,7 @@ public static class AstDumper
                 break;
             case ExtendDecl n:
                 Line(sb, indent, $"Extend{Vis(n.IsPublic)}", n.Span);
-                Write(n.Target, indent + 1, sb);            // erstes Kind = Ziel-Typ
+                Write(n.Target, indent + 1, sb);            // the first child is the target type
                 foreach (var i in n.Interfaces) Write(i, indent + 1, sb);
                 foreach (var m in n.Methods) Write(m, indent + 1, sb);
                 break;
@@ -248,14 +248,14 @@ public static class AstDumper
                 Line(sb, indent, "ErrorDecl", n.Span);
                 break;
 
-            // Eine typgebundene Konstante (ADR-014). Sie steht im Rumpf eines Typs, traegt aber
-            // Contains an ordinary BindingStmt, hence here rather than with the statements.
+            // A type-bound constant. It stands in the body of a type but contains an ordinary
+            // BindingStmt, hence here rather than with the statements.
             case StaticBindingDecl n:
                 Line(sb, indent, $"StaticLet{(n.IsPublic ? " pub" : "")}", n.Span);
                 Write(n.Binding, indent + 1, sb);
                 break;
 
-            // --- Statements ---
+            // --- statements ---
             case Block n:
                 Line(sb, indent, "Block", n.Span);
                 foreach (var s in n.Statements) Write(s, indent + 1, sb);
@@ -336,7 +336,7 @@ public static class AstDumper
                 Line(sb, indent, "ErrorStmt", n.Span);
                 break;
 
-            // --- Control-flow als Ausdruck ---
+            // --- control flow as an expression ---
             case IfExpr n:
                 Line(sb, indent, "IfExpr", n.Span);
                 Write(n.Condition, indent + 1, sb);
@@ -361,10 +361,10 @@ public static class AstDumper
                     Line(sb, indent + 1, "Guard", n.Guard.Span);
                     Write(n.Guard, indent + 2, sb);
                 }
-                Write(n.Body, indent + 1, sb); // letztes Kind = Arm-Body
+                Write(n.Body, indent + 1, sb); // the last child is the arm body
                 break;
 
-            // --- Patterns (§6.3) ---
+            // --- patterns ---
             case WildcardPattern n:
                 Line(sb, indent, "Wildcard", n.Span);
                 break;
@@ -401,7 +401,7 @@ public static class AstDumper
                 Line(sb, indent, "ErrorPattern", n.Span);
                 break;
 
-            // --- Struct-Init ---
+            // --- struct initializers ---
             case StructInitExpr n:
                 Line(sb, indent, $"StructInit {string.Join('.', n.Path)}", n.Span);
                 foreach (var a in n.TypeArguments) { Line(sb, indent + 1, "TypeArg", a.Span); Write(a, indent + 2, sb); }
@@ -412,13 +412,13 @@ public static class AstDumper
                 Write(n.Value, indent + 1, sb);
                 break;
 
-            // --- Typpfad in Wert-Position: Pair<int>.of(3) ---
+            // --- a type path in value position: Pair<int>.of(3) ---
             case TypePathExpr n:
                 Line(sb, indent, $"TypePath {string.Join('.', n.Path)}", n.Span);
                 foreach (var a in n.TypeArguments) { Line(sb, indent + 1, "TypeArg", a.Span); Write(a, indent + 2, sb); }
                 break;
 
-            // --- Recovery ---
+            // --- recovery ---
             case ErrorExpr n:
                 Line(sb, indent, "Error", n.Span);
                 break;

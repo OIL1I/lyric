@@ -26,7 +26,7 @@ namespace Lyric.Ir.Lowering;
 /// </summary>
 internal static class HostTypes
 {
-    /// <summary>Der Name, wenn <paramref name="symbol"/> ein Host-Typ ist; sonst <c>null</c>.
+    /// <summary>The name when <paramref name="symbol"/> is a host type, <c>null</c> otherwise.
     /// </summary>
     public static string? NameOf(TypeSymbol? symbol, Compilation? compilation)
     {

@@ -65,18 +65,18 @@ public enum TokenKind
     True,
     False,
     Null,
-    IntLiteral ,     // alle Bases: dec, hex, bin, oct, mit/ohne Int-Suffix
-    FloatLiteral,    // Dec mit '.' DecLit, oder Dec mit Exponent, oder Dec mit Float-Suffix
+    IntLiteral ,     // all bases: dec, hex, bin, oct, with or without an integer suffix
+    FloatLiteral,    // decimal with a '.', with an exponent, or with a float suffix
     StringLiteral,
     CharLiteral,
     
     // FStrings
     FStringStart,       // f"
-    FStringChunk,       // Plain-Text-Span zwischen Specials
+    FStringChunk,       // a plain-text span between specials
     FStringInterpStart, // { in f-String
-    FStringInterpEnd,   // } die Interp schließt
-    FStringFormatSpec,  // Span zwischen : und }
-    FStringEnd,         // schließendes "
+    FStringInterpEnd,   // the } that closes an interpolation
+    FStringFormatSpec,  // the span between ':' and '}'
+    FStringEnd,         // the closing quote
 
     // Operators
     //Punctuation
@@ -92,7 +92,7 @@ public enum TokenKind
     Question,
     QuestionDot,
     QuestionQuestion,
-    Exclamation, //! ist prefix(logical not) und postfix(unwrap), parser disambiguiert
+    Exclamation, // prefix (logical not) and postfix (unwrap); the parser disambiguates
     
     //Arithmetic
     Plus,

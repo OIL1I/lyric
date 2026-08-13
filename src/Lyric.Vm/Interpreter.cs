@@ -240,7 +240,7 @@ public static class Interpreter
                         var native = natives[index];
                         var nativeArgs = new LyrValue[native.Arity];
                         for (var i = native.Arity - 1; i >= 0; i--) nativeArgs[i] = frame.Pop();
-                        frame.Pop(); // der Closure-Wert selbst
+                        frame.Pop(); // the closure value itself
 
                         var produced = native.Implementation(nativeArgs);
                         if (native.ReturnsValue) frame.Push(produced);
@@ -257,7 +257,7 @@ public static class Interpreter
                     var offset = closure.HasEnvironment ? 1 : 0;
                     for (var i = argCount - 1; i >= 0; i--) callFrame.Slots[offset + i] = frame.Pop();
 
-                    frame.Pop(); // der Closure-Wert
+                    frame.Pop(); // the closure value
                     if (closure.HasEnvironment) callFrame.Slots[0] = LyrValue.FromObject(closure.AsObject);
 
                     frames.Push(frame);
@@ -647,7 +647,7 @@ public static class Interpreter
             case Op.Shl: result = unchecked(lhs.Bits << ShiftCount(tag, rhs.Bits)); break;
             case Op.Shr:
                 result = signed
-                    ? unchecked((ulong)(lhs.AsI64 >> ShiftCount(tag, rhs.Bits))) // arithmetisch
+                    ? unchecked((ulong)(lhs.AsI64 >> ShiftCount(tag, rhs.Bits))) // arithmetic
                     : lhs.Bits >> ShiftCount(tag, rhs.Bits);                     // logisch
                 break;
 
@@ -679,7 +679,7 @@ public static class Interpreter
         Op.Add => a + b,
         Op.Sub => a - b,
         Op.Mul => a * b,
-        Op.Div => a / b,   // IEEE: durch Null ergibt Inf/NaN, kein Fehler
+        Op.Div => a / b,   // IEEE: division by zero yields Inf or NaN, not an error
         Op.Rem => a % b,
         _ => throw new LyricPanic(VmDiagnostics.UnreachableExecuted,
             $"opcode {op} is not valid on floating point values"),

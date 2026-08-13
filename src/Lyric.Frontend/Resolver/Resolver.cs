@@ -4,9 +4,9 @@ using Lyric.Core;
 namespace Lyric.Resolver;
 
 /// <summary>
-/// Name-Auflösung (Sprache.md §2/§3). Drei Pässe:
-///   1. Deklarieren: alle Top-Level-Symbole + Typ-Member registrieren (2-Pass-Prinzip
-///      für Forward-Refs), Duplikate melden.
+/// Name resolution in three passes:
+///   1. Declare: register all top-level symbols and type members, using the two-pass principle for
+///      forward references, and report duplicates.
 ///   2. Resolve imports: find the target module in the compilation (otherwise external and
 ///      opaque), bring the names into the module scope, check visibility, detect cycles.
 ///   3. Bind type names in signatures and fields, recording the result in the
@@ -22,7 +22,7 @@ public sealed class Resolver
     {
         _comp = comp;
         _de = de;
-        _ = sm; // (für spätere quellbezogene Diagnostik reserviert)
+        _ = sm; // reserved for later source-related diagnostics
     }
 
     public BindingResult Run()
@@ -36,7 +36,7 @@ public sealed class Resolver
         return _binding;
     }
 
-    // --- Pass 1: Deklarieren ---
+    // --- pass 1: declaring ---
 
     private void DeclareModule(ModuleSymbol module)
     {
@@ -63,7 +63,7 @@ public sealed class Resolver
         }
     }
 
-    // Extend-Block (§3.6): Methoden bekommen ein eigenes FunctionSymbol in einer Block-Scope
+    // An extend block: its methods get their own FunctionSymbol in a block scope
     // (parent = module scope), so `T` and free names resolve. The target type is bound in pass 3.
     // No new top-level symbol; the methods live only in the ExtensionRegistry.
     private void DeclareExtend(ModuleSymbol module, ExtendDecl ex)
@@ -95,7 +95,7 @@ public sealed class Resolver
                 // A 'static let' is a type-bound constant, held as a GlobalSymbol because that is
                 // what it is: an immutable binding without an instance, scoped to the type rather
                 // than to the module.
-                // dieselbe Sache.
+                // the same thing.
                 case StaticBindingDecl sb:
                     DeclareMember(scope, new GlobalSymbol(sb.Binding.Name, Vis(sb.IsPublic), sb), sb);
                     break;
@@ -182,14 +182,14 @@ public sealed class Resolver
         //
         // Without the diagnostic a typo in a module name is invisible AND silently disables the
         // check of every use: the ExternalSymbol carries LyrType.Error, and Error means
-        // jeden Konsumenten „wurde schon gemeldet", also schweigt er.
+        // "already reported" to every consumer, so it stays silent.
         if (target is null)
             _de.Report("LYR-RES0003", Severity.Error, imp.Span,
                 $"cannot find module '{string.Join('.', imp.Path)}'");
 
         switch (imp.Clause)
         {
-            case null: // import a.b;  → 'b' bindet das Modul
+            case null: // import a.b; binds 'b' to the module
             {
                 var name = imp.Path[^1];
                 DeclareImport(module, target is not null
@@ -221,7 +221,7 @@ public sealed class Resolver
         }
         if (!IsPublic(found))
             _de.Report("LYR-RES0004", Severity.Error, imp.Span, $"'{name}' is not public in '{target.FullName}'");
-        return new ImportBindingSymbol(name, found, imp); // Recovery: auch bei not-public binden
+        return new ImportBindingSymbol(name, found, imp); // recovery: bind even when not public
     }
 
     private void DeclareImport(ModuleSymbol module, Symbol sym, ImportDecl imp)
@@ -243,7 +243,7 @@ public sealed class Resolver
             {
                 if (decl is not ImportDecl imp) continue;
                 var t = _comp.FindModule(imp.Path);
-                if (t is null) continue; // externes Modul → keine Kante
+                if (t is null) continue; // an external module means no edge
                 if (state[idx[t]] == 1)
                     _de.Report("LYR-RES0005", Severity.Error, imp.Span, $"import cycle involving module '{t.FullName}'");
                 else if (state[idx[t]] == 0) Dfs(t);
@@ -255,7 +255,7 @@ public sealed class Resolver
             if (state[i] == 0) Dfs(_comp.Modules[i]);
     }
 
-    // --- Pass 3: Typ-Namen binden ---
+    // --- pass 3: binding type names ---
 
     private void BindTypeNames(ModuleSymbol module)
     {
@@ -309,8 +309,8 @@ public sealed class Resolver
 
             var sym = _binding.Resolve(block.Decl.Target);
             if (sym is ImportBindingSymbol ib) sym = ib.Target;
-            // Nur schlichte benannte Ziele (kein Box<int>, kein T[]) sind in v1 erweiterbar (D-cut);
-            // alles andere lässt Target null → Sema meldet SEM0047.
+            // Only plain named targets are extendable, no Box<int> and no T[]; everything else leaves
+            // Target null and the sema reports SEM0047.
             block.Target = block.Decl.Target is NamedType { TypeArguments.Length: 0 } ? sym as TypeSymbol : null;
         }
     }
@@ -336,7 +336,7 @@ public sealed class Resolver
         foreach (var g in fn.Generics)
             foreach (var c in g.Constraints)
                 BindType(c, sig);
-        // Body-Typen (lokale Bindings, Casts) → Sema (TypeChecker).
+        // Body types, meaning local bindings and casts, are handled by the sema.
     }
 
     private static SymbolTable MemberScope(SymbolTable enclosing, string typeName) =>
@@ -392,19 +392,19 @@ public sealed class Resolver
         if (head is null) return null;
         if (path.Length == 1) return IsTypeLike(head) ? head : null;
 
-        // Multi-Segment: nur über (importierte) Module navigieren.
+        // Multi-segment paths navigate through imported modules only.
         for (var i = 1; i < path.Length; i++)
         {
             switch (head)
             {
-                case ExternalSymbol: return head; // alles hinter einem externen Modul ist extern
+                case ExternalSymbol: return head; // everything behind an external module is external
                 case ImportBindingSymbol { Target: ModuleSymbol mod }:
                     var next = mod.Members.LookupLocal(path[i]);
                     if (next is null) return null;
                     head = next;
                     break;
                 default:
-                    return null; // verschachtelte Typen o.ä. — in v1 nicht vorgesehen
+                    return null; // nested types and the like are not provided for
             }
         }
         return IsTypeLike(head) ? head : null;
@@ -419,16 +419,16 @@ public sealed class Resolver
         TypeSymbol t => t.Visibility == Visibility.Public,
         FunctionSymbol f => f.Visibility == Visibility.Public,
         GlobalSymbol g => g.Visibility == Visibility.Public,
-        _ => true // Externals/Imports/Builtins gelten als zugreifbar
+        _ => true // externals, imports and builtins count as accessible
     };
 
     private static bool IsTypeLike(Symbol s) => s switch
     {
         TypeSymbol => true,
-        GenericParamSymbol => true, // T ist ein (abstrakter) Typ
+        GenericParamSymbol => true, // T is an (abstract) type
         ExternalSymbol => true,
         ErrorSymbol => true,
         ImportBindingSymbol ib => IsTypeLike(ib.Target),
-        _ => false // Function/Global/Field/Variant/Module sind keine Typen
+        _ => false // functions, globals, fields, variants and modules are not types
     };
 }

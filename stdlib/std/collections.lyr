@@ -206,14 +206,14 @@ pub fn collect<T>(source: Iterator<T>): List<T> {
 // deleted slot must not break the probe chain, or a `get` would stop finding a key behind the gap.
 // A tombstone does not end a read but is reusable on a write.
 //
-// **Load Factor 3/4**, gemessen an belegten UND geloeschten Slots: Grabsteine kosten Suchzeit wie
-// belegte Slots, also muessen sie mitzaehlen. Beim Wachsen verschwinden sie.
+// **Load factor 3/4**, measured over occupied AND deleted slots: tombstones cost search time like
+// occupied slots, so they have to count. They disappear on a grow.
 
 pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
     keys: (?K)[],
     values: (?V)[],
     states: int[],
-    count: int,      // nur die belegten
+    count: int,      // the occupied ones only
     used: int,       // belegte + Grabsteine
 
     pub fn length(): int {
@@ -241,7 +241,7 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
 
         while (schritte < n) {
             if (this.states[i] == 0) {
-                return -1;                      // leer: hier haette er stehen muessen
+                return -1;                      // empty: this is where it would have been
             }
             if (this.states[i] == 1) {
                 let vorhanden = this.keys[i];
@@ -298,7 +298,7 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
             } else {
                 let vorhanden = this.keys[i];
                 if (vorhanden != null && vorhanden.equals(key)) {
-                    this.values[i] = value;     // Ueberschreiben, kein neuer Eintrag
+                    this.values[i] = value;     // overwrite, not a new entry
                     return;
                 }
             }
@@ -365,7 +365,7 @@ pub fn emptyMap<K :: [Hashable<K>, Equatable<K>], V>(): Map<K, V> {
     };
 }
 
-// ================================================================ Sortieren (M8b/S4)
+// ================================================================ sorting
 //
 // **Bottom-up Merge Sort**, in Lyric.
 //
@@ -468,7 +468,7 @@ fn min(a: int, b: int): int {
 
 // ================================================================== Set<T> (M8b/S4)
 //
-// Dieselbe Sondierung wie `Map`, nur ohne Werte-Spalte.
+// The same probing as `Map`, only without the value column.
 //
 // Not built as a `Map<T, bool>`, which would waste an array and make `add(x)` read as
 // `set(x, true)`. The duplicated probing logic is the more honest price.
@@ -548,7 +548,7 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
             } else {
                 let vorhanden = this.items[i];
                 if (vorhanden != null && vorhanden.equals(value)) {
-                    return false;                 // schon da
+                    return false;                 // already present
                 }
             }
             i = (i + 1) % n;
@@ -703,7 +703,7 @@ pub fn values<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<V> {
     return MapValueIterator<K, V> { source = m, index = 0 };
 }
 
-// ------------------------------------------------------- List durchsuchen (M8b/S4)
+// ------------------------------------------------------- searching a List
 //
 // Free functions rather than methods: they need `Equatable<T>`, and putting that constraint on
 // the CLASS would make `List<T>` unusable for every type without equality. A constraint belongs
@@ -720,7 +720,7 @@ pub fn listContains<T :: [Equatable<T>]>(xs: List<T>, value: T): bool {
     return false;
 }
 
-/// Die Position des ersten Vorkommens — `null`, wenn es keines gibt.
+/// The position of the first occurrence, or `null` when there is none.
 pub fn listIndexOf<T :: [Equatable<T>]>(xs: List<T>, value: T): ?int {
     var i = 0;
     while (i < xs.length()) {

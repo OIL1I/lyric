@@ -40,7 +40,7 @@ public static class Escapes
                 continue;
             }
 
-            i++; // den Backslash konsumieren
+            i++; // consume the backslash
             if (i >= content.Length) break;
 
             switch (content[i])
@@ -78,7 +78,7 @@ public static class Escapes
     /// the 'u'.</summary>
     private static int UnicodeEscape(string content, int i, StringBuilder result)
     {
-        var start = Math.Min(i + 2, content.Length); // 'u{' überspringen
+        var start = Math.Min(i + 2, content.Length); // skip the 'u{'
         var end = content.IndexOf('}', start);
         if (end < 0) end = content.Length;
 
