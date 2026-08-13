@@ -1,52 +1,42 @@
-// std.collections — wachsende Container (M8/S5).
+// std.collections — growing containers.
 //
-// `T[]` ist ein echtes Array mit fester Länge (ADR-016). Was wächst, steht hier.
+// A `T[]` is a real array with a fixed length. What grows lives here.
 
 module std.collections;
 
 import std.iter { Iterator, Iterable };
 import std.core { Hashable, Equatable, Ordered };
 
-// Was sich mit `[i]` lesen und schreiben lässt.
+// What can be read and written with `[i]`.
 //
-// Dasselbe Modell wie `Iterator<T>` für `for-in` (§5): der Compiler kennt eine eingebaute Form —
-// dort den Range, hier das Array — und bindet alles andere an ein Interface aus der Stdlib. Kein
-// Sonderfall im Compiler pro Container-Typ.
+// The same model as `Iterator<T>` for `for-in`: the compiler knows one built-in form — the array —
+// and binds everything else to an interface from the standard library, so there is no special case
+// per container type.
 //
-// **`set` ist `mut`, und das kostet seit ADR-020 nichts.** `let` bindet den Namen, nicht den
-// Inhalt; ein Container hinter einer `let`-Bindung ist deshalb schreibbar, genau wie ein
-// Klassenfeld. Vor ADR-020 hätte dieses Interface eine Sonderregel nachbilden müssen, die noch
-// dazu wirkungslos war — das war der Anlass, die Frage vorher zu entscheiden.
+// `set` is `mut`, which costs nothing: `let` binds the name, not the contents, so a container
+// behind a `let` is writable like a class field.
 //
-// **`get` und `set` sind O(1).** Das ist eine Zusicherung, keine Beschreibung: eine
-// Implementierung mit O(n)-Zugriff — etwa eine verkettete Liste — darf dieses Interface *nicht*
-// erfüllen. Sonst würde `for (var i = 0; i < n; i++) xs[i]` quadratisch, ohne dass man es der
-// Schleife ansieht. Aus demselben Grund hat `string` keinen Indexoperator (§4).
+// `get` and `set` are O(1). That is a requirement, not a description: an implementation with O(n)
+// access must not satisfy this interface, or an index loop would be quadratic without showing it.
+// `string` has no index operator for the same reason.
 pub interface Indexable<T> {
     fn get(index: int): T;
     mut fn set(index: int, value: T): void;
 }
 
-// Eine wachsende Liste.
+// A growing list.
 //
-// **Sie ist in Lyric geschrieben, nicht nativ.** Die ROADMAP sah einen Hook auf
-// `System.Collections.Generic.List<>` vor; dagegen sprechen zwei Dinge. Erstens sind Natives
-// monomorph registriert — ein generischer bräuchte eine eigene Marshalling-Schicht, und die
-// gehört zu M10. Zweitens ist eine Stdlib, die ihre eigenen Container nicht ausdrücken kann, ein
-// schlechtes Zeichen für die Sprache.
+// Written in Lyric rather than native. Natives are registered monomorphically, so a generic one
+// would need a marshalling layer of its own.
 //
-// **Das Backing ist `(?T)[]` und nicht `T[]`.** Der Grund ist nicht Bequemlichkeit, sondern dass
-// ein Slot **leerbar** sein muss: `pop` gibt seinen Wert wirklich frei, statt ihn nur hinter
-// `count` verschwinden zu lassen. Ohne das hielte die Liste jedes je eingefügte Objekt am Leben,
-// und ein `get` daneben läse es sogar zurück. Nebenbei löst es das Erzeugungsproblem — ein `T[]`
-// der Länge n bräuchte n Werte vom Typ T, und Lyric hat kein `default(T)`; für `?T` gibt es
-// einen, nämlich `null`.
+// The backing is `(?T)[]` rather than `T[]`, because a slot must be emptiable: `pop` releases its
+// value instead of merely hiding it behind `count`, which would keep every inserted object alive.
+// It also solves creation: a `T[]` of length n needs n values of type T, and there is no
+// `default(T)`; for `?T` there is one.
 //
-// **Wachsen verdoppelt, Schrumpfen halbiert bei einem Viertel.** Verdoppeln macht `push`
-// amortisiert O(1) — exaktes Wachsen (`data + [v]`) wäre O(n) pro Aufruf und damit quadratisch
-// über die Liste; gemessen bei 50 000 Elementen Faktor 8,6. Die Schrumpf-Schwelle liegt bei
-// einem Viertel und nicht bei der Hälfte, damit eine Liste, die um die Grenze pendelt, nicht bei
-// jedem `push`/`pop` umkopiert.
+// Growing doubles, shrinking halves at a quarter. Doubling makes `push` amortized O(1); exact
+// growth would be O(n) per call. The shrink threshold is a quarter rather than a half so a list
+// oscillating around the boundary does not copy on every `push`/`pop`.
 pub class List<T> :: [Indexable<T>, Iterable<T>] {
     data: (?T)[],
     count: int,
@@ -55,17 +45,13 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         return this.count;
     }
 
-    // Ein FRISCHER Cursor bei jedem Aufruf — deshalb stoeren zwei Schleifen ueber dieselbe Liste
-    // einander nicht. Genau dafuer ist die Trennung von 'Iterable' und 'Iterator' da.
+    // A fresh cursor on every call, so two loops over the same list do not disturb each other.
     pub fn iter(): Iterator<T> {
         return ListIterator<T> { source = this, index = 0 };
     }
 
-    // Wie viele Slots belegt sind — inklusive der leeren. Nur für Tests und für den, der wissen
-    // will, was die Liste kostet; für alles andere ist `length` die Wahrheit.
-    // Map und Set haben das seit ihrem ersten Tag; List fehlte es. Eine Sammlung, bei der man je
-    // nach Typ 'length() == 0' oder 'isEmpty()' schreibt, kostet bei jedem Gebrauch eine
-    // Nachfrage.
+    // How many slots are allocated, empty ones included. For tests and for anyone measuring what
+    // the list costs; `length` is the truth for everything else.
     pub fn isEmpty(): bool {
         return this.count == 0;
     }
@@ -98,11 +84,11 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         this.count = this.count + 1;
     }
 
-    // Der letzte Wert, oder `null` bei leerer Liste. Kein `panic`: eine leere Liste ist ein
-    // gewöhnlicher Zustand und kein Programmierfehler — anders als ein Index daneben.
+    // The last value, or `null` for an empty list. Not a panic: an empty list is an ordinary
+    // state, unlike an index out of range.
     //
-    // Der Slot wird **geleert**, nicht nur übersprungen. Sonst hielte die Liste das Objekt am
-    // Leben, und ein `get` an dieser Stelle läse es zurück, obwohl es entfernt ist.
+    // The slot is cleared rather than skipped, or the list would keep the object alive and a
+    // `get` there would read it back.
     pub mut fn pop(): ?T {
         if (this.count == 0) {
             return null;

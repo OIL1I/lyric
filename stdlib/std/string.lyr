@@ -1,15 +1,13 @@
-// std.string — String-Bau.
+// std.string — building strings.
 //
-// Diese Funktionen benutzt auch das f-String-Lowering: `f"n={x}"` wird zu
-// `concat("n=", fromInt(x))`. Der Compiler referenziert sie also, ohne dass der Nutzer
-// `std.string` importiert hat — dasselbe Modell wie Roslyns Verweis auf `String.Concat`.
+// The f-string lowering uses these functions too: `f"n={x}"` becomes `concat("n=", fromInt(x))`.
+// The compiler references them without the user importing `std.string`.
 //
-// Sie stehen bewusst in einem normalen, dokumentierten Modul und nicht in einem versteckten
-// Compiler-Modul: ein `lyric.rt`, das niemand importieren darf, wäre ein zweiter Modul-Begriff
-// für dieselbe Sache.
+// They sit in an ordinary, documented module rather than a hidden compiler module, which would be
+// a second notion of what a module is.
 //
-// Die Namen unterscheiden nach Quelltyp (`fromInt`, `fromFloat`, …) statt vier gleichnamige
-// Überladungen zu sein — Lyric hat kein Overloading.
+// The names distinguish by source type (`fromInt`, `fromFloat`, …) rather than being overloads;
+// there is no overloading.
 
 module std.string;
 
@@ -17,38 +15,31 @@ pub fn concat(a: string, b: string): string;
 
 pub fn fromInt(value: int): string;
 
-// Eigener Wandler fuer vorzeichenlose Zahlen. 'fromInt' deutet ein grosses 'uint' als negative
-// Zahl um — gemessen lieferte f"{u}" mit u = uint64.MaxValue vorher "-1". Zwei Namen, weil Lyric
-// kein Overloading hat (ADR-015).
+// A separate converter for unsigned numbers: 'fromInt' would read a large 'uint' as a negative
+// number.
 pub fn fromUint(value: uint): string;
 pub fn fromFloat(value: float): string;
 pub fn fromBool(value: bool): string;
 pub fn fromChar(value: char): string;
 
-// 'ab' * 3 aus Sprache.md §6.5. Eigene Funktion und kein Opcode: die Wiederholung ist
-// Bibliotheksarbeit, und ein 'mul'-Opcode, der bei string etwas anderes taete als bei int, waere
-// genau der polymorphe Dispatch, den ADR-013 vermeidet.
+// 'ab' * 3. A function rather than an opcode: repetition is library work, and a 'mul' opcode
+// doing something else for string than for int would be polymorphic dispatch.
 pub fn repeat(value: string, count: int): string;
 
-// --- Abfragen (M8/S2) --------------------------------------------------------------------
+// --- queries ------------------------------------------------------------------------------
 //
-// Alle Positionen und Laengen zaehlen CODEPOINTS. Sprache.md §4 sagt "char = ein Unicode-
-// Codepoint", also muss eine Laenge dasselbe zaehlen, was die Iteration liefert — sonst
-// widerspraeche sich das Typsystem selbst. C#, Java und JavaScript zaehlen UTF-16-Einheiten und
-// haben genau diesen Widerspruch; dort ist die Laenge eines Emoji 2.
+// Every position and length counts CODE POINTS, the same unit iteration yields. Counting UTF-16
+// units instead would contradict the type system, in which a char is one code point.
 //
-// Es gibt bewusst KEIN 's[i]'. Der Zugriff auf eine Codepoint-Position ist O(n), und mit einem
-// Indexoperator wuerde die naheliegende Schleife quadratisch, ohne dass man es ihr ansieht.
-// Rust verbietet die Indizierung aus demselben Grund. Wer ueber Zeichen laufen will, nimmt
-// 'for (c in s)' — das ist linear und liest sich besser.
+// There is deliberately no 's[i]'. Access at a code-point position is O(n), and an index operator
+// would make the obvious loop quadratic without showing it. Walk characters with 'for (c in s)'.
 
 pub fn length(value: string): int;
 pub fn charAt(value: string, index: int): char;
 pub fn substring(value: string, start: int, count: int): string;
 
-// Position in Codepoints, oder -1. Der Rueckgabewert ist damit direkt als Argument fuer
-// 'charAt' und 'substring' brauchbar — bei einer Position in Bytes oder UTF-16-Einheiten waere
-// er das nicht.
+// Position in code points, or -1, so the result can be passed straight to 'charAt' and
+// 'substring'.
 pub fn indexOf(value: string, needle: string): int;
 pub fn contains(value: string, needle: string): bool;
 pub fn startsWith(value: string, prefix: string): bool;
@@ -56,42 +47,38 @@ pub fn endsWith(value: string, suffix: string): bool;
 
 pub fn trim(value: string): string;
 
-// Ordinal, nicht kulturabhaengig: dasselbe Programm liefert auf jeder Maschine dasselbe.
+// Ordinal rather than culture-dependent: the same program yields the same result everywhere.
 pub fn toUpper(value: string): string;
 pub fn toLower(value: string): string;
 
-// Ein leerer Trenner ist ein panic, kein Sonderfall — die Frage "in was soll ich teilen" hat
-// dann keine Antwort, und .NET und Python sind sich uneinig, welche sie erfinden.
+// An empty separator is a panic: "split into what" has no answer.
 pub fn split(value: string, separator: string): string[];
 
-// Was 'for (c in s)' benutzt. Einmal O(n) statt n-mal O(n): ein Iterator, der 'charAt' riefe,
-// waere quadratisch.
+// What 'for (c in s)' uses: one O(n) pass instead of n calls to 'charAt'.
 pub fn toChars(value: string): char[];
 
-// ====================================================== In Lyric geschrieben (M8b/S5)
+// ================================================================== written in Lyric
 //
-// Ab hier ist nichts mehr nativ. Alles baut auf den Primitiven darueber auf — `length`, `charAt`,
-// `substring`, `concat` — und rechnet ansonsten mit Codepoints.
+// Nothing below is native. Everything builds on the primitives above — `length`, `charAt`,
+// `substring`, `concat` — and otherwise computes with code points.
 //
-// **Dass das geht, haengt an ADR-022**: seit `char` eine Zahl ist, sind `isDigit` und `parseInt`
-// gewoehnliche Arithmetik. Vorher haette jede dieser Funktionen eine native Signatur gebraucht,
-// und jede native Signatur ist eine Zeile im Bytecode-Vertrag (ADR-013).
+// That works because a `char` is a number, so `isDigit` and `parseInt` are ordinary arithmetic.
+// Otherwise each of them would need a native signature, and every native signature is a line in
+// the bytecode contract.
 //
-// **Dieses Modul importiert nichts** und darf auch nichts importieren: `std.core` importiert
-// `std.string`. Deshalb gibt es hier kein `List<T>` und keinen `Iterator<T>` — gesammelt wird in
+// This module imports nothing and must not: `std.core` imports `std.string`. There is therefore
+// no `List<T>` and no `Iterator<T>` here; collecting happens into an array.
 // `string[]`.
 
 // ------------------------------------------------------------------ Zeichen pruefen
 //
-// Alle nehmen `char` und nicht `string`: die Frage "ist das eine Ziffer?" stellt sich an einem
-// Zeichen, und ein Ein-Zeichen-String waere eine Verpackung ohne Zweck.
+// All take a `char` rather than a `string`: the question is asked of a character.
 
 pub fn isDigit(c: char): bool {
     return c >= '0' && c <= '9';
 }
 
-// Nur ASCII. Eine vollstaendige Unicode-Kategorie braeuchte die Tabellen aus dem Standard, und die
-// gehoeren nicht in eine Sprache, die ohne Datendateien auskommen soll.
+// ASCII only. A full Unicode category would need the tables from the standard.
 pub fn isAlpha(c: char): bool {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
@@ -112,9 +99,9 @@ pub fn isLower(c: char): bool {
     return c >= 'a' && c <= 'z';
 }
 
-/// Der Zahlwert einer Ziffer — `null`, wenn es keine ist.
+/// The numeric value of a digit, or `null` when it is not one.
 ///
-/// `?int` und nicht `-1`: ein Fehlschlag, den der Aufrufer behandeln muss, gehoert in den Typ.
+/// `?int` rather than `-1`: a failure the caller has to handle belongs in the type.
 pub fn charToDigit(c: char): ?int {
     if (!isDigit(c)) {
         return null;
@@ -135,7 +122,7 @@ pub fn isEmpty(value: string): bool {
     return length(value) == 0;
 }
 
-/// Leer oder nur Weissraum.
+/// Empty or whitespace only.
 pub fn isBlank(value: string): bool {
     var i = 0;
     let n = length(value);
@@ -150,7 +137,7 @@ pub fn isBlank(value: string): bool {
 
 // ------------------------------------------------------------------ Suchen
 
-/// Ab einer Position suchen. `-1`, wenn nichts gefunden wird — wie `indexOf`.
+/// Searches from a position. `-1` when nothing is found, as in `indexOf`.
 pub fn indexOfFrom(value: string, needle: string, start: int): int {
     let n = length(value);
     let m = length(needle);
@@ -188,9 +175,8 @@ pub fn lastIndexOf(value: string, needle: string): int {
 
 /// Wie oft `needle` vorkommt — OHNE Ueberlappung.
 ///
-/// Das ist eine Entscheidung, keine Selbstverstaendlichkeit: `count("aaa", "aa")` ist damit 1 und
-/// nicht 2. Beides ist vertretbar; diese Variante ist die von `replace`, und zwei verschiedene
-/// Antworten auf "wo kommt es vor?" waeren schlimmer als eine unbequeme.
+/// Overlapping occurrences are not counted: `count("aaa", "aa")` is 1, not 2. This matches
+/// `replace`.
 pub fn count(value: string, needle: string): int {
     if (length(needle) == 0) {
         return 0;
@@ -205,12 +191,9 @@ pub fn count(value: string, needle: string): int {
     return n;
 }
 
-// ------------------------------------------------------------------ Zerlegen und Fuegen
+// ------------------------------------------------------------------ splitting and joining
 
-/// Fuegt die Teile mit einem Trenner zusammen — die Umkehrung von `split`.
-///
-/// Fehlte bisher und wird staendig gebraucht; ohne sie schreibt jeder seine eigene Schleife, und
-/// die Haelfte davon haengt den Trenner einmal zu oft an.
+/// Joins the parts with a separator: the inverse of `split`.
 pub fn join(parts: string[], separator: string): string {
     if (parts.length == 0) {
         return "";
@@ -225,14 +208,13 @@ pub fn join(parts: string[], separator: string): string {
     return result;
 }
 
-/// Zerlegt an Zeilenumbruechen. `\r\n` und `\n` zaehlen beide.
+/// Splits at line breaks. Both `\r\n` and `\n` count.
 pub fn splitLines(value: string): string[] {
-    // Erst die Wagenruecklaeufe entfernen, dann an `\n` trennen: die Alternative waere eine eigene
-    // Schleife mit zwei Faellen, und die haette einen dritten uebersehen.
+    // Remove the carriage returns first, then split at `\n`.
     return split(replace(value, "\r\n", "\n"), "\n");
 }
 
-/// Am ERSTEN Vorkommen trennen. Der Rest bleibt ungeteilt — fuer `key=value=mehr`.
+/// Splits at the FIRST occurrence; the rest stays whole, for `key=value=more`.
 pub fn splitFirst(value: string, separator: string): string[] {
     let i = indexOf(value, separator);
     if (i < 0) {
@@ -277,7 +259,7 @@ pub fn replaceFirst(value: string, needle: string, ersatz: string): string {
     return davor + ersatz + danach;
 }
 
-// ------------------------------------------------------------------ Trimmen und Fuellen
+// ------------------------------------------------------------------ trimming and padding
 
 pub fn trimStart(value: string): string {
     var i = 0;
@@ -296,8 +278,8 @@ pub fn trimEnd(value: string): string {
     return substring(value, 0, n);
 }
 
-/// Fuellt vorn auf, bis `width` erreicht ist. Ein laengerer String bleibt unveraendert —
-/// abschneiden waere Datenverlust an einer Stelle, die nur formatiert.
+/// Pads at the front until `width` is reached. A longer string is left unchanged; truncating
+/// would lose data in a function that only formats.
 pub fn padStart(value: string, width: int, fill: char): string {
     let fehlend = width - length(value);
     if (fehlend <= 0) {
@@ -316,14 +298,13 @@ pub fn padEnd(value: string, width: int, fill: char): string {
 
 // ------------------------------------------------------------------ Parsen
 //
-// Alle liefern `?T`: ein unparsbarer String ist ein gewoehnlicher Zustand der Welt (Nutzereingabe,
-// Konfigurationsdatei) und kein Programmierfehler. Dieselbe Entscheidung wie bei `readText`.
+// All return `?T`: an unparsable string is an ordinary state of the world, not a programming
+// error.
 
-/// `"-42"` wird `-42`, alles andere `null`.
+/// `"-42"` becomes `-42`, anything else `null`.
 ///
-/// **Kein Ueberlaufschutz**: eine Zahl jenseits von `int64` wickelt um (§6.6), statt `null` zu
-/// liefern. Das zu erkennen braeuchte eine Division je Ziffer, und die Sprache hat kein `checked`.
-/// Bewusst so und hier vermerkt, statt es zu verschweigen.
+/// No overflow protection: a number beyond `int64` wraps rather than yielding `null`. Detecting
+/// it would need a division per digit.
 pub fn parseInt(value: string): ?int {
     let n = length(value);
     if (n == 0) {
@@ -338,7 +319,7 @@ pub fn parseInt(value: string): ?int {
         i = 1;
     }
 
-    // Nur ein Vorzeichen ist keine Zahl.
+    // A sign on its own is not a number.
     if (i >= n) {
         return null;
     }
@@ -356,7 +337,7 @@ pub fn parseInt(value: string): ?int {
     return if (negativ) 0 - ergebnis else ergebnis;
 }
 
-/// Zu einer Basis von 2 bis 36. Buchstaben zaehlen ab `a`/`A` weiter.
+/// From a base of 2 to 36. Letters continue from `a`/`A`.
 pub fn parseIntRadix(value: string, radix: int): ?int {
     if (radix < 2 || radix > 36) {
         return null;
@@ -412,8 +393,7 @@ pub fn parseBool(value: string): ?bool {
 
 /// `"3.5"`, `"-0.25"`, `"42"` werden Fliesskomma; alles andere `null`.
 ///
-/// Ohne Exponentenschreibweise (`1e9`) — die braeuchte eine eigene Zustandsmaschine, und wer sie
-/// wirklich braucht, hat meist auch andere Anforderungen an die Genauigkeit.
+/// Without exponent notation (`1e9`), which would need a state machine of its own.
 pub fn parseFloat(value: string): ?float {
     let punkt = indexOf(value, ".");
     if (punkt < 0) {
@@ -445,7 +425,7 @@ pub fn parseFloat(value: string): ?float {
         }
     }
 
-    // Nachkommastellen einzeln, damit kein Vorzeichen hineingeraet und "1.-2" scheitert.
+    // The fractional digits one at a time, so no sign gets into them.
     var bruch = 0.0;
     var teiler = 1.0;
     var i = 0;
@@ -463,7 +443,7 @@ pub fn parseFloat(value: string): ?float {
     return if (negativ) 0.0 - betrag else betrag;
 }
 
-// Lokal, damit dieses Modul `std.math` nicht importieren muss.
+// Local, so this module need not import `std.math`.
 fn absFloat(value: float): float {
     return if (value < 0.0) 0.0 - value else value;
 }
@@ -480,14 +460,13 @@ pub fn fromChars(chars: char[]): string {
     return result;
 }
 
-/// Baut einen String stueckweise auf.
+/// Builds a string piece by piece.
 ///
-/// **Warum es die Klasse gibt**: `s = s + teil` in einer Schleife ist quadratisch — jeder Schritt
-/// kopiert den ganzen bisherigen String. Der Builder sammelt die Teile und fuegt sie EINMAL
-/// zusammen. `Doku.md` erwaehnt ihn seit M6; es gab ihn nur nie.
+/// `s = s + part` in a loop is quadratic: every step copies the whole string so far. The builder
+/// collects the parts and joins them once.
 ///
-/// Das Backing ist ein `string[]`, das sich verdoppelt — dieselbe Strategie wie `List<T>`, hier
-/// von Hand, weil dieses Modul `std.collections` nicht importieren darf.
+/// The backing is a doubling `string[]`, written by hand because this module must not import
+/// `std.collections`.
 pub class StringBuilder {
     parts: string[],
     count: int,
