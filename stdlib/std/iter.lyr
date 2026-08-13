@@ -1,29 +1,25 @@
-// std.iter — was 'for-in' antreibt (Sprache.md §5).
+// std.iter — what drives 'for-in'.
 //
-// Ein Iterator liefert Werte, bis keiner mehr da ist: 'next()' gibt '?T' zurueck, und 'null' heisst
-// Ende. Das ist die gesamte Schnittstelle — kein 'hasNext' daneben, das ein zweites Mal dieselbe
-// Frage stellt und dabei mit 'next' aus dem Tritt geraten kann.
+// An iterator yields values until there are none: 'next()' returns '?T', and 'null' means the end.
+// That is the whole interface; there is no 'hasNext' beside it that could fall out of step.
 //
-// 'for (x in e)' braucht einen Ausdruck, der 'Iterator<T>' erfuellt. Fuer die drei eingebauten
-// Formen — Range, Array, String — hat der Compiler keine Deklaration, an die er eine
-// Konformanz haengen koennte; er baut deshalb einen der Adapter hier unten. Ein eigener Typ, der
-// 'Iterator<T>' implementiert, wird direkt benutzt.
+// 'for (x in e)' needs an expression satisfying 'Iterable<T>'. For the three built-in forms —
+// range, array, string — there is no declaration to attach a conformance to, so the compiler
+// builds one of the adapters below. A user type implementing 'Iterator<T>' is used directly.
 
 module std.iter;
 
-// Fuer 'minValue'/'maxValue'. Kein Zyklus: 'std.core' importiert nur 'std.string', und das
-// importiert nichts.
+// For 'minValue'/'maxValue'. No cycle: 'std.core' imports only 'std.string', which imports
+// nothing.
 import std.core { Ordered };
 
 pub interface Iterator<T> {
-    // 'mut', weil ein Iterator seinen Fortschritt fortschreibt — genau das unterscheidet ihn von
-    // einer Funktion, die jedes Mal dasselbe liefert.
+    // 'mut', because an iterator advances its own position.
     mut fn next(): ?T;
 }
 
-// Ein Zahlenbereich: 'a..b' (exklusiv) und 'a..=b' (inklusiv) unterscheiden sich allein im
-// Endwert, den der Compiler beim Bauen einsetzt — deshalb gibt es hier nur EINEN Adapter und
-// nicht zwei.
+// A numeric range. 'a..b' and 'a..=b' differ only in the end value the compiler substitutes,
+// so there is one adapter rather than two.
 pub class RangeIterator :: [Iterator<int>] {
     current: int,
     end: int,
@@ -38,8 +34,8 @@ pub class RangeIterator :: [Iterator<int>] {
     }
 }
 
-// Ein Array. Der Index gehoert dem Iterator und nicht dem Array — zwei Schleifen ueber dasselbe
-// Array stoeren einander deshalb nicht.
+// An array. The index belongs to the iterator, not to the array, so two loops over the same
+// array do not disturb each other.
 pub class ArrayIterator<T> :: [Iterator<T>] {
     source: T[],
     index: int,
@@ -54,9 +50,9 @@ pub class ArrayIterator<T> :: [Iterator<T>] {
     }
 }
 
-// Ein String. Er laeuft ueber die Codepoints, die 'toChars' EINMAL herausloest — nicht ueber
-// 'charAt', das pro Aufruf von vorn zaehlen muesste und die Schleife quadratisch machte.
-// Der Preis ist ein Array pro Schleife; der Gewinn ist, dass 'for (c in s)' linear bleibt.
+// A string. It walks the code points that 'toChars' extracts once, rather than calling
+// 'charAt', which would count from the start each time and make the loop quadratic. The cost is
+// one array per loop.
 pub class StringIterator :: [Iterator<char>] {
     chars: char[],
     index: int,
@@ -71,38 +67,33 @@ pub class StringIterator :: [Iterator<char>] {
     }
 }
 
-// Was sich durchlaufen laesst.
+// What can be walked.
 //
-// Die Zweiteilung ist Absicht und folgt C# (Iterable/Iterator), Java und Rust: ein Container
-// SAGT, wie man ihn durchlaeuft, statt selbst der Cursor zu sein. Waere 'List<T>' ihr eigener
-// 'Iterator<T>', haette sie einen eingebauten Fortschritt — und zwei Schleifen ueber dieselbe
-// Liste wuerden einander weiterschieben. Aus demselben Grund haelt 'ArrayIterator' den Index und
-// nicht das Array.
+// A container SAYS how to walk it rather than being the cursor itself. Were 'List<T>' its own
+// 'Iterator<T>', it would carry a built-in position and two loops over the same list would push
+// each other along.
 //
-// 'for (x in e)' fragt damit VORWAERTS: erfuellt 'e' dieses Interface, wird 'iter()' gerufen. Der
-// Compiler sucht nicht rueckwaerts nach einem Iterator, der 'e' als Quelle nimmt — das waere bei
-// zwei Kandidaten mehrdeutig und muesste alle sichtbaren Module absuchen.
+// 'for (x in e)' therefore asks forwards: if 'e' satisfies this interface, 'iter()' is called. The
+// compiler does not search backwards for an iterator taking 'e' as its source, which would be
+// ambiguous with two candidates.
 //
-// Die drei eingebauten Formen — Range, Array, String — sind die begruendete Ausnahme: sie haben
-// keine Deklaration, an die sich eine Konformanz haengen liesse, also baut der Compiler ihren
-// Adapter selbst.
+// The three built-in forms are the exception: they have no declaration to attach a conformance to,
+// so the compiler builds their adapter itself.
 pub interface Iterable<T> {
     fn iter(): Iterator<T>;
 }
 
-// ====================================================================== Adapter (M8b/S3)
+// ================================================================================== adapters
 //
-// Jeder Adapter ist eine Klasse mit Zustand plus eine Funktion, die sie baut. Die Funktion gibt
-// `Iterator<T>` zurueck und nicht die Klasse: so laesst sich verketten, ohne dass der Typ des
-// Zwischenergebnisses im Quelltext auftaucht.
+// Each adapter is a class holding state plus a function that builds it. The function returns
+// `Iterator<T>` rather than the class, so chains compose without the intermediate type appearing
+// in the source.
 //
-// **Faul, nicht eifrig.** Kein Adapter zieht seine Quelle leer, bevor jemand `next` ruft. Wer
-// `take(map(riesig, teuer), 3)` schreibt, bezahlt drei Aufrufe von `teuer` und nicht Millionen —
-// das ist der Grund, warum es Iteratoren gibt und nicht nur Arrays.
+// Lazy, not eager. No adapter drains its source before someone calls `next`, so
+// `take(map(huge, expensive), 3)` costs three calls to `expensive`.
 //
-// Die Adapter halten ihre Quelle als `Iterator<T>`, also als Fat Pointer (P3). Das kostet einen
-// virtuellen Aufruf je Element; die Alternative waere ein zweiter Typ-Parameter je Adapter, und
-// der wuerde jede Signatur verdoppeln.
+// The adapters hold their source as `Iterator<T>`, a fat pointer, which costs one virtual call per
+// element. The alternative would be a second type parameter per adapter.
 
 pub class MapIterator<T, U> :: [Iterator<U>] {
     source: Iterator<T>,
@@ -156,8 +147,8 @@ pub class TakeIterator<T> :: [Iterator<T>] {
     }
 }
 
-// Die ersten `count` Elemente. Ein negatives `count` liefert nichts, statt zu panicen: „nimm
-// minus drei" ist keine gebrochene Zusage, sondern eine leere Auswahl.
+// The first `count` elements. A negative `count` yields nothing rather than panicking: it is an
+// empty selection, not a broken promise.
 pub fn take<T>(source: Iterator<T>, count: int): Iterator<T> {
     return TakeIterator<T> { source = source, remaining = count };
 }
@@ -167,8 +158,7 @@ pub class SkipIterator<T> :: [Iterator<T>] {
     pending: int,
 
     pub mut fn next(): ?T {
-        // Erst beim ersten `next` ueberspringen, nicht beim Bauen — sonst waere der Adapter
-        // eifrig und `skip` allein haette schon einen Effekt.
+        // Skipped at the first `next`, not while building, or the adapter would be eager.
         while (this.pending > 0) {
             this.pending = this.pending - 1;
             if (this.source.next() == null) {
@@ -201,8 +191,8 @@ pub class TakeWhileIterator<T> :: [Iterator<T>] {
         if (p(value)) {
             return value;
         }
-        // Nach dem ersten `false` ist Schluss — auch wenn spaeter wieder `true` kaeme. Das
-        // unterscheidet `takeWhile` von `filter`, und es ist der ganze Zweck.
+        // After the first `false` it ends, even if `true` would come again. That is what
+        // separates `takeWhile` from `filter`.
         this.done = true;
         return null;
     }
@@ -227,7 +217,7 @@ pub class EnumerateIterator<T> :: [Iterator<(int, T)>] {
     }
 }
 
-/// Nummeriert durch: aus `a, b, c` wird `(0, a), (1, b), (2, c)`.
+/// Numbers the elements: `a, b, c` becomes `(0, a), (1, b), (2, c)`.
 pub fn enumerate<T>(source: Iterator<T>): Iterator<(int, T)> {
     return EnumerateIterator<T> { source = source };
 }
@@ -249,11 +239,10 @@ pub class ZipIterator<A, B> :: [Iterator<(A, B)>] {
     }
 }
 
-/// Laeuft parallel ueber beide und endet mit dem KUERZEREN.
+/// Walks both in step and ends with the shorter one.
 ///
-/// Der eine ueberzaehlige Aufruf auf `left` ist der Preis dafuer, dass beide Seiten dieselbe
-/// Schnittstelle haben: um ihn zu sparen, braeuchte `Iterator<T>` ein `peek`, und das gaebe es
-/// sonst nirgends.
+/// The one surplus call on `left` is the price of both sides sharing the same interface; avoiding
+/// it would need a `peek` on `Iterator<T>` that exists nowhere else.
 pub fn zip<A, B>(left: Iterator<A>, right: Iterator<B>): Iterator<(A, B)> {
     return ZipIterator<A, B> { left = left, right = right };
 }
@@ -279,20 +268,19 @@ pub fn chain<T>(first: Iterator<T>, second: Iterator<T>): Iterator<T> {
     return ChainIterator<T> { first = first, second = second };
 }
 
-// ================================================================= Terminatoren (M8b/S3)
+// =============================================================================== terminators
 //
-// Ein Terminator zieht den Iterator leer und liefert einen Wert. Damit endet eine Kette — und
-// erst hier passiert ueberhaupt etwas: die Adapter darueber sind faul.
+// A terminator drains the iterator and produces a value. A chain ends there, and that is where
+// anything happens at all, because the adapters above are lazy.
 //
-// Nach einem Terminator ist der Iterator verbraucht. Lyric hat keine Moeglichkeit, das
-// auszudruecken (kein Move, kein Borrow-Checker), also ist es eine Zusage an den Leser und keine
-// des Compilers: wer denselben Iterator zweimal terminiert, bekommt beim zweiten Mal nichts.
+// After a terminator the iterator is spent. The language cannot express that, so it is a promise
+// to the reader rather than one the compiler keeps: terminating the same iterator twice yields
+// nothing the second time.
 
-/// Faltet von links: `fold(1..4, 0, (acc, n) => acc + n)` ist `((0+1)+2)+3`.
+/// Folds from the left: `fold(1..4, 0, (acc, n) => acc + n)` is `((0+1)+2)+3`.
 ///
-/// Der allgemeinste Terminator — `count`, `sum`, `any` und `all` sind Spezialfaelle davon. Sie
-/// stehen trotzdem einzeln da, weil `fold` mit einer Closure fuer „zaehl mal" zu viel Zeremonie
-/// ist.
+/// The most general terminator; `count`, `sum`, `any` and `all` are special cases of it. They
+/// exist separately because `fold` with a closure is too much ceremony for counting.
 pub fn fold<T, A>(source: Iterator<T>, seed: A, step: fn(A, T) -> A): A {
     var acc = seed;
     var value = source.next();
@@ -314,9 +302,8 @@ pub fn count<T>(source: Iterator<T>): int {
     return n;
 }
 
-// `sum` und `sumFloat` getrennt, weil Lyric kein Overloading hat (ADR-015) und es kein
-// `Addable`-Interface gibt. Ein solches Interface waere die Alternative — es gehoert aber zu
-// Operator-Overloading (v1.4) und nicht hierher.
+// `sum` and `sumFloat` are separate: there is no overloading and no `Addable` interface. Such an
+// interface belongs with operator overloading.
 pub fn sum(source: Iterator<int>): int {
     var total = 0;
     var value = source.next();
@@ -337,7 +324,7 @@ pub fn sumFloat(source: Iterator<float>): float {
     return total;
 }
 
-/// Bricht beim ersten Treffer ab — der Rest wird nie ausgewertet.
+/// Stops at the first match; the rest is never evaluated.
 pub fn any<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
     var value = source.next();
     while (value != null) {
@@ -350,8 +337,8 @@ pub fn any<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
     return false;
 }
 
-/// Bricht beim ersten Gegenbeispiel ab. Ein leerer Iterator liefert `true` — das ist die
-/// uebliche Konvention und die einzige, mit der `all(a) && all(b) == all(chain(a, b))` gilt.
+/// Stops at the first counterexample. An empty iterator yields `true`, the only convention for
+/// which `all(a) && all(b) == all(chain(a, b))` holds.
 pub fn all<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
     var value = source.next();
     while (value != null) {
@@ -368,7 +355,7 @@ pub fn none<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
     return !any<T>(source, test);
 }
 
-/// Das erste Element, das passt — `null`, wenn keines passt.
+/// The first element that matches, or `null`.
 pub fn find<T>(source: Iterator<T>, test: fn(T) -> bool): ?T {
     var value = source.next();
     while (value != null) {
@@ -381,8 +368,8 @@ pub fn find<T>(source: Iterator<T>, test: fn(T) -> bool): ?T {
     return null;
 }
 
-/// Die Position des ersten Treffers. Getrennt von `find`, weil ein Tupel `(int, T)` hier den
-/// haeufigen Fall verteuern wuerde, in dem nur eines von beidem gebraucht wird.
+/// The position of the first match. Separate from `find`, because a `(int, T)` tuple would cost
+/// the common case where only one of the two is needed.
 pub fn position<T>(source: Iterator<T>, test: fn(T) -> bool): ?int {
     var index = 0;
     var value = source.next();
@@ -399,10 +386,9 @@ pub fn position<T>(source: Iterator<T>, test: fn(T) -> bool): ?int {
 
 /// Alles in ein Array.
 ///
-/// **Quadratisch**: `T[]` ist unveraenderlich in der Laenge (ADR-016), jedes Anhaengen kopiert.
-/// Fuer grosse Iteratoren gehoert `std.collections.collect` benutzt, das in eine `List<T>` mit
-/// Verdoppelung sammelt. Hier steht es trotzdem, weil `std.iter` `std.collections` nicht
-/// importieren darf — die Abhaengigkeit laeuft andersherum.
+/// Quadratic: a `T[]` has a fixed length, so every append copies. For large iterators use
+/// `std.collections.collect`, which gathers into a doubling `List<T>`. It stands here because
+/// `std.iter` must not import `std.collections`; the dependency runs the other way.
 pub fn collectArray<T>(source: Iterator<T>): T[] {
     var result: T[] = [];
     var value = source.next();

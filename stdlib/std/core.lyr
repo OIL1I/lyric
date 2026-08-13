@@ -1,69 +1,53 @@
-// std.core — was die Sprache selbst braucht.
+// std.core — what the language itself needs.
 //
-// 'panic' ist ein Sprach-Built-in (Sprache.md §9) mit Rueckgabetyp 'never': es kehrt nie zurueck,
-// laesst sich nicht fangen und beendet die VM mit Backtrace. Der Compiler bindet den Aufruf hier
-// an, ohne dass jemand 'std.core' importiert — dasselbe Modell wie bei den f-String-Helfern in
-// 'std.string'.
+// 'panic' is a language built-in returning 'never': it does not return, cannot be caught and ends
+// the VM with a backtrace. The compiler binds the call without anyone importing 'std.core', the
+// same model as the f-string helpers in 'std.string'.
 
 module std.core;
 
-// Fuer die Display-Extensions unten. 'std.string' importiert 'std.core' nicht, also ist das
-// kein Zyklus — und selbst einer wuerde terminieren (der Lader registriert vor dem Absteigen).
+// For the Display extensions below. 'std.string' does not import 'std.core', so there is no cycle,
+// and even one would terminate because the loader registers before descending.
 import std.string { fromInt, fromFloat, fromBool, fromChar, length, charAt };
 
 pub fn panic(message: string): void;
 
-// Ein 'resume' auf eine Coroutine, deren Rumpf durchgelaufen ist (Sprache.md §8). Wie 'panic'
-// vom Compiler angebunden, ohne dass jemand 'std.core' importiert — der Aufruf steht im
-// Sprungverteiler, den niemand geschrieben hat, also kann auch niemand den Import geschrieben
-// haben.
+// A 'resume' on a coroutine whose body has run to the end. Bound by the compiler like 'panic':
+// the call sits in a dispatcher nobody wrote, so nobody could have written the import either.
 pub fn coroutineEnded(): void;
 
-// ------------------------------------------------------------- Abbruch mit Grund (Doku §22)
+// ------------------------------------------------------------------------ aborting with a reason
 //
-// Alle drei sind `panic` mit einer Aussage darueber, WER sich geirrt hat. Sie sind in Lyric
-// geschrieben und brauchen keine native Kante — `panic` ist bereits eine.
+// All three are `panic` with a statement about who got it wrong. They are written in Lyric and
+// need no native edge; `panic` already is one.
 //
-// **Einschraenkung, die man kennen muss**: sie sind `void`, und die Flussanalyse zieht aus
-// `panic`s `never`-Rueckgabetyp (§9) heute nichts. `fn f(): int { todo("x"); }` ist deshalb
-// `LYR-SEM0017` — sie ersetzen kein `return`. In einer Funktion mit Rueckgabewert steht dahinter
-// weiterhin ein Wert, den niemand liest.
+// They are `void`, and the flow analysis draws nothing from `panic`'s `never` return type here, so
+// `fn f(): int { todo("x"); }` is `LYR-SEM0017`: they do not replace a `return`.
 
-// Panic mit `message`, wenn `condition` falsch ist. Fuer Invarianten, die der Compiler nicht
-// prueft — der Aufrufer hat den Vertrag gebrochen, nicht diese Funktion.
+// Panics with `message` when `condition` is false, for invariants the compiler does not check.
 pub fn assert(condition: bool, message: string): void {
     if (!condition) {
         panic(message);
     }
 }
 
-// Eine Stelle, die noch fehlt. Der Unterschied zu einem Kommentar ist, dass sie sich meldet:
-// beim Ausfuehren, nicht beim Lesen.
+// A place that is still missing. Unlike a comment, it reports itself when executed.
 pub fn todo(message: string): void {
     panic("not implemented: " + message);
 }
 
-// Ein Zweig, den der Autor fuer unerreichbar haelt. Gegenstueck zu `todo`: `todo` heisst „kommt
-// noch", `unreachable` heisst „darf nie" — und wenn es doch passiert, stimmt eine Annahme nicht,
-// die woanders steht.
+// A branch the author considers unreachable. `todo` means "still to come", `unreachable` means
+// "must never happen"; if it does, an assumption stated elsewhere is wrong.
 pub fn unreachable(message: string): void {
     panic("unreachable: " + message);
 }
 
-// ------------------------------------------------------------------- Exception (Doku §22)
+// ---------------------------------------------------------------------------------- Exception
 //
-// Der fertige `Throwable` fuer den Fall, dass jemand nur eine Meldung werfen will.
+// The ready-made `Throwable` for throwing a message.
 //
-// **Warum hier und nicht in einem `std.error`**: das Modul haette genau diese eine Klasse
-// enthalten. `NullDereferenceError` und `CoroutineEndedError` gibt es nicht — beides bleibt ein
-// `panic` (§17.1: `throw` fuer Domain-Fehler, `panic` fuer Programmierfehler), und Typen, die
-// niemand wirft, waeren Attrappen. `FileNotFound` und `PermissionDenied` aus §9 und Doku §17 sind
-// Illustrationen in NUTZERCODE; sie hierherzuziehen machte die Beispiele falsch. `std.core` ist
-// „was die Sprache selbst braucht", und ein Basis-Throwable neben dem eingebauten `Throwable`
-// ist genau das.
-//
-// Das Feld heisst `text` und nicht `message`: `Throwable` verlangt eine METHODE `message()`, und
-// beide koennten nicht denselben Namen tragen.
+// The field is `text` and not `message`, because `Throwable` requires a METHOD `message()` and the
+// two cannot share a name.
 pub class Exception :: [Throwable] {
     text: string,
 
@@ -72,15 +56,14 @@ pub class Exception :: [Throwable] {
     }
 }
 
-// Display — was sich als Text darstellen laesst (M8/S1).
+// Display — what can be rendered as text.
 //
-// Der Anker fuer 'println<T :: [Display]>' und fuer 'std.fmt'. Dass ein Builtin ihn erfuellen
-// kann, ist der ganze Punkt: die Konformanz haengt an einem 'extend', und der Constraint-Aufruf
-// wird durch die Monomorphisierung ein DIREKTER Aufruf. Es entsteht kein Interface-Wert, also
-// braucht ein 'int' hier kein Boxing — der Grund, warum das ohne Format-Aenderung geht.
+// The anchor for 'println<T :: [Display]>' and for 'std.fmt'. A built-in can satisfy it: the
+// conformance hangs off an 'extend', and monomorphization turns the constrained call into a direct
+// one, so no interface value arises and an 'int' needs no boxing.
 //
-// Ein Wert, der ueber sein Interface vorliegt ('let d: Display = 5;'), bleibt verboten: dafuer
-// braeuchte der Fat Pointer eine Referenz, und ein Skalar hat keine.
+// A value held through the interface ('let d: Display = 5;') stays rejected: a fat pointer needs a
+// reference, and a scalar has none.
 pub interface Display {
     fn show(): string;
 }
@@ -105,34 +88,31 @@ extend string :: [Display] {
     fn show(): string { return this; }
 }
 
-// ------------------------------------------------------- Gleichheit, Hash, Ordnung (ADR-024)
+// --------------------------------------------------------------- equality, hashing, ordering
 //
-// Dasselbe Muster wie `Display` daueber: Interface hier, Konformanz der Builtins ueber `extend`,
-// Nutzertypen ueber `::`. Ein Constraint macht daraus durch die Monomorphisierung einen direkten
-// Aufruf, es entsteht also kein Interface-Wert und kein Boxing.
+// The same pattern as `Display` above: interface here, conformance of the built-ins through
+// `extend`, user types through `::`. A constraint becomes a direct call through monomorphization,
+// so no interface value and no boxing arise.
 //
-// **Warum generisch und nicht `fn equals(other: Equatable)`**: ein Interface als Parametertyp
-// verlangt einen Interface-WERT, und ein Skalar kann keiner sein (siehe Display oben — ein Fat
-// Pointer braucht eine Referenz). `extend int :: [Equatable]` waere damit unmoeglich, und es
-// gaebe kein `Map<int, V>`. Mit `Equatable<T>` steht auf beiden Seiten der konkrete Typ.
+// Generic rather than `fn equals(other: Equatable)`: an interface as a parameter type requires an
+// interface VALUE, and a scalar cannot be one. `extend int :: [Equatable]` would be impossible and
+// there would be no `Map<int, V>`. With `Equatable<T>` both sides carry the concrete type.
 //
-// **Warum `Hashable` nicht von `Equatable` erbt**: Lyric kennt keine Interface-Vererbung — die
-// Grammatik sieht fuer `InterfaceDecl` keine Konformanzliste vor. Wer beides braucht, verlangt
-// beides: `K :: [Hashable<K>, Equatable<K>]`.
+// `Hashable` does not inherit from `Equatable`: there is no interface inheritance. A caller that
+// needs both requires both: `K :: [Hashable<K>, Equatable<K>]`.
 
 pub interface Equatable<T> {
     fn equals(other: T): bool;
 }
 
-// Die Invariante, die kein Compiler prueft und jede Hash-Tabelle braucht: gleiche Werte MUESSEN
-// denselben Hash liefern. Umgekehrt gilt das nicht — zwei verschiedene Werte duerfen kollidieren.
+// The invariant no compiler checks and every hash table needs: equal values must produce equal
+// hashes. The reverse does not hold; two different values may collide.
 pub interface Hashable<T> {
     fn hash(): int;
 }
 
-// Negativ, null, positiv — wie `strcmp`. Ein einzelner Vergleichsoperator statt vier Methoden:
-// `<`, `<=`, `>`, `>=` lassen sich alle daraus ableiten, und vier Methoden waeren vier
-// Gelegenheiten, sich zu widersprechen.
+// Negative, zero, positive, as `strcmp`. One comparison instead of four methods: `<`, `<=`, `>`
+// and `>=` all derive from it.
 pub interface Ordered<T> {
     fn compare(other: T): int;
 }
@@ -150,8 +130,8 @@ extend int :: [Ordered<int>] {
 }
 
 extend int :: [Hashable<int>] {
-    // Ein int IST sein eigener Hash. Eine Streuung waere hier falsch am Platz: welche Bits eine
-    // Tabelle braucht, weiss die Tabelle, nicht der Wert.
+    // An int is its own hash. Which bits a table needs is the table's business, not the
+    // value's.
     fn hash(): int { return this; }
 }
 
@@ -196,10 +176,9 @@ extend string :: [Equatable<string>] {
 }
 
 extend string :: [Ordered<string>] {
-    // Lexikographisch ueber CODEPOINTS — dieselbe Einheit, die `length` zaehlt und `for (c in s)`
-    // liefert (Sprache.md §4). Kein Locale, keine Normalisierung: beides waere eine Bibliothek
-    // fuer sich, und ein `compare`, das je nach Umgebung anders sortiert, waere in einer Sprache
-    // mit plattformneutralem Bytecode (ADR-013) ein Widerspruch.
+    // Lexicographic over CODE POINTS, the same unit `length` counts and `for (c in s)` yields.
+    // No locale and no normalization: a `compare` that sorts differently per environment would
+    // contradict a platform-neutral bytecode.
     fn compare(other: string): int {
         let a = length(this);
         let b = length(other);
@@ -214,7 +193,7 @@ extend string :: [Ordered<string>] {
             i = i + 1;
         }
 
-        // Gleicher Anfang: der kuerzere gewinnt.
+        // Same prefix: the shorter one wins.
         if (a < b) { return -1; }
         if (a > b) { return 1; }
         return 0;
@@ -222,8 +201,8 @@ extend string :: [Ordered<string>] {
 }
 
 extend string :: [Hashable<string>] {
-    // FNV-1a ueber die Codepoints. In Lyric und nicht nativ, weil die Sprache es kann: seit
-    // ADR-022 ist ein `char` eine Zahl, und der Ueberlauf wickelt definiert um (§6.6).
+    // FNV-1a over the code points. In Lyric rather than native: a `char` is a number and the
+    // overflow wraps in a defined way.
     //
     // Die Konstanten sind die 64-Bit-Variante. Ein Hash muss nicht kryptographisch sein, er muss
     // streuen und ueberall dasselbe liefern — beides tut FNV, und es passt in acht Zeilen.
