@@ -4,19 +4,17 @@ using Lyric.Resolver;
 namespace Lyric.Sema;
 
 /// <summary>
-/// Interface-Konformanz als geteiltes Vokabular: welche Interfaces deklariert ein Typ,
-/// implementiert er ein bestimmtes, ist ein Typ werfbar (§9)? Genutzt vom
-/// <see cref="TypeChecker"/> (Constraints, throw/catch/throws) und vom
-/// <see cref="ExceptionAnalyzer"/> (Propagation). Extend-Merge kommt in M4-4 dazu.
+/// Interface conformance as shared vocabulary: which interfaces does a type declare, does it
+/// implement a given one, is a type throwable? Used by the <see cref="TypeChecker"/> for
+/// constraints and throw/catch/throws, and by the <see cref="ExceptionAnalyzer"/> for propagation.
 ///
-/// <para><b>Public seit P3</b>: das IR-Lowering braucht dieselbe Frage, um die vtable-Zeilen zu
-/// bauen. Sie dort nachzubauen waere eine zweite Wahrheit darueber, wann ein Typ ein Interface
-/// erfuellt — und die beiden Antworten muessten exakt uebereinstimmen, sonst dispatcht die Runtime
-/// auf etwas, das die Sema nie geprueft hat.</para>
+/// <para>Public because the IR lowering asks the same question to build the vtable rows. Rebuilding
+/// it there would be a second truth about when a type satisfies an interface, and the two answers
+/// would have to agree exactly, or the runtime dispatches on something the sema never checked.</para>
 /// </summary>
 public static class Conformance
 {
-    /// <summary>Löst einen Constraint-/Interface-TypeNode zum Interface-Symbol auf (oder null).</summary>
+    /// <summary>Resolves a constraint or interface TypeNode to its interface symbol, or null.</summary>
     public static TypeSymbol? InterfaceOf(TypeNode node, BindingResult binding)
     {
         if (node is not NamedType nt) return null;
@@ -41,12 +39,12 @@ public static class Conformance
     public static bool Implements(TypeSymbol ts, TypeSymbol iface, BindingResult binding) =>
         DeclaredInterfaces(ts, binding).Any(it => ReferenceEquals(it, iface));
 
-    /// <summary>Darf ein Wert dieses Typs geworfen/gefangen/deklariert werden (§9)?
-    /// Throwable selbst, Typen mit Throwable in der Interface-Liste, Typ-Params mit
-    /// Throwable-Constraint; Interfaces lenient (Signatur-Konformanz erst M4-4).</summary>
+    /// <summary>May a value of this type be thrown, caught or declared? Throwable itself, types with
+    /// Throwable in their interface list, and type parameters with a Throwable constraint qualify;
+    /// interfaces are treated leniently.</summary>
     public static bool IsThrowable(LyrType t, TypeSymbol? throwable, BindingResult binding)
     {
-        if (throwable is null) return true; // Builtin fehlt → nicht kaskadieren
+        if (throwable is null) return true; // the builtin is missing, so do not cascade
         return t switch
         {
             ErrorType => true,

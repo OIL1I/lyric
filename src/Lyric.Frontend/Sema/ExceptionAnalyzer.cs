@@ -5,12 +5,12 @@ using Lyric.Resolver;
 namespace Lyric.Sema;
 
 /// <summary>
-/// throws-Propagation (Sprache.md §9), read-only Post-Pass nach dem TypeChecker: jede
-/// Throw-Site (throw-Statement oder Call einer throws-Funktion) muss entweder von einem
-/// umgebenden try mit passendem catch abgedeckt sein oder von der throws-Klausel der
-/// umgebenden Funktion (auto-propagation). Lambdas sind eigene Kontexte ohne
-/// throws-Klausel; globale Initializer und Default-Werte haben keinen Handler.
-/// Typ-Zuordnung: gleicher Typ, Interface-Implementierung oder Catch-All/typloses throws.
+/// throws propagation, a read-only post pass after the TypeChecker: every throw site — a throw
+/// statement or a call to a throws function — is either covered by a surrounding try with a matching
+/// catch, or by the throws clause of the surrounding function, which propagates automatically.
+/// Lambdas are contexts of their own without a throws clause; global initializers and default values
+/// have no handler. Type matching accepts the same type, an interface implementation, a catch-all,
+/// or a typeless throws.
 /// </summary>
 internal sealed class ExceptionAnalyzer
 {
@@ -20,11 +20,11 @@ internal sealed class ExceptionAnalyzer
     private readonly DiagnosticEngine _de;
     private readonly TypeSymbol? _throwable;
 
-    // Was die aktuelle Funktion werfen darf: (nichts | alles | genau ein Symbol).
+    // What the current function may throw: nothing, anything, or exactly one symbol.
     private enum Permit { None, Any, Typed }
     private Permit _permit = Permit.None;
     private TypeSymbol? _permitted;
-    private readonly List<CatchClause[]> _tryStack = new(); // nur try-BODIES schützen
+    private readonly List<CatchClause[]> _tryStack = new(); // only try BODIES are protected
 
     public ExceptionAnalyzer(Compilation comp, BindingResult binding, TypeResult types, DiagnosticEngine de)
     {
@@ -50,9 +50,9 @@ internal sealed class ExceptionAnalyzer
             case StructDecl s: AnalyzeMembers(s.Members); break;
             case ClassDecl c: AnalyzeMembers(c.Members); break;
             case EnumDecl e: foreach (var f in e.Methods) AnalyzeFunction(f); break;
-            case InterfaceDecl i: foreach (var f in i.Members) AnalyzeFunction(f); break; // Default-Bodies
+            case InterfaceDecl i: foreach (var f in i.Members) AnalyzeFunction(f); break; // default bodies
             case ExtendDecl x: foreach (var f in x.Methods) AnalyzeFunction(f); break;
-            case GlobalBindingDecl g: // Top-Level: kein try möglich, kein throws deklarierbar
+            case GlobalBindingDecl g: // top level: no try possible, no throws declarable
                 if (g.Binding.Initializer is not null) AnalyzeExpr(g.Binding.Initializer);
                 break;
         }
@@ -64,14 +64,14 @@ internal sealed class ExceptionAnalyzer
             switch (m)
             {
                 case FunctionDecl f: AnalyzeFunction(f); break;
-                case FieldDecl { Default: not null } fd: AnalyzeExpr(fd.Default); break; // kein Handler-Kontext
+                case FieldDecl { Default: not null } fd: AnalyzeExpr(fd.Default); break; // no handler context
             }
     }
 
     private void AnalyzeFunction(FunctionDecl fn)
     {
         foreach (var p in fn.Parameters)
-            if (p.Default is not null) AnalyzeExpr(p.Default); // Default-Werte: kein Handler
+            if (p.Default is not null) AnalyzeExpr(p.Default); // default values have no handler
 
         if (fn.Body is null) return;
         var (savedPermit, savedType) = (_permit, _permitted);
@@ -86,13 +86,13 @@ internal sealed class ExceptionAnalyzer
     {
         if (fn.Throws is null) return (Permit.None, null);
         if (fn.Throws.Type is null) return (Permit.Any, null);
-        // Vom TypeChecker an die Klausel gebundenes Symbol; 'throws Throwable' ≡ typlos.
+        // The symbol the TypeChecker bound to the clause; 'throws Throwable' is the typeless case.
         var sym = _types.RefOf(fn.Throws) as TypeSymbol;
-        if (sym is null) return (Permit.Any, null); // unauflösbar/extern → lenient
+        if (sym is null) return (Permit.Any, null); // unresolvable or external, so lenient
         return ReferenceEquals(sym, _throwable) ? (Permit.Any, null) : (Permit.Typed, sym);
     }
 
-    // --- Statement-Walk mit try-Stack ---
+    // --- statement walk with a try stack ---
 
     private void AnalyzeStmt(Stmt stmt)
     {
@@ -111,11 +111,11 @@ internal sealed class ExceptionAnalyzer
             case ForInStmt fo: AnalyzeExpr(fo.Iterable); AnalyzeStmt(fo.Body); break;
             case ReturnStmt r: if (r.Value is not null) AnalyzeExpr(r.Value); break;
             case YieldStmt y: if (y.Value is not null) AnalyzeExpr(y.Value); break;
-            case DeferStmt de: AnalyzeStmt(de.Body); break; // v1: wie Code am Deklarationsort
+            case DeferStmt de: AnalyzeStmt(de.Body); break; // treated like code at the declaration site
             case ThrowStmt t:
                 AnalyzeExpr(t.Value);
                 var thrownType = _types.TypeOf(t.Value);
-                // Nicht-werfbare Typen hat der TypeChecker schon gemeldet (SEM0030).
+                // Non-throwable types were already reported by the TypeChecker (SEM0030).
                 if (Conformance.IsThrowable(thrownType, _throwable, _binding))
                     CheckSite(ThrownOf(thrownType), t.Span, "'throw'");
                 break;
@@ -123,7 +123,7 @@ internal sealed class ExceptionAnalyzer
                 _tryStack.Add(tr.Catches);
                 AnalyzeStmt(tr.Body);
                 _tryStack.RemoveAt(_tryStack.Count - 1);
-                foreach (var c in tr.Catches) AnalyzeStmt(c.Body); // catch fängt sich nicht selbst
+                foreach (var c in tr.Catches) AnalyzeStmt(c.Body); // a catch does not catch itself
                 break;
             case MatchStmt m:
                 AnalyzeExpr(m.Scrutinee);
@@ -139,8 +139,8 @@ internal sealed class ExceptionAnalyzer
         else if (arm.Body is Expr e) AnalyzeExpr(e);
     }
 
-    // --- Expression-Walk: Calls sind Throw-Sites, Fn-Referenzen außerhalb der
-    // --- Call-Position verlieren die throws-Info (SEM0037), Lambdas sind eigene Kontexte.
+    // --- expression walk: calls are throw sites, function references outside call position lose
+    // --- the throws information (SEM0037), and lambdas are contexts of their own ---
 
     private void AnalyzeExpr(Expr expr)
     {
@@ -181,15 +181,15 @@ internal sealed class ExceptionAnalyzer
         }
     }
 
-    // Callee-Position: die Fn-Referenz selbst ist legitim, nur ihre Sub-Ausdrücke laufen.
+    // Callee position: the function reference itself is legitimate; only its sub-expressions run.
     private void AnalyzeCallee(Expr callee)
     {
         if (callee is MemberExpr m) AnalyzeExpr(m.Target);
         else if (callee is not IdentifierExpr) AnalyzeExpr(callee);
     }
 
-    // Lambda: eigener Funktions-Kontext ohne throws-Klausel (Grammatik §6.2) und ohne
-    // Schutz durch trys am Definitionsort (der Body läuft später).
+    // A lambda is its own function context, without a throws clause and without protection from
+    // trys at the definition site, because the body runs later.
     private void AnalyzeLambda(LambdaExpr lam)
     {
         var (savedPermit, savedType) = (_permit, _permitted);
@@ -203,17 +203,17 @@ internal sealed class ExceptionAnalyzer
         (_permit, _permitted) = (savedPermit, savedType);
     }
 
-    // --- Throw-Sites prüfen ---
+    // --- checking throw sites ---
 
-    // Geworfener Typ einer Site: (any, null) = statisch unbekannt (typloses throws,
-    // Throwable-Wert, Typ-Param); (false, sym) = konkretes Symbol; null = Poison/keine Site.
+    // The thrown type of a site: (any, null) is statically unknown — a typeless throws, a Throwable
+    // value, a type parameter; (false, sym) is a concrete symbol; null is poison or no site at all.
     private (bool any, TypeSymbol? sym)? ThrownOf(LyrType t) => t switch
     {
         ErrorType => null,
         NamedRef nr when ReferenceEquals(nr.Symbol, _throwable) => (true, null),
         NamedRef nr => (false, nr.Symbol),
         GenericInstance gi => (false, gi.Definition),
-        _ => (true, null) // Typ-Param mit Throwable-Constraint u.ä.
+        _ => (true, null) // a type parameter with a Throwable constraint and the like
     };
 
     private (bool any, TypeSymbol? sym)? ThrowsOf(Expr callee)
@@ -247,10 +247,10 @@ internal sealed class ExceptionAnalyzer
 
     private bool CatchHandles(CatchClause c, (bool any, TypeSymbol? sym) th)
     {
-        if (c.BindingType is null) return true; // Catch-All
-        if (_types.RefOf(c.BindingType) is not TypeSymbol ct) return true; // unauflösbar → lenient
-        if (ReferenceEquals(ct, _throwable)) return true; // catch (e: Throwable) ≡ Catch-All
-        if (th.any || th.sym is null) return false; // statisch unbekannt: nur Catch-All hilft
+        if (c.BindingType is null) return true; // catch-all
+        if (_types.RefOf(c.BindingType) is not TypeSymbol ct) return true; // unresolvable, so lenient
+        if (ReferenceEquals(ct, _throwable)) return true; // catch (e: Throwable) is a catch-all
+        if (th.any || th.sym is null) return false; // statically unknown: only a catch-all helps
         return ReferenceEquals(th.sym, ct) || Conformance.Implements(th.sym, ct, _binding);
     }
 
@@ -262,7 +262,7 @@ internal sealed class ExceptionAnalyzer
         _ => false
     };
 
-    // --- throws-Funktion als Wert (SEM0037): FnType trägt keine throws-Info (§4) ---
+    // --- a throws function as a value (SEM0037): FnType carries no throws information ---
 
     private void CheckFnValue(Expr expr)
     {

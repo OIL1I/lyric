@@ -5,10 +5,11 @@ using Lyric.Resolver;
 namespace Lyric.Sema;
 
 /// <summary>
-/// Definite-Assignment-Analyse (§5): eine Local/Parameter muss vor jedem Read zugewiesen
-/// sein. Strukturierte Datenfluss-Analyse über den AST — der „assigned"-Set wird durch die
-/// Statements gefädelt; an if-else der Schnitt beider Zweige, Schleifen konservativ.
-/// Läuft nach der Typprüfung und nutzt deren Symbol-Bindings (<see cref="TypeResult"/>).
+/// Definite-assignment analysis: a local or parameter must be assigned before every read.
+/// A structured data-flow analysis over the AST — the "assigned" set is threaded through the
+/// statements; at an if-else it is the intersection of both branches, and loops are treated
+/// conservatively. Runs after type checking and uses its symbol bindings
+/// (<see cref="TypeResult"/>).
 /// </summary>
 internal sealed class FlowAnalyzer
 {
@@ -48,13 +49,13 @@ internal sealed class FlowAnalyzer
         if (fn.Body is null) return;
         var assigned = NewSet();
         foreach (var p in fn.Parameters)
-            if (_types.RefOf(p) is { } ps) assigned.Add(ps); // Params sind zugewiesen
+            if (_types.RefOf(p) is { } ps) assigned.Add(ps); // parameters are assigned
         AnalyzeStatements(fn.Body.Statements, assigned);
     }
 
-    // Liefert den assigned-Set NACH den Statements (sequentiell).
-    /// <summary>Jede Namensbindung in einem Muster — auch aus verschachtelten Tupeln.
-    /// <c>_</c> bindet nichts und taucht deshalb nicht auf.</summary>
+    // Returns the assigned set AFTER the statements, sequentially.
+    /// <summary>Every name binding in a pattern, nested tuples included. <c>_</c> binds nothing and
+    /// therefore does not appear.</summary>
     private static IEnumerable<Pattern> BoundNames(Pattern pattern)
     {
         switch (pattern)
@@ -85,11 +86,11 @@ internal sealed class FlowAnalyzer
                     AnalyzeExpr(bd.Initializer, assigned);
                     if (_types.RefOf(bd) is { } sym) assigned.Add(sym);
                 }
-                return assigned; // ohne Initializer: deklariert, aber unassigned
+                return assigned; // without an initializer: declared, but unassigned
 
-            // 'let (a, b) = …' — der Initialisierer ist Pflicht, also sind ALLE gebundenen Namen
-            // danach zugewiesen. Ohne diesen Fall haelt die Analyse sie fuer leer und meldet
-            // LYR-SEM0018 bei der ersten Benutzung.
+            // 'let (a, b) = …' — the initializer is required, so ALL bound names are assigned
+            // afterwards. Without this case the analysis holds them empty and reports LYR-SEM0018
+            // on the first use.
             case DestructuringStmt d:
                 AnalyzeExpr(d.Initializer, assigned);
                 foreach (var name in BoundNames(d.Pattern))
@@ -113,10 +114,10 @@ internal sealed class FlowAnalyzer
                 return AnalyzeIf(f, assigned);
             case WhileStmt w:
                 AnalyzeExpr(w.Condition, assigned);
-                AnalyzeStatements(w.Body.Statements, Clone(assigned)); // Body läuft evtl. nicht
+                AnalyzeStatements(w.Body.Statements, Clone(assigned)); // the body may not run
                 return assigned;
             case DoWhileStmt d:
-                var after = AnalyzeStatements(d.Body.Statements, Clone(assigned)); // Body läuft ≥ 1×
+                var after = AnalyzeStatements(d.Body.Statements, Clone(assigned)); // the body runs at least once
                 AnalyzeExpr(d.Condition, after);
                 return after;
             case ForInStmt fo:
@@ -130,14 +131,14 @@ internal sealed class FlowAnalyzer
                 foreach (var c in tr.Catches)
                 {
                     var catchSet = Clone(assigned);
-                    if (_types.RefOf(c) is { } bind) catchSet.Add(bind); // der Catch weist die Bindung zu
+                    if (_types.RefOf(c) is { } bind) catchSet.Add(bind); // the catch assigns the binding
                     AnalyzeStatements(c.Body.Statements, catchSet);
                 }
                 return assigned;
             case MatchStmt m:
             {
                 AnalyzeExpr(m.Scrutinee, assigned);
-                HashSet<Symbol>? merged = null; // Schnitt der Arm-Zuweisungen (nur nicht-verlassende Arme)
+                HashSet<Symbol>? merged = null; // intersection of the arm assignments, non-leaving arms only
                 foreach (var arm in m.Arms)
                 {
                     var armSet = Clone(assigned);
@@ -152,13 +153,13 @@ internal sealed class FlowAnalyzer
                     else if (arm.Body is Expr ae) AnalyzeExpr(ae, armSet);
                     if (!exits) merged = merged is null ? armSet : Intersect(merged, armSet);
                 }
-                // Exhaustiver match: genau ein Arm läuft — was ALLE (fortsetzenden) Arme
-                // zuweisen, ist danach definitiv zugewiesen. merged == null: alle Arme verlassen.
+                // An exhaustive match runs exactly one arm, so whatever ALL continuing arms assign
+                // is definitely assigned afterwards. merged == null means every arm leaves.
                 if (_types.IsMatchExhaustive(m) && m.Arms.Length > 0)
                     return merged ?? assigned;
                 return assigned;
             }
-            default: // Break/Continue/Error
+            default: // break, continue, error
                 return assigned;
         }
     }
@@ -170,18 +171,18 @@ internal sealed class FlowAnalyzer
         var thenExits = Flow.AlwaysReturns(f.Then, _types);
 
         if (f.Else is null)
-            return assigned; // ohne else nichts definitiv Neues (then-Zweig evtl. übersprungen)
+            return assigned; // without an else nothing is definitely new; the then branch may be skipped
 
         var elseSet = AnalyzeStmt(f.Else, Clone(assigned));
         var elseExits = Flow.AlwaysReturns(f.Else, _types);
 
-        if (thenExits && elseExits) return assigned;          // danach unerreichbar
-        if (thenExits) return elseSet;                        // Fortsetzung folgt else
-        if (elseExits) return thenSet;                        // Fortsetzung folgt then
-        return Intersect(thenSet, elseSet);                   // nur was BEIDE Zweige zuweisen
+        if (thenExits && elseExits) return assigned;          // unreachable afterwards
+        if (thenExits) return elseSet;                        // the continuation follows else
+        if (elseExits) return thenSet;                        // the continuation follows then
+        return Intersect(thenSet, elseSet);                   // only what BOTH branches assign
     }
 
-    // Prüft Reads (unassigned → Fehler) und behandelt Assignments.
+    // Checks reads, where unassigned is an error, and handles assignments.
     private void AnalyzeExpr(Expr expr, HashSet<Symbol> assigned)
     {
         switch (expr)
@@ -190,18 +191,18 @@ internal sealed class FlowAnalyzer
                 if (_types.RefOf(id) is LocalSymbol or ParameterSymbol && _types.RefOf(id) is { } s && !assigned.Contains(s))
                 {
                     _de.Report("LYR-SEM0018", Severity.Error, id.Span, $"use of possibly unassigned variable '{id.Name}'");
-                    assigned.Add(s); // Folgefehler unterdrücken
+                    assigned.Add(s); // suppress follow-up errors
                 }
                 return;
             case AssignExpr a:
                 AnalyzeExpr(a.Value, assigned);
                 if (a.Target is IdentifierExpr tid && _types.RefOf(tid) is LocalSymbol or ParameterSymbol && _types.RefOf(tid) is { } ts)
                 {
-                    if (a.Operator is not null && !assigned.Contains(ts)) // Compound-Assign liest zuerst
+                    if (a.Operator is not null && !assigned.Contains(ts)) // a compound assignment reads first
                         _de.Report("LYR-SEM0018", Severity.Error, tid.Span, $"use of possibly unassigned variable '{tid.Name}'");
                     assigned.Add(ts);
                 }
-                else AnalyzeExpr(a.Target, assigned); // Feld-/Index-Ziel: Sub-Ausdrücke sind Reads
+                else AnalyzeExpr(a.Target, assigned); // field or index target: the sub-expressions are reads
                 return;
             case BinaryExpr b: AnalyzeExpr(b.Left, assigned); AnalyzeExpr(b.Right, assigned); return;
             case UnaryExpr u: AnalyzeExpr(u.Operand, assigned); return;
@@ -226,8 +227,8 @@ internal sealed class FlowAnalyzer
                 return;
             case LambdaExpr lam:
             {
-                // Captures müssen am ERSTELLUNGSORT definitiv zugewiesen sein (C#-Regel):
-                // Body mit Snapshot der aktuellen Menge plus eigenen Params analysieren.
+                // Captures have to be definitely assigned AT THE CREATION SITE: analyze the body
+                // with a snapshot of the current set plus the lambda's own parameters.
                 var lamSet = Clone(assigned);
                 foreach (var p in lam.Parameters)
                     if (_types.RefOf(p) is { } ps) lamSet.Add(ps);
@@ -245,11 +246,11 @@ internal sealed class FlowAnalyzer
                     if (arm.Body is Expr ae) AnalyzeExpr(ae, armSet);
                 }
                 return;
-            // Literale/this/@ident: keine Reads.
+            // Literals, this and @ident are no reads.
         }
     }
 
-    // Pattern-gebundene Variablen gelten im Arm als zugewiesen (der Match weist sie zu).
+    // Pattern-bound variables count as assigned inside the arm, because the match assigns them.
     private void AddPatternBindings(Pattern pattern, HashSet<Symbol> set)
     {
         switch (pattern)

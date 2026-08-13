@@ -2,10 +2,10 @@ using Lyric.Resolver;
 
 namespace Lyric.Sema;
 
-// Semantische Typen (Sprache.md §4), getrennt von den syntaktischen AST-TypeNodes.
-// Namen sind bewusst anders (NamedRef/Optional/ArrayOf/…), weil der TypeChecker beide
-// Namespaces nutzt. Gleichheit läuft strukturell über LyrType.Equal — NICHT über
-// record-==, da Arrays darin nur Referenz-Gleichheit hätten.
+// Semantic types, separate from the syntactic AST TypeNodes. The names differ deliberately
+// (NamedRef, Optional, ArrayOf, …), because the TypeChecker uses both namespaces. Equality is
+// structural through LyrType.Equal, NOT through record ==, under which arrays would compare by
+// reference.
 
 public enum PrimitiveKind
 {
@@ -28,7 +28,7 @@ public abstract record LyrType
     public static readonly LyrType String = new PrimitiveType(PrimitiveKind.String);
     public static readonly LyrType Void = new PrimitiveType(PrimitiveKind.Void);
 
-    /// <summary>Strukturelle Typ-Gleichheit.</summary>
+    /// <summary>Structural type equality.</summary>
     public static bool Equal(LyrType a, LyrType b) => (a, b) switch
     {
         (PrimitiveType x, PrimitiveType y) => x.Kind == y.Kind,
@@ -59,52 +59,44 @@ public abstract record LyrType
 }
 
 public sealed record PrimitiveType(PrimitiveKind Kind) : LyrType;
-public sealed record NamedRef(TypeSymbol Symbol) : LyrType;          // struct/class/enum/interface-Instanz (nicht-generisch)
-public sealed record TypeParamType(GenericParamSymbol Param) : LyrType; // T innerhalb einer generischen Definition
+public sealed record NamedRef(TypeSymbol Symbol) : LyrType;          // a struct, class, enum or interface instance, non-generic
+public sealed record TypeParamType(GenericParamSymbol Param) : LyrType; // T inside a generic definition
 public sealed record GenericInstance(TypeSymbol Definition, LyrType[] Arguments) : LyrType; // Stack<int>
 public sealed record Optional(LyrType Inner) : LyrType;              // ?T
-public sealed record ArrayOf(LyrType Element, int? Size) : LyrType;  // T[] / T[N]
+public sealed record ArrayOf(LyrType Element, int? Size) : LyrType;  // T[] and T[N]
 public sealed record TupleOf(LyrType[] Elements) : LyrType;
 public sealed record FnType(LyrType[] Parameters, LyrType Return) : LyrType;
-public sealed record RangeOf(LyrType Element) : LyrType;             // interner Typ von 0..9 (kein Spec-Typ)
-public sealed record CoroutineOf(LyrType Yield) : LyrType;           // Coroutine<T> (§8), als interner Typ wie RangeOf
+public sealed record RangeOf(LyrType Element) : LyrType;             // the internal type of 0..9, not a spec type
+public sealed record CoroutineOf(LyrType Yield) : LyrType;           // Coroutine<T>, an internal type like RangeOf
 /// <summary>
-/// Der Recovery-Sentinel. <b>Er bedeutet „hier wurde bereits eine Diagnose abgesetzt"</b> — nicht
-/// „unbekannt", nicht „noch nicht berechnet", nicht „egal".
+/// The recovery sentinel. It means "a diagnostic has already been reported here" — not "unknown",
+/// not "not computed yet", not "do not care".
 ///
-/// <para>Daran haengt eine Invariante, die der ganze Compiler benutzt: wer einen
-/// <c>ErrorType</c> sieht, schweigt, weil sonst ein Fehler zu einer Lawine von Folgefehlern
-/// wuerde. Wer ihn <b>erzeugt</b>, muss deshalb vorher gemeldet haben.</para>
+/// <para>The invariant behind it: whoever sees an <c>ErrorType</c> stays silent, so one error does
+/// not turn into an avalanche of follow-ups. Whoever PRODUCES one must therefore have reported
+/// first.</para>
 ///
-/// <para><b>Diese Invariante ist in M7 dreimal gebrochen worden</b>, und jedes Mal auf dieselbe
-/// Weise: ein Lookup lieferte <c>Error</c> zurueck, weil er nichts fand — die Sema schwieg, und
-/// das Lowering stuerzte spaeter ueber einen <c>&lt;error&gt;</c>-Typ ab, weit weg von der
-/// Ursache. Gefunden bei den Globals (LYR-SEM0057), bei den Typargumenten und beim
-/// Iterator-Yield-Typ.</para>
-///
-/// <para>Deshalb prueft <c>Lyric.Tests.Sema.ErrorTypeInvariantTests</c> sie maschinell: taucht in
-/// einem Programm irgendwo ein <c>ErrorType</c> auf, muss eine Diagnose vorliegen. Eine
-/// Konvention, an die sich niemand erinnert, ist keine.</para>
+/// <para><c>Lyric.Tests.Sema.ErrorTypeInvariantTests</c> checks it mechanically: if an
+/// <c>ErrorType</c> appears anywhere in a program, a diagnostic has to be present.</para>
 /// </summary>
 public sealed record ErrorType : LyrType;
 
 /// <summary>
-/// Der Ausdruck <b>benennt</b> etwas (einen Typ, ein Modul), das kein Wert ist.
+/// The expression NAMES something — a type, a module — that is not a value.
 ///
-/// <para>Bewusst nicht <see cref="ErrorType"/>: <c>Error</c> heißt „hierfür wurde bereits eine
-/// Diagnose gemeldet", und jeder Konsument schweigt daraufhin. Wer beides vermischt, macht aus
-/// „ich weiß nicht, was das ist" ein stummes Durchwinken — <c>P(1,2,3).quatsch</c> prüfte so
-/// vollständig durch, ohne dass je etwas gemeldet wurde.</para>
+/// <para>Distinct from <see cref="ErrorType"/>: <c>Error</c> means "a diagnostic has already been
+/// reported here", and every consumer stays silent on it. Mixing the two turns "I do not know what
+/// this is" into a silent pass, under which <c>P(1,2,3).nonsense</c> would check out completely
+/// without anything being reported.</para>
 ///
-/// <para>Legal ist dieser Typ an genau einer Stelle: als <b>Ziel eines Member-Zugriffs</b>
-/// (<c>Point.new(…)</c>, <c>console.println(…)</c>). Überall sonst meldet
-/// <c>TypeChecker.CheckExpr</c> <c>LYR-SEM0052</c> und degradiert zu <see cref="ErrorType"/> —
-/// ab da gilt wieder die normale Poison-Regel.</para>
+/// <para>Legal at exactly one place: as the TARGET OF A MEMBER ACCESS (<c>Point.new(…)</c>,
+/// <c>console.println(…)</c>). Everywhere else <c>TypeChecker.CheckExpr</c> reports
+/// <c>LYR-SEM0052</c> and degrades to <see cref="ErrorType"/>, from where the ordinary poison rule
+/// applies again.</para>
 /// </summary>
-/// <param name="Instance">Bei <c>Pair&lt;int&gt;.of(3)</c> die aufgeloeste Instanz. Sie ist der
-/// ganze Unterschied zu <c>Pair.of(3)</c>: ohne sie liefert das Member seinen Typ mit
-/// <c>T</c> darin, und der Fehler kommt als „cannot assign 'int' to 'T'" eine Ebene zu spaet.
-/// <c>null</c> bei jedem nicht-generischen Typ und bei jedem Modul.</param>
+/// <param name="Instance">The resolved instance in <c>Pair&lt;int&gt;.of(3)</c>. Without it the
+/// member yields its type with <c>T</c> still in it, and the error arrives as "cannot assign 'int'
+/// to 'T'" one level too late. <c>null</c> for every non-generic type and every module.</param>
 public sealed record NonValueType(Symbol Symbol, string Kind, GenericInstance? Instance = null) : LyrType;
-public sealed record NullType : LyrType;                            // Typ des null-Literals (nur ?T-zuweisbar)
-public sealed record NeverType : LyrType;                           // Rückgabetyp von panic (§9); Bottom-Typ, nicht benennbar
+public sealed record NullType : LyrType;                            // the type of the null literal, assignable only to ?T
+public sealed record NeverType : LyrType;                           // the return type of panic; a bottom type, not nameable

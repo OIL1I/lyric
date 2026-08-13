@@ -5,9 +5,9 @@ using Lyric.Resolver;
 namespace Lyric.Sema;
 
 /// <summary>
-/// Strukturelle Sema-Regeln (M3-Slice 3b), read-only auf <see cref="TypeResult"/>/
-/// <see cref="BindingResult"/>: Lvalue-/Mutabilitäts-Check (§6.4), `ExprStmt` nur Call/
-/// Assign (§5), Interface-Konformität (`::`), Signatur-Regeln (§3.1), `main`-Contract (§11).
+/// Structural sema rules, read-only on <see cref="TypeResult"/> and <see cref="BindingResult"/>:
+/// the lvalue and mutability check, the rule that an `ExprStmt` is a call or an assignment,
+/// interface conformance (`::`), the signature rules, and the `main` contract.
 /// </summary>
 public sealed class SemaRules
 {
@@ -15,7 +15,7 @@ public sealed class SemaRules
     private readonly BindingResult _binding;
     private readonly TypeResult _types;
     private readonly DiagnosticEngine _de;
-    private bool _thisMut; // in einer 'mut fn'-Methode?
+    private bool _thisMut; // inside a 'mut fn' method?
 
     public SemaRules(Compilation comp, BindingResult binding, TypeResult types, DiagnosticEngine de)
     {
@@ -49,13 +49,14 @@ public sealed class SemaRules
         }
     }
 
-    // Konformanz (Signatur-Match) macht der TypeChecker; hier nur Signatur-Regeln + Bodies.
+    // Conformance, meaning the signature match, is done by the TypeChecker; only the signature rules
+    // and the bodies happen here.
     private void CheckTypeDecl(IEnumerable<FunctionDecl> methods)
     {
         foreach (var fn in methods) { CheckSignature(fn, isMethod: true); RunBody(fn); }
     }
 
-    // --- Signatur-Regeln (§3.1) ---
+    // --- signature rules ---
 
     private void CheckSignature(FunctionDecl fn, bool isMethod)
     {
@@ -81,7 +82,7 @@ public sealed class SemaRules
         }
     }
 
-    // --- main-Contract (§11) ---
+    // --- the main contract ---
 
     private void CheckMain()
     {
@@ -112,7 +113,7 @@ public sealed class SemaRules
 
     private static bool IsNamed(TypeNode? t, string name) => t is NamedType n && n.Path is [var only] && only == name;
 
-    // --- Lvalue / Mutabilität (§6.4) + ExprStmt-Regel (§5) ---
+    // --- lvalue and mutability, plus the ExprStmt rule ---
 
     private void RunBody(FunctionDecl fn)
     {
@@ -151,7 +152,7 @@ public sealed class SemaRules
         }
     }
 
-    // try/catch-Struktur (§5/§9): mindestens ein catch; Catch-All (ohne Typ) nur als letzte Klausel.
+    // try/catch structure: at least one catch, and a catch-all without a type only as the last clause.
     private void CheckTry(TryStmt tr)
     {
         if (tr.Catches.Length == 0)
@@ -188,25 +189,17 @@ public sealed class SemaRules
     {
         IdentifierExpr id => _types.RefOf(id) is LocalSymbol { IsMutable: true },
         MemberExpr m => IsFieldMutable(m),
-        // Ein Element ist schreibbar, sobald der Container eine REFERENZ ist — genau wie ein
-        // class-Feld (ADR-020). 'let' haelt den Namen fest, nicht das Objekt dahinter.
-        //
-        // Vorher erbte der Index die Mutabilitaet des Containers, und das war wirkungslos:
-        // 'let ps = [P { … }]; ps[0].hp = 9;' ging immer durch, verboten war nur die direkte
-        // Element-Zuweisung. Eine Regel, die nichts schuetzt und dafuer 'T[]' anders behandelt
-        // als eine Klasse, kostet nur Erklaerungsaufwand — seit ADR-016 ist 'T[]' beides.
+        // An element is writable as soon as the container is a REFERENCE, exactly like a class
+        // field. A 'let' pins the name, not the object behind it.
         IndexExpr ix => IsIndexableTarget(_types.TypeOf(ix.Target)),
         _ => false
     };
 
-    /// <summary>Ein Array oder ein Typ, der <c>Indexable&lt;T&gt;</c> erfuellt. Beides sind
-    /// Referenzen, also ist das Element schreibbar — ADR-020: <c>let</c> haelt den Namen fest,
-    /// nicht das Objekt dahinter.
+    /// <summary>An array, or a type satisfying <c>Indexable&lt;T&gt;</c>. Both are references, so the
+    /// element is writable: a <c>let</c> pins the name, not the object behind it.
     ///
-    /// <para>Der <c>set</c>-Setter des Interfaces ist <c>mut fn</c>, und das kostet seit ADR-020
-    /// nichts: haette die alte Regel („Container muss mut sein") noch gegolten, muesste dieses
-    /// Interface sie nachbilden — eine Regel, die ohnehin wirkungslos war. Genau deshalb wurde
-    /// sie vor diesem Slice entschieden.</para></summary>
+    /// <para>The interface's <c>set</c> setter is a <c>mut fn</c>, which costs nothing here.</para>
+    /// </summary>
     private bool IsIndexableTarget(LyrType type)
     {
         if (type is ArrayOf or ErrorType) return true;
@@ -219,32 +212,24 @@ public sealed class SemaRules
     private bool IsFieldMutable(MemberExpr m)
     {
         var baseType = _types.TypeOf(m.Target);
-        if (baseType.IsError) return true; // Poison: kein Folgefehler
+        if (baseType.IsError) return true; // poison: no follow-up error
 
-        // Eine Instanz eines generischen Typs verhaelt sich wie ihre Definition: 'Box<int>' ist
-        // eine Klasse, wenn 'Box' eine ist.
+        // An instance of a generic type behaves like its definition: 'Box<int>' is a class when
+        // 'Box' is one.
         var kind = TypeFacts.KindOf(baseType);
 
-        if (kind == TypeSymbolKind.Class) return true;               // class-Felder immer mutabel (§6.4)
+        if (kind == TypeSymbolKind.Class) return true;               // class fields are always mutable
 
-        // Struct-Felder ebenso — ausser an 'this' in einer Nicht-'mut'-Methode (ADR-023).
-        //
-        // Vorher erbte das Feld die Mutabilitaet seines Basis-Lvalues, und das war aus demselben
-        // Grund wirkungslos wie bei ADR-020: eine 'mut fn' umging es vollstaendig. Gemessen:
-        // 'let p = P { x = 1 }; p.x = 9;' war LYR-SEM0019, 'p.shift(9)' mit 'mut fn shift' ging
-        // durch UND aenderte p wirklich. An einem Parameter aendern beide Formen nur die Kopie,
-        // sind also gleich folgenlos. Verboten war so oder so nur die Schreibweise, die sich
-        // ersetzen laesst.
-        //
-        // '_thisMut' bleibt: dass eine Nicht-'mut'-Methode ihren eigenen Empfaenger nicht
-        // anfasst, ist die Zusage von 'mut fn' und das Einzige, was hier je etwas geschuetzt hat.
+        // Struct fields likewise, except on 'this' inside a non-'mut' method: that a non-'mut'
+        // method does not touch its own receiver is the promise of 'mut fn', and '_thisMut' is what
+        // enforces it.
         if (kind == TypeSymbolKind.Struct)
             return m.Target is not ThisExpr || _thisMut;
 
         return false;
     }
 
-    // Direkte Kind-Ausdrücke (zum Aufspüren verschachtelter Assignments).
+    // The direct child expressions, used to spot nested assignments.
     private static IEnumerable<Expr> Children(Expr e) => e switch
     {
         UnaryExpr u => [u.Operand],

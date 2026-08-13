@@ -5,14 +5,13 @@ using Lyric.Resolver;
 namespace Lyric.Sema;
 
 /// <summary>
-/// Typprüfung von Ausdrücken (M3-Slice 2a, Sprache.md §4/§6/§7). Läuft durch Funktions
-/// -Bodies, verwaltet lokale Scopes (Params → Block-Locals), löst Ausdrucks-Namen auf
-/// und weist jedem Ausdruck einen <see cref="LyrType"/> zu (in <see cref="TypeResult"/>).
+/// Type checking of expressions. Walks function bodies, manages the local scopes (parameters, then
+/// block locals), resolves expression names and assigns every expression a <see cref="LyrType"/>
+/// in the <see cref="TypeResult"/>.
 ///
-/// Numerik strikt (①A): beide Operanden gleicher Typ; nur untyped Literale passen sich
-/// per Range-Fit an (②a). `+`/`*` auch für string/T[] (concat/repeat). `as` nur
-/// Numerik↔Numerik (④). Nullable-Narrowing und Mutabilitäts-/Regel-Checks → Slice 3;
-/// Calls/Member/Struct-Init/if-Ausdruck/match/Lambda → Slice 2b (hier vorerst Error).
+/// Arithmetic is strict: both operands have the same type, and only untyped literals adapt through
+/// a range fit. `+` and `*` also serve string and T[] as concatenation and repetition. `as`
+/// converts between numeric types only.
 /// </summary>
 public sealed class TypeChecker
 {
@@ -23,23 +22,21 @@ public sealed class TypeChecker
     private readonly Dictionary<GlobalSymbol, LyrType> _globals = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// Laeuft gerade ein Global-Initialisierer? Dann ist ein noch nicht berechnetes Global ein
-    /// <b>Fehler</b> und nicht bloss ein unbekannter Typ.
+    /// Is a global initializer running? Then a global that has not been computed yet is an ERROR
+    /// rather than merely an unknown type.
     ///
-    /// <para>Ohne dieses Flag lieferte der Lookup still <see cref="LyrType.Error"/>, die Sema
-    /// meldete nichts, und das Lowering stuerzte spaeter ueber einen <c>&lt;error&gt;</c>-Typ ab —
-    /// genau die ueberladene <c>ErrorType</c>-Invariante, die in M7 schon einmal sechs Prueffungen
-    /// stillgelegt hatte. <c>Error</c> heisst „schon gemeldet", und deshalb muss hier gemeldet
-    /// werden.</para>
+    /// <para>Without this flag the lookup silently yields <see cref="LyrType.Error"/>, the sema
+    /// reports nothing, and the lowering trips over an <c>&lt;error&gt;</c> type later.
+    /// <c>Error</c> means "already reported", so something has to be reported here.</para>
     /// </summary>
     private bool _inGlobalInitializer;
-    private readonly TypeSymbol? _throwable; // Builtin-Interface Throwable (§9)
-    private readonly FunctionSymbol? _panic; // Builtin panic → never (§9)
-    private readonly TypeSymbol? _coroutine; // Builtin Coroutine<T> (§8) → CoroutineOf
+    private readonly TypeSymbol? _throwable; // the builtin Throwable interface
+    private readonly FunctionSymbol? _panic; // the builtin panic, returning never
+    private readonly TypeSymbol? _coroutine; // the builtin Coroutine<T>, mapped to CoroutineOf
 
-    /// <summary>Das <c>Iterator&lt;T&gt;</c>-Interface aus <c>std.iter</c> — wogegen <c>for-in</c>
-    /// prueft (§5). <c>null</c>, wenn die Stdlib nicht geladen ist; dann meldet sich der
-    /// Schleifenkopf mit der gewoehnlichen „nicht iterierbar"-Diagnose.</summary>
+    /// <summary>The <c>Iterator&lt;T&gt;</c> interface from <c>std.iter</c>, what <c>for-in</c> checks
+    /// against. <c>null</c> when the stdlib is not loaded; the loop head then reports the ordinary
+    /// "not iterable" diagnostic.</summary>
     private readonly TypeSymbol? _iterator;
     private readonly TypeSymbol? _arrayIterator;
     private readonly TypeSymbol? _rangeIterator;
@@ -48,10 +45,10 @@ public sealed class TypeChecker
     private readonly TypeSymbol? _indexable;
 
     private LyrType _currentReturn = LyrType.Void;
-    private LyrType? _currentYield; // Yield-Typ, wenn die aktuelle Funktion eine Coroutine ist
+    private LyrType? _currentYield; // the yield type when the current function is a coroutine
     private LyrType? _currentThis;
-    private ModuleSymbol? _currentModule; // für Extension-Sichtbarkeit (§3.6)
-    private Dictionary<Symbol, LyrType> _narrowed = new(ReferenceEqualityComparer.Instance); // ?T → T im bewiesen-non-null-Bereich
+    private ModuleSymbol? _currentModule; // for extension visibility
+    private Dictionary<Symbol, LyrType> _narrowed = new(ReferenceEqualityComparer.Instance); // ?T narrowed to T inside a proven non-null region
 
     public TypeChecker(Compilation comp, BindingResult binding, DiagnosticEngine de)
     {
@@ -62,9 +59,9 @@ public sealed class TypeChecker
         _panic = comp.Builtins.LookupLocal("panic") as FunctionSymbol;
         _coroutine = comp.Builtins.LookupLocal("Coroutine") as TypeSymbol;
 
-        // 'Iterator<T>' steht in der Stdlib und nicht unter den Builtins: es ist ein
-        // gewoehnliches Interface, das jeder selbst implementieren kann. Der Compiler muss es nur
-        // FINDEN, um 'for-in' dagegen zu pruefen (§5).
+        // 'Iterator<T>' lives in the stdlib rather than among the builtins: it is an ordinary
+        // interface anyone can implement. The compiler only has to FIND it to check 'for-in'
+        // against it.
         var iter = comp.FindModule(["std", "iter"])?.Members;
         _iterator = iter?.LookupLocal("Iterator") as TypeSymbol;
         _arrayIterator = iter?.LookupLocal("ArrayIterator") as TypeSymbol;
@@ -72,30 +69,26 @@ public sealed class TypeChecker
         _stringIterator = iter?.LookupLocal("StringIterator") as TypeSymbol;
         _iterable = iter?.LookupLocal("Iterable") as TypeSymbol;
 
-        // 'Indexable<T>' steht in std.collections und ist fuer '[i]', was 'Iterator<T>' fuer
-        // 'for-in' ist: der Compiler kennt EINE eingebaute Form (das Array) und bindet alles
-        // andere an ein Interface aus der Stdlib.
+        // 'Indexable<T>' lives in std.collections and is to '[i]' what 'Iterator<T>' is to 'for-in':
+        // the compiler knows ONE built-in form, the array, and binds everything else to an interface
+        // from the stdlib.
         _indexable = comp.FindModule(["std", "collections"])?.Members
             .LookupLocal("Indexable") as TypeSymbol;
 
-        // `panic` gibt es ZWEIMAL: als Builtin im Wurzel-Scope (damit es ohne Import aufrufbar
-        // ist) und als native Deklaration in `std.core` (die ihm Signatur und Native-Bindung
-        // gibt). Beide meinen dieselbe Funktion, aber nur das Builtin trug den `never`-Typ —
-        // wer `import std.core { panic }` schrieb, bekam ein `void` zurueck, und damit sah die
-        // Flussanalyse die Divergenz nicht.
-        //
-        // Gemessen am 2026-08-11: `if (o != null) { return o; } panic(m);` war `LYR-SEM0017`,
-        // dieselbe Funktion mit dem ungeimportierten `panic` war in Ordnung. Zwei Symbole, eine
-        // Bedeutung, eine Antwort — die Stelle, an der `never` entsteht, muss beide kennen.
+        // `panic` exists TWICE: as a builtin in the root scope, so it is callable without an import,
+        // and as a native declaration in `std.core`, which gives it its signature and native binding.
+        // Both mean the same function, but only the builtin carried the `never` type — whoever wrote
+        // `import std.core { panic }` got a `void` back, and the flow analysis did not see the
+        // divergence. The place where `never` originates has to know both.
         _stdPanic = comp.FindModule(["std", "core"])?.Members
             .LookupLocal("panic") as FunctionSymbol;
     }
 
-    /// <summary>Die native Deklaration aus <c>std.core</c>. Siehe Konstruktor.</summary>
+    /// <summary>The native declaration from <c>std.core</c>. See the constructor.</summary>
     private readonly FunctionSymbol? _stdPanic;
 
-    /// <summary>Ist <paramref name="f"/> das <c>panic</c> aus §9 — egal ueber welchen der beiden
-    /// Namen es erreicht wurde?</summary>
+    /// <summary>Is <paramref name="f"/> the <c>panic</c> function, no matter which of the two names
+    /// reached it?</summary>
     private bool IsPanic(FunctionSymbol f) =>
         (_panic is not null && ReferenceEquals(f, _panic))
         || (_stdPanic is not null && ReferenceEquals(f, _stdPanic));
@@ -116,9 +109,9 @@ public sealed class TypeChecker
             foreach (var decl in _comp.AstOf(module).Declarations)
                 CheckDecl(decl, module);
         }
-        CheckExtensionBlocks(); // Extend-Bodies, Orphan-Rule, Konformanz (§3.6)
+        CheckExtensionBlocks(); // extend bodies, the orphan rule, conformance
         _currentModule = null;
-        new FlowAnalyzer(_comp, _result, _de).Run(); // DAA (definite assignment)
+        new FlowAnalyzer(_comp, _result, _de).Run(); // definite assignment
         return _result;
     }
 
@@ -160,18 +153,17 @@ public sealed class TypeChecker
             case ClassDecl c: CheckMethods(c.Name, c.Members, module); CheckTypeConformance(c.Name, c.Interfaces, module); break;
             case EnumDecl e: CheckEnumMethods(e, module); CheckTypeConformance(e.Name, e.Interfaces, module); break;
             case InterfaceDecl i: CheckMethods(i.Name, i.Members, module); break;
-            // ExtendDecl → CheckExtensionBlocks (nach allen Typen); GlobalBindingDecl → ComputeGlobals.
+            // ExtendDecl goes to CheckExtensionBlocks after all types; GlobalBindingDecl to ComputeGlobals.
         }
     }
 
     /// <summary>
-    /// Eine rumpflose Funktion ist eine <b>native Deklaration</b>: die Signatur steht in Lyric, die
-    /// Implementierung liegt im Host und wird beim Laden über den Namen gebunden (ADR-013). Das ist
-    /// der Stdlib vorbehalten — in User-Code gibt es nichts, was den Rumpf liefern könnte.
+    /// A bodyless function is a NATIVE DECLARATION: the signature is written in Lyric, the
+    /// implementation lives in the host and is bound by name at load time. Reserved for the stdlib —
+    /// in user code nothing could supply the body.
     /// </summary>
-    /// <remarks>Interfaces sind ausgenommen: dort heißt rumpflos „abstrakt" (§3.5), und das prüft
-    /// die Konformanz. Deshalb ruft <see cref="CheckMethods"/> das hier nur für Struct, Class und
-    /// Enum auf.</remarks>
+    /// <remarks>Interfaces are exempt: there, bodyless means abstract, and conformance checks that.
+    /// <see cref="CheckMethods"/> therefore calls this for struct, class and enum only.</remarks>
     private void RequireBody(FunctionDecl fn, ModuleSymbol module)
     {
         if (fn.Body is not null || _comp.IsNative(module)) return;
@@ -193,18 +185,12 @@ public sealed class TypeChecker
                 continue;
             }
 
-            // Ein Feld-Default ist ein AUSDRUCK und muss geprüft werden wie jeder andere.
+            // A field default is an EXPRESSION and has to be checked like any other. Without this
+            // visit its type never reaches the side table, the lowering reads an ErrorType at the
+            // construction site (LowerObjectInit) and fails with "ir: type not lowerable: <error>".
             //
-            // Er wurde hier nie besucht. Die Folge war kein Typfehler, sondern ein
-            // Compiler-ABSTURZ: das Lowering wertet den Default an der Konstruktionsstelle aus
-            // (LowerObjectInit) und fragt die Seitentabelle nach seinem Typ — dort stand nichts,
-            // also ErrorType, also „ir: type not lowerable: <error>". Und weil die Sema keinen
-            // Fehler gemeldet hatte, sagte 'lyric check' vorher „ok".
-            //
-            // Sichtbar wurde das erst, wenn ein Initialisierer das Feld WEGLIESST: 'K { v = 9 }'
-            // wertet den Default nie aus, 'K { }' schon. Ein Default-Wert, den man nur benutzen
-            // kann, indem man ihn überschreibt, ist keiner — betroffen war jede Klasse und jeder
-            // Struct mit Default-Feldern.
+            // It only shows when an initializer OMITS the field: 'K { v = 9 }' never evaluates the
+            // default, 'K { }' does.
             if (m is FieldDecl { Default: not null } field)
             {
                 CheckAssignable(field.Default, CheckExpr(field.Default, module.Members),
@@ -216,20 +202,19 @@ public sealed class TypeChecker
             if (!isInterface) RequireBody(fn, module);
             CheckMemberModifiers(fn);
 
-            // Der Kern von ADR-014: ein static-Member hat keinen Empfänger, also ist 'this' dort
-            // nicht gebunden — CheckExpr meldet es dann als LYR-SEM0008.
+            // A static member has no receiver, so 'this' is not bound there; CheckExpr reports it as
+            // LYR-SEM0008.
             CheckFunction(fn, ts.Members, fn.IsStatic ? null : thisType);
         }
     }
 
     /// <summary>
-    /// <c>static mut fn</c> ist ein Fehler: <c>mut</c> spricht über den Empfänger, und ein
-    /// static-Member hat keinen (ADR-014).
+    /// <c>static mut fn</c> is an error: <c>mut</c> speaks about the receiver, and a static member
+    /// has none.
     ///
-    /// <para><b>`mut` an einer Klassen-Methode bleibt erlaubt.</b> Es setzt dort zwar nichts durch —
-    /// eine Referenz ist ohnehin durch jede Bindung mutierbar —, aber `Doku.md` §10.2 führt es
-    /// ausdrücklich als Lesbarkeits-Konvention, und Interfaces deklarieren `mut fn`, das
-    /// implementierende Klassen erfüllen müssen. Ein Verbot hätte beides gebrochen.</para>
+    /// <para><c>mut</c> on a class method stays allowed. It enforces nothing there — a reference is
+    /// mutable through every binding anyway — but it is a readability convention, and interfaces
+    /// declare <c>mut fn</c> that implementing classes have to satisfy.</para>
     /// </summary>
     private void CheckMemberModifiers(FunctionDecl fn)
     {
@@ -238,8 +223,8 @@ public sealed class TypeChecker
                 $"'{fn.Name}' is static and cannot be 'mut' — a static member has no receiver");
     }
 
-    /// <summary>Eine <c>static let</c>-Konstante. Ihr Initialisierer wird im Typ-Scope geprüft,
-    /// aber ohne <c>this</c> — es gibt keine Instanz, auf die er sich beziehen könnte.</summary>
+    /// <summary>A <c>static let</c> constant. Its initializer is checked in the type scope but
+    /// without <c>this</c>: there is no instance it could refer to.</summary>
     private void CheckStaticBinding(StaticBindingDecl sb, TypeSymbol ts)
     {
         var outerThis = _currentThis;
@@ -247,8 +232,8 @@ public sealed class TypeChecker
 
         var declared = sb.Binding.Type is { } t ? ResolveType(t, ts.Members) : null;
 
-        // Wie bei einem Modul-'let': innerhalb eines Initialisierers ist ein noch nicht
-        // berechnetes Global ein Fehler, kein unbekannter Typ.
+        // As with a module 'let': inside an initializer a global that has not been computed yet is an
+        // error, not an unknown type.
         _inGlobalInitializer = true;
         var init = sb.Binding.Initializer is { } e ? CheckExpr(e, ts.Members, declared) : null;
         _inGlobalInitializer = false;
@@ -275,15 +260,15 @@ public sealed class TypeChecker
         foreach (var fn in e.Methods) CheckFunction(fn, ts.Members, thisType);
     }
 
-    // `this` innerhalb einer Methode: bei generischem Typ die Selbst-Instanz Stack<T>
-    // (Typ-Params als Argumente), sonst schlicht die Referenz.
+    // `this` inside a method: for a generic type the self-instance Stack<T>, with the type parameters
+    // as arguments; otherwise plainly the reference.
     private static LyrType SelfType(TypeSymbol ts) =>
         ts.Generics.Length == 0
             ? new NamedRef(ts)
             : new GenericInstance(ts, Array.ConvertAll(ts.Generics, g => (LyrType)new TypeParamType(g)));
 
-    // Extend-Blöcke (§3.6): Bodies prüfen, Orphan-Rule, Interface-Konformanz. Läuft nach
-    // allen Typen, damit Member-Lookup über die vollständige Registry geht.
+    // extend blocks: check the bodies, the orphan rule and interface conformance. Runs after all
+    // types, so member lookup goes through the complete registry.
     private void CheckExtensionBlocks()
     {
         foreach (var block in _comp.Extensions.Blocks)
@@ -292,16 +277,18 @@ public sealed class TypeChecker
 
             if (block.Target is null)
             {
-                // Ziel unauflösbar (RES0002 schon gemeldet) vs. aufgelöst-aber-nicht-erweiterbar
-                // (generische Instanz, Array, Tupel, Alias …). Nur Letzteres meldet SEM0047.
+                // An unresolvable target, where RES0002 was already reported, against a resolved but
+                // non-extendable one — a generic instance, an array, a tuple, an alias. Only the
+                // latter reports SEM0047.
                 if (_binding.Resolve(block.Decl.Target) is not (null or ErrorSymbol))
                     _de.Report("LYR-SEM0047", Severity.Error, block.Decl.Target.Span,
                         "extend target must be a plain named type in v1 (no generic, array, tuple or function targets)");
-                continue; // ohne Ziel keine sinnvolle Body-Prüfung
+                continue; // without a target there is no useful body check
             }
 
-            // Body-Check: Outer-Scope ist die Block-Method-Scope (Cross-Calls + Methoden-Generics).
-            // `this` ist der Ziel-Typ — bei Builtins der Primitivtyp, sonst die Referenz.
+            // Body check: the outer scope is the block's method scope, which carries cross-calls and
+            // the method generics. `this` is the target type — the primitive for builtins, the
+            // reference otherwise.
             var thisType = block.Target.Kind == TypeSymbolKind.Builtin
                 ? TypeFacts.FromBuiltinName(block.Target.Name)
                 : new NamedRef(block.Target);
@@ -312,8 +299,8 @@ public sealed class TypeChecker
         }
     }
 
-    // Orphan-Rule (§3.6): `extend T :: [I]` nur, wenn T oder ein I im eigenen Modul deklariert ist.
-    // Inhärente Extends (`extend T { }`, ohne Interfaces) sind uneingeschränkt.
+    // Orphan rule: `extend T :: [I]` only when T or one of the I is declared in the module itself.
+    // Inherent extends, `extend T { }` without interfaces, are unrestricted.
     private void CheckOrphanRule(ExtensionBlock block)
     {
         if (block.Decl.Interfaces.Length == 0) return;
@@ -328,7 +315,7 @@ public sealed class TypeChecker
     private bool DeclaredInModule(TypeSymbol ts, ModuleSymbol module) =>
         ReferenceEquals(module.Members.LookupLocal(ts.Name), ts);
 
-    // --- Interface-Konformanz mit Signatur-Match (§3.5, D10) ---
+    // --- interface conformance with a signature match ---
 
     private void CheckTypeConformance(string typeName, TypeNode[] interfaces, ModuleSymbol module)
     {
@@ -336,8 +323,8 @@ public sealed class TypeChecker
             CheckTypeConformance(ts, interfaces, module, typeName);
     }
 
-    // Pro abstrakter Interface-Methode eine passende Implementierung (eigenes Member oder
-    // sichtbare Extension); Default-Methoden dürfen fehlen. Signatur muss exakt matchen (D10).
+    // One matching implementation per abstract interface method, either an own member or a visible
+    // extension; default methods may be missing. The signature has to match exactly.
     private void CheckTypeConformance(TypeSymbol implementer, TypeNode[] interfaces, ModuleSymbol module, string name)
     {
         if (interfaces.Length == 0) return;
@@ -354,10 +341,10 @@ public sealed class TypeChecker
                 var impl = candidates.TryGetValue(im.Name, out var c) ? c : null;
                 if (impl is null)
                 {
-                    if (im.Body is null) // abstrakt und nicht implementiert
+                    if (im.Body is null) // abstract and not implemented
                         _de.Report("LYR-SEM0020", Severity.Error, NodeSpan(node),
                             $"'{name}' does not implement abstract method '{im.Name}' of interface '{iface.Name}'");
-                    continue; // Default-Methode wird geerbt
+                    continue; // a default method is inherited
                 }
                 var want = (FnType)Substitute(FnTypeOf(FnSym(iface, im.Name)!), subst);
                 if (SignatureMismatch(want, im, impl) is { } reason)
@@ -367,7 +354,7 @@ public sealed class TypeChecker
         }
     }
 
-    // Eigene Methoden + sichtbare Extension-Methoden, nach Name (eigene gewinnen).
+    // Own methods plus visible extension methods, by name; own ones win.
     private Dictionary<string, FunctionSymbol> CandidateMethods(TypeSymbol ts, ModuleSymbol module)
     {
         var map = new Dictionary<string, FunctionSymbol>();
@@ -381,7 +368,7 @@ public sealed class TypeChecker
     private static FunctionSymbol? FnSym(TypeSymbol iface, string name) =>
         iface.Members.LookupLocal(name) as FunctionSymbol;
 
-    // Signatur-Vergleich (D10, invariant): Arity, Parametertypen, Rückgabe, mut, throws ⊆.
+    // Signature comparison, invariant: arity, parameter types, return type, mut, and throws ⊆.
     private string? SignatureMismatch(FnType want, FunctionDecl ifaceMethod, FunctionSymbol impl)
     {
         var decl = (FunctionDecl)impl.Declaration!;
@@ -400,18 +387,18 @@ public sealed class TypeChecker
         return null;
     }
 
-    // Darf die Impl-throws-Klausel unter der Interface-Klausel liegen? (nichts ⊆ typed ⊆ any)
+    // May the implementation's throws clause sit under the interface's? nothing ⊆ typed ⊆ any.
     private bool ThrowsSubset(ThrowsClause? impl, ThrowsClause? iface)
     {
-        if (impl is null) return true;            // wirft nichts → immer erlaubt
-        if (iface is null) return false;          // Interface verbietet Werfen, Impl wirft
-        if (iface.Type is null) return true;      // Interface erlaubt beliebige Throwables
-        if (impl.Type is null) return false;      // Impl beliebig, Interface eng
+        if (impl is null) return true;            // throws nothing, so always allowed
+        if (iface is null) return false;          // the interface forbids throwing, the implementation throws
+        if (iface.Type is null) return true;      // the interface allows any throwable
+        if (impl.Type is null) return false;      // the implementation is unrestricted, the interface narrow
         var it = ResolveType(iface.Type, _currentModule?.Members ?? _comp.Builtins);
         var pt = ResolveType(impl.Type, _currentModule?.Members ?? _comp.Builtins);
         if (LyrType.Equal(it, pt)) return true;
-        // Beide Seiten koennen Instanzen sein ('Box<int> :: [Src<int>]') — TypeFacts.SymbolOf
-        // beantwortet die Frage fuer beide Formen.
+        // Both sides may be instances ('Box<int> :: [Src<int>]'); TypeFacts.SymbolOf answers the
+        // question for both forms.
         return TypeFacts.SymbolOf(pt) is { } implementation
                && TypeFacts.SymbolOf(it) is { } required
                && Conformance.Implements(implementation, required, _binding);
@@ -429,8 +416,8 @@ public sealed class TypeChecker
         _narrowed = new(ReferenceEqualityComparer.Instance);
 
         var scope = new SymbolTable(outerScope);
-        // Funktions-eigene Typ-Params (fn map<U>) in den Body-Scope; Signatur-Typen sind schon
-        // vom Resolver gebunden, aber Body-Typen (let x: U) lösen nur über diesen Scope auf.
+        // The function's own type parameters (fn map<U>) go into the body scope. Signature types are
+        // already bound by the resolver, but body types (let x: U) resolve through this scope only.
         if (outerScope.LookupLocal(fn.Name) is FunctionSymbol fsym)
             foreach (var g in fsym.Generics) scope.TryDeclare(g);
         foreach (var p in fn.Parameters)
@@ -443,8 +430,8 @@ public sealed class TypeChecker
                 CheckAssignable(p.Default, CheckExpr(p.Default, scope), pt, p.Span);
         }
         _currentReturn = fn.ReturnType is not null ? ResolveType(fn.ReturnType, scope) : LyrType.Void;
-        // Coroutine (§8): der Body liefert nie den Coroutine-Wert (den baut die Runtime beim
-        // Aufruf) — Return-Coverage entfällt, stattdessen gilt der Yield-Kontext.
+        // Coroutine: the body never produces the coroutine value, which the runtime builds at the
+        // call. Return coverage does not apply; the yield context does instead.
         _currentYield = _currentReturn is CoroutineOf co ? co.Yield : null;
         CheckThrowsClause(fn, scope);
 
@@ -461,14 +448,14 @@ public sealed class TypeChecker
         _narrowed = savedNarrowed;
     }
 
-    // --- Statements ---
+    // --- statements ---
 
     private void CheckBlock(Block block, SymbolTable parent)
     {
         var scope = new SymbolTable(parent);
         var savedNarrowed = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
         foreach (var stmt in block.Statements) CheckStmt(stmt, scope);
-        _narrowed = savedNarrowed; // im Block etablierte Narrowings (Early-Exit) enden hier
+        _narrowed = savedNarrowed; // narrowings established inside the block by an early exit end here
     }
 
     private void CheckStmt(Stmt stmt, SymbolTable scope)
@@ -483,7 +470,7 @@ public sealed class TypeChecker
             case DoWhileStmt d: CheckBlock(d.Body, scope); CheckCondition(d.Condition, scope); break;
             case ForInStmt fo: CheckForIn(fo, scope); break;
             case ReturnStmt r:
-                if (_currentYield is not null) // Coroutine (§8, D8): nur nacktes return (frühes Ende)
+                if (_currentYield is not null) // in a coroutine only a bare return is allowed, as an early end
                 {
                     if (r.Value is not null)
                     {
@@ -503,7 +490,7 @@ public sealed class TypeChecker
                     _de.Report("LYR-SEM0030", Severity.Error, t.Span,
                         $"cannot throw '{TypeFacts.Display(thrown)}' — only types implementing 'Throwable' can be thrown");
                 break;
-            case YieldStmt y: // §8: nur in Coroutinen; Wert gegen den Yield-Typ
+            case YieldStmt y: // coroutines only; the value is checked against the yield type
                 var yv = y.Value is not null ? CheckExpr(y.Value, scope, _currentYield) : null;
                 if (_currentYield is null)
                     _de.Report("LYR-SEM0038", Severity.Error, y.Span,
@@ -522,7 +509,7 @@ public sealed class TypeChecker
                 foreach (var c in tr.Catches) CheckCatch(c, scope);
                 break;
             case MatchStmt m: CheckMatch(m, m.Scrutinee, m.Arms, scope, asExpression: false); break;
-            // Break/Continue/Error: nichts zu prüfen.
+            // break, continue and error need no check.
         }
     }
 
@@ -547,24 +534,22 @@ public sealed class TypeChecker
         var iterType = CheckExpr(fo.Iterable, scope);
         var elem = iterType switch
         {
-            // Die drei eingebauten Formen. Sie haben keine Deklaration, an die sich eine
-            // Konformanz haengen liesse — der Compiler baut fuer sie einen Adapter aus std.iter
-            // (§5). Semantisch ist das dasselbe Protokoll, nur die Beschaffung unterscheidet sich.
+            // The three built-in forms. They have no declaration a conformance could hang on, so the
+            // compiler builds an adapter from std.iter for them. Semantically the same protocol; only
+            // the way it is obtained differs.
             ArrayOf a => a.Element,
             RangeOf r => r.Element,
             PrimitiveType { Kind: PrimitiveKind.String } => LyrType.Char,
 
             ErrorType => LyrType.Error,
 
-            // Alles andere muss 'Iterator<T>' erfuellen. Was T ist, steht in der Konformanz des
-            // Typs — nicht im Ausdruck, und auch nicht in einer Vermutung des Compilers.
-            // Erst 'Iterable<T>' — ein Container SAGT, wie man ihn durchlaeuft. Dann
-            // 'Iterator<T>' fuer den Fall, dass der Ausdruck selbst schon ein Cursor ist
-            // ('for (x in meinIterator)').
+            // Everything else has to satisfy 'Iterator<T>'. What T is stands in the type's
+            // conformance. 'Iterable<T>' comes first — a container SAYS how to walk it — then
+            // 'Iterator<T>', for the case where the expression is already a cursor
+            // ('for (x in myIterator)').
             //
-            // Die Reihenfolge ist bedeutsam: waere sie umgekehrt, wuerde ein Typ, der beides
-            // erfuellt, als sein eigener Cursor benutzt — und zwei Schleifen darueber wuerden
-            // einander weiterschieben.
+            // The order matters: reversed, a type satisfying both would be used as its own cursor,
+            // and two loops over it would advance each other.
             _ => TypeArgumentOfConformance(iterType, _iterable)
                  ?? YieldTypeOfIterator(iterType, fo.Iterable.Span)
                  ?? Report(fo.Iterable.Span, "LYR-SEM0007",
@@ -579,30 +564,26 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Was liefert dieser Typ, wenn man ihn iteriert? Der Yield-Typ steht in seiner
-    /// <c>Iterator&lt;T&gt;</c>-Konformanz.
+    /// What does this type yield when iterated? The yield type stands in its
+    /// <c>Iterator&lt;T&gt;</c> conformance.
     ///
-    /// <para><c>null</c>, wenn der Typ kein Iterator ist — dann meldet der Aufrufer. Ein eigener
-    /// Rueckgabewert statt einer Diagnose hier, damit die Meldung an EINER Stelle steht und den
-    /// Ausdruck nennen kann, um den es geht.</para>
+    /// <para><c>null</c> when the type is not an iterator; the caller reports then. A return value
+    /// rather than a diagnostic here, so the message sits at ONE place and can name the expression it
+    /// is about.</para>
     /// </summary>
     private LyrType? YieldTypeOfIterator(LyrType type, Span span) =>
         TypeArgumentOfConformance(type, _iterator);
 
     /// <summary>
-    /// Das Typargument, mit dem <paramref name="type"/> das Interface
-    /// <paramref name="iface"/> erfuellt — <c>class Ones :: [Iterator&lt;int&gt;]</c> liefert
-    /// <c>int</c>.
+    /// The type argument with which <paramref name="type"/> satisfies the interface
+    /// <paramref name="iface"/>: <c>class Ones :: [Iterator&lt;int&gt;]</c> yields <c>int</c>.
     ///
-    /// <para>Eine Funktion fuer beide Faelle, die es gibt: <c>Iterator&lt;T&gt;</c> hinter
-    /// <c>for-in</c> und <c>Indexable&lt;T&gt;</c> hinter <c>[i]</c>. Sie zu kopieren waere die
-    /// vierte Stelle in dieser Datei, an der dieselbe Frage zweimal beantwortet wird — dreimal
-    /// ist das in M7/M8 schon schiefgegangen (NamedRef/GenericInstance, ErrorType,
-    /// LowerSubstituted).</para>
+    /// <para>One function for both existing cases: <c>Iterator&lt;T&gt;</c> behind <c>for-in</c> and
+    /// <c>Indexable&lt;T&gt;</c> behind <c>[i]</c>.</para>
     ///
-    /// <para><c>null</c>, wenn der Typ das Interface nicht erfuellt — dann meldet der Aufrufer.
-    /// Ein eigener Rueckgabewert statt einer Diagnose hier, damit die Meldung an EINER Stelle
-    /// steht und den Ausdruck nennen kann, um den es geht.</para>
+    /// <para><c>null</c> when the type does not satisfy the interface; the caller reports then. A
+    /// return value rather than a diagnostic here, so the message sits at ONE place and can name the
+    /// expression it is about.</para>
     /// </summary>
     private LyrType? TypeArgumentOfConformance(LyrType type, TypeSymbol? iface)
     {
@@ -610,14 +591,13 @@ public sealed class TypeChecker
 
         if (TypeFacts.SymbolOf(type) is not { } symbol) return null;
 
-        // Der Typ IST das Interface ('Iterator<int>' als Parametertyp) oder implementiert es.
+        // The type IS the interface ('Iterator<int>' as a parameter type) or implements it.
         if (ReferenceEquals(symbol, iface))
             return type is GenericInstance { Arguments.Length: 1 } direct ? direct.Arguments[0] : null;
 
         if (!Conformance.Implements(symbol, iface, _binding)) return null;
 
-        // Das Typargument steht in der Konformanz-Liste der Deklaration. Ohne sie zu lesen
-        // bliebe nur Raten.
+        // The type argument stands in the declaration's conformance list.
         var declared = symbol.Declaration switch
         {
             ClassDecl c => c.Interfaces,
@@ -631,9 +611,9 @@ public sealed class TypeChecker
         {
             if (node is not NamedType { TypeArguments.Length: 1 } named) continue;
 
-            // Ueber einen Import gebunden ('import std.iter { Iterator }') zeigt die Bindung auf
-            // das Import-Symbol und nicht auf den Typ. Ohne diesen Schritt findet der Vergleich
-            // nie etwas — und 'for-in' lehnte jeden eigenen Iterator ab.
+            // Bound through an import ('import std.iter { Iterator }'), the binding points at the
+            // import symbol rather than at the type. Without this step the comparison never finds
+            // anything, and 'for-in' rejects every user-written iterator.
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
 
@@ -641,13 +621,12 @@ public sealed class TypeChecker
             {
                 var argument = ResolveType(named.TypeArguments[0], _comp.Builtins);
 
-                // In der Konformanz-Liste steht der Typ-PARAMETER der Deklaration:
-                // 'class List<T> :: [Indexable<T>]' nennt dort T. Fuer eine Instanz muss er
-                // eingesetzt werden, sonst liefert 'List<int>' als Elementtyp 'T' statt 'int'.
+                // The conformance list holds the declaration's type PARAMETER:
+                // 'class List<T> :: [Indexable<T>]' names T there. For an instance it has to be
+                // substituted, or 'List<int>' yields 'T' as its element type instead of 'int'.
                 //
-                // Bei einer nicht-generischen Konformanz ('class Ones :: [Iterator<int>]') ist
-                // die Substitution leer und das Ergebnis unveraendert — deshalb steht hier kein
-                // Sonderfall.
+                // For a non-generic conformance ('class Ones :: [Iterator<int>]') the substitution is
+                // empty and the result unchanged, so there is no special case here.
                 return type is GenericInstance instance
                     ? Substitute(argument, SubstMap(instance))
                     : argument;
@@ -657,8 +636,8 @@ public sealed class TypeChecker
         return null;
     }
 
-    // throws-Klausel (§9): deklarierter Typ muss werfbar sein; das aufgelöste Symbol wird
-    // für den ExceptionAnalyzer an die Klausel gebunden.
+    // throws clause: the declared type has to be throwable, and the resolved symbol is bound to the
+    // clause for the ExceptionAnalyzer.
     private void CheckThrowsClause(FunctionDecl fn, SymbolTable scope)
     {
         if (fn.Throws?.Type is not { } tn) return;
@@ -680,15 +659,15 @@ public sealed class TypeChecker
                 _de.Report("LYR-SEM0030", Severity.Error, clause.BindingType.Span,
                     $"cannot catch '{TypeFacts.Display(bt)}' — only types implementing 'Throwable' can be caught");
             if (TypeFacts.SymbolOf(bt) is { } caught)
-                _result.BindRef(clause.BindingType, caught); // für den ExceptionAnalyzer
+                _result.BindRef(clause.BindingType, caught); // for the ExceptionAnalyzer
         }
-        else bt = _throwable is not null ? new NamedRef(_throwable) : LyrType.Error; // Catch-All bindet Throwable
+        else bt = _throwable is not null ? new NamedRef(_throwable) : LyrType.Error; // a catch-all binds Throwable
 
         if (clause.BindingName is not null)
         {
             var local = new LocalSymbol(clause.BindingName, bt, false, clause);
             catchScope.TryDeclare(local);
-            _result.BindRef(clause, local); // for definite-assignment analysis: der Catch weist die Bindung zu
+            _result.BindRef(clause, local); // for definite-assignment analysis: the catch assigns the binding
         }
         CheckBlock(clause.Body, catchScope);
     }
@@ -700,8 +679,8 @@ public sealed class TypeChecker
             _de.Report("LYR-SEM0004", Severity.Error, cond.Span, $"condition must be 'bool', got '{TypeFacts.Display(t)}'");
     }
 
-    // if mit Nullable-Narrowing (§7): 'if (x != null)' engt x im then-Zweig auf T ein;
-    // 'if (x == null) { return; }' engt x danach ein (Early-Exit, D1b).
+    // if with nullable narrowing: 'if (x != null)' narrows x to T in the then branch, and
+    // 'if (x == null) { return; }' narrows x afterwards through the early exit.
     private void CheckIf(IfStmt f, SymbolTable scope)
     {
         CheckCondition(f.Condition, scope);
@@ -720,25 +699,21 @@ public sealed class TypeChecker
             _narrowed = snapshot;
         }
 
-        // 'AlwaysExits' und nicht 'AlwaysReturns': fuer das Narrowing zaehlt, ob der Code nach
-        // dem 'if' ueberhaupt erreicht wird — und 'continue' verlaesst den Block genauso wie
-        // 'return'. Die andere Funktion beantwortet "fehlt ein return", und dort waere
-        // 'continue' die falsche Antwort.
+        // 'AlwaysExits' rather than 'AlwaysReturns': for narrowing what counts is whether the code
+        // after the 'if' is reached at all, and 'continue' leaves the block just as 'return' does.
         if (Flow.AlwaysExits(f.Then, _result)) Apply(elseFacts);
         else if (f.Else is not null && Flow.AlwaysExits(f.Else, _result)) Apply(thenFacts);
     }
 
     /// <summary>
-    /// <c>while (x != null) { … }</c> — im Rumpf ist x kein <c>?T</c> mehr (§7).
+    /// <c>while (x != null) { … }</c> — inside the body x is no longer a <c>?T</c>.
     ///
-    /// <para><b>Warum das sicher ist</b>, obwohl eine Schleife ihre Variable veraendern kann:
-    /// die Bedingung wird vor JEDEM Durchlauf neu geprueft, gilt also am Rumpfanfang immer — und
-    /// eine Zuweisung im Rumpf hebt das Narrowing ab dieser Stelle auf (siehe
-    /// <c>CheckAssign</c>). Beide Haelften zusammen machen den Fall so sicher wie das
-    /// <c>if</c>-Aequivalent.</para>
+    /// <para>Sound although a loop may change its variable: the condition is re-checked before EVERY
+    /// iteration and therefore holds at the start of the body, and an assignment in the body drops
+    /// the narrowing from that point on (see <c>CheckAssign</c>).</para>
     ///
-    /// <para><c>do-while</c> bekommt das bewusst <b>nicht</b>: dort laeuft der Rumpf vor der
-    /// ersten Pruefung, die Bedingung sagt am Rumpfanfang also nichts.</para>
+    /// <para><c>do-while</c> deliberately does NOT get this: there the body runs before the first
+    /// check, so the condition says nothing at the start of the body.</para>
     /// </summary>
     private void CheckWhile(WhileStmt w, SymbolTable scope)
     {
@@ -758,16 +733,16 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Was eine Bedingung ueber Nullable-Variablen beweist — getrennt fuer den wahren und den
-    /// falschen Ausgang (§7).
+    /// What a condition proves about nullable variables, separately for the true and the false
+    /// outcome.
     ///
-    /// <para>Zusammengesetzte Bedingungen zaehlen mit: bei <c>a &amp;&amp; b</c> gilt im
-    /// then-Zweig, was BEIDE Seiten beweisen — der Zweig laeuft nur, wenn beide wahr sind. Fuer
-    /// den else-Zweig gilt dagegen nichts: er wird erreicht, sobald EINE Seite falsch ist, und
-    /// welche das war, weiss niemand. Bei <c>||</c> genau umgekehrt.</para>
+    /// <para>Composite conditions count: for <c>a &amp;&amp; b</c> the then branch gets what BOTH
+    /// sides prove, because the branch runs only when both are true. For the else branch nothing
+    /// holds: it is reached as soon as ONE side is false, and which one is unknown. For <c>||</c> it
+    /// is exactly the other way round.</para>
     ///
-    /// <para>Diese Asymmetrie ist der Grund, warum die beiden Richtungen getrennt gesammelt
-    /// werden und nicht als ein Faktum mit Vorzeichen: sie verhalten sich verschieden.</para>
+    /// <para>That asymmetry is why the two directions are collected separately rather than as one
+    /// fact with a sign.</para>
     /// </summary>
     private (Dictionary<Symbol, LyrType> then, Dictionary<Symbol, LyrType> els) NarrowingFacts(Expr cond)
     {
@@ -811,15 +786,15 @@ public sealed class TypeChecker
         _ => null
     };
 
-    // --- Ausdrücke ---
+    // --- expressions ---
 
-    // 'expected' ist der Kontext-Typ der Position (Binding-Typ, Return-Typ, Feld-Typ, …).
-    // Er wird nur von den Formen genutzt, die ihn brauchen (leeres Array-Literal,
-    // kontextuelle Enum-Varianten-Konstruktion §3.4); alles andere ignoriert ihn.
+    // 'expected' is the context type of the position: the binding type, the return type, a field type.
+    // Only the forms that need it use it — an empty array literal, a contextual enum variant
+    // construction; everything else ignores it.
     /// <summary>
-    /// Ein Ausdruck in <b>Wert-Position</b>. Benennt er stattdessen einen Typ oder ein Modul, ist
-    /// das hier ein Fehler — und zwar genau einmal, an der Stelle, an der der Wert gebraucht wird.
-    /// Danach gilt <see cref="ErrorType"/> und damit die normale „schon gemeldet"-Regel.
+    /// An expression in VALUE POSITION. If it names a type or a module instead, that is an error here
+    /// — exactly once, at the place where the value is needed. From there on <see cref="ErrorType"/>
+    /// applies, and with it the ordinary "already reported" rule.
     /// </summary>
     private LyrType CheckExpr(Expr expr, SymbolTable scope, LyrType? expected = null)
     {
@@ -835,10 +810,10 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Wie <see cref="CheckExpr"/>, lässt aber einen <see cref="NonValueType"/> stehen. Nur für das
-    /// <b>Ziel eines Member-Zugriffs</b> — dort ist ein Typ- oder Modulname legitim
-    /// (<c>Point.new(…)</c>, <c>console.println(…)</c>), und <c>CheckMember</c> arbeitet ohnehin
-    /// über das Symbol weiter, nicht über den Typ.
+    /// Like <see cref="CheckExpr"/>, but leaves a <see cref="NonValueType"/> standing. Only for the
+    /// TARGET OF A MEMBER ACCESS, where a type or module name is legitimate (<c>Point.new(…)</c>,
+    /// <c>console.println(…)</c>) and <c>CheckMember</c> continues through the symbol anyway, not
+    /// through the type.
     /// </summary>
     private LyrType CheckTarget(Expr expr, SymbolTable scope, LyrType? expected = null)
     {
@@ -883,9 +858,9 @@ public sealed class TypeChecker
             case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
             case LambdaExpr lam: return CheckLambda(lam, scope, expected);
             case ResumeExpr re: return CheckResume(re, scope);
-            // Attribute sind post-v1 (Sprache.md §10) und hatten auch vorher keinen
-            // Ausdruckstyp. Das zu melden statt still Error zu liefern ist der Unterschied
-            // zwischen „geht nicht" und „geht unbemerkt nicht".
+            // Attributes are post-v1 and have no expression type. Reporting that rather than silently
+            // yielding Error is the difference between "does not work" and "does not work
+            // unnoticed".
             case AtIdentifierExpr at:
                 return Report(at.Span, "LYR-SEM0053",
                     $"'{at.Name}' is an attribute, and attributes are not part of v1 " +
@@ -896,18 +871,15 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Der Typ eines gelesenen Globals — und die Stelle, an der „benutzt, bevor es initialisiert
-    /// ist" auffaellt.
+    /// The type of a global being read, and the place where "used before it is initialized" shows.
     ///
-    /// <para>Globals werden in <b>Deklarationsreihenfolge</b> gefuellt (Modul-, dann
-    /// Quelltextreihenfolge); ein spaeteres zu lesen laege einen Nullwert vor, den niemand
-    /// geschrieben hat. Das ist die einzige Ordnung ohne Abhaengigkeitsanalyse — C#
-    /// (Feld-Initialisierer) macht es genauso, Go sortiert stattdessen topologisch und lehnt
-    /// Zyklen ab. Fuer v1 ist die einfache Regel die richtige, sie muss nur <i>gesagt</i> werden.</para>
+    /// <para>Globals are filled in DECLARATION ORDER, first by module and then by source order;
+    /// reading a later one would see a null value nobody wrote. That is the only order without a
+    /// dependency analysis — C# does the same for field initializers, while Go sorts topologically
+    /// and rejects cycles.</para>
     ///
-    /// <para>Nur <b>innerhalb</b> eines Initialisierers ist das ein Fehler. Aus einem
-    /// Funktionsrumpf heraus ist jedes Global lesbar, egal wo es steht — dann ist die Init-Phase
-    /// laengst vorbei.</para>
+    /// <para>Only INSIDE an initializer is this an error. From a function body every global is
+    /// readable wherever it stands, because the init phase is long over by then.</para>
     /// </summary>
     private LyrType TypeOfGlobalReference(GlobalSymbol symbol, Span span)
     {
@@ -924,10 +896,10 @@ public sealed class TypeChecker
         var sym = scope.Lookup(id.Name);
         if (sym is null) return Report(id.Span, "LYR-SEM0002", $"unknown identifier '{id.Name}'");
         _result.BindRef(id, sym);
-        if (_narrowed.TryGetValue(sym, out var narrowed)) return narrowed; // ?T → T im narrowten Bereich
-        // Selektiver Import (import std.io.console { println }) bindet an eine Huelle; getypt
-        // wird das Ziel. Ohne das faellt jeder Stdlib-Aufruf in den Error-Zweig und wird stumm
-        // uebersprungen — die Signatur aus dem .lyr-File haette dann keine Wirkung.
+        if (_narrowed.TryGetValue(sym, out var narrowed)) return narrowed; // ?T is T inside the narrowed region
+        // A selective import (import std.io.console { println }) binds to a shell; the target is what
+        // gets typed. Without this every stdlib call falls into the error branch and is skipped
+        // silently, leaving the signature from the .lyr file without effect.
         if (sym is ImportBindingSymbol binding) sym = binding.Target;
         return sym switch
         {
@@ -936,14 +908,13 @@ public sealed class TypeChecker
             GlobalSymbol g => TypeOfGlobalReference(g, id.Span),
             FunctionSymbol f => FnTypeOf(f),
 
-            // Ein Typ- oder Modulname ist kein Wert. Als Member-ZIEL ist er trotzdem legitim,
-            // deshalb kein sofortiger Fehler — CheckExpr meldet ihn dort, wo ein Wert gebraucht
-            // wird. Vorher stand hier LyrType.Error, und damit schwieg jeder Konsument.
+            // A type or module name is not a value. As a member TARGET it is legitimate all the same,
+            // so no immediate error here; CheckExpr reports it where a value is needed.
             TypeSymbol ts => new NonValueType(ts, "type"),
             ModuleSymbol ms => new NonValueType(ms, "module"),
 
-            // ExternalSymbol: das Modul war unauffindbar und wurde als LYR-RES0003 gemeldet —
-            // hier ist Error korrektes Poison.
+            // ExternalSymbol: the module could not be found and was reported as LYR-RES0003, so Error
+            // is the correct poison here.
             _ => LyrType.Error
         };
     }
@@ -952,22 +923,20 @@ public sealed class TypeChecker
     {
         var fn = (FunctionDecl)f.Declaration!;
         var ps = fn.Parameters.Select(p => ResolveType(p.Type, _comp.Builtins)).ToArray();
-        var ret = IsPanic(f) ? LyrType.Never // §9: panic hat den unbenennbaren Typ never
+        var ret = IsPanic(f) ? LyrType.Never // panic has the unnameable type never
             : fn.ReturnType is not null ? ResolveType(fn.ReturnType, _comp.Builtins) : LyrType.Void;
         return new FnType(ps, ret);
     }
 
     /// <summary>
-    /// Der Aufgerufene eines Aufrufs, geprueft mit dem erwarteten ERGEBNIS-Typ im Ruecken.
+    /// The callee of a call, checked with the expected RESULT type behind it.
     ///
-    /// <para>Gebraucht wird das an genau einer Stelle: eine Enum-Variante ohne geschriebene
-    /// Typargumente. <c>Opt.Some(7)</c> nennt die Instanz nirgends, <c>let o: Opt&lt;int&gt; = …</c>
-    /// schon — und die Struct-Form <c>Ev.Hit { … }</c> las den Kontext seit jeher. Ohne diesen Weg
-    /// beantwortete dieselbe Frage zwei verschiedene Antworten, je nach Form der Variante.</para>
+    /// <para>Needed at exactly one place: an enum variant without written type arguments.
+    /// <c>Opt.Some(7)</c> names the instance nowhere, <c>let o: Opt&lt;int&gt; = …</c> does — and the
+    /// struct form <c>Ev.Hit { … }</c> has always read the context.</para>
     ///
-    /// <para>Der erwartete Typ gilt dem Aufruf, nicht dem Aufgerufenen; er wird deshalb NUR fuer
-    /// die Instanz-Auflösung benutzt und nicht als Erwartung an den Funktionstyp weitergereicht.
-    /// </para>
+    /// <para>The expected type belongs to the call, not to the callee; it is therefore used ONLY for
+    /// resolving the instance and is not passed on as an expectation about the function type.</para>
     /// </summary>
     private LyrType CheckTargetOfCall(Expr callee, SymbolTable scope, LyrType? expected) =>
         callee is MemberExpr mem ? CheckExpr(mem, scope, expected) : CheckExpr(callee, scope);
@@ -987,7 +956,7 @@ public sealed class TypeChecker
             case UnaryOp.BitNot:
                 if (!TypeFacts.IsInteger(t)) BadOp(u.Span, "~", t);
                 return t;
-            default: // PreInc/PreDec
+            default: // PreInc and PreDec
                 if (!TypeFacts.IsNumeric(t)) BadOp(u.Span, "++/--", t);
                 return t;
         }
@@ -1003,7 +972,7 @@ public sealed class TypeChecker
                 if (t is Optional o) return o.Inner;
                 _de.Report("LYR-SEM0005", Severity.Error, p.Span, $"cannot force-unwrap non-nullable '{TypeFacts.Display(t)}'");
                 return t;
-            default: // Inc/Dec
+            default: // Inc and Dec
                 if (!TypeFacts.IsNumeric(t)) BadOp(p.Span, "++/--", t);
                 return t;
         }
@@ -1013,12 +982,9 @@ public sealed class TypeChecker
     {
         var l = CheckExpr(b.Left, scope);
 
-        // Kurzschluss (§6.1): die rechte Seite laeuft nur, wenn die linke wahr ist — bei '||' nur,
-        // wenn sie falsch ist. Also gilt beim Pruefen der rechten Seite, was die linke bewiesen
-        // hat: 'x != null && x > 0' ist wohlgeformt, weil x im zweiten Teil kein '?int' mehr ist.
-        //
-        // Dieselbe Regel, die das Lowering seit M6 als Kontrollfluss abbildet — hier wird sie nur
-        // auch fuer die Typen eingeloest.
+        // Short circuit: the right side runs only when the left is true, and for '||' only when it is
+        // false. So while checking the right side, what the left proved holds: 'x != null && x > 0'
+        // is well formed, because x is no longer a '?int' in the second part.
         LyrType r;
         if (b.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
         {
@@ -1046,14 +1012,9 @@ public sealed class TypeChecker
                     return UnifyNumeric(b.Left, l, b.Right, r) ?? BadBinary(b, l, r);
                 return BadBinary(b, l, r);
             case BinaryOp.Lt or BinaryOp.Le or BinaryOp.Gt or BinaryOp.Ge:
-                // Nur Numerik (§6.5). 'char' ist seit ADR-022 selbst Numerik und braucht deshalb
-                // keinen eigenen Zweig mehr.
-                //
-                // 'string < string' stand hier und war ein WIDERSPRUCH: die Sema liess es durch,
-                // der Verifier lehnte es ab („ordering comparison on non-numeric type string"),
-                // und dazwischen stuerzte der Compiler ab. Die Spec sagt Numerik; wer Strings
-                // sortieren will, braucht eine 'compare'-Funktion — oder wartet auf
-                // Operator-Overloading nach v1.
+                // Numeric only. A 'char' is numeric itself and needs no branch of its own.
+                // 'string < string' is rejected here: the spec says numeric, and sorting strings needs
+                // a 'compare' function.
                 if (UnifyNumeric(b.Left, l, b.Right, r) is not null)
                     return LyrType.Bool;
                 BadBinary(b, l, r);
@@ -1073,26 +1034,24 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Was <c>==</c> und <c>!=</c> vergleichen dürfen: Skalare und <c>null</c>.
+    /// What <c>==</c> and <c>!=</c> may compare: scalars and <c>null</c>.
     /// </summary>
     /// <remarks>
-    /// <para>Die Regel stand nur im IR-Verifier. Die Sema liess <c>a == b</c> auf einem
-    /// <c>struct</c> oder einer <c>class</c> durch, und der Verifier lehnte es danach ab — als
-    /// <b>Compiler-Absturz</b> mit Stack-Trace statt als Diagnose. Zwei Stellen mit derselben
-    /// Frage und nur eine mit der Antwort.</para>
+    /// <para>The rule lives here as well as in the IR verifier. Without it the sema lets <c>a == b</c>
+    /// on a <c>struct</c> or a <c>class</c> through and the verifier rejects it afterwards, as a
+    /// compiler crash rather than a diagnostic.</para>
     ///
-    /// <para><b>Die Meldung sagt „noch nicht", nicht „nie".</b> Ein Nutzertyp <i>soll</i>
-    /// vergleichbar werden — über Operator-Overloading, das erste Thema nach v1 (v1.4 in der
-    /// ROADMAP). Bis dahin gibt es dafuer eine gewöhnliche Methode, und die Diagnose zeigt
-    /// darauf, statt den Weg als versperrt darzustellen.</para>
+    /// <para>The message says "not yet", not "never": a user type is meant to become comparable
+    /// through operator overloading. Until then an ordinary method does it, and the diagnostic points
+    /// there.</para>
     /// </remarks>
     private void CheckEquatable(BinaryExpr b, LyrType l, LyrType r)
     {
         if (l is NullType || r is NullType) return;
 
-        // KEIN Auspacken von '?T': der Vergleich zweier Optionals ist im Backend nicht
-        // implementiert (der Verifier meldet „equality comparison on type ?i64"). Der haeufige
-        // Fall '?T == null' ist oben schon durch, und dafuer gibt es ausserdem Flow-Narrowing.
+        // NO unwrapping of '?T': comparing two optionals is not implemented in the backend, where the
+        // verifier reports "equality comparison on type ?i64". The common case '?T == null' is
+        // already handled above, and flow narrowing covers it too.
         if (l is PrimitiveType or ErrorType or NullType) return;
 
         _de.Report("LYR-SEM0059", Severity.Error, b.Span,
@@ -1121,19 +1080,18 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Gibt einem <b>leeren</b> Array-Literal den Elementtyp aus seinem Kontext.
+    /// Gives an EMPTY array literal its element type from the context.
     /// </summary>
     /// <remarks>
-    /// <para><c>[]</c> hat für sich keinen Elementtyp — er kommt von aussen. Wo der erwartete Typ
-    /// beim Prüfen schon vorliegt (<c>let xs: int[] = []</c>), erledigt das die normale
-    /// Kontext-Weitergabe; wo er es nicht tut, muss er nachgereicht werden.</para>
-    /// <para>Zwei solche Stellen gibt es: Argumente (die zweiphasige Inferenz typt
-    /// Nicht-Lambda-Argumente ohne Kontext, D5) und <c>??</c> (dort wird nur
-    /// <see cref="IsAssignable"/> gefragt, nicht <see cref="CheckAssignable"/>). Deshalb steht das
-    /// hier als eigene Funktion und nicht zweimal ausgeschrieben.</para>
-    /// <para>Der Aufruf muss <b>vor</b> jeder Poison-Prüfung stehen: der Typ des leeren Literals
-    /// enthält einen <c>ErrorType</c>, ist aber kein gemeldeter Fehler, sondern eine offene
-    /// Stelle, die der Kontext gerade schliesst.</para>
+    /// <para><c>[]</c> has no element type of its own; it comes from outside. Where the expected type
+    /// is already at hand while checking (<c>let xs: int[] = []</c>), the ordinary context passing
+    /// does it; where it is not, it has to be supplied afterwards.</para>
+    /// <para>There are two such places: arguments, where the two-phase inference types non-lambda
+    /// arguments without context, and <c>??</c>, where only <see cref="IsAssignable"/> is asked
+    /// rather than <see cref="CheckAssignable"/>.</para>
+    /// <para>The call has to come BEFORE any poison check: the type of the empty literal contains an
+    /// <c>ErrorType</c>, but it is not a reported error — it is an open slot the context is about to
+    /// close.</para>
     /// </remarks>
     private bool AdaptEmptyArray(Expr expr, LyrType to)
     {
@@ -1149,30 +1107,30 @@ public sealed class TypeChecker
     {
         if (l is Optional o)
         {
-            // Erst anpassen, dann fragen: 'quelle() ?? []' scheiterte sonst an einem
-            // '<error>[]' auf der rechten Seite — obwohl der Zieltyp danebensteht.
+            // Adapt first, then ask: 'source() ?? []' would otherwise fail on an '<error>[]' on the
+            // right, although the target type stands next to it.
             if (AdaptEmptyArray(b.Right, o.Inner)) return o.Inner;
 
-            if (IsAssignable(b.Right, r, o.Inner)) return o.Inner; // ?T ?? T → T
-            if (IsAssignable(b.Right, r, l)) return l;              // ?T ?? ?T → ?T
+            if (IsAssignable(b.Right, r, o.Inner)) return o.Inner; // ?T ?? T yields T
+            if (IsAssignable(b.Right, r, l)) return l;              // ?T ?? ?T yields ?T
             BadBinary(b, l, r);
             return o.Inner;
         }
-        if (l is NullType) return r; // null ?? b → typeof b
-        return l; // linke Seite nicht nullable — ?? ist wirkungslos, aber kein Typfehler
+        if (l is NullType) return r; // null ?? b yields the type of b
+        return l; // the left side is not nullable, so ?? has no effect, but it is no type error
     }
 
     private LyrType CheckAssign(AssignExpr a, SymbolTable scope)
     {
-        CheckExpr(a.Target, scope); // bindet RefOf
+        CheckExpr(a.Target, scope); // binds RefOf
         var targetSym = a.Target is IdentifierExpr ? _result.RefOf(a.Target) : null;
-        // Bei Identifier-Zielen den DEKLARIERTEN Typ nehmen (nicht den narrowten) — sonst
-        // wäre 'x = null' auf einem narrowten ?T fälschlich ein Fehler.
+        // For identifier targets take the DECLARED type rather than the narrowed one, or 'x = null' on
+        // a narrowed ?T would wrongly be an error.
         var targetType = targetSym is not null ? DeclaredType(targetSym) ?? _result.TypeOf(a.Target) : _result.TypeOf(a.Target);
         var value = CheckExpr(a.Value, scope, targetType);
-        // Lvalue-/Mutabilitäts-Check → Slice 3b. Hier nur Typ-Kompatibilität.
+        // The lvalue and mutability check happens in SemaRules; only type compatibility here.
         CheckAssignable(a.Value, value, targetType, a.Span);
-        if (targetSym is not null) _narrowed.Remove(targetSym); // Neuzuweisung hebt Narrowing auf
+        if (targetSym is not null) _narrowed.Remove(targetSym); // a reassignment drops the narrowing
         return targetType;
     }
 
@@ -1198,7 +1156,7 @@ public sealed class TypeChecker
         var op = CheckExpr(c.Operand, scope);
         var target = ResolveType(c.Type, scope);
         if (op.IsError || target.IsError) return target;
-        if (TypeFacts.IsNumeric(op) && TypeFacts.IsNumeric(target)) return target; // ④ nur Numerik↔Numerik
+        if (TypeFacts.IsNumeric(op) && TypeFacts.IsNumeric(target)) return target; // numeric to numeric only
         _de.Report("LYR-SEM0006", Severity.Error, c.Span, $"cannot cast '{TypeFacts.Display(op)}' to '{TypeFacts.Display(target)}'");
         return target;
     }
@@ -1213,14 +1171,12 @@ public sealed class TypeChecker
         {
             ArrayOf a => a.Element,
 
-            // Ein String hat KEINEN Indexoperator (M8/S2). Eine Codepoint-Position kostet O(n)
-            // — 'char' ist ein Codepoint (§4), und die Laenge zaehlt dieselben —, also waere die
-            // naheliegende Indexschleife quadratisch, ohne dass man ihr das ansieht. Rust
-            // verbietet die Indizierung aus demselben Grund; C# erlaubt sie und zahlt mit einem
-            // 'char', der gar kein Zeichen ist.
+            // A string has NO index operator. A code point position costs O(n) — a 'char' is a code
+            // point and the length counts the same units — so the obvious indexing loop would be
+            // quadratic without looking like it.
             //
-            // Die Meldung nennt beide Auswege, weil der eine (charAt) das ist, wonach der Nutzer
-            // gerade sucht, und der andere (for-in) das, was er meistens haben will.
+            // The message names both ways out: 'charAt' is what the user is looking for right now,
+            // 'for-in' is what they usually want.
             PrimitiveType { Kind: PrimitiveKind.String } =>
                 Report(ix.Span, "LYR-SEM0007",
                     "a string cannot be indexed — a codepoint position costs O(n), so an index "
@@ -1229,10 +1185,9 @@ public sealed class TypeChecker
 
             ErrorType => LyrType.Error,
 
-            // Alles andere muss 'Indexable<T>' erfuellen (std.collections) — dieselbe Regel, die
-            // 'for-in' fuer 'Iterator<T>' benutzt, und derselbe Mechanismus. Der Compiler kennt
-            // damit genau EINE eingebaute indizierbare Form, das Array; jeder Container aus der
-            // Stdlib oder vom Nutzer laeuft ueber das Interface.
+            // Everything else has to satisfy 'Indexable<T>' from std.collections — the same rule and
+            // mechanism 'for-in' uses for 'Iterator<T>'. The compiler knows exactly ONE built-in
+            // indexable form, the array; every other container goes through the interface.
             _ => TypeArgumentOfConformance(target, _indexable)
                  ?? Report(ix.Span, "LYR-SEM0007",
                      $"'{TypeFacts.Display(target)}' is not indexable — it must implement "
@@ -1244,7 +1199,7 @@ public sealed class TypeChecker
     {
         var elemExpected = expected is ArrayOf ea ? ea.Element : null;
         if (arr.Elements.Length == 0)
-            return new ArrayOf(elemExpected ?? LyrType.Error, null); // leer: Element-Typ nur aus dem Kontext
+            return new ArrayOf(elemExpected ?? LyrType.Error, null); // empty: the element type comes from the context alone
         var first = CheckExpr(arr.Elements[0], scope, elemExpected);
         for (var i = 1; i < arr.Elements.Length; i++)
         {
@@ -1256,29 +1211,28 @@ public sealed class TypeChecker
         return new ArrayOf(first, null);
     }
 
-    // --- Calls / Member / Struct-Init / composite (Slice 2b) ---
+    // --- calls, members, struct initializers, composites ---
 
-    // Zweiphasig (D5, C#-Modell): Nicht-Lambda-Argumente eager typen, daraus Typ-Args
-    // inferieren, dann Lambdas mit dem substituierten Parametertyp als Kontext prüfen —
-    // deren tatsächlicher Typ bindet die restlichen Typ-Args (U aus dem Lambda-Return).
-    /// <param name="expected">Der erwartete Typ des AUFRUFS. Er wird allein fuer eine
-    /// Enum-Variante gebraucht: 'let o: Opt<int> = Opt.Some(7);' nennt die Instanz nur links.</param>
+    // Two phases: type the non-lambda arguments eagerly, infer the type arguments from them, then
+    // check the lambdas with the substituted parameter type as context — their actual type binds the
+    // remaining type arguments, such as U from the lambda return.
+    /// <param name="expected">The expected type of the CALL. Needed for an enum variant alone:
+    /// 'let o: Opt&lt;int&gt; = Opt.Some(7);' names the instance only on the left.</param>
     private LyrType CheckCall(CallExpr call, SymbolTable scope, LyrType? expected = null)
     {
         var calleeType = CheckTargetOfCall(call.Callee, scope, expected);
 
-        // 'b?.get()' — Optional-Chaining mit AUFRUF (§7). 'b?.get' ist ein '?fn() -> int', und
-        // ohne diesen Fall meldete die Sema '„?fn() -> int" is not callable': eine Auskunft
-        // ueber einen Zwischentyp, den niemand hingeschrieben hat.
+        // 'b?.get()' — optional chaining with a CALL. 'b?.get' is a '?fn() -> int', and without this
+        // case the sema reports '"?fn() -> int" is not callable': a statement about an intermediate
+        // type nobody wrote down.
         //
-        // Der Aufruf wird gegen die ausgepackte Signatur geprueft, das ERGEBNIS wird optional —
-        // ist der Empfaenger leer, findet kein Aufruf statt und es gibt nichts zurueckzugeben.
+        // The call is checked against the unwrapped signature and the RESULT becomes optional: when
+        // the receiver is empty no call happens and there is nothing to return.
         //
-        // NUR fuer eine Methode. Haelt das Glied einen Funktions-WERT ('f: fn() -> int'), gibt es
-        // zwei Fragen und ein '?': ob der Empfaenger da ist, und ob das Feld belegt ist. Wer hier
-        // auspackte, beantwortete stillschweigend die zweite mit ja — bei 'f: ?fn() -> int' waere
-        // das ein Aufruf auf null. Die Sprache hat kein '?()' (§7), also gibt es die Form nicht,
-        // und sie muss das sagen statt es zu raten.
+        // For a method ONLY. If the member holds a function VALUE ('f: fn() -> int') there are two
+        // questions and one '?': whether the receiver is there, and whether the field is set.
+        // Unwrapping here would answer the second one with yes, and for 'f: ?fn() -> int' that would
+        // be a call on null. The language has no '?()', so the form does not exist.
         var optionalCall = false;
         if (call.Callee is MemberExpr { IsOptional: true } chainCallee && calleeType is Optional o)
         {
@@ -1298,7 +1252,7 @@ public sealed class TypeChecker
 
         if (calleeType is not FnType fn)
         {
-            foreach (var a in call.Arguments) CheckExpr(a, scope); // trotzdem typen (keine Folgefehler)
+            foreach (var a in call.Arguments) CheckExpr(a, scope); // type them anyway, to avoid follow-up errors
             if (calleeType.IsError) return LyrType.Error;
             return Report(call.Span, "LYR-SEM0013", $"'{TypeFacts.Display(calleeType)}' is not callable");
         }
@@ -1308,25 +1262,25 @@ public sealed class TypeChecker
         var args = call.Arguments;
         var argTypes = new LyrType[args.Length];
 
-        // Phase A: Nicht-Lambdas eager.
+        // Phase A: non-lambdas, eagerly.
         for (var i = 0; i < args.Length; i++)
             if (args[i] is not LambdaExpr)
                 argTypes[i] = CheckExpr(args[i], scope);
 
-        // Phase B: Typ-Args aus den eager getypten Argumenten.
+        // Phase B: type arguments from the eagerly typed arguments.
         Dictionary<GenericParamSymbol, LyrType>? map = null;
         var substituted = fn;
         if (fsym is { Generics.Length: > 0 })
         {
             map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
 
-            // Explizit geschriebene Typargumente ('f<int>()') binden VORAB. Die Inferenz laeuft
-            // danach unveraendert weiter und fuellt nur, was noch offen ist — 'UnifyInfer'
-            // benutzt 'TryAdd' und ueberschreibt deshalb nichts. Damit gewinnt das Geschriebene
-            // immer, und ein 'id<int>("x")' wird ein Typfehler statt still zu 'id<string>'.
+            // Explicitly written type arguments ('f<int>()') bind FIRST. The inference then runs
+            // unchanged and only fills what is still open: 'UnifyInfer' uses 'TryAdd' and therefore
+            // overwrites nothing. What is written always wins, and 'id<int>("x")' becomes a type
+            // error instead of silently turning into 'id<string>'.
             //
-            // Gebraucht werden sie, wo die Argumente nichts hergeben: eine Fabrik
-            // 'empty<T>(): List<T>' hat keine, und ohne diesen Weg ist sie nicht aufrufbar.
+            // They are needed where the arguments give nothing: a factory 'empty<T>(): List<T>' has
+            // none and would not be callable without this route.
             if (call.TypeArguments is { Length: > 0 } written)
             {
                 if (written.Length != fsym.Generics.Length)
@@ -1341,8 +1295,8 @@ public sealed class TypeChecker
                     map[fsym.Generics[i]] = explicitArgs[i];
                 }
 
-                // Constraints gelten auch fuer geschriebene Argumente — sonst waere die explizite
-                // Form ein Weg, sie zu umgehen.
+                // Constraints apply to written arguments too, or the explicit form would be a way
+                // around them.
                 CheckConstraints(fsym.Generics, explicitArgs, call.Span);
             }
 
@@ -1352,7 +1306,7 @@ public sealed class TypeChecker
             substituted = (FnType)Substitute(fn, map);
         }
 
-        // Phase C: Lambdas mit Kontext; ihr Ist-Typ bindet noch offene Typ-Args nach.
+        // Phase C: lambdas with context; their actual type binds the type arguments still open.
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] is not LambdaExpr) continue;
@@ -1365,16 +1319,12 @@ public sealed class TypeChecker
             CheckInferredConstraints(fsym!.Generics, map, call.Span);
             substituted = (FnType)Substitute(fn, map);
 
-            // Ein Typ-Parameter, den die Inferenz nicht binden konnte, wird HIER gemeldet.
+            // A type parameter the inference could not bind is reported HERE. Otherwise it silently
+            // becomes 'LyrType.Error' and only the lowering trips over it, with a compiler-internal
+            // message at a place where the user merely omitted a type argument.
             //
-            // Vorher wurde er still zu 'LyrType.Error', und erst das Lowering fiel darueber:
-            // "LYR-IR0001: type argument 0 is not concrete ('<error>')" — eine Compiler-interne
-            // Formulierung an einer Stelle, wo der Nutzer nur ein Typargument weggelassen hat.
-            // 'lyric check' sagte dazu "ok", 'lyric build' nicht. Genau der Riss zwischen Sema und
-            // Backend, gegen den AgreementTests gebaut wurde.
-            //
-            // Nicht melden, wenn ohnehin schon ein Argument fehlerhaft war: dann ist die Ursache
-            // gemeldet, und eine zweite Zeile ueber ein Typargument waere Folgerauschen.
+            // Not reported when an argument was already faulty: the cause is reported then, and a
+            // second line about a type argument would be follow-up noise.
             if (!argTypes.Any(ContainsError))
                 foreach (var generic in fsym.Generics)
                     if (!map.ContainsKey(generic))
@@ -1382,8 +1332,8 @@ public sealed class TypeChecker
                             $"cannot infer type argument '{generic.Name}' for '{fsym.Name}' — " +
                             "no argument determines it; write it explicitly");
 
-            // Fuer die Monomorphisierung: welche Instanz gemeint ist, steht hier fest und nirgends
-            // sonst. In Deklarationsreihenfolge, weil das die Identitaet der Instanz ist.
+            // For monomorphization: which instance is meant is settled here and nowhere else. In
+            // declaration order, because that is the identity of the instance.
             _result.SetTypeArguments(call, fsym.Generics
                 .Select(g => map.TryGetValue(g, out var bound) ? bound : LyrType.Error)
                 .ToArray());
@@ -1391,8 +1341,7 @@ public sealed class TypeChecker
 
         CheckCallArgs(call, substituted, argTypes, decl);
 
-        // War der Empfaenger optional, ist es auch das Ergebnis — kollabiert, denn Optionals
-        // verschachteln nicht (§4).
+        // If the receiver was optional the result is too, collapsed, because optionals do not nest.
         return optionalCall ? Optionalized(substituted.Return) : substituted.Return;
     }
 
@@ -1407,21 +1356,17 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Wird das <c>params</c>-Array als Ganzes uebergeben statt Stueck fuer Stueck?
+    /// Is the <c>params</c> array passed as a whole rather than piece by piece?
     ///
-    /// <para>Genau dann, wenn <b>ein</b> Argument uebrig ist und sein Typ der des Arrays ist —
-    /// <c>sum(xs)</c> mit <c>xs: int[]</c>. Das ist in Lyric eindeutig, und zwar aus zwei
-    /// Gruenden, die C# beide fehlen: es gibt keine implizite Konvertierung zwischen <c>T</c> und
-    /// <c>T[]</c> (§6.5), und es gibt kein Overloading (ADR-015). C# braucht dafuer die
-    /// Unterscheidung „normal form vs expanded form" in der Ueberladungsaufloesung; hier
-    /// entscheidet der Typ des Arguments, sonst nichts. Bei <c>params xs: int[][]</c> ist ein
-    /// Element <c>int[]</c> und das Array <c>int[][]</c> — verschiedene Typen, kein Konflikt.</para>
+    /// <para>Exactly when ONE argument is left and its type is that of the array — <c>sum(xs)</c>
+    /// with <c>xs: int[]</c>. That is unambiguous in Lyric for two reasons C# lacks: there is no
+    /// implicit conversion between <c>T</c> and <c>T[]</c>, and there is no overloading. With
+    /// <c>params xs: int[][]</c> an element is <c>int[]</c> and the array <c>int[][]</c> — different
+    /// types, no conflict.</para>
     ///
-    /// <para><b>Warum es ueberhaupt erlaubt ist</b>: ohne diesen Weg kann eine variadische
-    /// Funktion an keine andere delegieren. <c>fn logged(params xs: int[]) { return sum(xs); }</c>
-    /// waere unmoeglich — und genau solche Huellen bauen C#s <c>WriteLine</c>-Ueberladungen
-    /// intern. Wer ein Array ausdruecklich als <i>ein</i> Element uebergeben will, schreibt
-    /// <c>f([a])</c>.</para>
+    /// <para>Allowed at all because without this route no variadic function could delegate to
+    /// another: <c>fn logged(params xs: int[]) { return sum(xs); }</c> would be impossible. To pass
+    /// an array deliberately as ONE element, write <c>f([a])</c>.</para>
     /// </summary>
     private static bool PassesArrayDirectly(LyrType[] argTypes, int fixedCount, LyrType arrayType) =>
         argTypes.Length == fixedCount + 1 && LyrType.Equal(argTypes[fixedCount], arrayType);
@@ -1442,8 +1387,8 @@ public sealed class TypeChecker
 
         if (variadic && fn.Parameters[^1] is ArrayOf elem)
         {
-            // Das fertige Array darf als Ganzes durch — sonst koennte eine variadische Funktion
-            // an keine andere delegieren. Siehe PassesArrayDirectly.
+            // A ready-made array passes through as a whole, or one variadic function could not
+            // delegate to another. See PassesArrayDirectly.
             if (PassesArrayDirectly(argTypes, fixedCount, fn.Parameters[^1])) return;
 
             for (var i = fixedCount; i < argTypes.Length; i++)
@@ -1451,11 +1396,11 @@ public sealed class TypeChecker
         }
     }
 
-    /// <param name="expected">Nur fuer eine Enum-Variante ohne geschriebene Typargumente
-    /// gebraucht — sonst wirkungslos.</param>
+    /// <param name="expected">Needed for an enum variant without written type arguments only;
+    /// without effect otherwise.</param>
     private LyrType CheckMember(MemberExpr mem, SymbolTable scope, LyrType? expected = null)
     {
-        // CheckTarget statt CheckExpr: hier ist ein Typ- oder Modulname erlaubt.
+        // CheckTarget rather than CheckExpr: a type or module name is allowed here.
         var targetType = CheckTarget(mem.Target, scope);
         switch (TargetSymbol(mem.Target))
         {
@@ -1468,9 +1413,9 @@ public sealed class TypeChecker
 
         var baseType = mem.IsOptional && targetType is Optional opt ? opt.Inner : targetType;
 
-        // 'length' auf T[] ist eingebaut, keine Bibliotheks-Methode: T[] ist ein echtes Array
-        // (ADR-016), und seine Länge ist eine Eigenschaft des Wertes. Wachsende Container bringen
-        // ihre Member über Indexable/Iterator mit, sobald es Generics gibt.
+        // 'length' on T[] is built in rather than a library method: T[] is a real array, and its
+        // length is a property of the value. Growing containers bring their members along through
+        // Indexable and Iterator.
         if (baseType is ArrayOf && mem.Member == "length") return LyrType.Int;
 
         if (InstanceMemberOf(baseType, mem, mem.Span) is { } mt)
@@ -1480,17 +1425,17 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// <c>T</c> → <c>?T</c>, aber <c>?T</c> bleibt <c>?T</c>.
+    /// <c>T</c> becomes <c>?T</c>, while <c>?T</c> stays <c>?T</c>.
     ///
-    /// <para>Optionals verschachteln nicht (§4; das Lowering meldet <c>??T</c> als
-    /// <c>LYR-IR0001</c>). Ohne die Kollabierung war <c>b?.v</c> auf einem Feld vom Typ
-    /// <c>?int</c> ein <c>??int</c> — die Sema liess es durch, und der Fehler kam erst als
-    /// „cannot assign '?int' to 'int'" eine Ebene zu spaet.</para>
+    /// <para>Optionals do not nest; the lowering reports <c>??T</c> as <c>LYR-IR0001</c>. Without the
+    /// collapse, <c>b?.v</c> on a field of type <c>?int</c> would be a <c>??int</c>, and the error
+    /// would arrive as "cannot assign '?int' to 'int'" one level too late.</para>
     /// </summary>
     private static LyrType Optionalized(LyrType t) => t is Optional ? t : new Optional(t);
 
-    // Instanz-Member über die drei „Objekt"-Typen: konkret (NamedRef), generische Instanz
-    // (Member-Typ mit T→Argument substituiert), oder Typ-Param (Member aus den Constraints).
+    // Instance members over the three "object" types: a concrete one (NamedRef), a generic instance,
+    // where the member type has T substituted by the argument, or a type parameter, whose members
+    // come from its constraints.
     private LyrType? InstanceMemberOf(LyrType baseType, MemberExpr mem, Span span)
     {
         switch (baseType)
@@ -1503,18 +1448,18 @@ public sealed class TypeChecker
                 return Substitute(t, SubstMap(gi));
             case TypeParamType tp:
                 return BindMember(mem, MemberOfTypeParam(tp.Param, mem.Member, span));
-            case PrimitiveType p when BuiltinSymbol(p) is { } bs: // Extensions auf Builtins (string.shout())
+            case PrimitiveType p when BuiltinSymbol(p) is { } bs: // extensions on builtins, such as string.shout()
                 return BindMember(mem, InstanceMember(bs, mem.Member, span));
             default:
                 return null;
         }
     }
 
-    // Builtin-TypeSymbol zu einem Primitivtyp (für Extension-Lookup auf string/int/…).
+    // The builtin TypeSymbol for a primitive type, used for extension lookup on string, int and so on.
     private TypeSymbol? BuiltinSymbol(PrimitiveType p) =>
         _comp.Builtins.LookupLocal(TypeFacts.Display(p)) as TypeSymbol;
 
-    // Member auf einem Typ-Param T: nur was seine Constraint-Interfaces bereitstellen (D2).
+    // Members on a type parameter T: only what its constraint interfaces provide.
     private (LyrType, Symbol?) MemberOfTypeParam(GenericParamSymbol gp, string member, Span span)
     {
         foreach (var c in gp.Constraints)
@@ -1525,14 +1470,12 @@ public sealed class TypeChecker
             var (it, subst) = resolved;
             if (it.Members.LookupLocal(member) is not FunctionSymbol fn) continue;
 
-            // Die Typargumente DES CONSTRAINTS einsetzen. 'T :: [Eq<T>]' heisst: das 'T' in
-            // 'Eq<T>.eq(other: T)' ist das 'T' der rufenden Funktion — zwei verschiedene Symbole
-            // mit demselben Namen.
+            // Substitute the type arguments OF THE CONSTRAINT. 'T :: [Eq<T>]' means the 'T' in
+            // 'Eq<T>.eq(other: T)' is the 'T' of the calling function — two different symbols with
+            // the same name.
             //
-            // Ohne die Substitution kam der rohe Interface-Typ zurueck, und der Aufruf 'a.eq(b)'
-            // scheiterte mit der ratlosen Meldung „cannot assign 'T' to 'T'". Die
-            // Konformanzpruefung (CheckTypeConformance) macht genau dasselbe seit jeher richtig —
-            // eine Frage, zwei Stellen, und nur eine hatte die Antwort.
+            // Without the substitution the raw interface type comes back and 'a.eq(b)' fails with
+            // "cannot assign 'T' to 'T'".
             return (Substitute(FnTypeOf(fn), subst), fn);
         }
         return (Report(span, "LYR-SEM0027",
@@ -1547,7 +1490,7 @@ public sealed class TypeChecker
         return map;
     }
 
-    // T → Argument über einen Typ hinweg (Stack<T>.items: T[]  →  int[] bei Stack<int>).
+    // T to its argument across a type: Stack<T>.items of type T[] becomes int[] for Stack<int>.
     private static LyrType Substitute(LyrType type, Dictionary<GenericParamSymbol, LyrType> map)
     {
         if (map.Count == 0) return type;
@@ -1561,26 +1504,24 @@ public sealed class TypeChecker
             GenericInstance gi => new GenericInstance(gi.Definition, gi.Arguments.Select(a => Substitute(a, map)).ToArray()),
             RangeOf r => new RangeOf(Substitute(r.Element, map)),
             CoroutineOf co => new CoroutineOf(Substitute(co.Yield, map)),
-            _ => type // Primitive / NamedRef / Error / Null
+            _ => type // primitive, NamedRef, error, null
         };
     }
 
-    // --- Generische Call-Inferenz + Constraint-Erfüllung (Slice 1b) ---
+    // --- generic call inference and constraint satisfaction ---
 
-    // Löst Typ-Params aus (param trägt T, arg ist konkret). Erste Bindung gewinnt;
-    // Widersprüche (pair(1, "x")) fallen später in CheckCallArgs als Typfehler auf.
+    // Resolves type parameters: the parameter carries T, the argument is concrete. The first binding
+    // wins; contradictions such as pair(1, "x") surface later in CheckCallArgs as type errors.
     /// <summary>
-    /// Bindet Typ-Parameter, indem sie Parameter- und Argumenttyp gegeneinander laufen lässt.
+    /// Binds type parameters by running the parameter type and the argument type against each other.
     /// </summary>
     /// <remarks>
-    /// <para>Die Unifikation ist <b>strukturell</b>: sie vergleicht Formen. Das reicht für alles,
-    /// was sich wie ein Baum ineinanderlegen lässt — <c>T[]</c> gegen <c>int[]</c>,
-    /// <c>fn(T) -&gt; bool</c> gegen <c>fn(int) -&gt; bool</c>, <c>Box&lt;T&gt;</c> gegen
-    /// <c>Box&lt;int&gt;</c>.</para>
-    /// <para>Nicht strukturell ist die <b>Konformanz</b>: zwischen <c>RangeIterator</c> und
-    /// <c>Iterator&lt;int&gt;</c> liegt keine Formähnlichkeit, sondern eine Deklaration
-    /// (<c>class RangeIterator :: [Iterator&lt;int&gt;]</c>). Dafür ist der letzte Fall unten da —
-    /// er schlägt sie nach.</para>
+    /// <para>The unification is STRUCTURAL: it compares shapes. That covers everything that nests
+    /// like a tree — <c>T[]</c> against <c>int[]</c>, <c>fn(T) -&gt; bool</c> against
+    /// <c>fn(int) -&gt; bool</c>, <c>Box&lt;T&gt;</c> against <c>Box&lt;int&gt;</c>.</para>
+    /// <para>CONFORMANCE is not structural: between <c>RangeIterator</c> and
+    /// <c>Iterator&lt;int&gt;</c> there is no similarity of shape but a declaration
+    /// (<c>class RangeIterator :: [Iterator&lt;int&gt;]</c>). The last case below looks it up.</para>
     /// </remarks>
     private void UnifyInfer(LyrType param, LyrType arg, Dictionary<GenericParamSymbol, LyrType> map)
     {
@@ -1604,46 +1545,43 @@ public sealed class TypeChecker
                 break;
             case CoroutineOf pc when arg is CoroutineOf ac: UnifyInfer(pc.Yield, ac.Yield, map); break;
 
-            // 'Iterator<T>' gegen 'RangeIterator': der Parameter ist eine Instanz eines
-            // INTERFACES, das Argument ein Typ, der es erfuellt. Strukturell haben die beiden
-            // nichts gemeinsam — die Verbindung steht in der Deklaration des Arguments.
+            // 'Iterator<T>' against 'RangeIterator': the parameter is an instance of an INTERFACE and
+            // the argument a type satisfying it. Structurally the two have nothing in common; the
+            // connection stands in the argument's declaration.
             //
-            // Ohne diesen Fall blieb 'T' ungebunden, und zwar still: die Sema meldete nichts, und
-            // erst das Lowering fand '<error>' als Typargument. Betroffen war jede generische
-            // Funktion, deren Typ-Parameter NUR im Interface-Parameter vorkommt — in 'std.iter'
-            // also 'collect', 'sum', 'count', 'take', 'zip' und 'enumerate'. Wo eine Closure
-            // danebensteht ('map', 'filter'), griff schon der FnType-Fall darueber.
+            // Without this case 'T' stays unbound, and silently: the sema reports nothing and only
+            // the lowering finds '<error>' as a type argument. Affected is every generic function
+            // whose type parameter occurs in the interface parameter ONLY.
             //
-            // Eindeutig ist die Zuordnung, weil ein Typ dasselbe generische Interface nicht
-            // zweimal mit verschiedenen Argumenten erfuellen kann: die Methode haette zwei
-            // Signaturen, und LYR-SEM0042 lehnt das ab.
+            // The mapping is unambiguous, because a type cannot satisfy the same generic interface
+            // twice with different arguments: the method would have two signatures, and LYR-SEM0042
+            // rejects that.
             case GenericInstance { Definition.Kind: TypeSymbolKind.Interface } pi:
                 UnifyThroughConformance(pi, arg, map);
                 break;
         }
     }
 
-    /// <summary>Sucht im Argumenttyp die Konformanz zu <paramref name="wanted"/> und unifiziert
-    /// deren Typargumente gegen die geschriebenen.</summary>
+    /// <summary>Looks up the conformance to <paramref name="wanted"/> in the argument type and
+    /// unifies its type arguments against the written ones.</summary>
     private void UnifyThroughConformance(GenericInstance wanted, LyrType arg,
         Dictionary<GenericParamSymbol, LyrType> map)
     {
         if (TypeFacts.SymbolOf(arg) is not { } symbol) return;
 
-        // Ist das Argument selbst eine Instanz ('ArrayIterator<string>'), muss deren Substitution
-        // noch obendrauf: die Konformanzliste der DEFINITION sagt 'Iterator<T>' mit dem
-        // Typ-Parameter der Klasse, nicht 'Iterator<string>'. Ohne diesen Schritt kam ein
-        // Typ-Parameter statt eines konkreten Typs heraus — und der Fehler sah aus wie der, den
-        // diese Methode gerade behebt ("type argument 0 is not concrete ('T')").
+        // If the argument is itself an instance ('ArrayIterator<string>'), its substitution has to go
+        // on top: the DEFINITION's conformance list says 'Iterator<T>' with the class's type
+        // parameter, not 'Iterator<string>'. Without this step a type parameter comes out instead of
+        // a concrete type.
         var ofInstance = arg is GenericInstance gi ? SubstMap(gi) : EmptySubst;
 
         foreach (var (iface, subst) in InterfacesOf(symbol))
         {
             if (!ReferenceEquals(iface, wanted.Definition)) continue;
 
-            // 'subst' bildet die Generics des INTERFACES auf das ab, was in '::' stand. Beides
-            // in derselben Reihenfolge durchlaufen: 'Iterator<T>' gegen '{T_iface -> int}' bindet
-            // das T der rufenden Funktion an int.
+            // 'subst' maps the INTERFACE's generics onto what stood in the '::'. Walking both in the
+            // same order, 'Iterator<T>' against '{T_iface -> int}' binds the calling function's T to
+            // int.
             var n = Math.Min(iface.Generics.Length, wanted.Arguments.Length);
             for (var i = 0; i < n; i++)
                 if (subst.TryGetValue(iface.Generics[i], out var bound))
@@ -1654,15 +1592,13 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Steckt irgendwo in diesem Typ ein <see cref="ErrorType"/>?
+    /// Is there an <see cref="ErrorType"/> anywhere inside this type?
     /// </summary>
     /// <remarks>
-    /// <para><c>IsError</c> allein reicht nicht: ein Block-Lambda ohne Rueckgabetyp-Annotation hat
-    /// den Typ <c>fn(int) -&gt; &lt;error&gt;</c> — aussen intakt, innen kaputt. Die Ursache ist
-    /// bereits gemeldet (<c>LYR-SEM0046</c>, mit dem Hinweis, die Annotation zu schreiben), und
-    /// eine zweite Zeile ueber ein nicht inferierbares Typargument haette sie zugedeckt.</para>
-    /// <para>Gefunden, weil genau das passierte: drei Meldungen fuer einen Fehler, und die
-    /// einzige hilfreiche stand unten.</para>
+    /// <para><c>IsError</c> alone is not enough: a block lambda without a return type annotation has
+    /// the type <c>fn(int) -&gt; &lt;error&gt;</c> — intact outside, broken inside. The cause is
+    /// already reported as <c>LYR-SEM0046</c>, and a second line about a type argument that cannot be
+    /// inferred would bury it.</para>
     /// </remarks>
     private static bool ContainsError(LyrType type) => type switch
     {
@@ -1681,9 +1617,9 @@ public sealed class TypeChecker
     {
         var n = Math.Min(generics.Length, args.Length);
 
-        // Die VOLLE Abbildung, nicht ein Parameter nach dem anderen: ein Constraint darf die
-        // uebrigen Typ-Parameter nennen (`<K, V :: [Map<K, V>]>`), und ohne die anderen Bindungen
-        // liesse sich `Map<K, V>` nicht zu `Map<string, int>` aufloesen.
+        // The FULL mapping rather than one parameter at a time: a constraint may name the other type
+        // parameters (`<K, V :: [Map<K, V>]>`), and without the other bindings `Map<K, V>` could not
+        // resolve to `Map<string, int>`.
         var map = new Dictionary<GenericParamSymbol, LyrType>(ReferenceEqualityComparer.Instance);
         for (var i = 0; i < n; i++) map[generics[i]] = args[i];
 
@@ -1697,11 +1633,11 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Erfuellt <paramref name="arg"/> die Constraints von <paramref name="param"/>?
+    /// Does <paramref name="arg"/> satisfy the constraints of <paramref name="param"/>?
     /// </summary>
-    /// <param name="substitution">Die Bindungen aller Typ-Parameter dieser Aufrufstelle. Ein
-    /// Constraint traegt sein eigenes Typargument (`&lt;T :: [Eq&lt;T&gt;]&gt;`, ADR-024), und
-    /// `Eq&lt;T&gt;` ist erst mit `T := int` die Frage, die wirklich gestellt wird.</param>
+    /// <param name="substitution">The bindings of all type parameters at this call site. A constraint
+    /// carries its own type argument (`&lt;T :: [Eq&lt;T&gt;]&gt;`), and `Eq&lt;T&gt;` only becomes the
+    /// question actually asked once `T := int`.</param>
     private void CheckSatisfies(GenericParamSymbol param, LyrType arg,
         Dictionary<GenericParamSymbol, LyrType> substitution, Span span)
     {
@@ -1709,8 +1645,8 @@ public sealed class TypeChecker
         {
             if (ConstraintInterface(c) is not { } iface) continue;
 
-            // Der Constraint als TYP, nicht nur als Symbol: 'Src<string>' und 'Src<int>' sind
-            // dasselbe Symbol und verschiedene Anforderungen.
+            // The constraint as a TYPE rather than only as a symbol: 'Src<string>' and 'Src<int>' are
+            // the same symbol and different requirements.
             var wanted = Substitute(
                 ResolveType(c, _currentModule?.Members ?? _comp.Builtins), substitution);
 
@@ -1724,23 +1660,18 @@ public sealed class TypeChecker
 
     private TypeSymbol? ConstraintInterface(TypeNode c) => Conformance.InterfaceOf(c, _binding);
 
-    // Erfüllt arg das Constraint iface? Nutzertypen über ihre deklarierte Interface-Liste;
-    // Typ-Param über seine eigenen Constraints.
-    //
-    // Ein BUILTIN erfuellt es ueber einen sichtbaren 'extend int :: [I]' — bis M8/S1 wurde er
-    // hier blind durchgelassen ("Conformance erst M8"), was 'render(42)' auch dann annahm, wenn
-    // niemand 'int' erweitert hatte; der Fehler kam dann als LYR-IR0001 aus dem Lowering, weit
-    // weg von der Ursache. Jetzt ist es dieselbe Frage wie bei jedem anderen Typ und wird von
-    // derselben Funktion beantwortet.
-    /// <param name="wanted">Das Interface <b>mit seinen Typargumenten</b>, etwa
-    /// <c>Src&lt;string&gt;</c>. <c>iface</c> allein waere nur das Symbol <c>Src</c> — und dann
-    /// erfuellte <c>Ones :: [Src&lt;int&gt;]</c> auch ein <c>Src&lt;string&gt;</c>.</param>
+    // Does arg satisfy the constraint iface? User types through their declared interface list, a type
+    // parameter through its own constraints, and a BUILTIN through a visible 'extend int :: [I]' —
+    // the same question as for every other type, answered by the same function.
+    /// <param name="wanted">The interface WITH ITS TYPE ARGUMENTS, such as <c>Src&lt;string&gt;</c>.
+    /// <c>iface</c> alone would be the symbol <c>Src</c>, under which <c>Ones :: [Src&lt;int&gt;]</c>
+    /// would satisfy a <c>Src&lt;string&gt;</c> too.</param>
     private bool Satisfies(LyrType arg, TypeSymbol iface, LyrType wanted) => arg switch
     {
         NamedRef nr => ImplementsWithExtensions(nr.Symbol, iface, wanted, EmptySubst),
 
-        // Bei einer Instanz zaehlen ihre eigenen Argumente: 'class Box<T> :: [Src<T>]' erfuellt
-        // fuer 'Box<int>' genau 'Src<int>'.
+        // For an instance its own arguments count: 'class Box<T> :: [Src<T>]' satisfies exactly
+        // 'Src<int>' for 'Box<int>'.
         GenericInstance gi => ImplementsWithExtensions(gi.Definition, iface, wanted, SubstMap(gi)),
 
         TypeParamType tp => tp.Param.Constraints.Any(c =>
@@ -1749,10 +1680,10 @@ public sealed class TypeChecker
 
         PrimitiveType prim when BuiltinSymbol(prim) is { } builtin =>
             ImplementsWithExtensions(builtin, iface, wanted, EmptySubst),
-        _ => true // extern/Error: opak durchlassen
+        _ => true // external or error: pass through opaquely
     };
 
-    // Konformanz via deklarierte Interfaces ODER ein sichtbarer `extend T :: [I]`-Block (§3.6).
+    // Conformance through the declared interfaces OR a visible `extend T :: [I]` block.
     private bool ImplementsWithExtensions(TypeSymbol ts, TypeSymbol iface, LyrType wanted,
         Dictionary<GenericParamSymbol, LyrType> ofInstance)
     {
@@ -1774,11 +1705,11 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Stimmt eine deklarierte Konformanz mit dem ueberein, was der Constraint verlangt?
+    /// Does a declared conformance match what the constraint demands?
     ///
-    /// <para>Ein Interface OHNE Typargumente vergleicht wie bisher ueber das Symbol — dort gibt es
-    /// nichts zu unterscheiden, und <c>ResolveType</c> liefert einen <c>NamedRef</c>. Erst bei
-    /// einer generischen Instanz zaehlen die Argumente.</para>
+    /// <para>An interface WITHOUT type arguments compares through the symbol — there is nothing to
+    /// distinguish there, and <c>ResolveType</c> yields a <c>NamedRef</c>. Only for a generic instance
+    /// do the arguments count.</para>
     /// </summary>
     private static bool Matches(LyrType declared, Dictionary<GenericParamSymbol, LyrType> subst,
         LyrType wanted)
@@ -1788,8 +1719,8 @@ public sealed class TypeChecker
         return LyrType.Equal(resolved, wanted);
     }
 
-    /// <summary>Der Scope, in dem die Konformanzliste eines Typs steht — dort sind seine eigenen
-    /// Typ-Parameter sichtbar (<c>class Box&lt;T&gt; :: [Src&lt;T&gt;]</c>).</summary>
+    /// <summary>The scope in which a type's conformance list stands; its own type parameters are
+    /// visible there (<c>class Box&lt;T&gt; :: [Src&lt;T&gt;]</c>).</summary>
     private SymbolTable DeclarationScope(TypeSymbol ts) => ts.Members;
 
     private LyrType BindMember(MemberExpr mem, (LyrType type, Symbol? sym) r)
@@ -1804,7 +1735,7 @@ public sealed class TypeChecker
         return sym is ImportBindingSymbol ib ? ib.Target : sym;
     }
 
-    // Member-Auflösung (§3.6): eigene Members → sichtbare Extensions → Interface-Default-Methoden.
+    // Member resolution: own members, then visible extensions, then interface default methods.
     private (LyrType, Symbol?) InstanceMember(TypeSymbol ts, string member, Span span)
     {
         if (ts.Members.LookupLocal(member) is { } own)
@@ -1812,8 +1743,7 @@ public sealed class TypeChecker
             {
                 FieldSymbol fs => (FieldType(fs), fs),
 
-                // ADR-014: ein static-Member gehört dem Typ, nicht der Instanz. Vorher ging beides,
-                // und `p.new()` auf einer Instanz war so gültig wie `P.new()`.
+                // A static member belongs to the type, not to the instance.
                 FunctionSymbol { IsStatic: true } fn => (Report(span, "LYR-SEM0055",
                     $"'{fn.Name}' is static — call it on the type: '{ts.Name}.{member}(…)'"), fn),
 
@@ -1829,8 +1759,8 @@ public sealed class TypeChecker
         return (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null);
     }
 
-    // Sichtbare Extension-Methode dieses Namens (deklarierendes Modul == aktuelles oder importiert).
-    // Mehrere sichtbare Kandidaten → SEM0044 (Ambiguität), erster gewinnt.
+    // A visible extension method of this name, meaning the declaring module is the current one or is
+    // imported. Several visible candidates give SEM0044 for ambiguity, and the first one wins.
     private FunctionSymbol? ExtensionMember(TypeSymbol ts, string member, Span span)
     {
         FunctionSymbol? found = null;
@@ -1848,8 +1778,9 @@ public sealed class TypeChecker
         return found;
     }
 
-    // Interface-Default-Methode (mit Body) über die Interfaces des Typs (deklariert + via Extend).
-    // Zwei Defaults aus verschiedenen Interfaces → SEM0043 (explizit überschreiben).
+    // An interface default method, one with a body, through the type's interfaces, declared or via
+    // extend. Two defaults from different interfaces give SEM0043, which asks for an explicit
+    // override.
     private (LyrType, Symbol?)? DefaultMember(TypeSymbol ts, string member, Span span)
     {
         (LyrType type, Symbol sym)? found = null;
@@ -1857,7 +1788,7 @@ public sealed class TypeChecker
         foreach (var (iface, subst) in InterfacesOf(ts))
         {
             if (iface.Members.LookupLocal(member) is not FunctionSymbol fn) continue;
-            if (fn.Declaration is not FunctionDecl { Body: not null }) continue; // nur Defaults, nicht abstrakt
+            if (fn.Declaration is not FunctionDecl { Body: not null }) continue; // defaults only, not abstract ones
             var t = Substitute(FnTypeOf(fn), subst);
             if (found is null) found = (t, fn);
             else if (!ReferenceEquals(found.Value.sym, fn)) ambiguous = true;
@@ -1868,8 +1799,8 @@ public sealed class TypeChecker
         return found is { } f ? (f.type, f.sym) : null;
     }
 
-    // Alle Interfaces eines Typs mit ihrer Substitution (Interface-Generics → Typ-Args aus '::').
-    // Deklarierte Interfaces plus die aus sichtbaren `extend T :: [I]`-Blöcken.
+    // All interfaces of a type with their substitution, mapping the interface generics to the type
+    // arguments from the '::'. Declared interfaces plus those from visible `extend T :: [I]` blocks.
     private IEnumerable<(TypeSymbol iface, Dictionary<GenericParamSymbol, LyrType> subst)> InterfacesOf(TypeSymbol ts)
     {
         foreach (var node in DeclaredInterfaceNodes(ts))
@@ -1899,17 +1830,17 @@ public sealed class TypeChecker
         _ => []
     };
 
-    /// <param name="instance">Die Instanz aus einem Typpfad mit Argumenten
-    /// (<c>Pair&lt;int&gt;.of(3)</c>). Ist sie da, wird der Typ des Members durch sie
-    /// substituiert — sonst stuende <c>T</c> im Ergebnis, und der Fehler kaeme als
-    /// „cannot assign 'int' to 'T'" eine Ebene zu spaet.</param>
+    /// <param name="instance">The instance from a type path with arguments
+    /// (<c>Pair&lt;int&gt;.of(3)</c>). When present, the member's type is substituted through it;
+    /// otherwise <c>T</c> stands in the result and the error arrives as "cannot assign 'int' to 'T'"
+    /// one level too late.</param>
     private (LyrType, Symbol?) MemberOfType(TypeSymbol ts, string member, Span span,
         GenericInstance? instance = null)
     {
-        // Ein generischer Typ OHNE Argumente in Wert-Position: '§6.2 TypePath' verlangt sie
-        // ausdruecklich („keine Feld-Inferenz"). Das hier zu sagen, statt es die Substitution
-        // stillschweigend nicht tun zu lassen, ist der Unterschied zwischen einer Meldung ueber
-        // die Ursache und einer ueber ihre Folge.
+        // A generic type WITHOUT arguments in value position: a type path requires them explicitly,
+        // as there is no field inference. Saying so here rather than letting the substitution
+        // silently not happen is the difference between a message about the cause and one about its
+        // consequence.
         if (instance is null && ts.Generics.Length > 0
             && ts.Members.LookupLocal(member) is FunctionSymbol or EnumVariantSymbol or GlobalSymbol)
             return (Report(span, "LYR-SEM0063",
@@ -1922,13 +1853,13 @@ public sealed class TypeChecker
 
         return ts.Members.LookupLocal(member) switch
         {
-            // ADR-014: ohne 'static' braucht die Methode einen Empfänger. Vorher lief `P.getHp()`
-            // durch und hätte beim Lowering einen Feldzugriff ohne Objekt erzeugt.
+            // Without 'static' the method needs a receiver; otherwise the lowering would produce a
+            // field access without an object.
             FunctionSymbol { IsStatic: false } fn => (Report(span, "LYR-SEM0055",
                 $"'{fn.Name}' is an instance method and needs a receiver — " +
                 $"call it on a value, or declare it 'static fn {member}(…)'"), fn),
 
-            FunctionSymbol fn => (Of(FnTypeOf(fn)), fn),             // static fn (z. B. die Fabrik Point.new)
+            FunctionSymbol fn => (Of(FnTypeOf(fn)), fn),             // a static fn, such as the factory Point.new
             GlobalSymbol g => (Of(TypeOfGlobalReference(g, span)), g), // static let
             EnumVariantSymbol ev => (Of(VariantConstructorType(ev, ts, span, instance)), ev),
 
@@ -1945,14 +1876,13 @@ public sealed class TypeChecker
             FunctionSymbol fn => (FnTypeOf(fn), fn),
             GlobalSymbol g => (TypeOfGlobalReference(g, span), g),
             ExternalSymbol ex => (LyrType.Error, ex),
-            TypeSymbol tsym => (LyrType.Error, tsym), // Typ als Wert → kein Ausdruckstyp
+            TypeSymbol tsym => (LyrType.Error, tsym), // a type as a value has no expression type
             _ => (Report(span, "LYR-SEM0012", $"module '{mod.FullName}' has no member '{member}'"), null)
         };
 
-    /// <param name="instance">Bei <c>Opt&lt;int&gt;.Some(5)</c> die Instanz. Sie ist der
-    /// ERGEBNISTYP der Konstruktion — den kann die Substitution nicht liefern, weil hier kein
-    /// Typparameter steht, sondern das nackte Enum-Symbol. Ohne sie meldete
-    /// <c>nimm(Opt&lt;int&gt;.Some(7))</c> „cannot assign 'Opt' to 'Opt&lt;int&gt;'".</param>
+    /// <param name="instance">The instance in <c>Opt&lt;int&gt;.Some(5)</c>. It is the RESULT TYPE of
+    /// the construction, which the substitution cannot supply, because what stands here is the bare
+    /// enum symbol rather than a type parameter.</param>
     private LyrType VariantConstructorType(EnumVariantSymbol ev, TypeSymbol enumTs, Span span,
         GenericInstance? instance = null)
     {
@@ -1963,7 +1893,7 @@ public sealed class TypeChecker
             return new FnType(v.TupleFields.Select(t => ResolveType(t, enumTs.Members)).ToArray(), result);
         if (v.StructFields is not null)
             return Report(span, "LYR-SEM0031", $"struct variant '{ev.Name}' must be constructed with '{ev.Name} {{ … }}'");
-        return result; // Unit-Variante als Wert
+        return result; // a unit variant as a value
     }
 
     private LyrType FieldType(FieldSymbol fs) => ResolveType(((FieldDecl)fs.Declaration!).Type, _comp.Builtins);
@@ -1972,8 +1902,8 @@ public sealed class TypeChecker
     {
         var (sym, owner) = ResolveInitPath(si.Path, scope);
 
-        // Enum-Struct-Variante (§3.4): qualifiziert (Shape.Triangle { … }) oder kontextuell
-        // (Triangle { … } in einer Position mit erwartetem Enum-Typ).
+        // An enum struct variant: qualified (Shape.Triangle { … }) or contextual (Triangle { … } in a
+        // position with an expected enum type).
         if (sym is EnumVariantSymbol ev && owner is not null)
             return CheckVariantInit(si, ev, owner, ExpectedInstance(expected, owner), scope);
         if (sym is null && si.Path.Length == 1 && EnumFromExpected(expected) is { } ex
@@ -1987,11 +1917,10 @@ public sealed class TypeChecker
             return LyrType.Error;
         }
 
-        // Ein HOST-Typ laesst sich nicht konstruieren (M10/E4, ADR-026). Er hat kein Layout, das
-        // dieses Modul kennt — der Host erzeugt ihn, das Skript reicht ihn weiter. Ohne diese
-        // Diagnose ist es ein Compiler-ABSTURZ: das Lowering legt ein Objekt nach der (leeren)
-        // Klassendeklaration an, waehrend die Variable den Host-Typ traegt, und der Verifier
-        // meldet 'cannot compare IrHostType with IrRefType'. Gemessen am 2026-08-11.
+        // A HOST type cannot be constructed. It has no layout this module knows: the host creates it
+        // and the script passes it on. Without this diagnostic it is a compiler crash — the lowering
+        // allocates an object after the empty class declaration while the variable carries the host
+        // type, and the verifier reports 'cannot compare IrHostType with IrRefType'.
         if (Ir.Lowering.HostTypes.NameOf(ts, _comp) is { } hostName)
         {
             _de.Report("LYR-SEM0061", Severity.Error, si.Span,
@@ -2001,7 +1930,7 @@ public sealed class TypeChecker
             return LyrType.Error;
         }
 
-        // Generischer Typ: explizite Typ-Argumente (Stack<int> { }); Feld-Inferenz ist nicht dabei.
+        // A generic type takes explicit type arguments (Stack<int> { }); there is no field inference.
         LyrType result;
         Dictionary<GenericParamSymbol, LyrType> subst;
         if (ts.Generics.Length > 0 || si.TypeArguments.Length > 0)
@@ -2037,14 +1966,14 @@ public sealed class TypeChecker
         return result;
     }
 
-    // Pfad-Auflösung für Struct-Init: läuft durch Module UND Typ-Member (Enum-Varianten).
-    // Liefert das Endsymbol plus — falls Enum-Variante — den umgebenden Enum-Typ.
+    // Path resolution for a struct initializer: runs through modules AND type members, meaning enum
+    // variants. Yields the final symbol plus, for an enum variant, the surrounding enum type.
     /// <summary>
-    /// <c>Pair&lt;int&gt;</c> als Ziel eines Member-Zugriffs (§6.2 TypePath).
+    /// <c>Pair&lt;int&gt;</c> as the target of a member access.
     ///
-    /// <para>Das Ergebnis ist wie bei einem gewoehnlichen Typnamen ein <see cref="NonValueType"/> —
-    /// ein Typ ist kein Wert, und wer ihn allein hinschreibt, bekommt <c>LYR-SEM0052</c> wie
-    /// vorher. Neu ist nur, dass er die aufgeloeste Instanz mitfuehrt.</para>
+    /// <para>The result is a <see cref="NonValueType"/>, as for an ordinary type name: a type is not
+    /// a value, and writing it alone gives <c>LYR-SEM0052</c>. It carries the resolved instance
+    /// along.</para>
     /// </summary>
     private LyrType CheckTypePath(TypePathExpr tp, SymbolTable scope)
     {
@@ -2089,7 +2018,7 @@ public sealed class TypeChecker
         return (cur, cur is EnumVariantSymbol ? owner : null);
     }
 
-    // Erwarteter Typ (Shape / ?Shape / Opt<int>) → Enum-Definition plus ggf. Instanz.
+    // The expected type (Shape, ?Shape, Opt<int>) yields the enum definition plus its instance.
     private static (TypeSymbol def, GenericInstance? instance)? EnumFromExpected(LyrType? expected)
     {
         var t = expected is Optional o ? o.Inner : expected;
@@ -2110,11 +2039,8 @@ public sealed class TypeChecker
         _result.BindRef(si, ev);
         var v = (EnumVariant)ev.Declaration!;
 
-        // GESCHRIEBENE Argumente schlagen den Kontext: 'Ev<int>.Hit { … }' sagt selbst, welche
-        // Instanz gemeint ist, und das gilt auch da, wo gar kein Kontext ist ('let e = …').
-        // Ohne diesen Zweig war eine Struct-Variante eines generischen Enums nur in einer
-        // Position mit erwartetem Typ konstruierbar — und die Meldung nannte ausgerechnet den
-        // Kontext als einzige Quelle.
+        // WRITTEN arguments beat the context: 'Ev<int>.Hit { … }' says itself which instance is
+        // meant, and that holds where there is no context at all ('let e = …').
         if (si.TypeArguments.Length > 0 && enumTs.Generics.Length > 0)
         {
             var written = si.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
@@ -2135,7 +2061,7 @@ public sealed class TypeChecker
         if (instance is not null) result = instance;
         else if (enumTs.Generics.Length > 0 || si.TypeArguments.Length > 0)
         {
-            // Generisches Enum ohne Kontext-Instanz (bzw. Typ-Args an der Variante statt am Enum).
+            // A generic enum without a context instance, or with type arguments on the variant.
             _de.Report("LYR-SEM0026", Severity.Error, si.Span,
                 $"generic enum '{enumTs.Name}' expects {enumTs.Generics.Length} type argument(s) "
                 + "— write them ('Enum<int>.Variant { … }') or use it where the type is known");
@@ -2169,16 +2095,12 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Ein <c>if</c> als Ausdruck — mit Flow-Narrowing in beiden Zweigen, wie das Statement.
+    /// An <c>if</c> as an expression, with flow narrowing in both branches, like the statement form.
     /// </summary>
     /// <remarks>
-    /// <para>Hier stand nur <c>CheckExpr</c> je Zweig, ohne Narrowing. Damit war
-    /// <c>if (a == null) 0 else a</c> ein Typfehler (<c>LYR-SEM0001</c>), obwohl die
-    /// Statement-Form <c>if (a == null) { return 0; } return a;</c> daneben funktionierte — für
-    /// denselben Beweis über denselben Wert.</para>
-    /// <para>Die Maschinerie war vollständig da (<see cref="NarrowingFacts"/>, <c>Apply</c>); sie
-    /// war an dieser einen Stelle nicht angeschlossen. Beim Bau von <c>std.fmt</c>
-    /// hineingelaufen, wo <c>digitToChar</c> genau diese Form nahelegt.</para>
+    /// <para>Without the narrowing, <c>if (a == null) 0 else a</c> would be a type error
+    /// (<c>LYR-SEM0001</c>) although the statement form <c>if (a == null) { return 0; } return a;</c>
+    /// works next to it, for the same proof about the same value.</para>
     /// </remarks>
     private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope)
     {
@@ -2190,8 +2112,8 @@ public sealed class TypeChecker
         Apply(thenFacts);
         var thenT = CheckExpr(iff.Then, scope);
 
-        // Zurueck auf den Stand VOR dem then-Zweig: was dort galt, gilt im else-Zweig gerade
-        // nicht — das ist der ganze Punkt.
+        // Back to the state BEFORE the then branch: what held there is precisely what does not hold
+        // in the else branch.
         _narrowed = new Dictionary<Symbol, LyrType>(snapshot, ReferenceEqualityComparer.Instance);
         Apply(elseFacts);
         var elseT = CheckExpr(iff.Else, scope);
@@ -2201,25 +2123,22 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Ein <c>null</c>-Zweig macht den anderen optional: <c>if (c) 5 else null</c> ist
-    /// <c>?int</c>. Liefert <c>null</c>, wenn keine Seite das <c>null</c>-Literal ist.
+    /// A <c>null</c> branch makes the other one optional: <c>if (c) 5 else null</c> is <c>?int</c>.
+    /// Yields <c>null</c> when neither side is the <c>null</c> literal.
     ///
-    /// <para>Der Fall geht ueber <c>IsAssignable</c> in <b>beide</b> Richtungen nicht — <c>null</c>
-    /// ist kein <c>int</c>, und <c>int</c> ist kein <c>null</c>. Die Widening-Regel
-    /// <c>T</c> → <c>?T</c> (§4) steht in der Spec, griff aber nur dort, wo ein Zieltyp bereits
-    /// feststand (Zuweisung, Parameter, Rueckgabe). Bei einer Arm-Unifikation gibt es keinen —
-    /// der Ergebnistyp entsteht erst hier.</para>
+    /// <para>The case does not go through <c>IsAssignable</c> in EITHER direction: <c>null</c> is no
+    /// <c>int</c>, and <c>int</c> is no <c>null</c>. The widening rule <c>T</c> to <c>?T</c> applies
+    /// only where a target type already stands — an assignment, a parameter, a return. In an arm
+    /// unification there is none; the result type arises here.</para>
     ///
-    /// <para>Steht hier und nicht zweimal, weil <c>if</c>-Ausdruck und <c>match</c>-Ausdruck
-    /// getrennte Unifikationen haben. Beim Fund (M8b/S9) war nur der <c>if</c>-Fall gemeldet; der
-    /// <c>match</c>-Fall fiel beim Nachmessen des Fixes auf. Dieselbe Frage an zwei Stellen mit
-    /// zwei Antworten — das Muster, das dieses Projekt achtmal Zeit gekostet hat.</para>
+    /// <para>One function rather than two, because the <c>if</c> expression and the <c>match</c>
+    /// expression have separate unifications.</para>
     /// </summary>
     private static LyrType? WidenAgainstNull(LyrType a, LyrType b)
     {
         if (a is NullType && b is not NullType) return b is Optional ? b : new Optional(b);
         if (b is NullType && a is not NullType) return a is Optional ? a : new Optional(a);
-        return null;   // auch der Fall null/null: dort bleibt es beim `Equal` weiter oben
+        return null;   // the null/null case too: there the `Equal` above already decided
     }
 
     private LyrType Unify(Expr ae, LyrType a, Expr be, LyrType b, Span span)
@@ -2228,15 +2147,14 @@ public sealed class TypeChecker
         if (a.IsError) return b;
         if (b.IsError) return a;
 
-        // Ein `null`-Zweig macht den anderen optional: `if (c) 5 else null` ist `?int`.
+        // A `null` branch makes the other one optional: `if (c) 5 else null` is `?int`.
         //
-        // Der Fall geht ueber `IsAssignable` nicht, und zwar in beide Richtungen nicht — `null`
-        // ist nicht `int`, und `int` ist nicht `null`. Die Widening-Regel `T` -> `?T` (§4) steht
-        // in der Spec, griff aber nur dort, wo ein Zieltyp schon feststand (Zuweisung, Parameter,
-        // Rueckgabe). Bei der Arm-Unifikation gibt es keinen, also musste er hier entstehen.
+        // The case does not go through `IsAssignable` in either direction: `null` is not `int`, and
+        // `int` is not `null`. The widening rule `T` -> `?T` applies only where a target type already
+        // stands — an assignment, a parameter, a return. In an arm unification there is none.
         //
-        // `?T` gegen `T` braucht keine eigene Zeile: dort traegt `IsAssignable` das Widening
-        // bereits, weil eine der beiden Seiten der fertige Zieltyp ist.
+        // `?T` against `T` needs no line of its own: `IsAssignable` carries the widening there,
+        // because one of the two sides is the finished target type.
         if (WidenAgainstNull(a, b) is { } widened) return widened;
 
         if (IsAssignable(be, b, a)) return a;
@@ -2261,8 +2179,8 @@ public sealed class TypeChecker
             {
                 case Block b:
                     CheckBlock(b, armScope);
-                    // Blöcke haben keinen Wert: im match-AUSDRUCK muss ein Block-Arm die
-                    // Funktion auf jedem Pfad verlassen; er trägt nichts zur Unifikation bei.
+                    // Blocks have no value: in a match EXPRESSION a block arm has to leave the
+                    // function on every path, and it contributes nothing to the unification.
                     if (asExpression && !Flow.AlwaysReturns(b, _result))
                         _de.Report("LYR-SEM0033", Severity.Error, arm.Span,
                             "a block arm of a match expression must return or throw on every path (blocks have no value)");
@@ -2272,14 +2190,14 @@ public sealed class TypeChecker
                     break;
             }
         }
-        // Fehlerhafte Patterns würden nur Folge-Rauschen produzieren → Exhaustivität dann skippen.
+        // Faulty patterns would only produce follow-up noise, so exhaustiveness is skipped then.
         if (patternsClean && !st.IsError)
             CheckExhaustiveness(match, st, arms);
         return bodies;
     }
 
-    // --- Exhaustivität (§5, D4 pragmatisch): Enum-Varianten, bool und ?T werden aufgezählt,
-    // --- offene Typen (int, string, …) brauchen einen '_'-/Bindungs-Arm. Guards zählen nicht.
+    // --- exhaustiveness: enum variants, bool and ?T are enumerated, while open types (int, string,
+    // --- …) need a '_' or binding arm. Guards do not count. ---
 
     private void CheckExhaustiveness(Node match, LyrType scrutinee, MatchArm[] arms)
     {
@@ -2332,11 +2250,11 @@ public sealed class TypeChecker
                         if (CoveredVariant(p, type, enumTs) is { } name) covered.Add(name);
                     return ed.Variants.Where(v => !covered.Contains(v.Name)).Select(v => v.Name).ToList();
                 }
-                return ["_"]; // offener Typ: nur per Default abdeckbar
+                return ["_"]; // an open type is coverable only by a default
         }
     }
 
-    // Welche Variante deckt dieses Pattern vollständig ab (Payload irrefutabel)?
+    // Which variant does this pattern cover completely, with an irrefutable payload?
     private string? CoveredVariant(Pattern p, LyrType scrutinee, TypeSymbol enumTs)
     {
         switch (p)
@@ -2369,17 +2287,17 @@ public sealed class TypeChecker
             if (variant.StructFields is null) return false;
             foreach (var fp in fps)
             {
-                if (fp.Pattern is null) continue; // Kurzform bindet nur — irrefutabel
+                if (fp.Pattern is null) continue; // the short form only binds, so it is irrefutable
                 var fd = Array.Find(variant.StructFields, f => f.Name == fp.Name);
                 if (fd is null || !IsIrrefutable(fp.Pattern, Substitute(ResolveType(fd.Type, enumTs.Members), subst)))
                     return false;
             }
             return true;
         }
-        return variant.TupleFields is null && variant.StructFields is null; // qualifizierte Unit-Variante
+        return variant.TupleFields is null && variant.StructFields is null; // a qualified unit variant
     }
 
-    // Matcht dieses Pattern JEDEN Wert des Typs?
+    // Does this pattern match EVERY value of the type?
     private bool IsIrrefutable(Pattern p, LyrType type)
     {
         switch (p)
@@ -2389,8 +2307,8 @@ public sealed class TypeChecker
             case OrPattern o:
                 return o.Alternatives.Any(a => IsIrrefutable(a, type));
             case BindingPattern b:
-                if (type is Optional) return false; // bindet den Inner-Teil, deckt null nicht ab
-                return EnumDefOf(type) is not { } e || VariantOf(e, b.Name) is null; // Varianten-Name = Test
+                if (type is Optional) return false; // binds the inner part and does not cover null
+                return EnumDefOf(type) is not { } e || VariantOf(e, b.Name) is null; // a variant name is a test
             case TuplePattern t:
                 if (type is not TupleOf tt || tt.Elements.Length != t.Elements.Length) return false;
                 for (var i = 0; i < t.Elements.Length; i++)
@@ -2402,7 +2320,7 @@ public sealed class TypeChecker
                         && VariantCovered(v, ev, type, enumTs);
                 return StructDestructureIrrefutable(v, type);
             default:
-                return false; // Literal / Range
+                return false; // a literal or a range
         }
     }
 
@@ -2435,15 +2353,15 @@ public sealed class TypeChecker
         return result;
     }
 
-    // Pattern-Bindungen (§6.3): jede Form typt ihre Bindungen echt gegen den Scrutinee-Typ.
-    // Nicht-null-Patterns auf ?T matchen gegen T (Doku §6: 'null => …, u => u.name');
-    // Fehler poisonen ihre Sub-Bindungen, damit Arm-Bodies nicht kaskadieren.
+    // Pattern bindings: every form types its bindings against the scrutinee type. Non-null patterns
+    // on a ?T match against T ('null => …, u => u.name'), and errors poison their sub-bindings, so arm
+    // bodies do not cascade.
     /// <summary>
-    /// <c>let (a, b) = paar;</c> (Sprache.md §4).
+    /// <c>let (a, b) = pair;</c>
     ///
-    /// <para>Der Initialisierer muss ein Tupel passender Aritaet liefern; die Namen bindet
-    /// dieselbe Routine, die auch ein <c>match</c>-Arm benutzt. Zwei Wege, Namen aus einem Muster
-    /// zu binden, waeren zwei Gelegenheiten fuer verschiedene Antworten.</para>
+    /// <para>The initializer has to yield a tuple of matching arity; the names are bound by the same
+    /// routine a <c>match</c> arm uses. Two ways to bind names from a pattern would be two
+    /// opportunities for different answers.</para>
     /// </summary>
     private void CheckDestructuring(DestructuringStmt stmt, SymbolTable scope)
     {
@@ -2453,7 +2371,7 @@ public sealed class TypeChecker
         if (declared is not null) CheckAssignable(stmt.Initializer, actual, declared, stmt.Span);
         var source = declared ?? actual;
 
-        if (source.IsError) return; // schon gemeldet
+        if (source.IsError) return; // already reported
 
         if (source is not TupleOf tuple)
         {
@@ -2495,7 +2413,7 @@ public sealed class TypeChecker
                     if ((EnumVariant)bev.Declaration! is not { TupleFields: null, StructFields: null })
                         _de.Report("LYR-SEM0031", Severity.Error, b.Span,
                             $"variant '{b.Name}' carries a payload — destructure it ('{b.Name}(…)' or '{b.Name} {{ … }}')");
-                    _result.BindRef(b, bev); // Unit-Varianten-Test, keine Bindung
+                    _result.BindRef(b, bev); // a unit variant test, not a binding
                     return;
                 }
                 var local = new LocalSymbol(b.Name, scrutinee, mutable, b);
@@ -2527,7 +2445,7 @@ public sealed class TypeChecker
             case OrPattern o:
                 BindOrPattern(o, scrutinee, scope);
                 return;
-            // Wildcard/Error: keine Bindung
+            // wildcard or error: no binding
         }
     }
 
@@ -2561,7 +2479,7 @@ public sealed class TypeChecker
     {
         if (EnumDefOf(scrutinee) is { } enumTs)
         {
-            // Qualifizierter Pfad (Shape.Circle) muss auf GENAU dieses Enum zeigen.
+            // A qualified path (Shape.Circle) has to point at EXACTLY this enum.
             if (v.Path.Length > 1
                 && !ReferenceEquals(ResolveNamePath(v.Path, v.Path.Length - 1, scope), enumTs))
             {
@@ -2581,7 +2499,7 @@ public sealed class TypeChecker
             return;
         }
 
-        // Struct-/Class-Destructuring: Point { x, y }
+        // struct and class destructuring: Point { x, y }
         var (def, subst) = DefinitionOf(scrutinee);
         if (def is null)
         {
@@ -2670,7 +2588,7 @@ public sealed class TypeChecker
             return;
         }
 
-        // Qualifizierte Unit-Variante (Shape.Empty): darf keinen Payload haben.
+        // A qualified unit variant (Shape.Empty) must have no payload.
         if (variant.TupleFields is not null || variant.StructFields is not null)
             Report(v.Span, "LYR-SEM0031", $"variant '{ev.Name}' carries a payload — destructure it");
     }
@@ -2678,7 +2596,7 @@ public sealed class TypeChecker
     private void BindFieldPattern(FieldPattern fp, LyrType type, SymbolTable scope)
     {
         if (fp.Pattern is not null) { BindPattern(fp.Pattern, type, scope); return; }
-        var local = new LocalSymbol(fp.Name, type, false, fp); // Kurzform: Feldname bindet
+        var local = new LocalSymbol(fp.Name, type, false, fp); // short form: the field name binds
         scope.TryDeclare(local);
         _result.BindRef(fp, local);
     }
@@ -2691,9 +2609,9 @@ public sealed class TypeChecker
         _result.BindRef(fp, local);
     }
 
-    // Or-Pattern (§6.3): jede Alternative bindet in eine eigene Tabelle; alle müssen dieselben
-    // Namen mit denselben Typen binden. Die Bindungen der ERSTEN Alternative werden zum
-    // Arm-Scope (konsistent mit der DAA, die Alternative 0 nutzt).
+    // Or-pattern: every alternative binds into a table of its own, and all of them have to bind the
+    // same names with the same types. The bindings of the FIRST alternative become the arm scope,
+    // consistently with the definite-assignment analysis, which uses alternative 0.
     private void BindOrPattern(OrPattern o, LyrType scrutinee, SymbolTable scope)
     {
         if (o.Alternatives.Length == 0) return;
@@ -2723,7 +2641,7 @@ public sealed class TypeChecker
         foreach (var s in reference) scope.TryDeclare(s);
     }
 
-    // --- Pattern-Helfer ---
+    // --- pattern helpers ---
 
     private static bool IsNullPattern(Pattern p) => p is LiteralPattern { Literal: NullLiteralExpr };
 
@@ -2744,7 +2662,7 @@ public sealed class TypeChecker
         _ => (null, EmptySubst)
     };
 
-    // Löst die ersten count Segmente eines Pattern-Pfads über den Scope auf (Module/Imports).
+    // Resolves the first count segments of a pattern path through the scope: modules and imports.
     private static Symbol? ResolveNamePath(string[] path, int count, SymbolTable scope)
     {
         var cur = scope.Lookup(path[0]);
@@ -2786,7 +2704,7 @@ public sealed class TypeChecker
         }
     }
 
-    // resume co (§8): liefert den Wert des nächsten yield.
+    // resume co: yields the value of the next yield.
     private LyrType CheckResume(ResumeExpr re, SymbolTable scope)
     {
         var t = CheckExpr(re.Coroutine, scope);
@@ -2798,17 +2716,17 @@ public sealed class TypeChecker
         };
     }
 
-    // Lambda mit bidirektionaler Inferenz (D5): unannotierte Parameter nehmen den
-    // Kontext-FnType, der Return-Kontext (Annotation vor Kontext) typt den Body.
-    // Block-Lambdas (D9): liefern Werte nur über 'return' — der Return-Typ muss aus
-    // Annotation oder Kontext kommen, nicht-void verlangt Return-Coverage.
+    // A lambda with bidirectional inference: unannotated parameters take the context FnType, and the
+    // return context — an annotation before the context — types the body. Block lambdas yield values
+    // through 'return' only, so the return type has to come from an annotation or the context, and a
+    // non-void one requires return coverage.
     private LyrType CheckLambda(LambdaExpr lam, SymbolTable scope, LyrType? expected = null)
     {
         var expFn = expected is FnType ef && ef.Parameters.Length == lam.Parameters.Length ? ef : null;
 
         var savedYield = _currentYield;
         var savedReturn = _currentReturn;
-        _currentYield = null; // Lambda ist keine Coroutine — yield darin ist ein Fehler
+        _currentYield = null; // a lambda is no coroutine, so a yield inside it is an error
 
         var lambdaScope = new SymbolTable(scope);
         var pTypes = new LyrType[lam.Parameters.Length];
@@ -2822,13 +2740,13 @@ public sealed class TypeChecker
                 $"lambda parameter '{p.Name}' needs a type annotation (no context type available)");
             var ps = new ParameterSymbol(p.Name, pt, p);
             lambdaScope.TryDeclare(ps);
-            _result.BindRef(p, ps); // for definite-assignment analysis (Lambda-Params sind zugewiesen)
+            _result.BindRef(p, ps); // for definite-assignment analysis: lambda parameters are assigned
             pTypes[i] = pt;
         }
 
         var contextRet = lam.ReturnType is not null ? ResolveType(lam.ReturnType, scope) : expFn?.Return;
-        // Kontext-Return mit noch UNGEBUNDENEN Typ-Params (map(xs, (x) => …): U offen):
-        // nicht dagegen prüfen — der Ist-Typ des Bodys bindet U in Phase C nach.
+        // A context return with type parameters still UNBOUND (map(xs, (x) => …), where U is open) is
+        // not checked against: the body's actual type binds U in phase C.
         var openGeneric = lam.ReturnType is null && contextRet is not null && ContainsTypeParam(contextRet);
         LyrType ret;
         switch (lam.Body)
@@ -2839,15 +2757,15 @@ public sealed class TypeChecker
                 else
                 {
                     ret = contextRet;
-                    if (!TypeFacts.IsVoid(contextRet)) // void-Kontext verwirft den Wert: () => doStuff()
+                    if (!TypeFacts.IsVoid(contextRet)) // a void context discards the value: () => doStuff()
                         CheckAssignable(e, bt, contextRet, e.Span);
                 }
                 break;
             case Block b:
                 if (contextRet is null && !openGeneric && !HasValueReturn(b))
                 {
-                    // D11: Block-Lambda ohne Kontext, das keinen Wert zurückgibt → void.
-                    // Seiteneffekt-Closures (`() => { doStuff(); }`) brauchen kein `: void`.
+                    // A block lambda without context that returns no value becomes void, so
+                    // side-effect closures (`() => { doStuff(); }`) need no `: void`.
                     ret = LyrType.Void;
                     _currentReturn = LyrType.Void;
                     CheckBlock(b, lambdaScope);
@@ -2857,13 +2775,13 @@ public sealed class TypeChecker
                     ret = Report(lam.Span, "LYR-SEM0046", openGeneric
                         ? "cannot infer a generic return type for a block lambda — add a return type annotation"
                         : "a block lambda that returns a value needs a return type annotation or a context type");
-                    _currentReturn = LyrType.Error; // returns im Body nicht kaskadieren lassen
+                    _currentReturn = LyrType.Error; // do not let returns in the body cascade
                     CheckBlock(b, lambdaScope);
                 }
                 else
                 {
                     ret = contextRet;
-                    _currentReturn = contextRet; // 'return' gehört der LAMBDA, nicht der umgebenden Funktion
+                    _currentReturn = contextRet; // 'return' belongs to the LAMBDA, not to the enclosing function
                     CheckBlock(b, lambdaScope);
                     if (!TypeFacts.IsVoid(contextRet) && !contextRet.IsError && !Flow.AlwaysReturns(b, _result))
                         _de.Report("LYR-SEM0046", Severity.Error, lam.Span,
@@ -2882,9 +2800,9 @@ public sealed class TypeChecker
         return new FnType(pTypes, ret);
     }
 
-    // Gibt der Block auf irgendeinem Pfad einen WERT zurück (`return expr;`)? Steigt durch die
-    // Statement-Struktur, aber NICHT in verschachtelte Lambdas (deren return gehört ihnen). Für
-    // den D11-void-Default: nur wertlose Block-Lambdas ohne Kontext dürfen void werden.
+    // Does the block return a VALUE on any path (`return expr;`)? Descends through the statement
+    // structure but NOT into nested lambdas, whose returns belong to them. For the void default:
+    // only valueless block lambdas without context may become void.
     private static bool HasValueReturn(Stmt s) => s switch
     {
         ReturnStmt r => r.Value is not null,
@@ -2912,8 +2830,8 @@ public sealed class TypeChecker
         _ => false
     };
 
-    // Implizite Captures (ADR-011): alle referenzierten Locals/Params, deren Deklaration
-    // AUSSERHALB der Lambda liegt, plus this-Nutzung. Seiten-Tabelle für das M5-Lifting.
+    // Implicit captures: every referenced local and parameter whose declaration lies OUTSIDE the
+    // lambda, plus the use of 'this'. A side table for closure lifting.
     private void RecordCaptures(LambdaExpr lam)
     {
         var captured = new List<Symbol>();
@@ -2931,7 +2849,7 @@ public sealed class TypeChecker
                         && !DeclaredInside(sym) && seen.Add(sym))
                         captured.Add(sym);
                     return;
-                case LambdaExpr inner: // verschachtelt: der Span-Test sortiert Inner-Deklarationen aus
+                case LambdaExpr inner: // nested: the span test sorts out inner declarations
                     WalkNode(inner.Body);
                     return;
                 case Block b: foreach (var s in b.Statements) WalkNode(s); return;
@@ -2985,30 +2903,23 @@ public sealed class TypeChecker
         if (captured.Count > 0 || capturesThis)
             _result.SetCaptures(lam, captured, capturesThis);
 
-        // ADR-018: gefangene 'var' werden geteilt, nicht kopiert — sie brauchen eine Zelle.
-        // Konservativ: es zaehlt nicht, OB die Closure schreibt, sondern dass sie es koennte.
-        // Eine Analyse „wird nach der Erzeugung noch zugewiesen" waere eine Optimierung und
-        // haette einen zweiten Wahrheitsbegriff fuer dieselbe Frage.
+        // Captured 'var' bindings are shared rather than copied, so they need a cell. Conservatively:
+        // what counts is not WHETHER the closure writes, but that it could.
         foreach (var symbol in captured)
             if (symbol is LocalSymbol { IsMutable: true }) _result.MarkBoxed(symbol);
     }
 
-    // --- Numerik / Zuweisbarkeit / Literal-Fit (①A / ②a) ---
+    // --- arithmetic, assignability, literal fit ---
 
     /// <summary>
-    /// Zwei numerische Operanden auf einen Typ bringen — ein untypisiertes Literal passt sich dem
-    /// anderen an (§6.5).
+    /// Brings two numeric operands to one type; an untyped literal adapts to the other.
     /// </summary>
     /// <remarks>
-    /// <para>Die Anpassung wird hier auch <b>notiert</b>, nicht nur geprüft. Vorher stand hier
-    /// bloß <c>LiteralAdaptsTo</c>: die Sema akzeptierte <c>a + 1</c> mit <c>a: int8</c>, notierte
-    /// für die <c>1</c> aber weiter <c>int</c>, und das Lowering schob ein <c>const i64</c> neben
-    /// einen i8-Operanden. Ergebnis war kein Fehler, sondern ein <b>Compiler-Absturz</b> im
-    /// IR-Verifier — „operand types differ".</para>
-    /// <para>Genau diesen Fehler beschreibt <see cref="AdaptLiteralType"/> in seinen Remarks, für
-    /// den Zuweisungs-Pfad. Dort wurde er behoben, hier nicht: eine Regel, zwei Stellen, eine
-    /// vergessen. Aufgefallen ist es erst über <c>char</c> (ADR-022), weil der Typ neu genug war,
-    /// dass jemand <c>c + 1</c> ausprobiert hat.</para>
+    /// <para>The adaptation is RECORDED here, not only checked. With <c>LiteralAdaptsTo</c> alone the
+    /// sema accepts <c>a + 1</c> with <c>a: int8</c> but still notes <c>int</c> for the <c>1</c>, and
+    /// the lowering puts a <c>const i64</c> next to an i8 operand — a compiler crash in the IR
+    /// verifier with "operand types differ".</para>
+    /// <para><see cref="AdaptLiteralType"/> describes the same error for the assignment path.</para>
     /// </remarks>
     private LyrType? UnifyNumeric(Expr le, LyrType l, Expr re, LyrType r)
     {
@@ -3016,13 +2927,13 @@ public sealed class TypeChecker
 
         if (TypeFacts.IsNumeric(l) && l is PrimitiveType pl && LiteralAdaptsTo(re, pl))
         {
-            AdaptLiteralType(re, pl);   // r passt sich l an
+            AdaptLiteralType(re, pl);   // r adapts to l
             return l;
         }
 
         if (TypeFacts.IsNumeric(r) && r is PrimitiveType pr && LiteralAdaptsTo(le, pr))
         {
-            AdaptLiteralType(le, pr);   // l passt sich r an
+            AdaptLiteralType(le, pr);   // l adapts to r
             return r;
         }
 
@@ -3033,10 +2944,10 @@ public sealed class TypeChecker
     {
         if (AdaptEmptyArray(expr, to)) return;
 
-        // Ein Fehler IN einem der Typen heisst: die Ursache ist gemeldet (Poison-Regel). Bisher
-        // galt das nur, wenn der Typ SELBST ErrorType war — ein 'fn(int) -> <error>' ging durch
-        // und erzeugte "cannot assign 'fn(int) -> <error>' to 'fn(int) -> U'", eine Zeile, die
-        // dem Leser nichts sagt und die eigentliche Meldung daneben zudeckt.
+        // An error INSIDE one of the types means the cause is already reported, by the poison rule.
+        // Testing only whether the type ITSELF is an ErrorType lets a 'fn(int) -> <error>' through and
+        // produces "cannot assign 'fn(int) -> <error>' to 'fn(int) -> U'", which says nothing to the
+        // reader and buries the actual message next to it.
         if (ContainsError(from) || ContainsError(to)) return;
 
         if (!IsAssignable(expr, from, to))
@@ -3049,51 +2960,45 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// Ein untypisiertes Literal <b>ist</b> vom Zieltyp, es wird nicht dorthin konvertiert
-    /// (Sprache.md §6.5: „passt sich dem Kontext an"). Also muss die Seitentabelle das auch sagen —
-    /// sonst hält jede spätere Stufe `let x: int8 = 5` für ein `int`.
+    /// An untyped literal IS of the target type; it is not converted to it. The side table therefore
+    /// has to say so as well, or every later stage takes `let x: int8 = 5` for an `int`.
     /// </summary>
-    /// <remarks>Ohne diesen Schritt prüft die Sema den Literal-Fit korrekt, notiert aber weiter den
-    /// Default-Typ; das Lowering erzeugt dann brav ein `const i64` und schiebt es in einen
-    /// i8-Slot. Aufgefallen ist das erst, als die VM solche Programme tatsächlich ausführte.</remarks>
+    /// <remarks>Without this step the sema checks the literal fit correctly but keeps noting the
+    /// default type; the lowering then produces a `const i64` and pushes it into an i8 slot.</remarks>
     private void AdaptLiteralType(Expr expr, LyrType to)
     {
-        while (to is Optional optional) to = optional.Inner; // T → ?T: das Literal nimmt T an
+        while (to is Optional optional) to = optional.Inner; // T to ?T: the literal takes T
 
         if (to is not PrimitiveType target || !LiteralAdaptsTo(expr, target)) return;
 
         _result.SetType(expr, target);
-        // '-5' ist UnaryExpr(Neg, IntLiteral 5) — beide Knoten tragen den angepassten Typ.
+        // '-5' is UnaryExpr(Neg, IntLiteral 5); both nodes carry the adapted type.
         if (expr is UnaryExpr { Operator: UnaryOp.Neg } negated)
             _result.SetType(negated.Operand, target);
     }
 
 
     /// <summary>
-    /// Ein <c>struct</c> darf sich nicht — auch nicht über Umwege — selbst als Feld enthalten.
+    /// A <c>struct</c> must not contain itself as a field, not even indirectly.
     ///
-    /// <para>Für einen Referenztyp ist <c>class Node { next: Node }</c> völlig in Ordnung: ein Feld
-    /// hält einen Verweis, und der ist ein Maschinenwort. Ein Wert-Typ enthält seine Felder
-    /// dagegen <b>der Größe nach</b>; ein struct, das sich selbst enthält, wäre unendlich groß.
-    /// Rust meldet das als „recursive type has infinite size", C# als CS0523.</para>
+    /// <para>For a reference type <c>class Node { next: Node }</c> is fine: a field holds a reference,
+    /// and that is one machine word. A value type contains its fields BY SIZE, so a struct containing
+    /// itself would be infinitely large. Rust reports "recursive type has infinite size", C# reports
+    /// CS0523.</para>
     ///
-    /// <para>Bis P4 fiel es nicht auf, weil Structs gar nicht gelowert wurden — der Compiler kam
-    /// nie an den Punkt, an dem er ein Layout hätte bauen müssen. Ohne diese Prüfung würde
-    /// <see cref="Lyric.Ir.Lowering.TypeTable"/> hier in eine Endlosschleife laufen: bei Klassen
-    /// terminiert sie über die vorab vergebene Id, aber ein Wert-Typ braucht sein Layout
-    /// vollständig, bevor er fertig ist.</para>
+    /// <para>Without this check <see cref="Lyric.Ir.Lowering.TypeTable"/> would loop forever here:
+    /// for classes it terminates through the pre-assigned id, but a value type needs its layout
+    /// complete before it is finished.</para>
     ///
-    /// <para>Der Ausweg für den Nutzer ist derselbe wie in Rust und C#: eine Indirektion, also
-    /// <c>class</c> oder <c>?T</c>… — Letzteres reicht hier allerdings nicht, weil <c>?Struct</c>
-    /// den Wert weiterhin der Größe nach hält. In v1 bleibt <c>class</c>.</para>
+    /// <para>The way out is the same as in Rust and C#: an indirection, meaning <c>class</c>. A
+    /// <c>?T</c> does not suffice, because <c>?Struct</c> still holds the value by size.</para>
     /// </summary>
     private void CheckStructIsFinite(StructDecl decl, ModuleSymbol module)
     {
         if (module.Members.LookupLocal(decl.Name) is not TypeSymbol self) return;
 
-        // Der Pfad wird mitgeführt, damit die Meldung den Zyklus benennt statt nur seine
-        // Existenz — bei 'A enthält B enthält A' ist das der Unterschied zwischen einer
-        // brauchbaren und einer ratlos machenden Diagnose.
+        // The path is carried along so the message can name the cycle rather than only its existence:
+        // for 'A contains B contains A' that is the whole difference.
         var path = new List<string> { decl.Name };
         if (FindStructCycle(self, self, new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance), path))
             _de.Report("LYR-SEM0056", Severity.Error, decl.Span,
@@ -3109,8 +3014,8 @@ public sealed class TypeChecker
 
         foreach (var field in decl.Members.OfType<FieldDecl>())
         {
-            // Nur direkt gehaltene Structs zählen. Ein Array ist eine Referenz (ADR-016), eine
-            // Klasse ebenso — beide brechen die Kette.
+            // Only directly held structs count. An array is a reference and so is a class; both break
+            // the chain.
             if (field.Type is not NamedType named) continue;
 
             var bound = _binding.Resolve(named);
@@ -3128,56 +3033,47 @@ public sealed class TypeChecker
 
     private bool IsAssignable(Expr expr, LyrType from, LyrType to)
     {
-        if (from.IsError || to.IsError) return true;      // Poison: keine Folgefehler
-        if (from is NeverType) return true;               // Bottom-Typ: panic(...) passt überall
+        if (from.IsError || to.IsError) return true;      // poison: no follow-up errors
+        if (from is NeverType) return true;               // the bottom type: panic(...) fits anywhere
         if (LyrType.Equal(from, to)) return true;
-        if (to is Optional inner)                          // T → ?T (Widening §4)
+        if (to is Optional inner)                          // T to ?T, widening
             return from is NullType || IsAssignable(expr, from, inner.Inner);
         if (from is NullType) return false;
-        if (to is PrimitiveType pt && LiteralAdaptsTo(expr, pt)) return true; // ②a Literal-Fit
-        if (ImplementsInterface(from, to)) return true;   // T -> I, wenn T :: [I] (§3.5)
+        if (to is PrimitiveType pt && LiteralAdaptsTo(expr, pt)) return true; // literal fit
+        if (ImplementsInterface(from, to)) return true;   // T to I when T :: [I]
         return false;
     }
 
     /// <summary>
-    /// Nominales Subtyping: ein Wert darf ueberall stehen, wo eines seiner deklarierten Interfaces
-    /// erwartet wird (<c>Doku.md</c> §13, <c>Sprache.md</c> §3.5).
+    /// Nominal subtyping: a value may stand wherever one of its declared interfaces is expected.
     ///
-    /// <para>Nur in <b>diese</b> Richtung. Der Rueckweg — Interface auf Klasse — waere ein
-    /// Downcast, und den kennt die Sprache nicht: <c>Sprache.md</c> §6.5 laesst <c>as</c>
-    /// ausschliesslich zwischen Numerik zu. Deshalb braucht ein Interface-Wert auch keine
-    /// Laufzeit-Typpruefung.</para>
+    /// <para>In THIS direction only. The way back — an interface to a class — would be a downcast, and
+    /// the language has none: <c>as</c> converts between numeric types only. An interface value
+    /// therefore needs no runtime type check.</para>
     ///
-    /// <para>Die Frage selbst beantwortet <see cref="Conformance"/> — dieselbe Stelle, die auch
-    /// der Konformanz-Check und das IR-Lowering fragen. Drei Antworten auf „erfuellt T das
-    /// Interface I" waeren drei Gelegenheiten, dass die Runtime auf etwas dispatcht, das nie
-    /// geprueft wurde.</para>
+    /// <para>The question itself is answered by <see cref="Conformance"/>, the same place the
+    /// conformance check and the IR lowering ask.</para>
     /// </summary>
     private bool ImplementsInterface(LyrType from, LyrType to)
     {
-        // Das Ziel kann ein generisches Interface sein ('Src<int>') — dann ist es eine
-        // GenericInstance und keine NamedRef. Ohne diesen Fall waere jede Zuweisung an ein
-        // generisches Interface ein Typfehler, und 'Iterator<T>' unbenutzbar.
+        // The target may be a generic interface ('Src<int>'), in which case it is a GenericInstance
+        // rather than a NamedRef. Without this case every assignment to a generic interface is a type
+        // error and 'Iterator<T>' is unusable.
         if (TypeFacts.KindOf(to) != TypeSymbolKind.Interface) return false;
         var target = TypeFacts.SymbolOf(to)!;
 
-        // Konformanz kann DEKLARIERT sein ('class P :: [I]') oder aus einem sichtbaren
-        // 'extend P :: [I]' kommen (§3.6). Beides ist dieselbe Frage, also beantwortet sie
-        // dieselbe Funktion. Bis P9b standen hier zwei: diese hier ohne Extensions, und
-        // 'Satisfies' fuer Constraints mit. Ein Constraint akzeptierte damit eine
-        // Extension-Konformanz, eine Zuweisung nicht — genau die Sorte Spaltung, vor der der
-        // Kommentar oben warnt.
+        // Conformance may be DECLARED ('class P :: [I]') or come from a visible 'extend P :: [I]'.
+        // Both are the same question, so one function answers it.
         //
-        // 'to' wird als Ganzes weitergereicht und nicht nur sein Symbol: 'Src<int>' und
-        // 'Src<string>' sind dasselbe Symbol und verschiedene Typen. Ohne das ist eine Zuweisung
-        // an ein generisches Interface unsicher — dieselbe Luecke, die bei den Constraints ein
-        // 'i64' in einen 'string'-Slot geschrieben hat.
+        // 'to' is passed on as a whole rather than only its symbol: 'Src<int>' and 'Src<string>' are
+        // the same symbol and different types. Without that, an assignment to a generic interface is
+        // unsound.
         if (TypeFacts.SymbolOf(from) is { } source)
             return ImplementsWithExtensions(source, target, to,
                 from is GenericInstance instance ? SubstMap(instance) : EmptySubst);
 
-        // Ein Typ-Parameter erfuellt, was seine Constraints verlangen — er hat kein eigenes
-        // Symbol, deshalb steht er hier neben und nicht in SymbolOf.
+        // A type parameter satisfies what its constraints demand. It has no symbol of its own, so it
+        // stands here beside rather than inside SymbolOf.
         return from is TypeParamType parameter
                && parameter.Param.Constraints.Any(c =>
                    Conformance.InterfaceOf(c, _binding) is { } it && ReferenceEquals(it, target)
@@ -3190,7 +3086,7 @@ public sealed class TypeChecker
         if (TryUntypedIntLiteral(expr, out var negative, out var magnitude))
         {
             if (TypeFacts.IsInteger(target)) return TypeFacts.IntLiteralFits(negative, magnitude, target.Kind);
-            if (TypeFacts.IsFloat(target)) return true; // Ganzzahl-Literal → float
+            if (TypeFacts.IsFloat(target)) return true; // an integer literal adapts to a float
         }
         if (IsUntypedFloatLiteral(expr) && TypeFacts.IsFloat(target)) return true;
         return false;
@@ -3214,7 +3110,7 @@ public sealed class TypeChecker
         _ => false
     };
 
-    // --- Typ-Auflösung (TypeNode → LyrType) ---
+    // --- type resolution: TypeNode to LyrType ---
 
     private LyrType ResolveType(TypeNode node, SymbolTable scope)
     {
@@ -3226,7 +3122,7 @@ public sealed class TypeChecker
                 if (sym is null)
                     return Report(n.Span, "LYR-SEM0011", $"unresolved type '{string.Join('.', n.Path)}'");
                 if (sym is GenericParamSymbol gp) return new TypeParamType(gp);
-                if (ReferenceEquals(sym, _coroutine)) // Coroutine<T> (§8) → interner CoroutineOf
+                if (ReferenceEquals(sym, _coroutine)) // Coroutine<T> becomes the internal CoroutineOf
                 {
                     if (n.TypeArguments.Length != 1)
                         return Report(n.Span, "LYR-SEM0026",
@@ -3252,11 +3148,11 @@ public sealed class TypeChecker
         GenericParamSymbol g => new TypeParamType(g),
         TypeSymbol t => new NamedRef(t),
         ImportBindingSymbol ib => SymbolToType(ib.Target, scope),
-        _ => LyrType.Error // Extern/Error/Nicht-Typ → opak
+        _ => LyrType.Error // external, error or non-type: opaque
     };
 
-    // Stack<int> → GenericInstance. Arity wird geprüft; Constraint-Erfüllung (int :: Comparable?)
-    // ist Slice 1b (braucht Konformanz-Modell inkl. Builtins).
+    // Stack<int> becomes a GenericInstance. The arity is checked here; constraint satisfaction runs
+    // through the conformance model.
     private LyrType MakeGenericInstance(TypeSymbol ts, NamedType n, SymbolTable scope)
     {
         var args = n.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
@@ -3266,7 +3162,7 @@ public sealed class TypeChecker
         return new GenericInstance(ts, args);
     }
 
-    // Kompakte Pfad-Auflösung für Body-Typen (die der Resolver nicht gebunden hat).
+    // Compact path resolution for body types, which the resolver has not bound.
     private Symbol? ResolveTypePath(string[] path, SymbolTable scope)
     {
         var head = scope.Lookup(path[0]);
@@ -3276,7 +3172,7 @@ public sealed class TypeChecker
         return head;
     }
 
-    // --- Helpers ---
+    // --- helpers ---
 
     private static LyrType IntSuffixType(IntSuffix s) => new PrimitiveType(s switch
     {

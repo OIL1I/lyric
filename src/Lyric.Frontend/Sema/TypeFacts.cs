@@ -3,21 +3,20 @@ using System.Text;
 
 namespace Lyric.Sema;
 
-/// <summary>Klassifikation, Anzeige und Konvertierbarkeit von Typen (Sprache.md §4).</summary>
+/// <summary>Classification, display and convertibility of types.</summary>
 public static class TypeFacts
 {
     /// <summary>
-    /// Ganzzahl im Sinne von <c>Sprache.md</c> §6.5 — <b>einschliesslich <c>char</c></b> (ADR-022).
+    /// An integer in the sense of the arithmetic rules, <c>char</c> INCLUDED.
     ///
-    /// <para>Ein <c>char</c> ist ein Unicode-Codepoint und damit eine Zahl; er zaehlt zur Numerik,
-    /// weil <c>std.string</c> sonst fuer „ist das eine Ziffer?" in den Host absteigen muesste.
-    /// Der Preis steht in der VM: jede Operation, die einen <c>char</c> ERZEUGT, prueft den
-    /// Wertebereich, damit die Zusage aus §4 wahr bleibt.</para>
+    /// <para>A <c>char</c> is a Unicode code point and therefore a number; it counts as numeric, or
+    /// <c>std.string</c> would have to descend into the host for "is this a digit?". The price is
+    /// paid in the VM: every operation that PRODUCES a <c>char</c> checks the value range.</para>
     ///
-    /// <para>Diese Frage wird ein zweites Mal in <c>IrVerifier.IsInteger</c> beantwortet — auf
-    /// <c>IrType</c> statt <c>LyrType</c>, weil der Verifier den Bytecode ohne die Sema pruefen
-    /// koennen muss (ADR-013). <b>Wer hier einen Typ ergaenzt, ergaenzt ihn auch dort</b>, sonst
-    /// lehnt der Verifier ab, was die Sema erlaubt.</para>
+    /// <para>The same question is answered a second time in <c>IrVerifier.IsInteger</c>, on
+    /// <c>IrType</c> instead of <c>LyrType</c>, because the verifier has to check bytecode without
+    /// the sema. A type added here has to be added there too, or the verifier rejects what the sema
+    /// allows.</para>
     /// </summary>
     public static bool IsInteger(LyrType t) => t is PrimitiveType p && p.Kind is
         PrimitiveKind.Int or PrimitiveKind.Uint
@@ -45,7 +44,7 @@ public static class TypeFacts
     public static LyrType? FromBuiltinName(string name) =>
         Builtins.TryGetValue(name, out var kind) ? new PrimitiveType(kind) : null;
 
-    /// <summary>Passt ein (ggf. negiertes) Ganzzahl-Literal in den Zieltyp? (Entscheidung ②a)</summary>
+    /// <summary>Does an integer literal, possibly negated, fit into the target type?</summary>
     public static bool IntLiteralFits(bool negative, ulong magnitude, PrimitiveKind target) => target switch
     {
         PrimitiveKind.Int8 => negative ? magnitude <= 128 : magnitude <= 127,
@@ -57,12 +56,12 @@ public static class TypeFacts
         PrimitiveKind.Uint32 => !negative && magnitude <= 4294967295,
         PrimitiveKind.Uint64 or PrimitiveKind.Uint => !negative,
 
-        // 'c + 1' und 'let c: char = 65' (ADR-022). Die Grenze ist nicht die eines Ganzzahltyps,
-        // sondern die von Unicode — und sie steht in Lyric.Core, weil die VM dieselbe Regel auf
-        // gerechnete Ergebnisse anwendet. Was hier durchgeht, darf die VM erzeugen.
+        // 'c + 1' and 'let c: char = 65'. The bound is not that of an integer type but that of
+        // Unicode, and it lives in Lyric.Core, because the VM applies the same rule to computed
+        // results. What passes here is what the VM may produce.
         //
-        // Ein Literal ist damit zur UEBERSETZUNGSZEIT abgelehnt, wo die Laufzeit sonst panicen
-        // muesste: 'let c: char = 0xD800' ist ein Typfehler, kein Absturz.
+        // A literal is thereby rejected AT COMPILE TIME where the runtime would otherwise have to
+        // panic: 'let c: char = 0xD800' is a type error, not a crash.
         PrimitiveKind.Char => !negative && magnitude <= long.MaxValue
                               && Core.Unicode.IsCodepoint((long)magnitude),
 
@@ -70,20 +69,13 @@ public static class TypeFacts
     };
 
     /// <summary>
-    /// Das <see cref="TypeSymbol"/> hinter einem benannten Typ — <c>null</c>, wenn keines
-    /// dahintersteckt (Skalar, Array, Funktionstyp …).
+    /// The <see cref="TypeSymbol"/> behind a named type; <c>null</c> when there is none — a scalar,
+    /// an array, a function type.
     ///
-    /// <para><b>Warum das eine Funktion sein muss.</b> Ein benannter Typ tritt in zwei Formen auf:
-    /// <see cref="NamedRef"/> fuer <c>Box</c> und <see cref="GenericInstance"/> fuer
-    /// <c>Box&lt;int&gt;</c>. Fast jede Frage, die man ihm stellt — welche Art, welche Konformanz,
-    /// welches Feld — hat fuer beide dieselbe Antwort, und wer sie einzeln behandelt, vergisst
-    /// irgendwann die zweite.</para>
-    ///
-    /// <para>Genau das ist in M7/P8 <b>fuenfmal</b> passiert: bei der Konformanz, beim virtuellen
-    /// Aufruf, beim Slot-Index, in der Impl-Tabelle und bei der Feld-Mutabilitaet. Der letzte Fall
-    /// machte ein Feld einer generischen Klasse <b>nie</b> schreibbar und damit jeden Iterator
-    /// unmoeglich. Jedes Mal war die Ursache dieselbe: ein Muster, das nur <c>NamedRef</c>
-    /// nannte.</para>
+    /// <para>A named type appears in two forms: <see cref="NamedRef"/> for <c>Box</c> and
+    /// <see cref="GenericInstance"/> for <c>Box&lt;int&gt;</c>. Nearly every question asked of it —
+    /// which kind, which conformance, which field — has the same answer for both, and handling them
+    /// separately means forgetting the second one.</para>
     /// </summary>
     public static TypeSymbol? SymbolOf(LyrType type) => type switch
     {
@@ -92,15 +84,15 @@ public static class TypeFacts
         _ => null,
     };
 
-    /// <summary>Die Art eines benannten Typs — Klasse, Struct, Enum, Interface. <c>null</c>, wenn
-    /// es kein benannter Typ ist.</summary>
+    /// <summary>The kind of a named type: class, struct, enum or interface. <c>null</c> when it is
+    /// not a named type.</summary>
     public static TypeSymbolKind? KindOf(LyrType type) => SymbolOf(type)?.Kind;
 
-    /// <summary>Ist das ein benannter Typ dieser Art? Der Fall, den die meisten Aufrufer
-    /// brauchen — inklusive Instanzen.</summary>
+    /// <summary>Is this a named type of that kind? The case most callers need, instances
+    /// included.</summary>
     public static bool Is(LyrType type, TypeSymbolKind kind) => KindOf(type) == kind;
 
-    /// <summary>Ist das ein benannter Typ <b>einer</b> dieser Arten?</summary>
+    /// <summary>Is this a named type of ONE of these kinds?</summary>
     public static bool IsAny(LyrType type, params TypeSymbolKind[] kinds) =>
         KindOf(type) is { } actual && Array.IndexOf(kinds, actual) >= 0;
 
@@ -121,11 +113,10 @@ public static class TypeFacts
             case TypeParamType tp: return tp.Param.Name;
             case GenericInstance gi: return gi.Definition.Name + "<" + string.Join(", ", gi.Arguments.Select(Display)) + ">";
             case Optional o: return "?" + Display(o.Inner);
-            // Ein Funktionstyp als Elementtyp MUSS geklammert werden: 'fn(int) -> void[]' liest
-            // sich sonst als Funktion, die 'void[]' liefert. Ohne die Klammer meldete die Sema
-            // „cannot assign 'fn(int) -> void[]' to '(fn(int) -> void)[]'" — zwei Anzeigen fuer
-            // Typen, die verschieden SIND, aber gleich aussahen, und der Leser sucht den Fehler
-            // an der falschen Stelle.
+            // A function type as an element type MUST be parenthesized: 'fn(int) -> void[]' would
+            // otherwise read as a function returning 'void[]'. Without the parenthesis the sema
+            // reported "cannot assign 'fn(int) -> void[]' to '(fn(int) -> void)[]'" — two displays
+            // for types that ARE different but looked the same.
             case ArrayOf { Element: FnType } fnArray:
                 return $"({Display(fnArray.Element)})" + (fnArray.Size is null ? "[]" : $"[{fnArray.Size}]");
             case ArrayOf a: return Display(a.Element) + (a.Size is null ? "[]" : $"[{a.Size}]");

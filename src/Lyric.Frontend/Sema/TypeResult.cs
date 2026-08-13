@@ -4,17 +4,17 @@ using Lyric.Resolver;
 namespace Lyric.Sema;
 
 /// <summary>
-/// Seiten-Tabelle der Typprüfung: der Typ jedes Ausdrucks plus die aufgelösten
-/// Symbole von Ausdrucks-Referenzen (Identifier → Local/Param/Global/Function/…).
-/// Wie <see cref="BindingResult"/> lässt sie den AST immutable.
+/// The side table of type checking: the type of every expression plus the resolved symbols of
+/// expression references (identifier to local, parameter, global, function, …). Like
+/// <see cref="BindingResult"/> it leaves the AST immutable.
 /// </summary>
 public sealed class TypeResult
 {
     private readonly Dictionary<Expr, LyrType> _types = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Node, Symbol> _refs = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Typ je Modul-<c>let</c> / <c>static let</c>. Der TypeChecker fuellt sie, das
-    /// Lowering liest sie — ein Global hat keinen Ausdruck, an dem sein Typ haengen koennte.</summary>
+    /// <summary>The type of each module <c>let</c> and <c>static let</c>. The TypeChecker fills it,
+    /// the lowering reads it: a global has no expression its type could hang on.</summary>
     private readonly Dictionary<GlobalSymbol, LyrType> _globals =
         new(ReferenceEqualityComparer.Instance);
 
@@ -23,28 +23,28 @@ public sealed class TypeResult
 
     public void SetType(Expr expr, LyrType type) => _types[expr] = type;
 
-    /// <summary>Jeder typisierte Ausdruck mit seinem Typ. Der Abnehmer ist der Test, der die
-    /// <see cref="ErrorType"/>-Invariante prueft — ohne Aufzaehlung liesse sie sich nur an den
-    /// Stellen pruefen, an denen ohnehin schon jemand hinsieht.</summary>
+    /// <summary>Every typed expression with its type. The consumer is the test that checks the
+    /// <see cref="ErrorType"/> invariant; without an enumeration it could only be checked where
+    /// someone already looks.</summary>
     public IEnumerable<KeyValuePair<Expr, LyrType>> AllTypes => _types;
     public LyrType TypeOf(Expr expr) => _types.TryGetValue(expr, out var t) ? t : LyrType.Error;
 
     public void BindRef(Node node, Symbol symbol) => _refs[node] = symbol;
     public Symbol? RefOf(Node node) => _refs.TryGetValue(node, out var s) ? s : null;
 
-    /// <summary>Der Typ eines Modul-<c>let</c> oder <c>static let</c>. Getrennt von
-    /// <see cref="TypeOf"/>, weil ein Global kein Ausdruck ist — sein Typ haengt am Symbol, nicht
-    /// an einer Verwendungsstelle.</summary>
+    /// <summary>The type of a module <c>let</c> or <c>static let</c>. Separate from
+    /// <see cref="TypeOf"/>, because a global is not an expression: its type hangs on the symbol,
+    /// not on a use site.</summary>
     public LyrType TypeOfGlobal(GlobalSymbol symbol) =>
         _globals.TryGetValue(symbol, out var t) ? t : LyrType.Error;
 
-    // Exhaustivität (M4-2): vom TypeChecker bewiesene matches — Flow/DAA lesen das,
-    // ohne selbst Typ-Wissen zu brauchen.
+    // Exhaustiveness: matches proven by the TypeChecker. Flow and definite-assignment analysis read
+    // this without needing type knowledge of their own.
     public void MarkMatchExhaustive(Node match) => _exhaustiveMatches.Add(match);
     public bool IsMatchExhaustive(Node match) => _exhaustiveMatches.Contains(match);
 
-    // Captures (M4-4, ADR-011): welche äußeren Locals/Params (und this) eine Lambda
-    // implizit einfängt — Abnehmer ist das Closure-Lifting in M5.
+    // Captures: which outer locals, parameters and 'this' a lambda captures implicitly. The consumer
+    // is closure lifting.
     private static readonly IReadOnlyList<Symbol> NoCaptures = [];
     private readonly Dictionary<Node, (IReadOnlyList<Symbol> Symbols, bool This)> _captures = new(ReferenceEqualityComparer.Instance);
 
@@ -54,32 +54,31 @@ public sealed class TypeResult
         _captures.TryGetValue(lambda, out var c) ? c : (NoCaptures, false);
 
     /// <summary>
-    /// Locals, die eine Closure sich mit ihrer umgebenden Funktion <b>teilt</b> — sie leben nicht
-    /// in einem Frame-Slot, sondern in einer Zelle auf dem Heap (ADR-018).
+    /// Locals a closure SHARES with its enclosing function: they live in a heap cell rather than in a
+    /// frame slot.
     ///
-    /// <para>Ein <c>var</c>, das gefangen wird, muss geteilt werden: schreibt die Closure, sieht
-    /// die Funktion es, und umgekehrt. Ein Frame-Slot kann das nicht, sobald der Frame endet und
-    /// die Closure weiterlebt.</para>
+    /// <para>A captured <c>var</c> has to be shared: when the closure writes, the function sees it,
+    /// and the other way round. A frame slot cannot do that once the frame ends and the closure
+    /// lives on.</para>
     ///
-    /// <para><b>Nur <c>var</c>.</b> Ein <c>let</c> und ein Parameter aendern sich nie (Zuweisung
-    /// an einen Parameter ist <c>LYR-SEM0019</c>) — fuer sie ist „Wert kopieren" von „Variable
-    /// teilen" nicht unterscheidbar, und die Kopie ist billiger. Die Unterscheidung kostet hier
-    /// ein <c>if</c> und spart im erzeugten Code jede Zelle, die niemand braucht.</para>
+    /// <para>Only <c>var</c>. A <c>let</c> and a parameter never change — assigning to a parameter is
+    /// <c>LYR-SEM0019</c> — so for them "copy the value" and "share the variable" are
+    /// indistinguishable, and the copy is cheaper.</para>
     /// </summary>
     private readonly HashSet<Symbol> _boxed = new(ReferenceEqualityComparer.Instance);
 
     public void MarkBoxed(Symbol symbol) => _boxed.Add(symbol);
 
     /// <summary>
-    /// Die Typargumente einer Aufrufstelle — inferiert oder geschrieben (Sprache.md §12).
+    /// The type arguments of a call site, inferred or written.
     ///
-    /// <para>Die Sema leitet sie ohnehin ab, um den Aufruf zu pruefen; ohne sie hier abzulegen
-    /// muesste das Lowering die Inferenz <b>ein zweites Mal</b> ausfuehren, um zu wissen, welche
-    /// Instanz von <c>id&lt;T&gt;</c> es rufen soll — zwei Wahrheiten ueber dieselbe Frage, und
-    /// die zweite haette keine Diagnosen, mit denen sie sich melden koennte.</para>
+    /// <para>The sema derives them anyway to check the call; without storing them here the lowering
+    /// would have to run the inference A SECOND TIME to know which instance of <c>id&lt;T&gt;</c> to
+    /// call — two truths about the same question, and the second one would have no diagnostics to
+    /// speak up with.</para>
     ///
-    /// <para>Die Reihenfolge ist die der Generics-Deklaration, nicht die der Argumente: sie ist
-    /// das, was eine Instanz identifiziert.</para>
+    /// <para>The order is that of the generics declaration, not that of the arguments: it is what
+    /// identifies an instance.</para>
     /// </summary>
     private readonly Dictionary<Node, LyrType[]> _typeArguments =
         new(ReferenceEqualityComparer.Instance);
@@ -87,30 +86,30 @@ public sealed class TypeResult
     public void SetTypeArguments(Node call, LyrType[] arguments) =>
         _typeArguments[call] = arguments;
 
-    /// <summary>Die Typargumente eines Aufrufs; leer, wenn der Aufgerufene nicht generisch ist.</summary>
+    /// <summary>The type arguments of a call; empty when the callee is not generic.</summary>
     public LyrType[] TypeArgumentsOf(Node call) =>
         _typeArguments.TryGetValue(call, out var args) ? args : [];
 
     /// <summary>
-    /// Die Typen aus <c>std.iter</c>, die <c>for-in</c> braucht (§5).
+    /// The types from <c>std.iter</c> that <c>for-in</c> needs.
     ///
-    /// <para>Der TypeChecker sucht sie ohnehin, um den Schleifenkopf zu pruefen; sie hier
-    /// abzulegen erspart dem Lowering eine zweite Suche — und zwei Suchen waeren zwei
-    /// Gelegenheiten, verschiedene Symbole zu finden.</para>
+    /// <para>The TypeChecker looks them up anyway to check the loop head; storing them here saves the
+    /// lowering a second lookup, and two lookups would be two opportunities to find different
+    /// symbols.</para>
     /// </summary>
     public TypeSymbol? IteratorInterface { get; set; }
     public TypeSymbol? ArrayIterator { get; set; }
     public TypeSymbol? RangeIterator { get; set; }
     public TypeSymbol? StringIterator { get; set; }
 
-    /// <summary>'Indexable<T>' aus std.collections — was '[i]' bedient (§6.4).</summary>
+    /// <summary>'Indexable&lt;T&gt;' from std.collections, what '[i]' dispatches to.</summary>
     public TypeSymbol? Indexable { get; set; }
 
-    /// <summary>'Iterable<T>' aus std.iter — was 'for-in' zuerst fragt.</summary>
+    /// <summary>'Iterable&lt;T&gt;' from std.iter, what 'for-in' asks first.</summary>
     public TypeSymbol? Iterable { get; set; }
 
-    /// <summary>Lebt dieses Symbol in einer Zelle statt in einem Frame-Slot? Das Lowering fragt
-    /// das an <b>jeder</b> Zugriffsstelle — auch ausserhalb der Closure, denn beide Seiten muessen
-    /// dieselbe Zelle sehen.</summary>
+    /// <summary>Does this symbol live in a cell rather than in a frame slot? The lowering asks at
+    /// EVERY access site, outside the closure too, because both sides have to see the same
+    /// cell.</summary>
     public bool IsBoxed(Symbol symbol) => _boxed.Contains(symbol);
 }
