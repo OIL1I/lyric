@@ -7,12 +7,13 @@ using Xunit;
 namespace Lyric.Tests.Lexing;
 
 /// <summary>
-/// Golden-Tests für den Lexer: jede Fixture (golden/&lt;name&gt;.lyr) wird getokenized,
-/// der Token-Dump (+ gerenderte Diagnostics bei Negativ-Fällen) gegen den committeten
-/// Snapshot (golden/&lt;name&gt;.tokens) verglichen.
+/// Golden tests for the lexer: every fixture (golden/&lt;name&gt;.lyr) is tokenized and the token dump,
+/// plus rendered diagnostics for negative cases, is compared against the committed snapshot
+/// (golden/&lt;name&gt;.tokens).
 ///
-/// Snapshots werden NICHT von Hand gepflegt: einmal mit Env-Var LYRIC_UPDATE_SNAPSHOTS=1
-/// erzeugen, drüberlesen, committen. Danach lockt der Vergleich den Token-Stream fest.
+/// Snapshots are NOT maintained by hand: produce them once with the environment variable
+/// LYRIC_UPDATE_SNAPSHOTS=1, read them over, commit. From then on the comparison locks the token
+/// stream.
 /// </summary>
 public class GoldenTests
 {
@@ -55,12 +56,12 @@ public class GoldenTests
     }
 
     [Theory]
-    // Positiv — keine Diagnostics, nur Token-Stream.
+    // Positive cases: no diagnostics, only the token stream.
     [InlineData("operators")]
     [InlineData("literals")]
     [InlineData("fstring")]
     [InlineData("program")]
-    // Negativ — Snapshot enthält Token-Stream UND gerenderte Diagnostics.
+    // Negative cases: the snapshot contains the token stream AND the rendered diagnostics.
     [InlineData("unterminated")]
     [InlineData("bad_suffix")]
     public void Golden_fixture_matches_snapshot(string name)
@@ -91,7 +92,7 @@ public class GoldenTests
     [Fact]
     public void Example_hello_tokenizes_without_errors()
     {
-        // M1-Exit-Kriterium (ROADMAP §M1): examples/hello.lyr tokenisiert fehlerfrei.
+        // examples/hello.lyr tokenizes without errors.
         var path = Path.Combine(RepoRoot(), "examples", "hello.lyr");
         Assert.True(File.Exists(path), $"missing example: {path}");
 

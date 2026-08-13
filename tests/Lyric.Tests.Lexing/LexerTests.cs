@@ -49,7 +49,7 @@ public class LexerTests
         Assert.Throws<ArgumentException>(() => new Lexer(sm, new FileId(99), de));
     }
 
-    // ─── EOF und Whitespace ────────────────────────────────────────────────
+    // ─── EOF and whitespace ────────────────────────────────────────────────
 
     [Fact]
     public void Empty_input_yields_only_EOF()
@@ -74,7 +74,7 @@ public class LexerTests
     [Fact]
     public void Trailing_whitespace_does_not_crash()
     {
-        // Regression: SkipTrivia muss vor EOF-Check laufen, sonst OOB beim Sentinel.
+        // Regression: SkipTrivia has to run before the EOF check, or the sentinel reads out of bounds.
         var (tokens, _) = Tokenize("foo  ");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
@@ -117,9 +117,9 @@ public class LexerTests
     [Fact]
     public void Line_comment_at_EOF_without_newline_does_not_overshoot()
     {
-        // Regression: nach Line-Comment der mit EOF endet (kein \n), darf _pos
-        // nicht über die Source-Länge hinaus laufen.
-        var (tokens, diag) = Tokenize("foo // tail");   // Länge 11
+        // Regression: after a line comment ending at EOF, without a '\n', _pos must not run past the
+        // length of the source.
+        var (tokens, diag) = Tokenize("foo // tail");   // length 11
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
         Assert.Equal(TokenKind.Eof, tokens[1].TokenKind);
@@ -134,15 +134,15 @@ public class LexerTests
         var (tokens, _) = Tokenize("// comment\nfoo");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
-        Assert.Equal(11, tokens[0].Span.Start);   // direkt nach "// comment\n"
+        Assert.Equal(11, tokens[0].Span.Start);   // directly after "// comment\n"
         Assert.Equal(14, tokens[0].Span.End);
     }
 
     [Fact]
     public void Whitespace_after_line_comment_is_consumed()
     {
-        // Regression für Outer-Loop-Struktur in SkipTrivia: nach Comment muss
-        // weiterer Whitespace auch geskippt werden.
+        // Regression for the outer loop structure in SkipTrivia: whitespace after a comment has to be
+        // skipped too.
         var (tokens, diag) = Tokenize("// foo\n  bar");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
@@ -242,7 +242,7 @@ public class LexerTests
     [Fact]
     public void Hello_world_tokenizes()
     {
-        // In Slice 1 ist `fn` noch ein normaler Identifier — Keywords kommen in Slice 2.
+        // Here `fn` is still an ordinary identifier; keywords come later.
         var (tokens, diag) = Tokenize("fn main() {}");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -318,7 +318,7 @@ public class LexerTests
     [Fact]
     public void Bad_character_message_quotes_the_character()
     {
-        // Regression: Apostrophe um den Char herum, nicht nur einer.
+        // Regression: apostrophes around the char, not only one.
         var (_, diag) = Tokenize("#");
         Assert.Contains("'#'", diag.Diagnostics[0].Message);
     }
@@ -326,8 +326,7 @@ public class LexerTests
     [Fact]
     public void Bad_character_message_names_the_actual_bad_char()
     {
-        // Regression: vor dem Fix wurde Current NACH _pos++ gelesen,
-        // also das falsche Zeichen gemeldet.
+        // Regression: reading Current AFTER _pos++ reports the wrong character.
         var (_, diag) = Tokenize("#x");
         Assert.Contains("'#'", diag.Diagnostics[0].Message);
         Assert.DoesNotContain("'x'", diag.Diagnostics[0].Message);
@@ -349,7 +348,7 @@ public class LexerTests
         Assert.Equal(4, d.Span.End);
     }
 
-    // ─── Span-Genauigkeit ──────────────────────────────────────────────────
+    // ─── span accuracy ─────────────────────────────────────────────────────
 
     [Fact]
     public void Full_span_accuracy_mixed_input()
@@ -411,10 +410,10 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("fnx")]      // Keyword als Präfix
+    [InlineData("fnx")]      // a keyword as a prefix
     [InlineData("fn_")]      // Underscore-Suffix
     [InlineData("fn1")]      // Digit-Suffix
-    [InlineData("_fn")]      // Underscore-Präfix
+    [InlineData("_fn")]      // an underscore prefix
     [InlineData("FN")]       // Case-sensitive
     [InlineData("Fn")]
     [InlineData("LET")]
@@ -434,7 +433,7 @@ public class LexerTests
     [InlineData("own")]
     public void Reserved_post_v1_words_are_Identifier_in_v1(string input)
     {
-        // Spec §1.4: async, await, const, trait, move, own sind in v1 keine
+        // async, await, const, trait, move and own are not
         // Keywords — sie bleiben normale Identifier.
         var (tokens, _) = Tokenize(input);
         Assert.Equal(2, tokens.Count);
@@ -457,12 +456,12 @@ public class LexerTests
     [Fact]
     public void Hello_world_with_keyword_dispatch()
     {
-        // Aus Slice 1 — jetzt sollte `fn` als Keyword erkannt werden statt Identifier.
+        // `fn` should now be recognised as a keyword rather than an identifier.
         var (tokens, diag) = Tokenize("fn main() {}");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
             new[] {
-                TokenKind.Fn,            // <-- jetzt Keyword
+                TokenKind.Fn,            // now a keyword
                 TokenKind.Identifier,    // main
                 TokenKind.LParen,
                 TokenKind.RParen,
@@ -500,7 +499,7 @@ public class LexerTests
     [Fact]
     public void Four_slashes_are_DocComment_with_slash_body()
     {
-        // "////" — ist DocComment mit Body "/".
+        // "////" is a doc comment with the body "/".
         var (tokens, _) = Tokenize("////");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
@@ -511,12 +510,12 @@ public class LexerTests
     [Fact]
     public void DocComment_disambiguated_from_line_comment()
     {
-        // Regression für die "PeekAt(2)"-Disambiguierung in SkipTrivia und Next.
+        // Regression for the "PeekAt(2)" disambiguation in SkipTrivia and Next.
         var (tokens, _) = Tokenize("// not a doc\n/// a doc");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
-        Assert.Equal(13, tokens[0].Span.Start);   // nach "// not a doc\n"
-        Assert.Equal(22, tokens[0].Span.End);     // bis Ende der Datei
+        Assert.Equal(13, tokens[0].Span.Start);   // after "// not a doc\n"
+        Assert.Equal(22, tokens[0].Span.End);     // to the end of the file
     }
 
     [Fact]
@@ -526,9 +525,9 @@ public class LexerTests
         Assert.Equal(3, tokens.Count);
         Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
         Assert.Equal(0, tokens[0].Span.Start);
-        Assert.Equal(8, tokens[0].Span.End);      // bis vor \n
+        Assert.Equal(8, tokens[0].Span.End);      // up to the newline
         Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
-        Assert.Equal(9, tokens[1].Span.Start);    // direkt nach \n
+        Assert.Equal(9, tokens[1].Span.Start);    // directly after the newline
         Assert.Equal(12, tokens[1].Span.End);
     }
 
@@ -549,11 +548,11 @@ public class LexerTests
         var (tokens, _) = Tokenize("/// at the end");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.DocComment, tokens[0].TokenKind);
-        Assert.Equal(14, tokens[0].Span.End);     // gesamte Länge
+        Assert.Equal(14, tokens[0].Span.End);     // the whole length
         Assert.Equal(14, tokens[1].Span.Start);   // EOF an Length
     }
 
-    // ─── Block-Comments (Slice 2, als Trivia) ──────────────────────────────
+    // ─── block comments, as trivia ─────────────────────────────────────────
 
     [Fact]
     public void Block_comment_simple_is_skipped()
@@ -580,7 +579,7 @@ public class LexerTests
         Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
         Assert.Equal(TokenKind.Identifier, tokens[1].TokenKind);
         Assert.Equal(TokenKind.Eof, tokens[2].TokenKind);
-        Assert.Equal(14, tokens[1].Span.Start);   // direkt nach "foo /* mid */ "
+        Assert.Equal(14, tokens[1].Span.Start);   // directly after "foo /* mid */ "
         Assert.Equal(17, tokens[1].Span.End);
     }
 
@@ -617,7 +616,7 @@ public class LexerTests
         var (tokens, _) = Tokenize("/*foo*/bar");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
-        Assert.Equal(7, tokens[0].Span.Start);   // direkt nach "/*foo*/"
+        Assert.Equal(7, tokens[0].Span.Start);   // directly after "/*foo*/"
         Assert.Equal(10, tokens[0].Span.End);
     }
 
@@ -637,8 +636,8 @@ public class LexerTests
     [Fact]
     public void Unterminated_nested_block_comment_emits_one_diagnostic()
     {
-        // Eine offen gebliebene Verschachtelung — nur eine Diagnostic erwartet
-        // (am Ende ist depth > 0, das löst genau einmal aus).
+        // A nesting left open: only one diagnostic is expected, because at the end depth > 0 fires
+        // exactly once.
         var (_, diag) = Tokenize("/* outer /* inner ");
         Assert.Equal(1, diag.ErrorCount);
         Assert.Equal("LYR-LEX0002", diag.Diagnostics[0].Code);
@@ -647,13 +646,13 @@ public class LexerTests
     [Fact]
     public void Block_comment_with_doc_comment_marker_inside_is_just_block()
     {
-        // Die /// in einem Block-Comment ist Inhalt, kein DocComment-Token.
+        // The /// inside a block comment is content rather than a doc comment token.
         var (tokens, _) = Tokenize("/* /// not a doc */");
         Assert.Single(tokens);
         Assert.Equal(TokenKind.Eof, tokens[0].TokenKind);
     }
 
-    // ─── Trivia-Reihenfolge (Slice 2 Regressionen) ─────────────────────────
+    // ─── trivia order ──────────────────────────────────────────────────────
 
     [Fact]
     public void Line_then_block_then_doc()
@@ -671,14 +670,14 @@ public class LexerTests
         var (tokens, _) = Tokenize("/* comment */ fn");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.Fn, tokens[0].TokenKind);
-        Assert.Equal(14, tokens[0].Span.Start);   // direkt nach "/* comment */ "
+        Assert.Equal(14, tokens[0].Span.Start);   // directly after "/* comment */ "
         Assert.Equal(16, tokens[0].Span.End);
     }
 
     [Fact]
     public void DocComment_then_keyword_then_doc_again()
     {
-        // Ein realistischeres Beispiel.
+        // A more realistic example.
         var (tokens, diag) = Tokenize("/// docs\nfn foo() {}\n/// trailing");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -850,8 +849,7 @@ public class LexerTests
     [Fact]
     public void Float_disambiguation_dot_followed_by_identifier()
     {
-        // 1.foo → IntLiteral(1), Dot, Identifier(foo). Seit Slice 6 ist '.' ein
-        // Dot-Token (vorher BadChar).
+        // 1.foo becomes IntLiteral(1), Dot, Identifier(foo).
         var (tokens, diag) = Tokenize("1.foo");
         Assert.Equal(4, tokens.Count);
         Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
@@ -866,8 +864,8 @@ public class LexerTests
     [Fact]
     public void Float_followed_by_dot_and_identifier_keeps_float_kind()
     {
-        // Regression für Bug 2: 1.5.foo muss FloatLiteral sein, nicht IntLiteral.
-        // Seit Slice 6 ist das trennende '.' ein Dot-Token (vorher BadChar).
+        // Regression: 1.5.foo has to be a FloatLiteral rather than an IntLiteral, and the separating '.'
+        // is a Dot token.
         var (tokens, diag) = Tokenize("1.5.foo");
         Assert.Equal(4, tokens.Count);
         Assert.Equal(TokenKind.FloatLiteral, tokens[0].TokenKind);
@@ -893,9 +891,9 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("0xFFi7")]        // invalide Int-Größe
+    [InlineData("0xFFi7")]        // an invalid integer size
     [InlineData("0xFFu7")]
-    [InlineData("0xFFi128")]      // gibt's nicht in v1
+    [InlineData("0xFFi128")]      // does not exist
     public void Invalid_suffix_on_hex_emits_LEX0003(string input)
     {
         var (tokens, diag) = Tokenize(input);
@@ -956,8 +954,8 @@ public class LexerTests
     [Fact]
     public void Hex_literal_with_leading_underscore_emits_diagnostic()
     {
-        // Aktuell LYR-LEX0004 — wenn du die Branches in ScanNonDecLiteral
-        // vertauschst, wird's LYR-LEX0005. Beides ist OK; Test passt sich an.
+        // Currently LYR-LEX0004; swapping the branches in ScanNonDecLiteral makes it LYR-LEX0005. Either
+        // is fine, and the test accepts both.
         var (_, diag) = Tokenize("0x_FF");
         Assert.Equal(1, diag.ErrorCount);
         Assert.True(
@@ -1064,7 +1062,7 @@ public class LexerTests
     [InlineData("\"\\'\"",   4)]
     public void String_with_simple_escape(string input, int expectedEnd)
     {
-        // Regression Bug 1: _pos++ nach ConsumeEscapeSequence.
+        // Regression: _pos++ after ConsumeEscapeSequence.
         var (tokens, diag) = Tokenize(input);
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
@@ -1094,7 +1092,7 @@ public class LexerTests
     [InlineData("\"\\u{10FFFF}\"", 12)]    // max valid
     public void String_with_valid_unicode_escape(string input, int expectedEnd)
     {
-        // Regression Bug 3+4: Loop-Count + Int32.Parse ohne HexNumber.
+        // Regression: the loop count and Int32.Parse without HexNumber.
         var (tokens, diag) = Tokenize(input);
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
@@ -1122,8 +1120,8 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("\"\\x\"")]      // keine Hex-Digits
-    [InlineData("\"\\x1\"")]     // nur 1 Hex-Digit
+    [InlineData("\"\\x\"")]      // no hex digits
+    [InlineData("\"\\x1\"")]     // only one hex digit
     [InlineData("\"\\xZZ\"")]    // non-hex
     public void Invalid_hex_escape_emits_LEX0007(string input)
     {
@@ -1133,10 +1131,10 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("\"\\u\"")]        // kein {
-    [InlineData("\"\\u{}\"")]      // leer — Regression Bug 5
+    [InlineData("\"\\u\"")]        // no {
+    [InlineData("\"\\u{}\"")]      // empty
     [InlineData("\"\\u{ZZ}\"")]    // non-hex
-    [InlineData("\"\\u{41\"")]     // kein schließendes }
+    [InlineData("\"\\u{41\"")]     // no closing }
     public void Invalid_unicode_escape_emits_LEX0007(string input)
     {
         var (_, diag) = Tokenize(input);
@@ -1153,8 +1151,8 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("\"")]              // nur Open-Quote → EOF
-    [InlineData("\"foo")]           // kein Close → EOF
+    [InlineData("\"")]              // only an opening quote, then EOF
+    [InlineData("\"foo")]           // no closing quote, then EOF
     public void Unterminated_string_emits_LEX0009(string input)
     {
         var (tokens, diag) = Tokenize(input);
@@ -1166,9 +1164,8 @@ public class LexerTests
     [Fact]
     public void String_with_unescaped_newline_yields_cascade()
     {
-        // Recovery-Verhalten: jedes `"` startet einen neuen String.
-        // Nach LYR-LEX0009 am `\n` lexed der Rest normal weiter, das
-        // zweite `"` öffnet wieder einen unterminated String bis EOF.
+        // Recovery behaviour: every `"` starts a new string. After LYR-LEX0009 at the `\n` the rest lexes
+        // normally, and the second `"` opens another unterminated string up to EOF.
         var (tokens, diag) = Tokenize("\"foo\nbar\"");
         var stringTokens = tokens.Where(t => t.TokenKind == TokenKind.StringLiteral).ToList();
         Assert.Equal(2, stringTokens.Count);
@@ -1185,7 +1182,7 @@ public class LexerTests
     [InlineData("'5'",   3)]
     public void Plain_char_literal(string input, int expectedEnd)
     {
-        // Regression Bug 2: schließendes ' returnt nicht.
+        // Regression: the closing ' does not return.
         var (tokens, diag) = Tokenize(input);
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.CharLiteral, tokens[0].TokenKind);
@@ -1245,8 +1242,8 @@ public class LexerTests
     }
 
     [Theory]
-    [InlineData("'")]              // nur Open → EOF
-    [InlineData("'a")]             // kein Close → EOF
+    [InlineData("'")]              // only an opening quote, then EOF
+    [InlineData("'a")]             // no closing quote, then EOF
     public void Unterminated_char_emits_LEX0010(string input)
     {
         var (tokens, diag) = Tokenize(input);
@@ -1495,14 +1492,14 @@ public class LexerTests
         // Chars: f " { x : N 2 } "  — length 9, indices 0..8
         var (tokens, _) = Tokenize("f\"{x:N2}\"");
         var spec = tokens.First(t => t.TokenKind == TokenKind.FStringFormatSpec);
-        Assert.Equal(5, spec.Span.Start);   // direkt nach dem ':'
-        Assert.Equal(7, spec.Span.End);     // direkt vor dem '}'
+        Assert.Equal(5, spec.Span.Start);   // directly after the ':'
+        Assert.Equal(7, spec.Span.End);     // directly before the '}'
     }
 
     [Fact]
     public void Empty_format_spec_emits_empty_token()
     {
-        // f"{x:}" — Format-Spec ist leer, Token-Span (5,5).
+        // f"{x:}": the format spec is empty, and the token span is (5,5).
         var (tokens, diag) = Tokenize("f\"{x:}\"");
         var spec = tokens.FirstOrDefault(t => t.TokenKind == TokenKind.FStringFormatSpec);
         Assert.NotEqual(default, spec);
@@ -1513,7 +1510,7 @@ public class LexerTests
     [Fact]
     public void Format_spec_with_special_chars_is_opaque()
     {
-        // "0>5" wäre normalerweise IntLit Gt IntLit — als FormatSpec ein Token.
+        // "0>5" would normally be IntLit Gt IntLit; as a format spec it is one token.
         var (tokens, diag) = Tokenize("f\"{x:0>5}\"");
         var spec = tokens.First(t => t.TokenKind == TokenKind.FStringFormatSpec);
         Assert.Equal(3, spec.Span.Length);   // "0>5"
@@ -1534,7 +1531,7 @@ public class LexerTests
     [Fact]
     public void Inner_braces_in_interp_tokenize_as_LBrace_RBrace()
     {
-        // f"{{x}}" — outer {} sind Interp-Marker, inner {} sind LBrace/RBrace.
+        // f"{{x}}": the outer {} are interpolation markers, the inner {} are LBrace and RBrace.
         var (tokens, diag) = Tokenize("f\"{{x}}\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -1574,7 +1571,7 @@ public class LexerTests
     [Fact]
     public void Deeply_nested_braces_in_interp()
     {
-        // f"{{ {x} }}" — drei brace-Tiefen in Reihe.
+        // f"{{ {x} }}": three brace depths in a row.
         var (tokens, diag) = Tokenize("f\"{{ {x} }}\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -1597,9 +1594,8 @@ public class LexerTests
     [Fact]
     public void Colon_at_depth_greater_zero_does_not_trigger_format_spec()
     {
-        // f"{{x:y}}" — der innere `:` ist auf Brace-Tiefe 1, kein FormatSpec-Trigger.
-        // Seit Slice 6 ist `:` ein Colon-Token (vorher BadChar), aber er triggert
-        // weiterhin keinen FormatSpec, weil depth=1.
+        // f"{{x:y}}": the inner `:` is at brace depth 1 and therefore triggers no format spec. It is a
+        // Colon token.
         var (tokens, diag) = Tokenize("f\"{{x:y}}\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -1608,7 +1604,7 @@ public class LexerTests
                 TokenKind.FStringInterpStart,
                 TokenKind.LBrace,
                 TokenKind.Identifier,             // x
-                TokenKind.Colon,                  // : (nicht FormatSpec, weil depth=1)
+                TokenKind.Colon,                  // : is not a format spec, because depth = 1
                 TokenKind.Identifier,             // y
                 TokenKind.RBrace,
                 TokenKind.FStringInterpEnd,
@@ -1661,7 +1657,7 @@ public class LexerTests
     [Fact]
     public void Identifier_f_with_space_then_string_is_two_separate_tokens()
     {
-        // "f " + '"hello"' — der Space trennt, kein f-String.
+        // "f " plus '"hello"': the space separates, so this is no f-string.
         var (tokens, diag) = Tokenize("f \"hello\"");
         Assert.Equal(3, tokens.Count);
         Assert.Equal(TokenKind.Identifier, tokens[0].TokenKind);
@@ -1681,7 +1677,7 @@ public class LexerTests
     [Fact]
     public void Keyword_fn_is_not_treated_as_fstring()
     {
-        // "fn" beginnt mit 'f', aber zweites Char ist 'n', nicht '"'.
+        // "fn" starts with 'f', but the second character is 'n' rather than '"'.
         var (tokens, diag) = Tokenize("fn");
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.Fn, tokens[0].TokenKind);
@@ -1748,7 +1744,7 @@ public class LexerTests
     [Fact]
     public void Interp_with_block_comment_is_skipped()
     {
-        // SkipTrivia in InterpMode handhabt Comments wie überall.
+        // SkipTrivia in interpolation mode handles comments as everywhere else.
         var (tokens, diag) = Tokenize("f\"{ /* note */ x }\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -1801,11 +1797,10 @@ public class LexerTests
     [Fact]
     public void Recovery_after_unterminated_continues_in_normal_mode()
     {
-        // Nach Unterminated bei EOF: gar nichts mehr (EOF folgt).
-        // Nach Unterminated bei \n: weitere Tokens danach lexen normal.
+        // After an unterminated string at EOF: nothing more, since EOF follows. After one at a '\n':
+        // further tokens lex normally, and "bar" has to appear as an identifier after the recovery.
         var (tokens, diag) = Tokenize("f\"hi\nbar");
         Assert.True(diag.ErrorCount >= 1);
-        // "bar" muss als Identifier nach dem Recovery auftauchen.
         Assert.Contains(tokens, t => t.TokenKind == TokenKind.Identifier);
     }
 
@@ -1925,12 +1920,12 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
-    // ─── Longest-Match: Greedy schlägt kurz, aber nicht zu gierig ───────────
+    // ─── longest match: greedy beats short, but not too greedy ──────────────
 
     [Fact]
     public void Triple_equals_is_EqualEqual_then_Equal()
     {
-        // === darf nicht zu == + = werden, aber auch nicht zu einem Phantom-Token.
+        // === must not become == plus =, and must not become a phantom token either.
         var (tokens, diag) = Tokenize("===");
         Assert.Equal(3, tokens.Count);
         Assert.Equal(TokenKind.EqualEqual, tokens[0].TokenKind);
@@ -1997,7 +1992,7 @@ public class LexerTests
     [Fact]
     public void Three_dots_is_DotDot_then_Dot()
     {
-        // '...' existiert nicht in der Spec → DotDot + Dot (Parser lehnt ab).
+        // '...' does not exist, so it is DotDot plus Dot and the parser rejects it.
         var (tokens, _) = Tokenize("...");
         Assert.Equal(3, tokens.Count);
         Assert.Equal(TokenKind.DotDot, tokens[0].TokenKind);
@@ -2016,7 +2011,7 @@ public class LexerTests
     [Fact]
     public void Double_bang_is_two_Exclamations()
     {
-        // '!=' ist 2-char, aber '!!' muss zwei Exclamation-Token sein.
+        // '!=' is two characters, but '!!' has to be two Exclamation tokens.
         var (tokens, _) = Tokenize("!!");
         Assert.Equal(3, tokens.Count);
         Assert.Equal(TokenKind.Exclamation, tokens[0].TokenKind);
@@ -2026,14 +2021,14 @@ public class LexerTests
     [Fact]
     public void QuestionQuestion_not_swallowed_by_QuestionDot()
     {
-        // '??.' → '??' dann '.', nicht '?' + '?.'.
+        // '??.' is '??' then '.', not '?' plus '?.'.
         var (tokens, _) = Tokenize("??.");
         Assert.Equal(3, tokens.Count);
         Assert.Equal(TokenKind.QuestionQuestion, tokens[0].TokenKind);
         Assert.Equal(TokenKind.Dot, tokens[1].TokenKind);
     }
 
-    // ─── Operators: Adjazenz ohne Whitespace ────────────────────────────────
+    // ─── operators: adjacency without whitespace ────────────────────────────
 
     [Fact]
     public void Postfix_increment_after_identifier()
@@ -2100,7 +2095,7 @@ public class LexerTests
     [Fact]
     public void Implements_operator_with_bracket_list()
     {
-        // 'struct X :: [I]' — :: ist der implements-Operator (Spec §1.6).
+        // 'struct X :: [I]': :: is the implements operator.
         var (tokens, diag) = Tokenize("X :: [I]");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -2113,12 +2108,12 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
-    // ─── Operators: Interaktion mit Zahlen / Range ──────────────────────────
+    // ─── operators: interaction with numbers and ranges ─────────────────────
 
     [Fact]
     public void Range_between_int_literals()
     {
-        // Kritisch: '0..5' darf das '.' nicht in einen Float ziehen.
+        // Critical: '0..5' must not pull the '.' into a float.
         var (tokens, diag) = Tokenize("0..5");
         Assert.Equal(4, tokens.Count);
         Assert.Equal(TokenKind.IntLiteral, tokens[0].TokenKind);
@@ -2147,7 +2142,7 @@ public class LexerTests
     [Fact]
     public void Dot_before_digit_is_Dot_not_float()
     {
-        // '.5' ist kein Float (Spec FloatLit braucht führende DecLit).
+        // '.5' is no float: a float literal needs a leading decimal literal.
         var (tokens, diag) = Tokenize(".5");
         Assert.Equal(3, tokens.Count);
         Assert.Equal(TokenKind.Dot, tokens[0].TokenKind);
@@ -2158,8 +2153,7 @@ public class LexerTests
     [Fact]
     public void Member_access_on_float_keeps_float()
     {
-        // '1.5.foo' — Float, dann Dot, dann Identifier (Slice 6 macht '.' jetzt
-        // zum Dot-Token statt BadChar wie in Slice 3).
+        // '1.5.foo': a float, then Dot, then an identifier.
         var (tokens, diag) = Tokenize("1.5.foo");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
@@ -2171,12 +2165,12 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
-    // ─── Operators: Vollständige §1.6-Tabelle in einer Sequenz ──────────────
+    // ─── operators: the complete table in one sequence ──────────────────────
 
     [Fact]
     public void All_operators_in_sequence_map_one_to_one()
     {
-        // Jeder Operator durch Whitespace isoliert (sonst würde '//' zum Comment).
+        // Every operator isolated by whitespace, or '//' would become a comment.
         var src =
             "( ) { } [ ] " +
             ", . ; : :: -> => " +

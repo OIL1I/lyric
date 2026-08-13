@@ -11,16 +11,14 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Tests für den Interpreter (M6, Slice 1).
+/// Tests for the interpreter.
 ///
-/// <para><b>Das sind die ersten Tests im Projekt, die prüfen, ob ein Programm das Richtige
-/// <i>tut</i></b> — bis hierher konnte nur geprüft werden, ob es korrekt übersetzt wird. Deshalb
-/// laufen sie über die gesamte Pipeline: Quelltext → Sema → IR → Bytecode → Ausführung. Ein Fehler
-/// in irgendeiner Stufe fällt hier auf.</para>
+/// <para>These are the first tests that check whether a program DOES the right thing; up to here
+/// only correct translation could be checked. They therefore run over the whole pipeline: source,
+/// sema, IR, bytecode, execution. A fault in any stage shows here.</para>
 ///
-/// <para>Geprüft wird der <b>Rückgabewert</b>, nicht der Prozess-Exit-Code: der ist auf ein Byte
-/// maskiert (Sprache.md §11) und würde negative Werte und Überläufe unkenntlich machen — also
-/// genau die Fälle, die interessant sind.</para>
+/// <para>The RETURN VALUE is checked rather than the process exit code: that one is masked to a byte
+/// and would make negative values and overflows unrecognisable — exactly the interesting cases.</para>
 /// </summary>
 public class VmTests
 {
@@ -47,20 +45,20 @@ public class VmTests
         return Interpreter.Run(module, NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null));
     }
 
-    /// <summary>Kürzel: der Rumpf wird in ein `main` gepackt.</summary>
+    /// <summary>Shorthand: the body is wrapped in a `main`.</summary>
     private static long Eval(string body) => Run($"fn main(): int {{ {body} }}").AsI64;
 
-    /// <summary>Ein Programmierfehler zur Laufzeit ist ein <c>panic</c> (Sprache.md §9) — nicht
-    /// catchbar, mit Backtrace. Kein eigener VM-Fehlerweg daneben.</summary>
+    /// <summary>A programming error at runtime is a <c>panic</c>: not catchable, with a backtrace. No
+    /// separate VM error path beside it.</summary>
     private static LyricPanic RunExpectingPanic(string source) =>
         Assert.Throws<LyricPanic>(() => Run(source));
 
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
-    /// <summary>Wie <see cref="Run"/>, aber mit Stdlib auf dem Modulpfad und den eingebauten
-    /// Natives — für Beispiele, die <c>println</c> benutzen. Die Ausgabe wird eingesammelt statt
-    /// nach <c>Console</c> geschrieben.</summary>
+    /// <summary>Like <see cref="Run"/>, but with the stdlib on the module path and the built-in
+    /// natives, for examples using <c>println</c>. The output is collected rather than written to
+    /// <c>Console</c>.</summary>
     private static (LyrValue Result, string Output) RunWithStdlib(string source)
     {
         var sm = new SourceManager();
@@ -89,15 +87,15 @@ public class VmTests
 
     // ------------------------------------------------------------------ 1) Gate-Programm
 
-    /// <summary>Das Gate-Artefakt von M7/P1: Objekte über die gesamte Pipeline, inklusive
-    /// Referenz-Semantik über eine Funktionsgrenze und einer Klasse als Feldtyp.</summary>
+    /// <summary>Objects over the whole pipeline, including reference semantics across a function
+    /// boundary and a class as a field type.</summary>
     [Fact]
     public void Object_gate_program_computes_the_right_answer()
     {
         var source = File.ReadAllText(Path.Combine(RepoRoot(), "examples", "objects.lyr"), Encoding.UTF8);
         var (result, output) = RunWithStdlib(source);
 
-        // 10, zweimal +5 durch bump (Mutation wirkt beim Aufrufer), dann +1 über den Alias.
+        // 10, twice +5 through bump (the mutation is visible at the caller), then +1 through the alias.
         Assert.Equal(21, result.AsI64);
         Assert.Equal("verschachtelt: 21\n", output.Replace("\r\n", "\n"));
     }
@@ -106,7 +104,7 @@ public class VmTests
     public void Gate_program_computes_the_right_answer()
     {
         // sumTo(10) = 55, gcd(48,18) = 6, max(55,6) = 55, add(55,0) = 55.
-        // Das ist M6s erster echter Beweis, dass die Pipeline nicht nur übersetzt, sondern rechnet.
+        // The first real proof that the pipeline does not only translate but computes.
         var source = File.ReadAllText(Path.Combine(RepoRoot(), "examples", "arith.lyr"), Encoding.UTF8);
         Assert.Equal(55, Run(source).AsI64);
     }
@@ -114,14 +112,14 @@ public class VmTests
     // ------------------------------------------------------------------ 2) Rechnen
 
     [Theory]
-    [InlineData("return 1 + 2 * 3;", 7)]                  // Präzedenz
+    [InlineData("return 1 + 2 * 3;", 7)]                  // precedence
     [InlineData("return (1 + 2) * 3;", 9)]
     [InlineData("return 7 / 2;", 3)]                      // Ganzzahldivision schneidet ab
-    [InlineData("return -7 / 2;", -3)]                    // Richtung Null, nicht Richtung -unendlich
-    [InlineData("return -7 % 2;", -1)]                    // Rest trägt das Vorzeichen des Dividenden
+    [InlineData("return -7 / 2;", -3)]                    // towards zero, not towards minus infinity
+    [InlineData("return -7 % 2;", -1)]                    // the remainder carries the sign of the dividend
     [InlineData("return 7 % -2;", 1)]
     [InlineData("return 1 << 10;", 1024)]
-    [InlineData("return -16 >> 2;", -4)]                  // arithmetischer Shift bei signed
+    [InlineData("return -16 >> 2;", -4)]                  // an arithmetic shift for signed operands
     [InlineData("return 12 & 10;", 8)]
     [InlineData("return 12 | 10;", 14)]
     [InlineData("return 12 ^ 10;", 6)]
@@ -132,15 +130,15 @@ public class VmTests
     [Fact]
     public void Signed_min_divided_by_minus_one_wraps()
     {
-        // Zweierkomplement hat kein positives Gegenstück zu MinValue. .NET wirft hier; Lyric
-        // wickelt um wie bei jeder anderen Ganzzahl-Operation (Sprache.md §6.6).
+        // Two's complement has no positive counterpart to MinValue. .NET throws here; Lyric wraps, as
+        // for every other integer operation.
         Assert.Equal(long.MinValue, Eval("let m: int = -9223372036854775807 - 1; return m / -1;"));
     }
 
     [Theory]
-    // Sprache.md §6.6: der Schiebebetrag wird modulo der OPERANDENBREITE genommen. Vorher maskierte
-    // die VM bei 64 und normalisierte auf die Zielbreite — eine Mischform, die dieselbe Regel je
-    // nach Typ verschieden ausfallen ließ: `1 << 9` ergab bei int8 0, bei int64 aber 2.
+    // The shift amount is taken modulo the OPERAND WIDTH. Masking at 64 and normalizing to the target
+    // width instead is a mixture that makes the same rule differ by type: `1 << 9` yields 0 for int8
+    // and 2 for int64.
     [InlineData("let a: int8 = 1; let s: int8 = 9; return (a << s) as int;", 2)]     // 9 mod 8 = 1
     [InlineData("let a: int32 = 1; let s: int32 = 33; return (a << s) as int;", 2)]  // 33 mod 32 = 1
     [InlineData("let a: int = 1; let s: int = 65; return a << s;", 2)]               // 65 mod 64 = 1
@@ -151,25 +149,25 @@ public class VmTests
     [Fact]
     public void Narrow_integers_wrap_at_their_own_width()
     {
-        // Ohne Breiten-Normalisierung nach jeder Operation käme hier 200 heraus statt -56.
+        // Without width normalization after every operation this would yield 200 instead of -56.
         Assert.Equal(-56, Eval("let a: int8 = 100; let b: int8 = 100; return (a + b) as int;"));
     }
 
     [Fact]
     public void Unsigned_comparison_is_not_signed_comparison()
     {
-        // Als u64 gelesen ist 0xFFFF… der größte Wert, als i64 wäre es -1. Das Tag am Opcode
-        // entscheidet — genau dafür trägt es den Operandentyp und nicht den Ergebnistyp.
+        // Read as u64, 0xFFFF… is the largest value; as i64 it would be -1. The tag on the opcode
+        // decides, which is why it carries the operand type rather than the result type.
         Assert.Equal(1, Eval("let big: uint = 18446744073709551615; let one: uint = 1; " +
                              "return if (big > one) 1 else 0;"));
     }
 
-    // ------------------------------------------------------------------ 3) Konvertierung
+    // ------------------------------------------------------------------ 3) conversion
 
     [Theory]
     [InlineData("let n: int = 300; return n as int8 as int;", 44)]      // 300 & 0xFF = 44
     [InlineData("let n: int = -1; return n as uint8 as int;", 255)]
-    [InlineData("let f: float = 3.9; return f as int;", 3)]            // Richtung Null
+    [InlineData("let f: float = 3.9; return f as int;", 3)]            // towards zero
     [InlineData("let f: float = -3.9; return f as int;", -3)]
     [InlineData("let n: int32 = 7; return n as int64 as int;", 7)]
     public void Conversions(string body, long expected) => Assert.Equal(expected, Eval(body));
@@ -177,9 +175,9 @@ public class VmTests
     [Fact]
     public void Float_to_int_saturates_instead_of_being_undefined()
     {
-        // WASMs trunc_sat-Verhalten. Die Alternative wäre "undefiniert wie in C" — dann lieferte
-        // dieselbe .lyrbc-Datei auf zwei Runtimes verschiedene Ergebnisse, und ADR-013s Versprechen
-        // einer zweiten Implementierung wäre nichts wert.
+        // WASM's trunc_sat behaviour. The alternative would be "undefined as in C", under which the same
+        // .lyrbc file would give different results on two runtimes and the promise of a second
+        // implementation would be worth nothing.
         Assert.Equal(long.MaxValue, Eval("let f: float = 1e30; return f as int;"));
         Assert.Equal(long.MinValue, Eval("let f: float = -1e30; return f as int;"));
     }
@@ -187,9 +185,9 @@ public class VmTests
     [Fact]
     public void Float32_arithmetic_uses_single_precision()
     {
-        // 2^24 ist die erste ganze Zahl, ab der f32 nicht mehr jede zählen kann: 16777216 + 1
-        // bleibt 16777216. In doppelter Genauigkeit gerechnet käme 16777217 heraus, und der
-        // Vergleich schlüge fehl. Der Test unterscheidet also wirklich die Rechenbreite.
+        // 2^24 is the first integer from which f32 can no longer count every one: 16777216 + 1 stays
+        // 16777216. Computed in double precision the result would be 16777217 and the comparison would
+        // fail, so the test really distinguishes the computation width.
         Assert.Equal(1, Eval("""
             let big: float32 = 16777216.0f32;
             let plusOne: float32 = big + 1.0f32;
@@ -211,8 +209,8 @@ public class VmTests
     [Fact]
     public void And_short_circuits_before_evaluating_the_right_side()
     {
-        // Der Beweis läuft über einen Nebeneffekt, den es sonst nicht gibt: würde die rechte Seite
-        // ausgewertet, gäbe es eine Division durch Null und damit einen panic statt einer 7.
+        // The proof runs over a side effect that does not otherwise exist: were the right side
+        // evaluated, there would be a division by zero and therefore a panic instead of a 7.
         Assert.Equal(7, Eval("var d = 0; if (false && (10 / d) > 0) { return 1; } return 7;"));
     }
 
@@ -237,7 +235,7 @@ public class VmTests
     [Fact]
     public void Postfix_and_prefix_increment_differ()
     {
-        // i++ liefert den alten Wert, ++i den neuen. Beide schreiben denselben Slot.
+        // i++ yields the old value, ++i the new one. Both write the same slot.
         Assert.Equal(0, Eval("var i = 0; let old = i++; return old;"));
         Assert.Equal(1, Eval("var i = 0; let now = ++i; return now;"));
     }
@@ -265,9 +263,9 @@ public class VmTests
     }
 
     /// <summary>
-    /// <b>Der Test, der P1 von P4 (Structs) unterscheidet.</b> Eine Klasse ist ein Referenz-Typ
-    /// (Sprache.md §3.3): zwei Namen für dasselbe Objekt sehen einander. Käme später versehentlich
-    /// eine Kopie beim Zuweisen dazu, fällt genau dieser Test — und nur dieser.
+    /// The test that distinguishes classes from structs. A class is a reference type: two names for the
+    /// same object see each other. If a copy on assignment were added later, exactly this test fails —
+    /// and only this one.
     /// </summary>
     [Fact]
     public void Assignment_copies_the_reference_not_the_object()
@@ -283,8 +281,9 @@ public class VmTests
             """).AsI64);
     }
 
-    /// <summary>Dasselbe über eine Funktionsgrenze: das Argument ist die Referenz, also wirkt die
-    /// Mutation beim Aufrufer. Ohne diesen Fall wäre „Referenz-Semantik" nur lokal gezeigt.</summary>
+    /// <summary>The same across a function boundary: the argument is the reference, so the mutation is
+    /// visible at the caller. Without this case "reference semantics" would only be shown
+    /// locally.</summary>
     [Fact]
     public void An_object_passed_to_a_function_is_mutated_in_place()
     {
@@ -317,8 +316,8 @@ public class VmTests
             """).AsI64);
     }
 
-    /// <summary>Zwei getrennt angelegte Objekte teilen nichts — die Gegenprobe zum Alias-Test, sonst
-    /// wäre ein globaler Speicher pro Typ von den Tests oben nicht zu unterscheiden.</summary>
+    /// <summary>Two separately created objects share nothing — the counter-check to the alias test,
+    /// without which a global store per type would be indistinguishable from the tests above.</summary>
     [Fact]
     public void Two_instances_are_independent()
     {
@@ -353,9 +352,9 @@ public class VmTests
         Assert.Equal(7, Run(Acc + "fn main(): int { return Acc.new(7).get(); }").AsI64);
     }
 
-    /// <summary>Der Empfänger ist Parameter 0 — eine Methode mutiert dasselbe Objekt, das der
-    /// Aufrufer hält. Ohne die richtige Argument-Reihenfolge käme hier Unsinn heraus, und zwar
-    /// stiller Unsinn: beide Argumente sind Zahlen.</summary>
+    /// <summary>The receiver is parameter 0: a method mutates the same object the caller holds. Without
+    /// the right argument order this yields nonsense, and silent nonsense at that, because both
+    /// arguments are numbers.</summary>
     [Fact]
     public void An_instance_method_mutates_the_receiver()
     {
@@ -363,8 +362,8 @@ public class VmTests
             "fn main(): int { let a = Acc.new(7); a.add(3); return a.get(); }").AsI64);
     }
 
-    /// <summary>Methode ruft Methode auf demselben <c>this</c>. Prüft, dass der Empfänger im
-    /// Rumpf ein gewöhnlicher Wert ist und weitergereicht werden kann.</summary>
+    /// <summary>A method calls a method on the same <c>this</c>. Checks that the receiver is an ordinary
+    /// value in the body and can be passed on.</summary>
     [Fact]
     public void A_method_can_call_another_method_on_this()
     {
@@ -372,8 +371,8 @@ public class VmTests
             "fn main(): int { let a = Acc.new(5); a.addTwice(3); return a.get(); }").AsI64);
     }
 
-    /// <summary>Zwei Instanzen, dieselbe Methode: der Empfänger entscheidet, nicht die Funktion.
-    /// Fällt dieser Test, teilen sich alle Instanzen versehentlich einen Zustand.</summary>
+    /// <summary>Two instances, the same method: the receiver decides, not the function. If this test
+    /// fails, all instances accidentally share one state.</summary>
     [Fact]
     public void Methods_act_on_their_own_receiver()
     {
@@ -394,8 +393,8 @@ public class VmTests
     [InlineData("let xs = [3, 7, 1]; return xs[1];", 7)]
     [InlineData("let xs = [3, 7, 1]; return xs.length;", 3)]
     [InlineData("let xs = [0] * 4; return xs.length;", 4)]        // Default-Array
-    [InlineData("let n = 5; let xs = [0] * n; return xs.length;", 5)]  // Laenge zur Laufzeit
-    [InlineData("let xs = [0] * 0; return xs.length;", 0)]        // leeres Array ist gueltig
+    [InlineData("let n = 5; let xs = [0] * n; return xs.length;", 5)]  // length at runtime
+    [InlineData("let xs = [0] * 0; return xs.length;", 0)]        // an empty array is valid
     [InlineData("let xs = [1, 2] + [3]; return xs[2];", 3)]
     [InlineData("let xs = [1, 2] + [3]; return xs.length;", 3)]
     [InlineData("let xs = [7] * 3; return xs[0] + xs[1] + xs[2];", 21)]
@@ -403,15 +402,15 @@ public class VmTests
     [InlineData("var xs = [1, 2, 3]; xs[1] += 9; return xs[1];", 11)]
     public void Arrays_behave(string body, long expected) => Assert.Equal(expected, Eval(body));
 
-    /// <summary>Konkatenation liefert ein <b>neues</b> Array — <c>T[]</c> wächst nicht, also darf
-    /// der Operand nicht mitverändert werden.</summary>
+    /// <summary>Concatenation yields a NEW array: a <c>T[]</c> does not grow, so the operand must not be
+    /// changed along with it.</summary>
     [Fact]
     public void Concatenation_leaves_its_operands_alone()
     {
         Assert.Equal(2, Eval("let xs = [1, 2]; let ys = xs + [3]; return xs.length;"));
     }
 
-    /// <summary>Ein Array ist eine Referenz (wie eine Klasse): zwei Namen, ein Speicher.</summary>
+    /// <summary>An array is a reference, like a class: two names, one store.</summary>
     [Fact]
     public void An_array_is_a_reference()
     {
@@ -419,9 +418,9 @@ public class VmTests
     }
 
     /// <summary>
-    /// Ein Element-Index ist ein <b>Laufzeitwert</b> — anders als Typ- und Feldindizes kann der
-    /// Loader ihn nicht prüfen (ADR-013/ADR-016). Eine Verletzung ist deshalb ein <c>panic</c>
-    /// (§9) mit Backtrace, kein Ladefehler und erst recht kein stiller Speicherzugriff.
+    /// An element index is a RUNTIME VALUE: unlike type and field indices the loader cannot check it. A
+    /// violation is therefore a <c>panic</c> with a backtrace, not a load error and certainly not a
+    /// silent memory access.
     /// </summary>
     [Theory]
     [InlineData("let xs = [1, 2]; return xs[2];")]
@@ -448,7 +447,7 @@ public class VmTests
 
     [Theory]
     [InlineData("return find(7) ?? 0;", 7)]
-    [InlineData("return find(-1) ?? 100;", 100)]     // rechte Seite nur bei "kein Wert"
+    [InlineData("return find(-1) ?? 100;", 100)]     // the right side only on "no value"
     [InlineData("return find(7)!;", 7)]
     [InlineData("let m = find(3); if (m != null) { return m; } return 0;", 3)]   // Narrowing
     [InlineData("let m = find(-1); if (m == null) { return 42; } return 0;", 42)]
@@ -458,10 +457,9 @@ public class VmTests
             Run(Find + $"fn wrap(): int {{ {body} }}\nfn main(): int {{ return wrap(); }}").AsI64);
 
     /// <summary>
-    /// Der Kern der Darstellungsentscheidung: <c>?int</c> muss <b>alle</b> <c>int</c>-Werte tragen
-    /// können. Wäre irgendein Bitmuster als „null" reserviert — 0 oder −1 sind die üblichen
-    /// Kandidaten —, wäre genau dieser Wert je nach Runtime mal ein Wert und mal keiner.
-    /// Bytecode.md §5 verbietet das, dieser Test hält es fest.
+    /// The core of the representation decision: a <c>?int</c> has to carry ALL <c>int</c> values. Were
+    /// any bit pattern reserved as "null" — 0 and -1 being the usual candidates — that very value would
+    /// be a value on one runtime and no value on another. The format forbids it, and this test holds it.
     /// </summary>
     [Theory]
     [InlineData(0)]
@@ -476,9 +474,9 @@ public class VmTests
                                 "fn main(): int { return wrap()!; }").AsI64);
     }
 
-    /// <summary>Die rechte Seite von <c>??</c> wird <b>nicht</b> ausgewertet, wenn links ein Wert
-    /// steht — sonst wäre es kein Kurzschluss. Nachgewiesen über eine Division durch Null, die
-    /// sonst panickt.</summary>
+    /// <summary>The right side of <c>??</c> is NOT evaluated when there is a value on the left; otherwise
+    /// it would be no short circuit. Shown through a division by zero that would otherwise
+    /// panic.</summary>
     [Fact]
     public void Coalescing_does_not_evaluate_its_right_side_when_there_is_a_value()
     {
@@ -521,8 +519,8 @@ public class VmTests
     public void Enum_variants_dispatch_through_match(string body, long expected) =>
         Assert.Equal(expected, Run(ShapeEnum + $"fn wrap(): int {{ {body} }}\nfn main(): int {{ return wrap(); }}").AsI64);
 
-    /// <summary>Jede Variante trägt ihre eigenen Felder — der Payload der einen darf beim Lesen der
-    /// anderen nicht durchschlagen. Das ist die Invariante hinter „ein Layout pro Variante".</summary>
+    /// <summary>Every variant carries its own fields: the payload of one must not show through when
+    /// reading another. That is the invariant behind "one layout per variant".</summary>
     [Fact]
     public void Variants_keep_their_own_payload()
     {
@@ -536,8 +534,8 @@ public class VmTests
             """).AsI64);
     }
 
-    /// <summary><c>match</c> als <b>Statement</b> — derselbe Code wie beim Ausdruck, nur ohne
-    /// Ergebnis-Slot.</summary>
+    /// <summary><c>match</c> as a STATEMENT: the same code as for the expression, only without the
+    /// result slot.</summary>
     [Fact]
     public void Match_works_as_a_statement()
     {
@@ -561,15 +559,15 @@ public class VmTests
     [Fact]
     public void Division_by_zero_panics_with_a_backtrace()
     {
-        // Ein gebrochener Vertrag ist ein panic (Sprache.md §9), kein eigener VM-Fehlerweg
-        // daneben — sonst gäbe es drei Fehlermechanismen statt zwei.
+        // A broken contract is a panic, not a separate VM error path beside it; otherwise there would be
+        // three error mechanisms instead of two.
         var ex = RunExpectingPanic("""
             fn divide(a: int, b: int): int { return a / b; }
             fn main(): int { var zero = 0; return divide(1, zero); }
             """);
 
         Assert.Equal(VmDiagnostics.DivisionByZero, ex.Code);
-        // Innerste Funktion zuerst — der Backtrace zeigt, wo es knallte und wer dorthin führte.
+        // Innermost function first: the backtrace shows where it blew up and who led there.
         Assert.Equal(new[] { "main.divide", "main.main" }, ex.CallStack);
     }
 
@@ -583,16 +581,16 @@ public class VmTests
     [Fact]
     public void Float_division_by_zero_is_infinity_not_an_error()
     {
-        // IEEE 754: keine Ausnahme, sondern Inf. Nur Ganzzahlen kennen den Fehler.
-        // (`main` muss int liefern — Sprache.md §11 —, also wird drinnen verglichen.)
+        // IEEE 754: no exception but Inf. Only integers know the error. (`main` has to return an int, so
+        // the comparison happens inside.)
         Assert.Equal(1, Eval("var d = 0.0; let r = 1.0 / d; return if (r > 1.0e308) 1 else 0;"));
     }
 
     [Fact]
     public void Runaway_recursion_is_reported_instead_of_crashing_the_process()
     {
-        // Mit .NET-Rekursion im Interpreter wäre das ein StackOverflowException — und die kann
-        // man in .NET nicht abfangen, der Prozess stirbt. Deshalb ein expliziter Frame-Stack.
+        // With .NET recursion in the interpreter this would be a StackOverflowException, and that cannot
+        // be caught in .NET: the process dies. Hence an explicit frame stack.
         var ex = RunExpectingPanic("""
             fn down(n: int): int { return down(n + 1); }
             fn main(): int { return down(0); }
@@ -626,8 +624,8 @@ public class VmTests
     [Fact]
     public void Start_section_survives_the_round_trip()
     {
-        // Ohne diese Sektion müsste eine Runtime den Einstieg über eine Namenskonvention raten —
-        // und eine zweite Implementierung, die nur die Spec kennt, könnte ihn gar nicht finden.
+        // Without this section a runtime would have to guess the entry from a naming convention, and a
+        // second implementation knowing only the specification could not find it at all.
         var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(
             LowerOnly("fn helper(): int { return 1; } fn main(): int { return helper(); }")));
 
@@ -648,10 +646,10 @@ public class VmTests
         return ModuleLowerer.Lower(comp, binding, types, de, verify: true)!;
     }
 
-    // ------------------------------------------------------------------ P5b: ?. und ??=
+    // ------------------------------------------------------------------ ?. and ??=
 
-    /// <summary><c>??=</c> weist nur zu, wenn nichts da ist — und wertet die rechte Seite auch
-    /// nur dann aus.</summary>
+    /// <summary><c>??=</c> assigns only when there is nothing there, and evaluates the right side only
+    /// then.</summary>
     [Theory]
     [InlineData("null", 5)]
     [InlineData("1", 1)]
@@ -661,8 +659,8 @@ public class VmTests
     [Fact]
     public void Coalescing_assign_does_not_evaluate_its_right_side_when_full()
     {
-        // Kurzschluss-Nachweis ueber eine sonst ausloesende Division durch Null — dieselbe Form,
-        // mit der P2b schon '??' belegt hat.
+        // The short circuit is shown through a division by zero that would otherwise fire — the same form
+        // that already covered '??'.
         Assert.Equal(1, Run("""
             fn main(): int {
                 var zero = 0;
@@ -673,8 +671,8 @@ public class VmTests
             """).AsI64);
     }
 
-    /// <summary><c>?.</c> greift nur zu, wenn der Traeger einen Wert hat; das Ergebnis ist immer
-    /// ein Optional (Sprache.md §7).</summary>
+    /// <summary><c>?.</c> accesses only when the carrier has a value; the result is always an
+    /// optional.</summary>
     [Theory]
     [InlineData("null", 0)]
     [InlineData("P { n = 7 }", 7)]
@@ -691,8 +689,8 @@ public class VmTests
 
     // ------------------------------------------------------------------ P5b: string-Ops, panic
 
-    /// <summary><c>+</c> und <c>*</c> auf <c>string</c> sind eingebaute Semantik (§6.5), aber
-    /// kein Opcode: sie lowern zu Calls in <c>std.string</c>, sonst waere <c>add</c> polymorph.</summary>
+    /// <summary><c>+</c> and <c>*</c> on <c>string</c> are built-in semantics but no opcode: they lower
+    /// to calls in <c>std.string</c>, or <c>add</c> would be polymorphic.</summary>
     [Fact]
     public void String_concatenation_lowers_to_a_call()
     {
@@ -706,7 +704,7 @@ public class VmTests
     [Theory]
     [InlineData("3", "ababab")]
     [InlineData("0", "")]
-    [InlineData("0 - 1", "")]   // negativ ist kein Fehlerfall — die Spec kennt keinen
+    [InlineData("0 - 1", "")]   // negative is no error case; the specification knows none
     public void String_repetition_lowers_to_a_call(string count, string expected)
     {
         var (_, output) = RunWithStdlib($$"""
@@ -716,8 +714,8 @@ public class VmTests
         Assert.Equal(expected, output);
     }
 
-    /// <summary><c>panic</c> ist ein Sprach-Built-in mit Rueckgabetyp <c>never</c> (§9): nicht
-    /// catchbar, beendet die VM mit Backtrace.</summary>
+    /// <summary><c>panic</c> is a language builtin with the return type <c>never</c>: not catchable, and
+    /// it ends the VM with a backtrace.</summary>
     [Fact]
     public void Panic_aborts_with_its_message_and_a_backtrace()
     {
@@ -728,15 +726,15 @@ public class VmTests
 
         Assert.Equal(VmDiagnostics.Panicked, panic.Code);
         Assert.Equal("kaputt", panic.Message);
-        // Der Backtrace nennt beide Frames, innerster zuerst.
+        // The backtrace names both frames, innermost first.
         Assert.Equal(["main.deep", "main.main"], panic.CallStack);
     }
 
     [Fact]
     public void Code_after_a_panic_is_unreachable_but_the_other_branch_still_runs()
     {
-        // 'panic' versiegelt seinen Block — der Rueckgabewert von LowerStmt muss das melden,
-        // sonst versucht der Aufrufer, denselben Block ein zweites Mal zu versiegeln.
+        // 'panic' seals its block, and the return value of LowerStmt has to report that, or the caller
+        // tries to seal the same block a second time.
         Assert.Equal(5, RunWithStdlib("""
             fn f(n: int): int {
                 if (n < 0) { panic("negativ"); }
@@ -749,8 +747,8 @@ public class VmTests
     // ------------------------------------------------------------------ P5b: Defaults, params
 
     /// <summary>
-    /// Default-Werte werden an der <b>Aufrufstelle</b> materialisiert, nicht beim Callee — die IR
-    /// kennt keine optionalen Parameter, und nach dem Lowering ist ein Aufruf ein Aufruf.
+    /// Default values are materialized AT THE CALL SITE rather than at the callee: the IR knows no
+    /// optional parameters, and after the lowering a call is a call.
     /// </summary>
     [Theory]
     [InlineData("f(1)", 3)]        // b faellt weg -> Default 2
@@ -773,8 +771,8 @@ public class VmTests
     [Fact]
     public void A_default_is_evaluated_per_call_not_once()
     {
-        // An der Aufrufstelle heisst: zweimal aufgerufen, zweimal ausgewertet. Waere der Default
-        // einmal beim Callee gelowert, teilten sich beide Aufrufe ein Objekt.
+        // At the call site means: called twice, evaluated twice. Were the default lowered once at the
+        // callee, both calls would share one object.
         Assert.Equal(2, Run("""
             class Cell { n: int }
             fn make(c: Cell = Cell { n = 0 }): int { c.n += 1; return c.n; }
@@ -782,11 +780,11 @@ public class VmTests
             """).AsI64);
     }
 
-    /// <summary><c>params</c> sammelt den Rest in ein Array (§3.1) — auch das eine
-    /// Aufrufstellen-Transformation: der Callee sieht ein gewoehnliches <c>T[]</c>.</summary>
+    /// <summary><c>params</c> collects the rest into an array, another call-site transformation: the
+    /// callee sees an ordinary <c>T[]</c>.</summary>
     [Theory]
     [InlineData("sum(1, 2, 3)", 6)]
-    [InlineData("sum()", 0)]        // leeres Array, kein Sonderfall
+    [InlineData("sum()", 0)]        // an empty array, not a special case
     [InlineData("sum(5)", 5)]
     public void Params_collects_the_remaining_arguments(string call, long expected) =>
         Assert.Equal(expected, Run($$"""
@@ -818,9 +816,8 @@ public class VmTests
         """;
 
     /// <summary>
-    /// <b>Der Fall, der die Regel begruendet</b>: ohne Durchreichen kann eine variadische Funktion
-    /// an keine andere delegieren. Genau solche Huellen bauen C#s <c>WriteLine</c>-Ueberladungen
-    /// intern.
+    /// The case that motivates the rule: without passing through, a variadic function cannot delegate to
+    /// another. C#'s <c>WriteLine</c> overloads build exactly such shells internally.
     /// </summary>
     [Fact]
     public void A_variadic_function_can_forward_its_own_params()
@@ -835,7 +832,7 @@ public class VmTests
     [Fact]
     public void A_ready_made_array_is_passed_as_the_array_itself()
     {
-        // Nicht als EIN Element: 4+5+6, nicht 1 (die Laenge eines Arrays mit einem Element).
+        // Not as ONE element: 4+5+6, not 1, which would be the length of an array with one element.
         Assert.Equal(15, Run(VariadicSum + """
 
             fn main(): int { let a = [4, 5, 6]; return sum(a); }
@@ -843,14 +840,13 @@ public class VmTests
     }
 
     /// <summary>
-    /// Die Eindeutigkeit, die C# ueber Ueberladungsaufloesung herstellen muss und Lyric ueber den
-    /// Typ: bei <c>params xs: int[][]</c> ist ein Element <c>int[]</c> und das Array
-    /// <c>int[][]</c>. Beide Aufrufe liefern 1 — aber aus verschiedenen Gruenden, und genau das
-    /// ist der Punkt.
+    /// The unambiguity C# has to establish through overload resolution and Lyric through the type: with
+    /// <c>params xs: int[][]</c> an element is <c>int[]</c> and the array is <c>int[][]</c>. Both calls
+    /// yield 1, but for different reasons, and that is the point.
     /// </summary>
     [Theory]
-    [InlineData("inner", 1)]           // int[] -> ein Element, Array der Laenge 1
-    [InlineData("[inner, inner]", 2)]  // int[][] -> das Array selbst, Laenge 2
+    [InlineData("inner", 1)]           // int[] is one element, an array of length 1
+    [InlineData("[inner, inner]", 2)]  // int[][] is the array itself, length 2
     public void The_argument_type_decides_element_versus_array(string argument, long expected) =>
         Assert.Equal(expected, Run($$"""
             fn count(params xs: int[][]): int { return xs.length; }
@@ -894,8 +890,8 @@ public class VmTests
     [Fact]
     public void A_function_reads_a_constant_declared_after_it()
     {
-        // Aus einem Rumpf ist jede Konstante lesbar, egal wo sie steht — dann ist die Init-Phase
-        // laengst vorbei. Nur INNERHALB eines Initialisierers gilt die Reihenfolge.
+        // From a body every constant is readable wherever it stands: the init phase is long over by then.
+        // The order applies INSIDE an initializer only.
         Assert.Equal(4, Run("""
             fn f(): int { return k; }
             let k = 4;
@@ -906,8 +902,8 @@ public class VmTests
     [Fact]
     public void An_initializer_can_build_an_object()
     {
-        // Der Fall, wegen dem es eine Init-FUNKTION ist und keine Werte in der Sektion: ein
-        // Initialisierer ist ein Ausdruck, kein Literal (ADR-014).
+        // The case that makes it an init FUNCTION rather than values in the section: an initializer is an
+        // expression, not a literal.
         Assert.Equal(9, Run("""
             class C { n: int }
             let cell = C { n = 9 };
@@ -918,7 +914,7 @@ public class VmTests
     [Fact]
     public void The_documented_static_let_example_works()
     {
-        // Doku.md §10.3 — der Fall, fuer den ADR-014 'static let' ueberhaupt eingefuehrt hat.
+        // The case 'static let' was introduced for.
         Assert.Equal(50, Run("""
             class Enemy {
                 name: string,
@@ -949,8 +945,7 @@ public class VmTests
 
     [Fact]
     public void A_closure_outlives_the_call_that_made_it() =>
-        // Der Kern von ADR-018: 'n' lebt in einer Zelle, nicht im Frame von mk — sonst waere es
-        // hier weg.
+        // 'n' lives in a cell rather than in mk's frame; otherwise it would be gone here.
         Assert.Equal(2, Run("""
             fn mk(): fn() -> int { var n = 0; return (): int => { n += 1; return n; }; }
             fn main(): int { let c = mk(); c(); return c(); }
@@ -958,7 +953,7 @@ public class VmTests
 
     [Fact]
     public void Two_closures_share_one_captured_variable() =>
-        // Die Gegenprobe zum Test darueber: teilen heisst teilen. Bei zwei Zellen stuende hier 1.
+        // The counter-check to the test above: sharing means sharing. With two cells this would be 1.
         Assert.Equal(21, Run("""
             fn main(): int {
                 var n = 1;
@@ -972,7 +967,7 @@ public class VmTests
 
     [Fact]
     public void The_enclosing_function_sees_what_the_closure_wrote() =>
-        // Die andere Richtung derselben Zelle — ohne diesen Test bliebe „geteilt" die halbe Aussage.
+        // The other direction of the same cell; without this test "shared" would be half a statement.
         Assert.Equal(30, Run("""
             fn main(): int { var n = 0; let set = () => { n = 30; }; set(); return n; }
             """).AsI64);
@@ -986,16 +981,16 @@ public class VmTests
 
     [Fact]
     public void A_lambda_inside_a_lambda_reaches_the_outer_capture() =>
-        // Verschachtelt: 'a' liegt im Environment der aeusseren Closure, und die innere liest es
-        // von dort — nicht aus einem Slot, den es in ihrem Frame nicht gibt.
+        // Nested: 'a' lies in the environment of the outer closure and the inner one reads it from there,
+        // not from a slot that does not exist in its frame.
         Assert.Equal(8, Run("""
             fn main(): int { let a = 7; let f = (): int => { let g = (): int => a + 1; return g(); }; return f(); }
             """).AsI64);
 
     [Fact]
     public void A_closure_without_captures_needs_no_environment() =>
-        // Kein newobj im erzeugten Code — der Wert ist reiner Funktionsindex. Gemessen wird das
-        // Ergebnis; dass keine Allokation stattfand, haelt der Disassembler fest.
+        // No newobj in the generated code: the value is a pure function index. The result is what is
+        // measured; that no allocation happened is recorded by the disassembler.
         Assert.Equal(9, Run("""
             fn main(): int { let f = (x: int) => x * 3; return f(3); }
             """).AsI64);
@@ -1003,8 +998,8 @@ public class VmTests
     [Fact]
     public void An_array_of_function_values_runs()
     {
-        // Der Fall, fuer den die Typ-Klammerung eingefuehrt wurde (Sprache.md §4): vorher liess
-        // sich dieser Typ nicht hinschreiben, obwohl es ihn gab.
+        // The case type parentheses were introduced for: without them this type could not be written down
+        // although it existed.
         Assert.Equal(31, Run("""
             fn main(): int {
                 let fs: (fn(int) -> int)[] = [(x: int) => x + 1, (x: int) => x * 2];
@@ -1019,8 +1014,8 @@ public class VmTests
 
     // ------------------------------------------------------------------ P7: Coroutinen
 
-    /// <summary>Wie <see cref="Run"/>, aber mit Stdlib: der Sprungverteiler einer Coroutine ruft
-    /// <c>std.core.coroutineEnded</c>, und den bindet erst der Modulpfad.</summary>
+    /// <summary>Like <see cref="Run"/>, but with the stdlib: the jump table of a coroutine calls
+    /// <c>std.core.coroutineEnded</c>, and only the module path binds that.</summary>
     private static LyrValue Coroutine(string source) => RunWithStdlib(source).Result;
 
     private static LyricPanic PanicFromCoroutine(string source) =>
@@ -1028,7 +1023,7 @@ public class VmTests
 
     [Fact]
     public void A_coroutine_resumes_where_it_left_off() =>
-        // Der Kern von §8: 'n' ueberlebt das 'yield'. Ohne erhaltenen Zustand kaeme dreimal die 0.
+        // 'n' survives the 'yield'. Without preserved state this would yield 0 three times.
         Assert.Equal(2, Coroutine("""
             fn counter(): Coroutine<int> { var n = 0; while (true) { yield n; n += 1; } }
             fn main(): int { let c = counter(); resume c; resume c; return resume c; }
@@ -1043,8 +1038,8 @@ public class VmTests
 
     [Fact]
     public void Two_coroutines_of_the_same_kind_have_separate_state() =>
-        // Die Gegenprobe: der Zustand haengt am WERT, nicht an der Funktion. Bei geteiltem
-        // Zustand stuende hier 3.
+        // The counter-check: the state hangs on the VALUE rather than on the function. With shared state
+        // this would be 3.
         Assert.Equal(2, Coroutine("""
             fn counter(): Coroutine<int> { var n = 0; while (true) { yield n; n += 1; } }
             fn main(): int {
@@ -1058,8 +1053,7 @@ public class VmTests
 
     [Fact]
     public void A_coroutine_parameter_survives_the_first_yield() =>
-        // Parameter liegen im Zustandsobjekt wie jedes Local — die Fabrik schreibt sie beim
-        // Erzeugen hinein.
+        // Parameters live in the state object like every local; the factory writes them in on creation.
         Assert.Equal(14, Coroutine("""
             fn steps(by: int): Coroutine<int> { var n = 0; while (true) { yield n; n += by; } }
             fn main(): int { let s = steps(7); resume s; resume s; return resume s; }
@@ -1068,8 +1062,7 @@ public class VmTests
     [Fact]
     public void Resuming_a_finished_coroutine_is_an_error()
     {
-        // §8: der resume, bei dem der Rumpf auslaeuft, hat keinen Wert zu liefern und meldet
-        // sich. Bis Throwable-Typen aus der Stdlib kommen (M8) als Panic.
+        // The resume on which the body runs out has no value to deliver and says so.
         var panic = PanicFromCoroutine("""
             fn two(): Coroutine<int> { yield 1; yield 2; }
             fn main(): int { let c = two(); resume c; resume c; return resume c; }
@@ -1096,8 +1089,8 @@ public class VmTests
 
     [Fact]
     public void A_generic_function_can_call_a_generic_function() =>
-        // 'id' wird aus 'twice<int>' heraus angefordert, und welches T gemeint ist, weiss nur die
-        // Substitution der rufenden Instanz.
+        // 'id' is requested from inside 'twice<int>', and which T is meant is known only to the calling
+        // instance's substitution.
         Assert.Equal(4, Run("""
             fn id<T>(x: T): T { return x; }
             fn twice<T>(x: T): T { return id(id(x)); }
@@ -1106,8 +1099,8 @@ public class VmTests
 
     [Fact]
     public void A_generic_function_can_recurse() =>
-        // Die Instanz findet ihre eigene Id vor — deshalb wird sie bei der Anforderung vergeben
-        // und nicht erst beim Lowern.
+        // The instance finds its own id already there, which is why it is assigned on request rather than
+        // when lowering.
         Assert.Equal(3, Run("""
             fn down<T>(x: T, n: int): int { if (n <= 0) { return 0; } return 1 + down(x, n - 1); }
             fn main(): int { return down("a", 3); }
@@ -1122,7 +1115,7 @@ public class VmTests
 
     [Fact]
     public void A_method_of_a_generic_type_is_instantiated_per_type() =>
-        // Der Rueckgabetyp ist T — er kann nur aus der INSTANZ kommen, nicht aus der Definition.
+        // The return type is T: it can come only from the INSTANCE, not from the definition.
         Assert.Equal(5, Run("""
             class Box<T> { v: T, fn get(): T { return this.v; } }
             fn main(): int { let a = Box<int> { v = 5 }; let s = Box<string> { v = "x" }; return a.get(); }
@@ -1130,8 +1123,8 @@ public class VmTests
 
     [Fact]
     public void A_generic_struct_lowers_like_any_other() =>
-        // Generisch UND Wert-Semantik: 'Pair<int>' geht durch denselben Layout-Pfad wie jedes
-        // andere struct (P4) — die Instanziierung aendert daran nichts.
+        // Generic AND value semantics: 'Pair<int>' goes through the same layout path as any other struct;
+        // the instantiation changes nothing about that.
         Assert.Equal(5, Run("""
             struct Pair<T> { a: T, b: T, fn first(): T { return this.a; } }
             fn main(): int { let p = Pair<int> { a = 5, b = 3 }; return p.first(); }
@@ -1139,8 +1132,8 @@ public class VmTests
 
     [Fact]
     public void A_generic_interface_dispatches_dynamically() =>
-        // Der Baustein, auf dem 'Iterator<T>' aufsetzt: Konformanz zu einem generischen Interface,
-        // Zuweisung an dessen Typ, und ein callvirt darueber.
+        // The building block 'Iterator<T>' rests on: conformance to a generic interface, assignment to
+        // its type, and a callvirt through it.
         Assert.Equal(7, Run("""
             interface Src<T> { fn next(): ?T; }
             class Ones :: [Src<int>] { fn next(): ?int { return 7; } }
@@ -1156,8 +1149,8 @@ public class VmTests
 
     [Fact]
     public void For_in_walks_an_inclusive_range() =>
-        // Der inklusive Bereich endet eins spaeter — die Umrechnung passiert beim Bauen des
-        // Adapters, damit es nur EINEN RangeIterator gibt.
+        // The inclusive range ends one later; the conversion happens while building the adapter, so there
+        // is only ONE RangeIterator.
         Assert.Equal(10, Iterating("fn main(): int { var s = 0; for (n in 1..=4) { s += n; } return s; }"));
 
     [Fact]
@@ -1168,8 +1161,7 @@ public class VmTests
 
     [Fact]
     public void Break_and_continue_work_inside_for_in() =>
-        // Die Schleife ist ein gewoehnlicher LoopScope — 'break' und 'continue' brauchen deshalb
-        // keinen Sonderfall.
+        // The loop is an ordinary LoopScope, so 'break' and 'continue' need no special case.
         Assert.Equal(8, Iterating("""
             fn main(): int {
                 var s = 0;
@@ -1180,7 +1172,7 @@ public class VmTests
 
     [Fact]
     public void Two_loops_over_the_same_array_do_not_interfere() =>
-        // Der Index gehoert dem ITERATOR und nicht dem Array. Bei geteiltem Zustand kaeme hier 6.
+        // The index belongs to the ITERATOR rather than to the array. With shared state this would be 6.
         Assert.Equal(12, Iterating("""
             fn main(): int {
                 let xs = [1, 2, 3];
@@ -1193,7 +1185,7 @@ public class VmTests
 
     [Fact]
     public void A_user_defined_iterator_is_used_directly() =>
-        // Kein Adapter: der Typ erfuellt 'Iterator<T>' selbst, also wird er genommen, wie er ist.
+        // No adapter: the type satisfies 'Iterator<T>' itself, so it is taken as it is.
         Assert.Equal(3, Iterating("""
             import std.iter { Iterator };
             class UpTo :: [Iterator<int>] {
@@ -1213,15 +1205,15 @@ public class VmTests
             }
             """));
 
-    /// <summary>'for-in' baut seinen Iterator aus std.iter — ohne Modulpfad gibt es keinen.</summary>
+    /// <summary>'for-in' builds its iterator from std.iter; without a module path there is none.</summary>
     private static long Iterating(string source) => RunWithStdlib(source).Result.AsI64;
 
     // ------------------------------------------------------------------ P8: Constraints
 
     [Fact]
     public void A_constraint_dispatches_directly() =>
-        // Der Gewinn der Monomorphisierung: in der Instanz steht T fest, also auch die Methode.
-        // Aus dem dynamischen Dispatch wird ein direkter Aufruf — kein callvirt, keine vtable.
+        // The gain of monomorphization: in the instance T is settled and so is the method. The dynamic
+        // dispatch becomes a direct call — no callvirt, no vtable.
         Assert.Equal(4, Run("""
             interface P { fn price(): int; }
             class Item :: [P] { fn price(): int { return 4; } }
@@ -1231,7 +1223,7 @@ public class VmTests
 
     [Fact]
     public void Each_constrained_instance_calls_its_own_implementation() =>
-        // Die Gegenprobe: ohne getrennte Instanzen liefe zweimal dieselbe Methode.
+        // The counter-check: without separate instances the same method would run twice.
         Assert.Equal(8, Run("""
             interface P { fn price(): int; }
             class A :: [P] { fn price(): int { return 3; } }
@@ -1242,8 +1234,8 @@ public class VmTests
 
     [Fact]
     public void A_default_method_reached_through_a_constraint_goes_virtual() =>
-        // Eine Default-Methode gehoert dem INTERFACE, ihr 'this' ist der Interface-Typ. Dorthin
-        // fuehrt kein direkter Aufruf: der Empfaenger wird gehoben, und callvirt macht den Rest.
+        // A default method belongs to the INTERFACE and its 'this' is the interface type. No direct call
+        // leads there: the receiver is lifted and callvirt does the rest.
         Assert.Equal(12, Run("""
             interface P { fn base(): int; fn twice(): int { return this.base() * 2; } }
             class Item :: [P] { fn base(): int { return 6; } }
@@ -1253,7 +1245,7 @@ public class VmTests
 
     [Fact]
     public void An_own_member_beats_the_default_through_a_constraint() =>
-        // §3.5, und die Gegenprobe zum Test darueber: haette der Default gewonnen, stuende 99 da.
+        // The counter-check to the test above: had the default won, this would be 99.
         Assert.Equal(3, Run("""
             interface P { fn base(): int; fn twice(): int { return 99; } }
             class Item :: [P] { fn base(): int { return 6; }, fn twice(): int { return 3; } }
@@ -1263,8 +1255,8 @@ public class VmTests
 
     [Fact]
     public void A_value_held_as_an_interface_still_dispatches_dynamically() =>
-        // Zwei verschiedene Fragen, zwei Pfade: ein Constraint kennt den Typ, ein Interface-Wert
-        // nicht. Dieser Test haelt fest, dass der zweite Pfad nicht verloren gegangen ist.
+        // Two different questions, two paths: a constraint knows the type, an interface value does not.
+        // This test holds that the second path has not been lost.
         Assert.Equal(7, Run("""
             interface P { fn price(): int; }
             class Item :: [P] { fn price(): int { return 7; } }
@@ -1273,9 +1265,8 @@ public class VmTests
 
     [Fact]
     public void A_match_statement_where_every_arm_returns() =>
-        // Das haeufigste Statement-'match' ueberhaupt — und bis 2026-08-06 eine Scope-Grenze:
-        // der Merge-Block wurde immer angelegt, blieb leer und war vom Einstieg unerreichbar.
-        // Jetzt entsteht er erst, wenn ein Arm ihn braucht.
+        // The most common statement 'match' there is. The merge block arises only once an arm needs it;
+        // created unconditionally it stays empty and is unreachable from the entry.
         Assert.Equal(7, Run("""
             enum E { A, B }
             fn main(): int { let e = E.A; match (e) { A => { return 7; }, B => { return 2; } } }
@@ -1283,7 +1274,7 @@ public class VmTests
 
     [Fact]
     public void A_match_statement_where_one_arm_falls_through() =>
-        // Die Gegenprobe: faellt ein Arm durch, MUSS der Merge-Block da sein.
+        // The counter-check: when an arm falls through, the merge block MUST be there.
         Assert.Equal(3, Run("""
             fn main(): int {
                 var r = 0;
@@ -1301,7 +1292,7 @@ public class VmTests
 
     [Fact]
     public void A_wildcard_binds_nothing() =>
-        // '_' liest das Feld gar nicht erst — ein ldfld ohne Abnehmer waere toter Code.
+        // '_' does not read the field at all: an ldfld without a consumer would be dead code.
         Assert.Equal(7, Run("fn main(): int { let (a, _) = (7, 2); return a; }").AsI64);
 
     [Fact]
@@ -1312,7 +1303,7 @@ public class VmTests
 
     [Fact]
     public void A_tuple_is_a_return_type() =>
-        // Der Fall, fuer den es Tupel gibt: mehrere Werte zurueckgeben, ohne einen Typ dafuer zu
+        // The case tuples exist for: returning several values without declaring a type for it.
         // erfinden.
         Assert.Equal(12, Run("""
             fn pair(): (int, int) { return (3, 4); }
@@ -1321,8 +1312,8 @@ public class VmTests
 
     [Fact]
     public void The_initializer_runs_once() =>
-        // 'let (a, b) = f();' darf f NICHT zweimal rufen. Der Zaehler liegt in einer Zelle
-        // (ADR-018), weil ein globales 'var' nicht erlaubt ist — bei zwei Aufrufen stuende hier 2.
+        // 'let (a, b) = f();' must NOT call f twice. The counter lives in a cell, because a global 'var'
+        // is not allowed; with two calls this would be 2.
         Assert.Equal(1, Run("""
             fn main(): int {
                 var calls = 0;
@@ -1334,7 +1325,7 @@ public class VmTests
 
     [Fact]
     public void A_match_takes_a_tuple_apart() =>
-        // Dasselbe Muster wie im Destructuring, und deshalb dieselbe Routine im Lowering.
+        // The same pattern as in destructuring, and therefore the same routine in the lowering.
         Assert.Equal(3, Run("""
             fn main(): int { let t = (1, 2); return match (t) { (a, b) => a + b }; }
             """).AsI64);
@@ -1347,8 +1338,8 @@ public class VmTests
 
     [Fact]
     public void Tuples_of_the_same_shape_share_one_layout() =>
-        // Interniert: zwei '(int, int)' sind derselbe Tabellen-Eintrag. Sonst wuechse die
-        // Typtabelle mit der Zahl der LITERALE statt mit der Zahl der Formen.
+        // Interned: two '(int, int)' are the same table entry. Otherwise the type table would grow with
+        // the number of LITERALS rather than with the number of shapes.
         Assert.Equal(10, Run("""
             fn main(): int {
                 let (a, b) = (1, 2);
@@ -1357,17 +1348,16 @@ public class VmTests
             }
             """).AsI64);
 
-    // ------------------------------------------------------- Globals mit zusammengesetztem Typ
+    // ------------------------------------------------------- globals with a composite type
 
     /// <summary>
-    /// Ein Modul-<c>let</c> darf jeden Typ haben, den eine lokale Variable haben darf.
+    /// A module <c>let</c> may have any type a local variable may have.
     ///
-    /// <para><b>Warum das ein eigener Abschnitt ist:</b> es ging nicht. Ein Global vom Typ
-    /// <c>T[]</c> oder <c>?T</c> brach das Lowering mit „type not lowerable" ab — nicht als
-    /// Diagnose, sondern als Absturz mit Stack-Trace — waehrend derselbe Ausdruck in einer
-    /// Funktion uebersetzte. Die Ursache war eine zweite, unvollstaendige Kopie der Abbildung
-    /// Sema-Typ → IR-Typ; sie ist geloescht, und diese Tests halten fest, was sie verschwiegen
-    /// hat.</para>
+    /// <para>A section of its own because it did not work: a global of type <c>T[]</c> or <c>?T</c> broke
+    /// the lowering with "type not lowerable" — as a crash with a stack trace rather than a diagnostic —
+    /// while the same expression compiled inside a function. The cause was a second, incomplete copy of
+    /// the mapping from sema type to IR type; it is deleted, and these tests hold what it concealed.
+    /// </para>
     /// </summary>
     [Fact]
     public void A_global_may_be_an_array()
@@ -1402,7 +1392,7 @@ public class VmTests
     [Fact]
     public void A_global_may_be_an_array_of_strings()
     {
-        // Ein Referenztyp im Element, damit nicht nur der Skalar-Pfad geprueft ist.
+        // A reference type in the element, so not only the scalar path is checked.
         Assert.Equal(5, Run("""
             let names = ["ada", "grace"];
             fn main(): int {
@@ -1412,13 +1402,13 @@ public class VmTests
             """).AsI64);
     }
 
-    // ------------------------------------------------------------- char als Zahl (ADR-022)
+    // ------------------------------------------------------------- char as a number
 
     /// <summary>
-    /// <c>char</c> zaehlt zur Numerik: Vergleiche, Casts und Arithmetik gehen.
+    /// <c>char</c> counts as numeric: comparisons, casts and arithmetic work.
     ///
-    /// <para>Der Anlass ist <c>std.string</c> — „ist das eine Ziffer?" ist Codepoint-Arithmetik,
-    /// und ohne einen Weg dorthin muesste jede solche Funktion nativ sein.</para>
+    /// <para>The occasion is <c>std.string</c> — "is this a digit?" is code point arithmetic, and without
+    /// a way there every such function would have to be native.</para>
     /// </summary>
     [Fact]
     public void A_char_compares_and_casts_like_a_number()
@@ -1431,16 +1421,15 @@ public class VmTests
     [Fact]
     public void An_untyped_literal_adapts_to_char()
     {
-        // 'c + 1' — das Literal IST ein char (Sprache.md 6.5), es wird nicht konvertiert. Ohne die
-        // Anpassung in UnifyNumeric stand hier ein 'const i64' neben einem char-Operanden, und der
-        // IR-Verifier liess den Compiler ABSTUERZEN statt zu diagnostizieren.
+        // 'c + 1' — the literal IS a char, it is not converted. Without the adaptation in UnifyNumeric a
+        // 'const i64' stood next to a char operand and the IR verifier made the compiler CRASH instead of
+        // diagnosing.
         Assert.Equal(98, Run("fn main(): int { let c = 'a'; return (c + 1) as int; }").AsI64);
     }
 
     [Fact]
     public void The_highest_codepoint_is_valid() =>
-        // Die Grenze selbst muss durchgehen, sonst prueft der Test darunter nur, dass irgendetwas
-        // ablehnt.
+        // The bound itself has to pass, or the test below only checks that something gets rejected.
         Assert.Equal(1114111, Run("fn main(): int { return (1114111 as char) as int; }").AsI64);
 
     [Fact]
@@ -1453,15 +1442,14 @@ public class VmTests
 
     [Fact]
     public void A_surrogate_is_not_a_char() =>
-        // D800 liegt UNTER der Obergrenze und ist trotzdem kein Zeichen — es ist die Haelfte eines
-        // UTF-16-Paares. Ohne diesen Test bliebe die Pruefung gruen, wenn sie nur die Obergrenze
-        // kennte.
+        // D800 lies BELOW the upper bound and is still not a character: it is half of a UTF-16 pair.
+        // Without this test the check would stay green if it only knew the upper bound.
         Assert.Equal(VmDiagnostics.InvalidCodepoint,
             RunExpectingPanic("fn main(): int { return (55296 as char) as int; }").Code);
 
     [Fact]
     public void Arithmetic_that_leaves_the_range_panics() =>
-        // Geprueft wird beim ERZEUGEN, nicht beim Benutzen: der Wert wird hier nie gedruckt.
+        // Checked on CREATION rather than on use: the value is never printed here.
         Assert.Equal(VmDiagnostics.InvalidCodepoint,
             RunExpectingPanic("fn main(): int { let c = 'a'; let d = c * 1000000; return 0; }").Code);
 }

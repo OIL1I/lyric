@@ -10,26 +10,26 @@ using Lyric.Sema;
 namespace Lyric.Tests.Ir;
 
 /// <summary>
-/// Tests für das Lowering AST → IR (M5/P4).
+/// Tests for the AST to IR lowering.
 ///
-/// <para><b>Golden-Tests sind das Rückgrat</b>: Quelltext rein, IR-Dump raus, gegen Snapshot.
-/// Quelle und Erwartung liegen als Paar in <c>golden/lowering/&lt;name&gt;.lyr</c> und
-/// <c>.ir</c> — dasselbe Muster wie die Lexer-Goldens.</para>
+/// <para>GOLDEN TESTS ARE THE BACKBONE: source in, IR dump out, compared against a snapshot. Source
+/// and expectation lie as a pair in <c>golden/lowering/&lt;name&gt;.lyr</c> and <c>.ir</c>, the same
+/// pattern as the lexer goldens.</para>
 ///
-/// <para><b>Der Verifier läuft in jedem dieser Tests mit.</b> <see cref="ModuleLowerer.Lower"/>
-/// ruft <see cref="IrVerifier.VerifyOrThrow"/>, ein Befund wirft also, bevor überhaupt
-/// verglichen wird. Damit sind die 74 Verifier-Testfälle erstmals gegen echtes Lowering scharf
-/// statt nur gegen handgebaute Fixtures — das war der eigentliche Zweck von P3.</para>
+/// <para>THE VERIFIER RUNS IN EVERY ONE OF THESE TESTS. <see cref="ModuleLowerer.Lower"/> calls
+/// <see cref="IrVerifier.VerifyOrThrow"/>, so a finding throws before anything is compared. The
+/// verifier test cases are therefore sharp against real lowering rather than only against hand-built
+/// fixtures.</para>
 ///
-/// <para>Die Unit-Tests darunter nageln die Invarianten fest, die man im Dump zwar sehen, aber
-/// leicht übersehen kann (Blockdichte, Parameter-Konvention, verworfener toter Code).</para>
+/// <para>The unit tests below pin down the invariants one can see in the dump but easily overlook:
+/// block density, the parameter convention, discarded dead code.</para>
 /// </summary>
 public class LoweringTests
 {
     // ------------------------------------------------------------------ helpers
 
-    /// <summary>Quelltext → IR. Bricht ab, wenn die Sema meckert: auf fehlerhaftem AST wäre
-    /// jedes Lowering-Ergebnis Raten.</summary>
+    /// <summary>Source to IR. Stops when the sema complains: on a faulty AST every lowering result would
+    /// be guesswork.</summary>
     private static IrModule Lower(string source, bool verify = true)
     {
         var (ir, de) = TryLower(source, verify);
@@ -37,8 +37,8 @@ public class LoweringTests
         return ir!;
     }
 
-    /// <summary>Wie <see cref="Lower"/>, akzeptiert aber gemeldete Scope-Grenzen. Bricht weiterhin
-    /// bei Sema-Fehlern ab: auf fehlerhaftem AST wäre jedes Lowering-Ergebnis Raten.</summary>
+    /// <summary>Like <see cref="Lower"/>, but accepts reported scope boundaries. Still stops on sema
+    /// errors: on a faulty AST every lowering result would be guesswork.</summary>
     private static (IrModule? Ir, DiagnosticEngine De) TryLower(string source, bool verify = true)
     {
         var sm = new SourceManager();
@@ -73,25 +73,25 @@ public class LoweringTests
         Environment.GetEnvironmentVariable("LYRIC_UPDATE_SNAPSHOTS") is "1" or "true";
 
     [Theory]
-    [InlineData("arith")]           // Parameter, binop, ret — das Grundgerüst
-    [InlineData("if_else")]         // beide Zweige fallen durch -> Merge-Block
-    [InlineData("if_both_return")]  // beide Zweige returnen -> KEIN Merge-Block
-    [InlineData("if_no_else")]      // ohne else ist der false-Zweig der Merge-Block
+    [InlineData("arith")]           // parameters, binop, ret — the scaffolding
+    [InlineData("if_else")]         // both branches fall through, so there is a merge block
+    [InlineData("if_both_return")]  // both branches return, so there is NO merge block
+    [InlineData("if_no_else")]      // without an else the false branch is the merge block
     [InlineData("while_loop")]      // Back-Edge, break, continue, verschachtelte ifs
-    [InlineData("do_while")]        // continue springt zur Bedingung, nicht an den Body-Anfang
-    [InlineData("if_expr")]         // if als Ausdruck über ein synthetisches Local
-    [InlineData("short_circuit")]   // && und || als Kontrollfluss
-    [InlineData("calls")]           // void-Call, Vorwärts-Call, Rekursion
-    [InlineData("cast")]            // convert + elidierte Identität
-    [InlineData("incdec")]          // ++/-- prä und post, compound assign
-    [InlineData("objects")]         // newobj, Feld lesen/schreiben, Referenz-Semantik
-    [InlineData("objects_nested")]  // Klasse als Feldtyp, plus ein rekursiver Typ
-    [InlineData("methods")]         // Empfänger als Parameter 0, static-Fabrik, 'this'
+    [InlineData("do_while")]        // continue jumps to the condition, not to the start of the body
+    [InlineData("if_expr")]         // if as an expression through a synthetic local
+    [InlineData("short_circuit")]   // && and || as control flow
+    [InlineData("calls")]           // a void call, a forward call, recursion
+    [InlineData("cast")]            // convert plus an elided identity
+    [InlineData("incdec")]          // ++ and -- in prefix and postfix, compound assignment
+    [InlineData("objects")]         // newobj, reading and writing a field, reference semantics
+    [InlineData("objects_nested")]  // a class as a field type, plus a recursive type
+    [InlineData("methods")]         // the receiver as parameter 0, a static factory, 'this'
     [InlineData("arrays")]          // Literal, [x]*n, xs+ys, Index lesend/schreibend, .length
     [InlineData("optionals")]       // null, ??, !, Flow-Narrowing
     [InlineData("enums")]           // Varianten, match, Tag-Dispatch, Pattern-Dekomposition
-    [InlineData("interfaces")]      // mkiface, callvirt, vtable-Zeilen, Default vs. Ueberschreibung
-    [InlineData("structs")]         // structcopy an den Bindepunkten, verschachtelter Wert-Typ
+    [InlineData("interfaces")]      // mkiface, callvirt, vtable rows, default against override
+    [InlineData("structs")]         // structcopy at the binding points, a nested value type
     public void Golden_lowering_matches_snapshot(string name)
     {
         var dir = GoldenDir();
@@ -117,8 +117,8 @@ public class LoweringTests
     [Fact]
     public void Every_fixture_lowers_to_verifier_clean_ir()
     {
-        // Explizit mit verify:false lowern und danach selbst prüfen — sonst würde der Test nur
-        // wiederholen, dass ModuleLowerer den Verifier aufruft, statt dessen Ergebnis zu zeigen.
+        // Lowered explicitly with verify:false and checked afterwards; otherwise the test would only
+        // repeat that ModuleLowerer calls the verifier rather than show its result.
         foreach (var path in Directory.GetFiles(GoldenDir(), "*.lyr"))
         {
             var module = Lower(File.ReadAllText(path, Encoding.UTF8), verify: false);
@@ -131,8 +131,7 @@ public class LoweringTests
     [Fact]
     public void Gate_program_lowers_end_to_end()
     {
-        // examples/arith.lyr ist das M5-Gate: bewusst stdlib-frei, damit es allein aus
-        // M5-Mitteln compiliert. Bricht das, ist das Exit-Kriterium des Meilensteins verletzt.
+        // examples/arith.lyr is deliberately stdlib-free, so it compiles from the core alone.
         var path = Path.Combine(RepoRoot(), "examples", "arith.lyr");
         Assert.True(File.Exists(path), $"missing gate program: {path}");
 
@@ -148,8 +147,8 @@ public class LoweringTests
 
     // ------------------------------------------------------------- 1b) Source-first Stdlib
 
-    /// <summary>Wie <see cref="TryLower"/>, aber mit der echten Stdlib auf dem Modulpfad — sie ist
-    /// gewöhnlicher Lyric-Quelltext und wird beim Auflösen geladen.</summary>
+    /// <summary>Like <see cref="TryLower"/>, but with the real stdlib on the module path: it is ordinary
+    /// Lyric source and is loaded while resolving.</summary>
     private static IrModule LowerWithStdlib(string source)
     {
         var sm = new SourceManager();
@@ -175,8 +174,8 @@ public class LoweringTests
     [Fact]
     public void Stdlib_is_loaded_from_source_when_imported()
     {
-        // Der Kern von „source-first": std.io.console ist ein normales Lyric-Modul, das beim
-        // Auflösen geladen und typgeprüft wird — kein Sonderfall im Compiler.
+        // The core of source-first: std.io.console is an ordinary Lyric module, loaded and type-checked
+        // while resolving, with no special case in the compiler.
         var module = LowerWithStdlib("""
             import std.io.console { println };
             fn main(): int { println("hi"); return 0; }
@@ -188,15 +187,11 @@ public class LoweringTests
     }
 
     /// <summary>
-    /// Ein Programm trägt <b>nur</b>, was es wirklich braucht.
+    /// A program carries ONLY what it really needs.
     ///
-    /// <para>Hier stand das Gegenteil — ein Marker, der festhielt, dass jeder Lyric-Rumpf eines
-    /// geladenen Moduls im Bytecode landet, und der ausdrücklich fallen sollte, sobald die
-    /// Erreichbarkeitsanalyse kommt. <b>Er ist gefallen.</b></para>
-    ///
-    /// <para>Gemessen an diesem Hello-World: von 420 Bytes mit vier Importen und vier Funktionen
-    /// auf <b>230 Bytes mit einem Import und einer Funktion</b>. Der Code schrumpfte von 115 auf
-    /// 9 Bytes — und 9 Bytes ist genau <c>main</c>, ohne ein einziges Byte fremder Stdlib.</para>
+    /// <para>Measured on this hello world: from 420 bytes with four imports and four functions down to
+    /// 230 bytes with one import and one function. The code shrank from 115 to 9 bytes, and 9 bytes is
+    /// exactly <c>main</c>, without a single byte of foreign stdlib.</para>
     /// </summary>
     [Fact]
     public void A_program_carries_only_what_it_reaches()
@@ -210,7 +205,7 @@ public class LoweringTests
         Assert.Single(module.Imports);
         Assert.Equal("std.io.console.println", module.Imports[0].Name);
 
-        // Die drei, die vorher unvermeidlich mitkamen.
+        // The three that used to come along unavoidably.
         var namen = module.Functions.Select(f => f.Name).ToArray();
         Assert.DoesNotContain("std.iter.RangeIterator.next", namen);
         Assert.DoesNotContain("std.iter.StringIterator.next", namen);
@@ -220,8 +215,8 @@ public class LoweringTests
     [Fact]
     public void Stdlib_signatures_are_enforced()
     {
-        // Der Beweis, dass die Signatur wirklich ankommt: vorher war jedes Stdlib-Symbol opak und
-        // `println(42)` wäre stillschweigend durchgegangen.
+        // The proof that the signature really arrives: with every stdlib symbol opaque, `println(42)`
+        // would pass silently.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr",
             "import std.io.console { println };\nfn main(): int { println(42); return 0; }");
@@ -243,15 +238,11 @@ public class LoweringTests
             fn main(): int { let n = 7; let s = f"n={n}!"; return 0; }
             """);
 
-        // "n=" ++ fromInt(n) ++ "!" — zwei concat, ein Wandler.
+        // "n=" ++ fromInt(n) ++ "!" — two concats, one converter
         //
-        // Geprueft wird ENTHALTENSEIN, nicht Exklusivitaet. Hier stand einmal 'Assert.Equal' mit
-        // genau diesen beiden Namen, und das galt als Beleg dafuer, dass nur benutzte Helfer in
-        // der Tabelle landen. Seit M8b/S5 stimmt das nicht mehr: die Lyric-Rumpfe in 'std.string'
-        // (parseInt, replace, …) ziehen ihre eigenen Natives mit, sobald das Modul geladen ist —
-        // auch wenn niemand sie ruft. Das ist die fehlende Erreichbarkeitsanalyse, kein Fehler
-        // dieses Lowerings; 'A_program_carries_the_lyric_bodies_of_every_loaded_module' haelt sie
-        // als Marker fest.
+        // CONTAINMENT is checked rather than exclusivity. The Lyric bodies in 'std.string' (parseInt,
+        // replace, …) drag their own natives along as soon as the module is loaded, even when nobody
+        // calls them.
         var namen = module.Imports.Select(i => i.Name).ToArray();
         Assert.Contains("std.string.fromInt", namen);
         Assert.Contains("std.string.concat", namen);
@@ -260,10 +251,9 @@ public class LoweringTests
     [Fact]
     public void Adjacent_text_segments_collapse_into_one_constant()
     {
-        // f"ab" hat kein Loch: das Ergebnis ist eine schlichte Konstante, kein concat.
+        // f"ab" has no hole: the result is a plain constant rather than a concat.
         //
-        // 'Assert.Empty' stand hier und geht seit M8b/S5 nicht mehr — siehe die Begruendung im
-        // Test darueber. Was der Test wirklich sagen will, ist: KEIN Wandler und KEIN concat.
+        // What the test really says is: NO converter and NO concat.
         var module = LowerWithStdlib("fn main(): int { let s = f\"ab\"; return 0; }");
         var namen = module.Imports.Select(i => i.Name).ToArray();
         Assert.DoesNotContain("std.string.concat", namen);
@@ -273,8 +263,8 @@ public class LoweringTests
     [Fact]
     public void A_bodyless_function_outside_the_stdlib_is_an_error()
     {
-        // Genau der Mechanismus, den die Stdlib nutzt — in User-Code muss er zu sein, sonst
-        // deklariert sich jeder beliebige Natives.
+        // Exactly the mechanism the stdlib uses; in user code it has to be closed, or anyone could
+        // declare arbitrary natives.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr", "fn native(x: int): int;\nfn main(): int { return 0; }");
         var de = new DiagnosticEngine(sm);
@@ -322,8 +312,8 @@ public class LoweringTests
     [Fact]
     public void Statements_after_a_return_are_dropped()
     {
-        // Ein Block für den toten Code wäre unerreichbar — und der Verifier lehnt unerreichbare
-        // Blöcke ab. Das Lowering muss die Statement-Liste abbrechen, statt hinterher aufzuräumen.
+        // A block for the dead code would be unreachable, and the verifier rejects unreachable blocks.
+        // The lowering has to stop the statement list rather than clean up afterwards.
         var fn = Single("fn f(): int { return 1; let dead = 2; }");
 
         Assert.Single(fn.Blocks);
@@ -335,7 +325,7 @@ public class LoweringTests
     {
         var fn = Single("fn f(n: int): int { if (n > 0) { return 1; } else { return 0; } }");
 
-        // bb0 = Bedingung, bb1 = then, bb2 = else. Ein vierter Block wäre der unerreichbare Merge.
+        // bb0 is the condition, bb1 the then, bb2 the else. A fourth block would be the unreachable merge.
         Assert.Equal(3, fn.Blocks.Count);
     }
 
@@ -369,9 +359,8 @@ public class LoweringTests
     [Fact]
     public void Float32_literal_is_narrowed_by_the_lowering()
     {
-        // Ein f32-Const, dessen Wert kein f32-Wert ist, wäre malformed. Die Verengung gehört ins
-        // Lowering, damit der Wert im Bytecode deterministisch derselbe ist — sonst meldet es
-        // der Verifier, und zwar zu Recht.
+        // An f32 const whose value is no f32 value would be malformed. The narrowing belongs in the
+        // lowering, so the value in the bytecode is deterministically the same.
         var fn = Single("fn f(): float32 { return 0.1f32; }");
 
         var constant = Assert.Single(fn.Blocks.SelectMany(b => b.Insts).OfType<Const>());
@@ -382,8 +371,8 @@ public class LoweringTests
     [Fact]
     public void Short_circuit_routes_the_value_through_a_synthetic_local()
     {
-        // Ein Temp darf nur einmal definiert werden, kann also nicht den Wert aus zwei Zweigen
-        // tragen. Genau deshalb braucht diese IR kein Phi.
+        // A temp may be defined only once and therefore cannot carry the value from two branches. That is
+        // exactly why this IR needs no phi.
         var fn = Single("fn f(a: bool, b: bool): bool { return a && b; }");
 
         Assert.Contains(fn.Locals, l => l.Name.StartsWith("$and", StringComparison.Ordinal));
@@ -410,9 +399,8 @@ public class LoweringTests
     [Fact]
     public void Short_circuit_inside_a_loop_condition_seals_the_right_block()
     {
-        // '&&' erzeugt selbst Blöcke, der Cursor steht nach der Bedingung also nicht mehr auf dem
-        // Cond-Block. Wer hier den Cond-Block statt des aktuellen versiegelt, baut einen Sprung
-        // ins Leere — der Verifier fängt es, aber nur wenn der Fall überhaupt vorkommt.
+        // '&&' produces blocks itself, so after the condition the cursor no longer stands on the cond
+        // block. Sealing the cond block rather than the current one builds a jump into nothing.
         var fn = Single("""
             fn f(a: int, b: int): int {
                 var x = a;
@@ -431,8 +419,8 @@ public class LoweringTests
     [Fact]
     public void Continue_in_a_do_while_jumps_to_the_condition()
     {
-        // Nicht an den Body-Anfang: 'do' prüft am Ende, ein continue muss dort landen, sonst
-        // wird die Bedingung übersprungen.
+        // Not to the start of the body: 'do' checks at the end, and a continue has to land there, or the
+        // condition is skipped.
         var fn = Single("""
             fn f(n: int): int {
                 var i = n;
@@ -446,8 +434,8 @@ public class LoweringTests
             }
             """);
 
-        // Genau ein Block wird von zwei Branches angesprungen: vom regulären Body-Ende und vom
-        // continue. Das ist die Bedingung der do-while — erkennbar an ihrem CondBranch.
+        // Exactly one block is targeted by two branches: the regular end of the body and the continue.
+        // That is the condition of the do-while, recognisable by its CondBranch.
         var shared = fn.Blocks.Select(b => b.Terminator).OfType<Branch>()
             .GroupBy(br => br.Target)
             .Where(g => g.Count() >= 2)
@@ -475,72 +463,59 @@ public class LoweringTests
 
     // ------------------------------------------------------------------ 3) Scope-Grenzen
 
-    // 'Non_scalar_types_are_reported_by_name' stand hier und ist ENTFALLEN: es gibt keinen Typ
-    // mehr, den die Sema akzeptiert und das Lowering ablehnt. Arrays fielen mit P2 weg, Structs
-    // mit P4, Funktionstypen mit P6, Coroutinen mit P7, generische Instanzen mit P8 — und Tupel
-    // waren der letzte. Die Regel dahinter gilt weiter: eine Typ-Grenze wird am TYP gemeldet,
-    // nicht am Ausdruck, der ihn benutzt.
+    // The rule still holds: a type boundary is reported at the TYPE rather than at the expression using
+    // it. There is no type left that the sema accepts and the lowering rejects.
 
-    // Konstrukte, deren Typ skalar ist — hier greift die Grenze erst am Ausdruck bzw. Statement.
+    // Constructs whose type is scalar: here the boundary applies at the expression or statement.
     [Theory]
-    // f-Strings lowern zu einer concat/fromXxx-Kette. Ohne Stdlib auf dem Modulpfad fehlen die
-    // Helfer — die Meldung nennt genau den fehlenden, statt „f-Strings gehen nicht" zu behaupten.
-    // Beim ersten Loch ist das der Wandler, noch vor dem concat.
+    // f-strings lower to a concat and fromXxx chain. Without the stdlib on the module path the helpers
+    // are missing, and the message names the missing one rather than claiming "f-strings do not work".
+    // At the first hole that is the converter, before the concat.
     [InlineData("fn f(): string { return f\"n={1}\"; }", "std.string.fromInt")]
-    // 'match' über einen Enum lowert seit P3b; über einen Skalar braucht es Literal-Muster, und
-    // die sind eine eigene Ausbaustufe.
-    // Seit P8c lowert 'for-in' — aber nur mit std.iter auf dem Modulpfad, und diese Tests fahren
-    // ohne. Die Meldung nennt jetzt den Grund statt bloss das Konstrukt; genau das prueft dieser
-    // Test: dass sie sagt, WO und WAS.
+    // 'match' over an enum lowers; over a scalar it needs literal patterns, which are a later stage.
+    // 'for-in' lowers with std.iter on the module path, and these tests run without it. The message
+    // names the reason rather than merely the construct, and that is what this test checks: that it says
+    // WHERE and WHAT.
     [InlineData("fn f(): int { var s = 0; for (i in 0..3) { s += i; } return s; }", "std.iter")]
     public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
         AssertNotSupported(source, expected);
 
-    /// <summary>Was P4 nicht lowert, ist gültiges Lyric — also eine <b>Diagnose</b> mit
-    /// Datei/Zeile/Spalte, kein Absturz. Der Code <c>LYR-IR0001</c> ist die stabile Kategorie
-    /// („dieser Compiler-Stand kann das noch nicht"), das Konstrukt steht in der Nachricht.</summary>
+    /// <summary>What the lowering does not handle is valid Lyric, so it is a DIAGNOSTIC with file, line
+    /// and column rather than a crash. The code <c>LYR-IR0001</c> is the stable category — "this compiler
+    /// build cannot do that yet" — and the construct stands in the message.</summary>
     private static void AssertNotSupported(string source, string expected)
     {
         var (ir, de) = TryLower(source);
 
-        Assert.Null(ir); // kein Teilergebnis: die FunctionIds wären verschoben
+        Assert.Null(ir); // no partial result: the FunctionIds would be shifted
         var diagnostic = Assert.Single(de.Diagnostics);
         Assert.Equal("LYR-IR0001", diagnostic.Code);
         Assert.Equal(Severity.Error, diagnostic.Severity);
         Assert.Contains(expected, diagnostic.Message, StringComparison.Ordinal);
 
-        // Der Span zeigt in die Quelldatei — genau das war vorher die raue Kante.
+        // The span points into the source file.
         Assert.True(diagnostic.Span.File.IsValid, "diagnostic has no source position");
         Assert.Contains("test.lyr:", Render(de), StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Ein Typ, dessen Layout an einer Scope-Grenze scheitert, darf die Typ-Tabelle nicht
-    /// beschädigen.
+    /// A type whose layout fails at a scope boundary must not corrupt the type table.
     ///
-    /// <para><b>Das war ein Compiler-Absturz</b>, kein Schönheitsfehler: <c>Intern</c> trägt den
-    /// Platzhalter ein, <i>bevor</i> es die Feldtypen lowert. Warf es danach — hier am Feld-Default
-    /// —, blieb der Platzhalter stehen, und die nächste Funktion, die denselben Typ benutzt, las
-    /// ein Layout mit <c>FieldNames == null</c>. <c>examples/bank.lyr</c> beendete sich damit über
-    /// eine <c>NullReferenceException</c> statt mit einer Diagnose.</para>
+    /// <para>That was a compiler crash rather than a blemish: <c>Intern</c> records the placeholder
+    /// BEFORE it lowers the field types. If it threw afterwards, the placeholder stayed and the next
+    /// function using the same type read a layout with <c>FieldNames == null</c>.</para>
     ///
-    /// <para>Zwei Funktionen sind Pflicht: mit nur einer läuft der zweite Zugriff nie.</para>
+    /// <para>Two functions are required: with only one the second access never happens.</para>
     /// </summary>
-    // 'A_type_whose_layout_fails_reports_once_and_does_not_corrupt_the_table' stand hier und
-    // ist ENTFALLEN, weil es keinen Ausloeser mehr gibt: seit den Tupeln kennt das Lowering jeden
-    // Typ, den die Sema akzeptiert — Coroutinen, Funktionstypen und generische Instanzen
-    // eingeschlossen. Der Test ist dreimal umgezogen (Feld-Default -> Tupel-Feld -> 'int[4]', das
-    // schon die Sema faengt) und misst jetzt nichts mehr.
-    //
-    // Was er absicherte, bleibt richtig und ungetestet: ein gescheitertes Layout wird EINMAL
-    // gemeldet, nicht je Funktion, und der Platzhalter in der Typtabelle wird nicht gelesen.
-    // Kommt je wieder ein solcher Typ, gehoert der Test zurueck.
+    // What it secured stays right and untested: a failed layout is reported ONCE rather than per
+    // function, and the placeholder in the type table is not read. Should such a type ever appear again,
+    // the test belongs back.
 
     [Fact]
     public void A_generic_call_becomes_an_instance_of_its_own()
     {
-        // Monomorphisierung (§12): pro konkretem Typargument-Tupel eine eigene Funktion. Die
-        // Deklaration selbst bekommt KEINE — sie ist eine Schablone, kein Code.
+        // Monomorphization: one function per concrete type argument tuple. The declaration itself gets
+        // NONE — it is a template, not code.
         var (ir, de) = TryLower("""
             fn id<T>(x: T): T { return x; }
             fn main(): int { return id(1); }
@@ -549,8 +524,8 @@ public class LoweringTests
         Assert.False(de.HasErrors);
         Assert.NotNull(ir);
 
-        // Der Name traegt die Typargumente: er ist der Schluessel, unter dem die Instanz
-        // wiedergefunden wird, und in einer Disassembly lesbar.
+        // The name carries the type arguments: it is the key the instance is found again by, and it is
+        // readable in a disassembly.
         Assert.Contains(ir!.Functions, f => f.Name == "id<int>");
         Assert.DoesNotContain(ir.Functions, f => f.Name == "main.id");
     }
@@ -558,8 +533,8 @@ public class LoweringTests
     [Fact]
     public void Two_type_arguments_produce_two_instances()
     {
-        // Die Gegenprobe: ohne sie bewiese der Test darueber nur, dass IRGENDEINE Instanz
-        // entsteht — nicht, dass sie pro Typ getrennt sind.
+        // The counter-check: without it the test above would only prove that SOME instance arises, not
+        // that they are separate per type.
         var (ir, de) = TryLower("""
             fn id<T>(x: T): T { return x; }
             fn main(): int { let s = id("x"); return id(1); }
@@ -573,8 +548,8 @@ public class LoweringTests
     [Fact]
     public void The_same_type_argument_is_instantiated_once()
     {
-        // Zwei Aufrufe mit demselben Typ teilen sich eine Instanz — sonst wuechse der Bytecode
-        // mit der Zahl der AUFRUFE statt mit der Zahl der Typen.
+        // Two calls with the same type share one instance; otherwise the bytecode would grow with the
+        // number of CALLS rather than with the number of types.
         var (ir, de) = TryLower("""
             fn id<T>(x: T): T { return x; }
             fn main(): int { return id(1) + id(2); }
@@ -587,13 +562,9 @@ public class LoweringTests
     [Fact]
     public void All_scope_limits_of_a_program_are_reported_in_one_run()
     {
-        // Eine Meldung pro Aufruf wäre Schikane: wer drei nicht unterstützte Konstrukte benutzt,
-        // soll sie in einem Durchlauf sehen. Deshalb sammelt das Lowering pro Funktion weiter.
-        // 'a' war bis P6 ein Lambda, bis P8 eine generische Funktion und bis P9a ein
-        // 'extend'-Aufruf — alle drei lowern inzwischen. Der Test misst jeweils an einer Grenze,
-        // die noch steht; genau dafuer ist er da: er zaehlt Meldungen, er behauptet nicht, welche
-        // Konstrukte fehlen. Dass er dreimal nachgezogen werden musste, ist kein Mangel des Tests,
-        // sondern der Beleg, dass die Grenzen wandern.
+        // One message per call would be harassment: whoever uses three unsupported constructs should see
+        // them in one run, so the lowering keeps collecting per function. The test measures at whichever
+        // boundary still stands; it counts messages, it does not claim which constructs are missing.
         var (ir, de) = TryLower("""
             fn a(): int { var s = 0; for (i in 0..4) { s += i; } return s; }
             fn b(): int { var s = 0; for (i in 0..3) { s += i; } return s; }
@@ -612,18 +583,16 @@ public class LoweringTests
     }
 
     /// <summary>
-    /// <c>fn main(args: string[])</c> ist spezifiziert (§11), aber nicht gelowert — und muss das
-    /// <b>sagen</b>.
+    /// <c>fn main(args: string[])</c> is specified and has to say so.
     ///
-    /// <para>Bis 2026-08-06 fiel dieses <c>main</c> durch die Entry-Bedingung, das Modul bekam
-    /// keine Start-Sektion, und der Compiler meldete nichts. Ein Programm, das sauber übersetzt
-    /// und dann als „Bibliothek" nicht startet, ist die schlechteste aller Antworten.</para>
+    /// <para>Falling through the entry condition leaves the module without a Start section and the
+    /// compiler reporting nothing. A program that compiles cleanly and then does not start, as a
+    /// "library", is the worst of all answers.</para>
     /// </summary>
     [Fact]
     public void Main_with_arguments_is_an_entry_point()
     {
-        // Bis 2026-08-06 war das eine Scope-Grenze, davor fiel es sogar STILL durch und erzeugte
-        // ein Bibliotheksmodul. Jetzt ist es die zweite Einstiegsform aus §11.
+        // The second entry form of the specification.
         var (ir, de) = TryLower("fn main(args: string[]): int { return args.length; }");
 
         Assert.False(de.HasErrors);
@@ -631,14 +600,14 @@ public class LoweringTests
         Assert.Equal(1, ir.Functions[ir.EntryFunction!.Value.Value].ParamCount);
     }
 
-    // Die Gegenprobe zu §11 — 'fn main(n: int)' — steht in der Sema-Suite: sie faengt es schon
-    // mit LYR-SEM0021, das Lowering kaeme gar nicht mehr dran. Der Fallback dort ist Verteidigung
-    // in der Tiefe und bleibt ungetestet, weil er unerreichbar ist.
+    // The counter-check — 'fn main(n: int)' — lives in the sema suite: it catches this with LYR-SEM0021
+    // and the lowering never sees it. The fallback there is defence in depth and stays untested, because
+    // it is unreachable.
 
     [Fact]
     public void A_module_without_a_main_is_a_library()
     {
-        // Kein Fehler: eingebetteter Code hat kein 'main', der Host ruft einzelne Funktionen.
+        // No error: embedded code has no 'main'; the host calls individual functions.
         var (ir, de) = TryLower("pub fn onStart(): int { return 0; }");
 
         Assert.False(de.HasErrors);
