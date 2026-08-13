@@ -10,17 +10,16 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `std.option` und die Abbruch-Funktionen aus `std.core` (M8b/S9).
+/// `std.option` and the abort functions from `std.core`.
 ///
-/// <para><b>Das Modul enthaelt keinen Typ `Option&lt;T&gt;`.</b> `?T` ist er (Sprache.md §4); ein
-/// zweiter waere der Doppel-Mechanismus aus CONTRIBUTING Rule 2. Was hier geprueft wird, sind
-/// Funktionen ueber dem eingebauten Typ.</para>
+/// <para>THE MODULE CONTAINS NO TYPE `Option&lt;T&gt;`. `?T` is it; a second one would be the duplicate
+/// mechanism the project rules forbid. What is checked here are functions over the built-in type.</para>
 ///
-/// <para><b>Vier Namen aus `Doku.md` §22 fehlen mit Absicht</b>, und der Grund ist jedes Mal, dass
-/// die Sprache sie schon hat: `unwrap` ist `!`, `unwrapOr` ist `??`, `isSome`/`isNone` sind
-/// `!= null`/`== null`. Der letzte Fall ist nicht bloss Redundanz, sondern schaedlich — an
-/// `!= null` haengt das Flow-Narrowing (§7), und eine Funktion schnitte es ab. `flatten` ist gar
-/// nicht formulierbar: verschachtelte Optionals gibt es nicht.</para>
+/// <para>Four names from the documentation are missing deliberately, and the reason is always that the
+/// language already has them: `unwrap` is `!`, `unwrapOr` is `??`, `isSome` and `isNone` are `!= null`
+/// and `== null`. The last case is not merely redundant but harmful — flow narrowing hangs on
+/// `!= null`, and a function would cut it off. `flatten` is not expressible at all: nested optionals do
+/// not exist.</para>
 /// </summary>
 public class OptionTests
 {
@@ -71,12 +70,11 @@ public class OptionTests
             """));
 
     /// <summary>
-    /// Der Test, der `map` von `andThen` unterscheidet: die Funktion darf selbst scheitern, und
-    /// das Ergebnis bleibt ein einfaches `?U`.
+    /// The test that distinguishes `map` from `andThen`: the function may fail itself, and the result
+    /// stays a plain `?U`.
     ///
-    /// <para>Beide Faelle sind noetig. Nur der erfolgreiche liefe auch mit einem `map`, dessen
-    /// Ergebnis niemand auspackt; erst das `null` aus `f` zeigt, dass hier nichts verschachtelt
-    /// wird.</para>
+    /// <para>Both cases are needed. The successful one would also run with a `map` whose result nobody
+    /// unwraps; only the `null` from `f` shows that nothing is nested here.</para>
     /// </summary>
     [Fact]
     public void AndThen_lets_the_function_fail_without_nesting() =>
@@ -110,9 +108,9 @@ public class OptionTests
             """));
 
     /// <summary>
-    /// `zip` braucht <b>beide</b> Ausfallrichtungen. Mit nur einem leeren Argument bliebe der Test
-    /// gruen, wenn die Funktion nur die linke Seite prueft — dieselbe Lehre wie bei `zip` in
-    /// `std.iter`, das aus genau diesem Grund zwei Tests hat.
+    /// `zip` needs BOTH failure directions. With only one empty argument the test would stay green if the
+    /// function checked the left side only — the same lesson as for `zip` in `std.iter`, which has two
+    /// tests for exactly this reason.
     /// </summary>
     [Fact]
     public void Zip_needs_both_sides_present() =>
@@ -136,9 +134,8 @@ public class OptionTests
             """));
 
     /// <summary>
-    /// Ein Tupel als Nutzlast eines Optionals — `?(T, U)`. Bis 2026-08-09 loeste
-    /// `TypeTable.Resolve` Tupel als Typargument nicht auf; dass es hier traegt, ist kein
-    /// Selbstverstaendnis.
+    /// A tuple as the payload of an optional: `?(T, U)`. `TypeTable.Resolve` did not resolve tuples as a
+    /// type argument, so this carrying is not a matter of course.
     /// </summary>
     [Fact]
     public void Zip_carries_a_tuple_of_two_different_types() =>
@@ -178,11 +175,11 @@ public class OptionTests
             """));
 
     /// <summary>
-    /// Der Iterator liefert genau einen Wert und danach nichts mehr.
+    /// The iterator yields exactly one value and nothing afterwards.
     ///
-    /// <para>Die Schleife zaehlt <b>mit</b>, statt nur die Summe zu pruefen: ohne das `done`-Flag
-    /// liefe `next()` endlos denselben Wert, und eine Summe allein saehe das nicht — sie liefe
-    /// einfach nie fertig. Der Zaehler macht aus einer Endlosschleife einen Fehlschlag.</para>
+    /// <para>The loop COUNTS rather than only checking the sum: without the `done` flag `next()` would
+    /// endlessly yield the same value, and a sum alone would not see that — it would simply never
+    /// finish. The counter turns an infinite loop into a failure.</para>
     /// </summary>
     [Fact]
     public void Iterating_an_optional_yields_it_exactly_once() =>
@@ -212,8 +209,8 @@ public class OptionTests
             """));
 
     /// <summary>
-    /// Die eigentliche Begruendung fuer `iter`: die Adapter aus `std.iter` gelten unveraendert,
-    /// ohne dass `std.iter` etwas von `?T` wissen muesste.
+    /// The actual reason for `iter`: the adapters from `std.iter` apply unchanged, without `std.iter`
+    /// having to know anything about `?T`.
     /// </summary>
     [Fact]
     public void Std_iter_adapters_work_on_an_optional() =>
@@ -241,11 +238,11 @@ public class OptionTests
             """));
 
     /// <summary>
-    /// Der Grund, warum `expect` neben `!` existiert: die Meldung nennt den Wert.
+    /// The reason `expect` exists beside `!`: the message names the value.
     ///
-    /// <para>`LYR-VM0007` sagt nur „force-unwrapped a '?T' that had no value" — also DASS etwas
-    /// fehlte, nie WAS. Der Test prueft deshalb den <b>Text</b>; ohne ihn waere ein `expect`,
-    /// das die Meldung verwirft, gruen und damit sinnlos.</para>
+    /// <para>`LYR-VM0007` only says "force-unwrapped a '?T' that had no value" — THAT something was
+    /// missing, never WHAT. The test therefore checks the TEXT; without it an `expect` discarding the
+    /// message would be green and thereby pointless.</para>
     /// </summary>
     [Fact]
     public void Expect_panics_with_the_given_message()
@@ -293,9 +290,9 @@ public class OptionTests
     }
 
     /// <summary>
-    /// `todo` und `unreachable` unterscheiden sich <b>nur</b> in ihrer Aussage — und genau die
-    /// steht im Text. Ein Test, der bloss „panict" prueft, liesse zu, dass beide dasselbe sagen,
-    /// und dann waere eine der beiden ueberfluessig.
+    /// `todo` and `unreachable` differ ONLY in what they say, and that stands in the text. A test
+    /// checking merely that it panics would allow both to say the same, and then one of them would be
+    /// superfluous.
     /// </summary>
     [Theory]
     [InlineData("todo", "not implemented: der Rest")]
@@ -320,10 +317,10 @@ public class OptionTests
     // ------------------------------------------------------------------ Exception
 
     /// <summary>
-    /// `Exception` liegt in `std.core` und nicht in einem `std.error`: das Modul haette diese eine
-    /// Klasse enthalten. Die beiden Fehler, die es sonst noch tragen sollte
-    /// (`NullDereferenceError`, `CoroutineEndedError`), bleiben Panics — `throw` ist fuer
-    /// Domain-Fehler, `panic` fuer Programmierfehler (Doku §17.1).
+    /// `Exception` lives in `std.core` rather than in a `std.error`: that module would have held this one
+    /// class. The two other errors it should otherwise carry (`NullDereferenceError`,
+    /// `CoroutineEndedError`) stay panics — `throw` is for domain errors, `panic` for programming
+    /// errors.
     /// </summary>
     [Fact]
     public void An_exception_is_throwable_and_carries_its_message() =>
@@ -345,9 +342,9 @@ public class OptionTests
             """));
 
     /// <summary>
-    /// Ueber die `Throwable`-Kante gefangen, nicht ueber den konkreten Typ — der Fall, fuer den
-    /// die Konformanz ueberhaupt da ist. Ohne diesen Test bliebe unklar, ob `:: [Throwable]` an
-    /// `Exception` mehr ist als Zierde.
+    /// Caught through the `Throwable` edge rather than through the concrete type — the case the
+    /// conformance exists for. Without this test it would stay unclear whether `:: [Throwable]` on
+    /// `Exception` is more than decoration.
     /// </summary>
     [Fact]
     public void An_exception_is_caught_by_an_untyped_catch() =>

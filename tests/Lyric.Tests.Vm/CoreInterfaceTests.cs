@@ -10,20 +10,19 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `Equatable&lt;T&gt;`, `Hashable&lt;T&gt;` und `Ordered&lt;T&gt;` in `std.core` — ADR-024.
+/// `Equatable&lt;T&gt;`, `Hashable&lt;T&gt;` and `Ordered&lt;T&gt;` in `std.core`.
 ///
-/// <para><b>Warum generisch.</b> Die erste Fassung des ADR schrieb `fn equals(other: Equatable)`.
-/// Das verlangt einen Interface-<i>Wert</i>, und ein Skalar kann keiner sein — ein Fat Pointer
-/// braucht eine Referenz. `extend int :: [Equatable]` wäre unmöglich gewesen und damit
-/// `Map&lt;int, V&gt;` auch. Mit `Equatable&lt;T&gt;` steht auf beiden Seiten der konkrete Typ.</para>
+/// <para>WHY GENERIC. A `fn equals(other: Equatable)` demands an interface VALUE, and a scalar cannot
+/// be one — a fat pointer needs a reference. `extend int :: [Equatable]` would have been impossible
+/// and with it `Map&lt;int, V&gt;`. With `Equatable&lt;T&gt;` the concrete type stands on both
+/// sides.</para>
 ///
-/// <para><b>Warum `Hashable` nicht von `Equatable` erbt.</b> Lyric kennt keine
-/// Interface-Vererbung; die Grammatik sieht für `InterfaceDecl` keine Konformanzliste vor. Auch
-/// das stand falsch im ADR und ist dort korrigiert. Wer beides braucht, verlangt beides.</para>
+/// <para>WHY `Hashable` DOES NOT INHERIT FROM `Equatable`. Lyric has no interface inheritance; the
+/// grammar provides no conformance list for an `InterfaceDecl`. Whoever needs both demands both.</para>
 ///
-/// <para>Diese Datei prüft die Konformanz <b>über einen Constraint</b> und nicht durch direkten
-/// Methodenaufruf. Der Unterschied ist der ganze Zweck: ein direkter Aufruf würde auch dann
-/// funktionieren, wenn der Typ das Interface gar nicht erfüllte.</para>
+/// <para>This file checks the conformance THROUGH A CONSTRAINT rather than by a direct method call. The
+/// difference is the whole purpose: a direct call would work even if the type did not satisfy the
+/// interface at all.</para>
 /// </summary>
 public class CoreInterfaceTests
 {
@@ -62,14 +61,13 @@ public class CoreInterfaceTests
 
         """;
 
-    // ------------------------------------------------------- Konformanz der Builtins
+    // ------------------------------------------------------- conformance of the builtins
 
     /// <summary>
-    /// Jeder Builtin, der `Equatable` erfüllen soll, erfüllt es — geprüft über den Constraint.
+    /// Every builtin meant to satisfy `Equatable` does, checked through the constraint.
     /// </summary>
-    /// <remarks>Eine Theory und keine fünf Einzeltests: wer einen Typ ergänzt, ergänzt eine
-    /// Zeile. Ohne die Tabelle wäre eine fehlende `extend`-Zeile erst dann aufgefallen, wenn
-    /// jemand den Typ als Map-Schlüssel benutzt.</remarks>
+    /// <remarks>A theory rather than five separate tests: adding a type means adding a line. Without the
+    /// table a missing `extend` line would show only when someone used the type as a map key.</remarks>
     [Theory]
     [InlineData("3", "3", 1)]
     [InlineData("3", "4", 0)]
@@ -100,18 +98,17 @@ public class CoreInterfaceTests
 
     [Fact]
     public void A_prefix_sorts_before_the_longer_string() =>
-        // Gleicher Anfang, verschiedene Länge — der Fall, den eine naive Schleife über den
-        // kürzeren von beiden vergisst.
+        // The same beginning, different lengths — the case a naive loop over the shorter of the two
+        // forgets.
         Assert.Equal(-1, Run(Head + "fn main(): int { return cmp(\"ab\", \"abc\"); }"));
 
     // ------------------------------------------------------------------ Hash
 
     /// <summary>
-    /// <b>Die Invariante jeder Hash-Tabelle</b>: gleiche Werte liefern denselben Hash.
+    /// The invariant of every hash table: equal values yield the same hash.
     ///
-    /// <para>Kein Compiler prüft sie, und ohne sie baut `Map` eine Tabelle, die einen Schlüssel
-    /// nicht wiederfindet, den sie selbst abgelegt hat. Umgekehrt gilt sie nicht — zwei
-    /// verschiedene Werte <i>dürfen</i> kollidieren.</para>
+    /// <para>No compiler checks it, and without it `Map` builds a table that cannot find a key it stored
+    /// itself. The converse does not hold — two different values MAY collide.</para>
     /// </summary>
     [Theory]
     [InlineData("42")]
@@ -125,15 +122,14 @@ public class CoreInterfaceTests
 
     [Fact]
     public void The_string_hash_distinguishes_similar_strings() =>
-        // Ein Hash, der immer dasselbe liefert, erfüllt die Invariante oben und ist trotzdem
-        // wertlos. Zwei Strings, die sich in einem Zeichen unterscheiden, sind der schärfste
-        // billige Test dafür.
+        // A hash that always yields the same value satisfies the invariant above and is still worthless.
+        // Two strings differing in one character are the sharpest cheap test for that.
         Assert.Equal(1, Run(Head +
             "fn main(): int { return if (hash(\"hallo\") != hash(\"hallp\")) 1 else 0; }"));
 
     [Fact]
     public void The_string_hash_depends_on_order() =>
-        // Eine Summe über die Zeichen wäre hier gleich. FNV-1a ist es nicht.
+        // A sum over the characters would be equal here. FNV-1a is not.
         Assert.Equal(1, Run(Head +
             "fn main(): int { return if (hash(\"ab\") != hash(\"ba\")) 1 else 0; }"));
 
@@ -151,8 +147,8 @@ public class CoreInterfaceTests
 
     [Fact]
     public void A_user_struct_satisfies_both_interfaces() =>
-        // Der Fall, für den ADR-024 überhaupt da ist: ein Nutzertyp als Map-Schlüssel. Zwei
-        // Constraints an einem Typ-Parameter, beide mit eigenem Typargument.
+        // The case this is all for: a user type as a map key. Two constraints on one type parameter, each
+        // with its own type argument.
         Assert.Equal(1, Run(Head + UserType + """
             fn main(): int {
                 let a = Punkt { x = 1, y = 2 };
@@ -169,18 +165,17 @@ public class CoreInterfaceTests
             }
             """));
 
-    // ------------------------------------------------- die Gegenprobe: greift der Constraint?
+    // ------------------------------------------------- the counter-check: does the constraint apply?
 
     /// <summary>
-    /// Ein Typ ohne Konformanz wird <b>abgelehnt</b> — sonst wären alle Tests darüber wertlos.
+    /// A type without conformance is REJECTED; otherwise every test above would be worthless.
     ///
-    /// <para>28 grüne Tests beim ersten Lauf sind kein Beweis, dass geprüft wird. Erst dieser
-    /// hier zeigt, dass der Constraint überhaupt eine Wirkung hat: ein Struct ohne
-    /// <c>:: [Equatable&lt;…&gt;]</c> muss <c>LYR-SEM0028</c> auslösen.</para>
+    /// <para>Green tests are no proof that anything is checked. Only this one shows that the constraint
+    /// has an effect at all: a struct without <c>:: [Equatable&lt;…&gt;]</c> has to trigger
+    /// <c>LYR-SEM0028</c>.</para>
     ///
-    /// <para><c>float</c> als <c>Hashable</c> ist der zweite Fall, und dort ist die Ablehnung
-    /// <b>Absicht</b>: <c>NaN != NaN</c> hiesse, dass ein Schlüssel sich selbst nicht wiederfindet
-    /// (siehe die Begründung in <c>std/core.lyr</c>).</para>
+    /// <para><c>float</c> as <c>Hashable</c> is the second case, and there the rejection is DELIBERATE:
+    /// <c>NaN != NaN</c> would mean a key cannot find itself.</para>
     /// </summary>
     [Theory]
     [InlineData("eq(Ohne { x = 1 }, Ohne { x = 1 })", "Equatable")]
@@ -196,8 +191,8 @@ public class CoreInterfaceTests
         Assert.Contains(expected, diagnostics);
     }
 
-    /// <summary>Übersetzt und liefert die Diagnosen als Text — für die Fälle, die scheitern
-    /// sollen. <see cref="Run"/> taugt dafür nicht: es behauptet, dass nichts scheitert.</summary>
+    /// <summary>Compiles and returns the diagnostics as text, for the cases meant to fail.
+    /// <see cref="Run"/> is no good for that: it claims nothing fails.</summary>
     private static string Diagnostics(string source)
     {
         var sm = new SourceManager();
@@ -219,8 +214,8 @@ public class CoreInterfaceTests
     [InlineData("1", "1")]
     [InlineData("1", "2")]
     public void Uint_satisfies_the_interfaces(string a, string b) =>
-        // uint fehlte in der ersten Fassung komplett — aufgefallen erst durch die Gegenprobe
-        // oben, die es als 'erfüllt nicht' meldete. Ohne uint gäbe es kein Map<uint, V>.
+        // uint was missing entirely in the first version, noticed only through the counter-check above,
+        // which reported it as 'does not satisfy'. Without uint there would be no Map<uint, V>.
         Assert.Equal(1, Run(Head + $$"""
             fn main(): int {
                 let a: uint = {{a}};

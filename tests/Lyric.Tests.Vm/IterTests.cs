@@ -10,21 +10,19 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `std.iter` — Adapter und Terminatoren (M8b/S3).
+/// `std.iter` — adapters and terminators.
 ///
-/// <para><b>Alles in Lyric geschrieben.</b> Kein einziger Adapter ist nativ; die Bibliothek
-/// benutzt nur, was die Sprache selbst kann — Generics, Closures, Interfaces. Dass das geht, ist
-/// die eigentliche Aussage dieses Slice.</para>
+/// <para>EVERYTHING IS WRITTEN IN LYRIC. Not a single adapter is native; the library uses only what
+/// the language itself can do — generics, closures, interfaces. That this works is the actual
+/// statement.</para>
 ///
-/// <para><b>Faulheit ist die zentrale Zusicherung</b>, und sie lässt sich nicht am Ergebnis
-/// ablesen: `take(map(…), 2)` liefert dasselbe, ob `map` zwei oder zweitausend Aufrufe gemacht
-/// hat. Der Test `Adapters_are_lazy` zählt deshalb die Aufrufe mit einem Seiteneffekt — ohne ihn
-/// wäre ein eifriger Adapter grün.</para>
+/// <para>LAZINESS IS THE CENTRAL PROMISE, and it cannot be read off the result: `take(map(…), 2)`
+/// yields the same whether `map` made two calls or two thousand. The test `Adapters_are_lazy`
+/// therefore counts the calls with a side effect; without it an eager adapter would be green.</para>
 ///
-/// <para>`enumerate` und `zip` waren bis 2026-08-08 <b>nicht</b> enthalten: beide brauchen ein
-/// Tupel als Typargument eines generischen Interfaces (`Iterator&lt;(int, T)&gt;`), und
-/// `TypeTable.Resolve` kannte Arrays und Optionals, aber keine Tupel. Ausgerechnet die zwei
-/// Funktionen, für die Tupel (T1–T3) eingeführt wurden. Der Fix war eine Zeile.</para>
+/// <para>`enumerate` and `zip` were NOT included at first: both need a tuple as the type argument of a
+/// generic interface (`Iterator&lt;(int, T)&gt;`), and `TypeTable.Resolve` knew arrays and optionals but
+/// not tuples — the two functions tuples were introduced for.</para>
 /// </summary>
 public class IterTests
 {
@@ -82,7 +80,7 @@ public class IterTests
 
     [Fact]
     public void A_negative_take_yields_nothing() =>
-        // Kein panic: "nimm minus drei" ist keine gebrochene Zusage, sondern eine leere Auswahl.
+        // No panic: "take minus three" is no broken promise but an empty selection.
         Assert.Equal(0, Run(Head + "fn main(): int { return sum(take(eins_bis_fuenf(), -3)); }"));
 
     [Fact]
@@ -91,8 +89,8 @@ public class IterTests
 
     [Fact]
     public void TakeWhile_stops_at_the_first_failure_not_at_every_one() =>
-        // Der Unterschied zu 'filter', und der ganze Zweck: nach dem ersten 'false' ist Schluss,
-        // auch wenn später wieder 'true' käme. Hier: 1, 2 kommen, die 4 nicht mehr.
+        // The difference from 'filter', and the whole purpose: after the first 'false' it stops, even if
+        // 'true' came again later. Here 1 and 2 arrive, the 4 no longer does.
         Assert.Equal(3, Run(Head + """
             fn main(): int {
                 return sum(takeWhile(eins_bis_fuenf(), (n: int) => n != 3));
@@ -100,17 +98,17 @@ public class IterTests
             """));
 
     /// <summary>
-    /// <b>Faul, nicht eifrig</b> — die Zusage, die man am Ergebnis nicht sehen kann.
+    /// LAZY RATHER THAN EAGER — the promise that cannot be seen in the result.
     ///
-    /// <para>`take(map(…), 2)` liefert dasselbe, ob `map` zwei oder alle fünf Aufrufe gemacht hat.
-    /// Dieser Test zählt sie deshalb mit einem Seiteneffekt in der Closure. Ohne ihn wäre ein
-    /// eifriger Adapter grün — und der Grund, warum es Iteratoren statt Arrays gibt, dahin.</para>
+    /// <para>`take(map(…), 2)` yields the same whether `map` made two calls or all five. This test
+    /// therefore counts them with a side effect in the closure. Without it an eager adapter would be
+    /// green, and the reason iterators exist rather than arrays would be gone.</para>
     /// </summary>
     [Fact]
     public void Adapters_are_lazy() =>
-        // Der Zaehler ist eine Klasse und kein Modul-'var' (Globals sind unveraenderlich), und
-        // die Closure ist ein AUSDRUCK und kein Block: ein Block-Lambda liefert seinen
-        // Rueckgabetyp nicht an die Inferenz (LYR-SEM0060 an 'U' von 'map').
+        // The counter is a class rather than a module 'var', because globals are immutable, and the
+        // closure is an EXPRESSION rather than a block: a block lambda does not deliver its return type
+        // to the inference (LYR-SEM0060 on the 'U' of 'map').
         Assert.Equal(2, Run(Head + """
             pub class Zaehler {
                 stand: int = 0,
@@ -150,8 +148,8 @@ public class IterTests
 
     [Fact]
     public void All_is_true_for_an_empty_sequence() =>
-        // Die übliche Konvention, und die einzige, mit der
-        // 'all(a) && all(b) == all(chain(a, b))' gilt.
+        // The usual convention, and the only one under which
+        // 'all(a) && all(b) == all(chain(a, b))' holds.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let leer = RangeIterator { current = 0, end = 0 };
@@ -168,11 +166,11 @@ public class IterTests
             }
             """));
 
-    // ------------------------------------------------------------------ zusammen
+    // ------------------------------------------------------------------ combined
 
     [Fact]
     public void A_full_chain_runs_without_explicit_type_arguments() =>
-        // Wofür die Konformanz-Inferenz gebaut wurde: kein '<int>' an irgendeiner Stelle.
+        // What the conformance inference was built for: no '<int>' anywhere.
         // (1+3+5) * 10 = 90.
         Assert.Equal(90, Run(Head + """
             fn main(): int {
@@ -183,8 +181,8 @@ public class IterTests
 
     [Fact]
     public void An_adapter_over_a_generic_instance_infers_its_type() =>
-        // 'ArrayIterator<string>' ist selbst eine Instanz — die Inferenz muss durch die
-        // Konformanz UND die Instanz-Substitution hindurch.
+        // 'ArrayIterator<string>' is itself an instance: the inference has to go through the conformance
+        // AND the instance substitution.
         Assert.Equal(2, Run("""
             import std.iter { ArrayIterator, map, count };
 
@@ -208,15 +206,14 @@ public class IterTests
             }
             """));
 
-    // ------------------------------------------------------------ enumerate und zip
+    // ------------------------------------------------------------ enumerate and zip
 
     /// <summary>
-    /// Nummeriert durch — und das Tupel kommt als Typargument eines generischen Interfaces zurück.
+    /// Numbers through, and the tuple comes back as the type argument of a generic interface.
     /// </summary>
-    /// <remarks>Das war die Blockade: <c>TypeTable.Resolve</c> löste Arrays und Optionals als
-    /// Typargument auf, Tupel aber nicht — und lief in „this type argument is not supported by
-    /// this compiler version yet". Die Sema akzeptierte es, das Lowering nicht; wieder derselbe
-    /// Riss.</remarks>
+    /// <remarks>That was the blockade: <c>TypeTable.Resolve</c> resolved arrays and optionals as a type
+    /// argument but not tuples, and ran into "this type argument is not supported by this compiler
+    /// version yet". The sema accepted it, the lowering did not; again the same rift.</remarks>
     [Fact]
     public void Enumerate_numbers_the_elements() =>
         Assert.Equal(3, Run("""
@@ -230,8 +227,7 @@ public class IterTests
 
     [Fact]
     public void The_index_starts_at_zero_and_counts_up() =>
-        // Die Summe der Indizes 0+1+2 ist 3; die Anzahl allein faende eine falsche Numerierung
-        // nicht.
+        // The sum of the indices 0+1+2 is 3; the count alone would not find a wrong numbering.
         Assert.Equal(3, Run("""
             import std.iter { ArrayIterator, enumerate };
 
@@ -248,8 +244,8 @@ public class IterTests
 
     [Fact]
     public void Zip_stops_with_the_shorter_side() =>
-        // Drei links, zwei rechts: zwei Paare. Ohne die Pruefung nach dem RECHTEN Aufruf liefe
-        // der Iterator mit einem halben Paar weiter.
+        // Three on the left, two on the right: two pairs. Without the check after the RIGHT call the
+        // iterator would continue with half a pair.
         Assert.Equal(2, Run("""
             import std.iter { ArrayIterator, zip, count };
 
@@ -262,8 +258,8 @@ public class IterTests
 
     [Fact]
     public void Zip_stops_with_the_shorter_side_the_other_way_round() =>
-        // Die Gegenrichtung: kurz links, lang rechts. Beide Abbruchstellen sind verschiedene
-        // Zeilen im Adapter, und ein Test deckt nur eine davon ab.
+        // The other direction: short on the left, long on the right. The two stopping points are different
+        // lines in the adapter, and one test covers only one of them.
         Assert.Equal(2, Run("""
             import std.iter { ArrayIterator, zip, count };
 
