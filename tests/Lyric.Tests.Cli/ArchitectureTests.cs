@@ -2,42 +2,40 @@ using System.Text.RegularExpressions;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Der wichtigste Test dieses Projekts (ADR-017).
+/// The architecture boundary between the binaries.
 ///
-/// <para>Die Kernaussage der Binary-Trennung ist eine Abhaengigkeits-Aussage, keine
-/// Datei-Aussage: <c>lyrvm</c> darf nichts Compiler-seitiges enthalten und <c>lyrc</c> nichts
-/// Runtime-seitiges. Vor dem Schnitt war die erste Richtung verletzt — <c>Lyric.Bytecode</c>
-/// referenzierte <c>Lyric.Ir</c>, das <c>Lyric.Sema</c> referenzierte, und damit zog jede Runtime
-/// die gesamte Front-End-Kette mit.</para>
+/// <para>The core statement of the binary split is a DEPENDENCY statement rather than a file
+/// statement: <c>lyrvm</c> must contain nothing compiler-side and <c>lyrc</c> nothing runtime-side.
+/// Before the cut the first direction was violated — <c>Lyric.Bytecode</c> referenced
+/// <c>Lyric.Ir</c>, which referenced <c>Lyric.Sema</c>, so every runtime dragged the whole front-end
+/// chain along.</para>
 ///
-/// <para>Geprueft wird das <b>Ausgabeverzeichnis</b>, nicht die Metadaten: die ehrliche Frage
-/// lautet „was liegt neben <c>lyrvm.exe</c>, wenn ich es ausliefere". Eine ungenutzte
-/// Assembly-Referenz waere hier egal, eine mitkopierte DLL ist es nicht.</para>
+/// <para>The OUTPUT DIRECTORY is checked rather than the metadata: the honest question is "what lies
+/// next to <c>lyrvm.exe</c> when I ship it". An unused assembly reference would not matter here, a
+/// copied DLL does.</para>
 ///
-/// <para><b>Seit der Assembly-Konsolidierung</b> gibt es genau drei Bibliotheken, und die
-/// Aussage wird dadurch schaerfer statt schwaecher: nicht mehr „diese acht Dateien duerfen nicht
-/// dabei sein", sondern „es sind genau diese, und keine andere". Die Verbotsliste musste bei
-/// jedem neuen Projekt gepflegt werden — was niemand tat.</para>
+/// <para>There are exactly three libraries, and that makes the statement sharper rather than weaker:
+/// not "these eight files must not be there" but "it is exactly these and no other". A list of
+/// prohibitions would have to be maintained for every new project.</para>
 /// </summary>
 public sealed class ArchitectureTests
 {
-    /// <summary>Alles zwischen Quelltext und <c>.lyrbc</c>: Lexer, Parser, Resolver, Sema, IR,
-    /// Bytecode-Writer, Pipeline. Eine Runtime braucht nichts davon — sie bekommt fertige
-    /// Bytes.</summary>
+    /// <summary>Everything between source and <c>.lyrbc</c>: lexer, parser, resolver, sema, IR,
+    /// bytecode writer, pipeline. A runtime needs none of it: it gets finished bytes.</summary>
     private const string Frontend = "lyrfe.dll";
 
-    /// <summary>Der Interpreter. Ein Compiler fuehrt nichts aus.</summary>
+    /// <summary>The interpreter. A compiler executes nothing.</summary>
     private const string Runtime = "lyrrt.dll";
 
-    /// <summary>Diagnostik, Quelltextverwaltung und die Leseseite des Formats — der gemeinsame
-    /// Vertrag, den beide Seiten brauchen.</summary>
+    /// <summary>Diagnostics, source management and the reading side of the format: the shared contract
+    /// both sides need.</summary>
     private const string Shared = "lyrcore.dll";
 
     [Fact]
     public void Lyrvm_ships_exactly_the_shared_contract_and_the_interpreter()
     {
-        // Positiv formuliert, damit der Test auch faellt, wenn jemand die Runtime durch eine
-        // dritte Kante *erweitert*, die auf keiner Verbotsliste steht.
+        // Stated positively, so the test also fails when someone EXTENDS the runtime by a third edge that
+        // stands on no list of prohibitions.
         AssertShips("Lyrvm", Shared, Runtime, "lyrvm.dll");
     }
 
@@ -56,42 +54,36 @@ public sealed class ArchitectureTests
     [Fact]
     public void Lyrc_ships_no_runtime()
     {
-        // Die Gegenrichtung. Sie ist weniger dramatisch — ein Compiler mit Interpreter waere
-        // bloss fett, nicht widerspruechlich — aber sie haelt die Rollen sauber: 'lyrc' fuehrt
-        // nichts aus, also hat es auch nichts, womit es koennte.
+        // The other direction. It is less dramatic — a compiler with an interpreter would merely be fat
+        // rather than contradictory — but it keeps the roles clean: 'lyrc' executes nothing, so it has
+        // nothing to execute with.
         //
-        // Sie ist auch der Grund, warum die Leseseite des Formats in lyrcore liegt und nicht bei
-        // der VM: der Bytecode-Writer braucht dieselben Op-Codes und Typ-Tags. Laege das Lesen
-        // bei der Runtime, zoege jeder Compiler-Build den Interpreter mit und dieser Test fiele.
+        // It is also the reason the reading side of the format lives in lyrcore rather than at the VM:
+        // the bytecode writer needs the same opcodes and type tags. Were reading at the runtime, every
+        // compiler build would drag the interpreter along and this test would fail.
         Assert.DoesNotContain(Runtime, LyricAssemblies("Lyrc"));
     }
 
     [Fact]
     public void The_driver_carries_neither_compiler_nor_runtime_of_its_own()
     {
-        // ADR-019, und die schaerfste Aussage dieser Datei: der Treiber COMPILIERT NICHTS und
-        // FUEHRT NICHTS AUS. Er startet Werkzeuge — also liegen die Werkzeuge daneben, aber ihre
-        // Bibliotheken sind nicht seine.
-        //
-        // Vor ADR-019 stand hier die Gegenprobe „der Treiber muss beides haben". Dass sie sich
-        // umgedreht hat, IST die Entscheidung: vorher war lyric ein zweiter Compiler mit bequemerer
-        // Oberflaeche, jetzt ist es ein Dispatcher.
+        // The sharpest statement in this file: the driver COMPILES NOTHING and EXECUTES NOTHING. It
+        // starts tools, so the tools lie next to it, but their libraries are not its own.
         var shipped = LyricAssemblies("Lyric.Cli");
 
-        Assert.Contains(Shared, shipped);        // Exit- und Diagnose-Codes
-        Assert.Contains("lyric.dll", shipped);   // er selbst
-        Assert.Contains("lyrc.dll", shipped);    // die Werkzeuge liegen daneben,
-        Assert.Contains("lyrvm.dll", shipped);   // weil er sie dort sucht
+        Assert.Contains(Shared, shipped);        // exit and diagnostic codes
+        Assert.Contains("lyric.dll", shipped);   // itself
+        Assert.Contains("lyrc.dll", shipped);    // the tools lie next to it,
+        Assert.Contains("lyrvm.dll", shipped);   // because it looks for them there
         Assert.Contains("lyrrepl.dll", shipped); // seit ADR-021 auch die REPL
     }
 
     [Fact]
     public void Every_tool_the_driver_dispatches_to_lies_next_to_it()
     {
-        // Der Treiber sucht seine Werkzeuge NEBEN der eigenen exe (Tool.Resolve). Fehlt eines,
-        // meldet er das erst zur Laufzeit — und zwar dem Nutzer, nicht dem Entwickler. Die Liste
-        // hier ist dieselbe wie Tool.All; waechst sie, faellt dieser Test, bis das Kopier-Target
-        // in Lyric.Cli.csproj nachgezogen ist.
+        // The driver looks for its tools NEXT TO its own exe (Tool.Resolve). If one is missing it reports
+        // that only at runtime, and to the user rather than to the developer. This list is the same as
+        // Tool.All; when it grows, this test fails until the copy target in Lyric.Cli.csproj follows.
         var shipped = LyricAssemblies("Lyric.Cli");
 
         foreach (var tool in new[] { "lyrc.dll", "lyrvm.dll", "lyrrepl.dll" })
@@ -101,14 +93,13 @@ public sealed class ArchitectureTests
     [Fact]
     public void The_repl_is_the_one_tool_that_needs_both_sides()
     {
-        // ADR-021. Die Ausnahme, und sie steht hier ausdruecklich statt als Luecke: eine REPL
-        // uebersetzt UND fuehrt aus, und der Zustand muss dazwischen leben — 'lyric run' loest
-        // das ueber zwei Subprozesse, was interaktiv nicht geht.
+        // The exception, stated explicitly rather than left as a gap: a REPL compiles AND executes, and
+        // the state has to live in between — 'lyric run' solves that with two subprocesses, which does
+        // not work interactively.
         //
-        // Dass sie beide Bibliotheken hat, widerspricht ADR-017 nicht: die Kante trennt die
-        // BIBLIOTHEKEN, sie verbietet nicht, beide zu benutzen. Dass man sie kombinieren kann,
-        // ohne sie aufzuweichen, ist der Beweis, dass der Schnitt sauber liegt — und die
-        // Trennung fuer lyrc und lyrvm gilt unveraendert weiter (die Tests darueber).
+        // That it has both libraries does not contradict the boundary: the edge separates the LIBRARIES,
+        // it does not forbid using both. That they can be combined without softening the cut is the proof
+        // that the cut lies cleanly, and the separation for lyrc and lyrvm holds unchanged.
         var shipped = LyricAssemblies("Lyrrepl");
 
         Assert.Contains(Shared, shipped);
@@ -120,15 +111,14 @@ public sealed class ArchitectureTests
     [Fact]
     public void The_driver_has_no_reference_of_its_own_to_frontend_or_runtime()
     {
-        // Die Bibliotheken lyrfe/lyrrt liegen im Verzeichnis — aber weil die WERKZEUGE sie
-        // brauchen, nicht der Treiber. Was ihn bindet, steht in seiner Projektdatei, und dort
-        // darf genau eine Kante stehen.
+        // The libraries lyrfe and lyrrt lie in the directory, but because the TOOLS need them rather than
+        // the driver. What binds it stands in its project file, and exactly one edge may stand there.
         var project = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "src", "Lyric.Cli",
             "Lyric.Cli.csproj"));
 
-        // ReplaceLineEndings() zuerst: die Projektdateien im Repo haben gemischte Zeilenenden, und
-        // ein Split auf Environment.NewLine faende auf Windows in einer LF-Datei gar nichts — der
-        // Test waere dann still gruen, weil die Liste leer ist statt richtig.
+        // ReplaceLineEndings() first: the project files in the repository have mixed line endings, and a
+        // split on Environment.NewLine would find nothing on Windows in an LF file — the test would then
+        // be silently green, because the list is empty rather than right.
         var referenced = project.ReplaceLineEndings()
             .Split(Environment.NewLine, StringSplitOptions.TrimEntries)
             .Where(line => line.Contains("ProjectReference")
@@ -142,31 +132,28 @@ public sealed class ArchitectureTests
     [Fact]
     public void Compiling_binaries_carry_the_stdlib_and_the_runtime_does_not()
     {
-        // Die Stdlib ist Quelltext (M6) und wird beim Compilieren gebraucht, nicht beim
-        // Ausfuehren: ein .lyrbc traegt seine Importe symbolisch, die Runtime bindet sie ueber
-        // NativeRegistry. Liegt stdlib/ neben lyrvm, ist entweder die Content-Regel falsch
-        // verdrahtet oder die Runtime tut mehr, als sie soll.
+        // The stdlib is source and is needed while compiling rather than while executing: a .lyrbc carries
+        // its imports symbolically and the runtime binds them through the NativeRegistry. If stdlib/ lies
+        // next to lyrvm, either the content rule is wired wrongly or the runtime does more than it should.
         Assert.True(Directory.Exists(Path.Combine(Toolchain.OutputDirectory("Lyrc"), "stdlib")));
         Assert.True(Directory.Exists(Path.Combine(Toolchain.OutputDirectory("Lyric.Cli"), "stdlib")));
         Assert.False(Directory.Exists(Path.Combine(Toolchain.OutputDirectory("Lyrvm"), "stdlib")));
     }
 
-    /// <summary>Beide Seiten werden sortiert: welche Reihenfolge das Dateisystem liefert, ist
-    /// keine Aussage ueber die Architektur, und eine Erwartung in Ordinal-Sortierung waere nur
-    /// ein Raetsel fuer den naechsten Leser.</summary>
+    /// <summary>Both sides are sorted: whichever order the file system yields is no statement about the
+    /// architecture, and an expectation in ordinal order would be a riddle for the next reader.</summary>
     private static void AssertShips(string project, params string[] expected) =>
         Assert.Equal(
             expected.OrderBy(name => name, StringComparer.Ordinal).ToArray(),
             LyricAssemblies(project));
 
     /// <summary>
-    /// Die ausgelieferten Lyric-Assemblies eines Binaries, alphabetisch.
+    /// The shipped Lyric assemblies of a binary, alphabetically.
     ///
-    /// <para>Erfasst wird alles, was <c>lyr</c> heisst — <b>auch Unbekanntes</b>. Beim Umbau auf
-    /// drei Assemblies lagen in <c>bin/</c> noch die DLLs der alten Projektnamen aus einem
-    /// frueheren Build; ein Vergleich gegen eine Verbotsliste haette sie uebersehen, ein
-    /// Gleichheitsvergleich faellt darueber. Das ist erwuenscht: was neben der exe liegt, wird
-    /// ausgeliefert, egal wer es dort abgelegt hat.</para>
+    /// <para>Everything called <c>lyr</c> is captured, INCLUDING the unknown. During the move to three
+    /// assemblies the DLLs of the old project names from an earlier build still lay in <c>bin/</c>; a
+    /// comparison against a list of prohibitions would have missed them, an equality comparison fails on
+    /// them. That is intended: what lies next to the exe gets shipped, no matter who put it there.</para>
     /// </summary>
     private static string[] LyricAssemblies(string project) =>
         Directory.GetFiles(Toolchain.OutputDirectory(project), "lyr*.dll")
@@ -176,24 +163,22 @@ public sealed class ArchitectureTests
             .ToArray();
 
     /// <summary>
-    /// Was die README als Auslieferung abdruckt, liefert <c>build/publish.proj</c> auch.
+    /// What the README prints as the shipping list is what <c>build/publish.proj</c> delivers.
     ///
-    /// <para><b>Der Anlass ist ein Befund aus M10/E6.</b> <c>lyrembed.dll</c> stand in der README
-    /// und in <c>Doku.md</c> §21 als das, was ein Host referenziert — und landete in keiner
-    /// Auslieferung, weil kein Binary sie referenziert und sie selbst nicht in der Publish-Liste
-    /// stand. Ein dokumentierter Lieferposten ausserhalb des Artefakts; dieselbe Luecke hatte M9
-    /// vier Mal.</para>
+    /// <para><c>lyrembed.dll</c> stood in the README as what a host references and landed in no shipment,
+    /// because no binary references it and it was not in the publish list itself — a documented delivery
+    /// item outside the artifact.</para>
     ///
-    /// <para>Geprueft wird die Richtung, die den Fehler faengt: <b>von der README zur
-    /// Publish-Liste</b>. Umgekehrt („was publish.proj liefert, nennt die README") waere ebenfalls
-    /// wahr gewesen und haette nichts gemerkt.</para>
+    /// <para>The direction that catches the fault is checked: FROM THE README TO THE PUBLISH LIST. The
+    /// other way round ("what publish.proj delivers, the README names") would have been true as well and
+    /// would have noticed nothing.</para>
     /// </summary>
     [Fact]
     public void Everything_the_readme_ships_is_actually_published()
     {
         var readme = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "README.md"));
 
-        // Der Block unter "### Shipping", zwischen der Ergebnis-Zusage und dem Satz danach.
+        // The block under "### Shipping", between the result promise and the sentence after it.
         var block = Regex.Match(readme, @"What ends up there, and nothing else:\s*```(.*?)```",
             RegexOptions.Singleline);
         Assert.True(block.Success, "README no longer prints what a publish produces");
@@ -211,17 +196,16 @@ public sealed class ArchitectureTests
                 StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>Die Assembly-Namen, die ein Publish erzeugt: die Projekte aus
-    /// <c>publish.proj</c> plus alles, was sie transitiv referenzieren.</summary>
+    /// <summary>The assembly names a publish produces: the projects from <c>publish.proj</c> plus
+    /// everything they reference transitively.</summary>
     private static IReadOnlyCollection<string> PublishedAssemblies()
     {
         var root = Toolchain.RepositoryRoot;
         var project = File.ReadAllText(Path.Combine(root, "build", "publish.proj"));
 
-        // MSBuild schreibt '\' als Trenner, auch auf Linux — dort ist das ein gewoehnliches
-        // Zeichen im Dateinamen, und ohne Normalisierung findet dieser Test NICHTS und ist
-        // still leer. Genau so ist er beim ersten CI-Lauf gefallen: lokal (Windows) gruen,
-        // in CI rot. Dieselbe Fehlerklasse wie beim --verbose-Test aus M9/S6.
+        // MSBuild writes '\' as the separator, on Linux too, where it is an ordinary character in a file
+        // name. Without normalization this test finds NOTHING and is silently empty — green locally on
+        // Windows, red in CI.
         var queue = new Queue<string>(Regex.Matches(project, @"<Binary Include=""([^""]+)""")
             .Select(m => Path.GetFullPath(
                 Path.Combine(root, "build", Normalize(m.Groups[1].Value)))));
@@ -245,14 +229,13 @@ public sealed class ArchitectureTests
                     Path.GetDirectoryName(path)!, Normalize(reference.Groups[1].Value))));
         }
 
-        // Ohne diese Zeile waere der Test still leer, wenn die Pfad-Aufloesung je wieder
-        // bricht — und "nichts gefunden" saehe aus wie "alles in Ordnung", solange die
-        // README nichts nennt.
+        // Without this line the test would be silently empty if the path resolution ever breaks again,
+        // and "found nothing" would look like "all in order" as long as the README names nothing.
         Assert.NotEmpty(names);
         return names;
     }
 
-    /// <summary>MSBuild-Pfad zu Plattform-Pfad: die Projektdateien schreiben Windows-Trenner.
+    /// <summary>An MSBuild path to a platform path: the project files write Windows separators.
     /// </summary>
     private static string Normalize(string msbuildPath) =>
         msbuildPath.Replace('\\', Path.DirectorySeparatorChar)
