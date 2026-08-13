@@ -9,59 +9,57 @@ public class IrBlock(BlockId Id, List<IrOp> Insts)
     public BlockId Id { get; init; } = Id;
     public List<IrOp> Insts { get; init; } = Insts;
 
-    /// <summary>Der Terminator liegt bewusst neben <see cref="Insts"/> und nicht als letztes
-    /// Listenelement darin: <see cref="IrOp"/> und <see cref="IrTerminator"/> sind getrennte Typen,
-    /// wodurch „Terminator mitten im Block" nicht darstellbar ist statt geprüft werden zu müssen.
-    /// <c>null</c> ist nur während des Aufbaus erlaubt — ein fertiger Block hat einen Terminator
-    /// (<c>IrVerifier</c> Phase 1).</summary>
+    /// <summary>The terminator sits beside <see cref="Insts"/> rather than as the last element in it:
+    /// <see cref="IrOp"/> and <see cref="IrTerminator"/> are separate types, which makes "terminator
+    /// in the middle of a block" unrepresentable rather than something to be checked. <c>null</c> is
+    /// allowed only while building — a finished block has a terminator.</summary>
     public IrTerminator? Terminator { get; set; } = null;
 }
 
 /// <summary>
-/// Eine Funktion in der Mid-IR.
+/// A function in the mid-level IR.
 ///
-/// <para><b>Invarianten</b> (durchgesetzt von <c>IrVerifier</c>, weil sie tragend sind und man sie
-/// beim Lowering leicht verletzt):</para>
+/// <para>INVARIANTS, enforced by <c>IrVerifier</c>:</para>
 /// <list type="bullet">
-/// <item><b>Parameter-Konvention</b>: die ersten <see cref="ParamCount"/> Einträge in
-/// <see cref="Locals"/> <b>sind</b> die Parameter, in Deklarations-Reihenfolge. Ohne diese
-/// Konvention trägt die IR nirgends Parameter-Typen, und ein <c>Call</c> ist nicht typprüfbar —
-/// der Verifier holt die erwarteten Argument-Typen genau dort.</item>
-/// <item><b>Dichte Id-Tabellen</b>: <c>Locals[i].Id.Value == i</c>, ebenso für
-/// <see cref="Temps"/> und <see cref="Blocks"/>. Die Id ist der Slot- bzw. Sprung-Index im
-/// späteren Bytecode; eine Lücke oder Permutation äußert sich als Falsch-Slot-Read in der VM.</item>
-/// <item><see cref="Entry"/> ist <c>Blocks[0].Id</c> und hat keine Prädecessoren — er ist der
-/// einzige Ort für Parameter-Setup, ein Rücksprung dorthin würde es wiederholen.</item>
-/// <item>Jedes Temp wird <b>genau einmal</b> definiert (SSA-light). Darauf beruht, dass
-/// „auf jedem Pfad verfügbar" gleichbedeutend mit „die Definition dominiert den Use" ist.</item>
+/// <item>PARAMETER CONVENTION: the first <see cref="ParamCount"/> entries in <see cref="Locals"/> ARE
+/// the parameters, in declaration order. Without it the IR carries parameter types nowhere and a
+/// <c>Call</c> is not type-checkable — the verifier fetches the expected argument types exactly
+/// there.</item>
+/// <item>DENSE ID TABLES: <c>Locals[i].Id.Value == i</c>, likewise for <see cref="Temps"/> and
+/// <see cref="Blocks"/>. The id is the slot or jump index in the later bytecode; a gap or a
+/// permutation shows up as a wrong-slot read in the VM.</item>
+/// <item><see cref="Entry"/> is <c>Blocks[0].Id</c> and has no predecessors — it is the only place
+/// for parameter setup, and a jump back into it would repeat that.</item>
+/// <item>Every temp is defined EXACTLY ONCE (SSA-light). On that rests the equivalence of
+/// "available on every path" and "the definition dominates the use".</item>
 /// </list>
 /// </summary>
-/// <summary>Was eine geschuetzte Region tut, wenn es in ihr knallt.</summary>
+/// <summary>What a protected region does when something is thrown inside it.</summary>
 public enum IrHandlerKind
 {
-    /// <summary>Faengt einen Typ (oder alles, wenn <c>CatchType</c> fehlt) und fuehrt weiter.</summary>
+    /// <summary>Catches one type, or everything when <c>CatchType</c> is absent, and continues.</summary>
     Catch,
 
-    /// <summary>Laeuft beim Abwickeln und gibt danach ab — der Traeger von <c>defer</c>.</summary>
+    /// <summary>Runs while unwinding and hands on afterwards; the carrier of <c>defer</c>.</summary>
     Finally,
 }
 
 /// <summary>
-/// Eine geschuetzte Region: die Bloecke <c>[Start, End)</c> sind abgedeckt.
+/// A protected region: the blocks <c>[Start, End)</c> are covered.
 ///
-/// <para><b>Block-Indizes statt Byte-Bereichen</b>, dieselbe Entscheidung wie bei den Sprungzielen
-/// (P5/ADR-013): ein Bereich prueft man mit zwei Vergleichen gegen die Blockzahl, statt
-/// Byte-Offsets gegen Instruktionsgrenzen zu verifizieren.</para>
+/// <para>BLOCK INDICES RATHER THAN BYTE RANGES, the same decision as for the jump targets: a range is
+/// checked with two comparisons against the block count, instead of verifying byte offsets against
+/// instruction boundaries.</para>
 ///
-/// <para><b>Der gefangene Wert landet in <see cref="Slot"/>, nicht auf dem Stack.</b> CIL schiebt
-/// ihn beim Betreten des Handlers auf den Operanden-Stack — das ginge hier nicht, weil der Stack an
-/// jeder Blockgrenze leer ist (Bytecode.md §4). Ueber einen Slot bleibt die Invariante intakt und
-/// der Handler-Block faengt an wie jeder andere.</para>
+/// <para>THE CAUGHT VALUE GOES INTO <see cref="Slot"/>, NOT ONTO THE STACK. CIL pushes it onto the
+/// operand stack when entering the handler; that would not work here, because the stack is empty at
+/// every block boundary. Through a slot the invariant stays intact and the handler block starts like
+/// any other.</para>
 /// </summary>
-/// <param name="CatchType">Der gefangene Typ, oder <c>null</c> fuer catch-all. Bei
-/// <see cref="IrHandlerKind.Finally"/> immer <c>null</c>.</param>
-/// <param name="Slot">Wohin der gefangene Wert geht. Bei <c>finally</c> und bei <c>catch (_)</c>
-/// ohne Bindung <c>null</c>.</param>
+/// <param name="CatchType">The caught type, or <c>null</c> for a catch-all. Always <c>null</c> for
+/// <see cref="IrHandlerKind.Finally"/>.</param>
+/// <param name="Slot">Where the caught value goes. <c>null</c> for <c>finally</c> and for a
+/// <c>catch (_)</c> without a binding.</param>
 public record struct IrHandler(BlockId Start, BlockId End, IrHandlerKind Kind,
     TypeId? CatchType, BlockId Handler, LocalId? Slot);
 
@@ -70,24 +68,24 @@ public class IrFunction(string Name, IrType ReturnType, int ParamCount, List<IrL
     public string Name { get; init; } = Name;
     public IrType ReturnType { get; init; } = ReturnType;
 
-    /// <summary>Anzahl der Parameter. Die ersten <c>ParamCount</c> Einträge in
-    /// <see cref="Locals"/> sind diese Parameter, in Reihenfolge — siehe Klassen-Doku.</summary>
+    /// <summary>The number of parameters. The first <c>ParamCount</c> entries in
+    /// <see cref="Locals"/> are those parameters, in order — see the class documentation.</summary>
     public int ParamCount { get; init; } = ParamCount;
 
-    /// <summary>Benannte Slots der Funktion: zuerst die <see cref="ParamCount"/> Parameter, dann
-    /// die lokalen Bindings. Dicht indiziert über <see cref="LocalId"/>.</summary>
+    /// <summary>The function's named slots: first the <see cref="ParamCount"/> parameters, then the
+    /// local bindings. Densely indexed through <see cref="LocalId"/>.</summary>
     public List<IrLocal> Locals { get; init; } = Locals;
 
-    /// <summary>Autorität für den Typ jedes Temps. Die <c>Type</c>-Felder auf den Instruktionen
-    /// sind Kopien für den Printer; weichen sie hiervon ab, ist das ein Bug.</summary>
+    /// <summary>The authority for the type of every temp. The <c>Type</c> fields on the instructions
+    /// are copies for the printer; a divergence from this is a bug.</summary>
     public List<IrTemp> Temps { get; init; } = Temps;
 
     /// <summary>
-    /// Die geschuetzten Regionen dieser Funktion, <b>innerste zuerst</b>.
+    /// The protected regions of this function, INNERMOST FIRST.
     ///
-    /// <para>Die Reihenfolge ist der Vertrag: beim Abwickeln nimmt die Runtime den ersten Eintrag,
-    /// dessen Bereich den Fehlerort deckt und dessen Typ passt. Bei geschachtelten try-Bloecken
-    /// entscheidet damit die Liste, nicht eine Bereichsgroessen-Rechnung.</para>
+    /// <para>The order is the contract: while unwinding, the runtime takes the first entry whose range
+    /// covers the fault site and whose type matches. For nested try blocks the list decides, not an
+    /// arithmetic over range sizes.</para>
     /// </summary>
     public List<IrHandler> Handlers { get; init; } = new();
 
@@ -95,43 +93,41 @@ public class IrFunction(string Name, IrType ReturnType, int ParamCount, List<IrL
     public BlockId Entry { get; set; }
 }
 
-/// <summary>Eine nativ hinterlegte Funktion: Signatur in Lyric deklariert, Implementierung im
-/// Host. Wird beim Laden über <see cref="Name"/> gebunden (ADR-013, WASM-Modell).</summary>
+/// <summary>A natively backed function: the signature is declared in Lyric, the implementation lives
+/// in the host and is bound by <see cref="Name"/> at load time.</summary>
 public record struct IrImport(string Name, IrType[] ParamTypes, IrType ReturnType);
 
 /// <summary>
-/// Das Layout eines zusammengesetzten Typs. <see cref="FieldNames"/> ist reine Diagnose — im
-/// Bytecode landen nur die Typen, und der Feldindex <b>ist</b> die Position in
-/// <see cref="FieldTypes"/>.
+/// The layout of a composite type. <see cref="FieldNames"/> is diagnostics only — only the types
+/// reach the bytecode, and the field index IS the position in <see cref="FieldTypes"/>.
 ///
-/// <para>Beide Listen sind gleich lang; der Verifier setzt das durch, weil ein Auseinanderlaufen
-/// sonst erst im Printer als Index-Ausnahme auffiele.</para>
+/// <para>Both lists have the same length; the verifier enforces that, because a divergence would
+/// otherwise only surface in the printer as an index exception.</para>
 /// </summary>
 public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldNames)
 {
     /// <summary>
-    /// Die Varianten, wenn dieser Eintrag ein <b>Enum</b> ist — sonst leer. Jede Variante ist
-    /// selbst ein Eintrag mit eigenem Layout (Bytecode.md §2); der Enum nennt nur ihre Ids.
+    /// The variants when this entry is an ENUM, empty otherwise. Every variant is itself an entry with
+    /// its own layout; the enum names only their ids.
     ///
-    /// <para><b>Slot 0 jeder Variante ist ihr Tag</b>, der Index in dieser Liste. Die Nutzfelder
-    /// beginnen bei Slot 1.</para>
+    /// <para>SLOT 0 OF EVERY VARIANT IS ITS TAG, the index into this list. The payload fields start at
+    /// slot 1.</para>
     /// </summary>
     public TypeId[] Variants { get; init; } = [];
 
     /// <summary>
-    /// Die Methoden-Slots, wenn dieser Eintrag ein <b>Interface</b> ist — sonst leer. Der
-    /// <b>Index</b> in dieser Liste ist der Slot, auf den <c>CallVirt</c> zeigt; die Namen stehen
-    /// nur fuer Disassembler und Diagnose darin.
+    /// The method slots when this entry is an INTERFACE, empty otherwise. The INDEX in this list is the
+    /// slot <c>CallVirt</c> points at; the names are in it for disassemblers and diagnostics only.
     ///
-    /// <para>Die Reihenfolge kommt aus der Deklaration, nicht aus einer Symboltabelle — genau wie
-    /// bei den Feldern einer Klasse, und aus demselben Grund: der Slot ist ein Vertrag, die
-    /// Aufzaehlungsreihenfolge einer Map ist ein Implementierungsdetail.</para>
+    /// <para>The order comes from the declaration rather than from a symbol table, exactly as for the
+    /// fields of a class and for the same reason: the slot is a contract, the enumeration order of a
+    /// map is an implementation detail.</para>
     /// </summary>
     public string[] MethodSlots { get; init; } = [];
 
-    /// <summary>Wert-Semantik? Ein <c>struct</c> hat dasselbe Feld-Layout wie eine Klasse; der
-    /// Unterschied ist, dass jede Bindung kopiert. Ein eigenes Flag statt eines eigenen
-    /// Eintragstyps, weil sich am Layout selbst nichts aendert.</summary>
+    /// <summary>Value semantics? A <c>struct</c> has the same field layout as a class; the difference
+    /// is that every binding copies. A flag rather than an entry type of its own, because nothing about
+    /// the layout itself changes.</summary>
     public bool IsStruct { get; init; }
 
     public bool IsEnum => Variants.Length > 0;
@@ -140,64 +136,64 @@ public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldN
 }
 
 /// <summary>
-/// Eine vtable-Zeile: Klasse <paramref name="Type"/> erfuellt Interface
-/// <paramref name="Interface"/>, und zwar Slot fuer Slot mit <paramref name="Methods"/>.
+/// A vtable row: the class <paramref name="Type"/> satisfies the interface
+/// <paramref name="Interface"/>, slot by slot with <paramref name="Methods"/>.
 ///
-/// <para>Ein Eintrag je (Klasse, Interface)-Paar. <c>Methods</c> ist so lang wie die Slot-Liste des
-/// Interfaces; ein Default-Methoden-Slot traegt die Funktion des Interfaces selbst, ein
-/// ueberschriebener die der Klasse — die Aufloesungsreihenfolge (eigenes Member vor Default) faellt
-/// im Lowering, nicht zur Laufzeit.</para>
+/// <para>One entry per (class, interface) pair. <c>Methods</c> is as long as the interface's slot
+/// list; a default-method slot carries the interface's own function, an overridden one the class's.
+/// The resolution order — own member before default — is decided in the lowering, not at
+/// runtime.</para>
 /// </summary>
 public record struct IrImpl(TypeId Type, TypeId Interface, FunctionId[] Methods);
 
-/// <summary>Ein globaler Slot. <paramref name="Name"/> ist reine Diagnose — im Bytecode steht nur
-/// der Typ, und der Index ist die Identitaet.</summary>
+/// <summary>A global slot. <paramref name="Name"/> is diagnostics only — only the type reaches the
+/// bytecode, and the index is the identity.</summary>
 public record struct IrGlobal(string Name, IrType Type);
 
 public class IrModule(List<IrFunction> Functions)
 {
-    /// <summary>Native Funktionen, die dieses Modul aufruft — nur die tatsächlich benutzten.
-    /// <c>CallImport</c> referenziert sie per Index.</summary>
+    /// <summary>The native functions this module calls, only the ones actually used.
+    /// <c>CallImport</c> references them by index.</summary>
     public List<IrImport> Imports { get; init; } = new();
 
-    /// <summary>Welche Capabilities dieses Modul <b>verlangt</b> (ADR-007). Was gewaehrt wird,
-    /// entscheidet die Runtime beim Laden — der Compiler schreibt nur den Bedarf hinein.
+    /// <summary>Which capabilities this module REQUIRES. What is granted is decided by the runtime at
+    /// load time; the compiler writes only the requirement.
     ///
-    /// <para>Er steht IM Modul und nicht neben ihm, weil ein '.lyrbc' von woanders kommen kann:
-    /// ein Host, der fremden Bytecode laedt, muss ohne den Compiler wissen, was das Programm
-    /// anfassen will (ADR-013).</para></summary>
+    /// <para>It stands IN the module rather than beside it, because a '.lyrbc' can come from elsewhere:
+    /// a host loading foreign bytecode has to know without the compiler what the program wants to touch.
+    /// </para></summary>
     public Capability Capabilities { get; init; } = Capability.None;
 
-    /// <summary>Layouts der zusammengesetzten Typen. <see cref="IrRefType"/>, <c>NewObject</c>,
-    /// <c>LoadField</c> und <c>StoreField</c> referenzieren sie per <see cref="TypeId"/>; dicht
-    /// indiziert wie alle Tabellen hier.</summary>
+    /// <summary>The layouts of the composite types. <see cref="IrRefType"/>, <c>NewObject</c>,
+    /// <c>LoadField</c> and <c>StoreField</c> reference them by <see cref="TypeId"/>; densely indexed
+    /// like every table here.</summary>
     public List<IrTypeDef> Types { get; init; } = new();
 
     /// <summary>
-    /// Globale Slots: Modul-<c>let</c> und <c>static let</c>. Der Name ist Diagnose, der
-    /// <b>Index</b> ist der Vertrag — wie ueberall hier.
+    /// The global slots: module <c>let</c> and <c>static let</c>. The name is diagnostics, the INDEX is
+    /// the contract, as everywhere here.
     /// </summary>
     public List<IrGlobal> Globals { get; init; } = new();
 
     /// <summary>
-    /// Die Funktion, die alle Globals fuellt, oder <c>null</c>, wenn es keine gibt.
+    /// The function that fills all globals, or <c>null</c> when there are none.
     ///
-    /// <para>Eine Runtime ruft sie <b>vor</b> dem Einstiegspunkt. Die Reihenfolge darin ist
-    /// Deklarationsreihenfolge — ein Global darf ein frueheres benutzen, ein spaeteres nicht.</para>
+    /// <para>A runtime calls it BEFORE the entry point. The order inside is declaration order: a global
+    /// may use an earlier one, not a later one.</para>
     /// </summary>
     public FunctionId? GlobalInit { get; set; }
 
-    /// <summary>Die vtable-Zeilen. Landen als Impls-Sektion im Bytecode; die Runtime baut daraus
-    /// beim Laden ihre Dispatch-Tabelle, damit <c>callvirt</c> ein Nachschlagen und kein Suchen
-    /// ist.</summary>
+    /// <summary>The vtable rows. They land as the Impls section in the bytecode; the runtime builds its
+    /// dispatch table from them at load time, so <c>callvirt</c> is a lookup rather than a
+    /// search.</summary>
     public List<IrImpl> Impls { get; init; } = new();
 
-    /// <summary>Call-Ziele referenzieren per <see cref="FunctionId"/> den Index in diese Liste.
-    /// Namen müssen eindeutig sein — sie werden die Symbol-Namen im Bytecode (ADR-013).</summary>
+    /// <summary>Call targets reference the index into this list by <see cref="FunctionId"/>. Names have
+    /// to be unique: they become the symbol names in the bytecode.</summary>
     public List<IrFunction> Functions { get; init; } = Functions;
 
-    /// <summary>Einstiegspunkt (<c>main</c>, Sprache.md §11), oder <c>null</c> für ein reines
-    /// Bibliotheks-Modul. Wandert als Start-Sektion in den Bytecode: ohne sie müsste eine Runtime
-    /// den Einstieg über eine Namenskonvention raten.</summary>
+    /// <summary>The entry point (<c>main</c>), or <c>null</c> for a pure library module. It moves into
+    /// the bytecode as the Start section; without it a runtime would have to guess the entry from a
+    /// naming convention.</summary>
     public FunctionId? EntryFunction { get; set; }
 }

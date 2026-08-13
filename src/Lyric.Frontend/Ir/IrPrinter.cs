@@ -5,19 +5,19 @@ using Lyric.Core;
 namespace Lyric.Ir;
 
 /// <summary>
-/// Deterministischer Text-Dump eines <see cref="IrModule"/>/<see cref="IrFunction"/> für
-/// Golden-Snapshots und Debug-Ausgabe (analog zu <c>AstDumper</c>). Eine Instruktion pro
-/// Zeile, 2-Space-Einrückung pro Ebene, Newline immer '\n' (nie AppendLine — CRLF bräche
-/// die Snapshots auf Linux-CI).
+/// A deterministic text dump of an <see cref="IrModule"/> or <see cref="IrFunction"/> for golden
+/// snapshots and debug output, analogous to <c>AstDumper</c>. One instruction per line, two-space
+/// indentation per level, and the newline is always '\n' — never AppendLine, whose CRLF would break
+/// the snapshots on a Linux CI.
 ///
-/// Format (siehe P2-Grammatik): der Typ steht am Dest (<c>t2: bool = lt t0, t1</c>), nicht
-/// im Mnemonic — so ist jede Zeile aus den Feldern der Instruktion allein formatierbar, ohne
-/// Temp-Tabellen-Lookup. Einzige Ausnahme ist <c>call</c>: Name und Rückgabetyp der Ziel-
-/// Funktion liegen bei der Callee, nicht an der Call-Stelle, und werden über den
-/// <see cref="CallContext"/> aufgelöst (Index → module.Functions).
+/// Format: the type stands at the destination (<c>t2: bool = lt t0, t1</c>) rather than in the
+/// mnemonic, so every line is formattable from the instruction's fields alone, without a temp table
+/// lookup. The one exception is <c>call</c>: the name and return type of the target function live at
+/// the callee rather than at the call site and are resolved through the <see cref="CallContext"/>
+/// (index to module.Functions).
 ///
-/// Der Dump ist bewusst über <c>switch</c> statt Visitor gelöst: der <c>default</c>-Wurf
-/// erzwingt Vollständigkeit, sobald eine neue Instruktion hinzukommt.
+/// The dump uses a <c>switch</c> rather than a visitor: the <c>default</c> throw forces completeness
+/// as soon as a new instruction is added.
 /// </summary>
 public static class IrPrinter
 {
@@ -30,14 +30,14 @@ public static class IrPrinter
         WriteImpls(sb, module.Impls);
         for (var i = 0; i < module.Functions.Count; i++)
         {
-            if (i > 0 || module.Types.Count > 0) sb.Append('\n'); // Leerzeile zwischen Blöcken
+            if (i > 0 || module.Types.Count > 0) sb.Append('\n'); // a blank line between blocks
             WriteFunction(sb, module.Functions[i], ctx);
         }
         return sb.ToString();
     }
 
-    /// <summary>Standalone-Dump einer einzelnen Funktion. Ohne Modul-Kontext werden
-    /// Call-Ziele als roher <c>fN</c>-Index und ihr Rückgabetyp als <c>?</c> gedruckt.</summary>
+    /// <summary>A standalone dump of a single function. Without module context, call targets print as a
+    /// raw <c>fN</c> index and their return type as <c>?</c>.</summary>
     public static string Dump(IrFunction function)
     {
         var sb = new StringBuilder();
@@ -45,7 +45,7 @@ public static class IrPrinter
         return sb.ToString();
     }
 
-    // --- Call-Auflösung: FunctionId -> (Name, ReturnType) aus der Funktionsliste ---
+    // --- call resolution: FunctionId to (name, return type) from the function list ---
     private readonly struct CallContext
     {
         private readonly IReadOnlyList<IrFunction>? _functions;
@@ -71,13 +71,12 @@ public static class IrPrinter
     }
 
     /// <summary>
-    /// Die Typ-Tabelle als eigener Block am Kopf des Dumps. Feldnamen erscheinen <b>nur</b> hier —
-    /// im Instruktionsstrom steht der Index, weil der Index das ist, was ausgeführt wird.
+    /// The type table as a block of its own at the head of the dump. Field names appear HERE ONLY —
+    /// the instruction stream holds the index, because the index is what is executed.
     ///
-    /// <para>Das ist auch der Grund, warum <see cref="TypeStr"/> weiterhin ohne Kontext auskommt:
-    /// wer <c>&amp;ty0</c> liest, schlägt einmal oben nach, statt dass jede Zeile den Typnamen
-    /// wiederholt. So bleibt die Regel „jede Zeile ist aus den Feldern der Instruktion allein
-    /// formatierbar" intakt.</para>
+    /// <para>That is also why <see cref="TypeStr"/> still works without context: whoever reads
+    /// <c>&amp;ty0</c> looks it up once at the top, instead of every line repeating the type name. The
+    /// rule that every line is formattable from the instruction's fields alone stays intact.</para>
     /// </summary>
     private static void WriteTypes(StringBuilder sb, IReadOnlyList<IrTypeDef> types)
     {
@@ -90,7 +89,7 @@ public static class IrPrinter
 
             if (def.IsInterface)
             {
-                // Ein Interface hat keine Felder, sondern Slots. Der Index ist der Vertrag.
+                // An interface has no fields but slots. The index is the contract.
                 sb.Append($"interface {new TypeId(i)} {def.Name} {{\n");
                 for (var m = 0; m < def.MethodSlots.Length; m++)
                     sb.Append($"  #{m.ToString(CultureInfo.InvariantCulture)} {def.MethodSlots[m]}\n");
@@ -98,7 +97,7 @@ public static class IrPrinter
                 continue;
             }
 
-            // "struct" statt "type", damit am Dump ablesbar ist, ob eine Bindung kopiert.
+            // "struct" rather than "type", so the dump shows whether a binding copies.
             sb.Append($"{(def.IsStruct ? "struct" : "type")} {new TypeId(i)} {def.Name} {{\n");
             for (var f = 0; f < def.FieldTypes.Length; f++)
                 sb.Append($"  {new FieldId(f)} {def.FieldNames[f]}: {TypeStr(def.FieldTypes[f])}\n");
@@ -106,17 +105,16 @@ public static class IrPrinter
         }
     }
 
-    /// <summary>Die globalen Slots am Kopf, wie die Typen: der Index ist das, was im
-    /// Instruktionsstrom steht, der Name steht nur hier.</summary>
+    /// <summary>The global slots at the head, like the types: the index is what stands in the
+    /// instruction stream, the name stands here only.</summary>
     private static void WriteGlobals(StringBuilder sb, IReadOnlyList<IrGlobal> globals)
     {
         for (var i = 0; i < globals.Count; i++)
             sb.Append($"global {new GlobalId(i)} {globals[i].Name}: {TypeStr(globals[i].Type)}\n");
     }
 
-    /// <summary>Die vtable-Zeilen. Sie stehen als eigener Block da, weil sie zu keinem einzelnen
-    /// Typ gehoeren, sondern zu einem Paar — und weil man beim Suchen eines Dispatch-Bugs genau
-    /// diese Zuordnung sehen will.</summary>
+    /// <summary>The vtable rows. They form a block of their own, because they belong to no single type
+    /// but to a pair.</summary>
     private static void WriteImpls(StringBuilder sb, IReadOnlyList<IrImpl> impls)
     {
         foreach (var impl in impls)
@@ -124,7 +122,7 @@ public static class IrPrinter
                       $"[{string.Join(", ", impl.Methods)}]\n");
     }
 
-    // --- Struktur ---
+    // --- structure ---
     private static void WriteFunction(StringBuilder sb, IrFunction func, CallContext ctx)
     {
         sb.Append($"fn {func.Name} -> {TypeStr(func.ReturnType)} {{\n");
@@ -132,8 +130,8 @@ public static class IrPrinter
         sb.Append("  locals:\n");
         foreach (var loc in func.Locals)
             sb.Append($"    {loc.Id} {loc.Name}: {TypeStr(loc.Type)}\n");
-        // Die geschuetzten Regionen stehen vor den Bloecken: beim Lesen eines Unwind-Bugs will man
-        // zuerst wissen, welcher Bereich von wem abgedeckt ist.
+        // The protected regions come before the blocks: reading an unwind bug, the first thing wanted
+        // is which range is covered by whom.
         if (func.Handlers.Count > 0)
         {
             sb.Append("  handlers:\n");
@@ -159,7 +157,7 @@ public static class IrPrinter
         sb.Append($"    {TermStr(block.Terminator)}\n");
     }
 
-    // --- Instruktionen ---
+    // --- instructions ---
     private static string OpStr(IrOp op, CallContext ctx) => op switch
     {
         Const c => $"{c.Dest}: {TypeStr(c.Type)} = const {ConstStr(c.Value)}",
@@ -205,8 +203,8 @@ public static class IrPrinter
         _ => throw new InternalCompilationException($"ir-printer: unhandled op {op.GetType().Name}")
     };
 
-    /// <summary>Zeigt Interface und Slot, nicht einen Methodennamen: der Slot ist das, was im
-    /// Bytecode steht, und beim Suchen eines Dispatch-Bugs will man genau ihn sehen.</summary>
+    /// <summary>Shows the interface and the slot rather than a method name: the slot is what stands in
+    /// the bytecode.</summary>
     private static string CallVirtStr(CallVirt c)
     {
         var args = string.Join(", ", c.Args);
@@ -226,8 +224,7 @@ public static class IrPrinter
         return $"{dest}: {(ret is null ? "?" : TypeStr(ret))} = call {target}({args})";
     }
 
-    /// <summary>Native Aufrufe zeigen den <b>symbolischen Namen</b> — er ist das, was beim Laden
-    /// gebunden wird, und damit die Information, die man beim Lesen braucht.</summary>
+    /// <summary>Native calls show the SYMBOLIC NAME: it is what gets bound at load time.</summary>
     private static string CallImportStr(CallImport k, CallContext ctx)
     {
         var args = string.Join(", ", k.Args);
@@ -250,7 +247,7 @@ public static class IrPrinter
         _ => throw new InternalCompilationException($"ir-printer: unhandled terminator {term.GetType().Name}")
     };
 
-    // --- Formatierungs-Helfer ---
+    // --- formatting helpers ---
     private static string TypeStr(IrType t) => t switch
     {
         IrScalarType s => IrNames.Scalar(s.Kind),
@@ -275,7 +272,7 @@ public static class IrPrinter
         _ => throw new InternalCompilationException($"ir-printer: unhandled const {v.GetType().Name}")
     };
 
-    // Escaping wie AstDumper.Quote — konsistent halten, damit String-Snapshots nicht driften.
+    // Escaping as in AstDumper.Quote; keep them consistent so string snapshots do not drift.
     private static string Quote(string s)
     {
         var sb = new StringBuilder();

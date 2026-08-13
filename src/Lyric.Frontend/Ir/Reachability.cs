@@ -1,41 +1,36 @@
 namespace Lyric.Ir;
 
 /// <summary>
-/// Entfernt aus einem gelowerten Modul, was von keiner Wurzel aus erreichbar ist.
+/// Removes from a lowered module whatever is not reachable from any root.
 ///
-/// <para><b>Warum es das gibt.</b> Ein Lyric-Rumpf landet im Bytecode, sobald sein Modul geladen
-/// ist — auch wenn niemand ihn ruft. Gemessen am 2026-08-08 trug ein Hello-World <b>9 Bytes
-/// eigenen Code und 97 Bytes tote Stdlib</b>; mit `std.string` in Lyric kamen dessen Natives
-/// (`concat`, `charAt`, `substring`, …) in die Import-Tabelle jedes Programms. Die Stdlib in Lyric
-/// zu schreiben ist die richtige Entscheidung — sie braucht nur diesen Pass daneben.</para>
+/// <para>A Lyric body reaches the bytecode as soon as its module is loaded, even when nobody calls
+/// it. With `std.string` written in Lyric, its natives (`concat`, `charAt`, `substring`, …) end up in
+/// the import table of every program.</para>
 ///
-/// <para><b>Warum auf der IR und nicht davor.</b> Eine Analyse vor dem Lowering müsste den
-/// Aufrufgraph auf AST-Ebene nachbauen, mit Überladungsauflösung, Extensions und
-/// Monomorphisierung — ein zweiter Compiler neben dem ersten, und die klassische Stelle, an der
-/// zwei Antworten auf dieselbe Frage auseinanderlaufen. Hier stehen die Aufrufe bereits als
-/// Instruktionen da. Der Preis ist, dass tote Funktionen erst gelowert und dann verworfen werden:
-/// das kostet Compile-Zeit, aber nicht Bytecode — und Bytecode ist, was jeder Start bezahlt.</para>
+/// <para>ON THE IR RATHER THAN BEFORE IT. An analysis before the lowering would have to rebuild the
+/// call graph at AST level, with overload resolution, extensions and monomorphization — a second
+/// compiler beside the first. Here the calls already stand as instructions. The price is that dead
+/// functions are lowered and then discarded: that costs compile time, but not bytecode, and bytecode
+/// is what every start pays for.</para>
 ///
-/// <para><b>Formatneutral</b> (ADR-013): weglassen, was niemand ruft, ändert nichts an `.lyrbc`
-/// und an keinem Lyric-Programm.</para>
+/// <para>FORMAT-NEUTRAL: omitting what nobody calls changes nothing about `.lyrbc` and nothing about
+/// any Lyric program.</para>
 /// </summary>
 internal static class Reachability
 {
     /// <summary>
-    /// Streicht unerreichbare Funktionen und Importe und nummeriert die verbleibenden neu.
+    /// Deletes unreachable functions and imports and renumbers the remaining ones.
     /// </summary>
-    /// <remarks>Ohne Einstiegspunkt (Bibliotheks-Modul) passiert <b>nichts</b>: dort ist jede
-    /// öffentliche Funktion eine mögliche Wurzel, und welche der Host ruft, weiß der Compiler
-    /// nicht. Das stillschweigend zu raten hieße, einem Host Funktionen wegzunehmen, die er
-    /// registriert hat.</remarks>
+    /// <remarks>Without an entry point, meaning a library module, NOTHING happens: there every public
+    /// function is a possible root, and which one the host calls is unknown to the compiler.</remarks>
     public static void Prune(IrModule module)
     {
         if (module.EntryFunction is null) return;
 
         var erreichbar = Collect(module);
 
-        // Alte Id -> neue Id. Die Reihenfolge bleibt erhalten, damit ein Diff zweier Builds
-        // lesbar bleibt und die Namen im Bytecode nicht durcheinandergeraten.
+        // Old id to new id. The order is preserved, so a diff of two builds stays readable and the
+        // names in the bytecode do not get mixed up.
         var neueId = new Dictionary<int, int>();
         var behalten = new List<IrFunction>();
 
@@ -46,8 +41,8 @@ internal static class Reachability
             behalten.Add(module.Functions[i]);
         }
 
-        // Importe genauso: nur die, die eine BEHALTENE Funktion wirklich ruft. Das ist der Teil,
-        // den man von aussen sieht — ein toter Rumpf zog bisher seine Natives mit.
+        // Imports likewise: only those a RETAINED function actually calls. That is the part visible
+        // from outside; a dead body used to drag its natives along.
         var benutzteImporte = new SortedSet<int>();
         foreach (var function in behalten)
             foreach (var block in function.Blocks)
@@ -74,8 +69,8 @@ internal static class Reachability
         if (module.GlobalInit is { } init && neueId.TryGetValue(init.Value, out var initNeu))
             module.GlobalInit = new FunctionId(initNeu);
 
-        // Eine vtable-Zeile, deren Methoden alle gestrichen wurden, ist selbst tot. Zeilen mit
-        // gemischtem Zustand darf es nicht geben — Collect nimmt eine Zeile ganz oder gar nicht.
+        // A vtable row whose methods were all deleted is dead itself. Rows in a mixed state must not
+        // exist: Collect takes a row whole or not at all.
         var impls = module.Impls
             .Where(impl => impl.Methods.All(m => neueId.ContainsKey(m.Value)))
             .Select(impl => impl with
@@ -89,17 +84,16 @@ internal static class Reachability
     }
 
     /// <summary>
-    /// Sammelt transitiv, was von den Wurzeln aus erreichbar ist.
+    /// Collects transitively what is reachable from the roots.
     /// </summary>
     /// <remarks>
-    /// <para><b>Virtuelle Aufrufe sind der harte Teil.</b> Ein <c>callvirt</c> nennt einen Slot,
-    /// keinen Namen — welche Implementierung läuft, steht erst zur Laufzeit fest. Deshalb ist
-    /// jede vtable-Zeile, deren Typ überhaupt gelowert wurde, hier eine Wurzel.</para>
-    /// <para>Das ist <b>bewusst konservativ</b>: eine schärfere Analyse müsste verfolgen, welche
-    /// Typen je durch ein <c>mkiface</c> laufen, und ein Fehler darin wäre ein Programm, das zur
-    /// Laufzeit eine fehlende Funktion sucht — der schlechteste Fehler, den ein Compiler machen
-    /// kann. Weniger wegzuwerfen als möglich ist der richtige Kompromiss; die freien Funktionen,
-    /// um die es geht (<c>parseInt</c>, <c>replace</c>, …), sind ohnehin nicht virtuell.</para>
+    /// <para>VIRTUAL CALLS ARE THE HARD PART. A <c>callvirt</c> names a slot, not a name — which
+    /// implementation runs is settled only at runtime. Every vtable row whose type was lowered at all is
+    /// therefore a root here.</para>
+    /// <para>That is DELIBERATELY CONSERVATIVE: a sharper analysis would have to track which types ever
+    /// pass through a <c>mkiface</c>, and an error in it would be a program searching for a missing
+    /// function at runtime. Throwing away less than possible is the right trade; the free functions this
+    /// is about (<c>parseInt</c>, <c>replace</c>, …) are not virtual anyway.</para>
     /// </remarks>
     private static HashSet<int> Collect(IrModule module)
     {
@@ -114,8 +108,8 @@ internal static class Reachability
         Wurzel(module.EntryFunction);
         Wurzel(module.GlobalInit);
 
-        // Typen, die im erreichbaren Code zu einem Interface-Wert werden. Waechst waehrend der
-        // Schleife: ein 'mkiface' kann in einer Funktion stehen, die erst spaeter erreichbar wird.
+        // Types that become an interface value in reachable code. Grows during the loop: a 'mkiface'
+        // may sit in a function that becomes reachable only later.
         var gehoben = new HashSet<int>();
         var impls = module.Impls.Count;
 
@@ -131,23 +125,22 @@ internal static class Reachability
                     {
                         case Call call: Wurzel(call.Target); break;
 
-                        // Eine Closure wird nicht am Aufruf sichtbar, sondern hier: 'mkclosure'
-                        // nennt die angehobene Funktion, und gerufen wird sie spaeter indirekt.
+                        // A closure becomes visible here rather than at the call: 'mkclosure' names the
+                        // lifted function, and it is called indirectly later.
                         case MakeClosure closure: Wurzel(closure.Target); break;
 
-                        // Der einzige Weg, auf dem ein Interface-Wert im CODE entsteht. Ab hier
-                        // kann ein 'callvirt' die Methoden dieses Typs treffen.
+                        // The only way an interface value arises in CODE. From here on a 'callvirt' can
+                        // hit the methods of this type.
                         case MakeInterface iface: gehoben.Add(iface.Concrete.Value); break;
                     }
 
-                // Der Terminator steht NEBEN den Instruktionen und nicht in ihnen — und 'throw'
-                // ist der ZWEITE Weg, auf dem ein Typ gehoben wird.
+                // The terminator sits BESIDE the instructions rather than inside them, and 'throw' is
+                // the SECOND way a type is lifted.
                 //
-                // Bei einem untypisierten 'catch (e)' baut die VM den Throwable-Fat-Pointer selbst
-                // (M8/S4); im Code steht kein 'mkiface'. Ohne diesen Fall strich die Analyse die
-                // vtable-Methoden des geworfenen Typs, und das Programm suchte zur Laufzeit eine
-                // Implementierung, die es nicht mehr gab — genau der Fehler, den eine
-                // Erreichbarkeitsanalyse niemals machen darf. Zwei Tests haben ihn gefangen.
+                // For an untyped 'catch (e)' the VM builds the Throwable fat pointer itself; there is no
+                // 'mkiface' in the code. Without this case the analysis deletes the vtable methods of the
+                // thrown type, and the program searches at runtime for an implementation that no longer
+                // exists.
                 if (block.Terminator is Throw { Concrete: { } geworfen })
                     gehoben.Add(geworfen.Value);
             }
@@ -157,18 +150,17 @@ internal static class Reachability
     }
 
     /// <summary>
-    /// Nimmt die vtable-Methoden der inzwischen gehobenen Typen als neue Wurzeln auf.
+    /// Takes the vtable methods of the types lifted so far as new roots.
     /// </summary>
     /// <remarks>
-    /// <para>Hier hängt die Schärfe der Analyse. Ein <c>callvirt</c> nennt einen Slot, keinen
-    /// Namen — welche Implementierung läuft, steht erst zur Laufzeit fest. Die entscheidende
-    /// Beobachtung: ein Interface-Wert entsteht <b>ausschliesslich</b> durch <c>mkiface</c>. Wer
-    /// nie gehoben wird, kann nie virtuell gerufen werden.</para>
-    /// <para>Die erste Fassung nahm einfach <b>jede</b> vtable-Zeile als Wurzel. Das war sicher
-    /// und wirkungslos: <c>RangeIterator.next</c> blieb in jedem Programm, weil <c>std.iter</c>
-    /// geladen war — genau der Fall, um den es geht.</para>
-    /// <para>Zurückgegeben wird, ob etwas Neues dazukam: die äussere Schleife muss dann noch
-    /// einmal laufen, denn eine neu erreichbare Methode kann selbst weitere Typen heben.</para>
+    /// <para>The sharpness of the analysis hangs here. A <c>callvirt</c> names a slot, not a name —
+    /// which implementation runs is settled only at runtime. The decisive observation: an interface
+    /// value arises SOLELY through <c>mkiface</c>. What is never lifted can never be called
+    /// virtually.</para>
+    /// <para>Taking EVERY vtable row as a root would be safe and without effect:
+    /// <c>RangeIterator.next</c> would stay in every program, because <c>std.iter</c> is loaded.</para>
+    /// <para>Returns whether something new was added: the outer loop then has to run once more, because
+    /// a newly reachable method can lift further types itself.</para>
     /// </remarks>
     private static bool WeitereImpls(IrModule module, HashSet<int> gehoben,
         HashSet<int> erreichbar, Stack<int> offen)
@@ -190,7 +182,7 @@ internal static class Reachability
         return neu;
     }
 
-    /// <summary>Schreibt Funktions- und Import-Referenzen auf die neuen Indizes um.</summary>
+    /// <summary>Rewrites function and import references to the new indices.</summary>
     private static void Renumber(List<IrFunction> functions,
         IReadOnlyDictionary<int, int> funktionen, IReadOnlyDictionary<int, int> importe)
     {

@@ -4,34 +4,34 @@ using Lyric.Core;
 namespace Lyric.Ir;
 
 /// <summary>
-/// Prüft ein <see cref="IrModule"/> auf Wohlgeformtheit. Der Verifier ist eine Assertion-Suite
-/// über die IR-Datenstruktur, <b>kein</b> Type-Checker: er beantwortet „ist diese IR wohlgeformt",
-/// nicht „ist das Programm des Users korrekt". Sprachregeln durchsetzt die Sema (M3/M4); sie hier
-/// zu wiederholen wäre ein Parallel-Mechanismus. Insbesondere prüft der Verifier <b>nicht</b>,
-/// ob Locals vor dem ersten Read zugewiesen sind — das hat die Definite-Assignment-Analyse bewiesen.
+/// Checks an <see cref="IrModule"/> for well-formedness. The verifier is an assertion suite over the
+/// IR data structure, NOT a type checker: it answers "is this IR well formed", not "is the user's
+/// program correct". Language rules are enforced by the sema; repeating them here would be a parallel
+/// mechanism. In particular the verifier does NOT check that locals are assigned before their first
+/// read — the definite-assignment analysis proved that.
 ///
-/// Jeder Befund ist damit ein <b>Compiler-Bug</b> (Lowering oder Monomorphisierung), keine
-/// User-Diagnose: deshalb Klartext-Strings statt <c>LYR-IR####</c>-Codes. Der Bereich
-/// <c>LYR-IR####</c> bleibt echten, user-sichtbaren Lowering-Fehlern vorbehalten.
+/// Every finding is therefore a COMPILER BUG in the lowering or the monomorphization, not a user
+/// diagnostic, which is why the messages are plain text rather than <c>LYR-IR####</c> codes. The
+/// <c>LYR-IR####</c> range stays reserved for real, user-visible lowering errors.
 ///
-/// <para><b>Warum sammeln statt beim ersten Fehler abbrechen</b>: ein Lowering-Bug äußert sich
-/// typisch in mehreren Symptomen (falscher Temp-Typ → Dest-Mismatch → Return-Mismatch). Alle
-/// gleichzeitig zu sehen zeigt die verantwortliche Stelle; das erste allein nicht.</para>
+/// <para>COLLECTING RATHER THAN STOPPING AT THE FIRST FINDING: a lowering bug typically shows in
+/// several symptoms (a wrong temp type causes a dest mismatch causes a return mismatch). Seeing all
+/// of them at once points at the responsible place; the first alone does not.</para>
 ///
-/// <para><b>Phasen und Bail-out</b>: Prüfungen setzen einander voraus — mit einer Lücke in der
-/// Temp-Tabelle greift jeder Typ-Lookup daneben, mit doppelten Block-Ids ist die Ziel-Auflösung
-/// Raten, mit zwei Definitionen pro Temp ist die Availability-Analyse bedeutungslos. Darum vier
-/// Phasen, die bei Fundamentalfehlern die Funktion abbrechen (die nächste wird normal geprüft).
-/// Dasselbe Prinzip wie <c>ErrorType</c> als Poison in der Sema: keine Folgefehler.</para>
+/// <para>PHASES AND BAIL-OUT: the checks build on one another — with a gap in the temp table every
+/// type lookup misses, with duplicate block ids target resolution is guesswork, and with two
+/// definitions per temp the availability analysis is meaningless. Hence four phases that abandon the
+/// function on a fundamental error, while the next one is checked normally. The same principle as
+/// <c>ErrorType</c> as poison in the sema: no follow-up errors.</para>
 ///
-/// <para>Der Verifier läuft nach dem Lowering und vor der Bytecode-Emission; in Tests und
-/// Debug-Builds immer, im Release hinter einem Flag (Vorbild: LLVMs Verifier in Assert-Builds).</para>
+/// <para>The verifier runs after the lowering and before bytecode emission; always in tests and debug
+/// builds, in release behind a flag, as LLVM's verifier does in assert builds.</para>
 /// </summary>
 public static class IrVerifier
 {
-    /// <summary>Prüft das Modul und liefert alle Befunde. Leere Liste = wohlgeformt.
-    /// Die Reihenfolge ist deterministisch (Deklarations-Reihenfolge in Phase 0/1,
-    /// Reverse-Postorder in Phase 2/3).</summary>
+    /// <summary>Checks the module and returns all findings; an empty list means well formed. The order
+    /// is deterministic: declaration order in phases 0 and 1, reverse postorder in phases 2 and
+    /// 3.</summary>
     public static IReadOnlyList<string> Verify(IrModule module)
     {
         var findings = new List<string>();
@@ -40,31 +40,31 @@ public static class IrVerifier
         VerifyTypes(module, findings);
         VerifyImpls(module, findings);
 
-        // Die Init-Funktion wird von der Runtime vor dem Einstiegspunkt gerufen; ein Index ins
-        // Leere waere dort erst beim Laden aufgefallen.
+        // The init function is called by the runtime before the entry point; an index into nothing
+        // would only show at load time.
         if (module.GlobalInit is { } init
             && (init.Value < 0 || init.Value >= module.Functions.Count))
             findings.Add($"global initializer {init} is out of range " +
                          $"(module has {module.Functions.Count} function(s))");
 
-        // Globals ohne Initialisierer waeren uninitialisierte Slots — und jeder Wert in Lyric hat
-        // einen (§6.6). Entweder gibt es beide oder keines.
+        // Globals without an initializer would be uninitialized slots, and every value in Lyric has
+        // one. Either both exist or neither does.
         if (module.Globals.Count > 0 && module.GlobalInit is null)
             findings.Add($"module declares {module.Globals.Count} global(s) but no initializer");
 
         foreach (var function in module.Functions)
         {
-            // Namen sind die Symbol-Namen im Bytecode (ADR-013). Eine Kollision ist der
-            // Kanarienvogel für die Monomorphisierung: zwei Instanzen, die auf denselben
-            // gemangelten Namen fallen, wären ein stiller Falsch-Call.
+            // Names are the symbol names in the bytecode. A collision is the canary for the
+            // monomorphization: two instances falling onto the same mangled name would be a silent
+            // wrong call.
             if (!seenNames.Add(function.Name))
                 findings.Add($"{function.Name}: duplicate function name");
 
             new FunctionVerifier(module, function, findings).Run();
         }
 
-        // Der Einstiegspunkt wird zur Start-Sektion im Bytecode. Ein Index ins Leere wäre dort
-        // erst beim Laden aufgefallen — also hier prüfen, wo er entsteht.
+        // The entry point becomes the Start section in the bytecode. An index into nothing would only
+        // show at load time, so it is checked here, where it arises.
         if (module.EntryFunction is { } entry)
         {
             if (entry.Value < 0 || entry.Value >= module.Functions.Count)
@@ -79,9 +79,9 @@ public static class IrVerifier
                      && withArgs.Locals[0].Type is not IrArrayType
                      { Element: IrScalarType { Kind: IrScalar.String } })
             {
-                // Die Runtime baut genau EINE Sorte Argument. Faende sie hier etwas anderes,
-                // schriebe sie ein string[] in einen Slot, der etwas anderes erwartet — und das
-                // faellt erst zur Laufzeit auf, als falsch gelesener Wert.
+                // The runtime builds exactly ONE kind of argument. Finding something else here, it
+                // would write a string[] into a slot expecting something different, which only shows
+                // at runtime as a wrongly read value.
                 findings.Add($"entry function {withArgs.Name} takes " +
                              $"a parameter that is not 'string[]'; §11 allows only that");
             }
@@ -91,13 +91,13 @@ public static class IrVerifier
     }
 
     /// <summary>
-    /// Prüft die Typ-Tabelle, bevor irgendeine Funktion sie benutzt. Vorgezogen aus demselben
-    /// Grund, aus dem die Funktions-Phasen einen Bail-out haben: läuft eine Instruktion gegen ein
-    /// kaputtes Layout, ist ihr Befund Folge des Tabellen-Fehlers und nicht seine Ursache.
+    /// Checks the type table before any function uses it. Pulled forward for the same reason the
+    /// function phases have a bail-out: if an instruction runs against a broken layout, its finding is a
+    /// consequence of the table error rather than its cause.
     ///
-    /// <para><b>Rekursion ist ausdrücklich erlaubt</b> — <c>class Node { next: Node }</c> ist
-    /// gültig, auch vorwärts. Deshalb prüft diese Schleife nur Bereichsgrenzen und läuft dem
-    /// Feldtyp nicht nach; genau dafür trägt <see cref="IrRefType"/> nur die Id.</para>
+    /// <para>RECURSION IS EXPLICITLY ALLOWED — <c>class Node { next: Node }</c> is valid, forward
+    /// declarations included. This loop therefore checks range bounds only and does not follow the field
+    /// type; that is exactly why <see cref="IrRefType"/> carries only the id.</para>
     /// </summary>
     private static void VerifyTypes(IrModule module, List<string> findings)
     {
@@ -113,8 +113,8 @@ public static class IrVerifier
                 continue;
             }
 
-            // Ein Enum-Eintrag traegt keine eigenen Felder — seine Varianten tun das. Jede muss ein
-            // Layout sein und darf nicht selbst wieder ein Enum sein.
+            // An enum entry carries no fields of its own; its variants do. Each has to be a layout and
+            // must not be an enum itself.
             for (var v = 0; v < def.Variants.Length; v++)
             {
                 var variant = def.Variants[v];
@@ -135,8 +135,8 @@ public static class IrVerifier
             {
                 switch (def.FieldTypes[f])
                 {
-                    // void ist ausschließlich Rückgabetyp (Bytecode.md §3). Ein void-Feld hätte
-                    // keine Breite und keinen Nullwert — es ist kein Wert.
+                    // void is a return type only. A void field would have no width and no zero value; it
+                    // is not a value.
                     case IrScalarType { Kind: IrScalar.Void }:
                         findings.Add($"type {id} '{def.Name}': field {new FieldId(f)} " +
                                      $"'{def.FieldNames[f]}' is void");
@@ -148,8 +148,8 @@ public static class IrVerifier
                                      $"of range (module has {module.Types.Count} type(s))");
                         break;
 
-                    // Ein Array-Feld trägt seinen Elementtyp inline; eine Referenz darin muss
-                    // genauso in die Tabelle zeigen wie eine direkte.
+                    // An array field carries its element type inline; a reference inside it has to point
+                    // into the table just as a direct one does.
                     case IrArrayType arr when Innermost(arr) is IrRefType inner
                                               && (inner.Type.Value < 0 || inner.Type.Value >= module.Types.Count):
                         findings.Add($"type {id} '{def.Name}': field {new FieldId(f)} " +
@@ -161,26 +161,25 @@ public static class IrVerifier
         }
     }
 
-    /// <summary>Schält Array-Schichten ab: <c>int[][]</c> → <c>int</c>. Terminiert, weil ein
-    /// Array-Typ seinen Elementtyp inline trägt und damit endlich tief ist.</summary>
+    /// <summary>Peels off array layers: <c>int[][]</c> becomes <c>int</c>. Terminates, because an array
+    /// type carries its element type inline and is therefore finitely deep.</summary>
     private static IrType Innermost(IrType type)
     {
         while (type is IrArrayType a) type = a.Element;
         return type;
     }
 
-    /// <summary>Wie <see cref="Verify"/>, wirft aber bei Befunden. Für Aufrufstellen im Lowering,
-    /// die von wohlgeformter IR ausgehen dürfen.</summary>
-    /// <remarks>Bewusst <b>ohne</b> IR-Dump in der Nachricht: <see cref="IrPrinter"/> wirft selbst
-    /// bei fehlendem Terminator und würde damit genau den Befund verdecken, den wir melden wollen.</remarks>
+    /// <summary>Like <see cref="Verify"/>, but throws on findings. For call sites in the lowering that
+    /// may assume well-formed IR.</summary>
+    /// <remarks>Deliberately WITHOUT an IR dump in the message: <see cref="IrPrinter"/> throws on a
+    /// missing terminator itself and would hide exactly the finding being reported.</remarks>
     /// <summary>
-    /// Die Impl-Tabelle: jede Zeile nennt existierende Typen, ihr Interface ist wirklich eines,
-    /// ihre Klasse ist keines, die Zeile hat genau so viele Eintraege wie das Interface Slots,
-    /// jede Zielfunktion existiert und nimmt einen Empfaenger — und es gibt kein Paar zweimal.
+    /// The impl table: every row names existing types, its interface really is one, its class is not,
+    /// the row has exactly as many entries as the interface has slots, every target function exists and
+    /// takes a receiver, and no pair appears twice.
     ///
-    /// <para>Diese Zeilen werden im Bytecode zur vtable. Ein Fehler darin ist ein Aufruf der
-    /// falschen Funktion mit den richtigen Argumenten — die Sorte Bug, die weit weg von ihrer
-    /// Ursache auffaellt. Deshalb hier und nicht erst im Reader.</para>
+    /// <para>These rows become the vtable in the bytecode. An error in them is a call of the wrong
+    /// function with the right arguments — the kind of bug that shows far from its cause.</para>
     /// </summary>
     private static void VerifyImpls(IrModule module, List<string> findings)
     {
@@ -235,8 +234,8 @@ public static class IrVerifier
                     continue;
                 }
 
-                // Der Empfaenger ist Parameter 0 (ADR-014). Eine Zielfunktion ohne Parameter
-                // koennte ihn nicht entgegennehmen — das waere ein 'static' in einer vtable.
+                // The receiver is parameter 0. A target function without parameters could not take it,
+                // which would be a 'static' in a vtable.
                 if (module.Functions[target.Value].ParamCount == 0)
                     findings.Add($"{where}: slot {slot} ({iface.MethodSlots[slot]}) targets " +
                                  $"{module.Functions[target.Value].Name}, which takes no receiver");
@@ -255,21 +254,21 @@ public static class IrVerifier
     }
 
     /// <summary>
-    /// Verifikations-Kontext <b>einer</b> Funktion: lebt für die Dauer ihrer Prüfung und stirbt
-    /// dann. Ein Objekt statt statischer Methoden, weil die abgeleiteten Tabellen (Block-Map,
-    /// Preds, Reachability, Availability) einmal berechnet und von allen Checks geteilt werden.
-    /// Pro Funktion statt pro Modul, weil Temp-/Local-/Block-Ids in jeder Funktion bei 0 starten
-    /// und alle Tabellen damit funktionslokal sind. (Form wie LLVMs <c>Verifier</c> und rustcs
-    /// <c>CfgChecker</c>/<c>TypeChecker</c>.)
+    /// The verification context of ONE function: it lives for the duration of its check and then dies.
+    /// An object rather than static methods, because the derived tables (block map, predecessors,
+    /// reachability, availability) are computed once and shared by all checks. Per function rather than
+    /// per module, because temp, local and block ids start at 0 in every function and all tables are
+    /// therefore function-local. The shape follows LLVM's <c>Verifier</c> and rustc's
+    /// <c>CfgChecker</c> and <c>TypeChecker</c>.
     ///
-    /// Traversierung per <c>switch</c>, nicht per Visitor — wie <see cref="IrPrinter"/> und aus
-    /// demselben Grund: der <c>default</c>-Wurf erzwingt Vollständigkeit, sobald eine neue
-    /// Instruktion hinzukommt. Ein unbekannter Instruktionstyp ist dabei <b>kein</b> Befund,
-    /// sondern ein Wurf: „der Verifier ist veraltet" ist eine andere Bug-Klasse als „die IR ist kaputt".
+    /// Traversal through a <c>switch</c> rather than a visitor, as in <see cref="IrPrinter"/> and for
+    /// the same reason: the <c>default</c> throw forces completeness as soon as a new instruction is
+    /// added. An unknown instruction type is NOT a finding but a throw: "the verifier is out of date" is
+    /// a different class of bug than "the IR is broken".
     /// </summary>
     private sealed class FunctionVerifier
     {
-        private readonly IrModule _module; // nur für die Auflösung von Call-Zielen
+        private readonly IrModule _module; // for resolving call targets only
         private readonly IrFunction _fn;
         private readonly List<string> _findings;
 
@@ -303,8 +302,8 @@ public static class IrVerifier
         }
 
         /// <summary>
-        /// Die geschuetzten Regionen. Laeuft <b>vor</b> der CFG-Pruefung, weil die Reachability
-        /// sie als Wurzeln benutzt — ein Bereich ins Leere wuerde dort sonst danebengreifen.
+        /// The protected regions. Runs BEFORE the CFG check, because the reachability uses them as
+        /// roots; a range into nothing would miss there.
         /// </summary>
         private bool CheckHandlers()
         {
@@ -331,8 +330,8 @@ public static class IrVerifier
                     continue;
                 }
 
-                // Ein Handler, der sich selbst schuetzt, waere eine Endlosschleife beim Abwickeln:
-                // sein eigener Wurf faende wieder ihn.
+                // A handler protecting itself would be an infinite loop while unwinding: its own throw
+                // would find it again.
                 if (h.Handler.Value >= h.Start.Value && h.Handler.Value < h.End.Value)
                 {
                     Report($"{where}: handler block {h.Handler} lies inside its own protected " +
@@ -356,15 +355,15 @@ public static class IrVerifier
             return ok;
         }
 
-        // ------------------------------------------------------------------ Phase 0: Tabellen
+        // ------------------------------------------------------------------ phase 0: tables
 
-        /// <summary>Tabellen-Invarianten. Liefert false, wenn ab hier kein Lookup mehr sicher ist.</summary>
+        /// <summary>Table invariants. Returns false when no lookup is safe from here on.</summary>
         private bool CheckTables()
         {
             var ok = true;
 
-            // Dichte Tabellen sind keine Kosmetik: die Id IST der Slot-Index im Bytecode. Eine
-            // Lücke oder Permutation äußert sich sonst als Falsch-Slot-Read in der VM.
+            // Dense tables are not cosmetic: the id IS the slot index in the bytecode. A gap or a
+            // permutation shows up as a wrong-slot read in the VM.
             for (var i = 0; i < _fn.Locals.Count; i++)
             {
                 var local = _fn.Locals[i];
@@ -374,7 +373,7 @@ public static class IrVerifier
                     ok = false;
                 }
 
-                // Es gibt keine void-Werte; void ist nur ein Funktions-Rückgabetyp (Sprache.md §4).
+                // There are no void values; void is a function return type only.
                 if (IsVoid(local.Type))
                 {
                     Report($"local {local.Id} ({local.Name}) has type void");
@@ -398,19 +397,19 @@ public static class IrVerifier
                 }
             }
 
-            // Konvention: die ersten ParamCount Locals SIND die Parameter, in Reihenfolge. Ohne
-            // sie trägt die IR keine Parameter-Typen und ein Call ist nicht typprüfbar.
+            // Convention: the first ParamCount locals ARE the parameters, in order. Without it the IR
+            // carries no parameter types and a call is not type-checkable.
             if (_fn.ParamCount < 0 || _fn.ParamCount > _fn.Locals.Count)
             {
                 Report($"paramCount {N(_fn.ParamCount)} out of range (locals: {N(_fn.Locals.Count)})");
                 ok = false;
             }
 
-            if (!ok) return false; // ab hier hängt alles an TypeOf/LocalTypeOf
+            if (!ok) return false; // from here on everything hangs on TypeOf and LocalTypeOf
 
-            // Genau eine Definition pro Temp — das ist die "SSA-light"-Zusage, und ohne sie ist
-            // jede Def/Use-Argumentation in Phase 3 wertlos. Läuft über ALLE Blöcke, auch
-            // unerreichbare: ein zweimal definiertes Temp ist auch in totem Code malformed.
+            // Exactly one definition per temp — the "SSA-light" promise, without which every def/use
+            // argument in phase 3 is worthless. Runs over ALL blocks, unreachable ones included: a temp
+            // defined twice is malformed in dead code too.
             foreach (var block in _fn.Blocks)
             {
                 for (var i = 0; i < block.Insts.Count; i++)
@@ -431,9 +430,9 @@ public static class IrVerifier
                 }
             }
 
-            // Ein deklariertes, nie definiertes Temp reserviert einen VM-Slot für nichts.
-            // (Der umgekehrte Fall — definiert, nie benutzt — ist legal: eine verworfene
-            // Call-Rückgabe wie `foo();` bei `foo(): int`.)
+            // A declared but never defined temp reserves a VM slot for nothing. The reverse case —
+            // defined but never used — is legal: a discarded call result such as `foo();` for
+            // `foo(): int`.
             foreach (var temp in _fn.Temps)
             {
                 if (!_defSite.ContainsKey(temp.Id))
@@ -446,10 +445,10 @@ public static class IrVerifier
             return ok;
         }
 
-        // ------------------------------------------------------------------ Phase 1: CFG-Form
+        // ------------------------------------------------------------------ phase 1: CFG shape
 
-        /// <summary>CFG-Form und Prädecessor-Tabelle. Liefert false, wenn Reachability und
-        /// Availability nicht berechenbar wären.</summary>
+        /// <summary>The CFG shape and the predecessor table. Returns false when reachability and
+        /// availability would not be computable.</summary>
         private bool CheckCfgShape()
         {
             if (_fn.Blocks.Count == 0)
@@ -466,7 +465,7 @@ public static class IrVerifier
                 if (!_blockById.TryAdd(block.Id, block))
                 {
                     Report($"duplicate block id {block.Id}");
-                    return false; // ohne eindeutige Ids ist jede Ziel-Auflösung Raten
+                    return false; // without unique ids every target resolution is guesswork
                 }
 
                 if (block.Id.Value != i)
@@ -493,7 +492,7 @@ public static class IrVerifier
                 if (block.Terminator is null)
                 {
                     Report($"{block.Id}: has no terminator");
-                    return false; // ohne Terminator keine Successors -> Reachability wäre gelogen
+                    return false; // no terminator means no successors, so reachability would lie
                 }
             }
 
@@ -523,9 +522,9 @@ public static class IrVerifier
 
             if (!ok) return false;
 
-            // Der Entry ist der einzige Ort für Parameter-Setup; ein Rücksprung dorthin würde es
-            // wiederholen. Kein Bail-out: availIn[entry] bleibt fest leer, was für die Analyse
-            // korrekt ist (beim ersten Durchlauf ist dort tatsächlich kein Temp definiert).
+            // The entry is the only place for parameter setup, and a jump back into it would repeat
+            // that. No bail-out: availIn[entry] stays permanently empty, which is correct for the
+            // analysis, since on the first pass no temp is defined there.
             if (_preds[_fn.Entry].Count > 0)
             {
                 Report($"entry {_fn.Entry} has predecessors " +
@@ -535,7 +534,7 @@ public static class IrVerifier
             return true;
         }
 
-        // ---------------------------------------------- Phase 2: Reachability + Availability
+        // ---------------------------------------------- phase 2: reachability and availability
 
         private void ComputeReachabilityAndAvailability()
         {
@@ -550,8 +549,9 @@ public static class IrVerifier
             ComputeAvailability();
         }
 
-        /// <summary>Iterativer DFS über die Successors: sammelt Reachability und Postorder.
-        /// Iterativ statt rekursiv, weil tief verschachtelte Blöcke sonst den CLR-Stack reißen.</summary>
+        /// <summary>An iterative DFS over the successors, collecting reachability and postorder.
+        /// Iterative rather than recursive, because deeply nested blocks would blow the CLR
+        /// stack.</summary>
         private void ComputeReachabilityAndOrder()
         {
             var postorder = new List<BlockId>();
@@ -560,11 +560,10 @@ public static class IrVerifier
             _reachable.Add(_fn.Entry);
             stack.Push((_fn.Entry, 0));
 
-            // Handler-Bloecke sind zusaetzliche Wurzeln. Sie haben im CFG keinen Praedecessor —
-            // erreicht werden sie ueber die Handler-Tabelle beim Abwickeln, nicht ueber einen
-            // Sprung. Ohne sie hier zu verankern meldete der Verifier jeden catch-Block als
-            // unerreichbar, und die Regel „unerreichbare Bloecke sind ein Fehler" (P4) wuerde
-            // Exceptions unmoeglich machen statt sie zu pruefen.
+            // Handler blocks are additional roots. They have no predecessor in the CFG: they are
+            // reached through the handler table while unwinding, not through a jump. Without anchoring
+            // them here the verifier reports every catch block as unreachable, and the rule
+            // "unreachable blocks are an error" would make exceptions impossible.
             foreach (var handler in _fn.Handlers)
             {
                 if (handler.Handler.Value < 0 || handler.Handler.Value >= _fn.Blocks.Count) continue;
@@ -589,15 +588,14 @@ public static class IrVerifier
             }
 
             postorder.Reverse();
-            _rpo = postorder; // Reverse-Postorder: Prädecessoren fast immer vor ihrem Block
+            _rpo = postorder; // reverse postorder: predecessors almost always before their block
         }
 
         /// <summary>
-        /// Availability: welche Temps sind am Blockeingang auf <b>jedem</b> Pfad schon definiert?
-        /// Vorwärts-Dataflow mit Schnittmenge als Meet. Bei genau einer Definition pro Temp
-        /// (Phase 0) ist „auf jedem Pfad verfügbar" äquivalent zu „die Definition dominiert den
-        /// Use" — deshalb braucht der Verifier keinen Dominator-Baum. Der wird erst interessant,
-        /// wenn Phi-Knoten dazukommen.
+        /// Availability: which temps are already defined at the block entry on EVERY path? A forward
+        /// data flow with intersection as the meet. With exactly one definition per temp (phase 0),
+        /// "available on every path" is equivalent to "the definition dominates the use", which is why
+        /// the verifier needs no dominator tree. That becomes interesting only once phi nodes exist.
         /// </summary>
         private void ComputeAvailability()
         {
@@ -612,12 +610,12 @@ public static class IrVerifier
 
             foreach (var block in _rpo)
             {
-                // Optimistisches TOP für alles außer Entry: ein Loop-Header wird über seine
-                // Back-Edge zuerst gegen ein noch nicht finales availOut geschnitten.
-                // Pessimistisch (leere Menge) zu starten würde auf zu kleine Mengen konvergieren
-                // und echte use-before-def-Fehler verstecken.
+                // An optimistic TOP for everything except the entry: a loop header is intersected
+                // through its back edge against a not-yet-final availOut first. Starting pessimistically
+                // with the empty set would converge on sets that are too small and would hide real
+                // use-before-def errors.
                 _availIn[block] = block == _fn.Entry
-                    ? new HashSet<TempId>() // Parameter sind LOCALS, keine Temps
+                    ? new HashSet<TempId>() // parameters are LOCALS, not temps
                     : new HashSet<TempId>(allTemps);
                 _availOut[block] = Union(_availIn[block], _defs[block]);
             }
@@ -645,7 +643,7 @@ public static class IrVerifier
                         changed = true;
                     }
                 }
-            } while (changed); // monoton fallende Mengen über endlicher Grundmenge -> terminiert
+            } while (changed); // monotonically shrinking sets over a finite base set, so it terminates
         }
 
         private HashSet<TempId> MeetOfPredecessors(BlockId block)
@@ -654,16 +652,16 @@ public static class IrVerifier
 
             foreach (var pred in _preds[block])
             {
-                // Unerreichbare Prädecessoren müssen raus: ihr availOut ist nie stabilisiert
-                // worden und würde die Schnittmenge verfälschen.
+                // Unreachable predecessors have to go: their availOut never stabilized and would
+                // distort the intersection.
                 if (!_reachable.Contains(pred)) continue;
 
                 if (intersection is null) intersection = new HashSet<TempId>(_availOut[pred]);
                 else intersection.IntersectWith(_availOut[pred]);
             }
 
-            // Kann für erreichbare Nicht-Entry-Blöcke nicht eintreten (sie haben per Definition
-            // einen erreichbaren Prädecessor); die leere Menge ist der konservative Fallback.
+            // Cannot happen for reachable non-entry blocks, which by definition have a reachable
+            // predecessor; the empty set is the conservative fallback.
             return intersection ?? new HashSet<TempId>();
         }
 
@@ -674,16 +672,16 @@ public static class IrVerifier
             return result;
         }
 
-        // -------------------------------------------------- Phase 3: Def/Use und Typen
+        // -------------------------------------------------- phase 3: def/use and types
 
         private void CheckInstructions()
         {
-            foreach (var blockId in _rpo) // nur erreichbare Blöcke
+            foreach (var blockId in _rpo) // reachable blocks only
             {
                 var block = _blockById[blockId];
 
-                // live wächst instruktionsweise mit; damit fällt "im selben Block, aber textuell
-                // nach dem Use definiert" ohne Sonderfall auf.
+                // 'live' grows instruction by instruction, so "defined in the same block but textually
+                // after the use" shows without a special case.
                 var live = new HashSet<TempId>(_availIn[blockId]);
 
                 for (var i = 0; i < block.Insts.Count; i++)
@@ -700,9 +698,9 @@ public static class IrVerifier
             }
         }
 
-        /// <summary>Prüft, dass jeder Operand ein bekanntes und an dieser Stelle bereits
-        /// definiertes Temp ist. Liefert false, wenn ein Operand unbekannt ist — dann sind die
-        /// Typ-Checks nicht ausführbar, weil der Tabellen-Lookup daneben greifen würde.</summary>
+        /// <summary>Checks that every operand is a known temp already defined at this point. Returns
+        /// false when an operand is unknown, in which case the type checks are not runnable, because the
+        /// table lookup would miss.</summary>
         private bool CheckOperands(IReadOnlyList<TempId> operands, HashSet<TempId> live,
             BlockId block, int? index)
         {
@@ -784,16 +782,16 @@ public static class IrVerifier
 
             switch (c.Value)
             {
-                // Kodierung von IntConst: Zweierkomplement, nullerweitert auf 64 Bit. Der Wert
-                // muss als Bitmuster in die deklarierte Breite passen — fängt ein Lowering, das
-                // ein Literal nicht getrunkiert/sign-extended hat.
+                // The encoding of IntConst: two's complement, zero-extended to 64 bits. The value has to
+                // fit into the declared width as a bit pattern, which catches a lowering that failed to
+                // truncate or sign-extend a literal.
                 case IntConst ic when !FitsWidth(ic.Value, scalar.Kind):
                     Report(block, index,
                         $"integer const {N(ic.Value)} does not fit the bit pattern of {Show(c.Type)}");
                     break;
 
-                // Ein f32-Const, dessen Wert kein f32-Wert ist, heißt: das Lowering hat nicht
-                // verengt. Nicht-endliche Werte (NaN/Inf) sind in f32 darstellbar und ausgenommen.
+                // An f32 const whose value is no f32 value means the lowering did not narrow.
+                // Non-finite values (NaN, Inf) are representable in f32 and are exempt.
                 case FloatConst fc when scalar.Kind == IrScalar.F32
                                         && double.IsFinite(fc.Value)
                                         && (float)fc.Value != fc.Value:
@@ -814,7 +812,7 @@ public static class IrVerifier
             var lhs = TypeOf(b.Lhs);
             var rhs = TypeOf(b.Rhs);
 
-            // Sprache.md §6.5: Numerik ist strikt, kein implizites Widening.
+            // Arithmetic is strict: no implicit widening.
             if (!IrType.Equal(lhs, rhs))
             {
                 Report(block, index,
@@ -824,10 +822,10 @@ public static class IrVerifier
 
             if (b.Kind.IsComparison())
             {
-                // Vergleiche liefern bool. Der Operandentyp steht NICHT auf der Instruktion,
-                // sondern in der Temp-Tabelle — der Emitter schlägt ihn dort nach, weil
-                // signed/unsigned verschiedene Opcodes sind. Bewusst kein zweites Typ-Feld:
-                // das wäre eine dritte Wahrheitsquelle, die driften kann.
+                // Comparisons yield bool. The operand type is NOT on the instruction but in the temp
+                // table, where the emitter looks it up, because signed and unsigned are different
+                // opcodes. Deliberately no second type field: that would be a third source of truth,
+                // free to drift.
                 if (!IsBool(b.Type) || !IsBool(TypeOf(b.Dest)))
                     Report(block, index,
                         $"comparison must produce bool, found type {Show(b.Type)} " +
@@ -855,9 +853,9 @@ public static class IrVerifier
             }
             else if (!IsNumeric(lhs))
             {
-                // string+string / T[]+T[] (Sprache.md §6.5) sind eingebaute Semantik, aber KEIN
-                // BinOp: sie lowern zu einem Call/Intrinsic. Sonst würde der add-Opcode polymorph
-                // und müsste zur Laufzeit Typ-Dispatch machen — gegen ADR-013.
+                // string+string and T[]+T[] are built-in semantics but NO BinOp: they lower to a call or
+                // an intrinsic. Otherwise the add opcode would be polymorphic and would have to dispatch
+                // on the type at runtime.
                 var hint = IsStringLike(lhs) && b.Kind is IrBinKind.Add or IrBinKind.Mul
                     ? " (string concatenation/repetition lowers to a call, not a binop)"
                     : "";
@@ -897,7 +895,7 @@ public static class IrVerifier
 
             RequireDestType(cv.Dest, cv.To, "convert", block, index);
 
-            // Sprache.md §6.5: 'as' konvertiert in v1 nur Numerik <-> Numerik.
+            // 'as' converts between numeric types only.
             if (!IsNumeric(cv.From) || !IsNumeric(cv.To))
             {
                 Report(block, index,
@@ -905,8 +903,8 @@ public static class IrVerifier
                 return;
             }
 
-            // Das Lowering elidiert Identitäts-Konvertierungen (`x as int` bei x: int ist legales
-            // Lyric, ergibt aber keinen sinnvollen Opcode).
+            // The lowering elides identity conversions: `x as int` for x: int is legal Lyric but yields
+            // no meaningful opcode.
             if (IrType.Equal(cv.From, cv.To))
                 Report(block, index, $"identity convert {Show(cv.From)} -> {Show(cv.To)}");
         }
@@ -958,8 +956,8 @@ public static class IrVerifier
             }
             else if (callee.ParamCount > callee.Locals.Count)
             {
-                // Der Callee ist selbst malformed; das wird bei SEINER Prüfung gemeldet. Hier
-                // nur nicht daneben greifen.
+                // The callee is malformed itself; that is reported when IT is checked. Here it just must
+                // not miss.
                 Report(block, index,
                     $"cannot check args: callee {callee.Name} has a malformed local table");
             }
@@ -967,7 +965,7 @@ public static class IrVerifier
             {
                 for (var i = 0; i < k.Args.Length; i++)
                 {
-                    var expected = callee.Locals[i].Type; // Konvention: erste N Locals = Params
+                    var expected = callee.Locals[i].Type; // convention: the first N locals are the parameters
                     var actual = TypeOf(k.Args[i]);
                     if (!IrType.Equal(expected, actual))
                         Report(block, index, $"call to {callee.Name}: arg {N(i)} is {Show(actual)}, " +
@@ -987,8 +985,8 @@ public static class IrVerifier
                                      $"returns {Show(callee.ReturnType)}");
         }
 
-        /// <summary>Wie <see cref="CheckCall"/>, nur gegen die Import-Tabelle. Ein Import hat keinen
-    /// Rumpf, also kommt die Signatur aus seiner Deklaration statt aus einer Funktion.</summary>
+        /// <summary>Like <see cref="CheckCall"/>, but against the import table. An import has no body,
+        /// so the signature comes from its declaration rather than from a function.</summary>
     private void CheckCallImport(CallImport k, BlockId block, int index)
     {
         if (k.Target.Value < 0 || k.Target.Value >= _module.Imports.Count)
@@ -1028,17 +1026,16 @@ public static class IrVerifier
                                  $"'{import.Name}' returns {Show(import.ReturnType)}");
     }
 
-    /// <summary>Löst eine <see cref="TypeId"/> gegen die Modul-Tabelle auf. <c>null</c> heißt: der
-    /// Index zeigt ins Leere und wurde bereits gemeldet — der Aufrufer bricht dann ab, statt mit
-    /// einem Ersatz-Layout weiterzuprüfen und Folgebefunde zu erzeugen.</summary>
+    /// <summary>Resolves a <see cref="TypeId"/> against the module table. <c>null</c> means the index
+    /// points into nothing and was already reported; the caller then stops rather than continuing with a
+    /// substitute layout and producing follow-up findings.</summary>
     /// <summary>
-    /// <c>mkiface</c>: die Quelle ist eine Klassen- oder Enum-Referenz, das Ziel ein
-    /// Interface-Eintrag, und es <b>gibt eine vtable-Zeile fuer genau dieses Paar</b>.
+    /// <c>mkiface</c>: the source is a class or enum reference, the target an interface entry, and THERE
+    /// IS A VTABLE ROW FOR EXACTLY THIS PAIR.
     ///
-    /// <para>Die letzte Bedingung ist die eigentliche Invariante. Ohne sie entstuende ein
-    /// Interface-Wert, dessen konkreter Typ das Interface gar nicht erfuellt — und der Dispatch
-    /// liefe erst beim Aufruf ins Leere, mit einem Fehler, der nichts mehr ueber die Ursache sagt.
-    /// Dieselbe Rolle, die bei Enums „eine Variante gehoert zu genau einem Enum" spielt.</para>
+    /// <para>The last condition is the actual invariant. Without it an interface value would arise whose
+    /// concrete type does not satisfy the interface at all, and the dispatch would run into nothing at
+    /// the call, with an error that says nothing about the cause.</para>
     /// </summary>
     private void CheckMakeInterface(MakeInterface m, BlockId block, int index)
     {
@@ -1085,22 +1082,21 @@ public static class IrVerifier
     }
 
     /// <summary>
-    /// <c>callvirt</c>: der Empfaenger (Arg 0) ist ein Wert genau dieses Interfaces, und der Slot
-    /// liegt in dessen Methodenliste.
+    /// <c>callvirt</c>: the receiver (argument 0) is a value of exactly this interface, and the slot lies
+    /// within its method list.
     ///
-    /// <para>Die Argumenttypen werden <b>nicht</b> gegen eine Zielfunktion geprueft — es gibt
-    /// keine: welche laeuft, entscheidet die Laufzeit. Die Signatur steht am Interface, und dass
-    /// alle Implementierungen sie erfuellen, hat die Sema geprueft (Konformanz). Was der Verifier
-    /// hier haelt, ist die Form; die Kongruenz der vtable-Zeilen prueft
-    /// <see cref="CheckImpls"/>.</para>
+    /// <para>The argument types are NOT checked against a target function, because there is none: which
+    /// one runs is decided at runtime. The signature stands on the interface, and that all
+    /// implementations satisfy it was checked by the sema. What the verifier holds here is the shape;
+    /// the congruence of the vtable rows is checked by <see cref="CheckImpls"/>.</para>
     /// </summary>
     /// <summary>
-    /// <c>mkclosure</c> (ADR-018): der Fat Pointer aus Zielfunktion und Environment.
+    /// <c>mkclosure</c>: the fat pointer of target function and environment.
     ///
-    /// <para>Geprueft wird, dass das Ziel existiert, dass der Zieltyp ein Funktionstyp ist und
-    /// dass die <b>Aritaet</b> stimmt — die gehobene Funktion hat einen Parameter mehr als der
-    /// Typ, naemlich das Environment auf Position 0. Ein Fehler hier waere zur Laufzeit ein Frame
-    /// mit falscher Slot-Zahl, also ein Falsch-Slot-Read statt eines Absturzes.</para>
+    /// <para>Checked is that the target exists, that the target type is a function type, and that the
+    /// ARITY matches — the lifted function has one parameter more than the type, namely the environment
+    /// at position 0. An error here would be a frame with the wrong slot count at runtime, so a
+    /// wrong-slot read rather than a crash.</para>
     /// </summary>
     private void CheckMakeClosure(MakeClosure m, BlockId block, int index)
     {
@@ -1121,18 +1117,18 @@ public static class IrVerifier
                 $"parameter(s), but the closure type needs {N(expected)} " +
                 (m.Environment is null ? "(no environment)" : "(including the environment)"));
 
-        // Ein Environment ist ein gewoehnliches Objekt — genau deshalb braucht es hier keinen
-        // Sonderfall im Typsystem.
+        // An environment is an ordinary object, which is why it needs no special case in the type
+        // system here.
         if (m.Environment is { } env && TypeOf(env) is not IrRefType)
             Report(block, index, $"mkclosure environment is {Show(TypeOf(env))}, expected a reference");
     }
 
     /// <summary>
-    /// <c>callind</c> (ADR-018): Aufruf ueber einen Funktionswert.
+    /// <c>callind</c>: a call through a function value.
     ///
-    /// <para>Die Signatur steht im TYP des Aufgerufenen, nicht in einer Deklaration — das ist der
-    /// ganze Unterschied zu <c>call</c>. Geprueft werden Aritaet, Parametertypen und der
-    /// Rueckgabetyp gegen genau diesen Typ.</para>
+    /// <para>The signature stands in the TYPE of the callee rather than in a declaration — that is the
+    /// whole difference from <c>call</c>. Arity, parameter types and return type are checked against
+    /// exactly that type.</para>
     /// </summary>
     private void CheckCallIndirect(CallIndirect c, BlockId block, int index)
     {
@@ -1196,12 +1192,10 @@ public static class IrVerifier
     }
 
     /// <summary>
-    /// <c>structcopy</c>: Quelle und Ziel sind derselbe Wert-Typ, und der Eintrag ist wirklich
-    /// einer.
+    /// <c>structcopy</c>: source and destination are the same value type, and the entry really is one.
     ///
-    /// <para>Ein <c>structcopy</c> auf einer Klasse waere kein Fehler, den die Laufzeit bemerkt —
-    /// sie kopierte einfach ein Slot-Array, das eigentlich geteilt gehoert. Ein stiller
-    /// Semantikbruch also, und genau deshalb steht die Pruefung hier.</para>
+    /// <para>A <c>structcopy</c> on a class would not be an error the runtime notices: it would simply
+    /// copy a slot array that ought to be shared — a silent break of semantics.</para>
     /// </summary>
     private void CheckStructCopy(StructCopy c, BlockId block, int index)
     {
@@ -1263,9 +1257,9 @@ public static class IrVerifier
         return null;
     }
 
-    /// <summary>Liefert den deklarierten Feldtyp, oder <c>null</c> bei Bereichs-/Layout-Fehler.
-    /// Prüft dabei auch, dass Typen- und Namensliste gleich lang sind: läuft das auseinander,
-    /// fiele es sonst erst im Printer als Index-Ausnahme auf.</summary>
+    /// <summary>Returns the declared field type, or <c>null</c> on a range or layout error. Also checks
+    /// that the type list and the name list have the same length: a divergence would otherwise only
+    /// surface in the printer as an index exception.</summary>
     private IrType? ResolveField(IrTypeDef def, TypeId type, FieldId field, string what,
         BlockId block, int index)
     {
@@ -1283,18 +1277,17 @@ public static class IrVerifier
         return null;
     }
 
-    /// <summary>Der Objekt-Operand muss eine Referenz auf <b>genau</b> den Typ sein, den die
-    /// Instruktion nennt. Beides zu tragen ist Absicht (Bytecode.md §5): der Typ im
-    /// Instruktionsstrom macht die Feldindex-Prüfung beim Laden ohne Datenfluss-Analyse möglich.
-    /// Genau deshalb muss der Verifier hier durchsetzen, dass die beiden nicht auseinanderlaufen —
-    /// sonst prüft der Bytecode-Leser später gegen das falsche Layout.</summary>
+    /// <summary>The object operand has to be a reference to EXACTLY the type the instruction names.
+    /// Carrying both is deliberate: the type in the instruction stream makes the field index check
+    /// possible at load time without data-flow analysis. That is why the verifier has to enforce here
+    /// that the two do not drift apart, or the bytecode reader later checks against the wrong
+    /// layout.</summary>
     /// <summary>
-    /// Der Operand haelt ein Objekt dieses Layouts — eine Klasse <b>oder</b> ein struct.
+    /// The operand holds an object of this layout — a class OR a struct.
     ///
-    /// <para>Beide sind zur Laufzeit dasselbe Slot-Array; der Feldzugriff ist derselbe
-    /// Array-Zugriff. Der Unterschied zwischen Wert- und Referenz-Semantik steckt nicht im
-    /// Zugriff, sondern in den Bindepunkten (<c>structcopy</c>) — <c>ldfld</c> und <c>stfld</c>
-    /// duerfen deshalb beides akzeptieren.</para>
+    /// <para>Both are the same slot array at runtime and field access is the same array access. The
+    /// difference between value and reference semantics lies not in the access but in the binding points
+    /// (<c>structcopy</c>), so <c>ldfld</c> and <c>stfld</c> may accept both.</para>
     /// </summary>
     private bool RequireObject(TempId obj, TypeId type, string what, BlockId block, int index)
     {
@@ -1306,9 +1299,9 @@ public static class IrVerifier
         return false;
     }
 
-    /// <summary>Wie ein Layout an einem Wert aussieht: als Referenz oder als Wert-Typ. Die
-    /// Types-Tabelle entscheidet, nicht der Aufrufer — zwei Meinungen darueber waeren ein
-    /// <c>structcopy</c> auf einer Klasse oder eine geteilte Struct-Instanz.</summary>
+    /// <summary>How a layout looks at a value: as a reference or as a value type. The Types table
+    /// decides, not the caller; two opinions about it would be a <c>structcopy</c> on a class or a shared
+    /// struct instance.</summary>
     private IrType LayoutTypeOf(TypeId type) =>
         _module.Types[type.Value].IsStruct ? new IrStructType(type) : new IrRefType(type);
 
@@ -1330,9 +1323,8 @@ public static class IrVerifier
         if (ResolveField(def, f.Type, f.Field, "loadfield", block, index) is not { } declared) return;
         if (!RequireObject(f.Object, f.Type, "loadfield", block, index)) return;
 
-        // Wie überall in dieser IR: das Type-Feld auf der Instruktion ist eine Kopie für den
-        // Printer, die Temp-Tabelle ist die Autorität. Beide gegen die Deklaration zu prüfen ist
-        // der Kern-Job des Verifiers.
+        // As everywhere in this IR: the Type field on the instruction is a copy for the printer, and the
+        // temp table is the authority. Checking both against the declaration is the verifier's core job.
         if (!IrType.Equal(f.FieldType, declared))
             Report(block, index, $"loadfield of {f.Type}{f.Field} is declared {Show(declared)} " +
                                  $"but the instruction says {Show(f.FieldType)}");
@@ -1352,8 +1344,8 @@ public static class IrVerifier
                                  $"but {f.Value} is {Show(actual)}");
     }
 
-    /// <summary>Der Array-Operand muss ein Array sein; liefert den Elementtyp, oder <c>null</c>
-    /// nach gemeldetem Befund.</summary>
+    /// <summary>The array operand has to be an array; returns the element type, or <c>null</c> after a
+    /// reported finding.</summary>
     private IrType? RequireArray(TempId array, string what, BlockId block, int index)
     {
         if (TypeOf(array) is IrArrayType a) return a.Element;
@@ -1362,9 +1354,8 @@ public static class IrVerifier
         return null;
     }
 
-    /// <summary>Ein Index muss <c>i64</c> sein. Nicht <b>ob</b> er in Grenzen liegt — das ist ein
-    /// Laufzeitwert und wird zur Laufzeit zum <c>panic</c> (Sprache.md §9). Der Verifier prüft die
-    /// Form, nicht das Programm.</summary>
+    /// <summary>An index has to be <c>i64</c>. Not WHETHER it is within bounds — that is a runtime value
+    /// and becomes a <c>panic</c> at runtime. The verifier checks the shape, not the program.</summary>
     private void RequireIndex(TempId index, string what, BlockId block, int at)
     {
         if (TypeOf(index) is IrScalarType { Kind: IrScalar.I64 }) return;
@@ -1390,8 +1381,8 @@ public static class IrVerifier
         if (RequireArray(e.Array, "loadelem", block, index) is not { } element) return;
         RequireIndex(e.Index, "loadelem", block, index);
 
-        // Wie überall: das Type-Feld an der Instruktion ist eine Kopie für den Printer, die
-        // Temp-Tabelle ist die Autorität.
+        // As everywhere: the Type field on the instruction is a copy for the printer, and the temp table
+        // is the authority.
         if (!IrType.Equal(e.Element, element))
             Report(block, index, $"loadelem yields {Show(element)} but the instruction says " +
                                  $"{Show(e.Element)}");
@@ -1445,8 +1436,8 @@ public static class IrVerifier
             RequireDestType(r.Dest, new IrArrayType(element), "arrrep", block, index);
     }
 
-    /// <summary>Ein Optional ist nicht schachtelbar (Bytecode.md §5): <c>??T</c> wäre in der
-    /// Laufzeit-Darstellung nicht von <c>?T</c> unterscheidbar.</summary>
+    /// <summary>An optional is not nestable: <c>??T</c> would be indistinguishable from <c>?T</c> in the
+    /// runtime representation.</summary>
     private bool RequireNotOptional(IrType inner, string what, BlockId block, int index)
     {
         if (inner is not IrOptionalType) return true;
@@ -1496,10 +1487,9 @@ public static class IrVerifier
     }
 
     /// <summary>
-    /// Eine Variante gehört zu genau einem Enum. Das zu prüfen ist der Kern der Enum-Invarianten:
-    /// <c>enumas</c> auf eine fremde Variante wäre ein Feldzugriff mit dem falschen Layout, und die
-    /// Load-Zeit-Validierung könnte ihn nicht abfangen — sie sieht nur, dass beide Indizes gültig
-    /// sind.
+    /// A variant belongs to exactly one enum. Checking that is the core of the enum invariants: an
+    /// <c>enumas</c> onto a foreign variant would be a field access with the wrong layout, and the
+    /// load-time validation could not catch it, because it only sees that both indices are valid.
     /// </summary>
     private int VariantIndexIn(TypeId enumType, TypeId variant)
     {
@@ -1525,8 +1515,8 @@ public static class IrVerifier
             return;
         }
 
-        // Slot 0 ist das Tag und wird von der Instruktion selbst gesetzt — die Argumente sind die
-        // Nutzfelder ab Slot 1.
+        // Slot 0 is the tag and is set by the instruction itself; the arguments are the payload fields
+        // from slot 1 on.
         var payload = layout.FieldTypes.Length - 1;
         if (v.Fields.Length != payload)
         {
@@ -1597,9 +1587,9 @@ public static class IrVerifier
                         ReportTerm(block, $"condition {c.Cond} is {Show(TypeOf(c.Cond))}, must be bool");
                     break;
 
-                // Nur Throwable-Typen sind werfbar (Sprache.md §9) — geprueft hat das die Sema.
-                // Hier bleibt die Form: ein Wert, der ueberhaupt ein Objekt ist. Ein Skalar zu
-                // werfen waere ein Lowering-Bug, kein User-Fehler.
+                // Only Throwable types are throwable, which the sema checked. What remains here is the
+                // shape: a value that is an object at all. Throwing a scalar would be a lowering bug,
+                // not a user error.
                 case Throw t when TypeOf(t.Value) is not (IrRefType or IrInterfaceType):
                     ReportTerm(block, $"throws {t.Value} ({Show(TypeOf(t.Value))}); " +
                                       "only class and interface values are throwable");
@@ -1609,7 +1599,7 @@ public static class IrVerifier
                 case EndFinally:
                 case Branch:
                 case Unreachable:
-                    break; // keine Typ-Bedingungen
+                    break; // no type conditions
 
                 default:
                     throw new InternalCompilationException(
@@ -1619,39 +1609,39 @@ public static class IrVerifier
 
         private void RequireDestType(TempId dest, IrType declared, string what, BlockId block, int index)
         {
-            // Die Type-Felder auf den Instruktionen sind Kopien für den Printer; die Temp-Tabelle
-            // ist die Autorität. Dass beide übereinstimmen, ist der Kern-Job des Verifiers.
+            // The Type fields on the instructions are copies for the printer; the temp table is the
+            // authority. That the two agree is the verifier's core job.
             var fromTable = TypeOf(dest);
             if (!IrType.Equal(declared, fromTable))
                 Report(block, index, $"{what} declares type {Show(declared)} but {dest} is " +
                                      $"{Show(fromTable)} in the temp table");
         }
 
-        // ------------------------------------------------------------------ Tabellen-Lookups
+        // ------------------------------------------------------------------ table lookups
 
         private bool IsKnownTemp(TempId temp) => temp.Value >= 0 && temp.Value < _fn.Temps.Count;
 
-        /// <summary>Der Typ eines Temps kommt aus der Temp-Tabelle — sie ist die Autorität.
-        /// Nur für Temps aufrufen, die <see cref="IsKnownTemp"/> passiert haben.</summary>
+        /// <summary>The type of a temp comes from the temp table, which is the authority. Call only for
+        /// temps that have passed <see cref="IsKnownTemp"/>.</summary>
         private IrType TypeOf(TempId temp) => _fn.Temps[temp.Value].Type;
 
-        /// <summary>null, wenn die Local-Id außerhalb der Tabelle liegt.</summary>
+        /// <summary>null when the local id lies outside the table.</summary>
         private IrType? LocalTypeOf(LocalId local) =>
             local.Value >= 0 && local.Value < _fn.Locals.Count ? _fn.Locals[local.Value].Type : null;
 
-        // ------------------------------------------------------------------ Typ-Prädikate
+        // ------------------------------------------------------------------ type predicates
 
-        // "Ist der Typ genau dieser Skalar?" läuft über Pattern-Matching, nicht über
-        // IrType.Equal: die Frage ist für jeden Typ beantwortbar, und in CheckTables muss sie
-        // auch für einen künftigen nicht-skalaren Typ eine Antwort geben statt zu werfen.
-        // IrType.Equal ist für das andere Problem da — zwei Typen gegeneinander zu vergleichen.
+        // "Is the type exactly this scalar?" runs through pattern matching rather than IrType.Equal:
+        // the question is answerable for every type, and in CheckTables it has to give an answer for a
+        // future non-scalar type too, rather than throw. IrType.Equal exists for the other problem —
+        // comparing two types against each other.
         private static bool IsVoid(IrType type) => type is IrScalarType { Kind: IrScalar.Void };
 
         private static bool IsBool(IrType type) => type is IrScalarType { Kind: IrScalar.Bool };
 
-        // Die Zwillingsfrage zu TypeFacts.IsInteger, auf IrType statt LyrType — der Verifier muss
-        // Bytecode ohne die Sema pruefen koennen (ADR-013). 'Char' ist seit ADR-022 dabei; fehlte
-        // er hier, lehnte der Verifier ab, was die Sema erlaubt.
+        // The twin of TypeFacts.IsInteger, on IrType instead of LyrType: the verifier has to check
+        // bytecode without the sema. 'Char' is included; missing here, the verifier would reject what
+        // the sema allows.
         private static bool IsInteger(IrType type) => type is IrScalarType
         {
             Kind: IrScalar.I8 or IrScalar.I16 or IrScalar.I32 or IrScalar.I64
@@ -1667,8 +1657,8 @@ public static class IrVerifier
         private static bool IsStringLike(IrType type) =>
             type is IrScalarType { Kind: IrScalar.String };
 
-        /// <summary>Was <c>eq</c>/<c>ne</c> vergleichen darf. Ordnungsvergleiche verlangen
-        /// dagegen Numerik (Sprache.md §6.5) — char und string haben in v1 keine Ordnung.</summary>
+        /// <summary>What <c>eq</c> and <c>ne</c> may compare. Ordering comparisons require numeric types
+        /// instead; char and string have no ordering.</summary>
         private static bool IsEquatable(IrType type) =>
             IsNumeric(type) || type is IrScalarType
             {
@@ -1679,8 +1669,8 @@ public static class IrVerifier
             IrBinKind.Shl or IrBinKind.Shr or
             IrBinKind.BitAnd or IrBinKind.BitOr or IrBinKind.BitXor;
 
-        /// <summary>IntConst ist zweierkomplement-kodiert und auf 64 Bit nullerweitert; geprüft
-        /// wird deshalb das Bitmuster, nicht der vorzeichenbehaftete Wertebereich.</summary>
+        /// <summary>IntConst is two's-complement encoded and zero-extended to 64 bits, so the bit pattern
+        /// is what gets checked, not the signed value range.</summary>
         private static bool FitsWidth(ulong value, IrScalar kind) => kind switch
         {
             IrScalar.I8 or IrScalar.U8 => value <= byte.MaxValue,
@@ -1688,17 +1678,15 @@ public static class IrVerifier
             IrScalar.I32 or IrScalar.U32 => value <= uint.MaxValue,
             IrScalar.I64 or IrScalar.U64 => true,
 
-            // Ein IntConst mit char-Typ entsteht aus 'c + 1': das untypisierte Literal IST ein
-            // char (§6.5), also steht es als Ganzzahl-Konstante mit char-Typ im Bytecode. Seine
-            // Grenze ist nicht die eines Maschinenworts, sondern die von Unicode (ADR-022).
+            // An IntConst with char type arises from 'c + 1': the untyped literal IS a char, so it stands
+            // in the bytecode as an integer constant with char type. Its bound is not that of a machine
+            // word but that of Unicode.
             IrScalar.Char => value <= long.MaxValue && Core.Unicode.IsCodepoint((long)value),
 
             _ => false
         };
 
-        // Frueher stand die Codepoint-Regel hier als eigene Zahlenreihe — die fuenfte Kopie
-        // derselben Grenze im Projekt. Sie liegt jetzt in Lyric.Core, wo Sema, Verifier und VM
-        // sie gemeinsam sehen (ADR-022).
+        // The code point rule lives in Lyric.Core, where sema, verifier and VM see it together.
         private static bool IsUnicodeScalarValue(int codePoint) => Core.Unicode.IsCodepoint(codePoint);
 
         private static bool ConstKindMatches(IrConstValue value, IrScalar kind) => value switch
@@ -1712,7 +1700,7 @@ public static class IrVerifier
                 $"ir-verifier: unhandled const {value.GetType().Name}")
         };
 
-        // ------------------------------------------------------------------ Befunde und Namen
+        // ------------------------------------------------------------------ findings and names
 
         private void Report(string message) => _findings.Add($"{_fn.Name}: {message}");
 
@@ -1728,17 +1716,16 @@ public static class IrVerifier
             else ReportTerm(block, message);
         }
 
-        // Invariant formatiert: Befunde werden in Tests per Substring verglichen, und eine Kultur
-        // mit anderen Ziffernzeichen würde diese Assertions auf CI brechen.
+        // Formatted invariantly: findings are compared by substring in tests, and a culture with
+        // different digit characters would break those assertions on CI.
         private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
         private static string N(ulong value) => value.ToString(CultureInfo.InvariantCulture);
 
-        /// <summary>Typ-Name für Fehlermeldungen, über <see cref="IrNames"/> also in derselben
-        /// Schreibweise wie der Printer-Dump — man liest beide nebeneinander.</summary>
-        /// <remarks>Der Fallback für nicht-skalare Typen ist Absicht: <c>Show</c> läuft
-        /// ausschließlich beim Bauen von Befund-Texten, und ein Wurf würde dort genau den Befund
-        /// verdecken, den wir gerade melden wollen. Der laute Wurf sitzt in
-        /// <see cref="IrType.Equal"/>, wo er dem Vergleich selbst gilt.</remarks>
+        /// <summary>The type name for error messages, through <see cref="IrNames"/> and therefore in the
+        /// same spelling as the printer dump — the two get read side by side.</summary>
+        /// <remarks>The fallback for non-scalar types is deliberate: <c>Show</c> runs only while building
+        /// finding texts, and a throw there would hide exactly the finding being reported. The loud throw
+        /// sits in <see cref="IrType.Equal"/>, where it applies to the comparison itself.</remarks>
         private static string Show(IrType type) => type switch
         {
             IrScalarType s => IrNames.Scalar(s.Kind),
