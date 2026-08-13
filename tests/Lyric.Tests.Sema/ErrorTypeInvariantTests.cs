@@ -8,18 +8,16 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Die Invariante hinter <see cref="ErrorType"/>: er bedeutet <b>„hier wurde bereits gemeldet"</b>
-/// — nicht „unbekannt", nicht „noch nicht berechnet".
+/// The invariant behind <see cref="ErrorType"/>: it means "a diagnostic has already been reported" —
+/// not "unknown", not "not computed yet".
 ///
-/// <para>Wer ihn sieht, schweigt, damit ein Fehler keine Lawine von Folgefehlern auslöst. Wer ihn
-/// <b>erzeugt</b>, muss deshalb vorher gemeldet haben. Bricht jemand das, ist der Effekt
-/// besonders unangenehm: die Sema schweigt, und der Absturz kommt später aus dem Lowering, weit
-/// weg von der Ursache.</para>
+/// <para>Whoever sees it stays silent, so one error does not trigger an avalanche of follow-ups.
+/// Whoever PRODUCES one must therefore have reported first. Breaking that is especially unpleasant:
+/// the sema stays silent and the crash comes later out of the lowering, far from the cause.</para>
 ///
-/// <para><b>Genau das ist in M7 dreimal passiert</b> — bei den Globals (führte zu
-/// <c>LYR-SEM0057</c>), bei den Typargumenten und beim Yield-Typ eines Iterators. Dreimal
-/// dieselbe Ursache heißt: die Konvention allein trägt nicht. Diese Tests machen sie
-/// überprüfbar.</para>
+/// <para>That happened three times — at the globals (leading to <c>LYR-SEM0057</c>), at the type
+/// arguments, and at the yield type of an iterator. Three times the same cause means the convention
+/// alone does not carry. These tests make it checkable.</para>
 /// </summary>
 public class ErrorTypeInvariantTests
 {
@@ -27,8 +25,8 @@ public class ErrorTypeInvariantTests
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
     /// <summary>
-    /// Prüft die Invariante an einem Programm: enthält irgendein Ausdruck einen
-    /// <see cref="ErrorType"/>, muss mindestens eine Diagnose vorliegen.
+    /// Checks the invariant on a program: if any expression contains an <see cref="ErrorType"/>, at least
+    /// one diagnostic has to be present.
     /// </summary>
     private static void Holds(string source, string label)
     {
@@ -52,7 +50,7 @@ public class ErrorTypeInvariantTests
                 + $"First at {poisoned[0].Key.Span}.");
     }
 
-    // ------------------------------------------------------------------ gültige Programme
+    // ------------------------------------------------------------------ valid programs
 
     [Theory]
     [InlineData("hello.lyr")]
@@ -69,8 +67,8 @@ public class ErrorTypeInvariantTests
     [InlineData("fizzbuzz.lyr")]
     public void No_valid_example_produces_an_unreported_error_type(string example)
     {
-        // Ein fehlerfreies Programm darf ueberhaupt keinen ErrorType tragen — hier faellt auf,
-        // wenn irgendein Lookup still aufgibt.
+        // An error-free program must carry no ErrorType at all; this is where a lookup that silently gives
+        // up shows.
         var source = File.ReadAllText(Path.Combine(RepoRoot(), "examples", example), Encoding.UTF8);
         Holds(source, example);
     }
@@ -78,8 +76,8 @@ public class ErrorTypeInvariantTests
     // ------------------------------------------------------------------ fehlerhafte Programme
 
     [Theory]
-    // Jeder Fall trifft eine andere Stelle, an der die Sema aufgibt. Sie DUERFEN ErrorType
-    // erzeugen — aber nur zusammen mit einer Meldung.
+    // Every case hits a different place where the sema gives up. They MAY produce an ErrorType, but only
+    // together with a message.
     [InlineData("fn main(): int { return unbekannt; }", "unbekannter Bezeichner")]
     [InlineData("fn main(): int { let x: Fehlt = 1; return 0; }", "unbekannter Typ")]
     [InlineData("fn main(): int { return \"a\" - 1; }", "unpassender Operator")]
@@ -96,8 +94,8 @@ public class ErrorTypeInvariantTests
     [Fact]
     public void The_check_would_actually_catch_a_violation()
     {
-        // Die Gegenprobe zum Prüfer selbst: ohne sie bewiesen alle Tests darüber nur, dass die
-        // Programme fehlerfrei sind — nicht, dass die Prüfung greift.
+        // The counter-check to the checker itself: without it every test above would only prove that the
+        // programs are error-free, not that the check applies.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr", "fn main(): int { return unbekannt; }");
         var de = new DiagnosticEngine(sm);
@@ -105,7 +103,7 @@ public class ErrorTypeInvariantTests
         comp.AddModule(new Parser(sm, id, de).ParseModule());
         var types = Semantics.Analyze(comp, comp.Resolve(), de);
 
-        // Hier gibt es ErrorType UND eine Diagnose — genau der erlaubte Fall.
+        // Here there is an ErrorType AND a diagnostic: exactly the allowed case.
         Assert.Contains(types.AllTypes, pair => pair.Value.IsError);
         Assert.True(de.HasErrors);
     }

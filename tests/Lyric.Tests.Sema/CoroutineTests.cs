@@ -8,10 +8,10 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Coroutine-Sema — M4-Slice 3b (Sprache.md §8, D6–D8). Coroutine&lt;T&gt; als Typ-Form,
-/// yield nur in Coroutinen mit Wert-Typ-Prüfung (SEM0038), nur nacktes return (SEM0039),
-/// resume als Präfix-Ausdruck mit Yield-Typ als Ergebnis (SEM0040), Return-Coverage
-/// für Coroutinen ausgesetzt. Volle Pipeline (Semantics.Analyze).
+/// Coroutine sema: Coroutine&lt;T&gt; as a type form, yield only in coroutines with a value type check
+/// (SEM0038), only a bare return (SEM0039), resume as a prefix expression with the yield type as its
+/// result (SEM0040), and return coverage suspended for coroutines. The full pipeline through
+/// Semantics.Analyze.
 /// </summary>
 public class CoroutineTests
 {
@@ -86,7 +86,7 @@ public class CoroutineTests
     [Fact]
     public void Fibonacci_pattern_checks_clean()
     {
-        AssertClean(Diags("")); // Prelude allein: kein SEM0017 trotz Coroutine<int>-Rückgabe
+        AssertClean(Diags("")); // the prelude alone: no SEM0017 despite the Coroutine<int> return type
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class CoroutineTests
             """));
     }
 
-    // --- yield-Regeln (SEM0038) ---
+    // --- yield rules (SEM0038) ---
 
     [Fact]
     public void Yield_outside_coroutine_is_reported()
@@ -161,7 +161,7 @@ public class CoroutineTests
         Assert.Contains(Diags("fn co(): Coroutine<int> { yield; }").Diagnostics, d => d.Code == "LYR-SEM0038");
     }
 
-    // --- return-Regeln (SEM0039, D8) ---
+    // --- return rules (SEM0039) ---
 
     [Fact]
     public void Bare_return_ends_a_coroutine_early()
@@ -185,7 +185,7 @@ public class CoroutineTests
             d => d.Code == "LYR-SEM0039");
     }
 
-    // --- resume-Regeln (SEM0040) ---
+    // --- resume rules (SEM0040) ---
 
     [Fact]
     public void Resume_on_non_coroutine_is_reported()
@@ -193,7 +193,7 @@ public class CoroutineTests
         Assert.Contains(Diags("fn u(n: int) { let v = resume n; }").Diagnostics, d => d.Code == "LYR-SEM0040");
     }
 
-    // --- Typ-Form Coroutine<T> ---
+    // --- the type form Coroutine<T> ---
 
     [Fact]
     public void Coroutine_needs_exactly_one_type_argument()

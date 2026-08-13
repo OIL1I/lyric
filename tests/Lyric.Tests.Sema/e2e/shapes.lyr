@@ -1,6 +1,6 @@
-// shapes.lyr — Komplexität: mittel
-// Zeigt: enum mit Tuple-/Struct-Varianten und Methoden, match als Ausdruck,
-// Block-Arme, kontextuelle Varianten-Konstruktion, Array von Enum-Werten.
+// shapes.lyr — complexity: medium
+// Shows: an enum with tuple and struct variants and methods, match as an expression,
+// block arms, contextual variant construction, an array of enum values.
 
 import std.io.console { println };
 import std.math { sqrt, pi };
@@ -37,7 +37,7 @@ fn main(): int {
     let shapes: Shape[] = [
         Shape.Circle(2.0),
         Shape.Rectangle(3.0, 4.0),
-        Triangle { a = 3.0, b = 4.0, c = 5.0 },   // Typ kontextuell aus Shape[]
+        Triangle { a = 3.0, b = 4.0, c = 5.0 },   // the type comes contextually from Shape[]
         Shape.Empty,
     ];
 

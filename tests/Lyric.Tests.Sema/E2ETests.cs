@@ -9,9 +9,9 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// M3-Exit: vollständige Programme (e2e/&lt;name&gt;.lyr) durch die ganze Pipeline —
-/// parse → resolve → typecheck → flow → rules. Valide Programme müssen fehlerfrei
-/// durchlaufen, Negativ-Programme den erwarteten Code melden.
+/// Complete programs (e2e/&lt;name&gt;.lyr) through the whole pipeline: parse, resolve, typecheck, flow,
+/// rules. Valid programs have to run through without errors, negative programs have to report the
+/// expected code.
 /// </summary>
 public class E2ETests
 {
@@ -28,10 +28,9 @@ public class E2ETests
         var id = sm.AddVirtual(name, source);
         var de = new DiagnosticEngine(sm);
 
-        // Mit Stdlib auf dem Modulpfad: seit ein unauffindbares Modul ein Fehler ist
-        // (LYR-RES0003), muss dieser Harness dieselbe Welt sehen wie 'lyric check'. Vorher war
-        // jeder Stdlib-Import hier stillschweigend opak — und damit war jede Verwendung der
-        // importierten Namen ungeprueft, was diese Tests nicht bemerken konnten.
+        // With the stdlib on the module path: since an unfindable module is an error (LYR-RES0003), this
+        // harness has to see the same world as 'lyric check'. Before that every stdlib import here was
+        // silently opaque, and every use of the imported names went unchecked.
         var comp = new Compilation(sm, de)
         {
             ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
@@ -67,19 +66,18 @@ public class E2ETests
     }
 
     /// <summary>
-    /// Programme, die ein Stdlib-Modul importieren, das es noch nicht gibt. Bis M6-2 fiel das
-    /// nicht auf — ein unauffindbares Modul galt als „extern/opak", und damit war stillschweigend
-    /// auch jede Verwendung der importierten Namen ungeprüft. Seit <c>LYR-RES0003</c> ist es ein
-    /// Fehler, und diese beiden Fixtures zeigen ihn.
+    /// Programs importing a stdlib module that does not exist yet. That used to go unnoticed: an
+    /// unfindable module counted as "external and opaque", and every use of the imported names was
+    /// silently unchecked. Since <c>LYR-RES0003</c> it is an error, and these fixtures show it.
     ///
-    /// <para>Sie stehen hier statt in der Liste oben, weil sie <b>gültiges Lyric</b> sind — es
-    /// fehlt die Bibliothek, nicht die Sprache. Wenn das Modul entsteht, wandern sie zurück; dass
-    /// dieser Test dann fehlschlägt, ist die Erinnerung daran.</para>
+    /// <para>They stand here rather than in the list above, because they are VALID LYRIC — the library is
+    /// missing, not the language. When the module appears they move back; that this test then fails is
+    /// the reminder.</para>
     ///
-    /// <para><b>Genau das ist mit <c>shapes.lyr</c> passiert</b> (M8/S7, 2026-08-07): <c>std.math</c>
-    /// gibt es, das Programm läuft, und die Zeile ist aus dieser Liste in die der sauberen
-    /// Programme gewandert. Der Test hat seine Aufgabe erfüllt — er hat gemeldet, dass die
-    /// Erwartung nicht mehr stimmt, statt still weiter zu behaupten, das Modul fehle.</para>
+    /// <para>That is exactly what happened with <c>shapes.lyr</c>: <c>std.math</c> exists, the program
+    /// runs, and the line moved from this list into the one for clean programs. The test did its job — it
+    /// reported that the expectation no longer held rather than silently claiming the module was
+    /// missing.</para>
     /// </summary>
     [Theory]
     [InlineData("imports.lyr", "std.io")]

@@ -1,5 +1,5 @@
-// Negativ: Aufruf einer throws-Funktion ohne try/catch und ohne eigene
-// throws-Deklaration → LYR-SEM0034.
+// Negative: a call to a throws function without a try/catch and without an own throws declaration
+// gives LYR-SEM0034.
 
 class Boom :: [Throwable] {
     fn message(): string { return "boom"; }

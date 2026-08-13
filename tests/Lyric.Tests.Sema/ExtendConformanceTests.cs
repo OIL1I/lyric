@@ -9,10 +9,10 @@ namespace Lyric.Tests.Sema;
 
 /// <summary>
 /// Interfaces + Extend — M4-Slice 4b (Sprache.md §3.5/§3.6, D10). Signatur-genaue
-/// Konformanz (SEM0020 fehlend, SEM0042 Signatur-Mismatch), Default-Methoden-Lookup
-/// (Override gewinnt, SEM0043 Ambiguität), Extend-Merge über die Registry (User-Typen +
-/// Builtins, import-gebundene Sichtbarkeit, SEM0044 Duplikat), Orphan-Rule (SEM0041)
-/// und unsupported Extend-Ziele (SEM0047). Multi-Modul-Setup wo nötig.
+/// Conformance (SEM0020 for a missing one, SEM0042 for a signature mismatch), default method lookup
+/// (an override wins, SEM0043 for ambiguity), the extend merge through the registry (user types and
+/// builtins, import-bound visibility, SEM0044 for a duplicate), the orphan rule (SEM0041) and
+/// unsupported extend targets (SEM0047). A multi-module setup where needed.
 /// </summary>
 public class ExtendConformanceTests
 {
@@ -36,7 +36,7 @@ public class ExtendConformanceTests
     private static void AssertCode(DiagnosticEngine de, string code) =>
         Assert.Contains(de.Diagnostics, d => d.Code == code);
 
-    // --- Konformanz: Signatur-Match (SEM0020 / SEM0042) ---
+    // --- conformance: the signature match (SEM0020, SEM0042) ---
 
     [Fact]
     public void Implementing_the_interface_is_clean()
@@ -124,7 +124,7 @@ public class ExtendConformanceTests
             """), "LYR-SEM0042");
     }
 
-    // --- Default-Methoden ---
+    // --- default methods ---
 
     [Fact]
     public void Default_method_is_callable_and_need_not_be_implemented()
@@ -165,7 +165,7 @@ public class ExtendConformanceTests
             """), "LYR-SEM0043");
     }
 
-    // --- Extend: Member-Merge ---
+    // --- extend: the member merge ---
 
     [Fact]
     public void Extension_method_on_user_type_is_visible()
@@ -234,7 +234,7 @@ public class ExtendConformanceTests
             """));
     }
 
-    // --- Extend :: [I] erfüllt Konformanz + Constraint ---
+    // --- extend :: [I] satisfies conformance and constraint ---
 
     [Fact]
     public void Extend_provides_interface_conformance()
@@ -270,12 +270,12 @@ public class ExtendConformanceTests
             """));
     }
 
-    // --- Orphan-Rule (SEM0041) ---
+    // --- the orphan rule (SEM0041) ---
 
     [Fact]
     public void Orphan_extension_is_reported()
     {
-        // string ist builtin, Show ist im anderen Modul → weder Ziel noch Interface lokal.
+        // string is a builtin and Show lives in the other module, so neither target nor interface is local.
         var de = Check(
             ("iface", "pub interface Show { fn show(): string; }"),
             ("main", """
@@ -302,7 +302,7 @@ public class ExtendConformanceTests
             """));
     }
 
-    // --- Import-Sichtbarkeit ---
+    // --- import visibility ---
 
     [Fact]
     public void Extension_is_invisible_without_importing_its_module()
@@ -316,11 +316,11 @@ public class ExtendConformanceTests
                 import helpers { Vec };
                 fn use(v: Vec): int { return v.sum(); }
                 """)).de;
-        // main importiert helpers → Extension sichtbar.
+        // main imports helpers, so the extension is visible.
         AssertClean(de);
     }
 
-    // --- Unsupported Extend-Ziel (SEM0047) ---
+    // --- an unsupported extend target (SEM0047) ---
 
     [Fact]
     public void Generic_extend_target_is_unsupported()

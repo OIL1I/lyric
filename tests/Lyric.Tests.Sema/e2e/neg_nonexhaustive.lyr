@@ -1,4 +1,4 @@
-// Negativ: match ohne vollständige Varianten-Abdeckung und ohne '_' → LYR-SEM0050.
+// Negative: a match without full variant coverage and without a '_' gives LYR-SEM0050.
 
 enum Color {
     Red,

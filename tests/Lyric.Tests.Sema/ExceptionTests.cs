@@ -8,11 +8,10 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Exception-Sema — M4-Slice 3a (Sprache.md §9). Throwable-Constraint an throw/throws/
-/// catch (SEM0030), try/catch-Struktur (SEM0035/0036), throws-Propagation über Calls
-/// inkl. Interface-Widening und Catch-Zuordnung (SEM0034), throws-Funktionen als Wert
-/// (SEM0037), Catch-Bindungs-Typen (typlos → Throwable) und panic → never.
-/// Läuft über die volle Sema-Pipeline (Semantics.Analyze).
+/// Exception sema: the Throwable constraint on throw, throws and catch (SEM0030), the try/catch
+/// structure (SEM0035, SEM0036), throws propagation over calls including interface widening and catch
+/// matching (SEM0034), throws functions as values (SEM0037), catch binding types (typeless becomes
+/// Throwable) and panic returning never. Runs over the full sema pipeline.
 /// </summary>
 public class ExceptionTests
 {
@@ -53,7 +52,7 @@ public class ExceptionTests
     private static void AssertCode(DiagnosticEngine de, string code) =>
         Assert.Contains(de.Diagnostics, d => d.Code == code);
 
-    // --- Throwable-Constraint (SEM0030) ---
+    // --- the Throwable constraint (SEM0030) ---
 
     [Fact]
     public void Throw_of_throwable_class_is_clean()
@@ -93,12 +92,12 @@ public class ExceptionTests
         AssertCode(Diags("fn t() { try { safe(); } }"), "LYR-SEM0036");
     }
 
-    // --- Catch-Bindungen ---
+    // --- catch bindings ---
 
     [Fact]
     public void Untyped_catch_binds_throwable_with_message()
     {
-        // e: Throwable → e.message() ist string; kein SEM0018 auf e (Catch weist zu).
+        // e: Throwable, so e.message() is a string; no SEM0018 on e, because the catch assigns it.
         AssertClean(Diags("fn t() { try { safe(); } catch (e) { let m: string = e.message(); } }"));
     }
 
@@ -112,7 +111,7 @@ public class ExceptionTests
             """));
     }
 
-    // --- Propagation: Handling über try ---
+    // --- propagation: handling through a try ---
 
     [Fact]
     public void Unhandled_call_is_reported()
@@ -156,7 +155,7 @@ public class ExceptionTests
             """));
     }
 
-    // --- Propagation: Handling über eigene throws-Klausel ---
+    // --- propagation: handling through an own throws clause ---
 
     [Fact]
     public void Call_covered_by_exact_throws_is_clean()
@@ -190,7 +189,7 @@ public class ExceptionTests
         AssertClean(Diags("fn v() { try { mayThrowAny(); } catch (_) { } }"));
     }
 
-    // --- Catch-Bodies, Rethrow, defer ---
+    // --- catch bodies, rethrow, defer ---
 
     [Fact]
     public void Throw_in_catch_body_is_not_caught_by_its_own_try()
@@ -211,7 +210,7 @@ public class ExceptionTests
         AssertClean(Diags("fn u() throws NotFound { defer mayThrow(); }"));
     }
 
-    // --- Lambdas und Kontext-Grenzen ---
+    // --- lambdas and context boundaries ---
 
     [Fact]
     public void Lambda_body_is_its_own_context()
@@ -231,7 +230,7 @@ public class ExceptionTests
         AssertCode(Diags("let g = mayThrow();"), "LYR-SEM0034");
     }
 
-    // --- throws-Funktion als Wert (SEM0037) ---
+    // --- a throws function as a value (SEM0037) ---
 
     [Fact]
     public void Throws_function_as_value_is_reported()
@@ -245,7 +244,7 @@ public class ExceptionTests
         AssertClean(Diags("fn t() { let f = safe; }"));
     }
 
-    // --- panic (§9): never divergiert, wirft aber nicht ---
+    // --- panic: never diverges but does not throw ---
 
     [Fact]
     public void Panic_counts_as_divergence_for_return_coverage()

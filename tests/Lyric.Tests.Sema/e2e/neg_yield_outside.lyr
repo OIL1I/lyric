@@ -1,4 +1,4 @@
-// Negativ: yield außerhalb einer Coroutine (Rückgabetyp ist kein Coroutine<T>)
+// Negative: a yield outside a coroutine, where the return type is no Coroutine<T>
 // → LYR-SEM0038.
 
 fn notACoroutine(): int {

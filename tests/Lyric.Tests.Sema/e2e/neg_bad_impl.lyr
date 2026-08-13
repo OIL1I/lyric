@@ -1,4 +1,4 @@
-// Negativ: Interface-Konformanz mit falscher Signatur (Rückgabetyp) → LYR-SEM0042.
+// Negative: interface conformance with a wrong signature (the return type) gives LYR-SEM0042.
 
 interface Priced {
     fn price(): int;
@@ -6,7 +6,7 @@ interface Priced {
 
 struct Item :: [Priced] {
     name: string,
-    fn price(): string {          // sollte int sein
+    fn price(): string {          // should be int
         return this.name;
     }
 }

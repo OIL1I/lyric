@@ -1,5 +1,5 @@
-// Negativ: Orphan-Extension (LYR-SEM0041). Weder das Ziel (Builtin string) noch das
-// Interface (aus einem fremden Modul importiert) ist hier lokal deklariert.
+// Negative: an orphan extension (LYR-SEM0041). Neither the target (the builtin string) nor the
+// interface (imported from a foreign module) is declared locally here.
 
 import std.core { Comparable };
 

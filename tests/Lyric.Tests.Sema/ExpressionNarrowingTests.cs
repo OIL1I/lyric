@@ -6,15 +6,15 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Flow-Narrowing gilt auch im <c>if</c>-<b>Ausdruck</b>, nicht nur im Statement.
+/// Flow narrowing applies in the <c>if</c> EXPRESSION too, not only in the statement.
 ///
-/// <para><c>if (a == null) 0 else a</c> war ein Typfehler, während
-/// <c>if (a == null) { return 0; } return a;</c> daneben funktionierte — derselbe Beweis über
-/// denselben Wert, zwei verschiedene Antworten.</para>
+/// <para><c>if (a == null) 0 else a</c> was a type error while
+/// <c>if (a == null) { return 0; } return a;</c> worked next to it — the same proof about the same
+/// value, two different answers.</para>
 ///
-/// <para>Die Maschinerie war vollständig da (<c>NarrowingFacts</c>, <c>Apply</c>); sie war an
-/// dieser einen Stelle nicht angeschlossen. Aufgefallen beim Bau von <c>std.fmt</c>, wo
-/// <c>digitToChar</c> genau diese Form nahelegt — die Umgehung dort ist zurückgebaut.</para>
+/// <para>The machinery was fully there (<c>NarrowingFacts</c>, <c>Apply</c>); it was not connected at
+/// this one place. Noticed while building <c>std.fmt</c>, where <c>digitToChar</c> suggests exactly
+/// this form.</para>
 /// </summary>
 public class ExpressionNarrowingTests
 {
@@ -58,9 +58,8 @@ public class ExpressionNarrowingTests
 
     [Fact]
     public void Narrowing_does_not_leak_out_of_the_expression() =>
-        // Nach dem Ausdruck gilt wieder '?int'. Sonst wäre das Narrowing kein Beweis über einen
-        // Zweig, sondern eine stillschweigende Umdeklaration — und ein 'a = null' danach
-        // plötzlich ein Fehler.
+        // After the expression '?int' applies again. Otherwise the narrowing would be no proof about a
+        // branch but a silent redeclaration, and an 'a = null' afterwards would suddenly be an error.
         Assert.Contains(Check("""
             fn main(): int {
                 let a: ?int = 5;
@@ -71,8 +70,8 @@ public class ExpressionNarrowingTests
 
     [Fact]
     public void A_nested_expression_narrows_too() =>
-        // Der innere Ausdruck darf den äusseren nicht stören: 'b' wird im then-Zweig von 'a'
-        // geprüft, und danach muss 'a' dort immer noch narrow sein.
+        // The inner expression must not disturb the outer one: 'b' is checked in the then branch of 'a',
+        // and afterwards 'a' still has to be narrowed there.
         Allowed("""
             fn main(): int {
                 let a: ?int = 5;
@@ -84,8 +83,8 @@ public class ExpressionNarrowingTests
 
     [Fact]
     public void The_statement_form_still_works() =>
-        // Die Gegenprobe: was vorher ging, muss weiter gehen. Der Snapshot-Umgang im Ausdruck
-        // fasst dieselbe Datenstruktur an wie das Statement.
+        // The counter-check: what worked before has to keep working. The snapshot handling in the
+        // expression touches the same data structure as the statement.
         Allowed("""
             fn main(): int {
                 let a: ?int = 5;

@@ -6,16 +6,16 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Ein Feld-Default ist ein Ausdruck und wird geprüft wie jeder andere.
+/// A field default is an expression and is checked like any other.
 ///
-/// <para><b>Er wurde von der Sema nie besucht.</b> Ein falsch typisierter Default war deshalb kein
-/// Fehler — und sobald ein Initialisierer das Feld wegließ, wurde daraus ein Compiler-<b>Absturz</b>
-/// im Lowering: dort wird der Default an der Konstruktionsstelle ausgewertet, die Seitentabelle
-/// kannte seinen Typ nicht, also <c>ErrorType</c>, also „ir: type not lowerable: &lt;error&gt;".
-/// Und weil keine Diagnose gemeldet war, sagte <c>lyric check</c> vorher „ok".</para>
+/// <para>The sema never visited it. A wrongly typed default was therefore no error, and as soon as an
+/// initializer omitted the field it became a compiler CRASH in the lowering: there the default is
+/// evaluated at the construction site, the side table did not know its type, so <c>ErrorType</c>, so
+/// "ir: type not lowerable: &lt;error&gt;". And because no diagnostic was reported, <c>lyric check</c>
+/// said "ok" beforehand.</para>
 ///
-/// <para>Aufgefallen ist es beim Bau von <c>console.lines()</c>, dessen <c>LineIterator { }</c>
-/// genau das tut. Die Laufzeit-Seite steht in <c>Lyric.Tests.Vm.StructTests</c>.</para>
+/// <para>Noticed while building <c>console.lines()</c>, whose <c>LineIterator { }</c> does exactly that.
+/// The runtime side lives in <c>Lyric.Tests.Vm.StructTests</c>.</para>
 /// </summary>
 public class DefaultFieldTests
 {
@@ -42,8 +42,8 @@ public class DefaultFieldTests
 
     [Fact]
     public void A_struct_default_is_checked_as_well() =>
-        // Beide Deklarationsarten laufen durch CheckMethods — ohne diesen Test bliebe ungeprüft,
-        // ob der Zweig für 'struct' überhaupt erreicht wird.
+        // Both kinds of declaration run through CheckMethods; without this test it would stay unchecked
+        // whether the branch for 'struct' is reached at all.
         Reports("LYR-SEM0001", """
             struct V { n: bool = 1, }
             fn main(): int { return 0; }
@@ -70,12 +70,11 @@ public class DefaultFieldTests
 }
 
 /// <summary>
-/// Ein Typ-Parameter, den die Inferenz nicht binden kann, wird von der <b>Sema</b> gemeldet.
+/// A type parameter the inference cannot bind is reported by the SEMA.
 ///
-/// <para>Vorher wurde er still zu <c>ErrorType</c>, und erst das Lowering fiel darüber:
-/// <c>LYR-IR0001: type argument 0 is not concrete ('&lt;error&gt;')</c>. <c>lyric check</c> sagte
-/// dazu „ok", <c>lyric build</c> nicht — derselbe Riss zwischen Sema und Backend, gegen den
-/// <c>AgreementTests</c> gebaut wurde, nur mit einer Diagnose am Ende statt einem Absturz.</para>
+/// <para>It used to become an <c>ErrorType</c> silently, and only the lowering tripped over it.
+/// <c>lyric check</c> said "ok", <c>lyric build</c> did not — the same rift between sema and backend
+/// <c>AgreementTests</c> was built against, only with a diagnostic at the end rather than a crash.</para>
 /// </summary>
 public class InferenceDiagnosticTests
 {
@@ -96,7 +95,7 @@ public class InferenceDiagnosticTests
     [Fact]
     public void An_unbindable_type_parameter_is_reported_by_the_sema()
     {
-        // T kommt in keinem Parameter vor — das kann auch die Konformanz-Unifikation nicht retten.
+        // T occurs in no parameter, and the conformance unification cannot save that either.
         var diagnostics = Diagnostics("""
             pub fn leer<T>(n: int): int { return n; }
             fn main(): int { return leer(3); }
@@ -116,9 +115,8 @@ public class InferenceDiagnosticTests
     [Fact]
     public void A_broken_argument_does_not_add_inference_noise()
     {
-        // Wenn ein Argument selbst fehlerhaft ist, ist die Ursache gemeldet. Eine zweite Zeile
-        // über ein Typargument wäre Folgerauschen — der häufigste Weg, wie Diagnosen unlesbar
-        // werden.
+        // When an argument is faulty itself, the cause is reported. A second line about a type argument
+        // would be follow-up noise — the most common way diagnostics become unreadable.
         var diagnostics = Diagnostics("""
             pub fn id<T>(v: T): T { return v; }
             fn main(): int { return id(gibtsNicht); }
@@ -130,15 +128,15 @@ public class InferenceDiagnosticTests
 }
 
 /// <summary>
-/// Ein Fehler <b>in</b> einem Typ zählt als gemeldet — die Poison-Regel, eine Ebene tiefer.
+/// An error INSIDE a type counts as reported — the poison rule, one level deeper.
 ///
-/// <para>Bisher galt sie nur, wenn der Typ selbst <c>ErrorType</c> war. Ein
-/// <c>fn(int) -&gt; &lt;error&gt;</c> — außen intakt, innen kaputt — ging durch und erzeugte
-/// Folgemeldungen, die die eigentliche Ursache zudeckten.</para>
+/// <para>It used to apply only when the type itself was an <c>ErrorType</c>. A
+/// <c>fn(int) -&gt; &lt;error&gt;</c> — intact outside, broken inside — passed and produced follow-up
+/// messages that buried the actual cause.</para>
 ///
-/// <para>Aufgefallen an einem Block-Lambda ohne Rückgabetyp-Annotation: <b>drei</b> Diagnosen für
-/// einen Fehler, und die einzige mit einem brauchbaren Hinweis (<c>LYR-SEM0046</c>, „add a return
-/// type annotation") stand unten.</para>
+/// <para>Noticed on a block lambda without a return type annotation: THREE diagnostics for one error,
+/// and the only one with a usable hint (<c>LYR-SEM0046</c>, "add a return type annotation") stood at
+/// the bottom.</para>
 /// </summary>
 public class DiagnosticNoiseTests
 {
@@ -164,18 +162,18 @@ public class DiagnosticNoiseTests
 
     [Fact]
     public void It_does_not_also_complain_about_the_type_argument() =>
-        // LYR-SEM0060 wäre hier Rauschen: die Ursache steht in SEM0046, samt Anleitung.
+        // LYR-SEM0060 would be noise here: the cause stands in SEM0046, with instructions.
         Assert.DoesNotContain("LYR-SEM0060", Codes(BlockLambda));
 
     [Fact]
     public void It_does_not_also_complain_about_assignability() =>
-        // "cannot assign 'fn(int) -> <error>' to 'fn(int) -> U'" sagt dem Leser nichts.
+        // "cannot assign 'fn(int) -> <error>' to 'fn(int) -> U'" says nothing to the reader
         Assert.DoesNotContain("LYR-SEM0001", Codes(BlockLambda));
 
     [Fact]
     public void The_annotated_form_compiles_cleanly() =>
-        // Die Gegenprobe: was die Meldung vorschlägt, muss auch funktionieren — sonst wäre der
-        // Hinweis falsch, und das ist schlimmer als kein Hinweis.
+        // The counter-check: what the message suggests has to work, or the hint is wrong, and that is
+        // worse than no hint.
         Assert.Empty(Codes("""
             pub fn anwenden<T, U>(v: T, f: fn(T) -> U): U { let g = f; return g(v); }
             fn main(): int { return anwenden(3, (n: int): int => { return n * 2; }); }
