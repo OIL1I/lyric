@@ -5,17 +5,17 @@ using static Lyric.Tests.Ir.BrokenIr;
 namespace Lyric.Tests.Ir;
 
 /// <summary>
-/// Tests für <see cref="IrVerifier"/>. Aufbau:
-/// <list type="number">
-/// <item><b>Positiv</b> — jede gültige Fixture läuft befundfrei durch. Das ist gleichzeitig das
-/// Regressionsnetz des Verifiers und die Validierung der Fixtures selbst.</item>
-/// <item><b>Negativ</b> — eine Invariante pro Test, jeweils ein einziger Defekt.</item>
-/// <item><b>Robustheit</b> — Bail-out ohne Kaskade, Isolation zwischen Funktionen, Determinismus,
-/// und dass der Verifier auf malformed IR nie selbst crasht.</item>
+/// Tests for <see cref="IrVerifier"/>. Structure:
+/// <list type="bullet">
+/// <item>POSITIVE — every valid fixture runs through without findings. That is at once the verifier's
+/// regression net and the validation of the fixtures themselves.</item>
+/// <item>NEGATIVE — one invariant per test, each with a single defect.</item>
+/// <item>ROBUSTNESS — a bail-out without a cascade, isolation between functions, determinism, and
+/// that the verifier never crashes itself on malformed IR.</item>
 /// </list>
 ///
-/// Assertions laufen über <b>Substrings</b>, nicht über Snapshots: der Wortlaut der Befunde wird
-/// sich ändern, und Goldens würden bei jeder Formulierungs-Verbesserung rot.
+/// Assertions run over SUBSTRINGS rather than over snapshots: the wording of the findings will change,
+/// and goldens would go red on every improvement to it.
 /// </summary>
 public class VerifierTests
 {
@@ -39,8 +39,8 @@ public class VerifierTests
 
     private static IReadOnlyList<string> FindingsOf(IrModule module) => IrVerifier.Verify(module);
 
-    /// <summary>Ein-Block-void-Funktion mit nacktem <c>ret</c> — Träger für Typ-Defekte, die
-    /// keinen weiteren Kontext brauchen.</summary>
+    /// <summary>A one-block void function with a bare <c>ret</c>, the carrier for type defects needing no
+    /// further context.</summary>
     private static IrModule VoidFn(List<IrLocal> locals, List<IrTemp> temps, List<IrOp> insts)
         => Module(Fn("main.f", VoidT, 0, locals, temps,
             new List<IrBlock> { Block(0, insts, new Return(null, Sp)) }));
@@ -64,7 +64,7 @@ public class VerifierTests
     [Fact]
     public void Verify_is_deterministic()
     {
-        // Modul mit mehreren Befunden: die Reihenfolge muss über Läufe stabil sein.
+        // A module with several findings: the order has to be stable across runs.
         var first = FindingsOf(Broken_for_determinism());
         var second = FindingsOf(Broken_for_determinism());
         Assert.Equal(first, second);
@@ -144,8 +144,8 @@ public class VerifierTests
     [Fact]
     public void Unused_definition_is_legal()
     {
-        // Gegenprobe zum Test darüber: eine verworfene Definition ist KEIN Fehler — `foo();` bei
-        // `foo(): int` erzeugt genau das.
+        // The counter-check to the test above: a discarded definition is NO error — `foo();` for
+        // `foo(): int` produces exactly that.
         AssertClean(VoidFn(
             new List<IrLocal>(),
             new List<IrTemp> { new(T(0), I64) },
@@ -208,18 +208,18 @@ public class VerifierTests
     [Fact]
     public void Entry_must_not_have_predecessors()
     {
-        // Kein Bail-out: die Availability-Analyse bleibt gültig, deshalb genau ein Befund und
-        // keine Folgefehler aus Phase 3.
+        // No bail-out: the availability analysis stays valid, so there is exactly one finding and no
+        // follow-up errors from phase 3.
         var module = Mutate("diamond", m => m.Functions[0].Blocks[1].Terminator = new Branch(B(0), Sp));
         var findings = FindingsOf(module);
         Assert.Single(findings);
         Assert.Contains("entry bb0 has predecessors bb1", findings[0], StringComparison.Ordinal);
     }
 
-    // ------------------------------------------------------ 2b') Objekte und Typ-Tabelle
+    // ------------------------------------------------------ 2b') objects and the type table
 
-    /// <summary>Ein Modul mit genau einem Typ <c>P { x: i32 }</c> und einer void-Funktion, deren
-    /// Instruktionen der Test vorgibt. Träger für die Objekt-Defekte.</summary>
+    /// <summary>A module with exactly one type <c>P { x: i32 }</c> and a void function whose
+    /// instructions the test supplies. The carrier for the object defects.</summary>
     private static IrModule WithPoint(List<IrTemp> temps, List<IrOp> insts, List<IrTypeDef>? types = null)
         => ModuleWithTypes(
             types ?? new List<IrTypeDef> { TypeDef("P", ("x", I32)) },
@@ -260,9 +260,9 @@ public class VerifierTests
             "storefield into ty0#0 takes i32, but t1 is string");
 
     /// <summary>
-    /// Der Objekt-Operand muss eine Referenz auf <b>genau</b> den Typ sein, den die Instruktion
-    /// nennt. Beide zu tragen ist Absicht (Bytecode.md §5) — laufen sie auseinander, prüft der
-    /// Bytecode-Leser den Feldindex später gegen das falsche Layout.
+    /// The object operand has to be a reference to EXACTLY the type the instruction names. Carrying both
+    /// is deliberate: if they drift apart, the bytecode reader later checks the field index against the
+    /// wrong layout.
     /// </summary>
     [Fact]
     public void Field_access_needs_a_reference_to_the_named_type() =>
@@ -290,15 +290,15 @@ public class VerifierTests
                 new List<IrTypeDef> { TypeDef("P", ("other", Ref(4))) }),
             "field #0 'other' references type ty4, which is out of range");
 
-    /// <summary>Ein Typ darf sich selbst als Feldtyp nennen — <c>class Node { next: Node }</c> ist
-    /// gültig. Der Gegentest zu den beiden Bereichs-Befunden oben: die Prüfung darf Rekursion nicht
-    /// mit einem Fehler verwechseln.</summary>
+    /// <summary>A type may name itself as a field type: <c>class Node { next: Node }</c> is valid. The
+    /// counter-test to the two range findings above — the check must not confuse recursion with an
+    /// error.</summary>
     [Fact]
     public void A_self_referential_type_is_clean() =>
         AssertClean(WithPoint(new List<IrTemp>(), new List<IrOp>(),
             new List<IrTypeDef> { TypeDef("Node", ("payload", I32), ("next", Ref(0))) }));
 
-    // ------------------------------------------------------ 2c) Phase 2: Erreichbarkeit
+    // ------------------------------------------------------ 2c) phase 2: reachability
 
     [Fact]
     public void Unreachable_block_is_reported()
@@ -318,7 +318,7 @@ public class VerifierTests
         var module = Mutate("single_block", m =>
         {
             var insts = m.Functions[0].Blocks[0].Insts;
-            (insts[0], insts[2]) = (insts[2], insts[0]); // BinOp vor seine Loads ziehen
+            (insts[0], insts[2]) = (insts[2], insts[0]); // pull the BinOp before its loads
         });
         AssertFinding(module, "uses t0 before its definition (defined at bb0: #2)");
     }
@@ -326,13 +326,13 @@ public class VerifierTests
     [Fact]
     public void Use_from_a_sibling_branch_is_not_dominated()
     {
-        // t1 wird nur in bb1 definiert, in bb2 benutzt. Über den Pfad bb0 -> bb2 ist es nicht
-        // verfügbar; zur Laufzeit wäre das ein Read auf einen uninitialisierten Slot.
+        // t1 is defined in bb1 only and used in bb2. Along the path bb0 to bb2 it is not available, and at
+        // runtime that would be a read of an uninitialized slot.
         //
-        // Was dieser Test festnagelt: availIn kommt aus dem availOut der Prädecessoren, nicht aus
-        // "alle Temps der Funktion" (die schwache Variante, die nur die Tabellen-Existenz prüft).
-        // Die MEET-Operation pinnt er nicht — bb2 hat nur einen Prädecessor, dort ist Vereinigung
-        // gleich Schnittmenge. Das macht erst Use_reachable_only_through_the_back_edge.
+        // What this test pins down: availIn comes from the availOut of the predecessors rather than from
+        // "all temps of the function", the weak variant that only checks the tables exist. It does not
+        // pin the MEET operation — bb2 has only one predecessor, where union equals intersection. That is
+        // done by Use_reachable_only_through_the_back_edge.
         var module = Module(Fn("main.g", I64, 0,
             new List<IrLocal>(),
             new List<IrTemp> { new(T(0), Bool), new(T(1), I64), new(T(2), I64), new(T(3), I64) },
@@ -354,10 +354,10 @@ public class VerifierTests
     [Fact]
     public void Use_reachable_only_through_the_back_edge_is_not_dominated()
     {
-        // Der schärfste Test des Availability-Dataflows: t7 wird im Loop-Body (bb2) definiert und
-        // im Header (bb1) benutzt. Über die Back-Edge ist es verfügbar, über bb0 -> bb1 beim
-        // ersten Durchlauf nicht. Nur die SCHNITTMENGE über die Prädecessoren fängt das —
-        // mit einer Vereinigung ("kann verfügbar sein") würde es durchrutschen.
+        // The sharpest test of the availability data flow: t7 is defined in the loop body (bb2) and used
+        // in the header (bb1). Along the back edge it is available, along bb0 to bb1 on the first pass it
+        // is not. Only the INTERSECTION over the predecessors catches that; with a union ("may be
+        // available") it would slip through.
         var module = Mutate("loop", m =>
             m.Functions[0].Blocks[1].Insts[2] = new BinOp(T(4), IrBinKind.Lt, Bool, T(2), T(7), Sp));
 
@@ -370,14 +370,14 @@ public class VerifierTests
     [Fact]
     public void Operand_outside_the_temp_table_does_not_crash_the_type_checks()
     {
-        // Der Punkt dieses Tests: der Verifier meldet und macht weiter, statt beim Tabellen-
-        // Lookup in eine IndexOutOfRangeException zu laufen.
+        // The point of this test: the verifier reports and carries on rather than running into an
+        // IndexOutOfRangeException at the table lookup.
         var module = Mutate("single_block", m =>
             m.Functions[0].Blocks[0].Terminator = new Return(T(9), Sp));
         AssertFinding(module, "bb0: terminator: uses t9, which is not in the temp table");
     }
 
-    // -------------------------------------------------- 2e) Phase 3: Typen — Const
+    // -------------------------------------------------- 2e) phase 3: types — const
 
     [Fact]
     public void Const_type_must_match_the_temp_table() =>
@@ -403,12 +403,12 @@ public class VerifierTests
     [Fact]
     public void Negative_integer_const_is_two_complement_zero_extended()
     {
-        // -1 als i64 ist 0xFFFF_FFFF_FFFF_FFFF. Gegenprobe zum Width-Check: die Kodierung ist
-        // das Bitmuster, nicht der vorzeichenbehaftete Wertebereich.
+        // -1 as an i64 is 0xFFFF_FFFF_FFFF_FFFF. The counter-check to the width test: the encoding is the
+        // bit pattern rather than the signed value range.
         AssertClean(VoidFn(new List<IrLocal>(), new List<IrTemp> { new(T(0), I64) },
             new List<IrOp> { new Const(T(0), I64, new IntConst(ulong.MaxValue), Sp) }));
 
-        // Dasselbe Bitmuster passt aber nicht in i8.
+        // The same bit pattern does not fit into an i8.
         AssertFinding(
             VoidFn(new List<IrLocal>(), new List<IrTemp> { new(T(0), new IrScalarType(IrScalar.I8)) },
                 new List<IrOp>
@@ -427,15 +427,15 @@ public class VerifierTests
 
     [Theory]
     [InlineData(0.5)]                 // exakt in f32
-    [InlineData(double.NaN)]          // nicht endlich -> ausgenommen
+    [InlineData(double.NaN)]          // not finite, therefore exempt
     [InlineData(double.PositiveInfinity)]
     public void Representable_float_const_is_clean(double value) =>
         AssertClean(VoidFn(new List<IrLocal>(), new List<IrTemp> { new(T(0), F32) },
             new List<IrOp> { new Const(T(0), F32, new FloatConst(value), Sp) }));
 
     [Theory]
-    [InlineData(0x110000)] // über dem Unicode-Maximum
-    [InlineData(0xD800)]   // Surrogat ist kein Unicode Scalar Value
+    [InlineData(0x110000)] // above the Unicode maximum
+    [InlineData(0xD800)]   // a surrogate is no Unicode scalar value
     [InlineData(-1)]
     public void Char_const_must_be_a_unicode_scalar_value(int codePoint) =>
         AssertFinding(
@@ -443,7 +443,7 @@ public class VerifierTests
                 new List<IrOp> { new Const(T(0), CharT, new CharConst(codePoint), Sp) }),
             "is not a Unicode scalar value");
 
-    // -------------------------------------------------- 2f) Phase 3: Typen — BinOp/UnOp
+    // -------------------------------------------------- 2f) phase 3: types — BinOp and UnOp
 
     [Fact]
     public void BinOp_operands_must_have_the_same_type() =>
@@ -475,12 +475,10 @@ public class VerifierTests
     [Fact]
     public void Ordering_comparison_on_non_numeric_type()
     {
-        // Sprache.md §6.5: Vergleiche verlangen denselben NUMERISCHEN Typ. 'string' hat in v1
-        // keine Ordnung.
+        // Comparisons require the same NUMERIC type; 'string' has no ordering.
         //
-        // Hier stand 'char' — seit ADR-022 zaehlt er zur Numerik und HAT eine Ordnung ('c < 'z''
-        // ist der Punkt der Aenderung). Der Test bleibt, weil die Verifier-Regel bleibt; nur der
-        // Zeuge musste getauscht werden.
+        // 'char' stood here once: it counts as numeric and HAS an ordering ('c' < 'z'). The test stays,
+        // because the verifier rule stays; only the witness had to be swapped.
         AssertFinding(
             VoidFn(new List<IrLocal>(),
                 new List<IrTemp> { new(T(0), Str), new(T(1), Str), new(T(2), Bool) },
@@ -552,7 +550,7 @@ public class VerifierTests
                 }),
             "bitnot on non-integer type bool");
 
-    // ------------------------------------------------ 2g) Phase 3: Typen — Convert/Local
+    // ------------------------------------------------ 2g) phase 3: types — convert and local
 
     [Fact]
     public void Convert_from_type_must_match_the_operand() =>
@@ -622,10 +620,11 @@ public class VerifierTests
                 }),
             "store to unknown local l4");
 
-    // ------------------------------------------------------- 2h) Phase 3: Typen — Call
+    // ------------------------------------------------------- 2h) phase 3: types — call
 
     /// <summary>f0 = <c>main.take(x: bool) -> void</c>, f1 = <c>main.double(n: i64) -> i64</c>.
-    /// Beide sind selbst wohlgeformt; <paramref name="callerInsts"/> liefert den defekten Call.</summary>
+    /// Both are well formed themselves; <paramref name="callerInsts"/> supplies the defective
+    /// call.</summary>
     private static IrModule WithCallees(List<IrTemp> callerTemps, List<IrOp> callerInsts)
     {
         var take = Fn("main.take", VoidT, 1,
@@ -711,7 +710,7 @@ public class VerifierTests
                 }),
             "call dest t1 is bool but main.double returns i64");
 
-    // ------------------------------------------------- 2i) Phase 3: Typen — Terminatoren
+    // ------------------------------------------------- 2i) phase 3: types — terminators
 
     [Fact]
     public void Void_function_must_not_return_a_value() =>
@@ -738,7 +737,7 @@ public class VerifierTests
                 m.Functions[0].Blocks[0].Terminator = new CondBranch(T(0), B(1), B(2), Sp)),
             "condition t0 is i64, must be bool");
 
-    // ------------------------------------------------------------- 2j) Modul-Ebene
+    // ------------------------------------------------------------- 2j) module level
 
     [Fact]
     public void Function_names_must_be_unique()
@@ -751,13 +750,13 @@ public class VerifierTests
         AssertFinding(module, "main.f: duplicate function name");
     }
 
-    // ------------------------------------------------------------------ 3) Robustheit
+    // ------------------------------------------------------------------ 3) robustness
 
     [Fact]
     public void Broken_table_bails_out_without_a_cascade()
     {
-        // t0 auf void zu setzen würde ohne Bail-out zusätzlich load-, binop- und store-Befunde
-        // auslösen — genau die Folgefehler, die die Phasen-Architektur verhindert.
+        // Setting t0 to void would, without a bail-out, additionally trigger load, binop and store
+        // findings — exactly the follow-up errors the phase architecture prevents.
         var module = Mutate("diamond", m => m.Functions[0].Temps[0] = new IrTemp(T(0), VoidT));
         var findings = FindingsOf(module);
         Assert.Single(findings);
@@ -781,8 +780,8 @@ public class VerifierTests
     [Fact]
     public void Unknown_op_type_throws_instead_of_passing_silently()
     {
-        // Ein unbekannter Instruktionstyp heißt "der Verifier ist veraltet" — eine andere
-        // Bug-Klasse als "die IR ist kaputt", und deshalb ein Wurf statt eines Befunds.
+        // An unknown instruction type means "the verifier is out of date", a different class of bug than
+        // "the IR is broken", and therefore a throw rather than a finding.
         var module = VoidFn(new List<IrLocal>(), new List<IrTemp>(),
             new List<IrOp> { new UnknownOp(Sp) });
 

@@ -10,24 +10,21 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `std.collections` — `Indexable&lt;T&gt;` und `List&lt;T&gt;` (M8/S5).
+/// `std.collections` — `Indexable&lt;T&gt;` and `List&lt;T&gt;`.
 ///
-/// <para><b>`List&lt;T&gt;` ist in Lyric geschrieben, nicht nativ.</b> Die ROADMAP sah einen Hook
-/// auf `System.Collections.Generic.List&lt;&gt;` vor; dagegen sprach, dass Natives monomorph
-/// registriert werden — ein generischer bräuchte eine Marshalling-Schicht, und die gehört zu
-/// M10. Dass eine Stdlib ihre eigenen Container ausdrücken kann, ist ohnehin die interessantere
-/// Aussage.</para>
+/// <para>`List&lt;T&gt;` IS WRITTEN IN LYRIC, NOT NATIVELY. Natives are registered monomorphically, so
+/// a generic one would need a marshalling layer. That a standard library can express its own
+/// containers is the more interesting statement anyway.</para>
 ///
-/// <para><b>Das Backing ist `(?T)[]`</b>, damit ein Slot leerbar ist: `pop` gibt seinen Wert
-/// wirklich frei, statt ihn nur hinter `count` verschwinden zu lassen. Nebenbei löst das die
-/// Erzeugung — ein `T[]` der Länge n bräuchte n Werte vom Typ T, und Lyric hat kein `default(T)`;
-/// für `?T` gibt es einen.</para>
+/// <para>THE BACKING IS `(?T)[]`, so a slot can be emptied: `pop` really releases its value instead of
+/// merely letting it disappear behind `count`. That also solves the creation — a `T[]` of length n
+/// would need n values of type T, and Lyric has no `default(T)`; for `?T` there is one.</para>
 ///
-/// <para><b>Die erste Fassung war an zwei Stellen falsch</b>, und diese Datei hat es nicht
-/// gemerkt: `get` prüfte gegen `data.length` statt gegen `count` und gab damit Reste aus dem
-/// Verdoppeln zurück, und `pop` ließ seinen Wert im Slot stehen. Der Wachstums-Test prüfte nur,
-/// dass nichts <b>fehlt</b> — nicht, dass nichts <b>zu viel</b> da ist. Die fünf Tests unter
-/// „Grenzen und Freigabe" schließen genau diese Richtung.</para>
+/// <para>The first version was wrong in two places and this file did not notice: `get` checked against
+/// `data.length` rather than against `count` and therefore returned leftovers from the doubling, and
+/// `pop` left its value in the slot. The growth test only checked that nothing was MISSING, not that
+/// nothing was IN EXCESS. The five tests under "bounds and release" close exactly that
+/// direction.</para>
 /// </summary>
 public class CollectionTests
 {
@@ -80,9 +77,9 @@ public class CollectionTests
     [Fact]
     public void Growth_preserves_every_element()
     {
-        // DER Test des Wachstums. Bei 100 Elementen verdoppelt sich das Array siebenmal; würde
-        // dabei ein Element verlorengehen oder überschrieben, stimmte die Summe nicht. Ein Test
-        // mit drei Elementen bliebe grün, auch wenn das Verdoppeln kaputt wäre.
+        // The growth test. With 100 elements the array doubles seven times; if an element were lost or
+        // overwritten in the process, the sum would not match. A test with three elements would stay
+        // green even with the doubling broken.
         Assert.Equal(4950, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -111,8 +108,8 @@ public class CollectionTests
 
     [Fact]
     public void Pop_on_an_empty_list_is_null_not_a_panic() =>
-        // Eine leere Liste ist ein gewöhnlicher Zustand, kein Programmierfehler — anders als ein
-        // Index daneben. Deshalb `?T` und kein `panic`.
+        // An empty list is an ordinary state rather than a programming error, unlike an index out of
+        // range. Hence `?T` and no `panic`.
         Assert.Equal(7, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -122,8 +119,8 @@ public class CollectionTests
 
     [Fact]
     public void A_list_of_strings_works_too() =>
-        // Zweite Instanziierung: mit nur einer bliebe der Test auch grün, wenn die
-        // Monomorphisierung den Elementtyp ignorierte.
+        // A second instantiation: with only one the test would stay green even if the monomorphization
+        // ignored the element type.
         Assert.Equal(2, Run("""
             import std.collections { List, emptyList };
             fn main(): int {
@@ -138,9 +135,8 @@ public class CollectionTests
 
     [Fact]
     public void A_list_can_be_read_with_brackets() =>
-        // `[i]` auf einem Nicht-Array läuft über `Indexable<T>.get` — dieselbe Arbeitsteilung
-        // wie `for-in` über `Iterator<T>`. Der Compiler kennt genau EINE eingebaute indizierbare
-        // Form, das Array.
+        // `[i]` on a non-array goes through `Indexable<T>.get`, the same division of labour as `for-in`
+        // over `Iterator<T>`. The compiler knows exactly ONE built-in indexable form, the array.
         Assert.Equal(20, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -152,8 +148,8 @@ public class CollectionTests
 
     [Fact]
     public void A_list_can_be_written_with_brackets() =>
-        // Das geht nur, weil `let` seit ADR-020 den Namen bindet und nicht den Inhalt. Unter der
-        // alten Regel hätte `Indexable<T>` eine Sonderregel nachbilden müssen.
+        // This works because `let` binds the name rather than the content; under the other rule
+        // `Indexable<T>` would have to reproduce a special case.
         Assert.Equal(5, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -165,15 +161,15 @@ public class CollectionTests
 
     [Fact]
     public void An_array_still_uses_the_builtin_path() =>
-        // Die Gegenprobe: der Indexable-Pfad darf die eingebaute Array-Indizierung nicht
-        // übernommen haben. Ein Array implementiert `Indexable<T>` nicht — es ist die eingebaute
-        // Form, und `ldelem` bleibt ein Array-Zugriff ohne Methodenaufruf.
+        // The counter-check: the Indexable path must not have taken over the built-in array indexing. An
+        // array does not implement `Indexable<T>` — it is the built-in form, and `ldelem` stays an array
+        // access without a method call.
         Assert.Equal(9, Run("fn main(): int { let xs = [1, 9, 3]; return xs[1]; }"));
 
     [Fact]
     public void A_user_type_can_implement_Indexable() =>
-        // Nicht nur die Stdlib: das Interface steht jedem offen. Ohne diesen Test wäre nicht
-        // festgehalten, dass `[i]` wirklich am Interface hängt und nicht an `List<T>`.
+        // Not only the stdlib: the interface is open to anyone. Without this test it would not be held
+        // that `[i]` really hangs on the interface rather than on `List<T>`.
         Assert.Equal(42, Run("""
             import std.collections { Indexable };
 
@@ -189,18 +185,18 @@ public class CollectionTests
             }
             """));
 
-    // ------------------------------------------------------------------ Grenzen und Freigabe
+    // ------------------------------------------------------------------ bounds and release
 
-    // Diese fuenf Tests gab es in der ersten Fassung NICHT, und deshalb ueberlebten dort zwei
-    // Fehler: 'get' pruefte gegen 'data.length' statt gegen 'count' und gab Reste aus dem
-    // Verdoppeln zurueck, und 'pop' liess seinen Wert im Slot stehen. Der Wachstums-Test oben
-    // pruefte nur, dass nichts FEHLT — nicht, dass nichts ZU VIEL da ist.
+    // These five tests did NOT exist in the first version, and two faults survived there: 'get' checked
+    // against 'data.length' rather than against 'count' and returned leftovers from the doubling, and
+    // 'pop' left its value in the slot. The growth test above only checked that nothing was MISSING, not
+    // that nothing was IN EXCESS.
 
     [Fact]
     public void Reading_past_the_end_panics_even_when_capacity_is_larger()
     {
-        // Nach drei push ist die Kapazitaet 4: Index 3 liegt innerhalb des Arrays, aber
-        // ausserhalb der Liste. Genau hier gab die alte Fassung einen Rest zurueck.
+        // After three pushes the capacity is 4: index 3 lies inside the array but outside the list. This
+        // is exactly where the old version returned a leftover.
         var panic = Assert.Throws<LyricPanic>(() => Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -216,8 +212,8 @@ public class CollectionTests
 
     [Fact]
     public void A_popped_value_is_gone_not_just_hidden() =>
-        // 'pop' leert den Slot. Sonst haelt die Liste das Objekt am Leben, und ein 'get' an
-        // dieser Stelle liest es zurueck, obwohl es entfernt ist.
+        // 'pop' empties the slot. Otherwise the list keeps the object alive and a 'get' at this position
+        // reads it back although it has been removed.
         Assert.Throws<LyricPanic>(() => Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -236,8 +232,8 @@ public class CollectionTests
 
     [Fact]
     public void Push_after_pop_overwrites_instead_of_appending() =>
-        // 'count' ist die Wahrheit, nicht 'data.length'. Waere es umgekehrt, wuechse die Liste
-        // nach einem pop an der falschen Stelle weiter.
+        // 'count' is the truth rather than 'data.length'. The other way round the list would grow at the
+        // wrong place after a pop.
         Assert.Equal(99, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -252,11 +248,11 @@ public class CollectionTests
     [Fact]
     public void Capacity_grows_by_doubling_and_shrinks_by_halving()
     {
-        // Der Punkt, der die Datenstruktur-Entscheidung getragen hat: der Slack bleibt nicht
-        // liegen. 100 Elemente -> Kapazitaet 128; nach 95 pop -> 5 Elemente, Kapazitaet 16.
+        // The slack does not stay: 100 elements give a capacity of 128, and after 95 pops there are 5
+        // elements with a capacity of 16.
         //
-        // Die Schwelle liegt bei einem VIERTEL und nicht bei der Haelfte, damit eine Liste, die
-        // um die Grenze pendelt, nicht bei jedem push/pop umkopiert.
+        // The threshold is a QUARTER rather than a half, so a list oscillating around the boundary does
+        // not copy on every push and pop.
         Assert.Equal(128, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -280,7 +276,7 @@ public class CollectionTests
 
     [Fact]
     public void A_small_list_keeps_a_floor_capacity() =>
-        // Unter vier Slots lohnt das Umkopieren nicht — der Gewinn waeren ein paar Dutzend Byte.
+        // Below four slots the copying is not worth it: the gain would be a few dozen bytes.
         Assert.Equal(4, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -294,10 +290,9 @@ public class CollectionTests
 
     [Fact]
     public void A_list_can_be_walked_with_for_in() =>
-        // 'for-in' fragt VORWAERTS: erfuellt der Traeger 'Iterable<T>', wird 'iter()' gerufen.
-        // Der Compiler sucht NICHT rueckwaerts nach einem Iterator, der die Liste als Quelle
-        // nimmt — das waere bei zwei Kandidaten mehrdeutig und muesste alle sichtbaren Module
-        // absuchen.
+        // 'for-in' asks FORWARDS: when the carrier satisfies 'Iterable<T>', 'iter()' is called. The
+        // compiler does NOT search backwards for an iterator taking the list as its source — that would
+        // be ambiguous with two candidates and would have to scan every visible module.
         Assert.Equal(6, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -312,9 +307,9 @@ public class CollectionTests
 
     [Fact]
     public void Two_loops_over_the_same_list_do_not_interfere() =>
-        // DER Grund fuer die Zweiteilung. Waere 'List<T>' ihr eigener 'Iterator<T>', haette sie
-        // einen eingebauten Fortschritt — die innere Schleife wuerde die aeussere weiterschieben,
-        // und statt 9 kaeme 3 heraus. 'iter()' liefert bei jedem Aufruf einen frischen Cursor.
+        // The reason for the split in two. Were 'List<T>' its own 'Iterator<T>', it would have a built-in
+        // progress: the inner loop would advance the outer one and the result would be 3 instead of 9.
+        // 'iter()' yields a fresh cursor on every call.
         Assert.Equal(9, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -342,8 +337,8 @@ public class CollectionTests
 
     [Fact]
     public void A_user_type_can_implement_Iterable() =>
-        // Wie bei 'Indexable': das Interface steht jedem offen, nicht nur der Stdlib. Ohne
-        // diesen Test haenge 'for-in' womoeglich an 'List<T>' statt am Interface.
+        // As with 'Indexable': the interface is open to anyone, not only to the stdlib. Without this test
+        // 'for-in' might hang on 'List<T>' rather than on the interface.
         Assert.Equal(3, Run("""
             import std.iter { Iterator, Iterable };
 
@@ -370,8 +365,8 @@ public class CollectionTests
 
     [Fact]
     public void A_plain_iterator_still_works_directly() =>
-        // Die Gegenprobe: der Iterable-Pfad darf den alten nicht verdraengt haben. Ein Wert, der
-        // selbst 'Iterator<T>' erfuellt, wird weiterhin direkt benutzt.
+        // The counter-check: the Iterable path must not have displaced the old one. A value satisfying
+        // 'Iterator<T>' itself is still used directly.
         Assert.Equal(3, Run("""
             import std.iter { Iterator };
 
@@ -392,17 +387,16 @@ public class CollectionTests
             }
             """));
 
-    // ------------------------------------------------------------------ clear und toArray
+    // ------------------------------------------------------------------ clear and toArray
     //
-    // Beide kamen am 2026-08-12 dazu. 'toArray' ist der interessantere Fall: sein Rueckgabetyp ist
-    // 'T[]' und das Backing ein '(?T)[]', und zwischen beiden gibt es KEINE Umdeutung — '!' packt
-    // einen einzelnen Wert aus, nicht ein Array elementweise. Die erste Fassung versuchte genau
-    // das ('return result!;') und war LYR-SEM0005.
+    // 'toArray' is the interesting case: its return type is 'T[]' and the backing is a '(?T)[]', and
+    // there is NO reinterpretation between the two — '!' unwraps a single value rather than an array
+    // element by element. Writing 'return result!;' is LYR-SEM0005.
 
     [Fact]
     public void ToArray_copies_the_used_slots_and_nothing_more() =>
-        // 3 Elemente, Summe 17 — Laenge UND Inhalt in einer Zahl, damit kein Teil davon
-        // unbemerkt danebenliegen kann.
+        // Three elements, sum 17: length AND content in one number, so no part of it can be off
+        // unnoticed.
         Assert.Equal(3017, Run("""
             import std.collections;
 
@@ -418,9 +412,8 @@ public class CollectionTests
             """));
 
     /// <summary>
-    /// Die Laenge ist <c>count</c> und nicht <c>capacity</c>. Nach drei <c>push</c> stehen vier
-    /// Slots bereit — ein Array mit vier Elementen waere der Fehler, den <c>get</c> schon einmal
-    /// gemacht hat.
+    /// The length is <c>count</c> rather than <c>capacity</c>. After three <c>push</c> calls four slots
+    /// stand ready, and an array with four elements would be the fault <c>get</c> already made.
     /// </summary>
     [Fact]
     public void ToArray_uses_count_and_not_capacity() =>
@@ -436,8 +429,8 @@ public class CollectionTests
             }
             """));
 
-    /// <summary>Die leere Liste hat kein erstes Element, aus dem sich ein <c>T[]</c> bauen liesse
-    /// — sie wird vorher abgefangen. Ohne diesen Test bliebe genau der Zweig ungeprueft.</summary>
+    /// <summary>The empty list has no first element to build a <c>T[]</c> from and is caught beforehand.
+    /// Without this test exactly that branch would stay unchecked.</summary>
     [Fact]
     public void ToArray_on_an_empty_list_is_an_empty_array() =>
         Assert.Equal(0, Run("""
@@ -449,7 +442,7 @@ public class CollectionTests
             }
             """));
 
-    /// <summary>Die Kopie ist eine Kopie: wer sie aendert, aendert die Liste nicht.</summary>
+    /// <summary>The copy is a copy: changing it does not change the list.</summary>
     [Fact]
     public void ToArray_returns_a_copy() =>
         Assert.Equal(1, Run("""
@@ -480,9 +473,9 @@ public class CollectionTests
             """));
 
     /// <summary>
-    /// <c>clear</c> gibt das Backing wirklich frei und laesst es nicht nur hinter <c>count</c>
-    /// stehen — dieselbe Zusicherung wie bei <c>pop</c>, und aus demselben Grund: sonst hielte die
-    /// Liste jedes je eingefuegte Objekt am Leben.
+    /// <c>clear</c> really releases the backing rather than leaving it behind <c>count</c> — the same
+    /// promise as for <c>pop</c> and for the same reason: otherwise the list would keep every object ever
+    /// inserted alive.
     /// </summary>
     [Fact]
     public void Clear_releases_the_backing_array() =>
@@ -499,8 +492,8 @@ public class CollectionTests
             }
             """));
 
-    /// <summary>Und danach ist sie wieder benutzbar — ein geleertes Backing darf kein Sonderfall
-    /// fuer <c>push</c> sein.</summary>
+    /// <summary>And afterwards it is usable again: an emptied backing must be no special case for
+    /// <c>push</c>.</summary>
     [Fact]
     public void A_cleared_list_still_grows() =>
         Assert.Equal(7, Run("""

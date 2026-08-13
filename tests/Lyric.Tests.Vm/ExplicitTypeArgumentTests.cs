@@ -10,20 +10,19 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Explizite Typargumente an einer Aufrufstelle: `f&lt;int&gt;()`.
+/// Explicit type arguments at a call site: `f&lt;int&gt;()`.
 ///
-/// <para><b>Warum es sie braucht</b>: bis dahin ließen sich Generics ausschließlich über
-/// Argument-Inferenz instanziieren. Eine Funktion ohne Parameter vom Typ `T` — eine Fabrik wie
-/// `empty&lt;T&gt;(): List&lt;T&gt;` — war damit gar nicht aufrufbar, und das blockierte
-/// `std.collections`.</para>
+/// <para>WHY THEY ARE NEEDED: until then generics could be instantiated through argument inference
+/// only. A function without a parameter of type `T` — a factory such as `empty&lt;T&gt;(): List&lt;T&gt;`
+/// — was therefore not callable at all.</para>
 ///
-/// <para><b>Der riskante Teil ist die Disambiguierung</b>, nicht die Semantik: `f&lt;a&gt;(b)`
-/// sieht aus wie die Vergleichskette `(f &lt; a) &gt; (b)`. Der Parser entscheidet mit einem
-/// reinen Token-Scan — er zählt Klammern und prüft, ob hinter dem `&gt;` ein `(` folgt. Kein
-/// spekulatives Parsen, weil eine verworfene Vermutung sonst Diagnosen hinterließe.</para>
+/// <para>THE RISKY PART IS THE DISAMBIGUATION rather than the semantics: `f&lt;a&gt;(b)` looks like the
+/// comparison chain `(f &lt; a) &gt; (b)`. The parser decides with a pure token scan — it counts
+/// brackets and checks whether a `(` follows the `&gt;`. No speculative parsing, because a discarded
+/// guess would leave diagnostics behind.</para>
 ///
-/// <para>Deshalb steht hier jeder Vergleichsfall, der ähnlich aussieht. Ein Test, der nur die
-/// Typargumente prüft, bliebe auch grün, wenn der Scan jedes `&lt;` verschlänge.</para>
+/// <para>Every comparison case that looks similar therefore stands here. A test checking only the type
+/// arguments would stay green even if the scan swallowed every `&lt;`.</para>
 /// </summary>
 public class ExplicitTypeArgumentTests
 {
@@ -64,7 +63,7 @@ public class ExplicitTypeArgumentTests
         return de;
     }
 
-    // ------------------------------------------------------------------ was jetzt geht
+    // ------------------------------------------------------------------ what works now
 
     [Fact]
     public void A_call_can_name_its_type_argument() =>
@@ -75,8 +74,8 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void A_factory_without_arguments_becomes_callable() =>
-        // DER Fall. Ohne explizite Typargumente hat die Inferenz nichts, woraus sie T ziehen
-        // könnte — die Funktion war schlicht nicht aufrufbar.
+        // The case. Without explicit type arguments the inference has nothing to draw T from, and the
+        // function is simply not callable.
         Assert.Equal(0, Run("""
             class Buf<T> { data: T[], count: int, }
             fn empty<T>(): Buf<T> { return Buf<T> { data = [], count = 0 }; }
@@ -85,8 +84,8 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void A_generic_function_can_return_a_generic_type() =>
-        // Das ging vorher AUCH MIT Inferenz nicht: 'LowerSubstituted' kannte '?T' und 'T[]',
-        // aber nicht 'Box<T>'. Der Rückgabetyp wurde ohne Substitution aufgelöst.
+        // This did not work WITH inference either: 'LowerSubstituted' knew '?T' and 'T[]' but not
+        // 'Box<T>', so the return type was resolved without a substitution.
         Assert.Equal(7, Run("""
             class Box<T> { v: T, }
             fn make<T>(x: T): Box<T> { return Box<T> { v = x }; }
@@ -95,9 +94,8 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void A_growing_buffer_works_end_to_end() =>
-        // Die Grundlage für 'List<T>' (M8/S5): das Wachsen kommt ohne 'newArray<T>(n)' aus.
-        // 'data + data' verdoppelt; was jenseits von 'count' steht, wird nie gelesen, also ist
-        // sein Inhalt egal.
+        // The basis for 'List<T>': growing works without a 'newArray<T>(n)'. 'data + data' doubles, and
+        // whatever lies beyond 'count' is never read, so its content does not matter.
         Assert.Equal(63, Run("""
             class Buf<T> {
                 data: T[],
@@ -126,7 +124,7 @@ public class ExplicitTypeArgumentTests
             }
             """));
 
-    // ------------------------------------------------------------------ Disambiguierung
+    // ------------------------------------------------------------------ disambiguation
 
     [Fact]
     public void A_less_than_comparison_is_still_a_comparison() =>
@@ -134,9 +132,9 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void A_chain_that_looks_like_type_arguments_stays_a_comparison() =>
-        // 'a < b > (c)' — genau die Form, die der Scan von Typargumenten trennen muss. Hier
-        // fehlt der Aufruf-Charakter: der Callee ist kein generischer Name, und selbst wenn der
-        // Scan zuschlüge, wäre das Ergebnis ein Typfehler statt eines stillen Missverständnisses.
+        // 'a < b > (c)' — exactly the shape the scan has to keep apart from type arguments. Here the
+        // call character is missing: the callee is no generic name, and even if the scan struck, the
+        // result would be a type error rather than a silent misunderstanding.
         Assert.Equal(1, Run("""
             fn main(): int {
                 let a = 1;
@@ -163,8 +161,8 @@ public class ExplicitTypeArgumentTests
     [Fact]
     public void An_explicit_type_argument_beats_inference()
     {
-        // Geschriebenes gewinnt: 'id<int>("x")' ist ein Typfehler und wird NICHT still zu
-        // 'id<string>'. Ohne diese Reihenfolge wäre die explizite Form wirkungslos.
+        // What is written wins: 'id<int>("x")' is a type error and does NOT silently become
+        // 'id<string>'. Without this order the explicit form would have no effect.
         var de = Check("""
             fn id<T>(x: T): T { return x; }
             fn main(): int { let s = id<int>("x"); return 0; }
@@ -175,14 +173,14 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void A_constraint_still_applies_to_a_written_type_argument() =>
-        // Sonst wäre die explizite Form ein Weg, Constraints zu umgehen.
+        // Otherwise the explicit form would be a way around constraints.
         Assert.Contains(Check("""
             interface Named { fn name(): string; }
             fn show<T :: [Named]>(x: T): string { return x.name(); }
             fn main(): int { let s = show<int>(5); return 0; }
             """).Diagnostics, d => d.Code == "LYR-SEM0028");
 
-    // ------------------------------------------ Constraints mit eigenen Typargumenten
+    // ------------------------------------------ constraints with their own type arguments
 
     private const string EqSetup = """
         pub interface Eq<T> {
@@ -205,19 +203,17 @@ public class ExplicitTypeArgumentTests
         """;
 
     /// <summary>
-    /// Ein Constraint darf sein eigenes Typargument mitbringen: <c>T :: [Eq&lt;T&gt;]</c>.
+    /// A constraint may bring its own type argument: <c>T :: [Eq&lt;T&gt;]</c>.
     ///
-    /// <para><b>Der Punkt, an dem es scheiterte</b>, war ratlos formuliert: „cannot assign 'T' to
-    /// 'T'". Zwei verschiedene Symbole mit demselben Namen — das <c>T</c> der Funktion und das
-    /// <c>T</c> des Interfaces. <c>MemberOfTypeParam</c> gab den rohen Interface-Typ zurueck,
-    /// ohne die Argumente des Constraints einzusetzen.</para>
+    /// <para>The point it failed at was worded helplessly: "cannot assign 'T' to 'T'". Two different
+    /// symbols with the same name — the <c>T</c> of the function and the <c>T</c> of the interface.
+    /// <c>MemberOfTypeParam</c> returned the raw interface type without substituting the constraint's
+    /// arguments.</para>
     ///
-    /// <para>Die Konformanzpruefung machte dieselbe Substitution seit jeher richtig. Eine Frage,
-    /// zwei Stellen, und nur eine hatte die Antwort — dasselbe Muster wie bei
-    /// <c>LowerType</c>/<c>TypeTable.Lower</c> und bei <c>UnifyNumeric</c>.</para>
+    /// <para>The conformance check had always done the same substitution correctly: one question, two
+    /// places, and only one had the answer.</para>
     ///
-    /// <para>Ohne diesen Punkt ist <c>Map&lt;K :: [Hashable&lt;K&gt;], V&gt;</c> nicht
-    /// formulierbar, und damit ADR-024 nicht umsetzbar.</para>
+    /// <para>Without this, <c>Map&lt;K :: [Hashable&lt;K&gt;], V&gt;</c> cannot be written down.</para>
     /// </summary>
     [Fact]
     public void A_constraint_may_carry_its_own_type_argument() =>
@@ -230,7 +226,7 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void The_type_argument_may_be_inferred() =>
-        // Ohne explizites '<int>'. Die Inferenz lief vorher in denselben Fehler.
+        // Without an explicit '<int>'. The inference used to run into the same fault.
         Assert.Equal(0, Run(EqSetup + """
             fn main(): int {
                 if (same(3, 4)) { return 1; }
@@ -240,7 +236,7 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void A_user_type_satisfies_the_constraint() =>
-        // Ein 'struct' mit ':: [Eq<P>]' — der Fall, den Map/Set brauchen werden.
+        // A 'struct' with ':: [Eq<P>]' — the case Map and Set will need.
         Assert.Equal(1, Run(EqSetup + """
             fn main(): int {
                 if (same(P { x = 7 }, P { x = 7 })) { return 1; }
@@ -250,9 +246,9 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void The_constraint_survives_being_passed_on() =>
-        // Zwei generische Funktionen hintereinander: 'describe<T>' reicht sein eigenes T an
-        // 'same<T>' weiter. Ohne diesen Test bliebe ungeprueft, ob die Substitution auch dann
-        // stimmt, wenn das Argument selbst ein Typ-Parameter ist.
+        // Two generic functions in a row: 'describe<T>' passes its own T on to 'same<T>'. Without this
+        // test it would stay unchecked whether the substitution is right when the argument is itself a
+        // type parameter.
         Assert.Equal(1, Run(EqSetup + """
             pub fn describe<T :: [Eq<T>]>(a: T, b: T): int {
                 if (same<T>(a, b)) { return 1; }
@@ -262,7 +258,7 @@ public class ExplicitTypeArgumentTests
             fn main(): int { return describe(5, 5); }
             """));
 
-    // ------------------------------- Interface-Parameter an einer generischen Funktion
+    // ------------------------------- an interface parameter on a generic function
 
     private const string IterSetup = """
         import std.iter { Iterator, RangeIterator };
@@ -277,16 +273,16 @@ public class ExplicitTypeArgumentTests
         """;
 
     /// <summary>
-    /// Eine Klasse als Argument, wo die generische Signatur ein Interface verlangt.
+    /// A class as an argument where the generic signature demands an interface.
     ///
-    /// <para><b>Der Compiler stuerzte hier ab</b> („arg 0 is &amp;ty1, expected dyn ty0"). Der
-    /// Parametertyp <c>Iterator&lt;T&gt;</c> wurde OHNE die Substitution der Aufrufstelle gelowert,
-    /// warf am unaufgeloesten <c>T</c>, und der <c>catch</c> reichte das Argument dann <b>ohne
-    /// Coercion</b> durch — die Klasse landete dort, wo ein Fat Pointer stehen musste.</para>
+    /// <para>The compiler crashed here ("arg 0 is &amp;ty1, expected dyn ty0"). The parameter type
+    /// <c>Iterator&lt;T&gt;</c> was lowered WITHOUT the call site's substitution, threw on the unresolved
+    /// <c>T</c>, and the <c>catch</c> then passed the argument through WITHOUT a coercion — the class
+    /// landed where a fat pointer had to stand.</para>
     ///
-    /// <para>Nicht-generische Aufrufe waren nie betroffen, weil dort der Parametertyp direkt
-    /// lowerbar ist. Deshalb blieb es bis zum ersten generischen Iterator-Adapter unentdeckt —
-    /// und blockierte <c>std.iter</c> vollstaendig, wo <b>jede</b> Funktion so aussieht.</para>
+    /// <para>Non-generic calls were never affected, because the parameter type is directly lowerable
+    /// there. It therefore stayed undetected until the first generic iterator adapter, and it blocked
+    /// <c>std.iter</c> completely, where EVERY function looks like this.</para>
     /// </summary>
     [Fact]
     public void A_class_coerces_to_an_interface_parameter_of_a_generic_function() =>
@@ -297,20 +293,15 @@ public class ExplicitTypeArgumentTests
             """));
 
     /// <summary>
-    /// Das Typargument wird durch eine <b>Konformanz hindurch</b> erschlossen.
+    /// The type argument is inferred THROUGH A CONFORMANCE.
     ///
-    /// <para><c>zaehle(RangeIterator { … })</c> schliesst aus
-    /// <c>class RangeIterator :: [Iterator&lt;int&gt;]</c>, dass <c>T = int</c> ist. Strukturell
-    /// haben die beiden Typen nichts gemeinsam — die Verbindung steht in der Deklaration, und die
-    /// Unifikation schlaegt sie jetzt nach.</para>
+    /// <para><c>count(RangeIterator { … })</c> concludes from
+    /// <c>class RangeIterator :: [Iterator&lt;int&gt;]</c> that <c>T = int</c>. Structurally the two types
+    /// have nothing in common; the connection stands in the declaration, and the unification looks it
+    /// up.</para>
     ///
-    /// <para><b>Hier stand bis 2026-08-08 das Gegenteil</b>: ein Test, der die Grenze festhielt
-    /// (<c>LYR-IR0001: type argument 0 is not concrete</c>) und ausdruecklich fallen sollte,
-    /// sobald die Inferenz es lernt. Er ist gefallen.</para>
-    ///
-    /// <para>Ohne diesen Fall waeren in <c>std.iter</c> genau die Funktionen ohne Closure
-    /// betroffen — <c>collect</c>, <c>sum</c>, <c>count</c>, <c>take</c>, <c>zip</c>,
-    /// <c>enumerate</c> —, also ausgerechnet die am Ende einer Kette.</para>
+    /// <para>Without this case, exactly the functions in <c>std.iter</c> without a closure would be
+    /// unusable — the ones at the end of a chain.</para>
     /// </summary>
     [Fact]
     public void Inference_works_through_a_conformance() =>
@@ -322,8 +313,8 @@ public class ExplicitTypeArgumentTests
 
     [Fact]
     public void Inference_works_when_no_other_parameter_carries_the_type() =>
-        // Der schaerfere Fall: ein zweiter Parameter, der NICHTS zur Inferenz beitraegt. Vorher
-        // half nur eine Closure daneben ('map', 'filter'); hier gibt es keine.
+        // The sharper case: a second parameter contributing NOTHING to the inference. A closure beside it
+        // ('map', 'filter') used to be the only help; here there is none.
         Assert.Equal(7, Run("""
             import std.iter { Iterator, RangeIterator };
 
@@ -339,8 +330,8 @@ public class ExplicitTypeArgumentTests
             }
             """));
 
-    /// <summary>Uebersetzt bis zum Lowering und liefert die Diagnosen — fuer Faelle, die
-    /// scheitern sollen.</summary>
+    /// <summary>Compiles up to the lowering and returns the diagnostics, for cases meant to fail.
+    /// </summary>
     private static string LoweringDiagnostics(string source)
     {
         var sm = new SourceManager();
@@ -363,8 +354,8 @@ public class ExplicitTypeArgumentTests
     [Fact]
     public void A_generic_adapter_over_an_interface_works()
     {
-        // Der eigentliche Zielfall: eine Klasse mit ZWEI Typparametern, die ein Interface mit
-        // EINEM erfuellt, mit einer Closure als Feld. Das ist die Form jedes iter-Adapters.
+        // The actual target case: a class with TWO type parameters satisfying an interface with ONE, and
+        // with a closure as a field. That is the shape of every iter adapter.
         Assert.Equal(60, Run("""
             import std.iter { Iterator, RangeIterator };
 
