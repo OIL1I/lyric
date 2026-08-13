@@ -10,15 +10,14 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Die Pfad-Helfer aus `std.io.file` (M8b/S8) — <b>alle in Lyric</b>.
+/// The path helpers from `std.io.file`, ALL WRITTEN IN LYRIC.
 ///
-/// <para>Ein Pfad ist ein String, und Trennzeichen zu suchen kann die Sprache selbst. Der Host
-/// würde hier nur seine eigene Plattform-Konvention hineinbringen, und die ist bei einem
-/// plattformneutralen Bytecode (ADR-013) genau das Falsche: dieselbe `.lyrbc` muss auf jedem
-/// System denselben Pfad ergeben.</para>
+/// <para>A path is a string, and searching for separators is something the language can do itself. The
+/// host would only bring its own platform convention here, and with a platform-neutral bytecode that is
+/// exactly the wrong thing: the same `.lyrbc` has to produce the same path on every system.</para>
 ///
-/// <para>Deshalb gelten <b>beide</b> Trennzeichen. Windows versteht `/`, und ein Skript, das auf
-/// beiden Systemen läuft, soll nicht raten müssen, welches gerade gilt.</para>
+/// <para>BOTH separators therefore apply. Windows understands `/`, and a script running on both systems
+/// should not have to guess which one is current.</para>
 /// </summary>
 public class PathTests
 {
@@ -63,9 +62,9 @@ public class PathTests
 
     [Theory]
     [InlineData("joinPath(\"a/b\", \"c.txt\")", "[a/b/c.txt]")]
-    [InlineData("joinPath(\"a/\", \"c\")", "[a/c]")]          // Trenner nicht verdoppeln
+    [InlineData("joinPath(\"a/\", \"c\")", "[a/c]")]          // do not double the separator
     [InlineData("joinPath(\"a\", \"/c\")", "[a/c]")]
-    [InlineData("joinPath(\"a/\", \"/c\")", "[a/c]")]         // beide haben einen
+    [InlineData("joinPath(\"a/\", \"/c\")", "[a/c]")]         // both have one
     [InlineData("joinPath(\"\", \"x\")", "[x]")]
     [InlineData("joinPath(\"x\", \"\")", "[x]")]
     public void JoinPath_never_doubles_or_drops_the_separator(string expression, string expected) =>
@@ -73,26 +72,26 @@ public class PathTests
 
     [Theory]
     [InlineData("fileName(\"a/b/c.txt\")", "[c.txt]")]
-    [InlineData("fileName(\"c.txt\")", "[c.txt]")]            // ohne Ordner
-    [InlineData("fileName(\"a/b/\")", "[]")]                  // endet auf Trenner
+    [InlineData("fileName(\"c.txt\")", "[c.txt]")]            // without a folder
+    [InlineData("fileName(\"a/b/\")", "[]")]                  // ends in a separator
     [InlineData("parentDir(\"a/b/c.txt\")", "[a/b]")]
-    [InlineData("parentDir(\"c.txt\")", "[]")]                // kein Ordner
-    [InlineData("parentDir(\"/x\")", "[/]")]                  // Wurzel bleibt Wurzel
+    [InlineData("parentDir(\"c.txt\")", "[]")]                // no folder
+    [InlineData("parentDir(\"/x\")", "[/]")]                  // the root stays the root
     public void The_name_and_the_parent_split_at_the_last_separator(
         string expression, string expected) =>
         Assert.Equal(expected, Value(expression));
 
     /// <summary>
-    /// Ein führender Punkt ist <b>keine</b> Endung: `.gitignore` heisst so, es ist kein
-    /// „gitignore-Datei ohne Namen".
+    /// A leading dot is NO extension: `.gitignore` is called that, it is not a "gitignore file without a
+    /// name".
     /// </summary>
-    /// <remarks>Diese Regel unterscheidet sich zwischen Sprachen, und sie hier festzuhalten ist
-    /// billiger, als sie jemanden herausfinden zu lassen.</remarks>
+    /// <remarks>This rule differs between languages, and holding it here is cheaper than letting someone
+    /// find it out.</remarks>
     [Theory]
     [InlineData("extension(\"a/b/c.txt\")", "[txt]")]
     [InlineData("extension(\".gitignore\")", "[]")]
     [InlineData("extension(\"ohne\")", "[]")]
-    [InlineData("extension(\"a.tar.gz\")", "[gz]")]           // nur die letzte
+    [InlineData("extension(\"a.tar.gz\")", "[gz]")]           // the last one only
     [InlineData("stem(\"a/b/c.txt\")", "[c]")]
     [InlineData("stem(\".gitignore\")", "[.gitignore]")]
     [InlineData("stem(\"ohne\")", "[ohne]")]
@@ -109,8 +108,8 @@ public class PathTests
 
     [Fact]
     public void Both_separators_are_recognised() =>
-        // Der Punkt der ganzen Übung: dieselbe .lyrbc muss auf jedem System denselben Pfad
-        // ergeben. Ein Host-Native brächte hier seine eigene Konvention mit.
+        // The point of the whole exercise: the same .lyrbc has to produce the same path on every system.
+        // A host native would bring its own convention here.
         Assert.Equal("[c.txt]", Out("""
             import std.io.console { println };
             import std.io.file { fileName };
@@ -137,18 +136,17 @@ public class PathTests
             }
             """));
 
-    // ------------------------------------------------- die beiden Fixes aus diesem Slice
+    // ------------------------------------------------- the two fixes from this slice
 
     /// <summary>
-    /// Ein optionales Native über einem <b>Skalar</b> liefert seinen Wert.
-    /// </summary>
-    /// <remarks>
-    /// <para><c>size</c> ist das erste optionale Native mit einem Skalar-Rückgabetyp; alle
-    /// bisherigen liefern <c>string</c> und tragen ihre Referenz selbst. Bei einem <c>?int</c>
-    /// markiert erst ein Marker in <c>Ref</c> die Anwesenheit — jedes Bitmuster ist eine gültige
-    /// Zahl, es gibt also keins für „kein Wert" (Bytecode.md §5).</para>
-    /// <para>Ohne <c>LyrValue.Some</c> gab es still <c>null</c> zurück: die Datei existierte,
-    /// <c>isFile</c> sah sie, und <c>size</c> meldete nichts.</para>
+    /// An optional native over a SCALAR yields its value.
+    ///
+    /// <para><c>size</c> is the first optional native with a scalar return type; all the earlier ones
+    /// yield <c>string</c> and carry their reference themselves. For a <c>?int</c> only a marker in
+    /// <c>Ref</c> marks presence — every bit pattern is a valid number, so there is none for "no
+    /// value".</para>
+    /// <para>Without <c>LyrValue.Some</c> it silently returned <c>null</c>: the file existed,
+    /// <c>isFile</c> saw it, and <c>size</c> reported nothing.</para>
     /// </remarks>
     [Fact]
     public void An_optional_native_over_a_scalar_returns_its_value() =>
@@ -168,12 +166,11 @@ public class PathTests
             """));
 
     /// <summary>
-    /// <c>?T[] ?? []</c> — ein leeres Array-Literal bekommt seinen Elementtyp aus dem
-    /// <c>??</c>-Kontext.
+    /// <c>?T[] ?? []</c> — an empty array literal takes its element type from the context.
     /// </summary>
-    /// <remarks><c>CheckCoalesce</c> fragt nur <see cref="TypeChecker"/>s <c>IsAssignable</c> und
-    /// nicht <c>CheckAssignable</c> — die Anpassung, die für Argumente schon da war, wurde dort
-    /// nie erreicht. Beide Stellen benutzen jetzt dieselbe Funktion.</remarks>
+    /// <remarks><c>CheckCoalesce</c> asks only <see cref="TypeChecker"/>'s <c>IsAssignable</c> rather than
+    /// <c>CheckAssignable</c>, so the adaptation that already existed for arguments was never reached
+    /// there. Both places now use the same function.</remarks>
     [Fact]
     public void An_empty_array_literal_takes_its_type_from_the_coalesce() =>
         Assert.Equal("0 2", Out("""

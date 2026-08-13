@@ -9,18 +9,17 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Ein Typpfad mit Argumenten in Wert-Position: <c>Pair&lt;int&gt;.of(3)</c> (Sprache.md §6.2).
+/// A type path with arguments in value position: <c>Pair&lt;int&gt;.of(3)</c>.
 ///
-/// <para><b>Bis 2026-08-12 gab es die Form nicht.</b> Der Parser las <c>Pair</c> als Bezeichner
-/// und <c>&lt;</c> als Vergleich, und danach stolperte er über den Punkt. Eine statische Fabrik
-/// auf einem generischen Typ war damit unerreichbar — <c>std.collections</c> trägt den Beleg als
-/// Kommentar: <c>emptyList</c> ist eine freie Funktion, „weil eine statische Methode auf einer
-/// generischen Instanz nicht ausdrückbar ist".</para>
+/// <para>The form did not exist. The parser read <c>Pair</c> as an identifier and the <c>&lt;</c> as a
+/// comparison, and then stumbled over the dot. A static factory on a generic type was therefore
+/// unreachable — <c>std.collections</c> carries the evidence as a comment: <c>emptyList</c> is a free
+/// function "because a static method on a generic instance is not expressible".</para>
 ///
-/// <para><b>Die Erkennung kostet keine Mehrdeutigkeit.</b> Das <c>&lt;</c> gilt als
-/// Typargument-Liste, wenn es balanciert schließt und ein <c>.</c> folgt — und ein Punkt hinter
-/// einer Vergleichskette (<c>a &lt; b &gt; .c</c>) ist ohnehin kein gültiger Ausdruck. Dieselbe
-/// Regel zieht §6.1 seit 2026-08-07 für <c>f&lt;int&gt;()</c>.</para>
+/// <para>THE DETECTION COSTS NO AMBIGUITY. The <c>&lt;</c> counts as a type argument list when it
+/// closes balanced and a <c>.</c> follows, and a dot after a comparison chain
+/// (<c>a &lt; b &gt; .c</c>) is not a valid expression anyway. The same rule applies to
+/// <c>f&lt;int&gt;()</c>.</para>
 /// </summary>
 public class GenericTypePathTests
 {
@@ -66,7 +65,7 @@ public class GenericTypePathTests
 
         """;
 
-    // ------------------------------------------------------------------ was jetzt geht
+    // ------------------------------------------------------------------ what works now
 
     [Fact]
     public void A_static_factory_on_a_generic_type_is_callable() =>
@@ -74,8 +73,8 @@ public class GenericTypePathTests
             fn main(): int { return Pair<int>.of(3).first(); }
             """));
 
-    /// <summary>Der Rückgabetyp der Fabrik ist <c>Pair&lt;T&gt;</c> und muss als
-    /// <c>Pair&lt;int&gt;</c> ankommen — ohne Substitution stünde dort ein <c>T</c>.</summary>
+    /// <summary>The factory's return type is <c>Pair&lt;T&gt;</c> and has to arrive as
+    /// <c>Pair&lt;int&gt;</c>; without a substitution a <c>T</c> would stand there.</summary>
     [Fact]
     public void The_result_carries_the_type_argument() =>
         Assert.Equal(7, Run(Pair + """
@@ -85,8 +84,8 @@ public class GenericTypePathTests
             }
             """));
 
-    /// <summary>Zwei Instanziierungen sind zwei Funktionen. Ohne das teilte sich <c>int</c> und
-    /// <c>bool</c> einen Rumpf, und die Monomorphisierung wäre keine.</summary>
+    /// <summary>Two instantiations are two functions. Without that, <c>int</c> and <c>bool</c> would share
+    /// one body and the monomorphization would be none.</summary>
     [Fact]
     public void Two_instantiations_do_not_share_a_body() =>
         Assert.Equal(1, Run("""
@@ -102,7 +101,7 @@ public class GenericTypePathTests
             }
             """));
 
-    /// <summary>Zwei Typparameter — die Argumente müssen der Reihe nach zugeordnet werden.
+    /// <summary>Two type parameters: the arguments have to be assigned in order.
     /// </summary>
     [Fact]
     public void Two_type_parameters_keep_their_order() =>
@@ -118,8 +117,8 @@ public class GenericTypePathTests
             }
             """));
 
-    /// <summary>Ein verschachteltes Typargument: <c>Pair&lt;Pair&lt;int&gt;&gt;</c> schließt mit
-    /// <c>&gt;&gt;</c>, und der Lookahead muss das als zwei Ebenen lesen.</summary>
+    /// <summary>A nested type argument: <c>Pair&lt;Pair&lt;int&gt;&gt;</c> closes with a <c>&gt;&gt;</c>,
+    /// and the lookahead has to read that as two levels.</summary>
     [Fact]
     public void A_nested_type_argument_closes_with_a_shift_token() =>
         Assert.Equal(9, Run(Pair + """
@@ -130,7 +129,7 @@ public class GenericTypePathTests
             }
             """));
 
-    /// <summary>Eine Klasse statt eines Structs — derselbe Weg, anderer Speicher.</summary>
+    /// <summary>A class rather than a struct: the same route, a different store.</summary>
     [Fact]
     public void It_works_on_a_class_too() =>
         Assert.Equal(4, Run("""
@@ -145,9 +144,9 @@ public class GenericTypePathTests
     // ------------------------------------------------------------------ counter-checks
 
     /// <summary>
-    /// <b>Die wichtigste Zusicherung.</b> Ein <c>&lt;</c> bleibt ein Vergleich, wenn kein
-    /// balanciertes <c>&gt;</c> mit folgendem <c>.</c> dahinter steht. Ohne diesen Test wäre eine
-    /// zu gierige Erkennung grün — und sie kostete keine Diagnose, sondern eine falsche Deutung.
+    /// The most important promise. A <c>&lt;</c> stays a comparison when no balanced <c>&gt;</c> with a
+    /// following <c>.</c> stands behind it. Without this test a detection that is too greedy would be
+    /// green, and it would cost no diagnostic but a wrong reading.
     /// </summary>
     [Fact]
     public void A_comparison_stays_a_comparison() =>
@@ -159,8 +158,8 @@ public class GenericTypePathTests
             }
             """));
 
-    /// <summary>Und die bösere Form: ein Vergleich, hinter dem tatsächlich ein Punkt steht.
-    /// <c>(a &lt; b) == c.d</c> darf nicht als Typpfad gelesen werden.</summary>
+    /// <summary>And the nastier form: a comparison really followed by a dot. <c>(a &lt; b) == c.d</c> must
+    /// not be read as a type path.</summary>
     [Fact]
     public void A_comparison_followed_by_a_member_access_stays_a_comparison() =>
         Assert.Equal(1, Run("""
@@ -174,8 +173,7 @@ public class GenericTypePathTests
             }
             """));
 
-    /// <summary>Der nicht-generische Fall geht weiter seinen alten Weg — er braucht den neuen
-    /// Knoten nicht.</summary>
+    /// <summary>The non-generic case still takes its old route: it does not need the new node.</summary>
     [Fact]
     public void A_static_method_on_a_plain_type_still_works() =>
         Assert.Equal(2, Run("""
@@ -183,7 +181,7 @@ public class GenericTypePathTests
             fn main(): int { return P.neu().n; }
             """));
 
-    /// <summary>Und der generische Struct-Init, der seit P8 geht.</summary>
+    /// <summary>And the generic struct initializer.</summary>
     [Fact]
     public void A_generic_struct_init_still_works() =>
         Assert.Equal(6, Run(Pair + """
@@ -193,9 +191,9 @@ public class GenericTypePathTests
     // ------------------------------------------------------------------ Diagnosen
 
     /// <summary>
-    /// Ohne Argumente sagt es das jetzt. Vorher meldete es „cannot assign 'int' to 'T'" — eine
-    /// Auskunft über die Folge, nicht über die Ursache, und sie zeigte auf das Argument statt auf
-    /// den fehlenden Typ.
+    /// Without arguments it now says so. It used to report "cannot assign 'int' to 'T'", a statement about
+    /// the consequence rather than about the cause, pointing at the argument rather than at the missing
+    /// type.
     /// </summary>
     [Fact]
     public void A_generic_type_without_arguments_says_so()
@@ -207,29 +205,29 @@ public class GenericTypePathTests
         Assert.Contains("Pair<T>.of", reported.Message, StringComparison.Ordinal);
     }
 
-    /// <summary>Die falsche Anzahl Argumente ist eine eigene Meldung.</summary>
+    /// <summary>The wrong number of arguments is a message of its own.</summary>
     [Fact]
     public void The_wrong_number_of_type_arguments_is_reported() =>
         Assert.Contains(Check(Pair + """
             fn main(): int { return Pair<int, bool>.of(3).a; }
             """), d => d.Code == "LYR-SEM0026");
 
-    /// <summary>Ein falsches Typargument wird am Aufruf bemerkt, nicht erst im Rumpf.</summary>
+    /// <summary>A wrong type argument is noticed at the call rather than only in the body.</summary>
     [Fact]
     public void A_wrong_argument_type_is_rejected() =>
         Assert.Contains(Check(Pair + """
             fn main(): int { return Pair<int>.of(true).a; }
             """), d => d.Code == "LYR-SEM0001");
 
-    /// <summary>Eine Instanzmethode über den Typpfad bleibt abgelehnt (ADR-014) — sie braucht
-    /// einen Empfänger, und daran ändern Typargumente nichts.</summary>
+    /// <summary>An instance method through the type path stays rejected: it needs a receiver, and type
+    /// arguments change nothing about that.</summary>
     [Fact]
     public void An_instance_method_through_a_type_path_is_still_rejected() =>
         Assert.Contains(Check(Pair + """
             fn main(): int { return Pair<int>.first(); }
             """), d => d.Code == "LYR-SEM0055");
 
-    /// <summary>Ein Typpfad allein ist kein Wert — dieselbe Meldung wie für jeden Typnamen.
+    /// <summary>A type path alone is no value: the same message as for any type name.
     /// </summary>
     [Fact]
     public void A_type_path_alone_is_not_a_value() =>
