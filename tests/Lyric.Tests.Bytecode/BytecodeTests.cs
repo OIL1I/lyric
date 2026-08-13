@@ -11,15 +11,15 @@ using Lyric.Sema;
 namespace Lyric.Tests.Bytecode;
 
 /// <summary>
-/// Tests für Writer, Reader und Disassembler (M5/P5).
+/// Tests for the writer, the reader and the disassembler.
 ///
-/// <para><b>Der Round-Trip ist die stärkste Aussage</b>: schreiben → lesen → wieder schreiben muss
-/// byte-identisch sein. Das validiert Writer und Reader gegeneinander, ohne dass einer der beiden
-/// als Referenz herhalten muss. Ein Golden-Snapshot allein könnte einen Fehler festschreiben, der
-/// in beiden Richtungen konsistent ist — der Round-Trip nicht.</para>
+/// <para>THE ROUND TRIP IS THE STRONGEST STATEMENT: write, read, write again has to be byte-identical.
+/// That validates writer and reader against each other without either serving as the reference. A
+/// golden snapshot alone could fix a fault that is consistent in both directions; the round trip cannot.
+/// </para>
 ///
-/// <para>Eingaben sind dieselben Quell-Fixtures wie beim Lowering. Damit hängt P5 direkt an P4s
-/// Netz statt an handgebauten Bytecode-Modulen.</para>
+/// <para>The inputs are the same source fixtures as for the lowering, so this hangs on the lowering's
+/// net rather than on hand-built bytecode modules.</para>
 /// </summary>
 public class BytecodeTests
 {
@@ -47,7 +47,7 @@ public class BytecodeTests
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
-    /// <summary>Die Lowering-Fixtures aus P4 — Quelle und Erwartung liegen dort als Paar.</summary>
+    /// <summary>The lowering fixtures: source and expectation lie there as a pair.</summary>
     private static string FixtureDir() =>
         Path.Combine(RepoRoot(), "tests", "Lyric.Tests.Ir", "golden", "lowering");
 
@@ -65,7 +65,7 @@ public class BytecodeTests
     private static IrModule Fixture(string name) =>
         LowerSource(File.ReadAllText(Path.Combine(FixtureDir(), name + ".lyr"), Encoding.UTF8));
 
-    // ------------------------------------------------------------------ 1) Round-Trip
+    // ------------------------------------------------------------------ 1) the round trip
 
     [Theory]
     [MemberData(nameof(Fixtures))]
@@ -74,8 +74,8 @@ public class BytecodeTests
         var first = BytecodeWriter.Write(Fixture(name));
         var module = BytecodeReader.ReadOrThrow(first);
 
-        // Zweiter Schreibvorgang aus derselben IR — der Reader hat den ersten validiert, also
-        // beweist Gleichheit, dass nichts beim Lesen verlorenging oder umgedeutet wurde.
+        // A second write from the same IR: the reader validated the first, so equality proves that nothing
+        // was lost or reinterpreted while reading.
         var second = BytecodeWriter.Write(Fixture(name));
 
         Assert.Equal(first, second);
@@ -96,9 +96,8 @@ public class BytecodeTests
     [Fact]
     public void Output_is_deterministic()
     {
-        // ADR-013 verlangt byte-identischen Output für gleichen Input. Ohne das wären
-        // Golden-Tests und Bytecode-Diffs wertlos. Die Stolperfalle wäre ein String-Pool in
-        // Hash- statt Erst-Verwendungs-Reihenfolge.
+        // The same input has to give byte-identical output. Without that, golden tests and bytecode diffs
+        // would be worthless. The trap would be a string pool in hash order rather than first-use order.
         const string source = """
             fn pick(flag: bool): string { return if (flag) "yes" else "no"; }
             fn again(flag: bool): string { return if (flag) "no" else "yes"; }
@@ -116,18 +115,18 @@ public class BytecodeTests
             fn b(): string { return "shared"; }
             """)));
 
-        // Funktionsnamen zuerst (sie werden vor dem Code internt), dann die Literale.
+        // Function names first, since they are interned before the code, then the literals.
         Assert.Equal(new[] { "a", "b", "shared" }, module.Strings.Select(s => s.Split('.')[^1]));
     }
 
-    // ------------------------------------------------------------------ 2) Stack-Disziplin
+    // ------------------------------------------------------------------ 2) stack discipline
 
     [Theory]
     [MemberData(nameof(Fixtures))]
     public void Declared_max_stack_matches_the_real_depth(string name)
     {
-        // Der Reader prüft, dass die Tiefe nie die angekündigte übersteigt und an jeder
-        // Blockgrenze 0 ist. Hier zusätzlich: die Angabe ist nicht nur eine Obergrenze ins Blaue.
+        // The reader checks that the depth never exceeds the announced one and is 0 at every block
+        // boundary. Additionally here: the figure is not just an upper bound plucked from the air.
         var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(Fixture(name)));
 
         Assert.All(module.Functions, f =>
@@ -140,21 +139,21 @@ public class BytecodeTests
     [Fact]
     public void Scheduler_keeps_values_on_the_stack_instead_of_spilling()
     {
-        // Der eigentliche Zweck des Schedulings: 'return a + b' sind vier Instruktionen, nicht
-        // zehn. Ginge jedes Temp in einen Slot, stünden hier zusätzlich drei stloc und drei ldloc
-        // — und die Slot-Tabelle hätte fünf Einträge statt zwei.
+        // The actual purpose of the scheduling: 'return a + b' is four instructions rather than ten. If
+        // every temp went into a slot, three stloc and three ldloc would stand here as well, and the slot
+        // table would have five entries instead of two.
         var module = BytecodeReader.ReadOrThrow(
             BytecodeWriter.Write(LowerSource("fn add(a: int, b: int): int { return a + b; }")));
 
         var function = Assert.Single(module.Functions);
-        Assert.Equal(2, function.SlotTypes.Count); // nur die beiden Parameter, kein Temp-Slot
+        Assert.Equal(2, function.SlotTypes.Count); // the two parameters only, with no temp slot
 
         var body = Disassembler.Dump(module).Split("bb0:\n")[1].TrimEnd('}', '\n');
         Assert.Equal(new[] { "ldloc 0", "ldloc 1", "add i64", "retval" },
             body.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.Trim()));
     }
 
-    // ------------------------------------------------------------------ 3) Reader-Robustheit
+    // ------------------------------------------------------------------ 3) reader robustness
 
     private static byte[] ValidBytes() =>
         BytecodeWriter.Write(LowerSource("fn f(): int { return 1; }"));
@@ -182,7 +181,7 @@ public class BytecodeTests
     public void Rejects_an_unknown_major_version()
     {
         var bytes = ValidBytes();
-        bytes[4] = 0xFF; // Major-Version, little-endian direkt hinter dem Magic
+        bytes[4] = 0xFF; // the major version, little-endian directly behind the magic
         bytes[5] = 0x00;
         AssertRejected(bytes, BytecodeDiagnostics.UnsupportedVersion);
     }
@@ -197,7 +196,7 @@ public class BytecodeTests
     [Fact]
     public void Rejects_a_corrupted_opcode()
     {
-        // Letztes Byte ist der Terminator der letzten Funktion. 0x7F ist kein definierter Opcode.
+        // The last byte is the terminator of the last function. 0x7F is no defined opcode.
         var bytes = ValidBytes();
         bytes[^1] = 0x7F;
         AssertRejected(bytes, BytecodeDiagnostics.UnknownEncoding);
@@ -206,8 +205,8 @@ public class BytecodeTests
     [Fact]
     public void Reader_never_throws_on_arbitrary_bytes()
     {
-        // Der Leser ist die Stelle, an der nicht vertrauenswürdige Bytes ins System kommen. Er
-        // darf auf keiner Eingabe mit einer .NET-Ausnahme aussteigen, nur mit einer Diagnose.
+        // The reader is where untrusted bytes enter the system. It must not bail out with a .NET exception
+        // on any input, only with a diagnostic.
         var valid = ValidBytes();
         var random = new Random(20260730); // fester Seed: reproduzierbar
 
@@ -224,14 +223,14 @@ public class BytecodeTests
         }
     }
 
-    // ------------------------------------------------------------------ 4) Spec-Konformanz
+    // ------------------------------------------------------------------ 4) conformance to the spec
 
     [Fact]
     public void Spec_documents_every_opcode_and_type_tag()
     {
-        // docs/Bytecode.md ist normativ (ADR-013): der C#-Code ist eine Implementierung der Spec,
-        // nicht ihre Definition. Dieser Test bindet beide aneinander — sonst driftet die Spec
-        // beim ersten neuen Opcode, und das Ziel „jemand baut daraus eine zweite Runtime" ist tot.
+        // docs/Bytecode.md is normative: the C# code is an implementation of the specification rather than
+        // its definition. This test binds the two together; otherwise the specification drifts at the first
+        // new opcode and the goal "someone builds a second runtime from it" is dead.
         var spec = File.ReadAllText(Path.Combine(RepoRoot(), "docs", "Bytecode.md"), Encoding.UTF8);
 
         foreach (var op in System.Enum.GetValues<Op>())
@@ -250,13 +249,12 @@ public class BytecodeTests
         Assert.Contains($"{Format.VersionMajor}.{Format.VersionMinor}", spec, StringComparison.Ordinal);
     }
 
-    // ------------------------------------------------------------------ 5) Gate-Programm
+    // ------------------------------------------------------------------ 5) the gate program
 
     [Fact]
     public void Gate_program_compiles_to_bytecode_and_disassembles()
     {
-        // M5s Exit-Kriterium, als Test: examples/arith.lyr compiliert zu Bytecode, und die
-        // Disassembly zeigt sinnvolle Instruktionen.
+        // examples/arith.lyr compiles to bytecode and the disassembly shows meaningful instructions.
         var path = Path.Combine(RepoRoot(), "examples", "arith.lyr");
         var ir = LowerSource(File.ReadAllText(path, Encoding.UTF8));
 
@@ -268,7 +266,7 @@ public class BytecodeTests
         Assert.Contains("call main.sumTo", text, StringComparison.Ordinal);
         Assert.Contains("condbr bb", text, StringComparison.Ordinal);
 
-        // Kein redundantes store/load-Paar: das wäre das Zeichen, dass das Scheduling nicht greift.
+        // No redundant store/load pair: that would be the sign that the scheduling does not apply.
         Assert.DoesNotContain("stloc 0\n    ldloc 0", text, StringComparison.Ordinal);
     }
 }

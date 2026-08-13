@@ -8,38 +8,33 @@ using Lyric.Sema;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Sema und Backend sind sich einig: <b>was die Sema durchlässt, muss das Backend können</b>.
+/// Sema and backend agree: WHAT THE SEMA LETS THROUGH THE BACKEND HAS TO HANDLE.
 ///
-/// <para>Für jede Kombination aus Typ und Operation gibt es genau zwei erlaubte Ausgänge — eine
-/// Diagnose, oder ein Programm, das durchs Lowering kommt. Ein dritter Ausgang existiert heute
-/// trotzdem: die <see cref="InternalCompilationException"/>. Sie bedeutet, dass die Sema etwas
-/// für gültig hielt, das der Verifier ablehnt — und der Nutzer bekommt einen <b>Stack-Trace statt
-/// einer Fehlermeldung</b>.</para>
+/// <para>For every combination of type and operation there are exactly two allowed outcomes — a
+/// diagnostic, or a program that gets through the lowering. A third outcome exists all the same: the
+/// <see cref="InternalCompilationException"/>. It means the sema held something valid that the verifier
+/// rejects, and the user gets A STACK TRACE INSTEAD OF AN ERROR MESSAGE.</para>
 ///
-/// <para><b>Warum das eine Matrix ist und keine Liste von Beispielen.</b> In einer einzigen
-/// Sitzung (2026-08-07) sind vier solche Abstürze aufgetaucht: ein Modul-<c>let</c> mit
-/// <c>T[]</c>, ein f-String mit <c>int8</c>, <c>==</c> auf einem <c>struct</c> und
-/// <c>string &lt; string</c>. Gefunden wurde jeder davon durch <b>Zufall</b> — beim Bauen von
-/// etwas anderem, das zufällig danebenlag. Vier Zufälle sind kein Zufall mehr, sondern eine
-/// strukturelle Lücke: die Regeln stehen an zwei Stellen, und niemand hat sie je gegeneinander
-/// gehalten.</para>
+/// <para>WHY THIS IS A MATRIX RATHER THAN A LIST OF EXAMPLES. In a single session four such crashes
+/// appeared: a module <c>let</c> with a <c>T[]</c>, an f-string with an <c>int8</c>, <c>==</c> on a
+/// <c>struct</c>, and <c>string &lt; string</c>. Each was found BY ACCIDENT, while building something
+/// else that happened to lie next to it. Four accidents are no accident but a structural gap: the rules
+/// stand at two places and nobody ever held them against each other.</para>
 ///
-/// <para>Diese Klasse hält sie gegeneinander. Sie fängt keine <i>bekannten</i> Fälle, sondern die
-/// <i>Klasse</i> — und ein neuer Typ oder Operator wird hier automatisch mitgeprüft, sobald er in
-/// den Listen steht.</para>
+/// <para>This class holds them against each other. It catches not the KNOWN cases but the CLASS, and a
+/// new type or operator is checked here automatically as soon as it stands in the lists.</para>
 ///
-/// <para><b>Was NICHT geprüft wird</b>: ob die Sema richtig entscheidet. Eine Diagnose gilt hier
-/// als Erfolg, auch wenn sie sachlich falsch wäre. Dieser Test beantwortet genau eine Frage —
-/// „stürzt der Compiler ab?" — und Tests, die mehrere Fragen beantworten, sagen bei Rot nicht
-/// mehr, welche.</para>
+/// <para>WHAT IS NOT CHECKED: whether the sema decides correctly. A diagnostic counts as success here
+/// even if it were factually wrong. This test answers exactly one question — "does the compiler
+/// crash?" — and tests answering several questions no longer say which one failed when red.</para>
 /// </summary>
 public class AgreementTests
 {
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
-    /// <summary>Ein Wert je Typ: die Deklaration und der Ausdruck, der ihn liefert. Der Name
-    /// enthaelt den Typ, damit zwei Werte desselben Typs nebeneinander passen.</summary>
+    /// <summary>One value per type: the declaration and the expression yielding it. The name contains the
+    /// type, so two values of the same type fit side by side.</summary>
     private static readonly (string Name, string Declaration, string Expression)[] Values =
     [
         ("int",     "let v_int: int = 1;",          "v_int"),
@@ -60,7 +55,7 @@ public class AgreementTests
         ("fn",      "let v_fn = (n: int) => n;",    "v_fn"),
     ];
 
-    /// <summary>Einstellige Operationen. <c>{0}</c> ist der Wert.</summary>
+    /// <summary>Unary operations. <c>{0}</c> is the value.</summary>
     private static readonly (string Name, string Template)[] Unary =
     [
         ("interpolate", "println(f\"{{{0}}}\");"),
@@ -79,7 +74,7 @@ public class AgreementTests
         ("coalesceNull", "let r = ({0}) ?? ({0});"),
     ];
 
-    /// <summary>Zweistellige Operationen über zwei Werten desselben Typs.</summary>
+    /// <summary>Binary operations over two values of the same type.</summary>
     private static readonly (string Name, string Template)[] Binary =
     [
         ("add", "let r = ({0}) + ({1});"),
@@ -140,8 +135,7 @@ public class AgreementTests
                    + "\nfn main(): int { return 0; }\n",
         };
 
-        // Die eigentliche Zusicherung. Eine Diagnose ist in Ordnung, ein uebersetztes Programm
-        // auch — nur ein Wurf ist es nicht.
+        // The actual promise. A diagnostic is fine and so is a compiled program; only a throw is not.
         var exception = Record.Exception(() => Compile(source));
 
         Assert.True(exception is null,
@@ -153,16 +147,16 @@ public class AgreementTests
         Prelude + "\nfn main(): int {\n    " + declarations + "\n    " + statement
         + "\n    return 0;\n}\n";
 
-    /// <summary>Dieselbe Deklaration ein zweites Mal, unter anderem Namen.</summary>
+    /// <summary>The same declaration a second time, under a different name.</summary>
     private static string Renamed(string declaration, string name, string prefix = "w_") =>
         declaration.Replace("v_" + name, prefix + name);
 
     /// <summary>
-    /// Uebersetzt bis zum Ende des Lowerings — inklusive Verifier, denn genau dort schlaegt die
-    /// Uneinigkeit zu.
+    /// Compiles to the end of the lowering, the verifier included, because that is exactly where the
+    /// disagreement strikes.
     /// </summary>
-    /// <remarks>Wird NICHT ausgefuehrt: ein <c>panic</c> zur Laufzeit ist ein gueltiger Ausgang
-    /// (ein Index daneben, ein char ausserhalb des Bereichs) und hier keine Aussage.</remarks>
+    /// <remarks>NOT executed: a <c>panic</c> at runtime is a valid outcome — an index out of range, a char
+    /// outside its range — and says nothing here.</remarks>
     private static void Compile(string source)
     {
         var sources = new SourceManager();
@@ -179,7 +173,7 @@ public class AgreementTests
         var binding = compilation.Resolve();
         var types = Semantics.Analyze(compilation, binding, diagnostics);
 
-        // Eine Diagnose ist ein gueltiger Ausgang — dann gibt es nichts zu lowern.
+        // A diagnostic is a valid outcome; then there is nothing to lower.
         if (diagnostics.HasErrors) return;
 
         ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: true);

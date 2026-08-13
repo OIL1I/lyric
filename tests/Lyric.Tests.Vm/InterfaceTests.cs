@@ -9,12 +9,11 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Interfaces und vtable-Dispatch (M7/P3), über die gesamte Pipeline: Quelle → Sema → IR →
-/// Bytecode → Ausführung.
+/// Interfaces and vtable dispatch, over the whole pipeline: source, sema, IR, bytecode, execution.
 ///
-/// <para>Der Kern jedes Tests hier ist derselbe: <b>dieselbe Aufrufstelle, verschiedene
-/// Implementierungen</b>. Ein Test, der nur einen einzigen implementierenden Typ kennt, würde auch
-/// dann grün bleiben, wenn der Dispatch statisch an die erstbeste Funktion bände.</para>
+/// <para>The core of every test here is the same: THE SAME CALL SITE, DIFFERENT IMPLEMENTATIONS. A test
+/// knowing only a single implementing type would stay green even if the dispatch bound statically to
+/// the first function it found.</para>
 /// </summary>
 public class InterfaceTests
 {
@@ -39,7 +38,7 @@ public class InterfaceTests
             NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
-    /// <summary>Zwei Klassen, ein Interface, eine Aufrufstelle.</summary>
+    /// <summary>Two classes, one interface, one call site.</summary>
     private const string TwoShapes = """
         interface Sized {
             fn size(): int;
@@ -61,7 +60,7 @@ public class InterfaceTests
     [Fact]
     public void The_same_call_site_reaches_two_implementations()
     {
-        // DER Test von P3. Waere der Dispatch statisch, kaeme zweimal dasselbe heraus.
+        // The core test. Were the dispatch static, the same value would come out twice.
         Assert.Equal(3 + 700, Run(TwoShapes + """
 
             fn main(): int {
@@ -73,12 +72,12 @@ public class InterfaceTests
     [Fact]
     public void Dispatch_follows_the_value_not_the_declared_type()
     {
-        // Dieselbe Variable, nacheinander mit zwei konkreten Typen belegt.
+        // The same variable, filled in turn with two concrete types.
         //
-        // Die Zuweisung geht ueber Fabriken statt direkt ueber 's = Small { n = 5 };': der Parser
-        // erkennt einen StructInit heute nicht auf der rechten Seite einer Zuweisung im
-        // Statement-Kontext, obwohl Sprache.md §6.2 ihn "in jeder Wert-Position" erlaubt — die
-        // Sperre gilt dort nur dem ANFANG eines ExprStmt. Eigener Befund, nichts mit P3 zu tun.
+        // The assignment goes through factories rather than directly through 's = Small { n = 5 };': the
+        // parser does not recognise a struct initializer on the right of an assignment in statement
+        // context, although the specification allows it "in every value position" — the block applies to
+        // the START of an ExprStmt only.
         Assert.Equal(500 - 5, Run(TwoShapes + """
 
             fn small(n: int): Small { return Small { n = n }; }
@@ -116,8 +115,8 @@ public class InterfaceTests
     [Fact]
     public void An_override_beats_the_default()
     {
-        // Sprache.md §3.5: eigenes Member vor Interface-Default. Die Aufloesung faellt im
-        // Lowering — hier wird geprueft, dass sie richtig herum faellt.
+        // An own member comes before an interface default. The resolution is decided in the lowering, and
+        // this checks that it falls the right way round.
         Assert.Equal(99, Run("""
             interface Greeter {
                 fn base(): int;
@@ -139,9 +138,9 @@ public class InterfaceTests
     [Fact]
     public void This_inside_a_default_method_dispatches_virtually()
     {
-        // Der subtile Fall: 'greet' ist geerbt und ruft 'base' — und 'base' muss die
-        // Implementierung des KONKRETEN Typs treffen, nicht irgendeine. Waere 'this' in einer
-        // Default-Methode statisch gebunden, kaeme hier zweimal dieselbe Zahl heraus.
+        // The subtle case: 'greet' is inherited and calls 'base', and 'base' has to hit the implementation
+        // of the CONCRETE type rather than just any. Were 'this' statically bound in a default method, the
+        // same number would come out twice.
         Assert.Equal(10 + 20, Run("""
             interface Greeter {
                 fn base(): int;
@@ -165,8 +164,8 @@ public class InterfaceTests
     [Fact]
     public void A_mutating_method_reaches_the_underlying_object()
     {
-        // Der Fat Pointer traegt dieselbe Referenz — eine Mutation ueber das Interface muss am
-        // Original ankommen. Waere beim mkiface kopiert worden, bliebe der Wert bei 1.
+        // The fat pointer carries the same reference: a mutation through the interface has to arrive at the
+        // original. Had the mkiface copied, the value would stay at 1.
         Assert.Equal(41, Run("""
             interface Counter {
                 mut fn bump(by: int);
@@ -192,9 +191,9 @@ public class InterfaceTests
     [Fact]
     public void An_interface_value_survives_a_field_and_an_optional()
     {
-        // Zwei Coercion-Stellen, die nicht der Funktionsaufruf sind: ein Feld vom Interface-Typ
-        // und ein '?Interface'. Beim Optional ist die Reihenfolge entscheidend — erst mkiface,
-        // dann optsome; andersherum laege eine nackte Klassenreferenz im Optional.
+        // Two coercion sites that are not the function call: a field of interface type and a
+        // '?Interface'. For the optional the order is decisive — mkiface first, then optsome; the other
+        // way round a bare class reference would lie in the optional.
         Assert.Equal(700, Run(TwoShapes + """
 
             class Holder {
@@ -212,7 +211,7 @@ public class InterfaceTests
     [Fact]
     public void An_enum_can_implement_an_interface()
     {
-        // Enums sind Referenzwerte mit Tag; sie duerfen genauso hinter einem Interface stehen.
+        // Enums are reference values with a tag; they may stand behind an interface just as well.
         Assert.Equal(3 + 7, Run("""
             interface Sized {
                 fn size(): int;
@@ -241,11 +240,10 @@ public class InterfaceTests
     [Fact]
     public void An_optional_enum_survives_the_instruction_stream()
     {
-        // Regression, gefunden beim Bau der Interfaces und aelter als sie: der Dekodierer
-        // uebersprang inline kodierte Typen ueber eine else-if-Kette, die jedes nicht genannte Tag
-        // still als Skalar behandelte. Ein '?Enum' verschob damit den Strom, und der Fehler meldete
-        // sich viele Bytes spaeter als "unknown opcode 0x00". Seit P3b vorhanden, von keinem Test
-        // beruehrt — kein Beispiel und kein Fall benutzte '?Enum'.
+        // A regression found while building the interfaces and older than them: the decoder skipped inline
+        // encoded types through an else-if chain that silently treated every unnamed tag as a scalar. A
+        // '?Enum' therefore shifted the stream, and the fault reported itself many bytes later as
+        // "unknown opcode 0x00". No test touched it, because no example and no case used a '?Enum'.
         Assert.Equal(7, Run("""
             enum Shape { Dot, Line(int) }
 
@@ -280,8 +278,8 @@ public class InterfaceTests
     [Fact]
     public void A_void_returning_slot_leaves_the_stack_balanced()
     {
-        // Die Stack-Bilanz-Pruefung des Readers faengt eine falsche Wirkung von callvirt — aber
-        // nur, wenn ein void-Slot ueberhaupt vorkommt.
+        // The reader's stack balance check catches a wrong effect of callvirt, but only when a void slot
+        // occurs at all.
         Assert.Equal(5, Run("""
             interface Sink {
                 mut fn accept(v: int);
