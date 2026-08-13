@@ -24,19 +24,18 @@ public sealed class Lexer
     {
         public required LexMode Mode { get; init; }
 
-        // Alle drei nur für FStringInterp genutzt. Der interpolierte Ausdruck endet am '}' und
-        // wechselt am ':' in die Format-Spec — beides gilt aber nur, wenn keine Klammer offen ist.
+        // All three are used only for FStringInterp. The interpolated expression ends at '}' and
+        // switches to the format specifier at ':', but only when no bracket is open.
         //
-        // Die Klammern zu zählen war der Fix für einen Fund aus M8b/S9: `f"{map(o, (n: int) => …)}"`
-        // war ein Syntaxfehler, weil das ':' der Parameter-Annotation als Spec-Trenner gelesen
-        // wurde. Geschweifte Klammern zählte der Lexer bereits; runde und eckige nicht, und genau
-        // die bringt ein Lambda mit.
+        // Round and square brackets are counted as well as braces, because a lambda inside an
+        // interpolation brings them: `f"{map(o, (n: int) => …)}"` would otherwise read the ':' of
+        // the parameter annotation as the specifier separator.
         public int BraceDepth { get; set; }
         public int ParenDepth { get; set; }
         public int BracketDepth { get; set; }
 
-        /// <summary>Steht der Ausdruck auf oberster Ebene — also endet ein '}' hier wirklich die
-        /// Interpolation, und trennt ein ':' hier wirklich die Format-Spec ab?</summary>
+        /// <summary>Is the expression at the top level — does a '}' here really end the
+        /// interpolation, and does a ':' really separate the format specifier?</summary>
         public bool AtTopLevel => BraceDepth == 0 && ParenDepth == 0 && BracketDepth == 0;
     }
 
@@ -162,11 +161,11 @@ public sealed class Lexer
                 return new Token(TokenKind.FStringInterpEnd, new Span(_file, _pos - 1, _pos));
             }
 
-            // Runde und eckige Klammern mitzählen, damit '}' und ':' oben und unten dieselbe Frage
-            // beantworten: steht hier die oberste Ebene des interpolierten Ausdrucks?
+            // Round and square brackets are counted too, so '}' and ':' answer the same question
+            // here and above: is this the top level of the interpolated expression?
             //
-            // Eine schliessende Klammer ohne oeffnende zaehlt NICHT ins Negative — sie ist ein
-            // Syntaxfehler, den der Parser meldet, und ein negativer Zaehler machte daraus einen
+            // A closing bracket without an opening one does NOT count negative; it is a syntax
+            // error the parser reports.
             // Lexer-Fehler an einer anderen Stelle.
             if (Current is '(' or '[')
             {

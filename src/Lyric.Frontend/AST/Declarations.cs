@@ -2,9 +2,8 @@ using Lyric.Core;
 
 namespace Lyric.AST;
 
-// Modulstruktur und Deklarationen (Sprache.md §2/§3).
-// Struct-/Class-Member sind Decl[] (FieldDecl | FunctionDecl), um Quell-Reihenfolge
-// zu erhalten. Enum trennt Varianten und Methoden, da sie strukturell verschieden sind.
+// Module structure and declarations. Enum keeps variants and methods apart, because they are
+// structurally different.
 
 public sealed record Module(ModulePath? Header, Decl[] Declarations, Span Span) : Node(Span);
 public sealed record ModulePath(string[] Segments, Span Span) : Node(Span);
@@ -24,8 +23,8 @@ public sealed record GenericParam(string Name, TypeNode[] Constraints, Span Span
 public sealed record Param(bool IsParams, string Name, TypeNode Type, Expr? Default, Span Span) : Node(Span);
 public sealed record ThrowsClause(TypeNode? Type, Span Span) : Node(Span); // Type == null => 'throws' ohne Typ (any Throwable)
 
-/// <param name="IsStatic">Member ohne Empfänger (ADR-014): kein <c>this</c>, nur über den Typ
-/// erreichbar. Auf Top-Level immer <c>false</c> — dort gibt es keinen Empfänger, den man weglassen
+/// <param name="IsStatic">A member without a receiver: no <c>this</c>, reachable only through
+/// the type. Always <c>false</c> at top level.
 /// könnte.</param>
 public sealed record FunctionDecl(
     bool IsPublic, bool IsMut, bool IsStatic, string Name, GenericParam[] Generics, Param[] Parameters,

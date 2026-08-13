@@ -5,23 +5,12 @@ using Lyric.Core;
 namespace Lyric.AST;
 
 /// <summary>
-/// Deterministischer Baum-Dump eines AST-Knotens für Golden-Snapshots und
-/// <c>lyric parse</c>. Ein Knoten pro Zeile, 2 Spaces Einrückung pro Ebene,
-/// Span als <c>[start..end)</c> am Zeilenende (analog zu <see cref="Lexing"/>s
-/// TokenDumper).
+/// A deterministic tree dump of an AST node for golden snapshots and debugging.
 ///
-/// Kind-Reihenfolge ist fix und positionsbasiert (keine Rollen-Labels):
-///   Binary/Assign/Range : Left, Right
-///   Cast                : Operand, Type
-///   Call                : Callee, dann Argumente
-///   Index               : Target, Index
-///   Member/Unary/Postfix: Operand
-///   Hole                : Expr
-///   Lambda              : Parameter*, [ReturnType], Body   (Body immer letztes Kind)
-///   FunctionType        : Parameter*, ReturnType           (ReturnType immer letztes Kind)
+/// Child order is fixed and positional, with no role labels.
 ///
-/// Der Dumper ist bewusst über <c>switch</c> statt Visitor gelöst: alle Fälle an
-/// einer Stelle, der <c>default</c>-Wurf erzwingt Vollständigkeit bei neuen Knoten.
+/// A <c>switch</c> rather than a visitor: every case in one place, and the throwing
+/// <c>default</c> forces completeness for a new node.
 /// </summary>
 public static class AstDumper
 {
@@ -260,7 +249,7 @@ public static class AstDumper
                 break;
 
             // Eine typgebundene Konstante (ADR-014). Sie steht im Rumpf eines Typs, traegt aber
-            // ein gewoehnliches BindingStmt in sich — deshalb hier und nicht bei den Statements.
+            // Contains an ordinary BindingStmt, hence here rather than with the statements.
             case StaticBindingDecl n:
                 Line(sb, indent, $"StaticLet{(n.IsPublic ? " pub" : "")}", n.Span);
                 Write(n.Binding, indent + 1, sb);
@@ -439,7 +428,7 @@ public static class AstDumper
         }
     }
 
-    // struct/class teilen sich die Kind-Reihenfolge: Generics, Interfaces (TypeNodes), Member (Decls).
+    // struct and class share their child order: generics, interfaces, members.
     private static void WriteTypeDeclChildren(GenericParam[] generics, TypeNode[] interfaces, Decl[] members,
         int indent, StringBuilder sb)
     {

@@ -32,7 +32,7 @@ public enum TokenKind
     Fn,
     Mut,
 
-    /// <summary>Member ohne Empfänger (ADR-014). Nur im Rumpf von struct/class erlaubt.</summary>
+    /// <summary>A member without a receiver. Only allowed inside a struct or class body.</summary>
     Static,
 
     Let,

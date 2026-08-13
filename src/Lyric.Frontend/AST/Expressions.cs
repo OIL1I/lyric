@@ -2,13 +2,8 @@ using Lyric.Core;
 
 namespace Lyric.AST;
 
-// Ausdrücke aus Sprache.md §6. Jeder Knoten trägt seinen eigenen Span (Union der
-// Kind-Spans), damit Diagnostics und spätere Stufen präzise auf Quelltext zeigen.
-//
-// Bewusst NICHT hier (kommt in späteren M2-Slices mit den nötigen Bausteinen):
-//   - IfExpr / MatchExpr : brauchen Block bzw. MatchArm (Slice 2 / Slice 4).
-//   - StructInitExpr     : braucht ein StructInitField-Modell (Name '=' Expr) und
-//                          die '{'-Block-vs-Struct-Init-Disambiguierung (Slice mit Decls).
+// Expressions. Every node carries its own span, the union of its children's spans, so
+// diagnostics and later stages point precisely at the source.
 
 public enum IntSuffix
 {
@@ -37,8 +32,8 @@ public sealed record ThisExpr(Span Span) : Expr(Span);
 
 // --- Operatoren ---
 public sealed record UnaryExpr(UnaryOp Operator, Expr Operand, Span Span) : Expr(Span);
-// 'resume co' (§8, D6): Präfix-Ausdruck auf Unary-Ebene (await-Modell) — liefert den
-// Wert des nächsten yield der Coroutine. Send-Werte sind post-v1 (D7).
+// 'resume co': a prefix expression at the unary level, yielding the value of the coroutine's next
+// yield. Send values do not exist.
 public sealed record ResumeExpr(Expr Coroutine, Span Span) : Expr(Span);
 public sealed record PostfixExpr(Expr Operand, PostfixOp Operator, Span Span) : Expr(Span);
 public sealed record BinaryExpr(Expr Left, BinaryOp Operator, Expr Right, Span Span) : Expr(Span);
@@ -48,8 +43,8 @@ public sealed record CastExpr(Expr Operand, TypeNode Type, Span Span) : Expr(Spa
 
 // --- Postfix-erzeugte Knoten ---
 /// <param name="TypeArguments">Explizit geschriebene Typargumente: <c>f&lt;int&gt;()</c>. Leer,
-/// wenn keine dastanden — dann inferiert die Sema aus den Argumenten. Gebraucht werden sie, wenn
-/// die Argumente nichts hergeben: eine Fabrik <c>empty&lt;T&gt;(): List&lt;T&gt;</c> hat keine.</param>
+/// when none were written; the sema then infers them from the arguments. They are needed where
+/// the arguments give nothing: a factory <c>empty&lt;T&gt;(): List&lt;T&gt;</c> has none.</param>
 public sealed record CallExpr(Expr Callee, Expr[] Arguments, Span Span,
     TypeNode[]? TypeArguments = null) : Expr(Span);
 public sealed record IndexExpr(Expr Target, Expr Index, Span Span) : Expr(Span);
@@ -71,22 +66,22 @@ public sealed record LambdaParam(string Name, TypeNode? Type, Span Span) : Node(
 
 // --- Control-flow als Ausdruck (§6.2) ---
 // IfExpr-Branches sind AUSDRÜCKE (kein Block) → garantierter Wert. Für Statement-Blocks
-// gibt es das IfStmt. Else ist Pflicht; 'else if' ist ein geschachteltes IfExpr.
+// there is IfStmt. The else is mandatory; 'else if' is a nested IfExpr.
 public sealed record IfExpr(Expr Condition, Expr Then, Expr Else, Span Span) : Expr(Span);
 public sealed record MatchExpr(Expr Scrutinee, MatchArm[] Arms, Span Span) : Expr(Span);
 
 // --- Struct-Init (§6.2): TypePath '{' field = expr, … '}' ---
-// Wird nur in Wert-Position erkannt, nicht am Anfang eines ExprStmt (sonst mehrdeutig
-// mit einem Block). Feld-Trenner ist '=' (':' ist Typen vorbehalten).
+// Recognised in value position only, not at the start of an ExprStmt, where it would be ambiguous
+// with a block. The field separator is '='; ':' is reserved for types.
 public sealed record StructInitExpr(string[] Path, TypeNode[] TypeArguments, StructInitField[] Fields, Span Span) : Expr(Span);
 
 // --- Typpfad in Wert-Position (§6.2 TypePath): 'Pair<int>.of(3)' ---
 //
-// Der NICHT-generische Fall braucht diesen Knoten nicht: 'P.neu()' ist ein IdentifierExpr, dessen
-// Symbol ein Typ ist, und CheckMember arbeitet ohnehin ueber das Symbol weiter. Erst mit
-// Typargumenten gibt es etwas zu tragen, das ein Bezeichner nicht ausdruecken kann.
+// The non-generic case does not need this node: 'P.neu()' is an IdentifierExpr whose symbol is a
+// type, and CheckMember works through the symbol anyway. Only type arguments carry something an
+// identifier cannot express.
 //
-// Er steht immer als Ziel eines MemberExpr — allein ist er kein Wert, sondern ein Typ, und
+// It always stands as the target of a MemberExpr; alone it is a type rather than a value, and
 // CheckExpr meldet ihn dort als LYR-SEM0052 wie jeden anderen Typnamen auch.
 public sealed record TypePathExpr(string[] Path, TypeNode[] TypeArguments, Span Span) : Expr(Span);
 public sealed record StructInitField(string Name, Expr Value, Span Span) : Node(Span);
