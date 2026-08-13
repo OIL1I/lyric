@@ -5,12 +5,11 @@ namespace Lyric.Bytecode.Encoding;
 
 /// <summary>
 /// Schreib-Primitiven des Formats. Alles, was <c>docs/Bytecode.md</c> als Kodierung festlegt,
-/// steht hier — und nur hier.
+/// lives here, and only here.
 ///
-/// <para>Plattformneutral per ADR-013: Fixbreiten explizit little-endian (nicht die Host-Byte-
-/// Reihenfolge), variable Ganzzahlen als LEB128, Strings als längenpräfigiertes UTF-8, Floats als
-/// IEEE-754-Bitmuster. Nichts davon darf von <c>BitConverter</c>-Defaults abhängen, sonst
-/// unterscheidet sich der Output auf einer Big-Endian-Maschine.</para>
+/// <para>Platform-neutral: fixed widths explicitly little-endian rather than the host byte order,
+/// variable integers as LEB128, floats as their IEEE-754 bit pattern. None of it may depend on
+/// <c>BitConverter</c> defaults, or the output would differ on a big-endian machine.</para>
 /// </summary>
 internal sealed class ByteWriter
 {
@@ -33,7 +32,8 @@ internal sealed class ByteWriter
         _buffer.AddRange(tmp);
     }
 
-    /// <summary>LEB128, unsigned. Sieben Nutzbits pro Byte, das achte ist das Fortsetzungs-Bit.</summary>
+    /// <summary>LEB128, unsigned. Seven payload bits per byte; the eighth is the continuation
+    /// bit.</summary>
     public void ULeb(ulong value)
     {
         do
@@ -51,8 +51,8 @@ internal sealed class ByteWriter
         ULeb((ulong)value);
     }
 
-    /// <summary>IEEE-754-Bitmuster, little-endian. Nicht der Dezimalwert: nur das Bitmuster ist
-    /// verlustfrei und deterministisch (NaN-Nutzlast inklusive).</summary>
+    /// <summary>The IEEE-754 bit pattern, little-endian. Not the decimal value: only the bit
+    /// pattern is lossless and deterministic, NaN payload included.</summary>
     public void F32(float value)
     {
         Span<byte> tmp = stackalloc byte[4];
@@ -67,7 +67,7 @@ internal sealed class ByteWriter
         _buffer.AddRange(tmp);
     }
 
-    /// <summary>Länge in Bytes (nicht in Zeichen) als uleb128, dann die UTF-8-Bytes.</summary>
+    /// <summary>The length in bytes, not characters, as uleb128, then the UTF-8 bytes.</summary>
     public void String(string value)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(value);

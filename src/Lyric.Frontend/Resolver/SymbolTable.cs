@@ -1,9 +1,9 @@
 namespace Lyric.Resolver;
 
 /// <summary>
-/// Ein lexikalischer Scope: Name → Symbol, plus optionaler Parent für die
-/// Lookup-Kette (Builtin → Modul → Typ-Member → …). Hält eine Insertion-geordnete
-/// Liste für deterministische Dumps; das Dictionary ist der O(1)-Lookup.
+/// A lexical scope: name to symbol, plus an optional parent for the lookup chain (built-in,
+/// module, type member, …). It keeps an insertion-ordered list for deterministic dumps; the
+/// dictionary is the O(1) lookup.
 /// </summary>
 public sealed class SymbolTable
 {
@@ -16,8 +16,8 @@ public sealed class SymbolTable
 
     public IReadOnlyList<Symbol> Symbols => _ordered;
 
-    /// <summary>Deklariert ein Symbol. Liefert false, wenn der Name in DIESEM Scope
-    /// schon vergeben ist (Duplikat) — dann bleibt das erste Symbol stehen.</summary>
+    /// <summary>Declares a symbol. Returns false when the name is already taken in THIS scope;
+    /// the first symbol then stays.</summary>
     public bool TryDeclare(Symbol symbol)
     {
         if (_byName.ContainsKey(symbol.Name)) return false;
@@ -30,7 +30,7 @@ public sealed class SymbolTable
     public Symbol? LookupLocal(string name) =>
         _byName.TryGetValue(name, out var s) ? s : null;
 
-    /// <summary>Dieser Scope und dann die Parent-Kette hoch.</summary>
+    /// <summary>This scope, then up the parent chain.</summary>
     public Symbol? Lookup(string name)
     {
         for (var scope = this; scope is not null; scope = scope.Parent)

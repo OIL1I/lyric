@@ -3,52 +3,48 @@ using Lyric.Ir;
 
 namespace Lyric.Bytecode;
 
-/// <summary>Wo lebt der Wert eines Temps, wenn der Bytecode läuft?</summary>
+/// <summary>Where does a temp's value live while the bytecode runs?</summary>
 internal enum Placement
 {
-    /// <summary>Er bleibt auf dem Operanden-Stack und wird direkt von der nächsten passenden
+    /// <summary>It stays on the operand stack and is taken directly by the next
     /// Instruktion konsumiert. Kein <c>stloc</c>/<c>ldloc</c>.</summary>
     Stack,
 
-    /// <summary>Er wandert in einen Local-Slot: <c>stloc</c> nach der Definition, <c>ldloc</c> an
+    /// <summary>It moves into a local slot: <c>stloc</c> after the definition, <c>ldloc</c> at
     /// jeder Verwendung.</summary>
     Slot,
 
-    /// <summary>Er wird nie gelesen — direkt nach der Definition <c>pop</c>. Praktisch nur bei
+    /// <summary>It is never read: a <c>pop</c> straight after the definition. In practice only
     /// einer verworfenen Call-Rückgabe (<c>foo();</c> bei <c>foo(): int</c>).</summary>
     Discard,
 }
 
-/// <summary>Ergebnis des Schedulings für eine Funktion.</summary>
+/// <summary>The scheduling result for one function.</summary>
 internal sealed class FunctionLayout
 {
     public required IReadOnlyDictionary<TempId, Placement> Placements { get; init; }
-    /// <summary>Slot-Index je Temp mit <see cref="Placement.Slot"/>.</summary>
+    /// <summary>The slot index of each temp placed in <see cref="Placement.Slot"/>.</summary>
     public required IReadOnlyDictionary<TempId, int> TempSlots { get; init; }
-    /// <summary>Typ jedes Slots: erst die IR-Locals (Parameter zuerst), dann die ausgelagerten
+    /// <summary>The type of each slot: the IR locals first (parameters first), then the spilled
     /// Temps.</summary>
     public required IReadOnlyList<IrType> SlotTypes { get; init; }
     public required int MaxStack { get; init; }
 }
 
 /// <summary>
-/// Übersetzt die temp-basierte IR in die Stack-Disziplin der VM: welche Werte bleiben auf dem
-/// Operanden-Stack, welche brauchen einen Local-Slot?
+/// Translates the temp-based IR into the stack discipline of the VM: which values stay on the
+/// operand stack, and which need a local slot?
 ///
-/// <para><b>Die tragende Invariante: der Stack ist an jeder Blockgrenze leer.</b> Werte, die
-/// Blöcke überqueren, laufen durch Locals — und genau das garantiert das Lowering aus P4 schon
-/// strukturell (synthetische Locals für if-Ausdruck und <c>&amp;&amp;</c>/<c>||</c>, weil ein Temp nur
-/// einmal definiert werden darf). Damit ist das Scheduling rein blocklokal, und die Stack-Tiefe
-/// ist beim Laden statisch prüfbar — ADR-013s Validierung beim Load.</para>
+/// <para>The invariant: the stack is empty at every block boundary. Values crossing blocks travel
+/// through locals, which the lowering already guarantees structurally. Scheduling is therefore
+/// purely block-local, and the stack depth is statically checkable at load time.
 ///
-/// <para><b>Warum überhaupt Scheduling?</b> Der naive Weg — jedes Temp bekommt einen Slot —
-/// erzeugt für <c>t2 = add t0, t1</c> zehn statt vier Instruktionen. M5s Exit-Kriterium verlangt,
-/// dass die Disassembly „sinnvolle Instruktionen" zeigt; eine Ausgabe voller redundanter
-/// store/load-Paare erfüllt das nicht.</para>
+/// <para>Without scheduling every temp would take a slot, and the disassembly would be full of
+/// redundant store/load pairs.</para>
 ///
-/// <para><b>Korrektheit hängt nie an der Optimierung.</b> Der Slot-Weg ist immer verfügbar; das
-/// Scheduling entscheidet nur, wo er entfallen darf. Es läuft optimistisch und stuft bei jeder
-/// Kollision Temps auf Slots zurück — monoton, also terminierend.</para>
+/// <para>Correctness never depends on the optimization: the slot path is always available, and
+/// scheduling only decides where it may be omitted. It runs optimistically and demotes temps to
+/// slots on every collision — monotone, and therefore terminating.</para>
 /// </summary>
 internal static class StackScheduler
 {
@@ -56,8 +52,8 @@ internal static class StackScheduler
     {
         var placements = InitialPlacements(function);
 
-        // Optimistisch simulieren; jede Kollision stuft Temps auf Slot zurück. Da nur in eine
-        // Richtung umgestuft wird (Stack -> Slot) und es endlich viele Temps gibt, terminiert das.
+        // Simulate optimistically; every collision demotes temps to a slot. Since demotion runs in
+        // one direction only (stack to slot) and there are finitely many temps, this terminates.
         int maxStack;
         while (!TrySimulate(function, placements, out maxStack)) { }
 
@@ -80,9 +76,9 @@ internal static class StackScheduler
     }
 
     /// <summary>
-    /// Erste Näherung aus reiner Zählung: ein Temp darf nur dann auf dem Stack leben, wenn es
-    /// <b>genau einmal</b> und <b>im selben Block</b> gelesen wird. Mehrfach-Verwendung ginge
-    /// nicht (der Stack konsumiert), block-übergreifend auch nicht (der Stack ist an der Grenze
+    /// A first approximation from counting alone: a temp may live on the stack only when it is read
+    /// EXACTLY ONCE and IN THE SAME BLOCK. Multiple uses would not work, because the stack
+    /// consumes; nor would a cross-block read, because the stack is empty at the boundary
     /// leer). Kein Leser heißt <see cref="Placement.Discard"/>.
     /// </summary>
     private static Dictionary<TempId, Placement> InitialPlacements(IrFunction function)
@@ -121,8 +117,8 @@ internal static class StackScheduler
     }
 
     /// <summary>
-    /// Simuliert den Operanden-Stack blockweise. Liefert false, sobald Temps zurückgestuft wurden —
-    /// dann ist ein weiterer Durchlauf nötig.
+    /// Simulates the operand stack block by block. Returns false as soon as temps were demoted;
+    /// another pass is then needed.
     /// </summary>
     private static bool TrySimulate(IrFunction function,
         Dictionary<TempId, Placement> placements, out int maxStack)
@@ -145,7 +141,7 @@ internal static class StackScheduler
                         maxStack = Math.Max(maxStack, stack.Count);
                         break;
                     case Placement.Discard:
-                        // liegt kurz oben und wird sofort ge-pop-t
+                        // sits on top briefly and is popped immediately
                         maxStack = Math.Max(maxStack, stack.Count + 1);
                         break;
                     case Placement.Slot:
@@ -157,8 +153,8 @@ internal static class StackScheduler
             if (!Consume(IrShape.OperandsOf(block.Terminator!), stack, placements, ref maxStack))
                 return false;
 
-            // Nach dem Terminator muss der Stack leer sein. Ein Rest hieße, ein Temp läge auf dem
-            // Stack ohne Leser — das schließt Placement.Discard aus, also wäre es ein Bug hier.
+            // After the terminator the stack has to be empty. A remainder would mean a temp lies
+            // on the stack with no reader, which Placement.Discard rules out.
             if (stack.Count != 0)
                 throw new InternalCompilationException(
                     $"stack-scheduler: {function.Name}: {stack.Count} value(s) left on the stack " +
@@ -169,15 +165,15 @@ internal static class StackScheduler
     }
 
     /// <summary>
-    /// Konsumiert die Operanden einer Instruktion. Drei Fälle, und nur drei:
+    /// Consumes an instruction's operands. Three cases, and only three:
     /// <list type="bullet">
     /// <item>alle Operanden liegen als <b>Suffix</b> des Stacks in genau dieser Reihenfolge → sie
     /// werden gepoppt, es entstehen keine Loads;</item>
-    /// <item>kein Operand liegt auf dem Stack → alle kommen per <c>ldloc</c> obendrauf und werden
+    /// <item>no operand is on the stack: all arrive through <c>ldloc</c> on top and are</item>
     /// sofort konsumiert; ein Rest darunter bleibt unberührt;</item>
-    /// <item>alles andere (gemischt, oder auf dem Stack aber in falscher Position) → nicht
-    /// emittierbar, weil ein <c>ldloc</c> über einem bereits liegenden Operanden die Reihenfolge
-    /// zerstören würde. Die betroffenen Temps werden auf Slot zurückgestuft.</item>
+    /// <item>anything else (mixed, or on the stack in the wrong position): not emittable, because
+    /// an <c>ldloc</c> above an operand already there would destroy the order. The affected temps
+    /// are demoted to slots.</item>
     /// </list>
     /// </summary>
     private static bool Consume(IReadOnlyList<TempId> operands, List<TempId> stack,
@@ -200,8 +196,8 @@ internal static class StackScheduler
             return true;
         }
 
-        // Kollision: zurückstufen und neu simulieren. Die Operanden reichen — alles, was sonst noch
-        // auf dem Stack liegt, ist per Konstruktion tiefer und bleibt gültig.
+        // Collision: demote and simulate again. The operands suffice — everything else on the
+        // stack is deeper by construction and stays valid.
         foreach (var operand in operands)
             if (placements[operand] == Placement.Stack)
                 placements[operand] = Placement.Slot;

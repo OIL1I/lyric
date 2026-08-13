@@ -3,10 +3,9 @@ using System.Text;
 namespace Lyric.Resolver;
 
 /// <summary>
-/// Deterministischer Dump der aufgelösten Symbol-Struktur einer Compilation für
-/// Golden-Snapshots (analog zu <c>AstDumper</c>). Zeigt pro Modul die Member in
-/// Deklarations-Reihenfolge inkl. Sichtbarkeit und Import-Auflösung. Builtins werden
-/// nicht gezeigt (Rauschen). Typ-Namen-Bindungen prüfen die Unit-Tests direkt.
+/// A deterministic dump of a compilation's resolved symbol structure for golden snapshots,
+/// alongside <c>AstDumper</c>. Shows the members per module in declaration order, including
+/// visibility and import resolution. Built-ins are omitted.
 /// </summary>
 public static class SymbolDumper
 {

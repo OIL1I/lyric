@@ -2,7 +2,7 @@ using Lyric.AST;
 
 namespace Lyric.Resolver;
 
-// Symbole sind Identitäts-Objekte (kein Value-Equality) und werden inkrementell
+// Symbols are identity objects, without value equality, and are built incrementally
 // aufgebaut: erst deklariert, in späteren Slices um Typ-Infos angereichert. Daher
 // mutable Klassen, keine Records.
 
@@ -29,7 +29,7 @@ public abstract class Symbol
     }
 }
 
-/// <summary>Ein Modul (eine Datei). Members enthält die Top-Level-Symbole.</summary>
+/// <summary>A module (one file). Members holds its top-level symbols.</summary>
 public sealed class ModuleSymbol : Symbol
 {
     public string[] Path { get; }
@@ -67,7 +67,7 @@ public sealed class FunctionSymbol : Symbol
     public Visibility Visibility { get; }
     public bool IsMut { get; }
 
-    /// <summary>Member ohne Empfänger (ADR-014): kein <c>this</c>, nur über den Typ erreichbar.
+    /// <summary>A member without a receiver: no <c>this</c>, reachable only through the type.
     /// Bei freien Funktionen immer <c>false</c>.</summary>
     public bool IsStatic { get; }
 
@@ -83,8 +83,8 @@ public sealed class FunctionSymbol : Symbol
     }
 }
 
-/// <summary>Ein generischer Typ-Parameter (`T`), mit seinen Constraint-Interfaces
-/// (als noch unaufgelöste TypeNodes — die Sema löst sie auf).</summary>
+/// <summary>A generic type parameter (`T`) with its constraint interfaces, still as unresolved
+/// TypeNodes; the sema resolves them.</summary>
 public sealed class GenericParamSymbol : Symbol
 {
     public TypeNode[] Constraints { get; }
@@ -113,8 +113,8 @@ public sealed class GlobalSymbol : Symbol
     }
 }
 
-/// <summary>Aus einem Import gebundener Name, dessen Ziel-Modul in der Compilation
-/// liegt (Namespace-Import → das Modul selbst; sonst das importierte Symbol).</summary>
+/// <summary>A name bound from an import whose target module is in the compilation: for a
+/// namespace import the module itself, otherwise the imported symbol.</summary>
 public sealed class ImportBindingSymbol : Symbol
 {
     public Symbol Target { get; }
@@ -125,7 +125,7 @@ public sealed class ImportBindingSymbol : Symbol
     }
 }
 
-/// <summary>Import aus einem Modul außerhalb der Compilation (z.B. Stdlib, noch nicht
+/// <summary>An import from a module outside the compilation.
 /// gebaut). Opak: verhindert „unbekannter Name"-Fehler, trägt aber keine Struktur.</summary>
 public sealed class ExternalSymbol : Symbol
 {
@@ -137,7 +137,7 @@ public sealed class ExternalSymbol : Symbol
     }
 }
 
-/// <summary>Recovery-Sentinel für nicht auflösbare Namen.</summary>
+/// <summary>Recovery sentinel for names that cannot be resolved.</summary>
 public sealed class ErrorSymbol : Symbol
 {
     public ErrorSymbol(string name) : base(name, null) { }
