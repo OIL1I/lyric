@@ -122,7 +122,7 @@ public sealed class TypeChecker
         return _result;
     }
 
-    // --- Deklarationen ---
+    // --- declarations ---
 
     private void ComputeGlobals(ModuleSymbol module)
     {
@@ -143,7 +143,7 @@ public sealed class TypeChecker
 
             if (module.Members.LookupLocal(g.Binding.Name) is not GlobalSymbol gs) continue;
             _globals[gs] = type;
-            _result.BindGlobal(gs, type);   // fuer das Lowering
+            _result.BindGlobal(gs, type);   // for the lowering
         }
     }
 
@@ -262,7 +262,7 @@ public sealed class TypeChecker
         if (ts.Members.LookupLocal(sb.Binding.Name) is GlobalSymbol gs)
         {
             _globals[gs] = declared ?? init ?? LyrType.Error;
-            _result.BindGlobal(gs, _globals[gs]);   // fuer das Lowering
+            _result.BindGlobal(gs, _globals[gs]);   // for the lowering
         }
 
         _currentThis = outerThis;
@@ -438,7 +438,7 @@ public sealed class TypeChecker
             var pt = ResolveType(p.Type, scope);
             var ps = new ParameterSymbol(p.Name, pt, p);
             scope.TryDeclare(ps);
-            _result.BindRef(p, ps); // für DAA
+            _result.BindRef(p, ps); // for definite-assignment analysis
             if (p.Default is not null)
                 CheckAssignable(p.Default, CheckExpr(p.Default, scope), pt, p.Span);
         }
@@ -539,7 +539,7 @@ public sealed class TypeChecker
 
         var local = new LocalSymbol(bnd.Name, type, bnd.IsMutable, bnd);
         scope.TryDeclare(local);
-        _result.BindRef(bnd, local); // für DAA
+        _result.BindRef(bnd, local); // for definite-assignment analysis
     }
 
     private void CheckForIn(ForInStmt fo, SymbolTable scope)
@@ -574,7 +574,7 @@ public sealed class TypeChecker
         var loopScope = new SymbolTable(scope);
         var loopVar = new LocalSymbol(fo.Variable, elem, false, fo);
         loopScope.TryDeclare(loopVar);
-        _result.BindRef(fo, loopVar); // für DAA
+        _result.BindRef(fo, loopVar); // for definite-assignment analysis
         CheckBlock(fo.Body, loopScope);
     }
 
@@ -688,7 +688,7 @@ public sealed class TypeChecker
         {
             var local = new LocalSymbol(clause.BindingName, bt, false, clause);
             catchScope.TryDeclare(local);
-            _result.BindRef(clause, local); // für DAA: der Catch weist die Bindung zu
+            _result.BindRef(clause, local); // for definite-assignment analysis: der Catch weist die Bindung zu
         }
         CheckBlock(clause.Body, catchScope);
     }
@@ -2500,7 +2500,7 @@ public sealed class TypeChecker
                 }
                 var local = new LocalSymbol(b.Name, scrutinee, mutable, b);
                 scope.TryDeclare(local);
-                _result.BindRef(b, local); // für DAA
+                _result.BindRef(b, local); // for definite-assignment analysis
                 return;
 
             case TuplePattern t:
@@ -2822,7 +2822,7 @@ public sealed class TypeChecker
                 $"lambda parameter '{p.Name}' needs a type annotation (no context type available)");
             var ps = new ParameterSymbol(p.Name, pt, p);
             lambdaScope.TryDeclare(ps);
-            _result.BindRef(p, ps); // für DAA (Lambda-Params sind zugewiesen)
+            _result.BindRef(p, ps); // for definite-assignment analysis (Lambda-Params sind zugewiesen)
             pTypes[i] = pt;
         }
 

@@ -4156,7 +4156,7 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    // ------------------------------------------------------------------ Helfer
+    // ------------------------------------------------------------------ helpers
 
     private TempId EmitConst(IrConstValue value, IrType type, Span span)
     {

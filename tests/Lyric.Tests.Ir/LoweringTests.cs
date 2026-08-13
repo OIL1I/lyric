@@ -26,7 +26,7 @@ namespace Lyric.Tests.Ir;
 /// </summary>
 public class LoweringTests
 {
-    // ------------------------------------------------------------------ Helfer
+    // ------------------------------------------------------------------ helpers
 
     /// <summary>Quelltext → IR. Bricht ab, wenn die Sema meckert: auf fehlerhaftem AST wäre
     /// jedes Lowering-Ergebnis Raten.</summary>

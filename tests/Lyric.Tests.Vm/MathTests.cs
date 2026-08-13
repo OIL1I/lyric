@@ -155,7 +155,7 @@ public class MathTests
             }
             """));
 
-    // ------------------------------------------------------------------ Zufall
+    // ------------------------------------------------------------------ randomness
 
     [Fact]
     public void The_same_seed_gives_the_same_sequence() =>

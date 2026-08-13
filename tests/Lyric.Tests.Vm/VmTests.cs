@@ -24,7 +24,7 @@ namespace Lyric.Tests.Vm;
 /// </summary>
 public class VmTests
 {
-    // ------------------------------------------------------------------ Helfer
+    // ------------------------------------------------------------------ helpers
 
     private static LyrValue Run(string source)
     {
@@ -515,8 +515,8 @@ public class VmTests
         """;
 
     [Theory]
-    [InlineData("return Shape.Circle(5).area();", 25)]                       // Tuple-Variante
-    [InlineData("let s: Shape = Shape.Rect { w = 3, h = 4 }; return s.area();", 12)] // Struct-Variante
+    [InlineData("return Shape.Circle(5).area();", 25)]                       // tuple variant
+    [InlineData("let s: Shape = Shape.Rect { w = 3, h = 4 }; return s.area();", 12)] // struct variant
     [InlineData("return Shape.Empty.area();", 0)]                            // Unit-Variante
     public void Enum_variants_dispatch_through_match(string body, long expected) =>
         Assert.Equal(expected, Run(ShapeEnum + $"fn wrap(): int {{ {body} }}\nfn main(): int {{ return wrap(); }}").AsI64);

@@ -4,22 +4,22 @@ using Lyric.Core;
 namespace Lyric.Parsing;
 
 /// <summary>
-/// Findet Stdlib-Module auf der Platte und parst sie — die konkrete Seite von
-/// <c>Compilation.ModuleLoader</c>.
+/// Finds stdlib modules on disk and parses them — the concrete side of the module loader delegate.
 ///
-/// <para>Liegt hier und nicht im Resolver, weil sie den Parser braucht: <c>Lyric.Resolver</c>
-/// darf <c>Lyric.Parsing</c> nicht referenzieren. Der Resolver kennt nur den Delegaten.</para>
+/// <para>Lives here rather than in the resolver because it needs the parser: <c>Lyric.Resolver</c>
+/// must not reference <c>Lyric.Parsing</c>. The resolver knows only the delegate.</para>
 ///
-/// <para>Der Wurzelpfad ist ein Parameter, kein globaler Zustand — Tests zeigen auf das Repo,
-/// die CLI auf das Verzeichnis neben dem Binary.</para>
+/// <para>The root path is a parameter rather than global state — tests point at the repository, the
+/// CLI at the directory next to the binary.</para>
 /// </summary>
 public static class StdlibLoader
 {
-    /// <summary>Umgebungsvariable, die den Stdlib-Pfad überschreibt. Für Entwicklung und Tests.</summary>
+    /// <summary>The environment variable that overrides the stdlib path.</summary>
     public const string RootEnvironmentVariable = "LYRIC_STDLIB";
 
-    /// <summary>Wo die Stdlib liegt: erst die Umgebungsvariable, sonst <c>stdlib/</c> neben dem
-    /// Binary (dorthin kopiert das CLI-Projekt sie, das überlebt auch <c>dotnet publish</c>).</summary>
+    /// <summary>Where the stdlib lives: the environment variable first, otherwise <c>stdlib/</c>
+    /// next to the binary, where the CLI project copies it and where it survives
+    /// <c>dotnet publish</c>.</summary>
     public static string DefaultRoot()
     {
         var configured = Environment.GetEnvironmentVariable(RootEnvironmentVariable);
@@ -29,9 +29,9 @@ public static class StdlibLoader
     }
 
     /// <summary>
-    /// Baut den Lader. Ein Modulpfad wird zum Dateipfad: <c>std.io.console</c> →
-    /// <c>&lt;root&gt;/std/io/console.lyr</c> (ADR-012, dieselbe Ableitung wie bei User-Code, nur
-    /// in die andere Richtung).
+    /// Builds the loader. A module path becomes a file path: <c>std.io.console</c> →
+    /// <c>&lt;root&gt;/std/io/console.lyr</c> — the same derivation as for user code, in the other
+    /// direction.
     /// </summary>
     public static Func<string[], (Module Ast, bool IsNative)?> ForRoot(
         string root, SourceManager sourceManager, DiagnosticEngine diagnostics) =>
@@ -47,8 +47,8 @@ public static class StdlibLoader
             }
             catch
             {
-                // Existiert, aber nicht lesbar: wie „nicht gefunden" behandeln, damit daraus die
-                // normale „unbekanntes Modul"-Diagnose wird statt einer Ausnahme aus dem Resolver.
+                // Present but unreadable: treated as "not found", so it turns into the ordinary
+                // "unknown module" diagnostic instead of an exception out of the resolver.
                 return null;
             }
 

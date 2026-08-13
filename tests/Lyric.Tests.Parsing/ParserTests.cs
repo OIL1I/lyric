@@ -113,7 +113,7 @@ public class ParserTests
         Assert.Equal(BinaryOp.Add, left.Operator);          // parens survived
     }
 
-    // --- Typen ---
+    // --- types ---
 
     [Fact]
     public void Nested_generics_split_the_double_gt()
@@ -335,7 +335,7 @@ public class ParserTests
         Assert.True(de.HasErrors);
     }
 
-    // --- Declarations (§2/§3) ---
+    // --- declarations ---
 
     private static (Module module, DiagnosticEngine diag) ParseModule(string source)
     {

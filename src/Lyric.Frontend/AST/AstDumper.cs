@@ -25,7 +25,7 @@ public static class AstDumper
     {
         switch (node)
         {
-            // --- Literale ---
+            // --- literals ---
             case IntLiteralExpr n:
                 Line(sb, indent, $"Int {n.Value}{Suffix(n.Suffix)}", n.Span);
                 break;
@@ -45,7 +45,7 @@ public static class AstDumper
                 Line(sb, indent, "Null", n.Span);
                 break;
 
-            // --- Namen ---
+            // --- names ---
             case IdentifierExpr n:
                 Line(sb, indent, $"Ident {n.Name}", n.Span);
                 break;
@@ -57,7 +57,7 @@ public static class AstDumper
                 Line(sb, indent, "This", n.Span);
                 break;
 
-            // --- Operatoren ---
+            // --- operators ---
             case UnaryExpr n:
                 Line(sb, indent, $"Unary {n.Operator}", n.Span);
                 Write(n.Operand, indent + 1, sb);
@@ -87,7 +87,7 @@ public static class AstDumper
                 Write(n.Type, indent + 1, sb);
                 break;
 
-            // --- Postfix-erzeugte Knoten ---
+            // --- nodes produced by postfix ---
             case CallExpr n:
                 Line(sb, indent, "Call", n.Span);
                 Write(n.Callee, indent + 1, sb);
@@ -103,7 +103,7 @@ public static class AstDumper
                 Write(n.Target, indent + 1, sb);
                 break;
 
-            // --- Zusammengesetzte Literale ---
+            // --- composite literals ---
             case ArrayLitExpr n:
                 Line(sb, indent, "Array", n.Span);
                 foreach (var e in n.Elements) Write(e, indent + 1, sb);
@@ -138,7 +138,7 @@ public static class AstDumper
                 if (n.Type is not null) Write(n.Type, indent + 1, sb);
                 break;
 
-            // --- Typen ---
+            // --- types ---
             case NullableType n:
                 Line(sb, indent, "Nullable", n.Span);
                 Write(n.Inner, indent + 1, sb);
@@ -164,7 +164,7 @@ public static class AstDumper
                 Line(sb, indent, "ErrorType", n.Span);
                 break;
 
-            // --- Declarations (§2/§3) ---
+            // --- declarations ---
             case Module n:
                 Line(sb, indent, n.Header is null ? "Module" : $"Module {string.Join('.', n.Header.Segments)}", n.Span);
                 foreach (var d in n.Declarations) Write(d, indent + 1, sb);

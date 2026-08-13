@@ -39,8 +39,8 @@ namespace Lyric.Parsing
             _ => 0
         };
 
-        // Die Auflösung liegt in Lyric.Core: das f-String-Lowering braucht sie ebenfalls, und
-        // Lyric.Ir darf Lyric.Parsing nicht referenzieren.
+        // The resolution lives in Lyric.Core: the f-string lowering needs it too, and Lyric.Ir
+        // must not reference Lyric.Parsing.
         private static string ResolveEscapes(string content) => Escapes.Resolve(content);
 
         private static string StripQuotes(string text) //From lexer at least -> "\"..." (maybe unterminated)

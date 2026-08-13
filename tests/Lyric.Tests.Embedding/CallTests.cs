@@ -28,7 +28,7 @@ public class CallTests
         return vm.Instantiate(vm.Compile(source, "mod"));
     }
 
-    // ------------------------------------------------------------------ rufen
+    // ------------------------------------------------------------------ calling
 
     [Fact]
     public void A_function_is_called_by_its_unqualified_name() =>

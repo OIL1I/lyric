@@ -305,7 +305,7 @@ public class SemaTests
     [Fact]
     public void Enum_variant_construction()
     {
-        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Circle(2.5); }").type);   // Tuple-Variante als Konstruktor
+        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Circle(2.5); }").type);   // tuple variant als Konstruktor
         AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Empty; }").type);         // Unit-Variante
     }
 

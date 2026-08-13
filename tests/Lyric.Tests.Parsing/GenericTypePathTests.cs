@@ -79,7 +79,7 @@ public class GenericTypePathTests
         Assert.Equal(2, path.TypeArguments.Length);
     }
 
-    // ------------------------------------------------------------------ Gegenproben
+    // ------------------------------------------------------------------ counter-checks
 
     /// <summary>Ohne folgenden Punkt ist es ein Vergleich — das ist der Normalfall in jedem
     /// Programm.</summary>

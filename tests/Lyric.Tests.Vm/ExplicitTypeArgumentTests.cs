@@ -151,7 +151,7 @@ public class ExplicitTypeArgumentTests
     public void Arithmetic_after_a_comparison_is_not_swallowed() =>
         Assert.Equal(1, Run("fn main(): int { let n = 3; if (n < 2 + 5) { return 1; } return 0; }"));
 
-    // ------------------------------------------------------------------ was abgelehnt wird
+    // ------------------------------------------------------------------ what gets rejected
 
     [Fact]
     public void The_wrong_number_of_type_arguments_is_reported() =>

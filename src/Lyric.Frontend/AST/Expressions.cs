@@ -17,7 +17,7 @@ public enum FloatSuffix
 
 public abstract record Expr(Span Span) : Node(Span);
 
-// --- Literale ---
+// --- literals ---
 public sealed record IntLiteralExpr(ulong Value, IntSuffix? Suffix, Span Span) : Expr(Span);
 public sealed record FloatLiteralExpr(double Value, FloatSuffix? Suffix, Span Span) : Expr(Span);
 public sealed record StringLiteralExpr(string Value, Span Span) : Expr(Span);
@@ -25,12 +25,12 @@ public sealed record CharLiteralExpr(int CodePoint, Span Span) : Expr(Span);
 public sealed record BoolLiteralExpr(bool Value, Span Span) : Expr(Span);
 public sealed record NullLiteralExpr(Span Span) : Expr(Span);
 
-// --- Namen ---
+// --- names ---
 public sealed record IdentifierExpr(string Name, Span Span) : Expr(Span);
 public sealed record AtIdentifierExpr(string Name, Expr[]? Arguments, Span Span) : Expr(Span); // Name INKL. führendem '@' (z.B. "@test"); Arguments == null: '@name' ohne '()'
 public sealed record ThisExpr(Span Span) : Expr(Span);
 
-// --- Operatoren ---
+// --- operators ---
 public sealed record UnaryExpr(UnaryOp Operator, Expr Operand, Span Span) : Expr(Span);
 // 'resume co': a prefix expression at the unary level, yielding the value of the coroutine's next
 // yield. Send values do not exist.
@@ -41,7 +41,7 @@ public sealed record AssignExpr(Expr Target, BinaryOp? Operator, Expr Value, Spa
 public sealed record RangeExpr(Expr Low, Expr High, bool IsInclusive, Span Span) : Expr(Span);
 public sealed record CastExpr(Expr Operand, TypeNode Type, Span Span) : Expr(Span);
 
-// --- Postfix-erzeugte Knoten ---
+// --- nodes produced by postfix ---
 /// <param name="TypeArguments">Explizit geschriebene Typargumente: <c>f&lt;int&gt;()</c>. Leer,
 /// when none were written; the sema then infers them from the arguments. They are needed where
 /// the arguments give nothing: a factory <c>empty&lt;T&gt;(): List&lt;T&gt;</c> has none.</param>
@@ -50,7 +50,7 @@ public sealed record CallExpr(Expr Callee, Expr[] Arguments, Span Span,
 public sealed record IndexExpr(Expr Target, Expr Index, Span Span) : Expr(Span);
 public sealed record MemberExpr(Expr Target, string Member, bool IsOptional, Span Span) : Expr(Span); // IsOptional: '?.' statt '.'
 
-// --- Zusammengesetzte Literale ---
+// --- composite literals ---
 public sealed record ArrayLitExpr(Expr[] Elements, Span Span) : Expr(Span);
 public sealed record TupleLitExpr(Expr[] Elements, Span Span) : Expr(Span);
 

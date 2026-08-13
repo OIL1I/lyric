@@ -142,7 +142,7 @@ public class GenericTypePathTests
             fn main(): int { return Holder<int>.of(4).v; }
             """));
 
-    // ------------------------------------------------------------------ Gegenproben
+    // ------------------------------------------------------------------ counter-checks
 
     /// <summary>
     /// <b>Die wichtigste Zusicherung.</b> Ein <c>&lt;</c> bleibt ein Vergleich, wenn kein

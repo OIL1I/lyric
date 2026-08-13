@@ -255,7 +255,7 @@ public class GenericEnumTests
             }
             """));
 
-    // ------------------------------------------------------------------ Gegenproben
+    // ------------------------------------------------------------------ counter-checks
 
     /// <summary>Ein nicht-generisches Enum geht unverändert seinen alten Weg. Ohne diesen Test
     /// bliebe unbemerkt, wenn die Umstellung auf Instanz-Einträge den Normalfall mitnimmt — und

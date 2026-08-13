@@ -27,7 +27,7 @@ public class RegisterFunctionTests
         Output = output,
     });
 
-    // ------------------------------------------------------------------ rufen
+    // ------------------------------------------------------------------ calling
 
     [Fact]
     public void A_script_calls_a_registered_host_function()
@@ -94,7 +94,7 @@ public class RegisterFunctionTests
         Assert.Equal(12.0, instance.Call<double>("flaeche", 2.0));
     }
 
-    // ------------------------------------------------------------------ die erzeugte Deklaration
+    // ------------------------------------------------------------------ the generated declaration
 
     /// <summary>
     /// Der erzeugte Quelltext ist die beste Antwort auf „welche Signatur hat meine Funktion in
@@ -147,7 +147,7 @@ public class RegisterFunctionTests
         Assert.Contains(thrown.Diagnostics, d => d.Code == "LYR-RES0003");
     }
 
-    // ------------------------------------------------------------------ was abgelehnt wird
+    // ------------------------------------------------------------------ what gets rejected
 
     /// <summary>
     /// Kein stilles Ueberschreiben: welche von zwei Registrierungen desselben Namens gewinnt,

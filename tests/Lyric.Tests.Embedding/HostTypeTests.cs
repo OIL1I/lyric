@@ -192,7 +192,7 @@ public class HostTypeTests
         Assert.NotEmpty(thrown.Diagnostics);
     }
 
-    // ------------------------------------------------------------------ die erzeugte Deklaration
+    // ------------------------------------------------------------------ the generated declaration
 
     [Fact]
     public void The_generated_module_declares_the_host_type_as_an_empty_class()

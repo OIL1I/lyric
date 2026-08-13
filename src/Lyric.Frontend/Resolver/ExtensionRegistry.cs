@@ -38,7 +38,7 @@ public sealed class ExtensionRegistry
 }
 
 /// <summary>An `extend` block with its method symbols and its declaring module.
-/// <see cref="Target"/> is set in pass 3 (null when unresolvable).
+/// <see cref="Target"/> is set in pass 3 (null when unresolvable).</summary>
 public sealed class ExtensionBlock
 {
     public ExtendDecl Decl { get; }

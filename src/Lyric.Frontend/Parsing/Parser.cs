@@ -5,18 +5,13 @@ using Lyric.Lexing;
 namespace Lyric.Parsing;
 
 /// <summary>
-/// Parser für Lyric (Sprache.md §4–§6). Strategie laut ROADMAP/STATUS:
-/// Recursive-Descent für Typen (und später Statements/Declarations),
-/// Pratt / Precedence-Climbing für Expressions.
+/// The Lyric parser.
+/// Recursive descent for expressions, types, statements and declarations, with a Pratt loop for
+/// the operator precedence.
 ///
-/// Slice 1 deckt ab: Expressions (alle Operatoren mit korrekter Präzedenz aus
-/// §6.1), TypeExpr (für Casts, Lambda-Annotations, Array-Größen), f-Strings und
-/// Lambdas mit Expression-Body. Statements, Declarations, Patterns, if-/match-als
-/// -Expression und Struct-Init folgen in späteren Slices.
-///
-/// Fehlerstrategie: nie werfen. Jeder Fehler geht als Diagnostic (LYR-PAR####) an
-/// die <see cref="DiagnosticEngine"/>; der Parser liefert einen ErrorExpr/ErrorType
-/// und macht bestmöglich weiter, damit ein Lauf mehrere Fehler meldet.
+/// Error strategy: never throw. Every error goes as a Diagnostic (LYR-PAR####) to
+/// the <see cref="DiagnosticEngine"/>; the parser produces an ErrorExpr or ErrorType and carries
+/// on as best it can, so one run reports several errors.
 /// </summary>
 public sealed partial class Parser
 {
@@ -24,8 +19,9 @@ public sealed partial class Parser
     private readonly SourceManager _sm;
     private readonly DiagnosticEngine _de;
 
-    // Ob 'IDENT { … }' als Struct-Init gelesen werden darf. Ambient: am ExprStmt-Anfang
-    // false (sonst mehrdeutig mit einem Block), in Delimitern via ParseSubExpr wieder true.
+    // Whether 'IDENT { … }' may be read as a struct initializer. Ambient: at the start of an
+    // false at the start of a statement, where it would be ambiguous with a block, and true again
+    // inside delimiters through ParseSubExpr.
     private bool _allowStructInit = true;
 
     public Parser(SourceManager sm, FileId id, DiagnosticEngine de)
@@ -36,7 +32,7 @@ public sealed partial class Parser
     }
 
     // ---------------------------------------------------------------------
-    // Öffentlicher Einstieg (Slice 1: genau EIN Ausdruck)
+    // Public entry point: exactly ONE expression.
     // ---------------------------------------------------------------------
 
     public Expr ParseExpression()
@@ -49,13 +45,13 @@ public sealed partial class Parser
     }
 
     // ---------------------------------------------------------------------
-    // Pratt-Kern: Binär-/Assign-/Range-/Cast-Operatoren (§6.1)
+    // The Pratt core: binary, assignment, range and cast operators.
     // ---------------------------------------------------------------------
 
     /// <summary>
-    /// Bindungsstärken als (left, right). left &lt; right ⇒ links-assoziativ,
-    /// left &gt; right ⇒ rechts-assoziativ. (-1, -1) ⇒ kein Infix-Operator.
-    /// Werte spiegeln die Präzedenztabelle in Sprache.md §6.1 (höher = bindet stärker).
+    /// Binding powers as (left, right). left &lt; right means left-associative, left &gt; right
+    /// means right-associative, and (-1, -1) means no infix operator.
+    /// The values mirror the precedence table: higher binds tighter.
     /// </summary>
     private static (int left, int right) BindingPower(TokenKind op) => op switch
     {
@@ -64,7 +60,7 @@ public sealed partial class Parser
         TokenKind.Star or TokenKind.Slash or TokenKind.Percent => (25, 26),
         TokenKind.Plus or TokenKind.Minus => (23, 24),
         TokenKind.Shl or TokenKind.Shr => (21, 22),
-        TokenKind.DotDot or TokenKind.DotDotEqual => (19, 20), // nicht-assoz.: unten explizit geprüft
+        TokenKind.DotDot or TokenKind.DotDotEqual => (19, 20), // non-associative, checked explicitly below
         TokenKind.Amp => (17, 18),
         TokenKind.Caret => (15, 16),
         TokenKind.Pipe => (13, 14),
@@ -72,9 +68,9 @@ public sealed partial class Parser
         TokenKind.EqualEqual or TokenKind.ExclamationEqual => (9, 10),
         TokenKind.AmpAmp => (7, 8),
         TokenKind.PipePipe => (5, 6),
-        TokenKind.QuestionQuestion => (3, 2), // rechts-assoziativ
+        TokenKind.QuestionQuestion => (3, 2), // right-associative
 
-        // Assignments (rechts-assoziativ)
+        // Assignments, right-associative.
         TokenKind.Equal or TokenKind.PlusEqual or TokenKind.MinusEqual or TokenKind.StarEqual
             or TokenKind.SlashEqual or TokenKind.PercentEqual or TokenKind.ShlEqual or TokenKind.ShrEqual
             or TokenKind.AmpEqual or TokenKind.PipeEqual or TokenKind.CaretEqual or TokenKind.AmpAmpEqual
@@ -93,7 +89,7 @@ public sealed partial class Parser
             var (leftBp, rightBp) = BindingPower(op);
             if (leftBp < minBp) break; // deckt auch (-1, -1) ab
 
-            // 'as': rechte Seite ist ein Typ, kein Ausdruck.
+            // 'as': the right-hand side is a type, not an expression.
             if (op == TokenKind.As)
             {
                 _buffer.Advance();
@@ -102,7 +98,7 @@ public sealed partial class Parser
                 continue;
             }
 
-            // Range: nicht verkettbar (Sprache.md §6.1).
+            // Range: not chainable.
             if (op is TokenKind.DotDot or TokenKind.DotDotEqual)
             {
                 _buffer.Advance();
@@ -113,26 +109,21 @@ public sealed partial class Parser
                 continue;
             }
 
-            // Assignment (inkl. Compound): AssignExpr mit optionalem Basis-Operator.
+            // Assignment, compound included: an AssignExpr with an optional base operator.
             if (Operators.TryMapAssign(op, out var compound))
             {
                 _buffer.Advance();
 
-                // Rechts vom '=' ist wieder eine WERT-Position, also ist Struct-Init dort erlaubt
-                // (§6.2: „in jeder Wert-Position"). 'ParseExprStmt' schaltet den Flag fuer die
-                // ganze Anweisung ab, weil ein Statement nicht mit 'Foo { … }' anfangen darf —
-                // mehrdeutig mit einem Block. Die Mehrdeutigkeit betrifft aber nur den ANFANG:
-                // hinter einem '=' kann kein Block stehen.
-                //
-                // Bis 2026-08-11 griff die Sperre durch, und 's = Small { n = 5 };' war
-                // 'LYR-SEM0052: Small is a type, not a value — did you mean Small { . }?' — ein
-                // Vorschlag, genau das zu schreiben, was dort schon stand. Bekannt seit P3.
+                // The right of an '=' is a value position again, so a struct initializer is
+                // allowed there. 'ParseExprStmt' turns the flag off for the whole statement,
+                // because a statement must not begin with 'Foo { … }' — ambiguous with a block.
+                // The ambiguity concerns the START only: no block can stand after an '='.
                 var value = ParseSubExpr(rightBp);
                 left = new AssignExpr(left, compound, value, Span.Union(left.Span, value.Span));
                 continue;
             }
 
-            // Restliche Binär-Operatoren.
+            // The remaining binary operators.
             _buffer.Advance();
             var right = ParseExpr(rightBp);
             left = new BinaryExpr(left, Operators.MapBinary(op), right, Span.Union(left.Span, right.Span));
@@ -142,7 +133,7 @@ public sealed partial class Parser
     }
 
     // ---------------------------------------------------------------------
-    // Prefix (§6.1 Level 2) und Postfix (§6.1 Level 1)
+    // Prefix and postfix levels.
     // ---------------------------------------------------------------------
 
     private Expr ParsePrefix()
@@ -154,7 +145,7 @@ public sealed partial class Parser
             var operand = ParsePrefix();
             return new UnaryExpr(Operators.MapPrefix(op), operand, Span.Union(opTok.Span, operand.Span));
         }
-        if (op is TokenKind.Resume) // 'resume co' (§8): Präfix wie await, bindet die Postfix-Kette
+        if (op is TokenKind.Resume) // 'resume co': prefix like await, binds the postfix chain
         {
             var kw = _buffer.Advance();
             var co = ParsePrefix();
@@ -165,23 +156,19 @@ public sealed partial class Parser
     }
 
     /// <summary>
-    /// Sind das Typargumente eines Aufrufs — <c>f&lt;int&gt;(…)</c> — oder eine Vergleichskette
-    /// <c>(f &lt; int) &gt; (…)</c>?
+    /// Are these the type arguments of a call — <c>f&lt;int&gt;(…)</c> — or a comparison chain?
     ///
-    /// <para><b>Ein reiner Token-Scan, kein spekulatives Parsen.</b> Der Unterschied ist
-    /// wichtig: <see cref="ParseType"/> meldet Diagnosen, und eine Vermutung, die sich als
-    /// falsch herausstellt, darf keine Fehlermeldung hinterlassen. Der Scan hier kann nichts
-    /// melden — er zaehlt nur Klammern und prueft, was hinter dem schliessenden <c>&gt;</c>
-    /// steht.</para>
+    /// <para>A pure token scan rather than speculative parsing.
+    /// matters: <see cref="ParseType"/> reports diagnostics, and a guess that turns out wrong must
+    /// leave no error behind. The scan here reports nothing; it counts brackets and looks at what
+    /// follows the closing <c>&gt;</c>.</para>
     ///
-    /// <para>Die Regel: es sind Typargumente, wenn zwischen <c>&lt;</c> und dem passenden
-    /// <c>&gt;</c> ausschliesslich Tokens stehen, die in einem Typausdruck vorkommen koennen,
-    /// und unmittelbar danach ein <c>(</c> folgt. C# entscheidet nach demselben Prinzip; Rust
-    /// umgeht die Frage mit dem Turbofish <c>::&lt;&gt;</c>.</para>
+    /// <para>The rule: they are type arguments when only tokens that can occur in a type expression
+    /// stand between the <c>&lt;</c> and its match, and a <c>(</c> follows immediately.</para>
     ///
-    /// <para>Bewusst konservativ: im Zweifel ist es ein Vergleich. Ein falsch erkannter Vergleich
-    /// gibt eine verstaendliche Typfehlermeldung, eine falsch erkannte Typargumentliste einen
-    /// Parser-Fehler an einer Stelle, an der der Nutzer nichts vermutet.</para>
+    /// <para>Conservative by design: in doubt it is a comparison. A misread comparison gives an
+    /// understandable type error; a misread type argument list gives a parser error where the user
+    /// suspects nothing.</para>
     /// </summary>
     private bool LooksLikeCallTypeArguments()
     {
@@ -197,12 +184,12 @@ public sealed partial class Parser
 
                 case TokenKind.Greater:
                     depth--;
-                    // Geschlossen: jetzt entscheidet das naechste Token allein.
+                    // Closed: the next token alone decides now.
                     if (depth == 0) return _buffer.Peek(offset + 1).TokenKind == TokenKind.LParen;
                     break;
 
-                // Was in einem Typausdruck vorkommen darf (Sprache.md §4): benannte Typen mit
-                // Pfad, Arrays, Optionals, Funktionstypen, Tupel.
+                // What may occur in a type expression: named types with
+                // Paths, arrays, optionals, function types, tuples.
                 case TokenKind.Identifier:
                 case TokenKind.Comma:
                 case TokenKind.Dot:
@@ -215,13 +202,13 @@ public sealed partial class Parser
                 case TokenKind.RParen:
                     break;
 
-                // Alles andere kann kein Typ sein — also war das '<' ein Vergleich.
+                // Anything else cannot be a type, so the '<' was a comparison.
                 default:
                     return false;
             }
 
-            // Eine Typargumentliste ist kurz. Die Grenze verhindert, dass ein '<' irgendwo im
-            // Quelltext den halben Puffer absucht, bevor es aufgibt.
+            // A type argument list is short. The bound keeps a '<' anywhere in the source from
+            // scanning half the buffer before giving up.
             if (offset > 64) return false;
         }
     }
@@ -258,9 +245,8 @@ public sealed partial class Parser
                     operand = new IndexExpr(operand, index, Span.Union(operand.Span, close.Span));
                     break;
                 }
-                // 'f<int>()' — explizite Typargumente an einer Aufrufstelle. Gebraucht, wenn die
-                // Argumente nichts hergeben: eine Fabrik 'empty<T>(): List<T>' hat keine, und
-                // ohne sie ist sie nicht aufrufbar.
+                // 'f<int>()' — explicit type arguments at a call site. Needed where the arguments
+                // give nothing: a factory 'empty<T>(): List<T>' has none.
                 case TokenKind.Less when LooksLikeCallTypeArguments():
                 {
                     var typeArguments = ParseTypeArguments(out _);
@@ -363,7 +349,7 @@ public sealed partial class Parser
             case TokenKind.FStringStart:
                 return ParseFString();
             case TokenKind.If:
-                return ParseIfExpr();      // if-Ausdruck (braucht else)
+                return ParseIfExpr();      // if expression, needs an else
             case TokenKind.Match:
                 return ParseMatchExpr();
             case TokenKind.LParen:
@@ -371,8 +357,8 @@ public sealed partial class Parser
             default:
             {
                 _de.Report("LYR-PAR0002", Severity.Error, cur.Span, $"expected an expression, got {cur.TokenKind}");
-                // Schluss-Token nicht schlucken: sie beenden umgebende Konstrukte und
-                // dienen dort der Recovery.
+                // Closing tokens are not consumed: they end the surrounding construct and serve
+                // its recovery.
                 if (cur.TokenKind is not (TokenKind.Eof or TokenKind.RParen or TokenKind.RBracket
                     or TokenKind.RBrace or TokenKind.Comma or TokenKind.Semicolon))
                     _buffer.Advance();
@@ -382,9 +368,9 @@ public sealed partial class Parser
     }
 
     /// <summary>
-    /// '(' leitet drei Formen ein: Lambda <c>(params) =&gt; body</c>, Tuple-Literal
-    /// <c>(a, b)</c> oder geklammerten Ausdruck <c>(expr)</c>. Lambdas werden per
-    /// Lookahead auf ein '=&gt;' hinter der passenden ')' erkannt.
+    /// '(' introduces three forms: a lambda <c>(params) =&gt; body</c>, a tuple literal
+    /// <c>(a, b)</c> or a parenthesized expression <c>(expr)</c>. Lambdas are recognised by looking
+    /// ahead for a '=&gt;' after the matching ')'.
     /// </summary>
     private Expr ParseParenOrTupleOrLambda()
     {
@@ -398,12 +384,12 @@ public sealed partial class Parser
             var elems = new List<Expr> { first };
             while (_buffer.Match(TokenKind.Comma))
             {
-                if (_buffer.Check(TokenKind.RParen)) break; // Trailing-Comma tolerieren
+                if (_buffer.Check(TokenKind.RParen)) break; // tolerate a trailing comma
                 elems.Add(ParseSubExpr());
             }
             var close = _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' to close tuple literal");
             var span = Span.Union(open.Span, close.Span);
-            if (elems.Count < 2) // 1 Element = Gruppierung, kein Tuple (keine Obergrenze, Sprache.md §6.2)
+            if (elems.Count < 2) // one element is a grouping, not a tuple; no upper bound
                 _de.Report("LYR-PAR0010", Severity.Error, span, "tuple literals need at least 2 elements");
             return new TupleLitExpr(elems.ToArray(), span);
         }
@@ -422,7 +408,7 @@ public sealed partial class Parser
             {
                 elems.Add(ParseSubExpr());
                 if (!_buffer.Match(TokenKind.Comma)) break;
-                if (_buffer.Check(TokenKind.RBracket)) break; // Trailing-Comma
+                if (_buffer.Check(TokenKind.RBracket)) break; // trailing comma
             }
         }
         var close = _buffer.Expect(TokenKind.RBracket, "LYR-PAR0004", "expected ']' to close array literal");
@@ -437,14 +423,14 @@ public sealed partial class Parser
         {
             args.Add(ParseSubExpr());
             if (!_buffer.Match(TokenKind.Comma)) break;
-            if (_buffer.Check(TokenKind.RParen)) break; // Trailing-Comma
+            if (_buffer.Check(TokenKind.RParen)) break; // trailing comma
         }
         return args.ToArray();
     }
 
     /// <summary>
-    /// Parst einen Ausdruck in einem Delimiter (Klammer/Argument/Index/Array/Hole):
-    /// dort ist Struct-Init immer erlaubt, egal was der ambient-Flag außen sagt.
+    /// Parses an expression inside a delimiter (parenthesis, argument, index, array, hole): a
+    /// struct initializer is always allowed there, whatever the ambient flag says outside.
     /// </summary>
     private Expr ParseSubExpr(int minBindingPower = 0)
     {
@@ -455,14 +441,14 @@ public sealed partial class Parser
         return expr;
     }
 
-    // Lookahead ab einem Identifier: ist es ein Struct-Init 'TypePath { … }'? Nur wenn erlaubt
-    // und ein '{' direkt hinter dem (ggf. dotted, ggf. generischen) Typ-Pfad steht. Das '<'
-    // wird nur als Typ-Argument-Liste gedeutet, wenn es balanciert schließt und ein '{' folgt —
-    // sonst ist es ein Vergleich (a < b).
+    // Lookahead from an identifier: is this a struct initializer 'TypePath { … }'? Only when
+    // allowed and a '{' follows the type path directly, dotted and generic paths included. The '<'
+    // counts as a type argument list only when it closes balanced and a '{' follows; otherwise it
+    // is a comparison (a < b).
     private bool IsStructInitAhead()
     {
         if (!_allowStructInit) return false;
-        var i = 1; // hinter dem aktuellen Identifier
+        var i = 1; // past the current identifier
         while (_buffer.Peek(i).TokenKind == TokenKind.Dot
                && _buffer.Peek(i + 1).TokenKind == TokenKind.Identifier)
             i += 2;
@@ -471,9 +457,9 @@ public sealed partial class Parser
             i = SkipTypeArgs(i);
             if (i < 0) return false;
 
-            // Hinter den Argumenten darf NOCH ein Segment stehen: 'Ev<int>.Hit { … }' — die
-            // Argumente gehoeren dem Enum, die Variante haengt hinten dran. Ohne diese Zeile ist
-            // eine Struct-Variante eines generischen Enums nicht schreibbar.
+            // One more segment may follow the arguments: in 'Ev<int>.Hit { … }' the arguments
+            // belong to the enum and the variant hangs off the back. Without this line a struct
+            // variant of a generic enum cannot be written.
             if (_buffer.Peek(i).TokenKind == TokenKind.Dot
                 && _buffer.Peek(i + 1).TokenKind == TokenKind.Identifier)
                 i += 2;
@@ -482,23 +468,19 @@ public sealed partial class Parser
     }
 
     /// <summary>
-    /// Lookahead ab einem Identifier: ist es ein Typpfad MIT Argumenten in Wert-Position,
-    /// <c>Pair&lt;int&gt;.of(3)</c>? Also ein (ggf. dotted) Pfad, ein balanciertes
-    /// <c>&lt;…&gt;</c>, und direkt danach ein <c>.</c>.
+    /// Lookahead from an identifier: is this a type path WITH arguments in value position, that is
+    /// segments joined by <c>.</c>, then <c>&lt;…&gt;</c>, then a <c>.</c> directly after?
     ///
-    /// <para>Das <c>&lt;</c> ist ohne Argumente kein Typpfad: <c>P.neu()</c> ist ein gewoehnlicher
-    /// Bezeichner, dessen Symbol ein Typ ist, und braucht diesen Weg nicht. Deshalb steht hier
-    /// <b>kein</b> optionales <c>&lt;</c> wie in <see cref="IsStructInitAhead"/>.</para>
+    /// <para>Without arguments the <c>&lt;</c> is no type path: <c>P.neu()</c> is an ordinary
+    /// identifier whose symbol happens to be a type and does not need this route. Hence there is NO
+    /// optional <c>&lt;</c> here, unlike in <see cref="IsStructInitAhead"/>.</para>
     ///
-    /// <para><b>Die Regel kostet keine Mehrdeutigkeit.</b> Ein <c>.</c> hinter einer
-    /// Vergleichskette (<c>a &lt; b &gt; .c</c>) ist ohnehin kein gueltiger Ausdruck — es gibt
-    /// dort nichts zu verwechseln. Dieselbe Entscheidung wie bei <c>f&lt;int&gt;()</c> in §6.1,
-    /// und aus demselben Grund: eine dritte Schreibweise (Rusts <c>::&lt;&gt;</c>) waere ein
-    /// zweiter Mechanismus fuer dasselbe Konzept.</para>
+    /// <para>The rule costs no ambiguity: a <c>.</c> after a comparison chain
+    /// (<c>a &lt; b &gt; .c</c>) is not a valid expression anyway.</para>
     /// </summary>
     private bool IsTypePathAhead()
     {
-        var i = 1; // hinter dem aktuellen Identifier
+        var i = 1; // past the current identifier
         while (_buffer.Peek(i).TokenKind == TokenKind.Dot
                && _buffer.Peek(i + 1).TokenKind == TokenKind.Identifier)
             i += 2;
@@ -511,10 +493,10 @@ public sealed partial class Parser
 
     private Expr ParseTypePath()
     {
-        var first = _buffer.Advance(); // erster IDENT
+        var first = _buffer.Advance(); // first IDENT
         var path = new List<string> { _sm.Slice(first.Span).ToString() };
 
-        // Der Lookahead hat 'IDENT (. IDENT)* <' zugesichert, also endet die Schleife am '<'.
+        // The lookahead guaranteed 'IDENT (. IDENT)* <', so the loop ends at the '<'.
         while (_buffer.Match(TokenKind.Dot))
             path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
                 $"expected type name, got {_buffer.Current.TokenKind}").Span).ToString());
@@ -523,9 +505,9 @@ public sealed partial class Parser
         return new TypePathExpr(path.ToArray(), typeArgs, Span.Union(first.Span, close));
     }
 
-    // Überspringt ab Peek(start)=='<' eine balancierte Typ-Argument-Gruppe (Tiefe über '<'/'>',
-    // '>>' schließt zwei). Rückgabe: Index hinter dem schließenden '>', oder -1 wenn nicht
-    // balanciert / ein nicht-typ-artiges Token auftaucht (dann war '<' ein Vergleich).
+    // Skips a balanced type argument group starting at Peek(start)=='<' (depth over '<' and '>',
+    // '>>' closes two). Returns the index past the closing '>', or -1 when it is unbalanced or a
+    // non-type-like token appears, in which case the '<' was a comparison.
     private int SkipTypeArgs(int start)
     {
         var depth = 0;
@@ -539,17 +521,17 @@ public sealed partial class Parser
                 case TokenKind.Identifier or TokenKind.Dot or TokenKind.Comma
                     or TokenKind.LBracket or TokenKind.RBracket or TokenKind.Question
                     or TokenKind.LParen or TokenKind.RParen or TokenKind.Fn or TokenKind.Arrow:
-                    break; // typ-artig, Tiefe unverändert
-                default: return -1; // z.B. ';', '{', Literal, Operator → kein Typ-Arg
+                    break; // type-like, depth unchanged
+                default: return -1; // ';', '{', a literal or an operator is no type argument
             }
             if (depth == 0) return i + 1; // sauber geschlossen
-            if (depth < 0) return -1;      // über-geschlossen
+            if (depth < 0) return -1;      // over-closed
         }
     }
 
     private Expr ParseStructInit()
     {
-        var first = _buffer.Advance(); // erster IDENT
+        var first = _buffer.Advance(); // first IDENT
         var path = new List<string> { _sm.Slice(first.Span).ToString() };
         while (_buffer.Match(TokenKind.Dot))
             path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
@@ -560,13 +542,13 @@ public sealed partial class Parser
         {
             typeArgs = ParseTypeArguments(out _);
 
-            // 'Ev<int>.Hit { … }': die Variante steht HINTER den Argumenten des Enums.
+            // 'Ev<int>.Hit { … }': the variant stands BEHIND the enum's arguments.
             while (_buffer.Match(TokenKind.Dot))
                 path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
                     $"expected variant name, got {_buffer.Current.TokenKind}").Span).ToString());
         }
 
-        _buffer.Advance(); // '{' (durch IsStructInitAhead garantiert)
+        _buffer.Advance(); // '{', guaranteed by IsStructInitAhead
         var fields = new List<StructInitField>();
         while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
         {
@@ -583,7 +565,7 @@ public sealed partial class Parser
     }
 
     // ---------------------------------------------------------------------
-    // f-Strings (§1.5). Der Lexer liefert bereits die Sub-Tokens; hier nur
+    // f-strings. The lexer already yields the sub-tokens; this only
     // zusammensetzen: FStringStart { Chunk | InterpStart Expr [FormatSpec] InterpEnd } FStringEnd.
     // ---------------------------------------------------------------------
 
@@ -599,7 +581,7 @@ public sealed partial class Parser
             if (t.TokenKind == TokenKind.FStringChunk)
             {
                 _buffer.Advance();
-                segments.Add(new InterpText(_sm.Slice(t.Span).ToString(), t.Span)); // roh, Escapes bleiben stehen
+                segments.Add(new InterpText(_sm.Slice(t.Span).ToString(), t.Span)); // raw, escapes stay as they are
                 continue;
             }
             if (t.TokenKind == TokenKind.FStringInterpStart)
@@ -619,7 +601,7 @@ public sealed partial class Parser
                 end = _buffer.Advance();
                 break;
             }
-            // Eof / Unerwartetes: Lexer hat den unterminierten f-String bereits gemeldet.
+            // EOF or something unexpected: the lexer already reported the unterminated f-string.
             end = t;
             break;
         }
@@ -628,7 +610,7 @@ public sealed partial class Parser
     }
 
     // ---------------------------------------------------------------------
-    // Lambdas (§6.2). Slice 1: nur Expression-Body.
+    // Lambdas.
     // ---------------------------------------------------------------------
 
     private LambdaExpr ParseLambda()
@@ -646,7 +628,7 @@ public sealed partial class Parser
                 var pspan = type is null ? nameTok.Span : Span.Union(nameTok.Span, type.Span);
                 parameters.Add(new LambdaParam(_sm.Slice(nameTok.Span).ToString(), type, pspan));
                 if (!_buffer.Match(TokenKind.Comma)) break;
-                if (_buffer.Check(TokenKind.RParen)) break; // Trailing-Comma
+                if (_buffer.Check(TokenKind.RParen)) break; // trailing comma
             }
         }
         _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' after lambda parameters");
@@ -657,15 +639,15 @@ public sealed partial class Parser
         _buffer.Expect(TokenKind.FatArrow, "LYR-PAR0012",
             $"expected '=>' in lambda, got {_buffer.Current.TokenKind}");
 
-        // Body: Expression oder Block ('=> expr' bzw. '=> { ... }', Sprache.md §6.2).
+        // Body: an expression or a block, '=> expr' or '=> { ... }'.
         Node body = _buffer.Check(TokenKind.LBrace) ? ParseBlock() : ParseExpr(0);
         return new LambdaExpr(parameters.ToArray(), returnType, body, Span.Union(open.Span, body.Span));
     }
 
     /// <summary>
-    /// Lookahead ab '(': balanciert Klammern bis zur passenden ')' und prüft, ob
-    /// direkt danach ein '=&gt;' folgt. Nur dann ist es ein Lambda. Löst
-    /// Lambda-vs-Tuple-vs-Grouping ohne Backtracking.
+    /// Lookahead from '(': balances parentheses up to the matching ')' and checks whether a
+    /// '=&gt;' follows directly. Only then is it a lambda. Resolves lambda vs tuple vs grouping
+    /// without backtracking.
     /// </summary>
     private bool IsLambdaAhead()
     {
@@ -691,8 +673,8 @@ public sealed partial class Parser
         }
     }
 
-    // Hinter der schließenden ')': direkt '=>' ODER ': TypeExpr =>' (Rückgabe-Annotation,
-    // §6.2). Der Typ wird nur token-klassifiziert übersprungen (wie SkipTypeArgs).
+    // After the closing ')': either '=>' directly OR ': TypeExpr =>' with a return annotation.
+    // The type is skipped by token classification only, as in SkipTypeArgs.
     private bool LambdaTailAhead(int i)
     {
         if (_buffer.Peek(i).TokenKind == TokenKind.FatArrow) return true;
@@ -708,14 +690,14 @@ public sealed partial class Parser
                 case TokenKind.Identifier or TokenKind.Dot or TokenKind.Comma or TokenKind.Question
                     or TokenKind.Fn or TokenKind.Arrow or TokenKind.Less or TokenKind.Greater
                     or TokenKind.Shr or TokenKind.IntLiteral:
-                    break; // typ-artig
-                default: return false; // z.B. ';', Literal, Operator → kein Lambda-Tail
+                    break; // type-like
+                default: return false; // ';', a literal or an operator is no lambda tail
             }
         }
     }
 
     // ---------------------------------------------------------------------
-    // Typausdrücke (§4)
+    // Type expressions.
     // ---------------------------------------------------------------------
 
     private TypeNode ParseType()
@@ -792,20 +774,14 @@ public sealed partial class Parser
     }
 
     /// <summary>
-    /// <c>(</c> in Typ-Position: entweder ein <b>Tupel</b> (ab zwei Elementen) oder eine blosse
-    /// <b>Klammerung</b> (Sprache.md §4).
+    /// <c>(</c> in type position: either a TUPLE, from two elements on, or a plain GROUPING.
     ///
-    /// <para>Kein Konflikt zwischen beiden, weil Lyric kein 1-Tupel kennt: <c>TupleType</c>
-    /// verlangt seit jeher Aritaet 2. Rust braucht dafuer <c>(T,)</c>, hier ist der Platz frei.</para>
+    /// <para>No conflict between the two, because Lyric has no 1-tuple: <c>TupleType</c> requires
+    /// arity 2. Rust needs <c>(T,)</c> for this; here the spot is free.</para>
     ///
-    /// <para><b>Wozu die Klammerung.</b> <c>fn(A) -&gt; R</c> ist der einzige Typ der Sprache, der
-    /// nach rechts offen ist — <c>fn(int) -&gt; void[]</c> liest sich als Funktion, die
-    /// <c>void[]</c> liefert, und ein Array von Funktionswerten liess sich vorher <b>gar nicht
-    /// hinschreiben</b>. Die Praezedenz bleibt dabei, wie sie ist: sie umzudrehen wuerde
-    /// <c>fn(): int[]</c> still zu etwas anderem machen als bisher.</para>
-    ///
-    /// <para>Im Ausdrucksbereich klammert <c>(1)</c> laengst; dies schliesst die Inkonsistenz,
-    /// nicht mehr.</para>
+    /// <para>What the grouping is for: <c>fn(A) -&gt; R</c> is the only type in the language open
+    /// to the right — <c>fn(int) -&gt; void[]</c> reads as a function returning <c>void[]</c>, and
+    /// an array of function values could not be written at all. The precedence stays as it is.</para>
     /// </summary>
     private TypeNode ParseParenthesizedType()
     {
@@ -823,11 +799,11 @@ public sealed partial class Parser
         var close = _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' to close type");
         var span = Span.Union(open.Span, close.Span);
 
-        // Ein Element OHNE Komma ist eine Klammerung — der innere Typ wandert unveraendert nach
-        // oben. Mit Komma ('(T,)') war ein Tupel gemeint, und dafuer fehlt das zweite Element.
+        // One element WITHOUT a comma is a grouping: the inner type moves up unchanged. With a
+        // comma ('(T,)') a tuple was meant, and its second element is missing.
         if (elems.Count == 1 && !sawComma) return elems[0];
 
-        if (elems.Count < 2) // keine Obergrenze (Sprache.md §4)
+        if (elems.Count < 2) // no upper bound
             _de.Report("LYR-PAR0010", Severity.Error, span, "tuple types need at least 2 elements");
 
         return new TupleType(elems.ToArray(), span);
@@ -839,7 +815,7 @@ public sealed partial class Parser
         var args = new List<TypeNode>();
         do { args.Add(ParseType()); } while (_buffer.Match(TokenKind.Comma));
 
-        // Verschachtelte Generics: '>>', '>=' und '>>=' in einzelne '>' zerlegen.
+        // Nested generics: split '>>', '>=' and '>>=' into single '>' tokens.
         if (_buffer.Current.TokenKind is TokenKind.Shr or TokenKind.ShrEqual or TokenKind.GreaterEqual)
             _buffer.SplitCurrentGreater();
 

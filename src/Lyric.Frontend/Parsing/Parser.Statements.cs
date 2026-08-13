@@ -5,14 +5,14 @@ using Lyric.Lexing;
 namespace Lyric.Parsing;
 
 /// <summary>
-/// Statement-Parser (Sprache.md §5), Recursive-Descent. Dispatch über das erste
-/// Token; alles ohne Statement-Keyword ist ein <c>ExprStmt</c>. Kontroll-Statements
-/// halten ihren Rumpf als <c>Block</c>. Wie der Rest des Parsers: nie werfen —
-/// Fehler als LYR-PAR#### plus ErrorStmt/ErrorExpr, dann bestmöglich weiter.
+/// The statement parser, recursive descent. Dispatch is on the first token; anything without a
+/// statement keyword is an <c>ExprStmt</c>. Control statements hold their body as a <c>Block</c>.
+/// Like the rest of the parser: never throw,
+/// reporting errors as LYR-PAR#### plus an ErrorStmt or ErrorExpr, then carrying on as best it can.
 /// </summary>
 public sealed partial class Parser
 {
-    /// <summary>Slice-2-Einstieg: genau EIN Statement (ein Block deckt Sequenzen ab).</summary>
+    /// <summary>Entry point for exactly ONE statement; a block covers sequences.</summary>
     public Stmt ParseStatement()
     {
         var stmt = ParseStmt();
@@ -57,7 +57,7 @@ public sealed partial class Parser
             var before = _buffer.Position;
             stmts.Add(ParseStmt());
             if (_buffer.Position == before && !_buffer.AtEnd)
-                _buffer.Advance(); // Fortschritt erzwingen: verhindert Endlosschleife bei nicht-konsumiertem Token
+                _buffer.Advance(); // force progress, so an unconsumed token cannot loop forever
         }
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close block");
         return new Block(stmts.ToArray(), Span.Union(open.Span, close.Span));
@@ -68,8 +68,8 @@ public sealed partial class Parser
         var kw = _buffer.Advance(); // let / var
         var isMutable = kw.TokenKind == TokenKind.Var;
 
-        // 'let (a, b) = …' — Destructuring. Die Klammer entscheidet, und sie kann an dieser
-        // Stelle nichts anderes einleiten: ein Bindungsname ist ein Bezeichner.
+        // 'let (a, b) = …' — destructuring. The parenthesis decides, and at this position it can
+        // introduce nothing else: a binding name is an identifier.
         if (_buffer.Check(TokenKind.LParen)) return ParseDestructuring(kw, isMutable);
 
         var nameTok = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0020",
@@ -84,14 +84,14 @@ public sealed partial class Parser
     /// <summary>
     /// <c>let (a, b) = paar;</c> (Sprache.md §4).
     ///
-    /// <para>Das Muster wird als gewoehnliches Tupel-Pattern geparst — dasselbe, das ein
-    /// <c>match</c>-Arm benutzt. Damit gilt hier automatisch, was dort gilt: verschachtelte
-    /// Muster, <c>_</c> als Platzhalter, und die Aritaet muss passen.</para>
+    /// <para>The pattern is parsed as an ordinary tuple pattern — the same one a
+    /// <c>match</c> arm uses. Whatever holds there holds here: nested
+    /// pattern uses, with <c>_</c> as a placeholder, and the arity has to match.</para>
     /// </summary>
     private Stmt ParseDestructuring(Token kw, bool isMutable)
     {
-        // ParseOrPattern, nicht ParsePattern: letzteres ist der Test-Einstieg und verlangt, dass
-        // danach die Datei zu Ende ist.
+        // ParseOrPattern rather than ParsePattern: the latter is the test entry point and requires
+        // the file to end after it.
         var pattern = ParseOrPattern();
         if (pattern is not TuplePattern tuple)
         {
@@ -102,8 +102,8 @@ public sealed partial class Parser
 
         TypeNode? type = _buffer.Match(TokenKind.Colon) ? ParseType() : null;
 
-        // Der Initialisierer ist Pflicht: ohne ihn gaebe es nichts zu zerlegen, und die
-        // Definite-Assignment-Analyse haette mehrere Namen ohne Wert zu verwalten.
+        // The initializer is required: without it there would be nothing to take apart, and the
+        // definite-assignment analysis would have to track several names without a value.
         if (!_buffer.Match(TokenKind.Equal))
         {
             _de.Report("LYR-PAR0020", Severity.Error, _buffer.Current.Span,
@@ -201,7 +201,7 @@ public sealed partial class Parser
         return new YieldStmt(value, Span.Union(kw.Span, semi.Span));
     }
 
-    // resume ist ein Ausdruck (§6.2, D6) — 'resume co;' läuft als ExprStmt durch ParseExprStmt.
+    // resume is an expression; 'resume co;' runs as an ExprStmt through ParseExprStmt.
 
     private Stmt ParseDefer()
     {
@@ -246,11 +246,11 @@ public sealed partial class Parser
     {
         var kw = _buffer.Advance(); // catch
         _buffer.Expect(TokenKind.LParen, "LYR-PAR0019", "expected '(' after 'catch'");
-        // CatchBinding: '_' | IDENTIFIER ':' TypeExpr | IDENTIFIER  ('_' ist ein Identifier)
+        // CatchBinding: '_' | IDENTIFIER ':' TypeExpr | IDENTIFIER  ('_' is an identifier)
         var idTok = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0020",
             $"expected catch binding, got {_buffer.Current.TokenKind}");
         var text = _sm.Slice(idTok.Span).ToString();
-        string? name = text == "_" ? null : text; // '_' => catch-all ohne Binding
+        string? name = text == "_" ? null : text; // '_' means catch-all without a binding
         TypeNode? type = _buffer.Match(TokenKind.Colon) ? ParseType() : null;
         _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' after catch binding");
         var body = ParseBlock();
@@ -259,8 +259,8 @@ public sealed partial class Parser
 
     private Stmt ParseExprStmt()
     {
-        // Am Statement-Anfang kein Struct-Init lesen ('Foo { … };' wäre sonst mit einem
-        // Block mehrdeutig). In Wert-Positionen (Bindings, Args, …) bleibt es erlaubt.
+        // No struct initializer at the start of a statement: 'Foo { … };' would otherwise be
+        // ambiguous with a block. In value positions (bindings, arguments) it stays allowed.
         var saved = _allowStructInit;
         _allowStructInit = false;
         var expr = ParseExpr(0);

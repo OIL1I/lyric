@@ -624,7 +624,7 @@ public sealed class NativeRegistry
     /// <summary>Runs a file operation and returns <c>null</c> when it fails.
     ///
     /// <para>The catch is broad: missing file, missing permission, invalid path, device gone.
-    /// To the caller they are the same answer.</para>
+    /// To the caller they are the same answer.</para></summary>
     private static string? TryIo(Func<string> operation)
     {
         try

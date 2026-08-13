@@ -23,7 +23,7 @@ namespace Lyric.Tests.Bytecode;
 /// </summary>
 public class BytecodeTests
 {
-    // ------------------------------------------------------------------ Helfer
+    // ------------------------------------------------------------------ helpers
 
     private static IrModule LowerSource(string source)
     {

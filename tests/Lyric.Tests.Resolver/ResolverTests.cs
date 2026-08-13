@@ -26,7 +26,7 @@ public class ResolverTests
         return (comp, de, comp.Resolve());
     }
 
-    // --- Deklarationen ---
+    // --- declarations ---
 
     [Fact]
     public void Top_level_symbols_are_declared()

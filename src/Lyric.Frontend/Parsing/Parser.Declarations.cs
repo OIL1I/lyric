@@ -5,20 +5,18 @@ using Lyric.Lexing;
 namespace Lyric.Parsing;
 
 /// <summary>
-/// Modul- und Deklarations-Parser (Sprache.md §2/§3), Recursive-Descent.
+/// The module and declaration parser, recursive descent.
 ///
-/// Kontextuelle Keywords: <c>throws</c> und <c>type</c> stehen NICHT in der
-/// Keyword-Liste (§1.4) — der Lexer liefert sie als Identifier, hier werden sie
-/// nur an ihrer Position erkannt.
+/// Contextual keywords: <c>throws</c> and <c>type</c> are not in the keyword list — the lexer
+/// yields them as identifiers and they are recognised here by position.
 ///
-/// Member-Trennung (bewusst, weicht leicht von der EBNF ab — siehe Notiz im Code):
-///   struct/class : Field braucht ',', block-bodied Methode nicht (matcht §3.2-Beispiel)
-///   enum-Varianten: ',' getrennt
-///   interface/extend/enum-Methoden: Sequenz ohne Trenner
+/// Member separation: in a struct or class a field needs a ',', a block-bodied method does not.
+/// Enum variants are separated by ','.
+/// In an interface, extend or enum body the members form a sequence without separators.
 /// </summary>
 public sealed partial class Parser
 {
-    /// <summary>Slice-3-Einstieg: ganze Datei (optionaler Modul-Header + Top-Level-Decls).</summary>
+    /// <summary>Entry point for a whole file: an optional module header plus top-level declarations.</summary>
     public Module ParseModule()
     {
         var start = _buffer.Current.Span;
@@ -29,7 +27,7 @@ public sealed partial class Parser
         {
             var before = _buffer.Position;
             decls.Add(ParseTopLevelDecl());
-            if (_buffer.Position == before) _buffer.Advance(); // Fortschritt erzwingen
+            if (_buffer.Position == before) _buffer.Advance(); // force progress
         }
 
         var end = decls.Count > 0 ? decls[^1].Span : (header?.Span ?? start);
@@ -69,11 +67,9 @@ public sealed partial class Parser
             case TokenKind.Let:
             case TokenKind.Var:
                 return ParseGlobalBinding(isPublic, start);
-            // Attribute sind post-v1 (Sprache.md §10). Die Syntax bleibt reserviert — der Lexer
-            // erkennt '@name' weiterhin —, aber an einer Deklaration gibt es keinen Platz dafuer,
-            // und §2.3 hatte nie einen. Eigene Meldung statt "expected a declaration": wer
-            // '@test' schreibt, hat sich nicht vertippt, sondern etwas erwartet, das es gibt —
-            // nur nicht in v1.
+            // Attributes are post-v1. The syntax stays reserved, and this reports its own message
+            // rather than "expected a declaration": someone writing '@test' expected something
+            // that exists, just not yet.
             case TokenKind.AtIdentifier:
                 _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
                     "attributes are not part of v1 (Sprache.md §10); '@test' and 'lyric test' " +
@@ -85,14 +81,13 @@ public sealed partial class Parser
                 if (AtContextual("type")) return ParseTypeAlias(isPublic, start);
                 _de.Report("LYR-PAR0025", Severity.Error, _buffer.Current.Span,
                     $"expected a declaration, got {_buffer.Current.TokenKind}");
-                var end = SynchronizeTopLevel(); // bis zum nächsten Decl-Start überspringen → nur EIN Fehler
+                var end = SynchronizeTopLevel(); // skip to the next declaration start, so only ONE error
                 return new ErrorDecl(Span.Union(start, end));
         }
     }
 
-    /// <summary>Recovery: konsumiert Tokens bis zum nächsten plausiblen Decl-Anfang
-    /// (Decl-Keyword, contextuelles 'type' oder EOF). Liefert den Span des zuletzt
-    /// übersprungenen Tokens.</summary>
+    /// <summary>Recovery: consumes tokens up to the next plausible declaration start (a keyword,
+    /// the contextual 'type', or EOF). Returns the span of the last skipped token.</summary>
     private Span SynchronizeTopLevel()
     {
         var span = _buffer.Current.Span;
@@ -108,7 +103,7 @@ public sealed partial class Parser
         return span;
     }
 
-    // --- Imports (§2.2) ---
+    // --- imports ---
 
     private Decl ParseImport()
     {
@@ -161,7 +156,7 @@ public sealed partial class Parser
         if (AtContextual("throws"))
         {
             var tk = _buffer.Advance();
-            // 'throws' ohne Typ, wenn direkt der Body/';' folgt.
+            // 'throws' without a type when the body or ';' follows directly.
             TypeNode? thrown = _buffer.Check(TokenKind.LBrace) || _buffer.Check(TokenKind.Semicolon)
                 ? null : ParseType();
             throws = new ThrowsClause(thrown, Span.Union(tk.Span, thrown?.Span ?? tk.Span));
@@ -192,12 +187,10 @@ public sealed partial class Parser
             if (_buffer.Check(TokenKind.RParen)) break; // trailing comma
             var start = _buffer.Current.Span;
 
-            // Attribute sind post-v1 (Sprache.md §10) — auch AN EINEM PARAMETER. Ohne diesen Fall
-            // liest der Parser '@noCapture' als Parameternamen, verliert danach den Rumpf und
-            // meldet 'has no body; only standard-library modules may declare native functions':
-            // eine Auskunft ueber native Deklarationen an jemanden, der ein Attribut schreiben
-            // wollte. Dieselbe Meldung wie an einer Deklaration, damit beide Stellen dasselbe
-            // sagen.
+            // Attributes are post-v1, ON A PARAMETER too. Without this case the parser would read
+            // '@noCapture' as a parameter name, then lose the body, and report a message about
+            // native declarations to someone writing an attribute. The same message as on a
+            // declaration, so both places say the same thing.
             while (_buffer.Check(TokenKind.AtIdentifier))
             {
                 _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
@@ -233,8 +226,8 @@ public sealed partial class Parser
             : new StructDecl(isPublic, name, generics, interfaces, members, span);
     }
 
-    // struct/class-Body: FieldDecl | FunctionDecl. Field braucht ',', block-bodied
-    // Methode nicht (matcht §3.2-Beispiel; EBNF sagt strikt ',' — Inkonsistenz geflaggt).
+    // struct or class body: FieldDecl | FunctionDecl. A field needs a ',', a block-bodied
+    // a method does not.
     private Decl[] ParseTypeMembers()
     {
         var members = new List<Decl>();
@@ -243,13 +236,13 @@ public sealed partial class Parser
             var before = _buffer.Position;
             var member = ParseTypeMember();
             members.Add(member);
-            if (_buffer.Position == before) { _buffer.Advance(); continue; } // Fortschritt erzwingen
+            if (_buffer.Position == before) { _buffer.Advance(); continue; } // force progress
 
             if (_buffer.Check(TokenKind.RBrace)) break;
 
-            // Das ',' trennt Member. Nach etwas, das schon selbst geschlossen ist — ein Block-Body
-            // endet auf '}', ein 'static let' auf ';' — ist es optional; nur Felder brauchen es
-            // zwingend, sonst wäre `a: int b: int` eine gültige Zeile.
+            // The ',' separates members. After something already closed — a block body ends in
+            // '}', a 'static let' in ';' — it is optional; only fields need it, or `a: int b: int`
+            // would be a valid line.
             if (member is FunctionDecl { Body: not null } or StaticBindingDecl)
                 _buffer.Match(TokenKind.Comma);
             else
@@ -263,9 +256,9 @@ public sealed partial class Parser
         var start = _buffer.Current.Span;
 
         // Member-Formen: [pub] [static] [mut] fn …  |  [pub] static let …  |  Feld.
-        // 'static' steht vor 'mut', damit die Reihenfolge eindeutig ist — 'mut static fn' gibt es
-        // nicht. Sema lehnt die Kombination ohnehin ab (ADR-014: ein static-Member hat keinen
-        // Empfänger, den 'mut' betreffen könnte).
+        // 'static' precedes 'mut', so the order is unambiguous; 'mut static fn' does not exist.
+        // The sema rejects the combination anyway: a static member has no receiver for 'mut' to
+        // apply to.
         var isPublic = _buffer.Check(TokenKind.Pub)
                        && _buffer.Peek(1).TokenKind is TokenKind.Fn or TokenKind.Mut or TokenKind.Static
             ? _buffer.Match(TokenKind.Pub)
@@ -332,7 +325,7 @@ public sealed partial class Parser
             $"expected enum variant name, got {_buffer.Current.TokenKind}");
         var name = _sm.Slice(nameTok.Span).ToString();
 
-        if (_buffer.Check(TokenKind.LParen)) // Tuple-Variante
+        if (_buffer.Check(TokenKind.LParen)) // tuple variant
         {
             _buffer.Advance();
             var fields = new List<TypeNode>();
@@ -342,7 +335,7 @@ public sealed partial class Parser
             return new EnumVariant(name, fields.ToArray(), null, Span.Union(nameTok.Span, close.Span));
         }
 
-        if (_buffer.Check(TokenKind.LBrace)) // Struct-Variante
+        if (_buffer.Check(TokenKind.LBrace)) // struct variant
         {
             _buffer.Advance();
             var fields = new List<FieldDecl>();
@@ -366,21 +359,17 @@ public sealed partial class Parser
         var name = ExpectName("LYR-PAR0026", "interface name");
         var generics = _buffer.Check(TokenKind.Less) ? ParseGenericParams() : [];
 
-        // 'interface B :: [A]' — Interface-Vererbung gibt es in Lyric nicht (§7 sieht fuer
-        // InterfaceDecl keine Konformanzliste vor). Ohne diesen Fall laeuft der Parser in eine
-        // Folgemeldung ueber Parameter-Klammern, die mit der Ursache nichts zu tun hat.
+        // 'interface B :: [A]' — there is no interface inheritance. Without this case the parser
+        // runs into a follow-up message about parameter parentheses, unrelated to the cause.
         //
-        // Die Meldung nennt den Ausweg, weil es einen gibt: 'std.core' loest genau das mit zwei
-        // Constraints nebeneinander ('K :: [Hashable<K>, Equatable<K>]', ADR-024) — Hashable
-        // braeuchte die Vererbung nur, um Equatable zu implizieren.
+        // The message names the way out, because there is one: two constraints side by side.
         if (_buffer.Check(TokenKind.ColonColon))
         {
             _de.Report("LYR-PAR0039", Severity.Error, _buffer.Current.Span,
                 "an interface cannot extend another one — Lyric has no interface inheritance "
                 + "(Sprache.md §7). Require both where you need both: '<T :: [A, B]>'");
-            // Die Liste wird trotzdem GELESEN und verworfen: sonst stolpert der Parser gleich
-            // noch einmal ueber '[A]' und meldet zwei Fehler fuer eine Ursache. Eine Diagnose je
-            // Ursache — dieselbe Regel, aus der 'SynchronizeTopLevel' entstanden ist.
+            // The list is READ and discarded anyway, or the parser would stumble over '[A]' a
+            // second time and report two errors for one cause.
             ParseInterfaceList();
         }
 
@@ -405,7 +394,7 @@ public sealed partial class Parser
         return new ExtendDecl(isPublic, target, interfaces, methods.ToArray(), Span.Union(start, close.Span));
     }
 
-    // Sequenz von FunctionDecl ohne Trenner (interface/extend/enum-Methoden).
+    // A sequence of FunctionDecl without separators (interface, extend and enum methods).
     private void ParseMethodSequence(List<FunctionDecl> methods)
     {
         while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
@@ -416,7 +405,7 @@ public sealed partial class Parser
                            && _buffer.Peek(1).TokenKind is TokenKind.Fn or TokenKind.Mut
                            && _buffer.Match(TokenKind.Pub);
             methods.Add(ParseFunctionDecl(isPublic, start));
-            if (_buffer.Position == before) _buffer.Advance(); // Fortschritt erzwingen
+            if (_buffer.Position == before) _buffer.Advance(); // force progress
         }
     }
 
@@ -432,10 +421,9 @@ public sealed partial class Parser
     }
 
     /// <summary>
-    /// Eine Konstante hat <b>einen</b> Namen. Destructuring gibt es nur fuer lokale Bindungen: ein
-    /// globaler Slot ist eine benannte Sache (P5c), und mehrere Namen aus einem Ausdruck zu
-    /// ziehen hiesse, mehrere Slots aus einer Deklaration entstehen zu lassen.
-    /// </summary>
+    /// <summary>A constant has ONE name. Destructuring exists for local bindings only: a global
+    /// slot is a named thing, and taking several names from one expression would let one
+    /// declaration produce several slots.</summary>
     private BindingStmt RequireNamedBinding(Stmt parsed, string what)
     {
         if (parsed is BindingStmt named) return named;
@@ -456,7 +444,7 @@ public sealed partial class Parser
         return new TypeAliasDecl(isPublic, name, aliased, Span.Union(start, semi.Span));
     }
 
-    // --- Generics (§3.1) ---
+    // --- generics ---
 
     private GenericParam[] ParseGenericParams()
     {
@@ -479,7 +467,7 @@ public sealed partial class Parser
             parameters.Add(new GenericParam(_sm.Slice(nameTok.Span).ToString(), constraints,
                 Span.Union(nameTok.Span, end)));
         } while (_buffer.Match(TokenKind.Comma));
-        // Generic-Param-Listen schließen immer mit einem einfachen '>' (kein '>>').
+        // A generic parameter list always closes with a plain '>', never a '>>'.
         _buffer.Expect(TokenKind.Greater, "LYR-PAR0009", "expected '>' to close type parameters");
         return parameters.ToArray();
     }
@@ -510,7 +498,8 @@ public sealed partial class Parser
         return _sm.Slice(tok.Span).ToString();
     }
 
-    /// <summary>Kontextuelles Keyword: Identifier mit exakt diesem Text (z.B. 'throws', 'type').</summary>
+    /// <summary>A contextual keyword: an identifier with exactly this text (for example 'throws' or
+    /// 'type').</summary>
     private bool AtContextual(string word) =>
         _buffer.Check(TokenKind.Identifier) && _sm.Slice(_buffer.Current.Span).SequenceEqual(word);
 }

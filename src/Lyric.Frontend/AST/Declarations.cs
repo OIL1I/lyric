@@ -10,13 +10,13 @@ public sealed record ModulePath(string[] Segments, Span Span) : Node(Span);
 
 public abstract record Decl(Span Span) : Node(Span);
 
-// --- Imports (§2.2) ---
+// --- imports ---
 public sealed record ImportDecl(string[] Path, ImportClause? Clause, Span Span) : Decl(Span);
 public abstract record ImportClause(Span Span) : Node(Span);
 public sealed record ImportSelective(string[] Names, Span Span) : ImportClause(Span); // import a.b { x, y }
 public sealed record ImportAlias(string Alias, Span Span) : ImportClause(Span);       // import a.b as C
 
-// --- Generics (§3.1) ---
+// --- generics ---
 public sealed record GenericParam(string Name, TypeNode[] Constraints, Span Span) : Node(Span); // T oder T :: [I1, I2]
 
 // --- Funktionen & Member (§3.1) ---
@@ -48,4 +48,4 @@ public sealed record ExtendDecl(bool IsPublic, TypeNode Target, TypeNode[] Inter
 public sealed record GlobalBindingDecl(bool IsPublic, BindingStmt Binding, Span Span) : Decl(Span); // nur 'let' laut Grammatik
 public sealed record TypeAliasDecl(bool IsPublic, string Name, TypeNode Aliased, Span Span) : Decl(Span);
 
-public sealed record ErrorDecl(Span Span) : Decl(Span); // Recovery-Platzhalter
+public sealed record ErrorDecl(Span Span) : Decl(Span); // recovery placeholder

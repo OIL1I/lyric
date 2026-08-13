@@ -5,13 +5,13 @@ using Lyric.Lexing;
 namespace Lyric.Parsing;
 
 /// <summary>
-/// Pattern-Parser (§6.3) plus <c>match</c>/<c>if</c>-als-Ausdruck. Or-Patterns
-/// (<c>a | b</c>) sind die äußerste Ebene; Ranges (<c>0..=9</c>) und Varianten
-/// darunter. Pattern-Literale nutzen <see cref="ParsePrimary"/> wieder.
+/// The pattern parser plus <c>match</c> and <c>if</c> as expressions. Or-patterns
+/// (<c>a | b</c>) are the outermost level; ranges (<c>0..=9</c>) and variants
+/// sit below them. Pattern literals reuse <see cref="ParsePrimary"/>.
 /// </summary>
 public sealed partial class Parser
 {
-    /// <summary>Slice-4-Einstieg: ein einzelnes Pattern (für Tests/Debug).</summary>
+    /// <summary>Entry point for a single pattern, used by tests.</summary>
     public Pattern ParsePattern()
     {
         var pattern = ParseOrPattern();
@@ -69,7 +69,7 @@ public sealed partial class Parser
         }
     }
 
-    // Ein Literal-Ausdruck als Pattern-Wert (optional mit führendem '-').
+    // A literal expression as a pattern value, optionally with a leading '-'.
     private Expr ParsePatternLiteral()
     {
         if (_buffer.Check(TokenKind.Minus))
@@ -83,7 +83,7 @@ public sealed partial class Parser
 
     private Pattern ParsePathPattern()
     {
-        var first = _buffer.Advance(); // Identifier (kein '_')
+        var first = _buffer.Advance(); // an identifier, not '_'
         var path = new List<string> { _sm.Slice(first.Span).ToString() };
         var last = first;
         while (_buffer.Match(TokenKind.Dot))
@@ -93,7 +93,7 @@ public sealed partial class Parser
             path.Add(_sm.Slice(last.Span).ToString());
         }
 
-        if (_buffer.Check(TokenKind.LParen)) // Tuple-Variante: Circle(r)
+        if (_buffer.Check(TokenKind.LParen)) // tuple variant: Circle(r)
         {
             _buffer.Advance();
             var elems = new List<Pattern>();
@@ -103,7 +103,7 @@ public sealed partial class Parser
             return new VariantPattern(path.ToArray(), elems.ToArray(), null, Span.Union(first.Span, close.Span));
         }
 
-        if (_buffer.Check(TokenKind.LBrace)) // Struct-Variante: Triangle { a, b, c }
+        if (_buffer.Check(TokenKind.LBrace)) // struct variant: Triangle { a, b, c }
         {
             _buffer.Advance();
             var fields = new List<FieldPattern>();
@@ -116,7 +116,8 @@ public sealed partial class Parser
             return new VariantPattern(path.ToArray(), null, fields.ToArray(), Span.Union(first.Span, close.Span));
         }
 
-        // Einzelner nackter Identifier → Bindung/Unit-Variante (Sema); qualifiziert → Unit-Variante.
+        // A single bare identifier is a binding or a unit variant, decided by the sema; a qualified
+        // one is always a unit variant.
         if (path.Count == 1) return new BindingPattern(path[0], first.Span);
         return new VariantPattern(path.ToArray(), null, null, Span.Union(first.Span, last.Span));
     }
@@ -151,7 +152,7 @@ public sealed partial class Parser
             return new TuplePattern(elems.ToArray(), Span.Union(open.Span, close.Span));
         }
         _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' to close pattern group");
-        return first; // Gruppierung
+        return first; // grouping
     }
 
     // --- match (§5/§6.2) ---
@@ -163,7 +164,7 @@ public sealed partial class Parser
         return new MatchExpr(scrutinee, arms, Span.Union(kw.Span, end));
     }
 
-    // Parst '(' Expr ')' '{' { MatchArm } '}' — das 'match' hat der Aufrufer konsumiert.
+    // Parses '(' Expr ')' '{' { MatchArm } '}'; the caller has consumed the 'match'.
     private (Expr Scrutinee, MatchArm[] Arms, Span End) ParseMatchCore()
     {
         _buffer.Expect(TokenKind.LParen, "LYR-PAR0019", "expected '(' after 'match'");
@@ -179,7 +180,7 @@ public sealed partial class Parser
             arms.Add(arm);
             if (_buffer.Position == before) { _buffer.Advance(); continue; }
             if (_buffer.Check(TokenKind.RBrace)) break;
-            // Block-Arm: Komma optional. Expr-Arm: Komma Pflicht (außer als letzter Arm).
+            // Block arm: the comma is optional. Expression arm: required, except on the last arm.
             if (arm.Body is Block) _buffer.Match(TokenKind.Comma);
             else _buffer.Expect(TokenKind.Comma, "LYR-PAR0035", "expected ',' after match arm");
         }
@@ -197,7 +198,7 @@ public sealed partial class Parser
         return new MatchArm(pattern, guard, body, Span.Union(pattern.Span, body.Span));
     }
 
-    // --- if als Ausdruck (§6.2): braucht immer ein else ---
+    // --- if as an expression: always needs an else ---
 
     private IfExpr ParseIfExpr()
     {
@@ -205,9 +206,9 @@ public sealed partial class Parser
         _buffer.Expect(TokenKind.LParen, "LYR-PAR0019", "expected '(' after 'if'");
         var cond = ParseExpr(0);
         _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' after if-condition");
-        var then = ParseExpr(0); // Branch ist ein Ausdruck (garantierter Wert)
+        var then = ParseExpr(0); // the branch is an expression, so a value is guaranteed
         _buffer.Expect(TokenKind.Else, "LYR-PAR0036", "if-expression requires an 'else' branch");
-        var elseBranch = ParseExpr(0); // 'else if' fällt natürlich als geschachteltes IfExpr an (if ist Primary)
+        var elseBranch = ParseExpr(0); // 'else if' falls out as a nested IfExpr; if is primary
         return new IfExpr(cond, then, elseBranch, Span.Union(kw.Span, elseBranch.Span));
     }
 }

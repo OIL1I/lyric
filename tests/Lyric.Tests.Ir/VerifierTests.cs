@@ -19,7 +19,7 @@ namespace Lyric.Tests.Ir;
 /// </summary>
 public class VerifierTests
 {
-    // ------------------------------------------------------------------ Helfer
+    // ------------------------------------------------------------------ helpers
 
     private static void AssertFinding(IrModule module, string expected)
     {

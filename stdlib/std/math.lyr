@@ -235,7 +235,7 @@ pub fn toDegrees(radians: float): float {
     return radians * 180.0 / pi;
 }
 
-// ------------------------------------------------------------------ Zufall
+// ------------------------------------------------------------------ randomness
 //
 // xorshift64*, in Lyric. The state is a single `int` and three shifts.
 //

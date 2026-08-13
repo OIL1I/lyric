@@ -4,11 +4,10 @@ using Lyric.Lexing;
 namespace Lyric.Parsing
 {
     /// <summary>
-    /// Eager-Token-Puffer: zieht den kompletten Token-Stream (inkl. f-String-Sub
-    /// -Tokens) beim Bau aus dem Lexer und stellt dem Parser Lookahead
-    /// (<see cref="Peek"/>) sowie die '&gt;&gt;'-Zerlegung für verschachtelte
-    /// Generics (<see cref="SplitCurrentGreater"/>) bereit. DocComments werden
-    /// verworfen (Semantik ist post-v1).
+    /// An eager token buffer: pulls the complete token stream, f-string sub-tokens included, out of
+    /// the lexer on construction and offers the parser lookahead (<see cref="Peek"/>) plus the
+    /// '&gt;&gt;' split for nested generics (<see cref="SplitCurrentGreater"/>). Doc comments are
+    /// discarded.
     /// </summary>
     public sealed class TokenBuffer
     {
@@ -41,12 +40,12 @@ namespace Lyric.Parsing
 
         public Token Current => _buffer[_pos];
 
-        /// <summary>Aktueller Lese-Index. Für Fortschritts-Guards in Recovery-Schleifen.</summary>
+        /// <summary>The current read index, for progress guards in recovery loops.</summary>
         public int Position => _pos;
 
-        /// <summary>Setzt den Lesekopf zurueck. Gebraucht fuer die Disambiguierung von
-        /// <c>f&lt;int&gt;()</c> gegen <c>(f &lt; int) &gt; (…)</c>: erst spekulativ die
-        /// Typargumente lesen, und wenn danach kein <c>(</c> steht, war es doch ein
+        /// <summary>Resets the read head. Used to disambiguate <c>f&lt;int&gt;()</c> from
+        /// <c>(f &lt; int) &gt; (…)</c>: read the type arguments speculatively first, and when no
+        /// <c>(</c> follows, it was a
         /// Vergleich.</summary>
         public void Rewind(int position) => _pos = position;
 

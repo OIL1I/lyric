@@ -19,8 +19,8 @@ public class GoldenTests
     private static bool UpdateMode =>
         Environment.GetEnvironmentVariable("LYRIC_UPDATE_SNAPSHOTS") is "1" or "true";
 
-    // [CallerFilePath] liefert den Pfad dieser Datei zur Compile-Zeit → Snapshots werden
-    // im Source-Baum gelesen/geschrieben, nicht im bin/-Output.
+    // [CallerFilePath] yields this file's path at compile time, so snapshots are read and
+    // written in the source tree rather than in the bin/ output.
     private static string GoldenDir([CallerFilePath] string thisFile = "")
         => Path.Combine(Path.GetDirectoryName(thisFile)!, "golden");
 

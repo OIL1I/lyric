@@ -54,4 +54,4 @@ public sealed record CatchClause(string? BindingName, TypeNode? BindingType, Blo
 // parsed here, restricted by the sema.
 public sealed record ExprStmt(Expr Expr, Span Span) : Stmt(Span);
 
-public sealed record ErrorStmt(Span Span) : Stmt(Span); // Recovery-Platzhalter
+public sealed record ErrorStmt(Span Span) : Stmt(Span); // recovery placeholder

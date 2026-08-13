@@ -39,6 +39,7 @@ public sealed class ScriptSource
 
     /// <summary>
     /// A file on disk.
+    /// </summary>
     /// <param name="moduleName">What the module should be called. <c>null</c> leaves it to the
     /// resolver's default (<c>main</c>), which is what the CLI does. A host names it, because it
     /// needs the name later to call into the module.</param>
