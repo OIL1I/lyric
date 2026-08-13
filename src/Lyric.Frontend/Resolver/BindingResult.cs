@@ -3,8 +3,8 @@ using Lyric.AST;
 namespace Lyric.Resolver;
 
 /// <summary>
-/// Seiten-Tabelle (Roslyn-`SemanticModel`-Stil): bindet AST-Referenz-Knoten an die
-/// aufgelösten Symbole, ohne den immutablen AST anzufassen. In Slice 1 gefüllt für
+/// A side table binding AST reference nodes to their resolved symbols without touching the
+/// immutable AST.
 /// Typ-Namen (<see cref="NamedType"/> → Symbol). Spätere Slices ergänzen Ausdrücke.
 /// </summary>
 public sealed class BindingResult

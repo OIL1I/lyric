@@ -4,10 +4,11 @@ using Lyric.Core;
 namespace Lyric.Resolver;
 
 /// <summary>
-/// Die eingebauten Typen (Sprache.md §4) plus die Sprach-Built-ins `Throwable` (§9,
-/// Interface mit abstraktem `message(): string`) und `panic` (§9, Rückgabetyp never).
-/// Sie leben in einem Scope, der Wurzel-Parent jedes Modul-Scopes ist — so löst ein
-/// `int`/`Throwable`/… über die normale Lookup-Kette auf, ohne Sonderfall im Resolver.
+/// The built-in types plus the language built-ins `Throwable` (an interface with an abstract
+/// `message(): string`) and `panic` (return type never).
+///
+/// They live in a scope that is the root parent of every module scope, so a name resolves through
+/// the ordinary lookup chain with no special case in the resolver.
 /// </summary>
 public static class BuiltinTypes
 {
@@ -20,7 +21,7 @@ public static class BuiltinTypes
         "bool", "char", "string", "void"
     };
 
-    /// <summary>Erzeugt einen frischen Scope mit allen Builtin-TypeSymbols.</summary>
+    /// <summary>Creates a fresh scope holding every built-in type symbol.</summary>
     public static SymbolTable CreateScope()
     {
         var scope = new SymbolTable();
@@ -29,15 +30,14 @@ public static class BuiltinTypes
                 new SymbolTable(), declaration: null));
         scope.TryDeclare(CreateThrowable());
         scope.TryDeclare(CreatePanic());
-        // Coroutine<T> (§8): der Name löst hier auf, die Typ-Form baut die Sema (CoroutineOf).
+        // Coroutine<T>: the name resolves here, the type form is built by the sema.
         scope.TryDeclare(new TypeSymbol("Coroutine", TypeSymbolKind.Builtin, Visibility.Public,
             new SymbolTable(), declaration: null));
         return scope;
     }
 
-    // `Throwable` als echtes Interface-Symbol mit synthetischem AST: so laufen
-    // Konformanz-Check (message() ist abstrakt) und Member-Lookup (e.message() auf
-    // Catch-All-Bindungen) über die normalen Wege, ohne Sonderfälle in der Sema.
+    // `Throwable` as a real interface symbol with a synthetic AST, so the conformance check and
+    // member lookup run through the ordinary paths.
     private static TypeSymbol CreateThrowable()
     {
         var message = new FunctionDecl(
@@ -49,8 +49,8 @@ public static class BuiltinTypes
         return new TypeSymbol("Throwable", TypeSymbolKind.Interface, Visibility.Public, members, decl);
     }
 
-    // `panic(message: string)`: der never-Rückgabetyp ist nicht benennbar (kein §4-Typ),
-    // die Sema setzt ihn für dieses Symbol direkt.
+    // `panic(message: string)`: the never return type is not nameable, so the sema sets it for
+    // this symbol directly.
     private static FunctionSymbol CreatePanic()
     {
         var decl = new FunctionDecl(

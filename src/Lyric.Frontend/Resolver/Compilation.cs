@@ -4,9 +4,10 @@ using Lyric.Core;
 namespace Lyric.Resolver;
 
 /// <summary>
-/// Hält die geparsten Module einer Übersetzungseinheit und treibt die Auflösung an.
-/// Single-file-first: meist ein Modul, aber mehrere sind möglich (dann lösen sich
-/// Imports untereinander auf). Module außerhalb der Compilation (Stdlib) gelten als
+/// Holds the parsed modules of a translation unit and drives resolution.
+///
+/// Single-file first: usually one module, but several are possible, and then their imports resolve
+/// against each other. Modules outside the compilation (the standard library) count as
 /// extern/opak.
 /// </summary>
 public sealed class Compilation
@@ -30,39 +31,35 @@ public sealed class Compilation
     public ExtensionRegistry Extensions { get; } = new();
 
     /// <summary>
-    /// Lädt ein Modul, das noch nicht in der Compilation ist — die Stdlib. Liefert <c>null</c>,
-    /// wenn es den Pfad nicht gibt.
+    /// Loads a module that is not yet in the compilation. Returns <c>null</c> when the path does
+    /// not exist.
     ///
-    /// <para>Als Delegat statt als fester Abhängigkeit, damit <c>Lyric.Resolver</c> nicht
-    /// <c>Lyric.Parsing</c> referenzieren muss. Die konkrete Implementierung
-    /// (<c>StdlibLoader</c>) sitzt dort, wo der Parser lebt.</para>
+    /// <para>A delegate rather than a fixed dependency, so <c>Lyric.Resolver</c> need not
+    /// reference <c>Lyric.Parsing</c>. The implementation lives where the parser lives.</para>
     /// </summary>
     public Func<string[], (AST.Module Ast, bool IsNative)?>? ModuleLoader { get; set; }
 
     /// <summary>
-    /// Stammt das Modul aus der Stdlib? Nur dort ist eine rumpflose Funktion eine
-    /// Import-Deklaration; überall sonst ist sie ein Fehler (<c>LYR-SEM0051</c>).
+    /// Does the module come from the standard library? Only there is a bodyless function an import
+    /// declaration; anywhere else it is an error (<c>LYR-SEM0051</c>).
     ///
-    /// <para>Die Eigenschaft hängt an der <b>Herkunft</b>, nicht am Inhalt: sonst könnte sich ein
+    /// <para>The property follows the ORIGIN, not the content.
     /// User native Funktionen erschleichen, indem er sein Modul <c>std.foo</c> nennt.</para>
     /// </summary>
     public bool IsNative(ModuleSymbol module) => _native.Contains(module);
 
     /// <summary>Sieht Modul <paramref name="from"/> Deklarationen aus <paramref name="to"/>?
-    /// Gleiches Modul oder ein Import von <paramref name="to"/> (§3.6-Sichtbarkeit).</summary>
+    /// The same module, or an import of <paramref name="to"/>.</summary>
     public bool Sees(ModuleSymbol from, ModuleSymbol to)
     {
         if (ReferenceEquals(from, to)) return true;
 
-        // 'std.core' ist immer sichtbar, ohne Import. Es ist das Modul, das die Sprache selbst
-        // benutzt — 'panic' (§9) und 'coroutineEnded' (§8) stehen darin und werden vom Compiler
-        // angebunden, ohne dass jemand sie importiert haben koennte; der Aufruf steht im
-        // Sprungverteiler, den niemand geschrieben hat.
+        // 'std.core' is always visible without an import. It is the module the language itself
+        // uses: 'panic' and 'coroutineEnded' live there and are bound by the compiler, in a
+        // dispatcher nobody wrote.
         //
-        // Seit M8/S1 haengen dort auch die 'Display'-Extensions fuer die Builtins, und damit
-        // wird die Regel praktisch relevant: ohne sie muesste ein Programm 'std.core'
-        // importieren, nur damit 'console.writeln(42)' den Constraint erfuellt — obwohl es
-        // 'std.core' nirgends nennt. Das waere die Sorte Ritual, die eine Sprache unbeliebt
+        // The 'Display' extensions for the built-ins hang there too, so without this rule a
+        // program would have to import 'std.core' just to satisfy the constraint of
         // macht. Dasselbe Modell wie Roslyns Well-Known-Members.
         if (to.FullName == "std.core") return true;
         foreach (var decl in AstOf(from).Declarations)
@@ -71,8 +68,8 @@ public sealed class Compilation
         return false;
     }
 
-    /// <summary>Registriert ein Modul. Der Pfad kommt aus dem Header, sonst aus
-    /// <paramref name="name"/>, sonst "main" (Single-File-Default).</summary>
+    /// <summary>Registers a module. The path comes from the header, otherwise from
+    /// <paramref name="name"/>, otherwise "main".</summary>
     public ModuleSymbol AddModule(Module ast, string? name = null, bool isNative = false)
     {
         var path = ast.Header is not null ? ast.Header.Segments
@@ -87,20 +84,18 @@ public sealed class Compilation
     }
 
     /// <summary>
-    /// Lädt alles nach, was per <c>import</c> verlangt und noch nicht da ist — transitiv.
+    /// Loads everything an <c>import</c> requires and that is not there yet, transitively.
     ///
-    /// <para>Läuft <b>vor</b> der Auflösung, nicht mittendrin: sonst würde die Modul-Liste
-    /// wachsen, während der Resolver über sie iteriert. Die Schleife ist absichtlich
-    /// indexbasiert, weil <c>_modules</c> in ihrem Rumpf wächst — neu geladene Module werden so
-    /// selbst noch besucht.</para>
+    /// <para>It runs BEFORE resolution rather than during it, or the module list would grow while
+    /// the resolver iterates over it. The loop is index-based because <c>_modules</c> grows in its
+    /// body.</para>
     ///
-    /// <para>Ein Zyklus terminiert von allein: geladen wird nur, was <see cref="FindModule"/> noch
-    /// nicht kennt, und registriert wird vor dem Betrachten der eigenen Imports.</para>
+    /// <para>A cycle terminates by itself: only what <see cref="FindModule"/> does not yet know is
+    /// loaded, and registration happens before a module's own imports are examined.</para>
     /// </summary>
     /// <summary>
-    /// Module, die der <b>Compiler selbst</b> braucht, unabhängig davon, was der Nutzer importiert:
-    /// das f-String-Lowering ruft <c>std.string.concat</c> und die <c>fromXxx</c>-Wandler auf.
-    /// Roslyn macht dasselbe mit seinen Well-Known-Members.
+    /// Modules the COMPILER itself needs, regardless of what the user imports: the f-string
+    /// lowering calls <c>std.string.concat</c> and the <c>fromXxx</c> converters.
     /// </summary>
     private static readonly string[][] WellKnownModules =
         [["std", "string"], ["std", "core"], ["std", "iter"], ["std", "fmt"],
@@ -135,8 +130,8 @@ public sealed class Compilation
     public ModuleSymbol? FindModule(string[] path) =>
         _modules.FirstOrDefault(m => m.Path.Length == path.Length && m.Path.SequenceEqual(path));
 
-    /// <summary>Löst alle Module auf und liefert die Binding-Seitentabelle. Fehler
-    /// gehen als LYR-RES#### an die DiagnosticEngine.</summary>
+    /// <summary>Resolves every module and returns the binding side table. Errors go to the
+    /// diagnostic engine as LYR-RES####.</summary>
     public BindingResult Resolve()
     {
         LoadImportedModules();

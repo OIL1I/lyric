@@ -3,11 +3,10 @@ using Lyric.AST;
 namespace Lyric.Resolver;
 
 /// <summary>
-/// Registriert `extend`-Blöcke (Sprache.md §3.6). Extend-Methoden werden NICHT in die
-/// Member-Tabelle des Ziel-Typs gemerget (das könnte die import-gebundene Sichtbarkeit
-/// nicht ausdrücken), sondern hier gesammelt — C#-Extension-Method-Modell. Der TypeChecker
-/// konsultiert die Registry beim Member-Lookup und filtert nach Sichtbarkeit (deklarierendes
-/// Modul == aktuelles Modul oder von ihm importiert).
+/// Registers `extend` blocks. Extension methods are NOT merged into the target type's member
+/// table, which could not express import-bound visibility; they are collected here, as in C#'s
+/// extension method model. The type checker consults the registry during member lookup and
+/// filters by visibility: the declaring module is the current one or imported by it.
 /// </summary>
 public sealed class ExtensionRegistry
 {
@@ -18,7 +17,7 @@ public sealed class ExtensionRegistry
 
     public void Add(ExtensionBlock block) => _blocks.Add(block);
 
-    /// <summary>Nach der Ziel-Auflösung (Resolver-Pass 3) den Lookup-Index aufbauen.</summary>
+    /// <summary>Builds the lookup index after target resolution.</summary>
     public void BuildIndex()
     {
         _byTarget.Clear();
@@ -33,13 +32,13 @@ public sealed class ExtensionRegistry
     }
 
     /// <summary>Alle für <paramref name="target"/> registrierten Extension-Methoden
-    /// (ungefiltert — die Sichtbarkeitsprüfung macht der Aufrufer).</summary>
+    /// (unfiltered; the caller checks visibility).</summary>
     public IReadOnlyList<ExtensionMethod> MethodsFor(TypeSymbol target) =>
         _byTarget.TryGetValue(target, out var list) ? list : [];
 }
 
-/// <summary>Ein `extend`-Block mit seinen Methoden-Symbolen und dem deklarierenden Modul.
-/// <see cref="Target"/> wird erst in Resolver-Pass 3 gesetzt (null = unauflösbar/unsupported).</summary>
+/// <summary>An `extend` block with its method symbols and its declaring module.
+/// <see cref="Target"/> is set in pass 3 (null when unresolvable).
 public sealed class ExtensionBlock
 {
     public ExtendDecl Decl { get; }

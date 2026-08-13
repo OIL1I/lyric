@@ -13,30 +13,27 @@ namespace Lyric.Compiler;
 /// <summary>
 /// Die Pipeline Quelle → AST → Symbole → Typen → IR → <c>.lyrbc</c>-Bytes, als Bibliothek.
 ///
-/// <para><b>Ein</b> Front-End fuer die gesamte Toolchain (ADR-017). Der Grund steht im
-/// Projekt-Gedaechtnis: als <c>run</c>, <c>lower</c> und <c>check</c> in der alten CLI je eine
-/// eigene Kopie des Vorspanns hatten, verdrahtete nur eine davon den
-/// <see cref="Compilation.ModuleLoader"/> — <c>check</c> hielt jeden Stdlib-Import fuer opak und
-/// pruefte die Aufrufe deshalb <i>stumm gar nicht</i>. Drei Binaries waeren drei neue Gelegenheiten
-/// fuer genau diesen Fehler.</para>
+/// <para>One front end for the whole toolchain. With a copy of the preamble per command, only one
+/// of them wired up the <see cref="Compilation.ModuleLoader"/>, and <c>check</c> silently treated
+/// every standard library import as opaque.</para>
 ///
 /// <para>Diese Klasse <b>rendert nie selbst</b>. Sie sammelt in
-/// <see cref="CompileResult.Diagnostics"/> und ueberlaesst die Ausgabe dem Aufrufer —
-/// <see cref="DiagnosticEngine.RenderText"/> gibt jedes Mal den vollstaendigen Bestand aus, zwei
+/// <see cref="CompileResult.Diagnostics"/> and leaves the output to the caller;
+/// <see cref="DiagnosticEngine.RenderText"/> renders the whole collection each time, so two
 /// Aufrufe waeren also doppelte Meldungen.</para>
 /// </summary>
 public static class SourceCompiler
 {
-    /// <summary>Resolve + Sema, ohne Lowering. Der Unterbau von <c>lyrc check</c>.</summary>
+    /// <summary>Resolve and sema, without lowering. The basis of <c>lyrc check</c>.</summary>
     public static CompileResult Check(string path, CompilerOptions? options = null) =>
         Check(ScriptSource.FromDisk(path), options);
 
-    /// <summary>Bis zur Mid-IR. Der Unterbau von <c>lyrc lower</c>.</summary>
+    /// <summary>Up to the mid-level IR. The basis of <c>lyrc lower</c>.</summary>
     public static CompileResult Lower(string path, CompilerOptions? options = null) =>
         Lower(ScriptSource.FromDisk(path), options);
 
-    /// <summary>Bis zu den <c>.lyrbc</c>-Bytes. Der Unterbau von <c>lyrc build</c> und von
-    /// <c>lyric run</c> auf einer Quelldatei.</summary>
+    /// <summary>Up to the <c>.lyrbc</c> bytes. The basis of <c>lyrc build</c> and of
+    /// <c>lyric run</c> on a source file.</summary>
     public static CompileResult Compile(string path, CompilerOptions? options = null) =>
         Compile(ScriptSource.FromDisk(path), options);
 
@@ -72,18 +69,16 @@ public static class SourceCompiler
         var entry = new Parser(sources, id, diagnostics).ParseModule();
         report?.EndPhase();
 
-        // Der Modul-Lader misst sich selbst. Compilation.Resolve laedt die importierten Module
-        // intern, die Grenze Load/Resolve ist von aussen also nicht beobachtbar — statt dafuer
-        // Lyric.Resolver aufzubohren, zieht die Huelle ihre eigene Dauer von der Resolve-Zeit ab.
-        // Die Huelle ist zugleich der Ort, an dem Modulnamen fuer die Anzeige entstehen; ADR-012s
-        // Source-Root wird spaeter durch dieselbe Naht laufen.
+        // The module loader times itself: Compilation.Resolve loads the imported modules
+        // internally, so the load/resolve boundary is not observable from outside. The wrapper
+        // subtracts its own duration from the resolve time.
         var loaderTime = TimeSpan.Zero;
         var loaded = new List<string>();
         var stdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
             sources, diagnostics);
 
-        // Erst die mitgegebenen Module, dann die Platte. Verkettet und nicht als zweiter
-        // Lader-Mechanismus daneben: 'Compilation' kennt genau einen Delegaten, und das soll so
+        // Supplied modules first, then disk. Chained rather than a second loader mechanism:
+        // 'Compilation' knows exactly one delegate.
         // bleiben.
         var provided = options.NativeModules;
         if (provided is { Count: > 0 })
@@ -101,7 +96,7 @@ public static class SourceCompiler
 
         var compilation = new Compilation(sources, diagnostics)
         {
-            // Source-first: die Stdlib ist gewoehnlicher Lyric-Quelltext und wird bei Bedarf geladen.
+            // The standard library is ordinary Lyric source and is loaded on demand.
             ModuleLoader = modulePath =>
             {
                 var name = string.Join('.', modulePath);
@@ -128,17 +123,16 @@ public static class SourceCompiler
         var types = Semantics.Analyze(compilation, binding, diagnostics);
         report?.EndPhase();
 
-        // Auf fehlerhaftem AST waere jedes Lowering-Ergebnis Raten.
+        // On a faulty AST any lowering result would be guesswork.
         if (stage == Stage.Check || diagnostics.HasErrors)
             return new CompileResult(sources, diagnostics, null, null);
 
-        // Scope-Grenzen des Lowerings kommen als LYR-IR0001 in dieselbe Engine und werden mit
+        // Lowering limits arrive as LYR-IR0001 in the same engine and are rendered with
         // Datei/Zeile/Spalte gerendert wie jeder andere Fehler auch.
         //
-        // verify:false und der separate VerifyOrThrow-Aufruf sind KEINE Verhaltensaenderung:
-        // ModuleLowerer.VerifyByDefault entscheidet weiterhin, ob geprueft wird. Die Trennung
-        // existiert, damit die beiden Zeiten getrennt messbar sind — STATUS.md behauptet seit M5,
-        // der Verifier sei ~90 % der Lowering-Zeit, und dafuer gab es bisher keine Quelle.
+        // verify:false plus the separate VerifyOrThrow call is not a behaviour change:
+        // ModuleLowerer.VerifyByDefault still decides whether verification runs. The split exists
+        // so the two durations can be measured separately.
         report?.BeginPhase(Phase.Lower);
         var ir = ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: false);
         if (ir is not null) report?.UpdateDetail(FunctionCount(ir));
@@ -167,9 +161,9 @@ public static class SourceCompiler
         ir.Functions.Count == 1 ? "1 function" : $"{ir.Functions.Count} functions";
 
     /// <summary>
-    /// Liest eine Datei in einen frischen <see cref="SourceManager"/> — der gemeinsame Vorspann
-    /// der Debug-Kommandos <c>tokenize</c> und <c>parse</c>, die noch vor dem Resolver abbiegen
-    /// und deshalb nicht durch <see cref="Run"/> laufen.
+    /// Reads a file into a fresh <see cref="SourceManager"/>: the shared preamble of the debug
+    /// commands <c>tokenize</c> and <c>parse</c>, which branch off before the resolver and do not
+    /// go through <see cref="Run"/>.
     /// </summary>
     public static (SourceManager Sources, DiagnosticEngine Diagnostics, FileId Id) Read(string path)
     {
@@ -189,43 +183,41 @@ public static class SourceCompiler
 }
 
 /// <summary>
-/// Was ein Compiler-Lauf ausser der Quelldatei noch braucht.
+/// What a compiler run needs besides the source file.
 ///
-/// <para>Ein Record statt einer wachsenden Parameterliste: <c>--stdlib</c> ist heute die einzige
-/// Stellschraube, aber ADR-012s Source-Root fuer User-Module kommt hier dazu, sobald
+/// <para>A record rather than a growing parameter list.
 /// Mehrdatei-Programme moeglich sind.</para>
 /// </summary>
 public sealed record CompilerOptions
 {
-    /// <summary>Wo die Stdlib liegt. <c>null</c> = <c>StdlibLoader.DefaultRoot()</c>, also
-    /// <c>LYRIC_STDLIB</c> oder das Verzeichnis neben dem Binary.</summary>
+    /// <summary>Where the standard library lives. <c>null</c> means
+    /// <c>StdlibLoader.DefaultRoot()</c>: <c>LYRIC_STDLIB</c> or the directory next to the
+    /// binary.</summary>
     public string? StdlibRoot { get; init; }
 
-    /// <summary>Wohin Phasenmeldungen gehen. <c>null</c> = niemand hoert zu; der Compiler laeuft
-    /// dann ohne jede Ausgabe-Abhaengigkeit, was die Bibliothek fuer M10s Embedding-API
+    /// <summary>Where phase reports go. <c>null</c> means nobody is listening, and the compiler
+    /// then runs with no output dependency at all, which is what the embedding API needs.
     /// benutzbar haelt.</summary>
     public TerminalOutput? Progress { get; init; }
 
     /// <summary>
-    /// Zusaetzliche <b>native</b> Module, die nicht auf der Platte liegen: Modulpfad
-    /// (<c>a.b.c</c>) → Lyric-Quelltext.
+    /// Additional NATIVE modules that do not live on disk, by module path.
     ///
-    /// <para>Gebraucht von <c>LangVm.RegisterFunction</c> (M10/E3): eine Host-Funktion braucht
-    /// eine <b>Deklaration</b>, damit der Compiler ihre Signatur kennt — genau wie jedes Native
-    /// der Stdlib, das als bodylose <c>pub fn</c> in einer <c>.lyr</c>-Datei steht. Der
-    /// Unterschied ist allein, dass diese Datei im Speicher liegt.</para>
+    /// <para>Used by <c>LangVm.RegisterFunction</c>: a host function needs a DECLARATION for the
+    /// compiler to know its signature, exactly like every standard library native, which stands as
+    /// a bodyless <c>pub fn</c> in a <c>.lyr</c> file. The only difference is that this file lives
+    /// in memory.</para>
     ///
-    /// <para>Sie werden <b>vor</b> der Stdlib befragt, damit ein Host-Modul ein gleichnamiges auf
-    /// der Platte verdeckt statt umgekehrt. Ueberschreiben ist hier die Absicht: der Host
+    /// <para>They are consulted BEFORE the standard library, so a host module hides one of the
+    /// same name on disk rather than the other way round.
     /// entscheidet, was sein Skript sieht.</para>
     /// </summary>
     public IReadOnlyDictionary<string, string>? NativeModules { get; init; }
 }
 
 /// <summary>
-/// Was ein Compiler-Lauf hinterlaesst. <see cref="Ir"/> und <see cref="Bytes"/> sind
-/// <c>null</c>, wenn die angeforderte Stufe nicht erreicht wurde <i>oder</i> gar nicht angefordert
-/// war — <see cref="Ok"/> ist die Frage, die man stattdessen stellt.
+/// What a compiler run leaves behind. <see cref="Ir"/> and <see cref="Bytes"/> are <c>null</c>
+/// when the requested stage was not reached or was not requested at all;
 /// </summary>
 public sealed record CompileResult(
     SourceManager Sources,
@@ -233,10 +225,11 @@ public sealed record CompileResult(
     IrModule? Ir,
     byte[]? Bytes)
 {
-    /// <summary>Kein Fehler gemeldet. Warnungen zaehlen nicht.</summary>
+    /// <summary>No error was reported. Warnings do not count.</summary>
     public bool Ok => !Diagnostics.HasErrors;
 
-    /// <summary>Rendert alle Diagnosen genau einmal und liefert, ob der Lauf sauber war.</summary>
+    /// <summary>Renders every diagnostic exactly once and reports whether the run was clean.
+    /// </summary>
     public bool Render(TextWriter error)
     {
         Diagnostics.RenderText(error);
