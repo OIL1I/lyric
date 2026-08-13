@@ -10,17 +10,17 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `std.string` als richtiger Typ (M8/S2).
+/// `std.string` as a proper type.
 ///
-/// <para><b>Die eine Regel, aus der alles folgt</b>: `Sprache.md` §4 sagt „`char` = ein Unicode-
-/// Codepoint". Also zählen Länge, Positionen und Iteration <b>Codepoints</b> — sonst zählte die
-/// Länge etwas anderes, als die Iteration liefert, und das Typsystem widerspräche sich selbst.
-/// C#, Java und JavaScript haben genau diesen Widerspruch: dort ist ein `char` eine
-/// UTF-16-Einheit, und die Länge eines Emoji ist 2.</para>
+/// <para>THE ONE RULE EVERYTHING FOLLOWS FROM: the specification says "`char` is one Unicode code
+/// point". Length, positions and iteration therefore count CODE POINTS; otherwise the length would
+/// count something other than the iteration yields, and the type system would contradict itself. C#,
+/// Java and JavaScript have exactly that contradiction: there a `char` is a UTF-16 unit, and the length
+/// of an emoji is 2.</para>
 ///
-/// <para><b>Der teuerste Test der Datei ist deshalb der mit dem Emoji.</b> Alle anderen bleiben
-/// auch grün, wenn die Implementierung heimlich UTF-16-Einheiten zählt — ASCII macht keinen
-/// Unterschied. Erst ein Zeichen außerhalb der BMP trennt die beiden Modelle.</para>
+/// <para>THE MOST EXPENSIVE TEST IN THE FILE IS THEREFORE THE ONE WITH THE EMOJI. All the others stay
+/// green even if the implementation secretly counts UTF-16 units — ASCII makes no difference. Only a
+/// character outside the BMP separates the two models.</para>
 /// </summary>
 public class StringTests
 {
@@ -60,17 +60,15 @@ public class StringTests
 
     [Fact]
     public void Length_counts_codepoints_not_utf16_units() =>
-        // DER Test. "a😀b" sind drei Codepoints und vier UTF-16-Einheiten; C# sagt hier 4.
-        // Ohne diesen Fall wäre jede andere Zusicherung dieser Datei mit beiden Modellen
-        // vereinbar.
+        // The core test. "a😀b" is three code points and four UTF-16 units; C# says 4 here.
+        // Without this case every other promise of this file would be compatible with both models.
         Assert.Equal(3, Eval("length", "return length(\"a\\u{1F600}b\");"));
 
     [Fact]
     public void An_astral_codepoint_is_one_character() =>
-        // Die Ergänzung zur Länge: auch die Position stimmt. Zählte charAt UTF-16-Einheiten,
-        // käme hier ein halbes Surrogate Pair heraus — ein Zeichen ohne Partner, das beim
-        // Ausgeben zu U+FFFD wird. Gemessen wird über die Ausgabe, weil 'char as int' in Lyric
-        // kein erlaubter Cast ist (§6.5).
+        // The complement to the length: the position is right too. Were charAt counting UTF-16 units, half
+        // a surrogate pair would come out — a character without a partner that becomes U+FFFD on output.
+        // Measured through the output, because 'char as int' is not an allowed cast in Lyric.
         Assert.Equal("\U0001F600\n", Run("""
             import std.string { charAt };
             import std.io.console { println };
@@ -87,17 +85,17 @@ public class StringTests
 
     [Fact]
     public void Substring_cuts_at_codepoint_boundaries() =>
-        // Schnitte mitten durch ein Surrogate Pair würden hier eine kaputte Zeichenkette
-        // liefern; gemessen wird über die Länge des Ergebnisses, weil die stabil vergleichbar ist.
+        // Cuts through the middle of a surrogate pair would yield a broken string here; measured through
+        // the length of the result, because that compares stably.
         Assert.Equal(2, Eval("length, substring", "return length(substring(\"a\\u{1F600}b\", 1, 2));"));
 
     [Fact]
     public void IndexOf_returns_a_codepoint_position() =>
-        // Der Rückgabewert muss als Argument für charAt und substring taugen — bei einer
-        // Position in UTF-16-Einheiten oder Bytes täte er das nicht.
+        // The return value has to serve as an argument for charAt and substring; with a position in UTF-16
+        // units or bytes it would not.
         Assert.Equal(2, Eval("indexOf", "return indexOf(\"a\\u{1F600}b\", \"b\");"));
 
-    // ------------------------------------------------------------------ die üblichen Fälle
+    // ------------------------------------------------------------------ the usual cases
 
     [Fact]
     public void Basic_queries_work() =>
@@ -137,9 +135,9 @@ public class StringTests
 
     [Fact]
     public void Case_conversion_is_ordinal_not_cultural() =>
-        // Ordinal heißt: dasselbe Programm liefert auf jeder Maschine dasselbe. Unter einer
-        // türkischen Locale würde eine kulturabhängige Umwandlung aus 'i' ein 'İ' machen — der
-        // Klassiker, der Software nur auf manchen Rechnern kaputtmacht.
+        // Ordinal means the same program yields the same on every machine. Under a Turkish locale a
+        // culture-dependent conversion would turn an 'i' into an 'İ' — the classic that breaks software on
+        // some machines only.
         Assert.Equal("TITLE\n", Run("""
             import std.string { toUpper };
             import std.io.console { println };
@@ -163,14 +161,14 @@ public class StringTests
         Assert.Equal(0, Eval("contains", "if (contains(\"abc\", \"z\")) { return 1; } return 0;"));
     }
 
-    // ------------------------------------------------------------------ was NICHT geht
+    // ------------------------------------------------------------------ what does NOT work
 
     [Fact]
     public void A_string_cannot_be_indexed()
     {
-        // Bewusst keine Sprachlücke, sondern eine Entscheidung: eine Codepoint-Position kostet
-        // O(n), also wäre 'for (i…) s[i]' quadratisch, ohne dass man es der Schleife ansieht.
-        // Rust verbietet die Indizierung aus demselben Grund.
+        // Deliberately no gap in the language but a decision: a code point position costs O(n), so
+        // 'for (i…) s[i]' would be quadratic without the loop showing it. Rust forbids indexing for the
+        // same reason.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr", "fn main(): int { let s = \"abc\"; let c = s[0]; return 0; }");
         var de = new DiagnosticEngine(sm);
@@ -180,14 +178,14 @@ public class StringTests
 
         var reported = Assert.Single(de.Diagnostics, d => d.Code == "LYR-SEM0007");
 
-        // Die Meldung muss den Ausweg nennen. Eine, die nur „not indexable" sagt, ließe den
-        // Nutzer glauben, es fehle ein Feature — statt dass es eine Entscheidung war.
+        // The message has to name the way out. One saying only "not indexable" would let the user believe
+        // a feature is missing rather than that it was a decision.
         Assert.Contains("charAt", reported.Message);
         Assert.Contains("for (c in s)", reported.Message);
     }
 
     [Fact]
     public void An_array_can_still_be_indexed() =>
-        // Die Gegenprobe: der Fix darf nicht die Array-Indizierung mitgenommen haben.
+        // The counter-check: the fix must not have taken array indexing along with it.
         Assert.Equal(2, Run("fn main(): int { let xs = [1, 2, 3]; return xs[1]; }").Exit);
 }

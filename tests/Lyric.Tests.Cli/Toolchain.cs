@@ -2,32 +2,32 @@ using System.Diagnostics;
 
 namespace Lyric.Tests.Cli;
 
-/// <summary>Was ein Toolchain-Aufruf hinterlaesst.</summary>
+/// <summary>What a toolchain call leaves behind.</summary>
 public sealed record ToolResult(int ExitCode, string StdOut, string StdErr)
 {
-    /// <summary>Zeilenenden normalisiert — die Goldens dieses Projekts vergleichen Text, nicht
-    /// Byte-Offsets, und CRLF ist hier reine Plattform-Kosmetik.</summary>
+    /// <summary>Line endings normalized: the goldens of this project compare text rather than byte
+    /// offsets, and CRLF is pure platform cosmetics here.</summary>
     public string Out => StdOut.Replace("\r\n", "\n");
 
     public string Err => StdErr.Replace("\r\n", "\n");
 }
 
 /// <summary>
-/// Startet <c>lyrc</c>, <c>lyrvm</c> und <c>lyric</c> als echte Prozesse.
+/// Starts <c>lyrc</c>, <c>lyrvm</c> and <c>lyric</c> as real processes.
 ///
-/// <para>Bewusst ueber die Prozess-Grenze und nicht ueber <c>Program.Main</c>: die Fragen dieses
-/// Testprojekts sind Exit-Codes, Stream-Trennung und was neben dem Binary liegt. Keine davon
-/// laesst sich in-process ehrlich beantworten.</para>
+/// <para>Deliberately across the process boundary rather than through <c>Program.Main</c>: the questions
+/// of this test project are exit codes, stream separation and what lies next to the binary. None of
+/// them can be answered honestly in process.</para>
 /// </summary>
 public static class Toolchain
 {
-    /// <summary>Das Repo-Wurzelverzeichnis, gefunden ueber <c>Lyric.slnx</c>. Der Weg vom
-    /// Test-Assembly nach oben ist stabiler als ein gezaehltes <c>../../../..</c>, das bei jeder
-    /// Aenderung an der Ausgabe-Struktur still falsch wird.</summary>
+    /// <summary>The repository root, found through <c>Lyric.slnx</c>. The way up from the test assembly is
+    /// more stable than a counted <c>../../../..</c>, which becomes silently wrong at every change to the
+    /// output structure.</summary>
     public static string RepositoryRoot { get; } = FindRepositoryRoot();
 
-    /// <summary>Debug oder Release — die Tests laufen in derselben Konfiguration wie die
-    /// Binaries, die sie pruefen.</summary>
+    /// <summary>Debug or release: the tests run in the same configuration as the binaries they
+    /// check.</summary>
     private static string Configuration { get; } =
         AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}",
             StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
@@ -36,8 +36,8 @@ public static class Toolchain
     public static string LyrvmPath => BinaryPath("Lyrvm", "lyrvm");
     public static string LyricPath => BinaryPath("Lyric.Cli", "lyric");
 
-    /// <summary>Das Verzeichnis, in dem ein Binary samt seiner Abhaengigkeiten liegt — die
-    /// Grundlage des Architektur-Tests.</summary>
+    /// <summary>The directory a binary and its dependencies lie in: the basis of the architecture test.
+    /// </summary>
     public static string OutputDirectory(string project) =>
         Path.Combine(RepositoryRoot, "src", project, "bin", Configuration, "net10.0");
 
@@ -50,12 +50,10 @@ public static class Toolchain
     public static string LyrreplPath => BinaryPath("Lyrrepl", "lyrrepl");
 
     /// <summary>
-    /// Faehrt ein Werkzeug und schreibt ihm etwas auf stdin — fuer die REPL, die anders nicht
-    /// pruefbar waere.
+    /// Runs a tool and writes something to its stdin, for the REPL, which cannot be checked otherwise.
     ///
-    /// <para>Der Eingabestrom wird nach der letzten Zeile <b>geschlossen</b>. Ein EOF ist fuer
-    /// die REPL das Ende (Ctrl+D), also beendet sie sich auch ohne ':quit' — ohne das Schliessen
-    /// wartete der Test bis zum Timeout.</para>
+    /// <para>The input stream is CLOSED after the last line. An EOF is the end for the REPL (Ctrl+D), so
+    /// it exits even without a ':quit'; without the close the test would wait until the timeout.</para>
     /// </summary>
     public static ToolResult RunWithInput(string executable, string[] args, string input)
     {
@@ -81,14 +79,12 @@ public static class Toolchain
     }
 
     /// <summary>
-    /// Wie <see cref="Run(string, string[])"/>, aber mit Umgebungsvariablen fuer <b>nur diesen</b>
-    /// Kindprozess.
+    /// Like <see cref="Run(string, string[])"/>, but with environment variables for THIS PROCESS ONLY.
     ///
-    /// <para>Nicht <c>Environment.SetEnvironmentVariable</c> im Testprozess: xUnit faehrt
-    /// Testklassen parallel, und eine gesetzte Variable wirkte dann auf jeden gleichzeitig
-    /// gestarteten Compiler mit. Genau daran ist dieses Projekt beim ersten Gesamtlauf haengen
-    /// geblieben — isoliert gruen, zusammen rot. Geteilter veraenderlicher Zustand zwischen Tests
-    /// ist die Ursache, ein Collection-Attribut waere nur das Pflaster.</para>
+    /// <para>Not <c>Environment.SetEnvironmentVariable</c> in the test process: xUnit runs test classes in
+    /// parallel, and a set variable would then affect every compiler started at the same time. This
+    /// project got stuck on exactly that at the first full run — green in isolation, red together. Shared
+    /// mutable state between tests is the cause; a collection attribute would only be the plaster.</para>
     /// </summary>
     public static ToolResult RunWithEnvironment(string executable,
         IReadOnlyDictionary<string, string?> environment, params string[] args) =>
@@ -114,8 +110,8 @@ public static class Toolchain
         using var process = Process.Start(info)
                             ?? throw new InvalidOperationException($"could not start {executable}");
 
-        // Erst lesen, dann warten: bei umgekehrter Reihenfolge blockiert ein Kind, sobald es mehr
-        // schreibt, als in die Pipe passt.
+        // Read first, then wait: in the other order a child blocks as soon as it writes more than fits
+        // into the pipe.
         var stdout = process.StandardOutput.ReadToEndAsync();
         var stderr = process.StandardError.ReadToEndAsync();
         process.WaitForExit();
@@ -123,7 +119,7 @@ public static class Toolchain
         return new ToolResult(process.ExitCode, stdout.Result, stderr.Result);
     }
 
-    /// <summary>Ein Scratch-Pfad, der sich selbst aufraeumt.</summary>
+    /// <summary>A scratch path that cleans itself up.</summary>
     public static TemporaryFile Temp(string extension) => new(extension);
 
     private static string BinaryPath(string project, string binary)
@@ -150,7 +146,7 @@ public static class Toolchain
     }
 }
 
-/// <summary>Eine temporaere Datei, die beim Verlassen des Scopes verschwindet.</summary>
+/// <summary>A temporary file that disappears when the scope is left.</summary>
 public sealed class TemporaryFile(string extension) : IDisposable
 {
     public string Path { get; } = System.IO.Path.Combine(

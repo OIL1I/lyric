@@ -3,12 +3,12 @@ using System.Text.Json;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Das VS-Code-Manifest gegen das, was daneben liegt.
+/// The VS Code manifest against what lies next to it.
 ///
-/// <para>Ein Extension-Manifest ist eine Ansammlung von Pfaden und Bezeichnern, die auf andere
-/// Dateien zeigen — und nichts davon prüft VS Code beim Laden: ein falscher Pfad heißt einfach,
-/// dass die Färbung fehlt. Das ist dieselbe Sorte stiller Fehler wie eine Doku, die niemand
-/// nachliest, und diese Tests sind dieselbe Antwort darauf.</para>
+/// <para>An extension manifest is a collection of paths and identifiers pointing at other files, and VS
+/// Code checks none of it while loading: a wrong path simply means the colouring is missing. That is
+/// the same kind of silent fault as documentation nobody re-reads, and these tests are the same answer
+/// to it.</para>
 /// </summary>
 public sealed class ExtensionTests
 {
@@ -20,8 +20,8 @@ public sealed class ExtensionTests
     [Fact]
     public void Every_path_in_the_manifest_exists()
     {
-        // Der haeufigste Fehler an einem Extension-Manifest, und der stillste: VS Code laedt die
-        // Extension trotzdem, nur faerbt sie nichts.
+        // The most common fault in an extension manifest, and the quietest: VS Code loads the extension
+        // anyway, it just colours nothing.
         using var manifest = Manifest();
         var contributes = manifest.RootElement.GetProperty("contributes");
 
@@ -39,8 +39,8 @@ public sealed class ExtensionTests
     [Fact]
     public void The_grammar_and_the_language_agree_on_the_scope()
     {
-        // Zwei Stellen nennen denselben Bezeichner: das Manifest verdrahtet Sprache und
-        // Grammatik ueber 'scopeName'. Weichen sie ab, wird gar nichts gefaerbt — ohne Meldung.
+        // Two places name the same identifier: the manifest wires language and grammar together through
+        // 'scopeName'. If they differ, nothing is coloured at all, without a message.
         using var manifest = Manifest();
         using var grammar = JsonDocument.Parse(
             File.ReadAllText(Path.Combine(Dir, "syntaxes", "lyric.tmLanguage.json")));
@@ -68,8 +68,8 @@ public sealed class ExtensionTests
     [Fact]
     public void Every_command_and_keybinding_refers_to_a_declared_command()
     {
-        // Ein Keybinding oder Menue-Eintrag auf ein Kommando, das es nicht gibt, ist ein
-        // Menuepunkt, der nichts tut.
+        // A key binding or menu entry pointing at a command that does not exist is a menu item that does
+        // nothing.
         using var manifest = Manifest();
         var contributes = manifest.RootElement.GetProperty("contributes");
 
@@ -77,8 +77,8 @@ public sealed class ExtensionTests
             .Select(c => c.GetProperty("command").GetString()!)
             .ToHashSet(StringComparer.Ordinal);
 
-        // 'command' kann im Manifest fehlen. Dann ist der Eintrag ohnehin kaputt, und die Meldung
-        // soll das sagen — nicht „null steht nicht in der Liste".
+        // 'command' may be missing from the manifest. The entry is then broken anyway, and the message
+        // should say so rather than "null is not in the list".
         void MustBeDeclared(JsonElement entry)
         {
             var command = entry.GetProperty("command").GetString();
@@ -97,12 +97,12 @@ public sealed class ExtensionTests
     [Fact]
     public void The_run_command_calls_the_driver_and_not_a_tool()
     {
-        // ADR-019: der Treiber ist das eine Kommando, das uebersetzt UND ausfuehrt. Riefe die
-        // Extension 'lyrc', bekaeme der Nutzer eine .lyrbc statt eines Laufs; riefe sie 'lyrvm',
-        // scheiterte es an einer Quelldatei.
-        // Geprueft wird die AUFRUFZEILE, nicht die Datei: der Kommentar daneben nennt 'lyrc' und
-        // 'lyrvm' ausdruecklich, um zu begruenden, warum sie es nicht sind. Ein Test, der die
-        // ganze Datei absucht, faellt genau ueber diese Begruendung — beim ersten Lauf passiert.
+        // The driver is the one command that compiles AND runs. Were the extension to call 'lyrc', the
+        // user would get a .lyrbc rather than a run; were it to call 'lyrvm', it would fail on a source
+        // file.
+        // The CALL LINE is checked rather than the file: the comment beside it names 'lyrc' and 'lyrvm'
+        // explicitly to explain why they are not it. A test scanning the whole file trips over exactly
+        // that explanation.
         var call = File.ReadAllLines(Path.Combine(Dir, "extension.js"))
             .Single(line => line.Contains("sendText", StringComparison.Ordinal));
 
@@ -110,19 +110,19 @@ public sealed class ExtensionTests
         Assert.DoesNotContain("lyrc", call);
         Assert.DoesNotContain("lyrvm", call);
 
-        // Der Befehl wird GEQUOTET und in PowerShell mit '&' aufgerufen — beides zusammen, denn
-        // jedes fuer sich ist kaputt. Ohne Quoting scheitert 'C:\Program Files\lyric\lyric.exe'
-        // an 'C:\Program'; ohne '&' ist '"lyric" run x' in PowerShell ein String-Literal, das
-        // ausgegeben statt ausgefuehrt wird — der Lauf passierte einfach nicht.
+        // The command is QUOTED and called with an '&' in PowerShell — both together, because each alone
+        // is broken. Without the quoting 'C:\Program Files\lyric\lyric.exe' fails at 'C:\Program';
+        // without the '&', '"lyric" run x' is a string literal in PowerShell that gets printed rather
+        // than executed, so the run simply did not happen.
         //
-        // Am 2026-08-12 war genau das der Anlass, das Quoting zu entfernen. Der Test steht hier,
-        // damit die eine Haelfte nicht wieder fuer die andere geopfert wird.
+        // That was the occasion for removing the quoting once. The test stands here so one half is not
+        // sacrificed for the other again.
         Assert.Contains("quote(executable)", call, StringComparison.Ordinal);
         Assert.Contains("callPrefix()", call, StringComparison.Ordinal);
     }
 
-    /// <summary>Und das <c>&amp;</c> gilt nur fuer PowerShell — in cmd.exe und jeder POSIX-Shell
-    /// waere es ein Syntaxfehler.</summary>
+    /// <summary>And the <c>&amp;</c> applies to PowerShell only: in cmd.exe and every POSIX shell it would
+    /// be a syntax error.</summary>
     [Fact]
     public void The_call_operator_is_limited_to_powershell()
     {
@@ -136,9 +136,9 @@ public sealed class ExtensionTests
     [Fact]
     public void An_unsaved_file_is_written_before_running()
     {
-        // Der Compiler liest von der Platte, nicht aus dem Editor-Puffer. Ohne das Speichern
-        // laeuft die vorige Fassung, und der Nutzer sucht den Fehler in seinem Programm statt
-        // in seinem Editor.
+        // The compiler reads from disk rather than from the editor buffer. Without the save
+        // the previous version runs, and the user looks for the fault in their program rather than in
+        // their editor.
         var code = File.ReadAllText(Path.Combine(Dir, "extension.js"));
 
         Assert.Contains("isDirty", code);

@@ -3,15 +3,14 @@ using System.Text.RegularExpressions;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Die README behauptet Dinge über die Sprache — dieser Test prüft sie nach.
+/// The README claims things about the language, and this test checks them.
 ///
-/// <para><b>Der Anlass ist ein Befund.</b> Bis M9 stand dort „no working compiler exists yet.
-/// Current milestone: M0" — nach acht Meilensteinen und 1700 Tests. Eine Doku, die niemand
-/// prüft, driftet; dieselbe Erfahrung wie bei `Sprache.md` §4 (UTF-8 vs. UTF-16) und §2.2
-/// (`{value:0&gt;5}`, eine Notation, die nie .NET war).</para>
+/// <para>It used to say "no working compiler exists yet. Current milestone: M0" after eight milestones
+/// and 1700 tests. Documentation nobody checks drifts; the same experience as with the grammar (UTF-8
+/// against UTF-16) and the format spec (<c>{value:0&gt;5}</c>, a notation that was never .NET).</para>
 ///
-/// <para>Geprüft wird das, was maschinell prüfbar ist: dass das Beispiel im README <b>läuft</b>
-/// und die dort gezeigte Ausgabe erzeugt. Prosa bleibt Prosa.</para>
+/// <para>What is checked is what is mechanically checkable: that the example in the README RUNS and
+/// produces the output shown there. Prose stays prose.</para>
 /// </summary>
 public sealed class ReadmeTests : IDisposable
 {
@@ -41,9 +40,9 @@ public sealed class ReadmeTests : IDisposable
         Assert.Equal(0, result.ExitCode);
         Assert.Equal("", result.Err);
 
-        // Die erwartete Ausgabe wird aus dem README GELESEN, nicht hier hineingeschrieben: der
-        // Block direkt unter dem Programm ist die Behauptung, und genau die soll geprueft werden.
-        // Stuende sie hier, pruefte der Test seine eigene Kopie und liesse den README driften.
+        // The expected output is READ FROM the README rather than written here: the block directly below
+        // the program is the claim, and that is what should be checked. Standing here, the test would
+        // check its own copy and let the README drift.
         var claimed = Regex.Match(readme[(block.Index + block.Length)..],
             @"```\r?\n(.*?)```", RegexOptions.Singleline);
         Assert.True(claimed.Success, "README does not show the example's output");
@@ -56,8 +55,8 @@ public sealed class ReadmeTests : IDisposable
     [Fact]
     public void The_readme_does_not_claim_there_is_no_compiler()
     {
-        // Der konkrete Satz, der acht Meilensteine überlebt hat. Ein Test auf genau ihn ist
-        // schmal, aber er kostet nichts und hätte die Peinlichkeit verhindert.
+        // The concrete sentence that survived eight milestones. A test on exactly it is narrow, but it
+        // costs nothing and would have prevented the embarrassment.
         var readme = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "README.md"));
 
         Assert.DoesNotContain("no working compiler", readme, StringComparison.OrdinalIgnoreCase);
@@ -65,17 +64,16 @@ public sealed class ReadmeTests : IDisposable
     }
 
     /// <summary>
-    /// Was die README und der CI-Job als Kommando aufrufen, liegt auch im Repository.
+    /// What the README and the CI job call as a command also lies in the repository.
     ///
-    /// <para><b>Der Anlass ist ein Befund.</b> <c>build/publish.proj</c> war von
-    /// <c>.gitignore</c> erfasst (<c>build/</c>, gemeint waren Ausgaben) und lag deshalb in
-    /// keinem Clone. Der CI-Schritt „Publish toolchain" rief es trotzdem auf — er ist nie
-    /// gelaufen, weil <c>needs:</c> ihn uebersprang, solange die Tests rot waren. Die README
-    /// nennt dasselbe Kommando unter „Shipping": wer dem Text folgte, bekam einen Fehler.</para>
+    /// <para><c>build/publish.proj</c> was covered by <c>.gitignore</c> (<c>build/</c>, meaning outputs)
+    /// and therefore lay in no clone. The CI step "Publish toolchain" called it all the same — it never
+    /// ran, because <c>needs:</c> skipped it while the tests were red. The README names the same command
+    /// under "Shipping": whoever followed the text got an error.</para>
     ///
-    /// <para>Die Datei existierte die ganze Zeit auf der Platte des Maintainers. <c>File.Exists</c>
-    /// haette also nichts gefunden — die Frage ist nicht, ob sie da ist, sondern ob sie
-    /// <b>ausgeliefert</b> wird. Nur git kann das beantworten.</para>
+    /// <para>The file existed the whole time on the maintainer's disk. <c>File.Exists</c> would have found
+    /// nothing — the question is not whether it is there but whether it is SHIPPED. Only git can answer
+    /// that.</para>
     /// </summary>
     [Fact]
     public void Every_file_the_ci_job_invokes_is_in_the_repository()
@@ -99,20 +97,19 @@ public sealed class ReadmeTests : IDisposable
                 $"CI runs 'dotnet msbuild {path}', but that file is not tracked by git — "
                 + "a fresh clone cannot run it. Check .gitignore.");
 
-            // Dieselbe Datei steht unter „Shipping" in der README. Liefe der CI-Job kuenftig
-            // etwas anderes, waere die Anleitung fuer den Menschen die veraltete Haelfte.
+            // The same file stands under "Shipping" in the README. Were the CI job to run something else in
+            // future, the instructions for the human would be the outdated half.
             Assert.Contains(path, readme, StringComparison.Ordinal);
         }
     }
 
     /// <summary>
-    /// Der Projektbaum in der README nennt jedes Projekt aus <c>src/</c>.
+    /// The project tree in the README names every project from <c>src/</c>.
     ///
-    /// <para><b>Der Anlass ist ein Befund.</b> <c>Lyrrepl/</c> fehlte im Baum, waehrend der
-    /// Abschnitt zwei Bildschirme darunter „The four binaries" heisst — dieselbe Datei
-    /// widersprach sich selbst. Ein Baum ist eine zweite Beschreibung des Verzeichnisses daneben,
-    /// und zwei Beschreibungen driften; die TextMate-Grammatik haengt aus demselben Grund am
-    /// Lexer.</para>
+    /// <para><c>Lyrrepl/</c> was missing from the tree while the section two screens below is called "The
+    /// four binaries" — the same file contradicting itself. A tree is a second description of the
+    /// directory beside it, and two descriptions drift; the TextMate grammar hangs on the same lexer.
+    /// </para>
     /// </summary>
     [Fact]
     public void The_project_tree_in_the_readme_names_every_source_project()
@@ -135,7 +132,7 @@ public sealed class ReadmeTests : IDisposable
     [Fact]
     public void The_example_count_in_the_readme_is_right()
     {
-        // Eine Zahl in der Doku, die niemand nachzählt, ist irgendwann falsch.
+        // A number in the documentation that nobody recounts is wrong sooner or later.
         var readme = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "README.md"));
         var claimed = Regex.Match(readme, @"has (\d+) programs");
 
