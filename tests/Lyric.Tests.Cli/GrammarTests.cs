@@ -4,17 +4,15 @@ using System.Text.RegularExpressions;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Die TextMate-Grammatik gegen den Lexer.
+/// The TextMate grammar against the lexer.
 ///
-/// <para><b>Warum es diesen Test gibt</b>: eine Editor-Grammatik ist eine <b>zweite Beschreibung
-/// derselben Sprache</b>, und zwei Beschreibungen driften. Wenn Lyric ein Keyword bekommt, fällt
-/// es in der Grammatik niemandem auf — der Editor färbt es einfach nicht, und das sieht aus wie
-/// ein Bezeichner. Dieselbe Erfahrung wie bei <c>Sprache.md</c> §4 und §2.2, nur diesmal
-/// vorbeugend.</para>
+/// <para>WHY THIS TEST EXISTS: an editor grammar is a SECOND DESCRIPTION OF THE SAME LANGUAGE, and two
+/// descriptions drift. When Lyric gets a keyword, nobody notices it in the grammar — the editor simply
+/// does not colour it, and that looks like an identifier.</para>
 ///
-/// <para>Geprüft wird die Keyword-Liste, weil sie die einzige Menge ist, die beide Seiten
-/// vollständig kennen. Ob ein Bezeichner ein Typ ist, weiß nur die Sema; die Grammatik rät es an
-/// der Großschreibung, und das ist eine Konvention, die sich nicht prüfen lässt.</para>
+/// <para>The keyword list is checked, because it is the only set both sides know completely. Whether an
+/// identifier is a type is known only to the sema; the grammar guesses it from the capitalisation, and
+/// that is a convention that cannot be checked.</para>
 /// </summary>
 public sealed class GrammarTests
 {
@@ -24,8 +22,8 @@ public sealed class GrammarTests
     private static string LexerPath => Path.Combine(Toolchain.RepositoryRoot,
         "src", "Lyric.Frontend", "Lexing", "Lexer.cs");
 
-    /// <summary>Die Keywords, die die Grammatik färbt — aus allen Mustern unter
-    /// <c>repository.keywords</c>, weil sie nach Kategorie getrennt sind.</summary>
+    /// <summary>The keywords the grammar colours, from all the patterns under
+    /// <c>repository.keywords</c>, because they are separated by category.</summary>
     private static HashSet<string> GrammarKeywords()
     {
         using var document = JsonDocument.Parse(File.ReadAllText(GrammarPath));
@@ -35,8 +33,8 @@ public sealed class GrammarTests
         var found = new HashSet<string>(StringComparer.Ordinal);
         foreach (var pattern in patterns.EnumerateArray())
         {
-            // Die '\b'-Anker zuerst weg: sonst liest der Extraktor 'bthis' statt 'this' — das
-            // 'b' aus dem Escape klebt am Wort. Genau das ist beim ersten Lauf passiert.
+            // The '\b' anchors go first: otherwise the extractor reads 'bthis' rather than 'this', with
+            // the 'b' from the escape stuck to the word.
             var match = pattern.GetProperty("match").GetString()!.Replace(@"\b", "");
             foreach (var word in Regex.Matches(match, @"[a-z][a-z0-9]*").Select(m => m.Value))
                 found.Add(word);
@@ -44,8 +42,8 @@ public sealed class GrammarTests
         return found;
     }
 
-    /// <summary>Die Keyword-Tabelle des Lexers. Sie ist die Wahrheit — was dort steht, ist ein
-    /// Keyword, und alles andere ist ein Bezeichner.</summary>
+    /// <summary>The lexer's keyword table. It is the truth: what stands there is a keyword, and everything
+    /// else is an identifier.</summary>
     private static HashSet<string> LexerKeywords() =>
         Regex.Matches(File.ReadAllText(LexerPath), @"\{ ""([a-z0-9]+)"", TokenKind\.")
             .Select(m => m.Groups[1].Value)
@@ -64,12 +62,12 @@ public sealed class GrammarTests
     [Fact]
     public void The_grammar_colours_nothing_that_is_not_a_keyword()
     {
-        // Die andere Richtung. Ein Wort, das die Grammatik faerbt, das die Sprache aber nicht
-        // kennt, ist eine Falle: der Editor behauptet eine Bedeutung, die es nicht gibt — und
-        // beim Tippen sieht es aus, als sei der Bezeichner reserviert.
+        // The other direction. A word the grammar colours but the language does not know is a trap: the
+        // editor claims a meaning that does not exist, and while typing it looks as if the identifier were
+        // reserved.
         //
-        // Ausgenommen sind die eingebauten TYPEN: sie sind Bezeichner im Wurzel-Scope und keine
-        // Keywords, werden aber zu Recht gefaerbt.
+        // Exempt are the built-in TYPES: they are identifiers in the root scope rather than keywords, and
+        // are coloured rightly.
         var builtinTypes = new HashSet<string>(StringComparer.Ordinal)
         {
             "int", "int8", "int16", "int32", "int64",
@@ -102,9 +100,9 @@ public sealed class GrammarTests
     [Fact]
     public void Block_comments_nest()
     {
-        // Sprache.md §1.1 erlaubt verschachtelte Block-Kommentare — eine Seltenheit, die die
-        // meisten Grammatiken falsch machen. Ohne den Selbstbezug endet '/* /* */ */' eine Ebene
-        // zu frueh, und der Rest der Datei faerbt sich als Kommentar.
+        // The language allows nested block comments, a rarity most grammars get wrong. Without the
+        // self-reference '/* /* */ */' ends one level too early and the rest of the file colours itself as
+        // a comment.
         using var document = JsonDocument.Parse(File.ReadAllText(GrammarPath));
         var comments = document.RootElement
             .GetProperty("repository").GetProperty("comments").GetProperty("patterns");

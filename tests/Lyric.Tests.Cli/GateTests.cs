@@ -1,16 +1,16 @@
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Das M8-Gate: `examples/wc.lyr` über echte Dateien.
+/// The gate: `examples/wc.lyr` over real files.
 ///
-/// <para>Es steht nicht in der Beispiel-Matrix, weil es <b>Argumente braucht</b> — ohne sie ist
-/// die richtige Antwort eine Usage-Meldung und kein Zählergebnis. Die Matrix ist für Programme,
-/// die ohne Zutun ein definiertes Ergebnis liefern.</para>
+/// <para>It does not stand in the example matrix, because it NEEDS ARGUMENTS: without them the right
+/// answer is a usage message rather than a count. The matrix is for programs delivering a defined result
+/// without help.</para>
 ///
-/// <para><b>Warum ein `wc`-Klon das Gate ist</b>: er belastet die Stdlib quer statt in die Tiefe —
-/// Dateien lesen (S7, `fileAccess`), Strings zerlegen (S2), in einer Liste sammeln (S5),
-/// formatiert ausgeben (S3), Einstieg mit Argumenten (§11). Fällt eines davon aus, läuft er
-/// nicht. Zwei Fehler hat er beim Bauen gefunden, die kein Slice-Test bemerkt hatte.</para>
+/// <para>WHY A `wc` CLONE IS THE GATE: it loads the stdlib across rather than in depth — reading files,
+/// splitting strings, collecting into a list, formatted output, an entry point with arguments. If one of
+/// those fails, it does not run. It found two faults while being built that no slice test had noticed.
+/// </para>
 /// </summary>
 public sealed class GateTests : IDisposable
 {
@@ -21,7 +21,7 @@ public sealed class GateTests : IDisposable
     {
         Directory.CreateDirectory(_dir);
 
-        // Vier Zeilen, sechs Wörter, 33 Zeichen — dieselben Zahlen, die POSIX-wc liefert.
+        // Four lines, six words, 33 characters: the same numbers POSIX wc yields.
         File.WriteAllText(Three, "eins zwei drei\nvier fuenf\n\nsechs\n");
         File.WriteAllText(NoNewline, "nur eine zeile ohne umbruch");
     }
@@ -46,8 +46,8 @@ public sealed class GateTests : IDisposable
         Assert.Equal(0, result.ExitCode);
 
         var columns = Columns(result.Out.Trim());
-        Assert.Equal("4", columns[0]);   // Zeilen
-        Assert.Equal("6", columns[1]);   // Wörter
+        Assert.Equal("4", columns[0]);   // lines
+        Assert.Equal("6", columns[1]);   // words
         Assert.Equal("33", columns[2]);  // Zeichen
     }
 
@@ -58,26 +58,26 @@ public sealed class GateTests : IDisposable
         var lines = result.Out.Trim().ReplaceLineEndings("\n").Split('\n');
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal(3, lines.Length);           // zwei Dateien plus Summe
+        Assert.Equal(3, lines.Length);           // two files plus the total
         Assert.EndsWith("total", lines[^1]);
 
-        // 33 + 27 Zeichen. Die Summe ist die interessante Zeile: sie prüft, dass die Ergebnisse
-        // wirklich in der Liste landen und wieder herauskommen.
+        // 33 plus 27 characters. The total is the interesting line: it checks that the results really land
+        // in the list and come out again.
         Assert.Equal("60", Columns(lines[^1])[2]);
     }
 
     [Fact]
     public void A_single_file_gets_no_total() =>
-        // Eine Summenzeile bei einer Datei wäre eine Wiederholung.
+        // A total line for one file would be a repetition.
         Assert.Single(Toolchain.Lyric("run", Toolchain.Example("wc.lyr"), "--", Three)
             .Out.Trim().ReplaceLineEndings("\n").Split('\n'));
 
     [Fact]
     public void A_file_without_a_trailing_newline_still_has_one_line()
     {
-        // Bewusste Abweichung von POSIX: `wc -l` zählt Zeilenumbrüche, nicht Zeilen — für POSIX
-        // hat diese Datei null Zeilen. Für ein Beispielprogramm ist die intuitive Zählung die
-        // bessere, und der Test hält fest, dass es eine Entscheidung war und kein Zufall.
+        // A deliberate deviation from POSIX: `wc -l` counts line breaks rather than lines, so for POSIX
+        // this file has zero lines. For an example program the intuitive count is the better one, and the
+        // test holds that it was a decision rather than an accident.
         var result = Toolchain.Lyric("run", Toolchain.Example("wc.lyr"), "--", NoNewline);
 
         Assert.Equal("1", Columns(result.Out.Trim())[0]);
@@ -87,14 +87,13 @@ public sealed class GateTests : IDisposable
     [Fact]
     public void A_missing_file_is_reported_but_not_fatal()
     {
-        // Wie das echte `wc`: eine nicht lesbare Datei ist ein Fehler, aber kein Grund, die
-        // anderen nicht zu zählen.
+        // As with the real `wc`: an unreadable file is an error but no reason not to count the others.
         var result = Toolchain.Lyric("run", Toolchain.Example("wc.lyr"), "--",
             Path.Combine(_dir, "gibtsnicht.txt"), Three);
 
         Assert.Equal(1, result.ExitCode);
         Assert.Contains("cannot read", result.Err);
-        Assert.Contains("33", result.Out);   // die lesbare Datei wurde trotzdem gezählt
+        Assert.Contains("33", result.Out);   // the readable file was counted all the same
     }
 
     [Fact]

@@ -4,25 +4,24 @@ using Lyric.Core;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// <c>lyrvm info</c> und <c>disasm --function</c>.
+/// <c>lyrvm info</c> and <c>disasm --function</c>.
 ///
-/// <para>Enthaelt den Regressionstest fuer den Start-Index-Fehler, den dieses Kommando aufgedeckt
+/// <para>Contains the regression test for the start index fault this command uncovered
 /// hat — siehe <see cref="Entry_point_index_lives_in_the_combined_index_space"/>.</para>
 /// </summary>
 public sealed class ModuleInfoTests
 {
     /// <summary>
-    /// <b>Regression.</b> <c>docs/Bytecode.md</c> §Start (Id 7) legt den Einstiegs-Index in den
-    /// <b>gemeinsamen</b> Raum: erst Importe, dann Funktionen — derselbe Raum, den <c>call</c>
-    /// benutzt. Der Writer schrieb bis 2026-08-05 die nackte FunctionId.
+    /// REGRESSION. The Start section puts the entry index into the SHARED space: imports first, then
+    /// functions — the same space <c>call</c> uses. The writer used to write the bare FunctionId.
     ///
-    /// <para>Es fiel niemandem auf, weil beide Lesarten zusammenfallen, sobald ein Modul keine
-    /// Importe hat: <c>arith.lyr</c> lief korrekt, und der Round-Trip-Test schrieb und las mit
-    /// derselben falschen Lesart. Sichtbar war es nur an einer Disassembler-Zeile, die niemand
-    /// gelesen hat. Eine spec-treue Fremd-Runtime waere bei <c>hello.lyr</c> in einen Import
-    /// gesprungen — genau der Schaden, gegen den ADR-013 geschrieben ist.</para>
+    /// <para>Nobody noticed, because both readings coincide as soon as a module has no imports:
+    /// <c>arith.lyr</c> ran correctly, and the round-trip test wrote and read with the same wrong reading.
+    /// It was visible only in a disassembler line nobody read. A specification-faithful third-party
+    /// runtime would have jumped into an import for <c>hello.lyr</c> — exactly the damage the format
+    /// contract is written against.</para>
     ///
-    /// <para>Deshalb prueft dieser Test ein Programm <b>mit</b> Importen. Ohne sie ist er wertlos.</para>
+    /// <para>This test therefore checks a program WITH imports. Without them it is worthless.</para>
     /// </summary>
     [Fact]
     public void Entry_point_index_lives_in_the_combined_index_space()
@@ -60,9 +59,8 @@ public sealed class ModuleInfoTests
         using var document = JsonDocument.Parse(info.Out);
         var format = document.RootElement.GetProperty("format");
 
-        // Aus 'Format' und nicht als Literal: die Frage ist, ob 'info' meldet, was der Writer
-        // schreibt — nicht, ob jemand beim Bump zwei Zahlen nachzieht. Genau diese Sorte Literal
-        // hat in dieser Sitzung schon dreimal einen Test rot gemacht, ohne dass etwas kaputt war.
+        // From 'Format' rather than as a literal: the question is whether 'info' reports what the writer
+        // writes, not whether someone updates two numbers at a version bump.
         Assert.Equal(Lyric.Bytecode.Format.VersionMajor, format.GetProperty("major").GetInt32());
         Assert.Equal(Lyric.Bytecode.Format.VersionMinor, format.GetProperty("minor").GetInt32());
     }
@@ -70,7 +68,7 @@ public sealed class ModuleInfoTests
     [Fact]
     public void Info_and_disasm_agree_on_the_function_count()
     {
-        // Zwei Ausgaben derselben Datenquelle. Laufen sie auseinander, ist es ein Reader-Bug.
+        // Two outputs from the same data source. If they drift apart, it is a reader bug.
         using var module = Toolchain.Temp(".lyrbc");
         Toolchain.Lyrc("build", Toolchain.Example("enums.lyr"), "-o", module.Path);
 
@@ -119,7 +117,7 @@ public sealed class ModuleInfoTests
         var full = Toolchain.Lyrvm("disasm", module.Path).Out;
         var only = Toolchain.Lyrvm("disasm", module.Path, "--function", "main.main").Out;
 
-        // Der Kopf bleibt: die Instruktionen verweisen per Index auf Strings, Typen und Importe.
+        // The header stays: the instructions reference strings, types and imports by index.
         Assert.Contains("module (format", only);
         Assert.Contains("fn main.main ", only);
         Assert.DoesNotContain("fn main.Shape.area ", only);
@@ -129,7 +127,7 @@ public sealed class ModuleInfoTests
     [Fact]
     public void Disasm_with_an_unknown_function_is_an_error_not_an_empty_dump()
     {
-        // Leere Ausgabe waere die schlechtere Antwort: sie sieht aus wie "die Funktion ist leer".
+        // Empty output would be the worse answer: it looks like "the function is empty".
         using var module = Toolchain.Temp(".lyrbc");
         Toolchain.Lyrc("build", Toolchain.Example("arith.lyr"), "-o", module.Path);
 

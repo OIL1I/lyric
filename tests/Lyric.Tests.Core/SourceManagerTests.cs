@@ -5,7 +5,7 @@ namespace Lyric.Tests.Core;
 
 public class SourceManagerTests
 {
-    // ─── AddVirtual / AddFromDisk: Registrierung ───────────────────────────
+    // ─── AddVirtual and AddFromDisk: registration ──────────────────────────
 
     [Fact]
     public void AddVirtual_returns_valid_FileId()
@@ -157,7 +157,7 @@ public class SourceManagerTests
     [Fact]
     public void GetText_with_last_valid_id_works()
     {
-        // Regression: stellt sicher dass id.Value == FileCount nicht fälschlich rejected wird.
+        // Regression: makes sure id.Value == FileCount is not wrongly rejected.
         var sm = new SourceManager();
         sm.AddVirtual("a", "x");
         sm.AddVirtual("b", "y");
@@ -169,11 +169,11 @@ public class SourceManagerTests
     // ─── LineCount ─────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("",          1)]   // leere Datei = eine leere Zeile
+    [InlineData("",          1)]   // an empty file is one empty line
     [InlineData("abc",       1)]
     [InlineData("a\n",       2)]
     [InlineData("a\nb",      2)]
-    [InlineData("a\nb\n",    3)]   // eine leere Zeile nach dem letzten \n
+    [InlineData("a\nb\n",    3)]   // an empty line after the last newline
     [InlineData("a\r\nb",    2)]
     public void LineCount_counts_correctly(string text, int expected)
     {
@@ -188,7 +188,7 @@ public class SourceManagerTests
         Assert.Throws<ArgumentException>(() => new SourceManager().LineCount(FileId.None));
     }
 
-    // ─── Locate: 1-basierte Position aus Offset ────────────────────────────
+    // ─── Locate: a 1-based position from an offset ─────────────────────────
 
     [Theory]
     // Single line, no newline
@@ -198,15 +198,15 @@ public class SourceManagerTests
     [InlineData("abc",      3, 1, 4)]   // EOF
     // Two lines, LF
     [InlineData("a\nb",     0, 1, 1)]
-    [InlineData("a\nb",     1, 1, 2)]   // das \n selbst
+    [InlineData("a\nb",     1, 1, 2)]   // the newline itself
     [InlineData("a\nb",     2, 2, 1)]
     [InlineData("a\nb",     3, 2, 2)]   // EOF
     // Leading newline
     [InlineData("\n",       0, 1, 1)]
-    [InlineData("\n",       1, 2, 1)]   // EOF nach NL
+    [InlineData("\n",       1, 2, 1)]   // EOF after a newline
     // CRLF
     [InlineData("a\r\nb",   0, 1, 1)]
-    [InlineData("a\r\nb",   1, 1, 2)]   // \r ist Teil von Zeile 1
+    [InlineData("a\r\nb",   1, 1, 2)]   // the \r is part of line 1
     [InlineData("a\r\nb",   2, 1, 3)]   // \n
     [InlineData("a\r\nb",   3, 2, 1)]   // b
     [InlineData("a\r\nb",   4, 2, 2)]   // EOF
@@ -246,7 +246,7 @@ public class SourceManagerTests
     [Fact]
     public void Locate_offset_at_length_is_EOF_position()
     {
-        // text.Length ist explizit erlaubt — repräsentiert EOF.
+        // text.Length is explicitly allowed: it represents EOF.
         var sm = new SourceManager();
         var id = sm.AddVirtual("t", "abc");
         var pos = sm.Locate(id, 3);
@@ -336,17 +336,17 @@ public class SourceManagerTests
     [Theory]
     [InlineData("abc",          1, "abc")]                  // single line, no NL
     [InlineData("a\nb",         1, "a")]
-    [InlineData("a\nb",         2, "b")]                    // letzte Zeile ohne NL — Bug 1b
+    [InlineData("a\nb",         2, "b")]                    // the last line without a newline
     [InlineData("a\nb\n",       1, "a")]
     [InlineData("a\nb\n",       2, "b")]
-    [InlineData("a\nb\n",       3, "")]                     // leere Zeile nach Trailing-NL
-    [InlineData("a\r\nb",       1, "a")]                    // CRLF — \r muss raus, Bug 1c
+    [InlineData("a\nb\n",       3, "")]                     // an empty line after a trailing newline
+    [InlineData("a\r\nb",       1, "a")]                    // CRLF: the \r has to go
     [InlineData("a\r\nb",       2, "b")]
     [InlineData("\n",           1, "")]
     [InlineData("\n",           2, "")]
     [InlineData("",             1, "")]
     [InlineData("hello world",  1, "hello world")]
-    [InlineData("a\n\nb",       2, "")]                     // mittlere leere Zeile
+    [InlineData("a\n\nb",       2, "")]                     // an empty line in the middle
     public void GetLineText_returns_line_without_terminator(
         string text, int line, string expected)
     {
@@ -377,12 +377,12 @@ public class SourceManagerTests
         Assert.Throws<ArgumentException>(() => new SourceManager().GetLineText(FileId.None, 1));
     }
 
-    // ─── UTF-16: Multi-byte und Surrogate-Pairs ────────────────────────────
+    // ─── UTF-16: multi-byte characters and surrogate pairs ─────────────────
 
     [Fact]
     public void Locate_handles_multibyte_chars_as_single_code_unit()
     {
-        // "äöü" sind alle BMP-Codepoints (eine UTF-16-Code-Unit pro Zeichen).
+        // "äöü" are all BMP code points, one UTF-16 code unit per character.
         var sm = new SourceManager();
         var id = sm.AddVirtual("t", "äöü");
         Assert.Equal(new LinePosition(1, 1), sm.Locate(id, 0));
@@ -393,8 +393,8 @@ public class SourceManagerTests
     [Fact]
     public void Locate_counts_surrogate_pairs_as_two_code_units()
     {
-        // 🌍 (U+1F30D) ist außerhalb BMP → 2 UTF-16-Code-Units.
-        // Dokumentiert das bewusste Verhalten der UTF-16-Offset-Wahl.
+        // 🌍 (U+1F30D) lies outside the BMP and is 2 UTF-16 code units. Documents the deliberate behaviour
+        // of the UTF-16 offset choice.
         var sm = new SourceManager();
         var id = sm.AddVirtual("t", "🌍x");
         Assert.Equal(3, sm.GetText(id).Length);

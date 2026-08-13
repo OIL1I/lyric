@@ -12,11 +12,10 @@ namespace Lyric.Tests.Vm;
 /// <summary>
 /// Capabilities (ADR-007, Doku §20.1) — M8/S6.
 ///
-/// <para><b>Der Bedarf steht im Modul, die Entscheidung bei der Runtime.</b> Der Compiler
-/// schreibt in die Capabilities-Sektion, <b>was</b> ein Programm anfassen will; beim Laden prüft
-/// die VM gegen das, <b>was</b> sie gewährt. Die Trennung ist nicht kosmetisch: ein `.lyrbc` kann
-/// von woanders kommen, und ein Host, der fremden Bytecode lädt, hat den Compiler nie gesehen.
-/// Eine reine Resolve-Zeit-Prüfung — wie ADR-007 sie nennt — wäre für ihn wertlos.</para>
+/// <para>THE REQUIREMENT STANDS IN THE MODULE, THE DECISION AT THE RUNTIME. The compiler writes into the
+/// capabilities section WHAT a program wants to touch; at load time the VM checks against WHAT it grants.
+/// The separation is not cosmetic: a `.lyrbc` can come from elsewhere, and a host loading foreign
+/// bytecode has never seen the compiler. A pure resolve-time check would be worthless to it.</para>
 /// </summary>
 public class CapabilityTests
 {
@@ -50,7 +49,7 @@ public class CapabilityTests
         fn main(): int { let p = platform(); return 0; }
         """;
 
-    // ------------------------------------------------------------------ der Bedarf im Modul
+    // ------------------------------------------------------------------ the requirement in the module
 
     [Fact]
     public void A_program_that_touches_nothing_requires_nothing() =>
@@ -58,20 +57,20 @@ public class CapabilityTests
 
     [Fact]
     public void Importing_a_gated_module_records_the_requirement() =>
-        // Die Bitmaske ist Bytecode-Vertrag: 'osAccess' ist Bit 2. Ein Test auf den Zahlenwert
-        // und nicht nur auf "ungleich 0", weil eine verschobene Zuordnung jedes ältere .lyrbc
-        // falsch machen würde.
+        // The bit mask is part of the bytecode contract: 'osAccess' is bit 2. A test on the numeric value
+        // rather than only on "not equal to 0", because a shifted assignment would make every older .lyrbc
+        // wrong.
         Assert.Equal((ulong)Capability.OsAccess, Compile(UsesOs).Capabilities);
 
     [Fact]
     public void The_requirement_survives_a_round_trip() =>
-        // Sie steht wirklich IM Modul und wird nicht nebenher geführt — der Test geht durch
-        // Writer und Reader.
+        // It really stands IN the module rather than being kept alongside; the test goes through the writer
+        // and the reader.
         Assert.Equal((ulong)Capability.OsAccess,
             BytecodeReader.ReadOrThrow(BytecodeWriter.Write(
                 new Lyric.Ir.IrModule([]) { Capabilities = Capability.OsAccess })).Capabilities);
 
-    // ------------------------------------------------------------------ die Durchsetzung
+    // ------------------------------------------------------------------ the enforcement
 
     [Fact]
     public void A_runtime_that_grants_everything_runs_it() =>
@@ -98,16 +97,16 @@ public class CapabilityTests
 
     [Fact]
     public void The_wrong_capability_does_not_help() =>
-        // Die Gegenprobe zum Test darüber: 'irgendeine' Capability genügt nicht. Ohne ihn bliebe
-        // die Prüfung auch grün, wenn sie nur auf "granted != None" sähe.
+        // The counter-check to the test above: 'some' capability does not suffice. Without it the check
+        // would stay green even if it only looked at "granted != None".
         Assert.Throws<LyricRuntimeException>(() => Interpreter.Run(Compile(UsesOs), [],
             NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null),
             Capability.FileAccess));
 
     [Fact]
     public void A_program_without_requirements_runs_in_a_sandbox() =>
-        // Die andere Richtung: die Prüfung darf nicht alles blockieren, was in einer engen VM
-        // läuft. Ein Programm, das nichts verlangt, läuft auch mit 'none'.
+        // The other direction: the check must not block everything running in a narrow VM. A program
+        // requiring nothing runs with 'none' too.
         Assert.Equal(7, Interpreter.Run(Compile("fn main(): int { return 7; }"), [],
             NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null),
             Capability.None).AsI64);
@@ -116,8 +115,8 @@ public class CapabilityTests
 
     [Fact]
     public void Submodules_inherit_the_requirement_of_their_parent() =>
-        // Sonst wäre jedes neue Untermodul eine stille Lücke: 'std.os.env' muss dasselbe kosten
-        // wie 'std.os'.
+        // Otherwise every new submodule would be a silent gap: 'std.os.env' has to cost the same as
+        // 'std.os'.
         Assert.Equal(Capability.OsAccess, CapabilityTable.RequiredForImport("std.os.env"));
 
     [Fact]
@@ -130,13 +129,13 @@ public class CapabilityTests
 
     [Fact]
     public void A_similar_name_is_not_gated() =>
-        // 'std.ostrich' fängt mit 'std.os' an, ist aber ein anderes Modul. Ohne die
-        // Punkt-Grenze im Vergleich wäre das eine falsche Ablehnung.
+        // 'std.ostrich' starts with 'std.os' but is a different module. Without the dot boundary in the
+        // comparison that would be a wrong rejection.
         Assert.Equal(Capability.None, CapabilityTable.RequiredForImport("std.ostrich"));
 
     [Fact]
     public void An_unknown_capability_name_is_rejected() =>
-        // 'null' und nicht 'None': still weniger zu gewähren als verlangt wäre die gefährliche
-        // Antwort — der Aufrufer soll melden.
+        // 'null' rather than 'None': silently granting less than requested would be the dangerous answer,
+        // and the caller should report.
         Assert.Null(CapabilityTable.Parse("file,quantum"));
 }
