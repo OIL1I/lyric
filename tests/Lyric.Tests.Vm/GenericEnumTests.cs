@@ -11,16 +11,15 @@ namespace Lyric.Tests.Vm;
 /// <summary>
 /// Generische Enums: <c>enum Opt&lt;T&gt; { Some(T), None }</c> (Sprache.md §3.4, §12).
 ///
-/// <para><b>Bis 2026-08-12 gab es sie im Lowering überhaupt nicht.</b> <c>TypeTable.InternEnum</c>
-/// warf, sobald ein generisches Enum auch nur als <i>Parametertyp</i> vorkam — es musste keine
-/// Variante konstruiert werden. Die Sema trug die Form da schon fast vollständig; es fehlte die
-/// Verdrahtung.</para>
+/// <para><c>TypeTable.InternEnum</c> used to throw as soon as a generic enum appeared even as a
+/// PARAMETER type; no variant had to be constructed. The sema already carried the form almost
+/// completely; the wiring was missing.</para>
 ///
-/// <para><b>Die tragende Zusicherung ist <see cref="Two_instantiations_do_not_share_an_entry"/>.</b>
-/// <c>Opt&lt;int&gt;</c> und <c>Opt&lt;string&gt;</c> brauchen eigene Varianten-Layouts, weil die
-/// VM zur Laufzeit keine Typen kennt (§12). Teilten sie sich einen Eintrag, läge ein <c>i64</c> in
-/// einem String-Slot — dieselbe Klasse Loch wie die Konformanz-Lücke vom 2026-08-11, die in
-/// Release still falsch rechnete und nur in Debug auffiel.</para>
+/// <para>The load-bearing promise is <see cref="Two_instantiations_do_not_share_an_entry"/>.
+/// <c>Opt&lt;int&gt;</c> and <c>Opt&lt;string&gt;</c> need their own variant layouts, because the VM
+/// knows no types at runtime. Sharing an entry would put an <c>i64</c> into a string slot — the same
+/// class of hole as the conformance gap that computed silently wrong in release and showed only in
+/// debug.</para>
 /// </summary>
 public class GenericEnumTests
 {
@@ -38,9 +37,8 @@ public class GenericEnumTests
         de.RenderText(report);
         Assert.False(de.HasErrors, "source did not compile: " + report);
 
-        // verify: true — der IR-Verifier ist hier der eigentliche Zeuge. Ein geteiltes
-        // Varianten-Layout faellt als Slot-Typkonflikt auf, lange bevor es einen falschen Wert
-        // gibt.
+        // verify: true — the IR verifier is the real witness here. A shared variant layout shows as a
+        // slot type conflict long before it produces a wrong value.
         var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         var lowering = new StringWriter();
         de.RenderText(lowering);
@@ -83,9 +81,9 @@ public class GenericEnumTests
             }
             """));
 
-    /// <summary>Eine Struct-Variante mit geschriebenen Argumenten. Der Parser musste dafür lernen,
-    /// dass hinter <c>&lt;int&gt;</c> noch ein Segment stehen darf — die Argumente gehören dem
-    /// Enum, die Variante hängt hinten dran.</summary>
+    /// <summary>A struct variant with written arguments. The parser had to learn that a further segment
+    /// may stand behind the <c>&lt;int&gt;</c>: the arguments belong to the enum and the variant hangs off
+    /// the back.</summary>
     [Fact]
     public void A_struct_variant_takes_written_type_arguments() =>
         Assert.Equal(12, Run("""
@@ -98,8 +96,8 @@ public class GenericEnumTests
             """));
 
     /// <summary>
-    /// Und ohne geschriebene Argumente, wenn der Kontext sie hergibt — der Weg, den es vorher
-    /// allein gab. Er darf durch den neuen nicht verdrängt worden sein.
+    /// And without written arguments when the context supplies them — the route that used to exist alone.
+    /// It must not have been displaced by the new one.
     /// </summary>
     [Fact]
     public void The_instance_may_still_come_from_the_context() =>
@@ -113,12 +111,11 @@ public class GenericEnumTests
             """));
 
     /// <summary>
-    /// Dasselbe für eine <b>Tuple</b>-Variante — und das ging bis heute nicht.
+    /// The same for a TUPLE variant.
     ///
-    /// <para>Die Struct-Form las den Kontext seit jeher, die Tuple-Form nicht: <c>Ev.Hit { … }</c>
-    /// lief, <c>Opt.Some(7)</c> war ein Fehler. Eine Frage, zwei Antworten, je nach Form der
-    /// Variante — genau das Muster, das dieses Projekt schon mehrfach auseinandergefahren ist.
-    /// Jetzt geht beides über dieselbe Auflösung.</para>
+    /// <para>The struct form had always read the context, the tuple form had not: <c>Ev.Hit { … }</c>
+    /// worked, <c>Opt.Some(7)</c> was an error. One question, two answers depending on the form of the
+    /// variant. Both now go through the same resolution.</para>
     /// </summary>
     [Fact]
     public void A_tuple_variant_may_take_its_instance_from_the_context() =>
@@ -129,7 +126,7 @@ public class GenericEnumTests
             }
             """));
 
-    /// <summary>Und die Unit-Variante ebenso.</summary>
+    /// <summary>And the unit variant likewise.</summary>
     [Fact]
     public void A_unit_variant_may_take_its_instance_from_the_context() =>
         Assert.Equal(3, Run(Opt + """
@@ -140,12 +137,11 @@ public class GenericEnumTests
             """));
 
     /// <summary>
-    /// <b>Wo der Kontext nicht hinreicht</b>: in eine Argumentposition. Der erwartete Typ wird
-    /// dorthin nicht durchgereicht, also muss die Instanz dastehen.
+    /// WHERE THE CONTEXT DOES NOT REACH: an argument position. The expected type is not passed through
+    /// to there, so the instance has to stand written out.
     ///
-    /// <para>Das ist keine Folge dieser Arbeit — es war vorher genauso — aber es ist der Rand, an
-    /// den man beim Schreiben zuerst stößt. Der Test hält ihn fest, damit er beim nächsten Mal
-    /// gemessen und nicht geraten wird.</para>
+    /// <para>That is not a consequence of this work — it was the same before — but it is the edge one
+    /// hits first when writing. The test holds it, so next time it is measured rather than guessed.</para>
     /// </summary>
     [Fact]
     public void The_context_does_not_reach_into_an_argument_position() =>
@@ -155,8 +151,8 @@ public class GenericEnumTests
             fn main(): int { return nimm(Ev.Hit { at = 6 }); }
             """), d => d.Code == "LYR-SEM0026");
 
-    /// <summary>Dasselbe für die Tuple-Form, wo die Meldung <c>LYR-SEM0063</c> heißt und den
-    /// direkten Ausweg nennt.</summary>
+    /// <summary>The same for the tuple form, where the message is <c>LYR-SEM0063</c> and names the direct
+    /// way out.</summary>
     [Fact]
     public void A_tuple_variant_without_arguments_says_to_write_them() =>
         Assert.Contains(Check(Opt + """
@@ -164,21 +160,20 @@ public class GenericEnumTests
             fn main(): int { return nimm(Opt.Some(5)); }
             """), d => d.Code == "LYR-SEM0063");
 
-    // ------------------------------------------------------------------ die tragende Zusicherung
+    // ------------------------------------------------------------------ the load-bearing promise
 
     /// <summary>
-    /// <b>Zwei Instanziierungen, zwei Einträge.</b> Der <c>int</c>-Wert und der
-    /// <c>string</c>-Wert stehen im selben Programm und müssen beide richtig herauskommen.
+    /// TWO INSTANTIATIONS, TWO ENTRIES. The <c>int</c> value and the <c>string</c> value stand in the
+    /// same program and both have to come out right.
     ///
-    /// <para>Teilten sie sich ein Varianten-Layout, läge ein <c>i64</c> in einem String-Slot. In
-    /// Debug meldet der Verifier das; in Release — also dem, was ausgeliefert wird — liefe es
-    /// durch und gäbe eine stille falsche Antwort. Genau diese Asymmetrie hat die
-    /// Konformanz-Lücke vom 2026-08-11 so teuer gemacht.</para>
+    /// <para>Sharing a variant layout would put an <c>i64</c> into a string slot. In debug the verifier
+    /// reports that; in release — what gets shipped — it would run through and give a silently wrong
+    /// answer.</para>
     /// </summary>
     [Fact]
     public void Two_instantiations_do_not_share_an_entry() =>
-        // 7 aus dem int-Zweig, 100 nur wenn der string-Zweig wirklich einen String hält. Beides
-        // in EINER Zahl, damit keine Hälfte unbemerkt danebenliegen kann.
+        // 7 from the int branch, 100 only when the string branch really holds a string. Both in ONE
+        // number, so neither half can be off unnoticed.
         Assert.Equal(107, Run(Opt + """
             fn main(): int {
                 let a = Opt<int>.Some(7);
@@ -190,8 +185,8 @@ public class GenericEnumTests
             }
             """));
 
-    /// <summary>Dieselbe Frage eine Ebene tiefer: <c>Opt&lt;Opt&lt;int&gt;&gt;</c>. Die innere
-    /// Instanz wird beim Internieren der äußeren gebraucht.</summary>
+    /// <summary>The same question one level deeper: <c>Opt&lt;Opt&lt;int&gt;&gt;</c>. The inner instance
+    /// is needed while interning the outer one.</summary>
     [Fact]
     public void An_instance_may_be_nested() =>
         Assert.Equal(3, Run(Opt + """
@@ -204,12 +199,12 @@ public class GenericEnumTests
             }
             """));
 
-    // ------------------------------------------------------------------ Rekursion und Generics
+    // ------------------------------------------------------------------ recursion and generics
 
     /// <summary>
-    /// Ein Enum, das sich über eine Variante selbst nennt. <b>Das ist die Endlosschleifen-Probe</b>:
-    /// die Id muss in der Instanz-Registry stehen, <i>bevor</i> die Varianten interniert werden,
-    /// sonst fordert <c>Node(Tree&lt;T&gt;, …)</c> genau die Instanz an, die gerade entsteht.
+    /// An enum naming itself through a variant. This is the infinite-loop probe: the id has to stand in
+    /// the instance registry BEFORE the variants are interned, or <c>Node(Tree&lt;T&gt;, …)</c> requests
+    /// exactly the instance currently being built.
     /// </summary>
     [Fact]
     public void A_recursive_generic_enum_terminates() =>
@@ -222,8 +217,8 @@ public class GenericEnumTests
             }
             """));
 
-    /// <summary>Ein generisches Enum in einer generischen Funktion — verschachtelte Substitution:
-    /// das <c>T</c> des Enums ist das <c>T</c> der Funktion.</summary>
+    /// <summary>A generic enum in a generic function, with nested substitution: the <c>T</c> of the enum
+    /// is the <c>T</c> of the function.</summary>
     [Fact]
     public void A_generic_function_over_a_generic_enum_works() =>
         Assert.Equal(7, Run(Opt + """
@@ -232,8 +227,8 @@ public class GenericEnumTests
             fn main(): int { return hole(Opt<int>.Some(4), 0) + hole(Opt<int>.None, 3); }
             """));
 
-    /// <summary>Als Feld eines generischen Typs — die Instanz entsteht beim Internieren des
-    /// Feld-Layouts.</summary>
+    /// <summary>As a field of a generic type: the instance arises while interning the field
+    /// layouts.</summary>
     [Fact]
     public void It_works_as_a_field_of_a_generic_type() =>
         Assert.Equal(8, Run(Opt + """
@@ -245,7 +240,7 @@ public class GenericEnumTests
             }
             """));
 
-    /// <summary>Ein Guard über einer Payload-Bindung.</summary>
+    /// <summary>A guard over a payload binding.</summary>
     [Fact]
     public void A_guard_over_a_payload_binding_works() =>
         Assert.Equal(2, Run(Opt + """
@@ -257,9 +252,9 @@ public class GenericEnumTests
 
     // ------------------------------------------------------------------ counter-checks
 
-    /// <summary>Ein nicht-generisches Enum geht unverändert seinen alten Weg. Ohne diesen Test
-    /// bliebe unbemerkt, wenn die Umstellung auf Instanz-Einträge den Normalfall mitnimmt — und
-    /// das ist die Mehrzahl allen Codes.</summary>
+    /// <summary>A non-generic enum takes its old route unchanged. Without this test it would go unnoticed
+    /// if the move to instance entries took the normal case along with it, and that is the majority of
+    /// all code.</summary>
     [Fact]
     public void A_plain_enum_still_works() =>
         Assert.Equal(6, Run("""
@@ -283,7 +278,7 @@ public class GenericEnumTests
             fn main(): int { let o = Opt<int, string>.Some(1); return 0; }
             """), d => d.Code == "LYR-SEM0026");
 
-    /// <summary>Ein falscher Payload-Typ wird an der Konstruktion bemerkt, nicht erst im
+    /// <summary>A wrong payload type is noticed at the construction rather than later in the
     /// <c>match</c>.</summary>
     [Fact]
     public void A_wrong_payload_type_is_rejected() =>
@@ -292,9 +287,8 @@ public class GenericEnumTests
             """), d => d.Code == "LYR-SEM0001");
 
     /// <summary>
-    /// Ohne Argumente und ohne Kontext bleibt es ein Fehler — und die Meldung nennt jetzt
-    /// <b>beide</b> Auswege. Vorher stand dort nur „from context", obwohl das Schreiben der
-    /// Argumente der direktere ist.
+    /// Without arguments and without context it stays an error, and the message names BOTH ways out.
+    /// Writing the arguments is the more direct one.
     /// </summary>
     [Fact]
     public void Without_arguments_and_without_context_it_says_both_ways()

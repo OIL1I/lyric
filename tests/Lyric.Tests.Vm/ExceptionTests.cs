@@ -9,11 +9,10 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Exceptions und <c>defer</c> (M7/P5), über die gesamte Pipeline.
+/// Exceptions and <c>defer</c>, over the whole pipeline.
 ///
-/// <para>Der Kern ist jedes Mal <b>welcher Pfad genommen wurde</b>: eine geworfene Exception muss
-/// den Rest des <c>try</c>-Rumpfes überspringen und im passenden <c>catch</c> ankommen — nicht im
-/// erstbesten.</para>
+/// <para>The core is always WHICH PATH WAS TAKEN: a thrown exception has to skip the rest of the
+/// <c>try</c> body and arrive in the matching <c>catch</c>, not in the first one it finds.</para>
 /// </summary>
 public class ExceptionTests
 {
@@ -70,7 +69,7 @@ public class ExceptionTests
     [Fact]
     public void The_rest_of_the_try_body_is_skipped()
     {
-        // Ohne echtes Abwickeln liefe der Rumpf weiter und lieferte 99.
+        // Without real unwinding the body would run on and yield 99.
         Assert.Equal(1, Run(Errors + """
 
             fn risky(): int throws Boom { throw Boom { code = 1 }; }
@@ -91,7 +90,7 @@ public class ExceptionTests
     [Fact]
     public void The_catch_is_skipped_when_nothing_throws()
     {
-        // Die Gegenprobe: ohne sie bestuende der Test oben auch, wenn IMMER gefangen wuerde.
+        // The counter-check: without it the test above would pass even if everything were ALWAYS caught.
         Assert.Equal(5, Run(Errors + """
 
             fn safe(): int throws Boom { return 5; }
@@ -111,8 +110,8 @@ public class ExceptionTests
     [Fact]
     public void The_type_selects_the_handler()
     {
-        // Zwei catch-Klauseln, geworfen wird die zweite Sorte. Waere der Typvergleich nicht da,
-        // faenge die erste.
+        // Two catch clauses, and the second kind is thrown. Without the type comparison the first would
+        // catch.
         Assert.Equal(2, Run(Errors + """
 
             fn risky(): int throws Other { throw Other { }; }
@@ -133,7 +132,7 @@ public class ExceptionTests
     [Fact]
     public void An_exception_unwinds_through_a_frame_without_a_handler()
     {
-        // 'middle' hat kein try — die Exception muss ihren Frame verwerfen und in main landen.
+        // 'middle' has no try: the exception has to discard its frame and land in main.
         Assert.Equal(3, Run(Errors + """
 
             fn deep(): int throws Boom { throw Boom { code = 3 }; }
@@ -217,8 +216,8 @@ public class ExceptionTests
     [Fact]
     public void Defers_run_in_LIFO_order()
     {
-        // Sprache.md §5. Erst 'b' (zuletzt registriert), dann 'a' — die Zahl unterscheidet die
-        // Reihenfolgen: 1 dann 2 gaebe 12, 2 dann 1 gibt 21.
+        // First 'b', registered last, then 'a'. The number distinguishes the orders: 1 then 2 would give
+        // 12, 2 then 1 gives 21.
         Assert.Equal(21, Run("""
             class Cell { n: int }
 
@@ -255,8 +254,8 @@ public class ExceptionTests
     [Fact]
     public void A_return_value_is_computed_before_the_defers_run()
     {
-        // Go haelt es genauso: 'defer' darf den bereits bestimmten Rueckgabewert nicht mehr
-        // aendern. Ohne die Regel kaeme hier 1 heraus.
+        // Go behaves the same way: a 'defer' must not change the already determined return value. Without
+        // the rule this would be 1.
         Assert.Equal(0, Run("""
             class Cell { n: int }
 
@@ -275,8 +274,8 @@ public class ExceptionTests
     [Fact]
     public void A_defer_runs_while_the_stack_unwinds()
     {
-        // Sprache.md §5: "laeuft auf jedem Scope-Exit (auch bei Exception)". Der defer sitzt in
-        // der werfenden Funktion — er laeuft, obwohl sie nie normal endet.
+        // A defer runs on every scope exit, exceptions included. This one sits in the throwing function
+        // and runs although that function never ends normally.
         Assert.Equal(1, Run(Errors + """
 
             class Cell { n: int }
@@ -299,8 +298,8 @@ public class ExceptionTests
     [Fact]
     public void Defers_run_from_the_inside_out_while_unwinding()
     {
-        // Zwei Frames, beide mit defer, und keiner faengt. Die Reihenfolge ist die des
-        // Abwickelns: innen zuerst. Sprache.md §18 beschreibt genau das.
+        // Two frames, both with a defer, and neither catches. The order is that of the unwinding: inner
+        // first.
         Assert.Equal(12, Run(Errors + """
 
             class Cell { n: int }
@@ -328,8 +327,8 @@ public class ExceptionTests
     [Fact]
     public void A_defer_runs_exactly_once_when_it_throws()
     {
-        // Die Regression, die beim Bau auftrat: solange 'throw' die Rumpfe ZUSAETZLICH inline
-        // emittierte, liefen sie doppelt — einmal dort und einmal ueber die finally-Region.
+        // The regression that appeared while building: as long as 'throw' emitted the bodies inline AS
+        // WELL, they ran twice — once there and once through the finally region.
         Assert.Equal(1, Run(Errors + """
 
             class Cell { n: int }
@@ -352,7 +351,7 @@ public class ExceptionTests
     [Fact]
     public void A_defer_runs_exactly_once_on_the_normal_path()
     {
-        // Die Gegenprobe: die finally-Region darf auf dem normalen Pfad NICHT betreten werden.
+        // The counter-check: the finally region must NOT be entered on the normal path.
         Assert.Equal(1, Run("""
             class Cell { n: int }
 
@@ -369,8 +368,8 @@ public class ExceptionTests
     [Fact]
     public void A_defer_and_a_catch_both_run()
     {
-        // Der defer sitzt in einem inneren Scope, damit er VOR dem return laeuft — auf
-        // Funktionsebene liefe er danach, und der Rueckgabewert steht dann schon fest.
+        // The defer sits in an inner scope so it runs BEFORE the return; at function level it would run
+        // afterwards, and the return value is settled by then.
         Assert.Equal(43, Run(Errors + """
 
             class Cell { n: int }
@@ -398,9 +397,8 @@ public class ExceptionTests
     [Fact]
     public void An_untyped_catch_catches_everything()
     {
-        // 'catch (e)' ohne Typ ist ein catch-all: in der Handler-Tabelle bleibt CatchType null,
-        // und die VM springt hinein, ohne zu vergleichen. Bis S4 war das LYR-IR0001 — nicht weil
-        // die Tabelle es nicht koennte, sondern weil der SLOT einen Typ brauchte.
+        // 'catch (e)' without a type is a catch-all: CatchType stays null in the handler table and the VM
+        // jumps in without comparing.
         Assert.Equal(42, Run(Errors + """
 
             fn risky(): int throws { throw Boom { code = 7 }; }
@@ -415,10 +413,9 @@ public class ExceptionTests
     [Fact]
     public void An_untyped_catch_binding_can_call_interface_methods()
     {
-        // DER Test des Slice. 'e' hat den Typ 'Throwable', also einen INTERFACE-Typ — im Slot
-        // liegt ein Fat Pointer, kein nacktes Objekt. Ohne ihn waere 'e.message()' ein callvirt
-        // auf einen Wert, der seinen eigenen Typ nicht kennt (P3: ein Objekt traegt kein
-        // Typ-Tag), und die VM laese einen Typindex, den niemand geschrieben hat.
+        // 'e' has the type 'Throwable', so an INTERFACE type: a fat pointer lies in the slot rather than a
+        // bare object. Without it 'e.message()' would be a callvirt on a value that does not know its own
+        // type, and the VM would read a type index nobody wrote.
         Assert.Equal(4, Run(Errors + """
 
             fn risky(): int throws { throw Boom { code = 7 }; }
@@ -433,9 +430,8 @@ public class ExceptionTests
     [Fact]
     public void An_untyped_catch_dispatches_to_the_concrete_type()
     {
-        // ZWEI Werfer, ein catch-all. Mit nur einem bliebe der Test auch gruen, wenn der Fat
-        // Pointer immer denselben Typindex truege — dieselbe Lehre wie bei den
-        // Interface-Tests aus P3.
+        // TWO throwers, one catch-all. With only one the test would stay green even if the fat pointer
+        // always carried the same type index.
         const string program = """
 
             fn risky(which: int): int throws {
@@ -455,17 +451,17 @@ public class ExceptionTests
             fn main(): int { return probe(1) * 100 + probe(0); }
             """;
 
-        // Zwei verschiedene Werfer, zwei verschiedene Antworten desselben callvirt.
+        // Two different throwers, two different answers from the same callvirt.
         Assert.Equal(405, Run(Errors + program));
     }
 
     [Fact]
     public void A_typed_catch_still_gets_a_bare_reference()
     {
-        // Die Gegenprobe zum Fat Pointer: ein typisierter Catch kennt den Typ statisch, sein
-        // Slot hat ihn, und dort gehoert die nackte Referenz hin. Wuerde die VM auch hier heben,
-        // laege im Slot ein Interface-Wert, wo der Verifier eine Klassenreferenz erwartet — und
-        // der Feldzugriff darunter griffe ins Leere.
+        // The counter-check to the fat pointer: a typed catch knows the type statically, its slot has it,
+        // and the bare reference belongs there. Were the VM to lift here too, an interface value would lie
+        // in the slot where the verifier expects a class reference, and the field access below would run
+        // into nothing.
         Assert.Equal(7, Run(Errors + """
 
             fn risky(): int throws Boom { throw Boom { code = 7 }; }
@@ -482,14 +478,9 @@ public class ExceptionTests
     [Fact]
     public void A_try_where_both_paths_return_needs_no_merge_block()
     {
-        // Gefunden beim Bau von S4, aber unabhaengig davon — und es traf eine der haeufigsten
-        // Formen ueberhaupt. Der Merge-Block wurde unbedingt angelegt, blieb ohne Praedecessoren
-        // und war vom Einstieg aus unerreichbar; genau das lehnt der Verifier ab (kein
-        // SimplifyCfg-Pass in v1). Ein gueltiges Programm liess den Compiler abstuerzen.
-        //
-        // Derselbe Fehler stand beim Statement-'match' und wurde im Inventur-Sweep behoben. Hier
-        // ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden Zweigen
-        // benutzt hat.
+        // One of the most common forms there is. The merge block was created unconditionally, stayed
+        // without predecessors and was unreachable from the entry; the verifier rejects exactly that, as
+        // there is no SimplifyCfg pass. A valid program made the compiler crash.
         Assert.Equal(42, Run(Errors + """
 
             fn risky(): int throws Boom { throw Boom { code = 7 }; }
@@ -503,8 +494,8 @@ public class ExceptionTests
 
     [Fact]
     public void A_try_where_only_the_handler_returns_still_merges() =>
-        // Die Gegenprobe: faellt EIN Zweig durch, muss der Merge-Block entstehen. Ein Fix, der
-        // ihn nie mehr anlegt, waere hier rot.
+        // The counter-check: when ONE branch falls through, the merge block has to arise. A fix that never
+        // creates it again would be red here.
         Assert.Equal(5, Run(Errors + """
 
             fn safe(): int throws Boom { return 1; }
@@ -522,13 +513,10 @@ public class ExceptionTests
     [Fact]
     public void A_defer_next_to_a_return_in_a_branch_compiles()
     {
-        // Der Compiler stuerzte hier ab: das Lowern eines defer-Rumpfes betritt einen Scope und
-        // pusht auf denselben Stack, ueber den EmitAllPendingDefers gerade iteriert — .NET wirft
-        // "Collection was modified".
+        // The compiler crashed here: lowering a defer body enters a scope and pushes onto the same stack
+        // EmitAllPendingDefers is iterating over, and .NET throws.
         //
-        // Ausgeloest hat es die alltaeglichste Form ueberhaupt: ein 'defer' und ein 'return' in
-        // einem if-Zweig. Kein Test und kein Beispiel hatte beides zusammen, obwohl P5 den
-        // defer-an-jedem-Ausgang ausdruecklich liefert. Gefunden beim Merge-Block-Sweep.
+        // The trigger was the most everyday form there is: a 'defer' and a 'return' in one if branch.
         Assert.Equal(1, Run("""
             fn f(): int {
                 defer { }
@@ -540,9 +528,9 @@ public class ExceptionTests
 
     [Fact]
     public void Nested_defers_run_innermost_first_before_a_return() =>
-        // Die Reihenfolge haengt daran, dass ueber eine Kopie des Stacks iteriert wird — eine
-        // Kopie in der falschen Richtung waere gruen im Test darueber und hier rot.
-        // Erwartet: der innere defer schreibt zuerst (1*10), dann der aeussere (+2) -> 12.
+        // The order depends on iterating over a copy of the stack: a copy in the wrong direction would be
+        // green in the test above and red here. Expected: the inner defer writes first (1*10), then the
+        // outer one (+2), giving 12.
         Assert.Equal(12, Run("""
             fn f(): int {
                 var log = 0;

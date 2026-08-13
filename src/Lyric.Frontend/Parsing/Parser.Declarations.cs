@@ -255,7 +255,7 @@ public sealed partial class Parser
     {
         var start = _buffer.Current.Span;
 
-        // Member-Formen: [pub] [static] [mut] fn …  |  [pub] static let …  |  Feld.
+        // Member forms: [pub] [static] [mut] fn …  |  [pub] static let …  |  a field.
         // 'static' precedes 'mut', so the order is unambiguous; 'mut static fn' does not exist.
         // The sema rejects the combination anyway: a static member has no receiver for 'mut' to
         // apply to.

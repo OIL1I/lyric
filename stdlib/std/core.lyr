@@ -207,7 +207,7 @@ extend string :: [Hashable<string>] {
     // The constants are the 64-bit variant. A hash need not be cryptographic; it must spread and
     // produce the same result everywhere.
     fn hash(): int {
-        var h = -3750763034362895579;      // FNV-Offset-Basis, 64 Bit
+        var h = -3750763034362895579;      // the FNV offset basis, 64 bit
         let n = length(this);
         var i = 0;
         while (i < n) {

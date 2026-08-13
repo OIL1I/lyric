@@ -75,7 +75,7 @@ public sealed class Compilation
         var path = ast.Header is not null ? ast.Header.Segments
                  : name is not null ? name.Split('.')
                  : ["main"];
-        var members = new SymbolTable(_builtins); // Parent = Builtins → 'int' & Co. via Lookup-Kette
+        var members = new SymbolTable(_builtins); // the parent is the builtins, so 'int' and friends resolve through the lookup chain
         var symbol = new ModuleSymbol(path, members, ast);
         _modules.Add(symbol);
         _asts[symbol] = ast;
