@@ -5,13 +5,12 @@ using Lyric.Embedding;
 namespace Lyric.Tests.Embedding;
 
 /// <summary>
-/// <c>Call&lt;T&gt;</c> und die Skalar-Marshalling-Schicht (M10/E2).
+/// <c>Call&lt;T&gt;</c> and the scalar marshalling layer.
 ///
-/// <para><b>Die Wandlungen stehen als Matrix da und nicht als Beispielliste.</b> Dieselbe
-/// Entscheidung wie bei <c>AgreementTests</c>, und aus demselben Grund: dort wurden vier Abstuerze
-/// allesamt <i>durch Zufall</i> gefunden, beim Bauen von etwas anderem, das zufaellig danebenlag.
-/// Vier Zufaelle sind kein Zufall, sondern eine strukturelle Luecke — und eine Grenze, ueber die
-/// vierzehn Typen laufen, ist genau so eine.</para>
+/// <para>THE CONVERSIONS STAND AS A MATRIX rather than as a list of examples. The same decision as in
+/// <c>AgreementTests</c> and for the same reason: four crashes there were all found BY ACCIDENT, while
+/// building something else that happened to lie next to them. Four accidents are no accident but a
+/// structural gap — and a boundary fourteen types cross is exactly such a place.</para>
 /// </summary>
 public class CallTests
 {
@@ -36,9 +35,9 @@ public class CallTests
             .Call<long>("add", 10, 20));
 
     /// <summary>
-    /// Der Grund fuer die Qualifizierung: die Funktionstabelle eines Moduls traegt auch alles,
-    /// was aus der Stdlib mitgezogen wurde. Ohne den Modul-Praefix faende <c>length</c> ebenso gut
-    /// <c>std.string.length</c> — und zwar je nach Reihenfolge mal so und mal so.
+    /// The reason for the qualification: a module's function table also carries everything dragged in
+    /// from the stdlib. Without the module prefix, <c>length</c> would find <c>std.string.length</c> just
+    /// as well, and depending on the order sometimes one and sometimes the other.
     /// </summary>
     [Fact]
     public void A_stdlib_function_of_the_same_name_is_not_reachable()
@@ -95,8 +94,8 @@ public class CallTests
         Assert.Equal("hallo", output.ToString().ReplaceLineEndings("\n").Trim());
     }
 
-    /// <summary>Ein <c>void</c> hat keinen Wert, und ein stiller <c>default(T)</c> verstellte dem
-    /// Host den Blick darauf, dass er die Signatur falsch gelesen hat.</summary>
+    /// <summary>A <c>void</c> has no value, and a silent <c>default(T)</c> would hide from the host that
+    /// it read the signature wrongly.</summary>
     [Fact]
     public void Asking_a_void_function_for_a_value_is_an_error()
     {
@@ -106,12 +105,12 @@ public class CallTests
         Assert.Equal("LYR-EMB0002", thrown.Code);
     }
 
-    // ------------------------------------------------------------------ Zustand
+    // ------------------------------------------------------------------ state
 
     /// <summary>
-    /// <b>Der eigentliche Unterschied zwischen <c>Run</c> und <c>Call</c>.</b> Die Modul-Konstante
-    /// wird einmal berechnet, und jeder Aufruf danach sieht denselben Stand. Ein <c>Call</c>, das
-    /// jedes Mal neu laedt, waere ein Programmstart mit anderem Namen.
+    /// The actual difference between <c>Run</c> and <c>Call</c>. The module constant is computed once and
+    /// every call afterwards sees the same state. A <c>Call</c> that reloaded every time would be a
+    /// program start under a different name.
     /// </summary>
     [Fact]
     public void Module_state_survives_between_calls()
@@ -133,9 +132,9 @@ public class CallTests
     }
 
     /// <summary>
-    /// Und zwei Instanzen desselben Moduls teilen nichts. Ohne diesen Test bliebe der obige gruen,
-    /// wenn die Globals statisch waeren — und in einem Host mit zwei Mods waere genau das der
-    /// Fehler, der erst auffaellt, wenn einer den Zaehler des anderen hochzaehlt.
+    /// And two instances of the same module share nothing. Without this test the one above would stay
+    /// green if the globals were static — and in a host with two mods that would be the fault that shows
+    /// only when one increments the other's counter.
     /// </summary>
     [Fact]
     public void Two_instances_of_the_same_module_do_not_share_state()
@@ -154,8 +153,8 @@ public class CallTests
         Assert.Equal(1, b.Call<long>("hoch"));
     }
 
-    /// <summary>Ein Modul ohne Einstiegspunkt ist hier der <b>Normalfall</b> — genau dafuer ist
-    /// die Start-Sektion optional (siehe <c>examples/embedded.lyr</c>).</summary>
+    /// <summary>A module without an entry point is the NORMAL CASE here, which is exactly why the Start
+    /// section is optional (see <c>examples/embedded.lyr</c>).</summary>
     [Fact]
     public void A_library_module_without_main_can_be_instantiated_and_called()
     {
@@ -165,8 +164,8 @@ public class CallTests
         Assert.Equal(7, instance.Call<long>("onStart"));
     }
 
-    /// <summary>Ein <c>panic</c> im gerufenen Code kommt als <see cref="ScriptPanicException"/>
-    /// an — die Unterscheidung aus §17.1 haelt auch ueber die Host-Grenze.</summary>
+    /// <summary>A <c>panic</c> in the called code arrives as a <see cref="ScriptPanicException"/>: the
+    /// distinction holds across the host boundary too.</summary>
     [Fact]
     public void A_panic_inside_a_called_function_reaches_the_host_as_a_panic()
     {
@@ -176,12 +175,11 @@ public class CallTests
         Assert.StartsWith("LYR-VM", thrown.Code, StringComparison.Ordinal);
     }
 
-    // ------------------------------------------------------------------ Marshalling-Matrix
+    // ------------------------------------------------------------------ the marshalling matrix
 
     /// <summary>
-    /// Jeder Skalartyp einmal hin und zurueck, mit den Randwerten, an denen es schon einmal brach:
-    /// <c>uint64.MaxValue</c> (der f-String-Bug aus M8b/S7), die Grenzen der schmalen Typen, und
-    /// ein Codepoint jenseits von ASCII.
+    /// Every scalar type once there and back, with the edge values it broke at before:
+    /// <c>uint64.MaxValue</c>, the bounds of the narrow types, and a code point beyond ASCII.
     /// </summary>
     [Theory]
     [InlineData("int8", "int8", (sbyte)-128)]
@@ -225,9 +223,9 @@ public class CallTests
     }
 
     /// <summary>
-    /// <c>uint</c> ist 64 Bit breit, und der groesste Wert passt in kein <c>long</c>. Genau dieser
-    /// Wert hat in M8b/S7 einen f-String zu <c>-1</c> gemacht; ueber die Host-Grenze ist er
-    /// derselbe Fallstrick, und er steht deshalb eigens hier.
+    /// <c>uint</c> is 64 bits wide and its largest value fits into no <c>long</c>. Exactly that value once
+    /// turned an f-string into <c>-1</c>; across the host boundary it is the same trap and therefore
+    /// stands here separately.
     /// </summary>
     [Fact]
     public void The_largest_uint_survives_the_round_trip() =>
@@ -235,13 +233,12 @@ public class CallTests
             Instance("pub fn durch(x: uint): uint { return x; }")
                 .Call<ulong>("durch", ulong.MaxValue));
 
-    // ------------------------------------------------------------------ was NICHT durchgeht
+    // ------------------------------------------------------------------ what does NOT pass
 
     /// <summary>
-    /// <b>Verlustfrei oder gar nicht.</b> <c>300</c> als <c>int8</c> waere <c>44</c>, und das
-    /// merkt niemand — bis drei Ebenen spaeter eine Zahl nicht stimmt. Innerhalb von Lyric wickelt
-    /// Arithmetik definiert um (§6.6); das ist eine Rechnung des Programms und etwas anderes als
-    /// eine stille Umdeutung beim Uebergeben.
+    /// LOSSLESS OR NOT AT ALL. <c>300</c> as an <c>int8</c> would be <c>44</c>, and nobody notices that
+    /// until a number is wrong three levels later. Inside Lyric arithmetic wraps in a defined way; that is
+    /// a computation of the program and something other than a silent reinterpretation while passing.
     /// </summary>
     [Theory]
     [InlineData("int8", 300)]
@@ -258,7 +255,7 @@ public class CallTests
         Assert.Equal("LYR-EMB0004", thrown.Code);
     }
 
-    /// <summary>Ein Bruch, der als Ganzzahl ankommen soll, verlöre seinen Nachkommateil.</summary>
+    /// <summary>A fraction meant to arrive as an integer would lose its fractional part.</summary>
     [Fact]
     public void A_fractional_value_is_refused_for_an_integer_parameter()
     {
@@ -283,9 +280,8 @@ public class CallTests
     }
 
     /// <summary>
-    /// Ganzzahl → <c>float</c> geht, und zwar bewusst: <c>3</c> fuer einen <c>float</c>-Parameter
-    /// ist das, was ein Host schreibt, und es ist verlustfrei. Die Gegenrichtung ist es nicht und
-    /// steht oben als Fehlerfall.
+    /// An integer to a <c>float</c> works, deliberately: <c>3</c> for a <c>float</c> parameter is what a
+    /// host writes, and it is lossless. The other direction is not and stands above as an error case.
     /// </summary>
     [Fact]
     public void An_integer_widens_to_a_float_parameter() =>
@@ -293,9 +289,9 @@ public class CallTests
             .Call<double>("doppelt", 3));
 
     /// <summary>
-    /// Was E2 <b>nicht</b> kann, sagt es auch: Arrays, Optionals und Objekte bleiben draussen.
-    /// Ein Objekt haette ein Layout, und das nach aussen zu geben machte die Feldreihenfolge zum
-    /// oeffentlichen Vertrag — dann koennte die Erreichbarkeitsanalyse nichts mehr streichen.
+    /// What this layer cannot do it says as well: arrays, optionals and objects stay outside. An object
+    /// would have a layout, and handing that outwards would make the field order a public contract — the
+    /// reachability analysis could then delete nothing.
     /// </summary>
     [Theory]
     [InlineData("int[]")]

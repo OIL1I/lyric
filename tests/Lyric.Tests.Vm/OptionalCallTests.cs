@@ -9,17 +9,15 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Optional-Chaining mit <b>Aufruf</b>: <c>b?.get()</c> (Sprache.md §7).
+/// Optional chaining with a CALL: <c>b?.get()</c>.
 ///
-/// <para><b>Bis 2026-08-11 war das <c>LYR-SEM0013: '?fn() -&gt; int' is not callable</c></b> — eine
-/// Auskunft über einen Zwischentyp, den niemand hingeschrieben hat. Feldzugriff (<c>b?.v</c>) ging
-/// seit P2b; der Aufruf nicht, und der Ausweg <c>if (b != null) { b.get() }</c> ist dreimal so
-/// lang.</para>
+/// <para>This used to be <c>LYR-SEM0013: '?fn() -&gt; int' is not callable</c>, a statement about an
+/// intermediate type nobody wrote down. Field access (<c>b?.v</c>) worked; the call did not, and the
+/// way out, <c>if (b != null) { b.get() }</c>, is three times as long.</para>
 ///
-/// <para><b>Der Aufruf läuft durch dieselbe Auflösung wie jeder andere</b>, nur mit einem bereits
-/// ausgepackten Empfänger. Ein eigener Pfad hätte Virtual-Dispatch, Natives, Extensions und
-/// Generics ein zweites Mal beantworten müssen — die Sorte Zweitkopie, die in diesem Projekt
-/// neunmal auseinandergelaufen ist.</para>
+/// <para>THE CALL RUNS THROUGH THE SAME RESOLUTION AS ANY OTHER, only with an already unwrapped
+/// receiver. A path of its own would have had to answer virtual dispatch, natives, extensions and
+/// generics a second time.</para>
 /// </summary>
 public class OptionalCallTests
 {
@@ -81,9 +79,9 @@ public class OptionalCallTests
             """));
 
     /// <summary>
-    /// Ein leerer Empfänger ruft nicht — und wertet deshalb auch die Argumente nicht aus. Der Test
-    /// misst das mit einem Seiteneffekt; ohne ihn bliebe er grün, wenn die Argumente vor der
-    /// Prüfung berechnet würden.
+    /// An empty receiver does not call and therefore does not evaluate the arguments either. The test
+    /// measures that with a side effect; without it, it would stay green if the arguments were computed
+    /// before the check.
     /// </summary>
     [Fact]
     public void An_absent_receiver_does_not_evaluate_the_arguments() =>
@@ -101,9 +99,8 @@ public class OptionalCallTests
             """));
 
     /// <summary>
-    /// Liefert die Methode selbst ein Optional, bleibt es bei <b>einer</b> Ebene — Optionals
-    /// verschachteln nicht (§4). Ohne die Kollabierung wäre das ein <c>??int</c>, und das Lowering
-    /// lehnt es als <c>LYR-IR0001</c> ab.
+    /// When the method itself yields an optional, it stays at ONE level: optionals do not nest. Without
+    /// the collapse this would be a <c>??int</c>, which the lowering rejects as <c>LYR-IR0001</c>.
     /// </summary>
     [Fact]
     public void A_method_returning_an_optional_does_not_nest() =>
@@ -114,8 +111,8 @@ public class OptionalCallTests
             }
             """));
 
-    /// <summary>Und dasselbe mit leerem Empfänger — beide Wege müssen bei derselben Ebene
-    /// landen.</summary>
+    /// <summary>And the same with an empty receiver: both routes have to arrive at the same
+    /// level.</summary>
     [Fact]
     public void A_method_returning_an_optional_on_an_absent_receiver() =>
         Assert.Equal(-1, Run(Box + """
@@ -126,8 +123,8 @@ public class OptionalCallTests
             """));
 
     /// <summary>
-    /// Die Gegenprobe: der gewöhnliche Aufruf ohne <c>?.</c> bleibt gewöhnlich. Das ist die Form,
-    /// die in jedem Programm steht, und sie läuft seit dem Fix durch dieselbe Funktion.
+    /// The counter-check: an ordinary call without <c>?.</c> stays ordinary. That is the form standing in
+    /// every program, and it runs through the same function.
     /// </summary>
     [Fact]
     public void An_ordinary_method_call_still_works() =>
@@ -138,7 +135,7 @@ public class OptionalCallTests
             }
             """));
 
-    /// <summary>Und der Feldzugriff über <c>?.</c>, den es seit P2b gibt.</summary>
+    /// <summary>And the field access through <c>?.</c>.</summary>
     [Fact]
     public void Optional_field_access_still_works() =>
         Assert.Equal(7, Run(Box + """
@@ -149,8 +146,8 @@ public class OptionalCallTests
             """));
 
     /// <summary>
-    /// Ein Feld, das selbst optional ist. Bis 2026-08-11 machte die Sema daraus ein
-    /// <c>??int</c>, und der Fehler kam eine Ebene zu spät als „cannot assign '?int' to 'int'".
+    /// A field that is itself optional. The sema used to make a <c>??int</c> of it, and the error arrived
+    /// one level too late as "cannot assign '?int' to 'int'".
     /// </summary>
     [Fact]
     public void Optional_field_access_onto_an_optional_field_collapses() =>
@@ -162,14 +159,14 @@ public class OptionalCallTests
             }
             """));
 
-    // ------------------------------------------------------- die anderen Empfaengerarten
+    // ------------------------------------------------------- the other kinds of receiver
     //
-    // Sie stehen hier, weil ein erster Fix sie ALLE gebrochen haette: er hing den ausgepackten
-    // Empfaenger an einen Sonderfall im Callee-'switch', und der stand vor der Generics- und der
-    // Interface-Erkennung. 'Box<int>' wurde damit als „external or bodiless" gemeldet — eine
-    // Diagnose auf die falsche Ursache, und zwar eine, die kein Test bemerkt haette.
+    // They stand here because a first fix would have broken them ALL: it hung the unwrapped receiver on a
+    // special case in the callee 'switch', and that stood before the generics and the interface detection.
+    // 'Box<int>' was then reported as "external or bodiless" — a diagnostic on the wrong cause, and one
+    // no test would have noticed.
 
-    /// <summary>Dynamischer Dispatch über einen ausgepackten Empfänger.</summary>
+    /// <summary>Dynamic dispatch over an unwrapped receiver.</summary>
     [Fact]
     public void A_call_on_an_interface_value_dispatches_virtually() =>
         Assert.Equal(3, Run("""
@@ -182,8 +179,8 @@ public class OptionalCallTests
             }
             """));
 
-    /// <summary>Eine generische Instanz: die Methode gehört <c>Box&lt;int&gt;</c> und nicht
-    /// <c>Box</c>, ihr Rückgabetyp ist erst dort ein <c>int</c>.</summary>
+    /// <summary>A generic instance: the method belongs to <c>Box&lt;int&gt;</c> rather than to
+    /// <c>Box</c>, and only there is its return type an <c>int</c>.</summary>
     [Fact]
     public void A_call_on_a_generic_instance_uses_the_instance_method() =>
         Assert.Equal(4, Run("""
@@ -195,7 +192,7 @@ public class OptionalCallTests
             }
             """));
 
-    /// <summary>Ein Typ-Parameter mit Constraint — der dritte Dispatch-Weg (ADR-024).</summary>
+    /// <summary>A type parameter with a constraint: the third dispatch route.</summary>
     [Fact]
     public void A_call_on_a_constrained_type_parameter_works() =>
         Assert.Equal(3, Run("""
@@ -206,7 +203,7 @@ public class OptionalCallTests
             fn main(): int { let a: ?A = A { }; return nimm(a); }
             """));
 
-    /// <summary>Eine Methode aus einem <c>extend</c>-Block (§3.6) — der vierte Weg.</summary>
+    /// <summary>A method from an <c>extend</c> block: the fourth route.</summary>
     [Fact]
     public void A_call_on_an_extension_method_works() =>
         Assert.Equal(9, Run("""
@@ -220,9 +217,8 @@ public class OptionalCallTests
             """));
 
     /// <summary>
-    /// Zwei Ketten ineinander. Sie tragen verschiedene AST-Knoten und dürfen sich deshalb nicht
-    /// gegenseitig den ausgepackten Empfänger überschreiben — die Zusicherung, an der eine
-    /// globale „aktuelle Kette" gescheitert wäre.
+    /// Two chains inside one another. They carry different AST nodes and must therefore not overwrite each
+    /// other's unwrapped receiver — the promise a global "current chain" would have failed.
     /// </summary>
     [Fact]
     public void Nested_chains_do_not_interfere() =>
@@ -234,7 +230,7 @@ public class OptionalCallTests
             }
             """));
 
-    /// <summary>Und eine Kette an einer Kette: <c>a?.b?.c()</c>.</summary>
+    /// <summary>And a chain on a chain: <c>a?.b?.c()</c>.</summary>
     [Fact]
     public void A_chain_on_a_chain_works() =>
         Assert.Equal(7, Run("""
@@ -248,9 +244,9 @@ public class OptionalCallTests
             """));
 
     /// <summary>
-    /// Ein PRIMITIVER Empfänger mit inhärenter Extension (§3.6). Er ist der fünfte Dispatch-Weg
-    /// und stand in derselben Fallunterscheidung — er wäre beim ersten Anlauf mit durchgefallen,
-    /// und zwar nicht in eine Diagnose, sondern in einen Aufruf ohne Empfänger.
+    /// A PRIMITIVE receiver with an inherent extension. It is the fifth dispatch route and stood in the
+    /// same case distinction: it would have fallen through on the first attempt, and not into a diagnostic
+    /// but into a call without a receiver.
     /// </summary>
     [Fact]
     public void A_call_on_a_primitive_receiver_works() =>

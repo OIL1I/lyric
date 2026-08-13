@@ -9,11 +9,11 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Structs mit Wert-Semantik (M7/P4), über die gesamte Pipeline.
+/// Structs with value semantics, over the whole pipeline.
 ///
-/// <para>Jeder Test hier prüft dasselbe von einer anderen Seite: <b>was nach der Kopie am
-/// Original nicht passiert ist</b>. Ein Test, der nur liest, bliebe auch dann grün, wenn ein
-/// struct sich wie eine class verhielte — die Mutation ist der Punkt.</para>
+/// <para>Every test here checks the same thing from a different side: WHAT DID NOT HAPPEN TO THE
+/// ORIGINAL AFTER THE COPY. A test that only reads would stay green even if a struct behaved like a
+/// class; the mutation is the point.</para>
 /// </summary>
 public class StructTests
 {
@@ -55,7 +55,7 @@ public class StructTests
     [Fact]
     public void Assignment_copies()
     {
-        // DER Test von P4. Waere P eine class, kaeme 99 heraus.
+        // The core test. Were P a class, this would be 99.
         Assert.Equal(1, Run(Point + """
 
             fn main(): int {
@@ -70,8 +70,7 @@ public class StructTests
     [Fact]
     public void The_copy_is_the_one_that_changed()
     {
-        // Die Gegenprobe: ohne sie liesse sich der Test oben auch mit "Zuweisung tut nichts"
-        // bestehen.
+        // The counter-check: without it the test above could also be passed by "assignment does nothing".
         Assert.Equal(99, Run(Point + """
 
             fn main(): int {
@@ -89,10 +88,9 @@ public class StructTests
         Assert.Equal(1, Run(Point + """
 
             fn wreck(p: P): int {
-                // Ueber die Methode, nicht ueber eine Feldzuweisung: ein Parameter ist eine
-                // immutable Bindung, und Sprache.md §6.4 verlangt fuer ein struct-Feld ohnehin
-                // eine 'mut fn'. Der geprueft Punkt bleibt derselbe - der Empfaenger ist eine
-                // Kopie des Arguments.
+                // Through the method rather than through a field assignment: a parameter is an immutable
+                // binding, and a struct field needs a 'mut fn' anyway. The point checked stays the same —
+                // the receiver is a copy of the argument.
                 p.shift(98);
                 return p.x;
             }
@@ -108,8 +106,8 @@ public class StructTests
     [Fact]
     public void A_mutating_method_only_mutates_its_own_copy()
     {
-        // 'shift' ist 'mut fn' — es aendert seinen Empfaenger. Der Empfaenger ist aber eine
-        // Kopie, also bleibt das Original in Ruhe. Genau der Unterschied zu P3s Klassen.
+        // 'shift' is a 'mut fn': it changes its receiver. The receiver is a copy, though, so the original
+        // stays untouched. Exactly the difference from a class.
         Assert.Equal(1, Run(Point + """
 
             fn move(p: P): int {
@@ -144,8 +142,7 @@ public class StructTests
     [Fact]
     public void A_nested_struct_is_copied_through()
     {
-        // Der Fall, an dem eine flache Kopie scheitert: 'inner' ist selbst ein Wert und darf
-        // nicht geteilt werden.
+        // The case a shallow copy fails at: 'inner' is itself a value and must not be shared.
         Assert.Equal(1, Run(Point + """
 
             struct Line {
@@ -185,9 +182,9 @@ public class StructTests
     [Fact]
     public void A_class_inside_a_struct_stays_shared()
     {
-        // Die Grenze der Kopie: kopiert wird der Wert, nicht die Welt dahinter (Sprache.md §3.2).
-        // Ein Feld vom Typ 'class' traegt eine Referenz, und die wird geteilt — waere das anders,
-        // haette die Kopie stillschweigend eine tiefe Kopie des ganzen Objektgraphen gemacht.
+        // The limit of the copy: the value is copied, not the world behind it. A field of class type
+        // carries a reference and that is shared; otherwise the copy would silently have made a deep copy
+        // of the whole object graph.
         Assert.Equal(99, Run("""
             class Cell { n: int }
 
@@ -240,9 +237,9 @@ public class StructTests
     [Fact]
     public void A_struct_can_implement_an_interface()
     {
-        // P3 trifft P4: der Interface-Wert traegt eine Referenz auf das Slot-Array. Der
-        // mkiface-Operand ist zu diesem Zeitpunkt bereits eine Kopie, also bleibt die
-        // Wert-Semantik erhalten, ohne dass mkiface etwas davon wissen muss.
+        // The interface value carries a reference to the slot array. The mkiface operand is already a copy
+        // at that point, so the value semantics are preserved without mkiface having to know anything
+        // about it.
         Assert.Equal(7, Run("""
             interface Sized { fn size(): int; }
 
@@ -260,9 +257,9 @@ public class StructTests
     [Fact]
     public void A_recursive_struct_is_rejected_before_lowering()
     {
-        // Ein Wert-Typ, der sich selbst enthaelt, waere unendlich gross. Ohne diese Pruefung
-        // liefe das Layout-Bauen in eine Endlosschleife — bei einer class terminiert es ueber die
-        // vorab vergebene Id, bei einem Wert-Typ nicht.
+        // A value type containing itself would be infinitely large. Without this check the layout building
+        // would run into an infinite loop: for a class it terminates through the pre-assigned id, for a
+        // value type it does not.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr", "struct Node { next: Node }\nfn main(): int { return 0; }");
         var de = new DiagnosticEngine(sm);
@@ -276,8 +273,8 @@ public class StructTests
     [Fact]
     public void A_struct_holding_a_class_that_holds_itself_is_fine()
     {
-        // Die Gegenprobe: die Kette bricht an der Referenz. Ohne sie waere die Zyklus-Erkennung
-        // zu scharf und lehnte gueltige Programme ab.
+        // The counter-check: the chain breaks at the reference. Without it the cycle detection would be
+        // too sharp and would reject valid programs.
         Assert.Equal(0, Run("""
             class Node { next: ?Node }
 
@@ -291,11 +288,11 @@ public class StructTests
     }
 
     /// <summary>
-    /// Ein Struct-Parameter darf beschrieben werden (ADR-023) — der Aufrufer sieht davon nichts.
+    /// A struct parameter may be written to; the caller sees nothing of it.
     ///
-    /// <para>Der wichtigere Teil ist der zweite. ADR-023 erlaubt die Zuweisung, weil sie folgenlos
-    /// ist; waere sie es nicht, waere die Erlaubnis falsch. Ohne diese Zusicherung bliebe der Test
-    /// auch dann gruen, wenn Structs versehentlich per Referenz uebergeben wuerden.</para>
+    /// <para>The second part matters more. The assignment is allowed because it has no consequences; were
+    /// it to have any, the permission would be wrong. Without this promise the test would stay green even
+    /// if structs were accidentally passed by reference.</para>
     /// </summary>
     [Fact]
     public void A_struct_parameter_keeps_value_semantics()
@@ -311,19 +308,19 @@ public class StructTests
             """));
     }
 
-    // -------------------------------------------------------------- Feld-Defaults
+    // -------------------------------------------------------------- field defaults
 
     /// <summary>
-    /// Ein Initialisierer darf ein Feld weglassen, das einen Default hat.
+    /// An initializer may omit a field that has a default.
     ///
-    /// <para><b>Das ging nicht — und zwar so, dass der Compiler ABSTUERZTE.</b> Die Sema hat
-    /// Feld-Defaults nie besucht; das Lowering wertet sie an der Konstruktionsstelle aus und fand
-    /// in der Seitentabelle keinen Typ, also ErrorType, also „ir: type not lowerable:
-    /// &lt;error&gt;". Weil keine Diagnose gemeldet war, sagte 'lyric check' vorher „ok".</para>
+    /// <para>This did not work, and in a way that made the compiler CRASH. The sema never visited field
+    /// defaults; the lowering evaluates them at the construction site and found no type in the side
+    /// table, so an ErrorType, so "ir: type not lowerable: &lt;error&gt;". Because no diagnostic was
+    /// reported, 'lyric check' said "ok" beforehand.</para>
     ///
-    /// <para>Sichtbar nur, wenn der Initialisierer das Feld WEGLAESST: 'K { v = 9 }' wertet den
-    /// Default nie aus, 'K { }' schon. Ein Default, den man nur benutzen kann, indem man ihn
-    /// ueberschreibt, ist keiner — betroffen war jede Klasse und jeder Struct mit Defaults.</para>
+    /// <para>Visible only when the initializer OMITS the field: 'K { v = 9 }' never evaluates the default,
+    /// 'K { }' does. A default one can only use by overriding it is none, and every class and struct with
+    /// defaults was affected.</para>
     /// </summary>
     [Fact]
     public void An_initializer_may_omit_a_field_that_has_a_default() =>
