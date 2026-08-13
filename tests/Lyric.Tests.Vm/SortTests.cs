@@ -10,16 +10,15 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `sortList` und `sortListBy` — Bottom-up Merge Sort, in Lyric geschrieben (M8b/S4).
+/// `sortList` and `sortListBy` — a bottom-up merge sort, written in Lyric.
 ///
-/// <para><b>Stabilität ist der Grund für die Algorithmenwahl</b>, und sie ist die einzige
-/// Eigenschaft, die man an einer sortierten Liste von Zahlen nicht ablesen kann. Der Test
-/// <c>Equal_elements_keep_their_input_order</c> ist deshalb der wichtigste hier: ohne ihn wäre
-/// ein instabiler Algorithmus grün.</para>
+/// <para>STABILITY IS THE REASON FOR THE CHOICE OF ALGORITHM, and it is the one property that cannot
+/// be read off a sorted list of numbers. <c>Equal_elements_keep_their_input_order</c> is therefore the
+/// most important test here: without it an unstable algorithm would be green.</para>
 ///
-/// <para>Quicksort wäre schneller, ist aber instabil und bei sortierter Eingabe quadratisch — für
-/// eine Standardbibliothek die falsche Überraschung. Dieselbe Wahl treffen Python, Java, C++
-/// (`stable_sort`) und Go (`sort.Stable`).</para>
+/// <para>Quicksort would be faster but is unstable and quadratic on sorted input — the wrong surprise
+/// for a standard library. Python, Java, C++ (`stable_sort`) and Go (`sort.Stable`) make the same
+/// choice.</para>
 /// </summary>
 public class SortTests
 {
@@ -52,7 +51,7 @@ public class SortTests
     private const string Head = """
         import std.collections { List, emptyList, sortList, sortListBy };
 
-        // 1, wenn aufsteigend sortiert.
+        // 1 when sorted ascending
         fn istSortiert(xs: List<int>): int {
             var i = 1;
             while (i < xs.length()) {
@@ -70,16 +69,16 @@ public class SortTests
 
         """;
 
-    // ------------------------------------------------------------------ Grundfälle
+    // ------------------------------------------------------------------ base cases
 
     [Theory]
     [InlineData("[]")]
     [InlineData("[1]")]
     [InlineData("[2, 1]")]
     [InlineData("[5, 1, 4, 1, 9, 2, 6]")]
-    [InlineData("[1, 2, 3, 4, 5]")]          // bereits sortiert
-    [InlineData("[5, 4, 3, 2, 1]")]          // genau falsch herum
-    [InlineData("[7, 7, 7, 7]")]             // alle gleich
+    [InlineData("[1, 2, 3, 4, 5]")]          // already sorted
+    [InlineData("[5, 4, 3, 2, 1]")]          // exactly the wrong way round
+    [InlineData("[7, 7, 7, 7]")]             // all equal
     [InlineData("[3, -1, 0, -7, 2]")]        // negative
     public void Sorting_produces_an_ordered_list(string literal) =>
         Assert.Equal(1, Run(Head + $$"""
@@ -92,8 +91,8 @@ public class SortTests
 
     [Fact]
     public void Sorting_keeps_every_element() =>
-        // Sortiert und vollzaehlig sind zwei Aussagen. Eine Sortierung, die Elemente verliert oder
-        // verdoppelt, kann trotzdem sortiert sein — die Summe faengt beides.
+        // Sorted and complete are two statements. A sort losing or duplicating elements can still be
+        // sorted; the sum catches both.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let xs = ausZahlen([5, 1, 4, 1, 9, 2, 6]);
@@ -114,8 +113,8 @@ public class SortTests
 
     [Fact]
     public void A_longer_list_crosses_several_merge_widths() =>
-        // 100 Elemente in absteigender Reihenfolge: die Bottom-up-Schleife laeuft ueber die
-        // Breiten 1, 2, 4, …, 64, 128. Kurze Listen pruefen die aeusseren Runden nie.
+        // A hundred elements in descending order: the bottom-up loop runs over the widths 1, 2, 4, …, 64,
+        // 128. Short lists never exercise the outer rounds.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let xs = emptyList<int>();
@@ -127,17 +126,16 @@ public class SortTests
             }
             """));
 
-    // ------------------------------------------------------------------ Stabilität
+    // ------------------------------------------------------------------ stability
 
     /// <summary>
-    /// <b>Der wichtigste Test dieser Datei.</b>
+    /// The most important test in this file.
     ///
-    /// <para>Gleiche Elemente behalten ihre Eingabereihenfolge. An einer sortierten Zahlenliste
-    /// ist das nicht ablesbar — deshalb tragen die Einträge hier eine Marke, die nicht in den
-    /// Vergleich eingeht.</para>
+    /// <para>Equal elements keep their input order. That cannot be read off a sorted list of numbers,
+    /// which is why the entries here carry a mark that does not enter the comparison.</para>
     ///
-    /// <para>Ohne diesen Test wäre ein instabiler Algorithmus grün, und die ganze Begründung für
-    /// Merge Sort statt Quicksort hinfällig.</para>
+    /// <para>Without this test an unstable algorithm would be green, and the whole reason for a merge
+    /// sort rather than a quicksort would be void.</para>
     /// </summary>
     [Fact]
     public void Equal_elements_keep_their_input_order() =>
@@ -156,8 +154,8 @@ public class SortTests
 
                 sortListBy(xs, (a: Eintrag, b: Eintrag) => a.schluessel < b.schluessel);
 
-                // Erwartet: 1/2, 1/4, 2/1, 2/3, 2/5 — innerhalb jedes Schluessels aufsteigende
-                // Marken, also die urspruengliche Reihenfolge.
+                // Expected: 1/2, 1/4, 2/1, 2/3, 2/5 — ascending marks within each key, so the original
+                // order.
                 var i = 1;
                 while (i < xs.length()) {
                     let vorher = xs.get(i - 1);
@@ -207,9 +205,8 @@ public class SortTests
 
     [Fact]
     public void A_comparator_that_always_says_false_leaves_the_order_alone() =>
-        // Ein 'less', das nie 'true' liefert, macht alle Elemente gleichwertig. Ein stabiler
-        // Algorithmus muss dann die Eingabereihenfolge unveraendert lassen — und darf vor allem
-        // nicht in eine Endlosschleife laufen.
+        // A 'less' that never yields 'true' makes all elements equivalent. A stable algorithm then has to
+        // leave the input order unchanged — and above all must not run into an infinite loop.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let xs = ausZahlen([3, 1, 2]);
@@ -220,17 +217,14 @@ public class SortTests
             """));
 
     /// <summary>
-    /// Ein Lambda mit einem <b>Typ-Parameter</b> als Parametertyp, innerhalb einer generischen
-    /// Funktion.
+    /// A lambda with a TYPE PARAMETER as a parameter type, inside a generic function.
     ///
-    /// <para>Genau das ist <c>sortList</c>: es reicht <c>(a: T, b: T) =&gt; a.compare(b) &lt; 0</c>
-    /// an <c>sortListBy</c> weiter. Das Lowering brach dabei ab („type parameter 'T' is not
-    /// supported") — ein Lambda-Lowerer bekam grundsätzlich <c>NoSubstitution</c>, auch innerhalb
-    /// einer monomorphisierten Instanz.</para>
+    /// <para>That is exactly what <c>sortList</c> is: it passes <c>(a: T, b: T) =&gt; a.compare(b) &lt; 0</c>
+    /// on to <c>sortListBy</c>. The lowering aborted with "type parameter 'T' is not supported" — a lambda
+    /// lowerer was always given <c>NoSubstitution</c>, even inside a monomorphized instance.</para>
     ///
-    /// <para>Ein Lambda ist kein eigener generischer Kontext; es erbt den seines Rumpfes. Dass es
-    /// als eigene Funktion gelowert wird (ADR-018), ist eine Implementierungsentscheidung und darf
-    /// an den Typen nichts ändern.</para>
+    /// <para>A lambda is no generic context of its own; it inherits the one of its body. That it is lowered
+    /// as a separate function is an implementation decision and must not change the types.</para>
     /// </summary>
     [Fact]
     public void A_lambda_may_use_the_enclosing_type_parameter() =>

@@ -5,16 +5,15 @@ using Lyric.Embedding;
 namespace Lyric.Tests.Embedding;
 
 /// <summary>
-/// <c>RegisterFunction</c> (M10/E3): der Host macht eine .NET-Funktion fuer sein Skript sichtbar.
+/// <c>RegisterFunction</c>: the host makes a .NET function visible to its script.
 ///
-/// <para><b>Der Seam ist seit M6 da.</b> Natives werden <b>beim Laden ueber den Namen</b>
-/// gebunden, und die Signatur kommt aus einer bodylosen <c>pub fn</c>-Deklaration. E3 erzeugt
-/// diese Deklaration, statt einen zweiten Weg danebenzustellen — der Unterschied zur Stdlib ist
-/// allein, dass die Datei im Speicher liegt.</para>
+/// <para>THE SEAM WAS ALREADY THERE. Natives are bound BY NAME AT LOAD TIME, and the signature comes
+/// from a bodyless <c>pub fn</c> declaration. This produces that declaration rather than putting a
+/// second route beside it; the only difference from the stdlib is that the file lives in memory.</para>
 ///
-/// <para><b>Das Skript muss <c>host</c> importieren.</b> <c>Doku.md</c> §21 zeigte bis heute ein
-/// Skript, das <c>playSound("hit")</c> ohne Import ruft; §2.2 kennt keinen impliziten Namensraum,
-/// und einen fuer genau eine Sorte Funktion einzufuehren waere ein Sonderweg.</para>
+/// <para>THE SCRIPT HAS TO IMPORT <c>host</c>. The documentation used to show a script calling
+/// <c>playSound("hit")</c> without an import; the language knows no implicit namespace, and introducing
+/// one for exactly one kind of function would be a special route.</para>
 /// </summary>
 public class RegisterFunctionTests
 {
@@ -43,7 +42,7 @@ public class RegisterFunctionTests
         Assert.Equal(21, instance.Call<long>("los", 10));
     }
 
-    /// <summary>Auch als Namensraum — <c>host.name(...)</c>, wie bei jedem anderen Modul.</summary>
+    /// <summary>As a namespace too: <c>host.name(...)</c>, as for every other module.</summary>
     [Fact]
     public void The_host_module_works_as_a_namespace_import()
     {
@@ -59,8 +58,8 @@ public class RegisterFunctionTests
     }
 
     /// <summary>
-    /// Der Host sieht wirklich etwas — nicht nur einen Rueckgabewert. Ein Seiteneffekt ist der
-    /// eigentliche Zweck von <c>RegisterFunction</c>: <c>playSound</c> gibt nichts zurueck.
+    /// The host really sees something rather than only a return value. A side effect is the actual purpose
+    /// of <c>RegisterFunction</c>: <c>playSound</c> returns nothing.
     /// </summary>
     [Fact]
     public void A_void_host_function_is_called_for_its_effect()
@@ -79,7 +78,7 @@ public class RegisterFunctionTests
         Assert.Equal(["eins", "zwei"], gesehen);
     }
 
-    /// <summary>Der Rundweg: Host → Skript → Host → Skript → Host.</summary>
+    /// <summary>The round trip: host to script to host to script to host.</summary>
     [Fact]
     public void A_value_survives_host_to_script_to_host()
     {
@@ -97,8 +96,8 @@ public class RegisterFunctionTests
     // ------------------------------------------------------------------ the generated declaration
 
     /// <summary>
-    /// Der erzeugte Quelltext ist die beste Antwort auf „welche Signatur hat meine Funktion in
-    /// Lyric?" — er steht als Lyric-Code da und ist genau das, wogegen das Skript uebersetzt.
+    /// The generated source is the best answer to "what signature does my function have in Lyric?": it
+    /// stands there as Lyric code and is exactly what the script compiles against.
     /// </summary>
     [Fact]
     public void The_generated_declaration_names_the_lyric_types()
@@ -115,10 +114,9 @@ public class RegisterFunctionTests
     }
 
     /// <summary>
-    /// Derselbe Satz Funktionen ergibt denselben Quelltext, unabhaengig von der
-    /// Registrierungsreihenfolge — und damit dieselben Bytes. ADR-013 verlangt reproduzierbare
-    /// Ausgabe; ein Modul, dessen Inhalt an einer Aufrufreihenfolge haengt, waere die eine
-    /// Stelle, an der das nicht mehr gilt.
+    /// The same set of functions gives the same source regardless of the registration order, and therefore
+    /// the same bytes. Reproducible output is required; a module whose content depended on a call order
+    /// would be the one place where that no longer held.
     /// </summary>
     [Fact]
     public void The_generated_module_does_not_depend_on_registration_order()
@@ -140,7 +138,7 @@ public class RegisterFunctionTests
         var vm = Vm();
         Assert.Null(vm.HostModuleSource);
 
-        // Und ein Skript, das es trotzdem importiert, bekommt die gewoehnliche Diagnose.
+        // And a script importing it anyway gets the ordinary diagnostic.
         var thrown = Assert.Throws<EmbeddingException>(
             () => vm.Compile("import host;\nfn main(): int { return 0; }", "mod"));
 
@@ -150,8 +148,8 @@ public class RegisterFunctionTests
     // ------------------------------------------------------------------ what gets rejected
 
     /// <summary>
-    /// Kein stilles Ueberschreiben: welche von zwei Registrierungen desselben Namens gewinnt,
-    /// waere sonst eine Frage der Reihenfolge — und der Host merkt es nie.
+    /// No silent overwriting: which of two registrations of the same name wins would otherwise be a
+    /// question of order, and the host never notices.
     /// </summary>
     [Fact]
     public void Registering_the_same_name_twice_is_an_error()
@@ -163,8 +161,8 @@ public class RegisterFunctionTests
         Assert.Contains("already registered", thrown.Message, StringComparison.Ordinal);
     }
 
-    /// <summary>Ein Typ, der die Grenze nicht ueberqueren kann, wird <b>bei der Registrierung</b>
-    /// abgelehnt — nicht erst, wenn ein Skript ihn ruft.</summary>
+    /// <summary>A type that cannot cross the boundary is rejected AT REGISTRATION rather than only when a
+    /// script calls it.</summary>
     [Fact]
     public void A_parameter_type_that_cannot_cross_is_refused_at_registration()
     {
@@ -175,8 +173,7 @@ public class RegisterFunctionTests
 
         Assert.Contains("cannot cross the boundary", thrown.Message, StringComparison.Ordinal);
 
-        // Die Meldung nennt den Ausweg. Sie sagte bis E4 "Host objects come in E4" — seit es sie
-        // gibt, nennt sie 'RegisterType<T>', und das ist die nuetzlichere Auskunft.
+        // The message names the way out: 'RegisterType<T>'.
         Assert.Contains("RegisterType", thrown.Message, StringComparison.Ordinal);
     }
 
@@ -191,15 +188,14 @@ public class RegisterFunctionTests
         Assert.Contains("the return value", thrown.Message, StringComparison.Ordinal);
     }
 
-    // ------------------------------------------------------------------ Fehler des Hosts
+    // ------------------------------------------------------------------ faults of the host
 
     /// <summary>
-    /// Wirft der Host in seiner eigenen Funktion, bekommt er seinen Typ zurueck — nicht die Huelle
-    /// der Reflection und nicht einen Lyric-Panic.
+    /// When the host throws in its own function, it gets its own type back rather than the shell of the
+    /// reflection and rather than a Lyric panic.
     ///
-    /// <para>Die Unterscheidung ist der Punkt: „mein Skript ist kaputt", „mein Skript hat einen
-    /// Bug" und „<b>mein Code</b> ist gescheitert" sind drei verschiedene Nachrichten an drei
-    /// verschiedene Leute.</para>
+    /// <para>The distinction is the point: "my script is broken", "my script has a bug" and "MY CODE
+    /// failed" are three different messages to three different people.</para>
     /// </summary>
     [Fact]
     public void An_exception_from_the_host_function_keeps_its_own_type()
@@ -223,8 +219,8 @@ public class RegisterFunctionTests
     // ------------------------------------------------------------------ Isolation
 
     /// <summary>
-    /// Host-Funktionen gehoeren der VM, nicht dem Prozess. Ohne diesen Test bliebe alles oben
-    /// gruen, wenn die Registry statisch waere — und ein Mod saehe die Funktionen des anderen.
+    /// Host functions belong to the VM rather than to the process. Without this test everything above
+    /// would stay green if the registry were static, and one mod would see the other's functions.
     /// </summary>
     [Fact]
     public void Host_functions_do_not_leak_into_another_vm()
@@ -247,9 +243,8 @@ public class RegisterFunctionTests
     }
 
     /// <summary>
-    /// Eine Host-Funktion kostet <b>keine</b> Capability — der Host hat sie ja selbst
-    /// hingestellt. Genau das ist das Modell aus ADR-007: die Stufen gelten der Stdlib, und was
-    /// darueber hinaus geht, entscheidet der Host einzeln.
+    /// A host function costs NO capability: the host put it there itself. That is the model — the levels
+    /// apply to the stdlib, and what goes beyond it the host decides case by case.
     /// </summary>
     [Fact]
     public void A_host_function_needs_no_capability()

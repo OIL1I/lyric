@@ -10,16 +10,16 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `Set&lt;T&gt;` und die Nachträge an `Map` und `List` (M8b/S4).
+/// `Set&lt;T&gt;` and the additions to `Map` and `List`.
 ///
-/// <para><b>`Set` ist nicht als `Map&lt;T, bool&gt;` gebaut</b>, obwohl das kürzer wäre: das
-/// verschwendet ein Array, und `add(x)` hieße `set(x, true)` — eine Schreibweise, die an jeder
-/// Aufrufstelle erklärt werden müsste. Die Duplikation der Sondierungslogik ist der ehrlichere
-/// Preis.</para>
+/// <para>`Set` IS NOT BUILT AS A `Map&lt;T, bool&gt;`, although that would be shorter: it wastes an array,
+/// and `add(x)` would read as `set(x, true)`, a spelling that would need explaining at every call site.
+/// Duplicating the probing logic is the more honest
+/// choice.</para>
 ///
-/// <para>Die Iterations-Reihenfolge hängt an den Hashes und ist <b>unspezifiziert</b>. Die Tests
-/// hier prüfen deshalb Summen und Anzahlen, nie eine Position — ein Test, der sich auf die
-/// heutige Hash-Reihenfolge verlässt, wäre eine Zusage, die die Bibliothek nicht macht.</para>
+/// <para>The iteration order depends on the hashes and is UNSPECIFIED. The tests here therefore check
+/// sums and counts, never a position: a test relying on today's hash order would be a promise the
+/// library does not make.</para>
 /// </summary>
 public class SetTests
 {
@@ -65,8 +65,8 @@ public class SetTests
 
     [Fact]
     public void Add_reports_whether_the_value_was_new() =>
-        // Der Rueckgabewert ist nicht Zierde: "war das schon drin?" ist die Frage, fuer die man
-        // sonst ein 'contains' davorsetzt — und damit zweimal sondiert.
+        // The return value is no decoration: "was that already in?" is the question one would otherwise
+        // put a 'contains' in front of, probing twice.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let s = emptySet<int>();
@@ -90,8 +90,8 @@ public class SetTests
 
     [Fact]
     public void Everything_survives_resizing() =>
-        // 200 Werte ueber mehrere Verdopplungen; danach muessen alle noch da sein und keiner
-        // doppelt gezaehlt.
+        // Two hundred values across several doublings; afterwards all have to still be there and none
+        // counted twice.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let s = emptySet<int>();
@@ -110,8 +110,8 @@ public class SetTests
 
     [Fact]
     public void Iteration_visits_every_element_exactly_once() =>
-        // Summe UND Anzahl: die Summe allein faende ein doppelt besuchtes Element nicht, wenn
-        // dafuer ein anderes fehlte.
+        // Sum AND count: the sum alone would not find an element visited twice if another were missing in
+        // exchange.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let s = emptySet<int>();
@@ -155,9 +155,8 @@ public class SetTests
 
     [Fact]
     public void Intersect_is_symmetric_regardless_of_size() =>
-        // Die Implementierung laeuft ueber die KLEINERE Menge. Ohne diesen Test bliebe ungeprueft,
-        // ob beide Richtungen dasselbe liefern — der Tausch ist genau die Stelle, an der man sich
-        // vertut.
+        // The implementation runs over the SMALLER set. Without this test it would stay unchecked whether
+        // both directions yield the same; the swap is exactly the place one gets wrong.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let klein = emptySet<int>();
@@ -189,8 +188,8 @@ public class SetTests
 
     [Fact]
     public void The_operations_do_not_modify_their_arguments() =>
-        // Alle drei liefern eine NEUE Menge. Eine, die still ihr Argument aendert, waere in einer
-        // Kette nicht mehr benutzbar.
+        // All three yield a NEW set. One silently changing its argument would no longer be usable in a
+        // chain.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let a = emptySet<int>();
@@ -218,17 +217,17 @@ public class SetTests
             }
             """));
 
-    // --------------------------------------------------- Nachträge an Map und List
+    // --------------------------------------------------- additions to Map and List
 
     /// <summary>
-    /// Eine `Map` lässt sich durchlaufen.
+    /// A `Map` can be walked.
     ///
-    /// <para>Bis zu diesem Slice ging das <b>nicht</b>: man konnte etwas hineinlegen und gezielt
-    /// herausholen, aber nicht wissen, was drin ist. `keys` und `values` fehlten, weil sie am
-    /// selben Compiler-Fehler hingen wie `Set.iter()`.</para>
+    /// <para>Until this point that did NOT work: one could put something in and fetch it deliberately but
+    /// not know what was in it. `keys` and `values` were missing, because they hung on the same compiler
+    /// fault as `Set.iter()`.</para>
     ///
-    /// <para>`entries(): Iterator&lt;(K, V)&gt;` fehlt weiterhin — ein Tupel als Typargument eines
-    /// generischen Interfaces ist nicht lowerbar.</para>
+    /// <para>`entries(): Iterator&lt;(K, V)&gt;` is still missing — a tuple as the type argument of a
+    /// generic interface is not lowerable.</para>
     /// </summary>
     [Fact]
     public void A_map_can_be_walked_by_keys_and_values() =>
@@ -252,8 +251,8 @@ public class SetTests
 
     [Fact]
     public void A_removed_entry_does_not_show_up_in_the_walk() =>
-        // Die Grabsteine duerfen beim Durchlaufen nicht auftauchen — 'states[i] == 1' ist die
-        // Bedingung, und '!= 0' waere die naheliegende falsche.
+        // The tombstones must not appear while walking: 'states[i] == 1' is the condition, and '!= 0'
+        // would be the obvious wrong one.
         Assert.Equal(1, Run("""
             import std.collections { emptyMap, keys };
 
@@ -272,7 +271,7 @@ public class SetTests
 
     [Fact]
     public void A_list_knows_whether_it_is_empty() =>
-        // Map und Set hatten das seit ihrem ersten Tag, List nicht.
+        // Map and Set had this from their first day, List did not.
         Assert.Equal(1, Run("""
             import std.collections { emptyList };
 
@@ -286,9 +285,8 @@ public class SetTests
 
     [Fact]
     public void A_list_can_be_searched() =>
-        // Freie Funktionen und keine Methoden: sie brauchen 'Equatable<T>', und dieser Constraint
-        // auf der KLASSE machte 'List<T>' fuer jeden Typ ohne Gleichheit unbrauchbar — auch dort,
-        // wo niemand sucht.
+        // Free functions rather than methods: they need 'Equatable<T>', and that constraint on the CLASS
+        // would make 'List<T>' unusable for every type without equality, including where nobody searches.
         Assert.Equal(1, Run("""
             import std.collections { emptyList, listContains, listIndexOf };
 
@@ -306,15 +304,15 @@ public class SetTests
             """));
 
     /// <summary>
-    /// Der Compiler-Fehler, der `Set` blockiert hat — auf zwölf Zeilen.
+    /// The compiler fault that blocked `Set`, in twelve lines.
     ///
-    /// <para>Eine Klasse mit <b>constraintem</b> Typ-Parameter, deren Methode `Iterator&lt;T&gt;`
-    /// liefert, war nicht lowerbar — aber erst, wenn sie <i>instanziiert</i> wird. `List&lt;T&gt;`
-    /// hat dieselbe Methode und funktionierte, weil ihr `T` keinen Constraint trägt.</para>
+    /// <para>A class with a CONSTRAINED type parameter whose method returns `Iterator&lt;T&gt;` was not
+    /// lowerable — but only once it was INSTANTIATED. `List&lt;T&gt;` has the same method and worked,
+    /// because its `T` carries no constraint.</para>
     ///
-    /// <para>`LowerWithOwner` war eine Teilkopie der Typ-Auflösung und zum <b>dritten</b> Mal zu
-    /// kurz: erst der nackte Fall, dann `?T`, dann `T[]` — und ein generischer Typ als
-    /// Rückgabetyp fehlte immer noch.</para>
+    /// <para>`LowerWithOwner` was a partial copy of the type resolution and too short for the THIRD time:
+    /// first the bare case, then `?T`, then `T[]` — and a generic type as a return type was still
+    /// missing.</para>
     /// </summary>
     [Fact]
     public void A_constrained_generic_class_may_return_an_interface_instance() =>
