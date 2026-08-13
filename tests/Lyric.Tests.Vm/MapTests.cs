@@ -10,16 +10,15 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `Map&lt;K, V&gt;` — Open Addressing mit linearer Sondierung, in Lyric geschrieben (M8b/S4).
+/// `Map&lt;K, V&gt;` — open addressing with linear probing, written in Lyric.
 ///
-/// <para>Der Schlüssel trägt zwei Constraints, <c>K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;]</c>,
-/// getrennt weil Lyric keine Interface-Vererbung hat. Damit hängt diese Klasse direkt an ADR-024
-/// und am M4-Constraint-Fix — sie ist der Grund, warum beide gebaut wurden.</para>
+/// <para>The key carries two constraints, <c>K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;]</c>, separate
+/// because Lyric has no interface inheritance. This class therefore hangs directly on the constraint
+/// work and is the reason it was built.</para>
 ///
-/// <para><b>Die Grabsteine sind der heikle Teil.</b> Ein gelöschter Slot darf die
-/// Sondierungskette nicht unterbrechen: würde er einfach „leer", fände ein <c>get</c> jeden
-/// Schlüssel nicht mehr, der <i>hinter</i> der Lücke liegt — und zwar lautlos, denn die Map
-/// meldet dann bloß <c>null</c>.</para>
+/// <para>THE TOMBSTONES ARE THE DELICATE PART. A deleted slot must not break the probe chain: were it
+/// simply "empty", a <c>get</c> would no longer find any key lying BEHIND the gap — and silently, since
+/// the map then merely reports <c>null</c>.</para>
 /// </summary>
 public class MapTests
 {
@@ -79,7 +78,7 @@ public class MapTests
 
     [Fact]
     public void Setting_an_existing_key_overwrites_instead_of_adding() =>
-        // Die Laenge darf sich NICHT aendern — sonst waere jedes Ueberschreiben ein Leck.
+        // The length must NOT change; otherwise every overwrite would be a leak.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let m = emptyMap<string, int>();
@@ -113,13 +112,13 @@ public class MapTests
             }
             """));
 
-    // ------------------------------------------------------- Wachstum und Grabsteine
+    // ------------------------------------------------------- growth and tombstones
 
     /// <summary>
-    /// Wachstum über mehrere Verdopplungen: <b>alles</b> muss wiederfindbar bleiben.
+    /// Growth across several doublings: EVERYTHING has to stay findable.
     ///
-    /// <para>Beim Vergrößern werden die Einträge neu eingefügt und nicht kopiert — die Slots
-    /// hängen an der Kapazität. Ein Fehler dort verliert Einträge lautlos.</para>
+    /// <para>While growing, the entries are reinserted rather than copied — the slots hang on the
+    /// capacity. A fault there loses entries silently.</para>
     /// </summary>
     [Fact]
     public void Everything_survives_several_resizes() =>
@@ -140,11 +139,11 @@ public class MapTests
             """));
 
     /// <summary>
-    /// <b>Der Test, an dem sich die Grabsteine entscheiden</b> — und er prüft in beide Richtungen.
+    /// The test the tombstones turn on, and it checks in both directions.
     ///
-    /// <para>Nichts hinter einem Grabstein verloren, und nichts Entferntes noch auffindbar. Ein
-    /// Test, der nur nach Fehlendem sucht, findet Übriggebliebenes nie — die Lehre aus der ersten
-    /// <c>List&lt;T&gt;</c>-Fassung, deren Wachstums-Test genau diese zweite Richtung ausließ.</para>
+    /// <para>Nothing lost behind a tombstone, and nothing removed still findable. A test looking only for
+    /// what is missing never finds what is left over — the lesson from the first <c>List&lt;T&gt;</c>
+    /// version, whose growth test left out exactly this second direction.</para>
     /// </summary>
     [Fact]
     public void Deleted_slots_do_not_break_the_probe_chain() =>
@@ -154,7 +153,7 @@ public class MapTests
                 var i = 0;
                 while (i < 200) { m.set(i, i * i); i = i + 1; }
 
-                // Jeden zweiten entfernen: 100 Grabsteine mitten in den Ketten.
+                // Remove every second one: a hundred tombstones in the middle of the chains.
                 i = 0;
                 while (i < 200) { m.remove(i); i = i + 2; }
 
@@ -179,8 +178,8 @@ public class MapTests
 
     [Fact]
     public void Tombstones_are_reused_instead_of_growing_forever() =>
-        // Drei Runden auffuellen und halb leeren. Wuerden Grabsteine nicht wiederverwendet, waechst
-        // die Tabelle unbegrenzt, obwohl nie mehr als 200 Eintraege drin sind.
+        // Three rounds of filling up and half emptying. Were tombstones not reused, the table would grow
+        // without bound although it never holds more than 200 entries.
         Assert.Equal(200, Run(Head + """
             fn main(): int {
                 let m = emptyMap<int, int>();
@@ -202,7 +201,7 @@ public class MapTests
 
     [Fact]
     public void A_user_type_works_as_a_key() =>
-        // Wofuer ADR-024 gebaut wurde: 'Punkt' erfuellt beide Constraints selbst.
+        // What the constraints were built for: 'Point' satisfies both of them itself.
         Assert.Equal(1, Run("""
             import std.collections { emptyMap };
             import std.core { Hashable, Equatable };
@@ -225,11 +224,11 @@ public class MapTests
             """));
 
     /// <summary>
-    /// Ein absichtlich <b>wertloser</b> Hash: alle Schlüssel landen im selben Startslot.
+    /// A deliberately WORTHLESS hash: every key lands in the same starting slot.
     ///
-    /// <para>Die Map muss sie trotzdem auseinanderhalten. Das prüft die Sondierung isoliert von
-    /// der Streuung — mit einem guten Hash würde ein Fehler in der Kollisionsbehandlung nur
-    /// selten und zufällig auftreten.</para>
+    /// <para>The map still has to keep them apart. That checks the probing in isolation from the
+    /// distribution — with a good hash a fault in the collision handling would occur rarely and by
+    /// accident.</para>
     /// </summary>
     [Fact]
     public void Colliding_keys_stay_apart() =>
@@ -261,8 +260,8 @@ public class MapTests
 
     [Fact]
     public void A_negative_hash_does_not_break_the_slot_computation() =>
-        // FNV-1a liefert regelmaessig negative Werte, und '%' folgt in Lyric dem Vorzeichen des
-        // Dividenden. Strings sind deshalb der Fall, der ohne Betragsbildung sofort panict.
+        // FNV-1a regularly yields negative values, and '%' follows the sign of the dividend in Lyric.
+        // Strings are therefore the case that panics immediately without taking the absolute value.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let m = emptyMap<string, int>();

@@ -5,12 +5,11 @@ using Lyric.Embedding;
 namespace Lyric.Tests.Embedding;
 
 /// <summary>
-/// Die Embedding-API (M10/E1): laden, ausfuehren, sandboxen.
+/// The embedding API: loading, executing, sandboxing.
 ///
-/// <para><b>Der Capability-Teil ist der einzige sicherheitsrelevante</b>, und er steht deshalb
-/// paarweise da — jede Operation einmal gewaehrt, einmal verweigert. Ein Test nur fuer den
-/// erlaubten Fall bliebe gruen, wenn die Pruefung ausfiele, und das ist genau der Fehler, der
-/// niemandem auffaellt: es funktioniert ja.</para>
+/// <para>THE CAPABILITY PART IS THE ONLY SECURITY-RELEVANT ONE, and it therefore stands in pairs — every
+/// operation once granted, once denied. A test for the allowed case alone would stay green if the check
+/// failed, and that is exactly the fault nobody notices: it works, after all.</para>
 /// </summary>
 public class LangVmTests
 {
@@ -23,7 +22,7 @@ public class LangVmTests
         TextWriter? output = null) =>
         new() { Capabilities = capabilities, StdlibRoot = Stdlib, Output = output };
 
-    // ------------------------------------------------------------------ uebersetzen und laufen
+    // ------------------------------------------------------------------ compiling and running
 
     [Fact]
     public void A_script_compiled_from_memory_runs_and_returns_its_exit_code()
@@ -36,8 +35,8 @@ public class LangVmTests
     }
 
     /// <summary>
-    /// Der Modulname des Hosts landet in den Diagnosen. Ohne ihn traegt eine Fehlermeldung aus
-    /// einem Mod keinen Hinweis darauf, welcher Mod gemeint ist.
+    /// The host's module name lands in the diagnostics. Without it an error message from a mod carries no
+    /// hint which mod is meant.
     /// </summary>
     [Fact]
     public void The_host_chosen_module_name_reaches_the_diagnostics()
@@ -52,8 +51,8 @@ public class LangVmTests
     }
 
     /// <summary>
-    /// Die Diagnosen kommen als <b>Daten</b> an, nicht als vorgerenderter Text: ein Host zeigt sie
-    /// in seiner eigenen Oberflaeche und braucht Code und Position, keinen String zum Zurueckparsen.
+    /// The diagnostics arrive as DATA rather than as pre-rendered text: a host shows them in its own
+    /// interface and needs the code and the position rather than a string to parse back.
     /// </summary>
     [Fact]
     public void Diagnostics_arrive_as_data_with_code_and_position()
@@ -68,9 +67,9 @@ public class LangVmTests
     }
 
     /// <summary>
-    /// Ein Modul ohne Einstiegspunkt ist eine <b>Bibliothek</b>, kein Programm — gueltiger
-    /// Bytecode, aber nichts auszufuehren. Genau der Normalfall fuer eingebetteten Code, und der
-    /// Grund, warum die Start-Sektion seit jeher optional ist.
+    /// A module without an entry point is a LIBRARY rather than a program: valid bytecode with nothing to
+    /// execute. Exactly the normal case for embedded code, and the reason the Start section has always
+    /// been optional.
     /// </summary>
     [Fact]
     public void A_module_without_an_entry_point_compiles_but_does_not_run()
@@ -104,9 +103,9 @@ public class LangVmTests
         """;
 
     /// <summary>
-    /// <b>Die Voreinstellung ist die Zusage.</b> Doku §20.3 sagt „Embed-Mode default-sandbox";
-    /// ohne diesen Test ist das ein Satz in einer Datei. <c>new LangVm()</c> ohne Argumente muss
-    /// Dateizugriff ablehnen.
+    /// THE DEFAULT IS THE PROMISE. The documentation says embed mode is sandboxed by default;
+    /// without this test that is a sentence in a file. A <c>new LangVm()</c> without arguments has to
+    /// reject file access.
     /// </summary>
     [Fact]
     public void The_default_vm_is_a_sandbox()
@@ -134,9 +133,9 @@ public class LangVmTests
             }
             """, "mod")));
 
-        // Der eigentliche Punkt: nicht DASS es scheitert, sondern dass vorher keine Zeile lief.
-        // Eine Pruefung beim ersten Datei-Aufruf statt beim Laden waere ebenfalls "sicher" — und
-        // haette das Skript bis dahin machen lassen, was es wollte.
+        // The actual point: not THAT it fails but that no line ran beforehand. A check at the first file
+        // call rather than at load time would also be "safe" — and would have let the script do whatever
+        // it wanted until then.
         Assert.Equal("", output.ToString());
     }
 
@@ -148,11 +147,11 @@ public class LangVmTests
     }
 
     /// <summary>
-    /// Zwei VMs im selben Prozess teilen nichts.
+    /// Two VMs in the same process share nothing.
     ///
-    /// <para>Ohne diesen Test bliebe alles oben gruen, wenn Registry oder Maske statisch waeren —
-    /// und in einem Host mit mehreren Mods waere genau das der Fehler, der erst auffaellt, wenn
-    /// ein Mod die Rechte eines anderen erbt.</para>
+    /// <para>Without this test everything above would stay green if the registry or the mask were static,
+    /// and in a host with several mods that would be the fault that shows only when one mod inherits
+    /// another's rights.</para>
     /// </summary>
     [Fact]
     public void Two_vms_in_one_process_do_not_share_their_capabilities()
@@ -163,11 +162,11 @@ public class LangVmTests
         Assert.Equal(0, erlaubt.Run(erlaubt.Compile(ReadsAFile, "a")));
         Assert.Throws<ScriptException>(() => verboten.Run(verboten.Compile(ReadsAFile, "b")));
 
-        // Und danach immer noch — die Reihenfolge darf nichts aendern.
+        // And still afterwards: the order must change nothing.
         Assert.Equal(0, erlaubt.Run(erlaubt.Compile(ReadsAFile, "c")));
     }
 
-    /// <summary>Und die Ausgaben zweier VMs laufen nicht ineinander.</summary>
+    /// <summary>And the outputs of two VMs do not run into each other.</summary>
     [Fact]
     public void Two_vms_in_one_process_do_not_share_their_output()
     {
@@ -188,7 +187,7 @@ public class LangVmTests
         _ = second;
     }
 
-    // ------------------------------------------------------------------ von der Platte
+    // ------------------------------------------------------------------ from disk
 
     [Fact]
     public void RunScript_compiles_and_runs_a_file_in_one_step()

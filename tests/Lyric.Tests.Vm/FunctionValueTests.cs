@@ -10,18 +10,17 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Eine deklarierte Funktion als <b>Wert</b> — <c>map(o, verdoppeln)</c> statt
-/// <c>map(o, (n: int) =&gt; verdoppeln(n))</c> — und ein Lambda in einer f-String-Interpolation.
+/// A declared function as a VALUE — <c>map(o, double)</c> rather than
+/// <c>map(o, (n: int) =&gt; double(n))</c> — and a lambda in an f-string interpolation.
 ///
-/// <para>Beide Lücken wurden beim Bau von <c>std.option</c> (M8b/S9) gefunden, und beide trafen
-/// dieselbe Stelle: jede Funktion höherer Ordnung in der Stdlib. Die eine zwang zum
-/// Lambda-Umweg, die andere machte genau diesen Umweg an der häufigsten Schreibstelle zum
-/// Syntaxfehler.</para>
+/// <para>Both gaps were found while building <c>std.option</c>, and both hit the same place: every
+/// higher-order function in the stdlib. One forced the lambda detour, the other made exactly that detour
+/// a syntax error at the most common place to write it.</para>
 ///
-/// <para><b>Die Funktion als Wert brauchte weder eine Instruktion noch einen Opcode.</b>
-/// <c>MakeClosure</c> nimmt sein Environment seit P6 optional — der häufige Fall
-/// <c>(x) =&gt; x &gt; 0</c> fängt nichts —, und die VM entscheidet am <c>HasEnvironment</c>-Bit,
-/// ob Slot 0 belegt wird. Eine benannte Funktion ist eine Closure ohne Umgebung, mehr nicht.</para>
+/// <para>THE FUNCTION AS A VALUE NEEDED NEITHER AN INSTRUCTION NOR AN OPCODE. <c>MakeClosure</c> takes
+/// its environment optionally — the common case <c>(x) =&gt; x &gt; 0</c> captures nothing — and the VM
+/// decides from the <c>HasEnvironment</c> bit whether slot 0 is occupied. A named function is a closure
+/// without an environment, nothing more.</para>
 /// </summary>
 public class FunctionValueTests
 {
@@ -54,7 +53,7 @@ public class FunctionValueTests
         return (exit, output.ToString().ReplaceLineEndings("\n"));
     }
 
-    // ------------------------------------------------------------------ Funktion als Wert
+    // ------------------------------------------------------------------ a function as a value
 
     [Fact]
     public void A_declared_function_can_be_passed_where_a_function_type_is_expected() =>
@@ -80,10 +79,9 @@ public class FunctionValueTests
             """).Exit);
 
     /// <summary>
-    /// Der Fall, an dem sich zeigt, dass wirklich <b>diese</b> Funktion gerufen wird und nicht
-    /// irgendeine: zwei Kandidaten mit derselben Signatur. Mit nur einer Funktion bliebe der Test
-    /// grün, wenn die <c>FunctionId</c> immer dieselbe wäre — dieselbe Lehre wie bei den
-    /// Interface-Tests aus P3 und beim Dispatch-Test aus M8/S4.
+    /// The case showing that THIS function is really called rather than just any: two candidates with the
+    /// same signature. With only one function the test would stay green if the <c>FunctionId</c> were
+    /// always the same.
     /// </summary>
     [Fact]
     public void The_reference_names_which_function_runs() =>
@@ -106,13 +104,13 @@ public class FunctionValueTests
             """).Out);
 
     /// <summary>
-    /// Eine so referenzierte Funktion darf der Erreichbarkeitsanalyse nicht zum Opfer fallen. Sie
-    /// wird nirgends <b>gerufen</b> — sie wird nur weitergereicht, und der Aufruf steht als
-    /// <c>callind</c> da, der seinen Zielnamen nicht kennt.
+    /// A function referenced this way must not fall victim to the reachability analysis. It is never
+    /// CALLED — it is only passed on, and the call stands there as a <c>callind</c> that does not know its
+    /// target name.
     ///
-    /// <para><c>Reachability</c> behandelt <c>MakeClosure</c> bereits als Wurzel; der Test hält
-    /// fest, dass das auch für diesen neuen Erzeuger von <c>MakeClosure</c> gilt. Ohne ihn wäre
-    /// der Fehler ein Laufzeitabsturz beim Nutzer, nicht ein roter Test.</para>
+    /// <para><c>Reachability</c> already treats <c>MakeClosure</c> as a root; the test holds that this
+    /// applies to this new producer of <c>MakeClosure</c> too. Without it the fault would be a runtime
+    /// crash at the user rather than a red test.</para>
     /// </summary>
     [Fact]
     public void A_function_used_only_as_a_value_survives_reachability_pruning() =>
@@ -127,9 +125,9 @@ public class FunctionValueTests
             """).Exit);
 
     /// <summary>
-    /// Eine generische Funktion als Wert wird <b>abgelehnt</b>, und zwar mit einer Meldung, die
-    /// den Ausweg nennt. Die Typargumente hätten keine Aufrufstelle, aus der sie kommen könnten;
-    /// still irgendeine Instanz zu nehmen wäre die gefährliche Antwort.
+    /// A generic function as a value is REJECTED, with a message that names the way out. The type
+    /// arguments would have no call site to come from; silently taking some instance would be the
+    /// dangerous answer.
     /// </summary>
     [Fact]
     public void A_generic_function_as_a_value_is_rejected_with_a_reason()
@@ -159,9 +157,9 @@ public class FunctionValueTests
     // ------------------------------------------------------------------ Lambda im f-String
 
     /// <summary>
-    /// <c>f"{map(o, (n: int) =&gt; n * 2)}"</c> war ein Syntaxfehler: das <c>:</c> der
-    /// Parameter-Annotation wurde als Format-Spec-Trenner gelesen (§1.5). Der Lexer zählte
-    /// geschweifte Klammern, aber keine runden — und genau die bringt ein Lambda mit.
+    /// <c>f"{map(o, (n: int) =&gt; n * 2)}"</c> was a syntax error: the <c>:</c> of the parameter
+    /// annotation was read as the format spec separator. The lexer counted braces but not parentheses,
+    /// and a lambda brings exactly those.
     /// </summary>
     [Fact]
     public void A_lambda_inside_an_interpolation_parses() =>
@@ -177,9 +175,9 @@ public class FunctionValueTests
             """).Out);
 
     /// <summary>
-    /// Die Gegenprobe, und sie ist die wichtigere: eine Format-Spec auf oberster Ebene muss
-    /// weiterhin eine sein. Ein Fix, der das <c>:</c> gar nicht mehr als Trenner liest, wäre mit
-    /// dem Test darüber allein grün — und hätte jede Format-Spec der Sprache stillgelegt.
+    /// The counter-check, and the more important one: a format spec at the top level has to stay one. A
+    /// fix that no longer reads the <c>:</c> as a separator at all would be green with the test above alone
+    /// and would have shut down every format spec in the language.
     /// </summary>
     [Fact]
     public void A_format_spec_at_the_top_level_still_separates() =>
