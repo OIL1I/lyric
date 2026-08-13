@@ -5,25 +5,22 @@ using Lyric.Embedding;
 namespace Lyric.Tests.Embedding;
 
 /// <summary>
-/// Host-Typen (M10/E4a, ADR-026): ein .NET-Objekt reist durch ein Skript, ohne dass das Skript
-/// hineinsehen kann.
+/// Host types: a .NET object travels through a script without the script being able to look inside.
 ///
-/// <para><b>Die tragende Zusage ist Identitaet, nicht Gleichheit.</b> Was der Host
-/// zurueckbekommt, ist <c>ReferenceEquals</c> dasselbe Objekt — es wird nicht kopiert, nicht
-/// gewrappt, nicht neu erzeugt. Genau das macht ADR-026 aus: die Referenz reist, der GC haelt
-/// sie, und niemand dazwischen fasst sie an.</para>
+/// <para>The load-bearing promise is IDENTITY rather than equality. What the host gets back is
+/// <c>ReferenceEquals</c> the same object — it is not copied, not wrapped, not recreated. The
+/// reference travels, the GC holds it, and nobody in between touches it.</para>
 ///
-/// <para><b>Und die Gegenrichtung wird ebenso geprueft</b>: ein Skript kann keinen Host-Typ
-/// konstruieren und hat keine Felder daran. Ohne diese beiden Tests waere „ein Host-Typ hat kein
-/// Layout, das das Modul kennt" eine Behauptung — und sie ist die Zusage, an der E4 wirklich
-/// falsch werden koennte.</para>
+/// <para>The other direction is checked as well: a script cannot construct a host type and has no
+/// fields on it. Without those two tests "a host type has no layout the module knows" would be a
+/// claim.</para>
 /// </summary>
 public class HostTypeTests
 {
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
-    /// <summary>Ein Host-Objekt mit Zustand — damit sichtbar wird, dass es dasselbe bleibt.</summary>
+    /// <summary>A host object with state, so it becomes visible that it stays the same.</summary>
     public sealed class Entity
     {
         public Entity(string name) => Name = name;
@@ -31,8 +28,8 @@ public class HostTypeTests
         public long Hp { get; set; } = 100;
     }
 
-    /// <summary>Ein zweiter Typ. Mit nur einem bliebe jeder Test gruen, wenn alle Host-Typen
-    /// dasselbe waeren — dieselbe Lehre wie beim Dispatch-Test aus M8/S4.</summary>
+    /// <summary>A second type. With only one, every test would stay green even if all host types were the
+    /// same.</summary>
     public sealed class Sprite
     {
         public Sprite(string file) => File = file;
@@ -44,7 +41,7 @@ public class HostTypeTests
         StdlibRoot = Path.Combine(RepoRoot(), "stdlib"),
     });
 
-    // ------------------------------------------------------------------ hin und zurueck
+    // ------------------------------------------------------------------ there and back
 
     [Fact]
     public void A_host_object_travels_through_a_script_and_comes_back_identical()
@@ -64,8 +61,8 @@ public class HostTypeTests
 
         instance.CallVoid("los");
 
-        // ReferenceEquals und nicht Equals: die Zusage ist, dass NICHTS dazwischen es angefasst
-        // hat. Ein Kopieren oder Wrappen waere mit Wert-Gleichheit nicht zu bemerken.
+        // ReferenceEquals rather than Equals: the promise is that NOTHING in between touched it. A copy
+        // or a wrap would not be noticeable with value equality.
         Assert.True(ReferenceEquals(welt, zurueck));
     }
 
@@ -95,9 +92,9 @@ public class HostTypeTests
     }
 
     /// <summary>
-    /// Zwei Host-Typen duerfen nicht verwechselt werden. Der Name ist alles, was sie unterscheidet
-    /// — ohne die Pruefung beim Binden bekaeme ein Modul, das eine <c>Entity</c> erwartet, eine
-    /// <c>Sprite</c>, und der erste Zugriff waere ein Cast-Fehler tief im Host.
+    /// Two host types must not be confused. The name is all that distinguishes them; without the check
+    /// while binding, a module expecting an <c>Entity</c> would get a <c>Sprite</c>, and the first access
+    /// would be a cast failure deep in the host.
     /// </summary>
     [Fact]
     public void Two_host_types_are_not_interchangeable()
@@ -138,22 +135,21 @@ public class HostTypeTests
             }
             """, "mod"));
 
-        // Der Zustand ueberlebt die Aufrufe — das ist die beobachtbare Seite von ADR-026, und
-        // sie ist testbar, waehrend "der GC haelt es am Leben" es nicht waere: ein Test mit
-        // GC.Collect() und WeakReference pruefte die Laune des GC, nicht unsere Zusage.
+        // The state survives the calls: that is the observable side, and it is testable, while "the GC
+        // keeps it alive" would not be — a test with GC.Collect() and a WeakReference would check the
+        // mood of the GC rather than the promise.
         Assert.Equal(99, instance.Call<long>("tick"));
         Assert.Equal(98, instance.Call<long>("tick"));
         Assert.Equal(97, instance.Call<long>("tick"));
         Assert.Equal(97, welt.Hp);
     }
 
-    // ------------------------------------------------------------------ was das Skript NICHT darf
+    // ------------------------------------------------------------------ what the script may NOT do
 
     /// <summary>
-    /// Ein Skript kann keinen Host-Typ erzeugen. <b>Ohne diese Diagnose war es ein
-    /// Compiler-Absturz</b> (`cannot compare IrHostType with IrRefType`, gemessen am 2026-08-11):
-    /// das Lowering legte ein Objekt nach der leeren Klassendeklaration an, waehrend die Variable
-    /// den Host-Typ trug.
+    /// A script cannot create a host type. Without this diagnostic it is a compiler crash
+    /// (`cannot compare IrHostType with IrRefType`): the lowering allocates an object after the empty
+    /// class declaration while the variable carries the host type.
     /// </summary>
     [Fact]
     public void A_script_cannot_construct_a_host_type()
@@ -173,9 +169,8 @@ public class HostTypeTests
     }
 
     /// <summary>
-    /// Und es hat keine Felder daran. Das ist die Zusage, die ADR-026 <b>strukturell</b> macht —
-    /// ein Host-Typ hat keinen Typtabellen-Eintrag, also gibt es kein Feld, das ein
-    /// <c>ldfld</c> nennen koennte.
+    /// And it has no fields on it. That promise is STRUCTURAL:
+    /// a host type has no type table entry, so there is no field an <c>ldfld</c> could name.
     /// </summary>
     [Fact]
     public void A_script_has_no_fields_on_a_host_type()
@@ -221,9 +216,8 @@ public class HostTypeTests
     // ------------------------------------------------------------------ Methoden (E4b)
 
     /// <summary>
-    /// Das E4b-Gate: <c>e.damage(5)</c> statt <c>damage(e, 5)</c>. Der Empfaenger ist Parameter 0
-    /// (ADR-014) — dieselbe Konvention wie bei jeder anderen Methode, nur dass die
-    /// Implementierung beim Host liegt.
+    /// <c>e.damage(5)</c> rather than <c>damage(e, 5)</c>. The receiver is parameter 0, the same
+    /// convention as for every other method, except that the implementation lives at the host.
     /// </summary>
     [Fact]
     public void A_script_calls_methods_on_a_host_object()
@@ -256,9 +250,8 @@ public class HostTypeTests
     }
 
     /// <summary>
-    /// Zwei Host-Typen mit <b>gleichnamigen</b> Methoden. Ohne den Typ im gemangelten Namen
-    /// bekaeme der eine die Implementierung des anderen — und mit nur einem Typ waere der Test
-    /// dafuer blind. Dieselbe Lehre wie beim Dispatch-Test aus M8/S4.
+    /// Two host types with methods OF THE SAME NAME. Without the type in the mangled name one would get
+    /// the other's implementation, and with only one type the test would be blind to that.
     /// </summary>
     [Fact]
     public void Two_host_types_may_have_methods_of_the_same_name()
@@ -295,14 +288,13 @@ public class HostTypeTests
     }
 
     /// <summary>
-    /// Der erste Parameter MUSS der Empfaenger sein — sonst haette der Host eine Methode auf
-    /// <c>Entity</c> geschrieben, die ein <c>Sprite</c> erwartet, und das fiele erst beim Binden
-    /// auf.
+    /// The first parameter MUST be the receiver; otherwise the host would have written a method on
+    /// <c>Entity</c> that expects a <c>Sprite</c>, and that would show only while binding.
     ///
-    /// <para>Ueber <c>Getter&lt;TValue&gt;(Func&lt;T, TValue&gt;)</c> ist der Fall gar nicht
-    /// schreibbar — dort erzwingt C#s Typsystem den Empfaenger, und das ist die bessere Stelle
-    /// dafuer. Die Pruefung zur Laufzeit deckt <c>Method(string, Delegate)</c> ab, das
-    /// untypisiert ist, weil eine Methode beliebig viele Parameter haben darf.</para>
+    /// <para>Through <c>Getter&lt;TValue&gt;(Func&lt;T, TValue&gt;)</c> the case cannot even be written:
+    /// there C#'s type system enforces the receiver, and that is the better place for it. The runtime
+    /// check covers <c>Method(string, Delegate)</c>, which is untyped, because a method may have any
+    /// number of parameters.</para>
     /// </summary>
     [Fact]
     public void A_method_whose_first_parameter_is_not_the_receiver_is_refused()
@@ -326,8 +318,7 @@ public class HostTypeTests
             .Getter("leben", (Entity e) => e.Hp)));
     }
 
-    /// <summary>Ein nicht registrierter .NET-Typ bleibt draussen — mit einer Meldung, die den
-    /// Ausweg nennt.</summary>
+    /// <summary>An unregistered .NET type stays outside, with a message that names the way out.</summary>
     [Fact]
     public void An_unregistered_type_is_still_refused()
     {

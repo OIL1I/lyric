@@ -4,43 +4,42 @@ using Lyric.Core;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Die gemeinsame Options- und Ausgabe-Schicht: <c>--json</c>, <c>--quiet</c>, <c>--verbose</c>
-/// und der Fortschritt.
+/// The shared option and output layer: <c>--json</c>, <c>--quiet</c>, <c>--verbose</c> and the
+/// progress display.
 ///
-/// <para>Der wichtigste Fall ist <see cref="Progress_never_touches_stdout"/>. Alles andere hier
-/// ist Bequemlichkeit; das ist der Runner-Vertrag.</para>
+/// <para>The most important case is <see cref="Progress_never_touches_stdout"/>. Everything else here
+/// is convenience; that one is the runner contract.</para>
 /// </summary>
 public sealed class OutputTests
 {
-    /// <summary>Erzwingt den animierten Pfad, den ein umgeleiteter Strom sonst nie nimmt — ohne
-    /// diesen Schalter blieben genau die Zusagen ungetestet, die kaputtgehen koennen.</summary>
+    /// <summary>Forces the animated path a redirected stream would otherwise never take; without this
+    /// switch exactly the promises that can break would stay untested.</summary>
     private const string ForceProgress = "--progress";
 
-    // ---------------------------------------------------------------- Fortschritt und stdout
+    // ---------------------------------------------------------------- progress and stdout
 
     [Theory]
     [MemberData(nameof(CommandTests.RunnableExamples), MemberType = typeof(CommandTests))]
     public void Progress_never_touches_stdout(string example, int expected, bool _)
     {
-        // Die Zusage, an der alles haengt: die Anzeige lebt auf stderr. Waere sie auf stdout,
-        // koennte kein Werkzeug die Ausgabe eines Lyric-Programms mehr maschinell lesen.
+        // The promise everything hangs on: the display lives on stderr. Were it on stdout, no tool could
+        // read the output of a Lyric program mechanically any more.
         var quiet = Toolchain.Lyric("run", Toolchain.Example(example), ForceProgress, "never");
         var loud = Toolchain.Lyric("run", Toolchain.Example(example), ForceProgress, "always");
 
         Assert.Equal(quiet.StdOut, loud.StdOut);
         Assert.Equal(quiet.ExitCode, loud.ExitCode);
 
-        // Und beide liefern das, was die Matrix zusagt. Ohne diese Zeile waeren zwei gleich
-        // kaputte Laeufe gruen — der Vergleich allein sagt nur, dass '--progress' nichts
-        // veraendert, nicht dass das Programm laeuft.
+        // And both deliver what is promised. Without this line two equally broken runs would be green:
+        // the comparison alone says only that '--progress' changes nothing, not that the program runs.
         Assert.Equal(expected, quiet.ExitCode);
     }
 
     [Fact]
     public void Program_output_starts_clean_even_with_progress_on()
     {
-        // Die Zeile muss geloescht sein, BEVOR die erste Instruktion laeuft. Sonst klebt sie vor
-        // dem ersten println.
+        // The line has to be cleared BEFORE the first instruction runs, or it sticks in front of the
+        // first println.
         var result = Toolchain.Lyric(
             "run", Toolchain.Example("hello.lyr"), ForceProgress, "always");
 
@@ -50,8 +49,8 @@ public sealed class OutputTests
     [Fact]
     public void Progress_stays_silent_below_the_display_threshold()
     {
-        // 'lyrvm info' ist schneller als die Schwelle: es liest eine Datei und druckt Zaehler.
-        // Also darf trotz --progress always nichts erscheinen.
+        // 'lyrvm info' is faster than the threshold: it reads a file and prints counters. Nothing may
+        // appear despite --progress always.
         using var module = Toolchain.Temp(".lyrbc");
         Toolchain.Lyrc("build", Toolchain.Example("hello.lyr"), "-o", module.Path);
 
@@ -63,7 +62,7 @@ public sealed class OutputTests
     [Fact]
     public void Progress_is_off_when_stderr_is_redirected()
     {
-        // Der Default-Pfad in genau der Lage, in der diese Tests laufen: umgeleitet, also still.
+        // The default path in exactly the situation these tests run in: redirected, therefore silent.
         var result = Toolchain.Lyric("run", Toolchain.Example("enums.lyr"));
 
         Assert.Equal("", result.Err);
@@ -72,13 +71,12 @@ public sealed class OutputTests
     // ---------------------------------------------------------------- --verbose
 
     /// <summary>
-    /// Die Tabelle listet genau die Phasen, die dieser Build faehrt — in Pipeline-Reihenfolge, mit
-    /// Trennlinie und Summe.
+    /// The table lists exactly the phases this build runs, in pipeline order, with a separator and a sum.
     ///
-    /// <para>Die Erwartung kommt aus <see cref="Pipeline.OfThisBuild"/> und nicht als Literal:
-    /// <c>verify</c> laeuft nur in Debug-Builds, und ein hingeschriebenes <c>"verify"</c> machte
-    /// den Test von der Build-Konfiguration abhaengig. Genau das war er — in Debug gruen, in
-    /// Release (also in CI und in dem, was ausgeliefert wird) rot.</para>
+    /// <para>The expectation comes from <see cref="Pipeline.OfThisBuild"/> rather than as a literal:
+    /// <c>verify</c> runs in debug builds only, and a written-out <c>"verify"</c> would make the test
+    /// depend on the build configuration — green in debug, red in release, which is what CI and the
+    /// shipped artifact use.</para>
     /// </summary>
     [Fact]
     public void Verbose_lists_every_phase_in_pipeline_order_with_a_total()
@@ -105,13 +103,11 @@ public sealed class OutputTests
     }
 
     /// <summary>
-    /// Der Verifier ist die einzige Phase, die ein Build ueberspringen darf — und in einem
-    /// Release-Build tut er es.
+    /// The verifier is the only phase a build may skip, and a release build does.
     ///
-    /// <para>Ohne diesen Test waere der Test darueber auch dann gruen, wenn
-    /// <see cref="Pipeline.OfThisBuild"/> in <b>beiden</b> Konfigurationen dasselbe lieferte: er
-    /// vergleicht die Ausgabe gegen dieselbe Liste, aus der sie entsteht. Hier steht die
-    /// Aussage selbst, gegen den <c>#if</c>, den der Compiler wirklich gesehen hat.</para>
+    /// <para>Without this test the one above would stay green even if <see cref="Pipeline.OfThisBuild"/>
+    /// returned the same in BOTH configurations: it compares the output against the same list it arises
+    /// from. Here the statement itself stands, against the <c>#if</c> the compiler really saw.</para>
     /// </summary>
     [Fact]
     public void Only_a_debug_build_runs_the_verifier()
@@ -128,8 +124,8 @@ public sealed class OutputTests
     [Fact]
     public void Verbose_uses_invariant_number_formatting()
     {
-        // Ein deutsches Gebietsschema schriebe "9,2 ms". Geprueft wird gezielt die Zahl vor
-        // "ms" — ein Komma anderswo ist legitim, die Modulliste ist kommagetrennt.
+        // A German locale would write "9,2 ms". The number before "ms" is checked deliberately: a comma
+        // elsewhere is legitimate, since the module list is comma-separated.
         var result = Toolchain.Lyrc("check", Toolchain.Example("hello.lyr"), "--verbose");
 
         var durations = System.Text.RegularExpressions.Regex
@@ -162,7 +158,7 @@ public sealed class OutputTests
 
         Assert.Equal(ExitCodes.Failure, result.ExitCode);
 
-        // Geparst, nicht per Substring geprueft: sonst testet der Test die Formatierung.
+        // Parsed rather than checked by substring, or the test would check the formatting.
         using var document = JsonDocument.Parse(result.Err);
         var diagnostics = document.RootElement.GetProperty("diagnostics");
         Assert.True(diagnostics.GetArrayLength() > 0);
@@ -172,8 +168,8 @@ public sealed class OutputTests
     [Fact]
     public void Json_is_honoured_by_every_binary_alike()
     {
-        // Der Grund, warum die Options-Schicht in Lyric.Core wohnt: drei Kopien haetten
-        // garantiert einen Pfad, auf dem --json still Klartext liefert.
+        // The reason the option layer lives in Lyric.Core: three copies would guarantee a path on which
+        // --json silently yields plain text.
         using var source = Toolchain.Temp(".lyr");
         File.WriteAllText(source.Path, "fn main(): int { return \"not an int\"; }");
 
@@ -207,8 +203,8 @@ public sealed class OutputTests
     [Fact]
     public void Quiet_does_not_suppress_diagnostics()
     {
-        // Die Gegenprobe, und der eigentliche Test: ein --quiet, das Fehler schluckt, waere
-        // gefaehrlich statt leise.
+        // The counter-check, and the actual test: a --quiet that swallows errors would be dangerous rather
+        // than quiet.
         using var source = Toolchain.Temp(".lyr");
         File.WriteAllText(source.Path, "fn main(): int { return \"not an int\"; }");
 
@@ -221,7 +217,7 @@ public sealed class OutputTests
     [Fact]
     public void Quiet_does_not_suppress_requested_payload()
     {
-        // Ein Dump ist Nutzlast, keine Plauderei.
+        // A dump is payload rather than chatter.
         using var module = Toolchain.Temp(".lyrbc");
         Toolchain.Lyrc("build", Toolchain.Example("arith.lyr"), "-o", module.Path);
 
@@ -241,9 +237,9 @@ public sealed class OutputTests
     [Fact]
     public void Options_after_the_separator_belong_to_the_program()
     {
-        // '--quiet' hinter '--' ist ein Argument des Lyric-Programms, keine Option der Toolchain.
-        // Erkennbar daran, dass die Ausgabe von hello.lyr NICHT unterdrueckt wird — waere es als
-        // Option gelesen worden, bliebe sie aus.
+        // A '--quiet' behind '--' is an argument of the Lyric program rather than an option of the
+        // toolchain. Recognisable by the output of hello.lyr NOT being suppressed: read as an option, it
+        // would stay away.
         var result = Toolchain.Lyric("run", Toolchain.Example("hello.lyr"), "--", "--quiet");
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
@@ -255,8 +251,8 @@ public sealed class OutputTests
     [Fact]
     public void Stdlib_flag_beats_the_environment_variable()
     {
-        // Die Variable zeigt ins Leere, das Flag auf die echte Stdlib. Compiliert es trotzdem,
-        // hat das Flag gewonnen - dieselbe Staffelung wie --vm/LYRIC_VM.
+        // The variable points into nothing, the flag at the real stdlib. If it compiles all the same, the
+        // flag won — the same precedence as for --vm and LYRIC_VM.
         var result = Toolchain.RunWithEnvironment(Toolchain.LyrcPath,
             new Dictionary<string, string?> { ["LYRIC_STDLIB"] = "/nonexistent/stdlib" },
             "check", Toolchain.Example("hello.lyr"),
@@ -268,8 +264,7 @@ public sealed class OutputTests
     [Fact]
     public void A_missing_stdlib_is_reported_rather_than_ignored()
     {
-        // Die Gegenprobe zum Test darueber: ohne die Regression aus der M7-Reparatur waere ein
-        // unauffindbares Modul still durchgegangen.
+        // The counter-check to the test above: an unfindable module used to pass silently.
         var result = Toolchain.Lyrc("check", Toolchain.Example("hello.lyr"),
             "--stdlib", "/nonexistent/stdlib");
 
