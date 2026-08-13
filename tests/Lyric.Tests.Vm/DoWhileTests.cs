@@ -9,19 +9,17 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// <c>do { … } while (…)</c> — die einzige Schleife, deren Bedingung <b>hinter</b> dem Rumpf steht
-/// und deshalb unerreichbar sein kann.
+/// <c>do { … } while (…)</c> — the only loop whose condition stands BEHIND the body and can therefore
+/// be unreachable.
 ///
-/// <para><b>Bis 2026-08-11 war <c>do { return 1; } while (true);</c> ein Compiler-Absturz.</b>
-/// Rumpf, Bedingung und Ausgang wurden alle drei vorab angelegt; terminierte der Rumpf, blieben
-/// zwei Bloecke ohne Praedecessoren stehen, und der Verifier lehnt das ab — es gibt keinen
-/// <c>SimplifyCfg</c>-Pass in v1.</para>
+/// <para><c>do { return 1; } while (true);</c> used to be a compiler crash. Body, condition and exit
+/// were all three created in advance; if the body terminated, two blocks without predecessors stayed
+/// behind, and the verifier rejects that, as there is no SimplifyCfg pass.</para>
 ///
-/// <para><b>Die Falle steckt im zweiten Test.</b> STATUS hat den Fall lange als „Rumpf terminiert"
-/// beschrieben, und daran laesst er sich nicht entscheiden: <c>do { if (c) { break; } return 2; }</c>
-/// faellt nicht durch und erreicht den Ausgang trotzdem. „Ist der Block erreichbar" und „faellt der
-/// Rumpf durch" sind zwei Fragen. Ein Fix, der nur die zweite stellt, waere mit dem ersten Test
-/// gruen und hier rot.</para>
+/// <para>THE TRAP IS IN THE SECOND TEST. The case was long described as "the body terminates", and it
+/// cannot be decided on that: <c>do { if (c) { break; } return 2; }</c> does not fall through and
+/// reaches the exit all the same. "Is the block reachable" and "does the body fall through" are two
+/// questions. A fix asking only the second would be green with the first test and red here.</para>
 /// </summary>
 public class DoWhileTests
 {
@@ -39,8 +37,8 @@ public class DoWhileTests
         de.RenderText(diagnostics);
         Assert.False(de.HasErrors, "source did not compile: " + diagnostics);
 
-        // verify: true — der Verifier IST hier der Test. Ein unerreichbarer Block faellt nur ihm
-        // auf, und genau der war der Absturz.
+        // verify: true — the verifier IS the test here. Only it notices an unreachable block, and that was
+        // exactly the crash.
         var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
         Assert.NotNull(ir);
 
@@ -48,8 +46,8 @@ public class DoWhileTests
             NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
-    /// <summary>Der gemeldete Fall: der Rumpf verlaesst die Funktion, niemand erreicht Bedingung
-    /// oder Ausgang.</summary>
+    /// <summary>The reported case: the body leaves the function and nobody reaches the condition or the
+    /// exit.</summary>
     [Fact]
     public void A_body_that_always_returns_leaves_no_unreachable_blocks() =>
         Assert.Equal(1, Run("""
@@ -59,8 +57,8 @@ public class DoWhileTests
             """));
 
     /// <summary>
-    /// Der Fall, an dem ein zu einfacher Fix scheitert: der Rumpf faellt <b>nicht</b> durch, und
-    /// der Ausgang ist trotzdem erreichbar — ueber das <c>break</c>.
+    /// The case a fix that is too simple fails at: the body does NOT fall through and the exit is
+    /// reachable all the same, through the <c>break</c>.
     /// </summary>
     [Fact]
     public void A_break_reaches_the_exit_even_from_a_body_that_never_falls_through() =>
@@ -73,8 +71,8 @@ public class DoWhileTests
             fn main(): int { return los(true); }
             """));
 
-    /// <summary>Dieselbe Funktion mit der anderen Antwort — sonst bliebe offen, ob der Rumpf
-    /// ueberhaupt noch laeuft.</summary>
+    /// <summary>The same function with the other answer; otherwise it would stay open whether the body
+    /// runs at all.</summary>
     [Fact]
     public void The_same_loop_still_returns_from_inside_the_body() =>
         Assert.Equal(2, Run("""
@@ -86,8 +84,7 @@ public class DoWhileTests
             fn main(): int { return los(false); }
             """));
 
-    /// <summary>Ein <c>continue</c> erreicht die Bedingung, auch wenn der Rumpf nicht
-    /// durchfaellt.</summary>
+    /// <summary>A <c>continue</c> reaches the condition even when the body does not fall through.</summary>
     [Fact]
     public void A_continue_reaches_the_condition_from_a_body_that_never_falls_through() =>
         Assert.Equal(3, Run("""
@@ -103,8 +100,8 @@ public class DoWhileTests
             """));
 
     /// <summary>
-    /// Die Gegenprobe. Ohne sie bliebe alles oben gruen, wenn die gewoehnliche Schleife dabei
-    /// kaputtgegangen waere — und das ist die Form, die in echtem Code steht.
+    /// The counter-check. Without it everything above would stay green if the ordinary loop had broken in
+    /// the process, and that is the form standing in real code.
     /// </summary>
     [Fact]
     public void An_ordinary_do_while_still_loops() =>
@@ -116,8 +113,8 @@ public class DoWhileTests
             }
             """));
 
-    /// <summary>Und die Endlosschleife mit <c>break</c> bleibt die Form, fuer die es
-    /// <c>do-while</c> ueberhaupt gibt.</summary>
+    /// <summary>And the endless loop with a <c>break</c> stays the form <c>do-while</c> exists for.
+    /// </summary>
     [Fact]
     public void A_loop_that_only_leaves_through_break_works() =>
         Assert.Equal(4, Run("""

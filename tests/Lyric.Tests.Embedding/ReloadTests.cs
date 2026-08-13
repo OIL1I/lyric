@@ -4,18 +4,16 @@ using Lyric.Embedding;
 namespace Lyric.Tests.Embedding;
 
 /// <summary>
-/// Hot-Reload (M10/E5).
+/// Hot reload.
 ///
-/// <para><b>Die tragende Zusage ist nicht „es laedt neu", sondern „die alte Fassung ueberlebt
-/// einen Fehlschlag".</b> Ein Mod, den jemand mit einem Tippfehler speichert, darf das Spiel
-/// nicht anhalten — dieselbe Eigenschaft, die die REPL seit ADR-021 hat: eine fehlerhafte Eingabe
-/// aendert nichts. Ohne diesen Test waere <c>Reload</c> nur ein Alias fuer
-/// <c>Instantiate(CompileFile(...))</c>, das der Host auch selbst schreiben koennte.</para>
+/// <para>THE LOAD-BEARING PROMISE IS NOT "it reloads" BUT "the old version survives a failure". A mod
+/// someone saves with a typo must not stop the game — the same property the REPL has: a faulty input
+/// changes nothing. Without this test <c>Reload</c> would only be an alias for
+/// <c>Instantiate(CompileFile(...))</c>, which the host could write itself.</para>
 ///
-/// <para>Was neu laeuft und was bleibt, fiel aus zwei fruehreren Entscheidungen von selbst heraus:
-/// die Modul-Konstanten werden neu berechnet, weil eine neue Instanz ein neuer Zustand ist
-/// (ADR-025), und Host-Objekte ueberleben, weil sie dem GC gehoeren und nicht der Instanz
-/// (ADR-026).</para>
+/// <para>What runs anew and what stays fell out of two earlier decisions by itself: the module constants
+/// are recomputed, because a new instance is a new state, and host objects survive, because they belong
+/// to the GC rather than to the instance.</para>
 /// </summary>
 public class ReloadTests : IDisposable
 {
@@ -61,8 +59,8 @@ public class ReloadTests : IDisposable
     }
 
     /// <summary>
-    /// <b>Der eigentliche Test.</b> Scheitert die neue Fassung, wirft <c>Reload</c> — und die alte
-    /// Instanz laeuft weiter, als waere nichts gewesen.
+    /// The actual test. When the new version fails, <c>Reload</c> throws and the old instance runs on as
+    /// if nothing had happened.
     /// </summary>
     [Fact]
     public void A_failed_reload_leaves_the_old_instance_working()
@@ -76,16 +74,15 @@ public class ReloadTests : IDisposable
         var thrown = Assert.Throws<EmbeddingException>(() => instance.Reload());
         Assert.Contains(thrown.Diagnostics, d => d.Code == "LYR-SEM0002");
 
-        // Unveraendert benutzbar — und zwar mehrfach, nicht nur einmal.
+        // Usable unchanged, and repeatedly rather than only once.
         Assert.Equal(1, instance.Call<long>("wert"));
         Assert.Equal(1, instance.Call<long>("wert"));
     }
 
     /// <summary>
-    /// Die Modul-Konstanten werden neu berechnet: eine neue Instanz ist ein neuer Zustand
-    /// (ADR-025). Ohne diesen Test bliebe offen, ob <c>Reload</c> den alten Zustand weiterreicht —
-    /// und genau das waere der Fehler, der erst auffaellt, wenn ein Mod-Autor sich wundert, warum
-    /// seine Aenderung nichts tut.
+    /// The module constants are recomputed: a new instance is a new state. Without this test it would stay
+    /// open whether <c>Reload</c> passes the old state on, and that would be the fault that shows only
+    /// when a mod author wonders why their change does nothing.
     /// </summary>
     [Fact]
     public void A_reload_re_runs_the_module_constants()
@@ -104,14 +101,13 @@ public class ReloadTests : IDisposable
 
         instance = instance.Reload();
 
-        // Bei 1 und nicht bei 3: der Initialisierer lief neu.
+        // At 1 rather than at 3: the initializer ran anew.
         Assert.Equal(1, instance.Call<long>("hoch"));
     }
 
     /// <summary>
-    /// Ein Host-Objekt ueberlebt den Reload — es gehoert dem GC und nicht der Instanz (ADR-026).
-    /// Das ist die Eigenschaft, die Hot-Reload in einem Spiel brauchbar macht: die Welt bleibt
-    /// stehen, nur das Skript wird ausgetauscht.
+    /// A host object survives the reload: it belongs to the GC rather than to the instance. That is the
+    /// property making hot reload usable in a game — the world stays, only the script is exchanged.
     /// </summary>
     [Fact]
     public void A_host_object_survives_a_reload()
@@ -141,7 +137,7 @@ public class ReloadTests : IDisposable
 
         instance = instance.Reload();
 
-        // Die Welt hat sich gemerkt, was vorher passiert ist — nur die Regel hat sich geaendert.
+        // The world remembered what happened before; only the rule changed.
         Assert.Equal(38, instance.Call<long>("treffer"));
         Assert.Equal(38, welt.Hp);
     }
@@ -158,9 +154,9 @@ public class ReloadTests : IDisposable
         Assert.Equal("LYR-EMB0008", thrown.Code);
     }
 
-    /// <summary>Die alte Instanz bleibt nach einem ERFOLGREICHEN Reload ebenfalls benutzbar — sie
-    /// ist nur nicht mehr die aktuelle. Ein Host, der noch eine Referenz haelt, faellt damit nicht
-    /// in einen halb abgeraeumten Zustand.</summary>
+    /// <summary>The old instance stays usable after a SUCCESSFUL reload as well; it is only no longer the
+    /// current one. A host still holding a reference therefore does not fall into a half-cleared
+    /// state.</summary>
     [Fact]
     public void The_old_instance_still_works_after_a_successful_reload()
     {
