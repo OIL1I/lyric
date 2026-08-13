@@ -8,13 +8,12 @@ namespace Lyric.Bytecode;
 /// <see cref="IrModule"/> → <c>.lyrbc</c>-Bytes.
 ///
 /// <para><b>Deterministisch</b> (ADR-013): gleicher Input erzeugt byte-identischen Output. Dafür
-/// braucht es drei Dinge — der String-Pool wird in Erst-Verwendungs-Reihenfolge aufgebaut (nicht in
-/// Hash-Reihenfolge), es gibt keine Zeitstempel, und Sektionen erscheinen in aufsteigender
-/// Id-Reihenfolge. Ohne das wären Golden-Tests und Bytecode-Diffs wertlos.</para>
+/// it takes three things: the string pool is built in first-use order rather than hash order, there
+/// are no timestamps, and sections appear in ascending id order.</para>
 ///
-/// <para>Der Aufbau ist zweistufig wie beim Lowering: erst <see cref="StackScheduler"/> je Funktion
-/// (Slots, Stack-Platzierung, maximale Tiefe), dann die Emission. Die Trennung ist nötig, weil der
-/// Funktionskopf Slot-Anzahl und Max-Tiefe <b>vor</b> dem Code trägt.</para>
+/// <para>The build is two-staged like the lowering: first <see cref="StackScheduler"/> per function
+/// (slots, stack placement, maximum depth), then emission. The split is needed because the function
+/// header carries the slot count and the maximum depth BEFORE the code.</para>
 /// </summary>
 public static class BytecodeWriter
 {
@@ -23,9 +22,9 @@ public static class BytecodeWriter
         var strings = new StringPool();
         var layouts = new List<FunctionLayout>(module.Functions.Count);
 
-        // Namen zuerst internen, damit der Pool-Anfang stabil an der Funktionsreihenfolge hängt.
-        // Typnamen gehören hierher und nicht in die Types-Sektion: der String-Pool ist Sektion 2
-        // und damit lange geschrieben, bevor Sektion 3 an der Reihe wäre.
+        // Names are interned first, so the start of the pool depends stably on function order.
+        // Type names belong here rather than in the Types section: the string pool is section 2 and
+        // is written long before section 3.
         foreach (var type in module.Types) strings.Intern(type.Name);
 
         foreach (var function in module.Functions)
@@ -34,7 +33,8 @@ public static class BytecodeWriter
             layouts.Add(StackScheduler.Schedule(function));
         }
 
-        // Code vor dem Header schreiben: er füllt den String-Pool, und der steht als Sektion davor.
+        // The code is written before the header: it fills the string pool, which is an earlier
+        // section.
         var bodies = new List<byte[]>(module.Functions.Count);
         for (var i = 0; i < module.Functions.Count; i++)
             bodies.Add(WriteFunction(module.Functions[i], layouts[i], strings, module.Imports.Count));
@@ -44,9 +44,9 @@ public static class BytecodeWriter
         writer.U16(Format.VersionMajor);
         writer.U16(Format.VersionMinor);
 
-        // Was das Programm VERLANGT (ADR-007). Was gewaehrt wird, entscheidet die Runtime beim
-        // Laden — hier steht nur der Bedarf, und er steht im Modul, weil ein Host fremden
-        // Bytecode ohne den Compiler beurteilen koennen muss (ADR-013).
+        // What the program REQUIRES. What is granted is decided by the runtime at load time; only
+        // the requirement is recorded here, in the module, so a host can judge foreign bytecode
+        // without the compiler.
         WriteSection(writer, SectionId.Capabilities, s => s.ULeb((ulong)module.Capabilities));
 
         WriteSection(writer, SectionId.Strings, s =>
@@ -55,7 +55,7 @@ public static class BytecodeWriter
             foreach (var value in strings.InOrder) s.String(value);
         });
 
-        // Muss vor Imports und Functions stehen — Sektions-Ids sind aufsteigend, und beide dürfen
+        // Must precede Imports and Functions: section ids ascend, and both may
         // Referenztypen in ihren Signaturen nennen.
         if (module.Types.Count > 0)
             WriteSection(writer, SectionId.Types, s =>
@@ -72,8 +72,8 @@ public static class BytecodeWriter
                     if (type.IsInterface)
                     {
                         // Ein Interface traegt keine Felder, sondern Slot-Namen. Sie stehen im
-                        // Bytecode — anders als Feldnamen —, weil ein Disassembler sonst nur
-                        // 'ty3#1' zeigen koennte und eine Fremd-Runtime beim Binden von
+                        // bytecode — unlike field names — because a disassembler could otherwise
+                        // only show 'ty3#1', and a third-party runtime binding
                         // Host-Implementierungen keinen Anhaltspunkt haette.
                         s.ULeb(type.MethodSlots.Length);
                         foreach (var slot in type.MethodSlots) s.String(slot);
@@ -82,7 +82,7 @@ public static class BytecodeWriter
 
                     if (type.IsEnum)
                     {
-                        // Ein Enum traegt keine eigenen Felder — seine Varianten tun das.
+                        // An enum carries no fields of its own; its variants do.
                         s.ULeb(type.Variants.Length);
                         foreach (var variant in type.Variants) s.ULeb(variant.Value);
                         continue;
@@ -93,7 +93,7 @@ public static class BytecodeWriter
                 }
             });
 
-        // Symbolisch: Name + Signatur, gebunden beim Laden (ADR-013, WASM-Modell). Keine Adressen.
+        // Symbolic: name and signature, bound at load time. No addresses.
         WriteSection(writer, SectionId.Imports, s =>
         {
             s.ULeb(module.Imports.Count);
@@ -114,17 +114,14 @@ public static class BytecodeWriter
 
         // Fehlt bei Bibliotheks-Modulen. Muss nach Functions stehen: Sektionen sind aufsteigend.
         //
-        // Der Index laeuft in den GEMEINSAMEN Raum (erst Imports, dann Funktionen) — derselbe, den
-        // 'call' benutzt. Bytecode.md §Start (Id 7) sagt das seit jeher; der Writer schrieb bis
-        // 2026-08-05 die nackte FunctionId. Aufgefallen ist es nie, weil beide Lesarten
-        // zusammenfallen, sobald ein Modul keine Importe hat: examples/arith.lyr lief korrekt,
-        // examples/hello.lyr haette eine spec-treue Fremd-Runtime in einen Import springen lassen.
+        // The index runs into the SHARED space (imports first, then functions), the same one 'call'
+        // uses.
         if (module.EntryFunction is { } entry)
             WriteSection(writer, SectionId.Start,
                 s => s.ULeb(module.Imports.Count + entry.Value));
 
-        // Interface-Implementierungen. Ganz zuletzt, weil Sektions-Ids strikt aufsteigen
-        // muessen und Impls (8) hinter Start (7) liegt.
+        // Interface implementations, last because section ids ascend strictly and Impls (8) comes
+        // after Start (7).
         if (module.Impls.Count > 0)
             WriteSection(writer, SectionId.Impls, s =>
             {
@@ -135,8 +132,8 @@ public static class BytecodeWriter
                     s.ULeb(impl.Interface.Value);
                     s.ULeb(impl.Methods.Length);
                     // Funktionsindex im GEMEINSAMEN Raum (erst Imports, dann Funktionen) — wie
-                    // bei 'call' und bei der Start-Sektion. Ein Import als vtable-Eintrag ist
-                    // damit ausdrueckbar; ob eine Runtime das zulaesst, ist ihre Sache.
+                    // as for 'call' and for the Start section. An import as a vtable entry is
+                    // expressible; whether a runtime accepts one is its own business.
                     foreach (var method in impl.Methods)
                         s.ULeb(module.Imports.Count + method.Value);
                 }
@@ -144,14 +141,14 @@ public static class BytecodeWriter
 
 
         // Globale Slots samt ihrer Init-Funktion. Vor Handlers (9), hinter Start (7)? Nein:
-        // Globals ist 10 und steht damit ganz am Ende — Sektions-Ids steigen strikt.
+        // Globals is 10 and therefore comes last; section ids ascend strictly.
         if (module.Globals.Count > 0)
             WriteSection(writer, SectionId.Globals, s =>
             {
                 s.ULeb(module.Globals.Count);
                 foreach (var global in module.Globals) WriteType(s, global.Type);
 
-                // 0 = keine Init-Funktion; sonst der Index im gemeinsamen Raum, um eins erhoeht.
+                // 0 means no initializer; otherwise the index in the shared space, incremented.
                 s.ULeb(module.GlobalInit is { } init
                     ? (ulong)(module.Imports.Count + init.Value + 1)
                     : 0UL);
@@ -173,8 +170,9 @@ public static class BytecodeWriter
                     s.ULeb(h.Start.Value);
                     s.ULeb(h.End.Value);
                     s.U8((byte)(h.Kind == IrHandlerKind.Finally ? 1 : 0));
-                    // -1 als "kein Typ"/"kein Slot": im Strom als uleb128 0, der echte Index +1.
-                    // Ein eigenes Praesenz-Byte waere ein Byte mehr fuer dieselbe Aussage.
+                    // -1 as "no type" or "no slot": written as uleb128 0, the real index
+                    // incremented by one. A separate presence byte would cost a byte for the same
+                    // statement.
                     s.ULeb(h.CatchType is { } t ? (ulong)(t.Value + 1) : 0UL);
                     s.ULeb(h.Handler.Value);
                     s.ULeb(h.Slot is { } slot ? (ulong)(slot.Value + 1) : 0UL);
@@ -184,8 +182,8 @@ public static class BytecodeWriter
         return writer.ToArray();
     }
 
-    /// <summary>Sektion = Id, Byte-Länge, Inhalt. Die Länge erlaubt es einem Leser, eine unbekannte
-    /// Sektion zu überspringen — das ist der Mechanismus hinter „Source-Map ist strippbar".</summary>
+    /// <summary>A section is id, byte length, content. The length lets a reader skip an unknown
+    /// section, which is the mechanism behind a strippable source map.</summary>
     private static void WriteSection(ByteWriter writer, SectionId id, Action<ByteWriter> body)
     {
         var payload = new ByteWriter();
@@ -244,8 +242,8 @@ public static class BytecodeWriter
 
             case BinOp b:
                 code.Opcode(BinOpcode(b.Kind));
-                // Das Tag nennt den OPERANDEN-Typ. Bei Vergleichen ist b.Type bool, aber die VM
-                // muss wissen, was sie vergleicht (i64 und u64 sind verschiedene Maschinen-Ops).
+                // The tag names the OPERAND type. For a comparison b.Type is bool, but the VM has
+                // to know what it compares: i64 and u64 are different machine operations.
                 code.Tag(TagOf(function.Temps[b.Lhs.Value].Type));
                 break;
 
@@ -277,7 +275,7 @@ public static class BytecodeWriter
 
             case CallImport k:
                 // Gemeinsamer Indexraum: erst Imports, dann Funktionen. Die Arithmetik sitzt hier,
-                // weil hier die Konvention lebt — die IR hält beide bewusst getrennt.
+                // because the convention lives here; the IR keeps the two apart deliberately.
                 code.Opcode(Op.Call);
                 code.ULeb(k.Target.Value);
                 break;
@@ -350,18 +348,18 @@ public static class BytecodeWriter
             case MakeClosure m:
                 code.Opcode(Op.MakeClosure);
                 // Zielindex im gemeinsamen Aufruf-Indexraum (erst Imports, dann Funktionen) —
-                // dieselbe Rechnung wie bei 'call'. Das UNTERSTE BIT sagt, ob ein Environment auf
-                // dem Stack liegt: ein Leser muss die Stack-Wirkung beim Laden kennen (ADR-013),
-                // und eine Closure ohne Captures hat kein Environment.
+                // the same arithmetic as for 'call'. The LOWEST BIT says whether an environment is
+                // on the stack: a reader must know the stack effect at load time, and a closure
+                // without captures has none.
                 code.ULeb(((ulong)(importCount + m.Target.Value) << 1)
                           | (m.Environment is null ? 0UL : 1UL));
                 break;
 
             case CallIndirect c:
                 code.Opcode(Op.CallIndirect);
-                // Argumentzahl ohne den Aufgerufenen; unterstes Bit: liefert einen Wert. Dieselbe
-                // Kodierung wie bei mkclosure und aus demselben Grund — bei 'call' steht beides in
-                // der Zielsignatur, hier gibt es keine.
+                // Argument count without the callee; the lowest bit says whether it yields a value.
+                // The same encoding as mkclosure and for the same reason: 'call' has both in its
+                // target signature, and here there is none.
                 code.ULeb(((ulong)c.Args.Length << 1) | (c.Dest is null ? 0UL : 1UL));
                 break;
 
@@ -417,7 +415,7 @@ public static class BytecodeWriter
 
             case Throw t:
                 code.Opcode(Op.Throw);
-                // 0 = "steht erst zur Laufzeit fest"; der echte Index steht um eins erhoeht.
+                // 0 means the type is only known at runtime; the real index is incremented.
                 code.ULeb(t.Concrete is { } thrown ? (ulong)(thrown.Value + 1) : 0UL);
                 break;
 
@@ -430,10 +428,10 @@ public static class BytecodeWriter
         }
     }
 
-    /// <summary>Operanden, die in Slots liegen, kommen per <c>ldloc</c> auf den Stack. Der
-    /// Scheduler garantiert, dass entweder <b>alle</b> Operanden schon auf dem Stack liegen (dann
-    /// ist hier nichts zu tun) oder <b>keiner</b> — gemischt wäre nicht emittierbar, weil ein
-    /// <c>ldloc</c> über einem bereits liegenden Operanden die Reihenfolge zerstörte.</summary>
+    /// <summary>Operands held in slots reach the stack through an <c>ldloc</c>. The scheduler
+    /// guarantees that either ALL operands are already on the stack or NONE are; a mix would not be
+    /// emittable, because an <c>ldloc</c> above an operand already there would destroy the
+    /// order.</summary>
     private static void LoadSlotOperands(ByteWriter code, FunctionLayout layout,
         IReadOnlyList<TempId> operands)
     {
@@ -470,7 +468,7 @@ public static class BytecodeWriter
         var kind = ((IrScalarType)constant.Type).Kind;
         switch (constant.Value)
         {
-            // Zweierkomplement, nullerweitert auf 64 Bit — dieselbe Kodierung wie in der IR.
+            // Two's complement, zero-extended to 64 bits, the same encoding as in the IR.
             case IntConst i: code.ULeb(i.Value); break;
             case FloatConst f when kind == IrScalar.F32: code.F32((float)f.Value); break;
             case FloatConst f: code.F64(f.Value); break;
@@ -504,28 +502,27 @@ public static class BytecodeWriter
         _ => throw new InternalCompilationException($"bytecode: unknown binop {kind}")
     };
 
-    /// <summary>Ein Typ im Bytecode: Tag, und bei zusammengesetzten der Index dahinter
-    /// (Bytecode.md §3). Einzige Schreibstelle für Typen — <c>Tag</c> allein reicht seit 1.2 nicht
-    /// mehr, und eine vergessene Stelle wäre ein um ein Byte verschobener Strom.</summary>
+    /// <summary>A type in the bytecode: the tag, and for a composite the index behind it. The only
+    /// place types are written; a tag alone is not a complete type, and a forgotten site would
+    /// shift the stream by a byte.</summary>
     internal static void WriteType(ByteWriter w, IrType type)
     {
         w.Tag(TagOf(type));
         if (type is IrRefType r) w.ULeb(r.Type.Value);
-        // Der Elementtyp steht inline und rekursiv — int[][] ist 0x41 0x41 0x04.
+        // The element type is inline and recursive: int[][] is 0x41 0x41 0x04.
         if (type is IrArrayType a) WriteType(w, a.Element);
         if (type is IrOptionalType o) WriteType(w, o.Inner);
         if (type is IrEnumType e) w.ULeb(e.Type.Value);
         if (type is IrInterfaceType i) w.ULeb(i.Type.Value);
         if (type is IrStructType v) w.ULeb(v.Type.Value);
 
-        // Der Name INLINE und nicht als String-Pool-Index: 'WriteType' ist statisch und kennt den
-        // Pool nicht, und ihn durch sechs Aufrufstellen zu faedeln waere Aufwand fuer eine
-        // Ersparnis von wenigen Bytes je Modul. Dieselbe Wahl wie bei 'Fn', dem anderen
+        // The name is INLINE rather than a string-pool index: 'WriteType' is static and does not
+        // know the pool. The same choice as for 'Fn', the other
         // zusammengesetzten Typ ohne Tabellen-Eintrag.
         if (type is IrHostType h) w.String(h.Name);
 
         // Strukturell: Parameterzahl, Parametertypen, Rueckgabetyp. Als einziger zusammengesetzter
-        // Typ ohne Tabellen-Eintrag — er hat keine Deklaration, an der eine Id haengen koennte.
+        // type without a table entry — it has no declaration to hang an id on.
         if (type is IrFunctionType f)
         {
             w.ULeb(f.Parameters.Length);
@@ -566,8 +563,8 @@ public static class BytecodeWriter
             $"bytecode: type not encodable: {type.GetType().Name}")
     };
 
-    /// <summary>Konstantenpool für Strings. Erst-Verwendungs-Reihenfolge, damit der Output
-    /// deterministisch ist — eine Hash-Reihenfolge wäre es nicht.</summary>
+    /// <summary>The constant pool for strings, in first-use order so the output is deterministic.
+    /// </summary>
     private sealed class StringPool
     {
         private readonly Dictionary<string, int> _indices = new(StringComparer.Ordinal);

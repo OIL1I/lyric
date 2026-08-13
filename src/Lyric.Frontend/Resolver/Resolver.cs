@@ -7,11 +7,10 @@ namespace Lyric.Resolver;
 /// Name-Auflösung (Sprache.md §2/§3). Drei Pässe:
 ///   1. Deklarieren: alle Top-Level-Symbole + Typ-Member registrieren (2-Pass-Prinzip
 ///      für Forward-Refs), Duplikate melden.
-///   2. Imports auflösen: Ziel-Modul in der Compilation suchen (sonst extern/opak),
-///      Namen in den Modul-Scope bringen, Sichtbarkeit prüfen, Zyklen erkennen.
-///   3. Typ-Namen binden: jede <see cref="NamedType"/> an ihr Symbol (Builtin / lokal /
-///      importiert / extern) — Ergebnis in der <see cref="BindingResult"/>-Seitentabelle.
-/// Slice 1 bindet noch keine Ausdrücke und berechnet keine Typen (das ist Slice 2).
+///   2. Resolve imports: find the target module in the compilation (otherwise external and
+///      opaque), bring the names into the module scope, check visibility, detect cycles.
+///   3. Bind type names in signatures and fields, recording the result in the
+///      <see cref="BindingResult"/> side table.
 /// </summary>
 public sealed class Resolver
 {
@@ -65,8 +64,8 @@ public sealed class Resolver
     }
 
     // Extend-Block (§3.6): Methoden bekommen ein eigenes FunctionSymbol in einer Block-Scope
-    // (Parent = Modul-Scope), damit `T`/freie Namen auflösen. Der Ziel-Typ wird erst in Pass 3
-    // gebunden. Kein neues Top-Level-Symbol; die Methoden leben nur in der ExtensionRegistry.
+    // (parent = module scope), so `T` and free names resolve. The target type is bound in pass 3.
+    // No new top-level symbol; the methods live only in the ExtensionRegistry.
     private void DeclareExtend(ModuleSymbol module, ExtendDecl ex)
     {
         var methodScope = new SymbolTable(module.Members);
@@ -93,9 +92,9 @@ public sealed class Resolver
                 case FieldDecl f: DeclareMember(scope, new FieldSymbol(f.Name, f), f); break;
                 case FunctionDecl fn: DeclareMember(scope, Fn(fn), fn); break;
 
-                // 'static let' ist eine typgebundene Konstante (ADR-014). Als GlobalSymbol, weil
-                // es genau das ist — eine unveränderliche Bindung ohne Instanz; nur ihr Scope ist
-                // der Typ statt das Modul. Ein eigenes Symbol wäre ein zweiter Mechanismus für
+                // A 'static let' is a type-bound constant, held as a GlobalSymbol because that is
+                // what it is: an immutable binding without an instance, scoped to the type rather
+                // than to the module.
                 // dieselbe Sache.
                 case StaticBindingDecl sb:
                     DeclareMember(scope, new GlobalSymbol(sb.Binding.Name, Vis(sb.IsPublic), sb), sb);
@@ -135,8 +134,8 @@ public sealed class Resolver
         return result;
     }
 
-    // Typ-Params in den Member-/Signatur-Scope legen, damit `T` auflöst. Kollidiert ein
-    // Param mit einem Member-Namen, meldet TryDeclare später ohnehin — hier still ignoriert.
+    // Type parameters go into the member and signature scope so `T` resolves. A collision with a
+    // member name is reported by TryDeclare later.
     private static void DeclareGenerics(SymbolTable scope, GenericParamSymbol[] generics)
     {
         foreach (var g in generics) scope.TryDeclare(g);
@@ -157,9 +156,9 @@ public sealed class Resolver
     }
 
     /// <summary>
-    /// Zwei gleichnamige Funktionen sind kein Versehen, sondern der Versuch zu überladen — und das
-    /// ist eine bewusste Regel (ADR-015: auf v1.X vertagt), keine bloße Namenskollision. Ohne den
-    /// Zusatz liest sich die Meldung, als hätte man sich vertan.
+    /// Two functions of the same name are an attempt to overload rather than a slip, and that is a
+    /// deliberate rule rather than a plain name collision. Without the addition the message reads
+    /// as if the author had made a mistake.
     /// </summary>
     private static string OverloadHint(SymbolTable scope, Symbol sym) =>
         sym is FunctionSymbol && scope.LookupLocal(sym.Name) is FunctionSymbol
@@ -179,12 +178,10 @@ public sealed class Resolver
     {
         var target = _comp.FindModule(imp.Path);
 
-        // Ein Modul, das nicht gefunden wird, ist ein Fehler — kein „extern/opak". Die alte
-        // Regel stammt aus M3, als es den ModuleLoader noch nicht gab; seit M6-2 wird die Stdlib
-        // wirklich geladen, und was dann fehlt, fehlt.
+        // A module that cannot be found is an error rather than external and opaque.
         //
-        // Ohne die Meldung ist ein Tippfehler im Modulnamen unsichtbar UND schaltet die Prüfung
-        // jeder Verwendung stumm ab: das ExternalSymbol tragt LyrType.Error, und Error heißt für
+        // Without the diagnostic a typo in a module name is invisible AND silently disables the
+        // check of every use: the ExternalSymbol carries LyrType.Error, and Error means
         // jeden Konsumenten „wurde schon gemeldet", also schweigt er.
         if (target is null)
             _de.Report("LYR-RES0003", Severity.Error, imp.Span,
@@ -289,7 +286,8 @@ public sealed class Resolver
                 BindGenerics(i.Generics, isc);
                 foreach (var m in i.Members) BindFunctionTypes(m, isc);
                 break;
-            // ExtendDecl → ResolveExtensionTargets (braucht die Block-Method-Scope für Generics).
+            // ExtendDecl goes to ResolveExtensionTargets, which needs the block method scope for
+            // generics.
             case TypeAliasDecl a: BindType(a.Aliased, scope); break;
             case GlobalBindingDecl g:
                 if (g.Binding.Type is not null) BindType(g.Binding.Type, scope);
@@ -297,9 +295,9 @@ public sealed class Resolver
         }
     }
 
-    // Pass 3.5: Extend-Ziele + Signaturen binden. Läuft nach allen BindTypeNames, damit
-    // jeder Ziel-Typ bekannt ist. Signaturen binden gegen die Block-Method-Scope (Parent =
-    // Modul), plus die Methoden-Generics — so löst `T` in `fn map<T>(x: T)` auf.
+    // Pass 3.5: bind extend targets and signatures. Runs after every BindTypeNames, so each target
+    // type is known. Signatures bind against the block method scope (parent = module) plus the
+    // method generics, so `T` in `fn map<T>(x: T)` resolves.
     private void ResolveExtensionTargets()
     {
         foreach (var block in _comp.Extensions.Blocks)
@@ -328,8 +326,8 @@ public sealed class Resolver
 
     private void BindFunctionTypes(FunctionDecl fn, SymbolTable scope)
     {
-        // Generische Funktion: Signatur gegen einen Scope binden, der die Typ-Params enthält
-        // (dieselben Symbol-Instanzen, die auf dem FunctionSymbol liegen → identisch für die Sema).
+        // A generic function binds its signature against a scope holding the type parameters — the
+        // same symbol instances that sit on the FunctionSymbol, so the sema sees them as identical.
         var fsym = scope.LookupLocal(fn.Name) as FunctionSymbol;
         var sig = fsym is { Generics.Length: > 0 } ? WithGenerics(scope, fsym.Generics) : scope;
         foreach (var p in fn.Parameters) BindType(p.Type, sig);
