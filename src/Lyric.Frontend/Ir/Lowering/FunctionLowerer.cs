@@ -6,30 +6,26 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Lowert <b>eine</b> Funktion vom typgeprüften AST in eine <see cref="IrFunction"/>. Ein Objekt pro
-/// Funktion (wie <c>IrVerifier.FunctionVerifier</c>), weil Slots, Blöcke und Loop-Stack
-/// funktionslokal sind und mit der Funktion sterben.
+/// Lowers ONE function from the type-checked AST into an <see cref="IrFunction"/>. One object per
+/// function, like <c>IrVerifier.FunctionVerifier</c>, because slots, blocks and the loop stack are
+/// function-local and die with the function.
 ///
-/// <para><b>Statements liefern <c>bool</c>: „fällt der Kontrollfluss durch?"</b> Das ist die
-/// tragende Signatur-Entscheidung. Ohne sie kann man nicht entscheiden, ob ein Merge-Block
-/// angelegt werden darf — und ein Merge-Block ohne Prädecessoren ist unerreichbar, was der
-/// Verifier ablehnt (bewusst: kein <c>SimplifyCfg</c>-Pass in v1). Aus demselben Grund bricht
-/// <see cref="LowerStatements"/> ab, sobald ein Statement nicht durchfällt: Code nach einem
-/// <c>return</c> darf keinen Block erzeugen.</para>
+/// <para>STATEMENTS RETURN A <c>bool</c>: "does control flow fall through?" That is the load-bearing
+/// signature decision. Without it one cannot decide whether a merge block may be created, and a merge
+/// block without predecessors is unreachable, which the verifier rejects — deliberately, as there is no
+/// <c>SimplifyCfg</c> pass. For the same reason <see cref="LowerStatements"/> stops as soon as a
+/// statement does not fall through: code after a <c>return</c> must not produce a block.</para>
 ///
-/// <para><b>Werte über Blockgrenzen laufen durch Locals, nicht durch Temps.</b> Ein Temp wird
-/// genau einmal definiert, kann also nicht „das Ergebnis aus zwei Zweigen" tragen. if-Ausdruck
-/// und <c>&amp;&amp;</c>/<c>||</c> legen darum ein synthetisches Local an, schreiben in beiden Zweigen
-/// hinein und lesen es im Merge-Block. Genau deshalb braucht diese IR kein <c>Phi</c>: das
-/// Ziel ist eine Stack-VM mit Local-Slots (ADR-001), ein Phi müsste beim Emittieren ohnehin
-/// wieder zu Store/Load werden.</para>
+/// <para>VALUES CROSSING BLOCK BOUNDARIES TRAVEL THROUGH LOCALS, NOT THROUGH TEMPS. A temp is defined
+/// exactly once and therefore cannot carry "the result from two branches". An if expression and
+/// <c>&amp;&amp;</c>/<c>||</c> therefore create a synthetic local, write into it in both branches and
+/// read it in the merge block. That is why this IR needs no <c>Phi</c>: the target is a stack VM with
+/// local slots, and a phi would have to become store/load again at emission.</para>
 ///
-/// <para>Was P4 <b>nicht</b> lowert (die IR kann es nicht ausdrücken): Nullable, struct/class/enum,
-/// Arrays, Tupel, <c>match</c>, <c>for-in</c>, Lambdas, Exceptions, <c>defer</c>, Coroutinen,
-/// Generics, Stdlib-/Extern-Calls, f-Strings. Das ist gültiges Lyric, also eine <b>Diagnose</b>
-/// (<c>LYR-IR0001</c>) mit Datei/Zeile/Spalte und kein Absturz — siehe
-/// <see cref="UnsupportedConstructException"/>. Interne Inkonsistenzen bleiben davon getrennt und
-/// werfen weiterhin <see cref="InternalCompilationException"/>.</para>
+/// <para>A construct the IR cannot express is valid Lyric and therefore a DIAGNOSTIC
+/// (<c>LYR-IR0001</c>) with file, line and column rather than a crash — see
+/// <see cref="UnsupportedConstructException"/>. Internal inconsistencies stay separate and keep
+/// throwing <see cref="InternalCompilationException"/>.</para>
 /// </summary>
 internal sealed class FunctionLowerer
 {
@@ -44,48 +40,45 @@ internal sealed class FunctionLowerer
     private readonly TypeTable _typeTable;
     private readonly GlobalTable _globals;
 
-    /// <summary>Slot des Empfängers (immer 0), oder <c>null</c> bei freier bzw. static-Funktion.</summary>
+    /// <summary>The receiver's slot, always 0, or <c>null</c> for a free or static function.</summary>
     private readonly LocalId? _thisSlot;
     private IrType? _thisType;
 
-    /// <summary>Der Empfaengertyp dieser Funktion — ein Lambda in ihrem Rumpf erbt ihn,
-    /// wenn es <c>this</c> faengt.</summary>
+    /// <summary>The receiver type of this function; a lambda in its body inherits it when it captures
+    /// <c>this</c>.</summary>
     private readonly TypeSymbol? _receiver;
 
-    /// <summary>Die Typinstanz, zu der diese Methode gehoert — gesetzt, wenn hier
-    /// <c>Box&lt;int&gt;.get</c> gelowert wird. Dann ist <c>this</c> vom Typ der INSTANZ, nicht
-    /// der Definition: <c>Box</c> allein hat kein Layout, nur <c>Box&lt;int&gt;</c> hat eines.</summary>
+    /// <summary>The type instance this method belongs to, set when <c>Box&lt;int&gt;.get</c> is being
+    /// lowered here. <c>this</c> is then of the INSTANCE's type rather than the definition's:
+    /// <c>Box</c> alone has no layout, only <c>Box&lt;int&gt;</c> has one.</summary>
     private readonly GenericInstance? _ownerInstance;
 
-    /// <summary>Typargumente der Instanz, für die gelowert wird. In P4 immer leer — der Haken sitzt
-    /// in <see cref="LowerType"/>, damit die Worklist-Monomorphisierung später nur die Map füllen
-    /// muss und nicht den ganzen Ausdrucks-Pfad umbauen.</summary>
+    /// <summary>The type arguments of the instance being lowered. The hook sits in
+    /// <see cref="LowerType"/>, so the worklist monomorphization only has to fill the map rather than
+    /// rebuild the whole expression path.</summary>
     private readonly IReadOnlyDictionary<GenericParamSymbol, LyrType> _substitution;
 
     /// <summary>
-    /// Temps, die einen <b>frisch gebauten</b> Wert halten — Ergebnis eines <c>newobj</c> oder
-    /// eines Aufrufs.
+    /// Temps holding a FRESHLY BUILT value: the result of a <c>newobj</c> or of a call.
     ///
-    /// <para>Nur fuer Structs relevant, und dort die Grenze zwischen richtig und verschwenderisch:
-    /// ein Wert, den niemand sonst haelt, muss beim Binden nicht kopiert werden. Ohne diese
-    /// Unterscheidung bekaeme jedes <c>let p = P { … };</c> ein <c>structcopy</c> direkt hinter
-    /// sein <c>newobj</c> — korrekt, aber offensichtlich sinnlos, und in jeder Disassembly zu
-    /// sehen.</para>
+    /// <para>Relevant for structs only, and there the line between correct and wasteful: a value nobody
+    /// else holds does not have to be copied when bound. Without this distinction every
+    /// <c>let p = P { … };</c> would get a <c>structcopy</c> directly behind its <c>newobj</c> — correct,
+    /// but obviously pointless and visible in every disassembly.</para>
     /// </summary>
     /// <summary>
-    /// Was ein Aufruf in einer <c>?.</c>-Kette anders sieht (§7) — und sonst nichts.
+    /// What a call in a <c>?.</c> chain sees differently, and nothing else.
     ///
-    /// <para><c>_chainReceivers</c> bildet den EMPFAENGER-Ausdruck auf den schon ausgepackten Wert
-    /// ab: <c>LowerExprOrVoid</c> gibt ihn zurueck, statt <c>b</c> ein zweites Mal auszuwerten.
-    /// <c>_chainResults</c> bildet den AUFRUF-Ausdruck auf den Rueckgabetyp der Methode ab, weil
-    /// die Sema dem Ausdruck den Ketten-Typ gegeben hat (<c>?int</c> statt <c>int</c>).</para>
+    /// <para><c>_chainReceivers</c> maps the RECEIVER expression to the already unwrapped value:
+    /// <c>LowerExprOrVoid</c> returns it instead of evaluating <c>b</c> a second time.
+    /// <c>_chainResults</c> maps the CALL expression to the method's return type, because the sema gave
+    /// the expression the chain type (<c>?int</c> instead of <c>int</c>).</para>
     ///
-    /// <para><b>Warum am Knoten und nicht als Parameter?</b> Weil beide Angaben sonst durch
-    /// LowerVirtualCall, LowerGenericMethodCall, LowerConstraintCall und LowerImportCall
-    /// durchgereicht werden muessten — vier Signaturen fuer eine Ausnahme, die keine der vier
-    /// interessiert. Verschachtelte Ketten (<c>a?.f(b?.g())</c>) tragen verschiedene Knoten und
-    /// stehen sich deshalb nicht im Weg; die Eintraege werden nach dem Aufruf wieder entfernt.
-    /// </para>
+    /// <para>On the node rather than as a parameter, because otherwise both facts would have to be
+    /// threaded through LowerVirtualCall, LowerGenericMethodCall, LowerConstraintCall and
+    /// LowerImportCall — four signatures for an exception none of the four cares about. Nested chains
+    /// (<c>a?.f(b?.g())</c>) carry different nodes and therefore do not get in each other's way; the
+    /// entries are removed again after the call.</para>
     /// </summary>
     private readonly Dictionary<Expr, TempId> _chainReceivers =
         new(ReferenceEqualityComparer.Instance);
@@ -95,37 +88,37 @@ internal sealed class FunctionLowerer
 
     private readonly HashSet<TempId> _fresh = new();
 
-    /// <summary>Die angehobenen Lambdas des Moduls. Ein Lambda im Rumpf meldet sich hier an und
-    /// bekommt sofort seine Id, lange bevor sein eigener Rumpf gelowert wird.</summary>
+    /// <summary>The lifted lambdas of the module. A lambda in the body registers here and gets its id
+    /// immediately, long before its own body is lowered.</summary>
     private readonly LambdaTable _lambdas;
 
-    /// <summary>Die monomorphisierten Instanzen des Moduls. Ein Aufruf einer generischen Funktion
-    /// fordert hier seine an und bekommt sofort eine Id (Sprache.md §12).</summary>
+    /// <summary>The monomorphized instances of the module. A call to a generic function requests its own
+    /// here and gets an id immediately.</summary>
     private readonly InstanceTable _instances;
 
     /// <summary>
-    /// Slots, die eine <b>Zelle</b> halten statt eines Wertes (ADR-018) — je Slot der Typ der
-    /// Zelle und der Typ dessen, was darin liegt.
+    /// Slots holding a CELL rather than a value: per slot the type of the cell and the type of what lies
+    /// inside it.
     ///
-    /// <para>Ein solcher Slot verhaelt sich fuer den ganzen Rest des Lowerings unauffaellig: nur
-    /// <see cref="LoadValue"/> und <see cref="StoreValue"/> wissen davon, und sie sind die
-    /// einzigen Stellen, die <c>ldloc</c>/<c>stloc</c> auf benannte Variablen schreiben. Ohne
-    /// diese Buendelung muesste jede der rund fuenfzehn Zugriffsstellen die Frage selbst stellen,
-    /// und die eine, die es vergisst, laesst Closure und Funktion verschiedene Werte sehen.</para>
+    /// <para>Such a slot behaves unremarkably for the whole rest of the lowering: only
+    /// <see cref="LoadValue"/> and <see cref="StoreValue"/> know about it, and they are the only places
+    /// writing <c>ldloc</c> and <c>stloc</c> on named variables. Without this bundling each of the
+    /// roughly fifteen access sites would have to ask the question itself, and the one that forgets lets
+    /// the closure and the function see different values.</para>
     /// </summary>
     private readonly Dictionary<LocalId, (TypeId Cell, IrType Value)> _cells = new();
 
-    /// <summary>Beim Lowern eines Lambdas: welches Environment-Feld haelt welches gefangene
-    /// Symbol. Ausserhalb eines Lambdas leer.</summary>
+    /// <summary>While lowering a lambda: which environment field holds which captured symbol. Empty
+    /// outside a lambda.</summary>
     private readonly Dictionary<Symbol, int> _captureFields =
         new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Slot des Environments (immer 0, wenn es eins gibt) und sein Typ.</summary>
+    /// <summary>The environment's slot, always 0 when there is one, and its type.</summary>
     private readonly LocalId? _envSlot;
     private readonly TypeId? _envType;
 
-    /// <summary>Das Lambda, das gerade gelowert wird — <c>null</c> bei einer geschriebenen
-    /// Funktion. Traegt den Rumpf, weil ein Lambda keinen <see cref="FunctionDecl"/> hat.</summary>
+    /// <summary>The lambda currently being lowered, or <c>null</c> for a written function. It carries
+    /// the body, because a lambda has no <see cref="FunctionDecl"/>.</summary>
     private readonly LambdaExpr? _lambda;
 
     private readonly SlotAllocator _slots = new();
@@ -161,22 +154,20 @@ internal sealed class FunctionLowerer
         _b = new BlockBuilder(_blocks);
         _returnType = LowerDeclaredReturnType();
 
-        // Der Empfänger ist Parameter 0 und wird VOR den deklarierten Parametern belegt — die
-        // Parameter-Konvention der IR ist positionsbasiert, ein späterer Slot wäre ein
-        // Falsch-Slot-Read in der VM. Denselben Weg geht CIL mit 'this'.
+        // The receiver is parameter 0 and is allocated BEFORE the declared parameters: the IR's parameter
+        // convention is positional, and a later slot would be a wrong-slot read in the VM. CIL takes the
+        // same route with 'this'.
         if (receiver is not null)
         {
-            // Ein Enum-Empfänger ist der Enum-Typ, nicht eine seiner Varianten — welche vorliegt,
-            // entscheidet erst das 'match' im Rumpf.
-            // In einer Interface-Default-Methode ist 'this' der Interface-Typ selbst — welche
-            // Implementierung dahintersteckt, weiss erst die Laufzeit. Ein 'this.foo()' darin wird
-            // damit zu einem callvirt, und das ist die richtige Antwort.
-            // Eine Extension (§3.6) bringt ihren Empfaengertyp als geschriebenen TypeNode mit und
-            // laesst ihn durch dieselbe Lowerung laufen wie jeden Parametertyp. Der Umweg ueber
-            // 'receiver.Kind' unten kann das nicht: 'extend int' und 'extend string' zielen auf
-            // Builtins, die keinen Layout-Eintrag haben, und jeder der Faelle dort wuerde fuer sie
-            // ein Objekt erfinden. Ein Skalar als Parameter 0 ist dagegen nichts Neues — jede
-            // freie Funktion hat das. Genau deshalb braucht eine inhaerente Extension kein Boxing.
+            // An enum receiver is the enum type rather than one of its variants; which one is present is
+            // decided by the 'match' in the body.
+            // In an interface default method 'this' is the interface type itself — which implementation
+            // is behind it is known only at runtime. A 'this.foo()' inside therefore becomes a callvirt.
+            // An extension brings its receiver type along as a written TypeNode and lets it run through
+            // the same lowering as any parameter type. The detour over 'receiver.Kind' below cannot do
+            // that: 'extend int' and 'extend string' target builtins that have no layout entry, and every
+            // case there would invent an object for them. A scalar as parameter 0 is nothing new — every
+            // free function has that. This is why an inherent extension needs no boxing.
             _thisType = receiverTypeNode is { } written
                 ? _typeTable.Lower(written)
                 : _ownerInstance is { } owner
@@ -185,27 +176,26 @@ internal sealed class FunctionLowerer
             {
                 TypeSymbolKind.Enum => _typeTable.EnumOf(receiver),
                 TypeSymbolKind.Interface => _typeTable.InterfaceOf(receiver),
-                // Der Empfaenger einer struct-Methode ist der Wert selbst. Dass er eine Kopie ist,
-                // hat der Aufrufer erledigt — 'mut fn' mutiert damit nur diese Kopie, genau wie
-                // Sprache.md §3.2 es beschreibt.
+                // The receiver of a struct method is the value itself. That it is a copy was arranged by
+                // the caller, so a 'mut fn' mutates only this copy.
                 TypeSymbolKind.Struct => _typeTable.StructOf(receiver),
                 _ => _typeTable.RefTo(receiver),
             };
             _thisSlot = _slots.Declare("this", _thisType);
         }
 
-        // Parameter-Konvention: die ersten ParamCount Locals SIND die Parameter, in Reihenfolge.
-        // Ohne sie trägt die IR nirgends Parameter-Typen und ein Call wäre nicht typprüfbar.
+        // Parameter convention: the first ParamCount locals ARE the parameters, in order. Without it the
+        // IR carries parameter types nowhere and a call would not be type-checkable.
         foreach (var p in decl.Parameters)
         {
-            // 'params' und Default-Werte sind reine AUFRUFSTELLEN-Themen: der Callee sieht ein
-            // gewoehnliches T[] bzw. einen gewoehnlichen Parameter. Materialisiert werden beide
-            // dort, wo der Aufruf steht — siehe MaterializeArguments.
+            // 'params' and default values are purely CALL-SITE matters: the callee sees an ordinary T[]
+            // and an ordinary parameter. Both are materialized where the call stands — see
+            // MaterializeArguments.
             //
-            // Die Alternative (Callee baut sich seine Defaults selbst) haette bedeutet, dass ein
-            // Default-Ausdruck einmal pro Funktion statt einmal pro Aufruf gelowert wird; bei
-            // 'params' waere die Signatur zusaetzlich variadisch geworden, und das kann diese IR
-            // nicht. C# entscheidet aus demselben Grund an der Aufrufstelle.
+            // The alternative, letting the callee build its own defaults, would mean lowering a default
+            // expression once per function rather than once per call; for 'params' the signature would
+            // additionally become variadic, and this IR cannot do that. C# decides at the call site for
+            // the same reason.
 
             if (_types.RefOf(p) is not ParameterSymbol ps)
                 throw Bug($"parameter '{p.Name}' was not bound by the type checker");
@@ -214,13 +204,13 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der Lowerer fuer ein <b>angehobenes Lambda</b> (ADR-018).
+    /// The lowerer for a LIFTED LAMBDA.
     ///
-    /// <para>Eine eigene Factory statt eines synthetischen <see cref="FunctionDecl"/>: der
-    /// GlobalInitializer darf sich einen bauen, weil seine Statements echte AST-Knoten sind. Hier
-    /// ginge das nicht — die Sema hat die <c>LambdaParam</c>-Knoten an ihre Symbole gebunden, und
-    /// nachgebaute <c>Param</c>-Knoten waeren andere Objekte ohne Bindung. Der Umweg haette also
-    /// eine zweite Symbolaufloesung gebraucht.</para>
+    /// <para>A factory of its own rather than a synthetic <see cref="FunctionDecl"/>: the
+    /// GlobalInitializer may build one, because its statements are real AST nodes. That would not work
+    /// here — the sema bound the <c>LambdaParam</c> nodes to their symbols, and rebuilt <c>Param</c>
+    /// nodes would be different objects without a binding. The detour would have needed a second symbol
+    /// resolution.</para>
     /// </summary>
     public static FunctionLowerer ForLambda(LambdaExpr lambda, string name,
         IReadOnlyList<Symbol> captures, bool capturesThis, IrType environmentType,
@@ -248,13 +238,12 @@ internal sealed class FunctionLowerer
         _globals = globals;
         _lambdas = lambdas;
 
-        // Die Substitution der UMGEBENDEN Funktion. Hier stand 'NoSubstitution', und damit war
-        // jedes Lambda in einer monomorphisierten Instanz kaputt: '(a: T, b: T) => …' in
-        // 'sortList<T>' liess das Lowering abbrechen ("type parameter 'T' is not supported").
+        // The substitution of the ENCLOSING function. With 'NoSubstitution' every lambda in a
+        // monomorphized instance breaks: '(a: T, b: T) => …' in 'sortList<T>' makes the lowering abort
+        // with "type parameter 'T' is not supported".
         //
-        // Ein Lambda ist kein eigener generischer Kontext — es erbt den seines Rumpfes. Dass es
-        // als eigene Funktion gelowert wird (ADR-018), ist eine Implementierungsentscheidung und
-        // darf an den Typen nichts aendern.
+        // A lambda is no generic context of its own; it inherits the one of its body. That it is lowered
+        // as a separate function is an implementation decision and must not change the types.
         _substitution = substitution ?? ModuleLowerer.NoSubstitution;
         _b = new BlockBuilder(_blocks);
 
@@ -262,9 +251,8 @@ internal sealed class FunctionLowerer
             ? LowerType(fn.Return, lambda.Span)
             : throw Bug("lambda has no function type");
 
-        // Das Environment ist Parameter 0 — dieselbe Position, die 'this' bei einer Methode
-        // belegt (ADR-014). Damit ist ein Closure-Aufruf ein gewoehnlicher Aufruf, und die VM
-        // braucht fuer 'callind' keinen zweiten Frame-Aufbau.
+        // The environment is parameter 0, the same position 'this' occupies on a method. A closure call
+        // is therefore an ordinary call, and the VM needs no second frame setup for 'callind'.
         if (environmentType is IrRefType env)
         {
             _envType = env.Type;
@@ -272,9 +260,8 @@ internal sealed class FunctionLowerer
 
             for (var i = 0; i < captures.Count; i++) _captureFields[captures[i]] = i;
 
-            // 'this' liegt hinter den benannten Captures, wenn es gefangen wird — es ist kein
-            // Symbol (es hat keine Deklaration), also braucht es einen eigenen Platz statt eines
-            // Eintrags in derselben Map.
+            // 'this' lies behind the named captures when it is captured: it is no symbol, having no
+            // declaration, so it needs a place of its own rather than an entry in the same map.
             if (capturesThis)
             {
                 _thisType = receiver is null ? null : _typeTable.RefTo(receiver);
@@ -291,12 +278,11 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der Lowerer fuer den <b>Rumpf einer Coroutine</b> (Sprache.md §8).
+    /// The lowerer for the BODY OF A COROUTINE.
     ///
-    /// <para>Er sieht aus wie eine gewoehnliche Funktion mit einem Parameter — dem Zustandsobjekt
-    /// — und dem Yield-Typ als Rueckgabe. Genau das ist er auch: <c>resume</c> ist ein
-    /// gewoehnlicher Aufruf. Die Coroutine steckt allein darin, WO die Variablen liegen und dass
-    /// der erste Block ein Sprungverteiler ist.</para>
+    /// <para>It looks like an ordinary function with one parameter — the state object — and the yield
+    /// type as its return. That is exactly what it is: <c>resume</c> is an ordinary call. The coroutine
+    /// lies solely in WHERE the variables live and in the first block being a jump table.</para>
     /// </summary>
     public static FunctionLowerer ForCoroutineBody(FunctionDecl decl, string name, TypeId state,
         IrType yieldType, TypeSymbol? receiver, TypeResult types,
@@ -325,17 +311,17 @@ internal sealed class FunctionLowerer
         _coroutineState = state;
         _returnType = yieldType;
 
-        // Slot 0 haelt das Zustandsobjekt. Es ist das einzige, was in einem Frame-Slot liegt —
-        // alles andere muss den naechsten 'yield' ueberleben und wohnt deshalb darin.
+        // Slot 0 holds the state object. It is the only thing living in a frame slot; everything else has
+        // to survive the next 'yield' and therefore lives inside it.
         _stateSlot = _slots.Declare("<state>", new IrRefType(state));
 
-        // Feld 0 ist der Wiedereintrittspunkt. Er gehoert keinem Symbol, deshalb steht er hier
-        // und nicht in _stateFields.
+        // Field 0 is the re-entry point. It belongs to no symbol, so it stands here rather than in
+        // _stateFields.
         _stateTypes.Add(new IrScalarType(IrScalar.I32));
         _stateNames.Add("<resume>");
 
-        // 'this' und die Parameter ueberleben den ersten 'yield' genauso wie jedes Local — die
-        // Fabrik hat sie beim Erzeugen hineingeschrieben.
+        // 'this' and the parameters survive the first 'yield' just like any local; the factory wrote them
+        // in when creating the object.
         if (receiver is not null)
         {
             _thisType = _typeTable.RefTo(receiver);
@@ -352,37 +338,37 @@ internal sealed class FunctionLowerer
         }
     }
 
-    /// <summary>Feldindex des gefangenen <c>this</c> im Environment, falls gefangen.</summary>
+    /// <summary>The field index of the captured <c>this</c> in the environment, when captured.</summary>
     private readonly int? _capturedThisField;
 
-    // ------------------------------------------------------------------ Coroutinen (Sprache.md §8)
+    // ------------------------------------------------------------------ coroutines
 
     /// <summary>
-    /// Der Zustandstyp, wenn hier ein <b>Coroutine-Rumpf</b> gelowert wird — sonst <c>null</c>.
+    /// The state type when a COROUTINE BODY is being lowered here, <c>null</c> otherwise.
     ///
-    /// <para>Im Coroutine-Modus liegen Parameter und Locals nicht in Frame-Slots, sondern in
-    /// Feldern dieses Objekts: ein Frame endet bei jedem <c>yield</c>, das Objekt nicht. Slot 0
-    /// ist der Wiedereintrittspunkt.</para>
+    /// <para>In coroutine mode parameters and locals do not live in frame slots but in fields of this
+    /// object: a frame ends at every <c>yield</c>, the object does not. Slot 0 is the re-entry
+    /// point.</para>
     /// </summary>
     private readonly TypeId? _coroutineState;
 
-    /// <summary>Der Slot, der das Zustandsobjekt haelt — Parameter 0 im Coroutine-Modus.</summary>
+    /// <summary>The slot holding the state object: parameter 0 in coroutine mode.</summary>
     private LocalId _stateSlot;
 
-    /// <summary>Symbol zu Feldindex im Zustandsobjekt. Waechst waehrend des Lowerings; das Layout
-    /// wird danach nachgetragen (siehe <see cref="TypeTable.CompleteCoroutineState"/>).</summary>
+    /// <summary>Symbol to field index in the state object. Grows during the lowering; the layout is
+    /// supplied afterwards (see <see cref="TypeTable.CompleteCoroutineState"/>).</summary>
     private readonly Dictionary<Symbol, int> _stateFields = new(ReferenceEqualityComparer.Instance);
 
     private readonly List<IrType> _stateTypes = new();
     private readonly List<string> _stateNames = new();
 
-    /// <summary>Die Bloecke, an denen ein <c>resume</c> wieder einsteigt — Index n gehoert zum
-    /// n-ten <c>yield</c>. Der Sprungverteiler entsteht daraus, wenn alle bekannt sind.</summary>
+    /// <summary>The blocks a <c>resume</c> re-enters at; index n belongs to the nth <c>yield</c>. The
+    /// jump table is built from them once all are known.</summary>
     private readonly List<BlockId> _resumePoints = new();
 
     private bool InCoroutine => _coroutineState is not null;
 
-    /// <summary>Legt ein Feld im Zustandsobjekt an und liefert seinen Index.</summary>
+    /// <summary>Creates a field in the state object and returns its index.</summary>
     private int DeclareStateField(Symbol symbol, string name, IrType type)
     {
         var index = _stateTypes.Count;
@@ -392,8 +378,8 @@ internal sealed class FunctionLowerer
         return index;
     }
 
-    /// <summary>Das Zustandsobjekt selbst — es liegt in einem gewoehnlichen Slot, weil es sich
-    /// waehrend eines Laufs nicht aendert.</summary>
+    /// <summary>The state object itself. It lives in an ordinary slot, because it does not change during
+    /// a run.</summary>
     private TempId LoadState(Core.Span span)
     {
         var type = _slots.TypeOfLocal(_stateSlot);
@@ -415,21 +401,20 @@ internal sealed class FunctionLowerer
         _b.Emit(new StoreField(LoadState(span), _coroutineState!.Value, new FieldId(field), value,
             span));
 
-    // ------------------------------------------------------------------ Closures (ADR-018)
+    // ------------------------------------------------------------------ closures
 
     /// <summary>
-    /// Ein Lambda: Environment bauen, Funktion anmelden, Fat Pointer erzeugen.
+    /// A lambda: build the environment, register the function, produce the fat pointer.
     ///
-    /// <para>Die gehobene Funktion wird hier <b>nicht</b> gelowert — sie wird nur angemeldet und
-    /// bekommt sofort ihre Id. Das ist die Bedingung dafuer, dass ein rekursives oder
-    /// verschachteltes Lambda ueberhaupt geht: sein <c>mkclosure</c> steht fest, bevor sein Rumpf
-    /// existiert.</para>
+    /// <para>The lifted function is NOT lowered here — it is only registered and gets its id immediately.
+    /// That is the condition for a recursive or nested lambda to work at all: its <c>mkclosure</c> is
+    /// settled before its body exists.</para>
     /// </summary>
     /// <summary>
-    /// <c>(1, "a")</c> — ein Objekt mit einem Feld je Element (§4).
+    /// <c>(1, "a")</c> — an object with one field per element.
     ///
-    /// <para>Dieselbe Folge wie bei einem Struct-Initialisierer, nur dass die Felder nach Position
-    /// statt nach Namen gehen. Ein eigener Opcode waere ein zweiter Weg, ein Objekt zu bauen.</para>
+    /// <para>The same sequence as for a struct initializer, except that the fields go by position rather
+    /// than by name. An opcode of its own would be a second way to build an object.</para>
     /// </summary>
     private TempId LowerTupleLiteral(TupleLitExpr expr)
     {
@@ -458,10 +443,9 @@ internal sealed class FunctionLowerer
 
         var (captured, capturesThis) = _types.CapturesOf(lambda);
 
-        // Die Werte fuer das Environment werden HIER ausgewertet, im umgebenden Frame — das ist
-        // der Kern von „faengt beim Erzeugen ein": ein spaeterer Aufruf sieht den Stand von jetzt.
-        // Bei einem geboxten 'var' ist dieser Stand die ZELLE, nicht ihr Inhalt; genau dadurch
-        // teilen beide Seiten dieselbe Variable.
+        // The values for the environment are evaluated HERE, in the enclosing frame — that is the core of
+        // "captures on creation": a later call sees the state of now. For a boxed 'var' that state is the
+        // CELL rather than its content, and that is exactly how both sides share the same variable.
         var fieldTypes = new IrType[captured.Count + (capturesThis ? 1 : 0)];
         var fieldNames = new string[fieldTypes.Length];
         var values = new TempId[fieldTypes.Length];
@@ -485,8 +469,8 @@ internal sealed class FunctionLowerer
             values[^1] = value;
         }
 
-        // Ohne Captures gibt es kein Environment und keine Allokation — der haeufige Fall bei
-        // einem Filter wie '(x) => x > 0'.
+        // Without captures there is no environment and no allocation — the common case for a filter such
+        // as '(x) => x > 0'.
         IrType environment = fieldTypes.Length == 0
             ? VoidType
             : _typeTable.EnvironmentFor(_name, fieldTypes, fieldNames);
@@ -510,20 +494,20 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der Wert, der fuer ein gefangenes Symbol ins Environment wandert.
+    /// The value that goes into the environment for a captured symbol.
     ///
-    /// <para>Bei einer Zelle ist das die Zelle selbst und nicht ihr Inhalt — sonst waere die
-    /// Closure bei einer Kopie gelandet, und ADR-018 waere still zu by-value geworden.</para>
+    /// <para>For a cell that is the cell itself rather than its content; otherwise the closure would have
+    /// ended up with a copy and the sharing would silently have become by-value.</para>
     ///
-    /// <para>Wird ein Symbol gefangen, das die UMGEBENDE Funktion selbst schon gefangen hat, liegt
-    /// es dort im Environment und nicht in einem Slot. Verschachtelte Lambdas loesen ihre Captures
-    /// deshalb ueber dieselbe Kette auf, die auch ein gewoehnlicher Bezeichner nimmt.</para>
+    /// <para>When a symbol is captured that the ENCLOSING function already captured, it lies in its
+    /// environment rather than in a slot. Nested lambdas therefore resolve their captures through the
+    /// same chain an ordinary identifier takes.</para>
     /// </summary>
     private (IrType Type, TempId Value) LoadCaptured(Symbol symbol, Core.Span span)
     {
         if (_slots.TryLookup(symbol, out var slot))
         {
-            var type = _slots.TypeOfLocal(slot); // bei einer Zelle: der Zelltyp — genau richtig
+            var type = _slots.TypeOfLocal(slot); // for a cell: the cell type, which is what is wanted
             var value = _slots.NewTemp(type);
             _b.Emit(new LoadLocal(value, slot, type, span));
             return (type, value);
@@ -545,14 +529,14 @@ internal sealed class FunctionLowerer
         throw Bug($"captured symbol '{symbol.Name}' is neither a slot nor an environment field");
     }
 
-    /// <summary>Der Empfaenger-Typ, den ein inneres Lambda erbt, wenn es <c>this</c> faengt.</summary>
+    /// <summary>The receiver type an inner lambda inherits when it captures <c>this</c>.</summary>
     private TypeSymbol? ReceiverForLambda() => _receiver;
 
-    // ------------------------------------------------------------------ Zellen (ADR-018)
+    // ------------------------------------------------------------------ cells
 
     /// <summary>
-    /// Liest eine benannte Variable. Liegt sie in einer Zelle, geht der Zugriff ueber deren Feld —
-    /// und zwar hier genauso wie in jeder Closure, die sie teilt.
+    /// Reads a named variable. When it lives in a cell, the access goes through the cell's field, here
+    /// exactly as in every closure sharing it.
     /// </summary>
     private TempId LoadValue(LocalId slot, Core.Span span)
     {
@@ -572,7 +556,7 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Schreibt eine benannte Variable — in ihren Slot oder in ihre Zelle.</summary>
+    /// <summary>Writes a named variable, into its slot or into its cell.</summary>
     private void StoreValue(LocalId slot, TempId value, Core.Span span)
     {
         if (!_cells.TryGetValue(slot, out var cell))
@@ -586,38 +570,35 @@ internal sealed class FunctionLowerer
         _b.Emit(new StoreField(holder, cell.Cell, new FieldId(0), value, span));
     }
 
-    /// <summary>Der Typ des <b>Wertes</b> in einem Slot — bei einer Zelle also der Inhalt, nicht
-    /// die Zelle. Jede Stelle, die bisher <c>TypeOfLocal</c> benutzt hat, um einen Wert zu typen,
-    /// muss diese Frage stellen.</summary>
+    /// <summary>The type of the VALUE in a slot, so for a cell its content rather than the cell. Every
+    /// place that uses <c>TypeOfLocal</c> to type a value has to ask this question.</summary>
     private IrType ValueTypeOf(LocalId slot) =>
         _cells.TryGetValue(slot, out var cell) ? cell.Value : _slots.TypeOfLocal(slot);
 
     public IrFunction Run()
     {
-        // Ein Lambda hat statt eines Rumpfes einen Ausdruck ODER einen Block (Doku §11). Der
-        // Ausdrucks-Fall ist der haeufige und braucht kein 'return' im Quelltext — hier wird es
-        // eingesetzt.
+        // A lambda has an expression OR a block instead of a body. The expression case is the common one
+        // and needs no 'return' in the source; it is inserted here.
         if (_lambda is not null) return RunLambda();
         if (InCoroutine) return RunCoroutineBody();
 
         if (_decl!.Body is null) throw Bug("function has no body");
 
-        // Der Funktionsrumpf ist selbst ein Scope mit eigenen defers.
+        // The function body is itself a scope with its own defers.
         if (LowerScope(_decl.Body))
         {
-            // Der Kontrollfluss ist aus dem Body gelaufen. Bei void ist das der Normalfall und
-            // braucht das implizite 'ret'. Bei non-void hat die Return-Coverage der Sema
-            // (LYR-SEM0017) bewiesen, dass jeder Pfad returnt — hierher kommt man dann nur über
-            // einen divergierenden Konstrukt wie 'while (true) { }', dessen Exit-Kante nie
-            // feuert. 'unreachable' ist genau dessen ehrliche Kodierung.
+            // Control flow ran out of the body. For void that is the normal case and needs the implicit
+            // 'ret'. For non-void the sema's return coverage (LYR-SEM0017) proved that every path returns,
+            // so this point is reached only through a diverging construct such as 'while (true) { }',
+            // whose exit edge never fires. 'unreachable' is the honest encoding of that.
             _b.Seal(IsVoid(_returnType)
                 ? new Return(null, _decl.Body.Span)
                 : new Unreachable(_decl.Body.Span));
         }
 
-        // Der Empfänger zählt als Parameter — er belegt Slot 0 und wird an der Aufrufstelle als
-        // Argument 0 übergeben. Ohne ihn hier wäre die Parameter-Konvention verletzt, und der
-        // Verifier meldet genau das ("call passes 2 arg(s), expected 1").
+        // The receiver counts as a parameter: it occupies slot 0 and is passed as argument 0 at the call
+        // site. Without it here the parameter convention is violated, and the verifier reports exactly
+        // that ("call passes 2 arg(s), expected 1").
         return new IrFunction(_name, _returnType, _decl.Parameters.Length + (_thisSlot is null ? 0 : 1),
             _slots.Locals, _slots.Temps, _blocks)
         {
@@ -626,33 +607,28 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der Rumpf einer Coroutine: der geschriebene Code, umgeben von einem Sprungverteiler.
+    /// The body of a coroutine: the written code, surrounded by a jump table.
     /// </summary>
     private IrFunction RunCoroutineBody()
     {
         var body = _decl!.Body ?? throw Bug("coroutine has no body");
 
-        // bb0 gehoert dem Sprungverteiler und bleibt vorerst leer: der Verifier verlangt, dass
-        // der Einstieg der ERSTE Block ist, und welche Einstiegspunkte es gibt, weiss man erst
-        // nach dem Rumpf. Also Platz reservieren und spaeter fuellen — dieselbe Zwei-Phasen-Form
-        // wie bei der Typ-Id eines rekursiven Typs.
+        // bb0 belongs to the jump table and stays empty for now: the verifier requires the entry to be
+        // the FIRST block, and which entry points exist is known only after the body. So the place is
+        // reserved and filled later — the same two-phase shape as for the type id of a recursive type.
         var dispatch = _b.CurrentId;
         var start = _b.NewBlock();
         _b.SwitchTo(start);
 
         if (LowerScope(body))
         {
-            // Der Rumpf ist durchgelaufen. Der Zustand merkt sich das fuer spaetere Aufrufe —
-            // und DIESER Aufruf wirft bereits, denn er hat keinen Wert zu liefern.
-            //
-            // Sprache.md §8 sagt „Coroutine endet, wenn der Body durchlaeuft; weitere
-            // resume-Aufrufe werfen". Das Auslaufen selbst ist der erste dieser Faelle: es gibt
-            // kein 'yield' mehr, also nichts zurueckzugeben. Einen Nullwert zu erfinden hiesse,
-            // der Sprache einen zu geben, den sie nicht hat — Python meldet hier StopIteration
-            // und aus demselben Grund.
+            // The body ran through. The state remembers that for later calls, and THIS call already
+            // throws, because it has no value to deliver: there is no 'yield' left, so there is nothing
+            // to return. Inventing a null value would give the language one it does not have. Python
+            // reports StopIteration here for the same reason.
             var i32 = new IrScalarType(IrScalar.I32);
             var done = _slots.NewTemp(i32);
-            // -1 als Zweierkomplement in 32 Bit: der Verifier prueft die deklarierte Breite.
+            // -1 as two's complement in 32 bits: the verifier checks the declared width
             _b.Emit(new Const(done, i32, new IntConst(unchecked((ulong)(uint)-1)), body.Span));
             StoreStateField(0, done, body.Span);
 
@@ -664,7 +640,7 @@ internal sealed class FunctionLowerer
         _typeTable.CompleteCoroutineState(_coroutineState!.Value,
             _stateTypes.ToArray(), _stateNames.ToArray());
 
-        // Ein Parameter: das Zustandsobjekt. Alles andere steckt darin.
+        // One parameter: the state object. Everything else sits inside it.
         return new IrFunction(_name, _returnType, 1, _slots.Locals, _slots.Temps, _blocks)
         {
             Entry = dispatch, Handlers = _handlers,
@@ -672,8 +648,8 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der Rumpf eines angehobenen Lambdas. Zwei Formen (Doku §11): ein Ausdruck <b>ist</b> der
-    /// Rueckgabewert, ein Block liefert ueber <c>return</c>.
+    /// The body of a lifted lambda. Two forms: an expression IS the return value, a block delivers
+    /// through <c>return</c>.
     /// </summary>
     private IrFunction RunLambda()
     {
@@ -687,7 +663,7 @@ internal sealed class FunctionLowerer
                 break;
 
             case Expr expr:
-                // Ein void-Kontext verwirft den Wert: '() => doStuff()' ist erlaubt und ruft nur.
+                // A void context discards the value: '() => doStuff()' is allowed and only calls.
                 if (IsVoid(_returnType))
                 {
                     LowerExprOrVoid(expr);
@@ -704,7 +680,7 @@ internal sealed class FunctionLowerer
                 throw Bug($"lambda body is neither an expression nor a block ({_lambda.Body.GetType().Name})");
         }
 
-        // Das Environment zaehlt als Parameter 0 — dieselbe Rechnung wie beim Empfaenger.
+        // The environment counts as parameter 0, the same arithmetic as for the receiver.
         return new IrFunction(_name, _returnType,
             _lambda.Parameters.Length + (_envSlot is null ? 0 : 1),
             _slots.Locals, _slots.Temps, _blocks)
@@ -713,10 +689,10 @@ internal sealed class FunctionLowerer
         };
     }
 
-    // ------------------------------------------------------------------ Statements
+    // ------------------------------------------------------------------ statements
 
-    /// <summary>Lowert die Statements eines Blocks. Liefert false, sobald der Kontrollfluss
-    /// endet — die restlichen Statements sind dann unerreichbar und werden verworfen.</summary>
+    /// <summary>Lowers the statements of a block. Returns false as soon as control flow ends; the
+    /// remaining statements are then unreachable and are discarded.</summary>
     private bool LowerStatements(Block block)
     {
         foreach (var stmt in block.Statements)
@@ -724,22 +700,22 @@ internal sealed class FunctionLowerer
         return true;
     }
 
-    /// <summary>true = Kontrollfluss fällt durch, false = Block ist versiegelt.</summary>
+    /// <summary>true means control flow falls through, false means the block is sealed.</summary>
     private bool LowerStmt(Stmt stmt)
     {
         switch (stmt)
         {
-            // Ein geschachtelter Block ist ein eigener Scope — seine defers laufen an
-            // seinem Ende, nicht erst am Funktionsende (Sprache.md §5).
+            // A nested block is a scope of its own: its defers run at its end rather than only at the
+            // end of the function.
             case Block b: return LowerScope(b);
             case BindingStmt b: return LowerBinding(b);
             case DestructuringStmt d: return LowerDestructuring(d);
-            // 'panic(…)' hat Rueckgabetyp 'never' (§9) und versiegelt seinen Block. Ein
-            // Ausdruck kann den Kontrollfluss also beenden — der Rueckgabewert muss das melden,
-            // sonst versucht der Aufrufer spaeter, denselben Block ein zweites Mal zu versiegeln.
+            // 'panic(…)' has the return type 'never' and seals its block. An expression can therefore
+            // end control flow, and the return value has to report that, or the caller later tries to
+            // seal the same block a second time.
             case ExprStmt e: LowerExprOrVoid(e.Expr); return !_b.IsSealed;
 
-            // Nur im synthetischen Global-Initialisierer (siehe GlobalInitializer).
+            // Only in the synthetic global initializer (see GlobalInitializer).
             case GlobalInitStmt g: LowerGlobalInit(g); return true;
             case IfStmt s: return LowerIf(s);
             case WhileStmt s: return LowerWhile(s);
@@ -754,7 +730,7 @@ internal sealed class FunctionLowerer
                 return _matchFellThrough;
             case TryStmt s: return LowerTry(s);
             case ThrowStmt s: return LowerThrow(s);
-            // 'defer' registriert nur — die Rumpfe setzt LowerScope an die Ausgaenge.
+            // 'defer' only registers; LowerScope places the bodies at the exits.
             case DeferStmt s: _defers.Peek().Add(s); return true;
             case YieldStmt s: return LowerYield(s);
             case ErrorStmt s: throw Bug($"error statement reached lowering at {s.Span}");
@@ -764,39 +740,37 @@ internal sealed class FunctionLowerer
     }
 
 
-    // ------------------------------------------------------------------ Exceptions und defer
+    // ------------------------------------------------------------------ exceptions and defer
 
     /// <summary>
-    /// Die pro Scope aufgelaufenen <c>defer</c>-Statements, aeusserster Scope zuunterst.
+    /// The <c>defer</c> statements accumulated per scope, outermost scope at the bottom.
     ///
-    /// <para><c>defer</c> registriert nichts zur Laufzeit: welche Rumpfe faellig sind, steht zur
-    /// Compile-Zeit fest, also setzt das Lowering sie direkt an jeden Ausgang. Ein Laufzeit-Stack
-    /// (Gos Modell) braeuchte Closures — die gibt es erst in P6 — und kostete auf jedem Pfad
-    /// etwas, auch dort, wo nichts zu tun ist. Der Preis ist Code-Duplikation je Ausgang.</para>
+    /// <para><c>defer</c> registers nothing at runtime: which bodies are due is settled at compile time,
+    /// so the lowering places them directly at every exit. A runtime stack, as in Go, would need closures
+    /// and would cost something on every path, including where there is nothing to do. The price is code
+    /// duplication per exit.</para>
     /// </summary>
     private readonly Stack<List<DeferStmt>> _defers = new();
 
     /// <summary>
-    /// Die geschuetzten Regionen dieser Funktion, in Entstehungsreihenfolge.
+    /// The protected regions of this function, in creation order.
     ///
-    /// <para>Die ist bereits <b>innerste zuerst</b>: ein inneres <c>try</c> wird vollstaendig
-    /// gelowert, bevor das aeussere seinen Handler antraegt. Genau diese Reihenfolge ist der
-    /// Vertrag beim Abwickeln.</para>
+    /// <para>That order is already INNERMOST FIRST: an inner <c>try</c> is lowered completely before the
+    /// outer one records its handler. Exactly this order is the contract while unwinding.</para>
     /// </summary>
     private readonly List<IrHandler> _handlers = new();
 
     private bool LowerThrow(ThrowStmt stmt)
     {
-        // KEIN EmitAllPendingDefers hier: ein 'throw' wickelt ab, und beim Abwickeln laufen die
-        // defer-Rumpfe ueber die finally-Region ihres Scopes. Beides zu tun liesse jeden Rumpf
-        // zweimal laufen — genau das war der Fall, bevor die Regionen da waren.
+        // NO EmitAllPendingDefers here: a 'throw' unwinds, and while unwinding the defer bodies run
+        // through the finally region of their scope. Doing both would run every body twice.
         //
-        // Der Unterschied zu 'return': ein return verlaesst den Scope normal, da greift keine
-        // Region, und die Rumpfe muessen inline stehen.
+        // The difference from 'return': a return leaves the scope normally, no region applies, and the
+        // bodies have to stand inline.
         var value = LowerExpr(stmt.Value);
 
-        // Bei einem Klassentyp steht der konkrete Typ hier fest (ADR-003: keine Inheritance);
-        // bei einem Interface-Wert traegt ihn der Fat Pointer, und die Runtime liest ihn dort.
+        // For a class type the concrete type is settled here, since there is no inheritance; for an
+        // interface value the fat pointer carries it, and the runtime reads it there.
         var concrete = TypeOfExpr(stmt.Value) switch
         {
             IrRefType r => (TypeId?)r.Type,
@@ -810,20 +784,19 @@ internal sealed class FunctionLowerer
     /// <summary>
     /// <c>try { … } catch (e: T) { … }</c>.
     ///
-    /// <para>Der Rumpf belegt einen <b>zusammenhaengenden Blockbereich</b>. Das ist keine Annahme,
-    /// sondern eine Folge davon, wie <see cref="BlockBuilder"/> Ids vergibt: alles, was waehrend
-    /// des Rumpfes entsteht, liegt dazwischen — auch verschachtelte Konstrukte. Die Handler
-    /// entstehen danach und liegen damit ausserhalb ihres eigenen Bereichs.</para>
+    /// <para>The body occupies a CONTIGUOUS BLOCK RANGE. That is not an assumption but a consequence of
+    /// how <see cref="BlockBuilder"/> assigns ids: everything arising during the body lies in between,
+    /// nested constructs included. The handlers arise afterwards and therefore lie outside their own
+    /// range.</para>
     ///
-    /// <para>Der gefangene Wert geht in einen <b>Slot</b>, nicht auf den Stack: an einer
-    /// Blockgrenze ist der Stack leer (Bytecode.md §4), und ein Handler-Block ist eine
-    /// Blockgrenze. CIL schiebt den Wert dort auf den Stack und kann sich das leisten, weil es
-    /// diese Invariante nicht hat.</para>
+    /// <para>The caught value goes into a SLOT rather than onto the stack: at a block boundary the stack
+    /// is empty, and a handler block is a block boundary. CIL pushes the value there and can afford to,
+    /// because it does not have this invariant.</para>
     /// </summary>
     private bool LowerTry(TryStmt stmt)
     {
-        // Eigener Block fuer den Rumpf: der Bereich muss an einer Blockgrenze anfangen, sonst
-        // deckte er auch Code vor dem 'try' ab.
+        // A block of its own for the body: the range has to start at a block boundary, or it would cover
+        // code before the 'try' as well.
         var start = _b.NewBlock();
         _b.Seal(new Branch(start, stmt.Span));
         _b.SwitchTo(start);
@@ -832,14 +805,10 @@ internal sealed class FunctionLowerer
         var bodyLast = _b.CurrentId;
         var end = new BlockId(_blocks.Count);
 
-        // Der Merge-Block entsteht ERST, wenn ihn jemand erreicht. Legte man ihn unbedingt an,
-        // waere er bei 'try { return … } catch (…) { return … }' ohne Praedecessoren — und
-        // unerreichbare Bloecke lehnt der Verifier ab (kein SimplifyCfg-Pass in v1). Das ist eine
-        // der haeufigsten Formen ueberhaupt, und sie liess den Compiler abstuerzen.
-        //
-        // Derselbe Fehler stand beim Statement-'match' und wurde im Inventur-Sweep behoben;
-        // hier ueberlebte er, weil kein Beispiel und kein Test try/catch mit zwei returnenden
-        // Zweigen benutzt hat. Die offenen Enden werden gesammelt und erst am Ende versiegelt.
+        // The merge block arises ONLY when someone reaches it. Created unconditionally, it would have no
+        // predecessors for 'try { return … } catch (…) { return … }', and the verifier rejects
+        // unreachable blocks, as there is no SimplifyCfg pass. The open ends are collected and sealed at
+        // the end.
         var open = new List<BlockId>();
         if (bodyFallsThrough) open.Add(bodyLast);
 
@@ -853,10 +822,10 @@ internal sealed class FunctionLowerer
 
             if (clause.BindingType is { } declared)
             {
-                // Ueber das gebundene Symbol, nicht ueber den TypeNode: die Sema legt die
-                // Auflegung eines catch-Typs in ihre eigene Tabelle (BindRef auf dem
-                // CatchClause), nicht in die des Resolvers. Den TypeNode hier noch einmal
-                // aufzuloesen waere eine zweite Wahrheit ueber Sichtbarkeit.
+                // Through the bound symbol rather than through the TypeNode: the sema records the
+                // resolution of a catch type in its own table (BindRef on the CatchClause), not in the
+                // resolver's. Resolving the TypeNode again here would be a second truth about
+                // visibility.
                 var symbol = _types.RefOf(clause) as LocalSymbol
                     ?? throw Bug($"catch binding at {clause.Span} was not bound by the type checker");
 
@@ -874,15 +843,14 @@ internal sealed class FunctionLowerer
             }
             else if (clause.BindingName is not null)
             {
-                // 'catch (e)' ohne Typ faengt JEDEN Throwable — 'caught' bleibt null, und genau
-                // das heisst catch-all in der Handler-Tabelle. Der Slot bekommt den Typ, den die
-                // Sema dem Namen schon gegeben hat: 'Throwable', also einen Interface-Typ.
+                // 'catch (e)' without a type catches EVERY Throwable: 'caught' stays null, and that is
+                // what catch-all means in the handler table. The slot gets the type the sema already
+                // gave the name: 'Throwable', so an interface type.
                 //
-                // Damit liegt im Slot ein Fat Pointer und keine nackte Referenz. Bauen kann ihn
-                // nur die VM: welcher konkrete Typ geworfen wurde, steht erst zur Laufzeit fest —
-                // sie fuehrt ihn im Frame ohnehin mit, weil der typisierte Catch dagegen
-                // vergleicht. Ohne den Fat Pointer waere 'e.message()' ein callvirt auf einen
-                // Wert, der seinen Typ nicht kennt (P3: ein Objekt traegt kein Typ-Tag).
+                // A fat pointer therefore lies in the slot rather than a bare reference. Only the VM can
+                // build it: which concrete type was thrown is settled at runtime, and it carries that in
+                // the frame anyway, because the typed catch compares against it. Without the fat pointer
+                // 'e.message()' would be a callvirt on a value that does not know its type.
                 var symbol = _types.RefOf(clause) as LocalSymbol
                     ?? throw Bug($"catch binding at {clause.Span} was not bound by the type checker");
 
@@ -896,8 +864,8 @@ internal sealed class FunctionLowerer
             _handlers.Add(new IrHandler(start, end, IrHandlerKind.Catch, caught, handler, slot));
         }
 
-        // Niemand faellt durch: kein Merge-Block, und der Kontrollfluss endet hier. Der
-        // Rueckgabewert sagt genau das — der Aufrufer darf danach keinen Block mehr anlegen.
+        // Nobody falls through: no merge block, and control flow ends here. The return value says exactly
+        // that, and the caller must not create another block afterwards.
         if (open.Count == 0) return false;
 
         var merge = _b.NewBlock();
@@ -908,18 +876,17 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Ein Scope mit eigenen <c>defer</c>s: Rumpf lowern, danach die registrierten Rumpfe in
-    /// <b>LIFO</b>-Reihenfolge (Sprache.md §5).
+    /// A scope with its own <c>defer</c>s: lower the body, then the registered bodies in LIFO order.
     /// </summary>
     private bool LowerScope(Block block)
     {
-        // Ob dieser Scope defers hat, steht in seinen EIGENEN Statements — ein defer in einem
-        // geschachtelten Block gehoert dorthin. Die Vorabfrage spart jedem defer-freien Scope die
-        // zusaetzliche Blockgrenze, und das sind fast alle.
+        // Whether this scope has defers stands in its OWN statements; a defer in a nested block belongs
+        // there. Asking in advance saves every defer-free scope the extra block boundary, and that is
+        // nearly all of them.
         var hasDefers = block.Statements.Any(st => st is DeferStmt);
         if (!hasDefers) return LowerPlainScope(block);
 
-        // Eigener Block: die geschuetzte Region muss an einer Blockgrenze anfangen.
+        // A block of its own: the protected region has to start at a block boundary.
         var start = _b.NewBlock();
         _b.Seal(new Branch(start, block.Span));
         _b.SwitchTo(start);
@@ -932,7 +899,7 @@ internal sealed class FunctionLowerer
             fallsThrough = LowerStatements(block);
             pending = _defers.Peek();
 
-            // Der normale Pfad bekommt die Rumpfe direkt — kein Handler, keine Laufzeitkosten.
+            // The normal path gets the bodies directly: no handler, no runtime cost.
             if (fallsThrough) EmitDefers(pending);
         }
         finally
@@ -943,13 +910,13 @@ internal sealed class FunctionLowerer
         var end = new BlockId(_blocks.Count);
         var afterBody = _b.CurrentId;
 
-        // Und derselbe Rumpf noch einmal als finally-Region, fuer den Fall, dass eine Exception
-        // durch diesen Scope hindurchlaeuft. Sprache.md §5 verlangt „laeuft auf jedem Scope-Exit
-        // (auch bei Exception)"; die normalen Ausgaenge sind oben bedient, dieser hier nicht.
+        // And the same body once more as a finally region, for the case where an exception runs through
+        // this scope. A defer runs on every scope exit, exceptions included; the normal exits are served
+        // above, this one is not.
         //
-        // Der Preis ist Code-Duplikation: die Rumpfe stehen einmal inline und einmal hier. Die
-        // Alternative — ausschliesslich ueber die Region gehen — verlagerte auch den normalen
-        // Pfad in den Unwinder und machte jeden Scope-Exit zu einem Handler-Durchlauf.
+        // The price is code duplication: the bodies stand once inline and once here. The alternative,
+        // going through the region exclusively, would move the normal path into the unwinder too and
+        // make every scope exit a handler pass.
         var cleanup = _b.NewBlock();
         _b.SwitchTo(cleanup);
         EmitDefers(pending);
@@ -957,8 +924,8 @@ internal sealed class FunctionLowerer
 
         _handlers.Add(new IrHandler(start, end, IrHandlerKind.Finally, null, cleanup, null));
 
-        // Nach dem Rumpf geht es hinter der Region weiter — der Cursor steht sonst im
-        // finally-Block, der auf dem normalen Pfad nie erreicht wird.
+        // After the body execution continues behind the region; otherwise the cursor stands in the
+        // finally block, which is never reached on the normal path.
         if (fallsThrough)
         {
             var after = _b.NewBlock();
@@ -969,7 +936,7 @@ internal sealed class FunctionLowerer
         return fallsThrough;
     }
 
-    /// <summary>Ein Scope ohne <c>defer</c>: nichts zu bewachen, nichts nachzuraeumen.</summary>
+    /// <summary>A scope without a <c>defer</c>: nothing to guard, nothing to clean up.</summary>
     private bool LowerPlainScope(Block block)
     {
         _defers.Push(new List<DeferStmt>());
@@ -983,27 +950,23 @@ internal sealed class FunctionLowerer
         }
     }
 
-    /// <summary>LIFO: zuletzt registriert laeuft zuerst.</summary>
+    /// <summary>LIFO: registered last runs first.</summary>
     private void EmitDefers(List<DeferStmt> pending)
     {
         for (var i = pending.Count - 1; i >= 0; i--) LowerStmt(pending[i].Body);
     }
 
-    /// <summary>Alle offenen <c>defer</c>s, innerste zuerst — vor einem <c>return</c> oder
-    /// <c>throw</c>, das mehrere Scopes auf einmal verlaesst. Ein <c>Stack&lt;T&gt;</c> zaehlt von
-    /// oben auf, die Reihenfolge stimmt also von selbst.</summary>
+    /// <summary>All open <c>defer</c>s, innermost first, before a <c>return</c> or <c>throw</c> that
+    /// leaves several scopes at once. A <c>Stack&lt;T&gt;</c> enumerates from the top, so the order is
+    /// right by itself.</summary>
     private void EmitAllPendingDefers()
     {
-        // Ueber eine KOPIE, nicht ueber den Stack selbst: das Lowern eines defer-Rumpfes betritt
-        // einen Scope und pusht dabei einen neuen Eintrag auf genau diesen Stack — der Enumerator
-        // wird ungueltig, und .NET wirft mitten im Compiler.
+        // Over a COPY rather than over the stack itself: lowering a defer body enters a scope and pushes
+        // a new entry onto exactly this stack, which invalidates the enumerator and throws in the middle
+        // of the compiler.
         //
-        // Ausgeloest hat es die alltaeglichste Form ueberhaupt: ein 'defer' und ein 'return' in
-        // einem if-Zweig. Kein Test und kein Beispiel hatte beides zusammen, obwohl P5 den
-        // defer-an-jedem-Ausgang ausdruecklich liefert.
-        //
-        // Die Reihenfolge bleibt: Stack<T>.ToArray() liefert von oben nach unten, also innerster
-        // Scope zuerst — dasselbe, was die Enumeration tat.
+        // The order is preserved: Stack<T>.ToArray() yields top to bottom, so innermost scope first —
+        // the same as the enumeration did.
         foreach (var scope in _defers.ToArray()) EmitDefers(scope);
     }
 
@@ -1014,10 +977,10 @@ internal sealed class FunctionLowerer
 
         var type = LowerType(local.Type, binding.Span);
 
-        // In einer Coroutine ueberlebt JEDE lokale Variable den naechsten 'yield' — also liegt
-        // keine in einem Frame-Slot. Konservativ: es wird nicht geprueft, ob ein Local wirklich
-        // ueber ein 'yield' hinweg lebt. Die Lebendigkeitsanalyse waere eine Optimierung, die nur
-        // Objektgroesse spart, und ihre Fehler faenden erst zur Laufzeit auf.
+        // In a coroutine EVERY local variable survives the next 'yield', so none lies in a frame slot.
+        // Conservatively: it is not checked whether a local really lives across a 'yield'. A liveness
+        // analysis would be an optimization that only saves object size, and its errors would show at
+        // runtime.
         if (InCoroutine)
         {
             var field = DeclareStateField(local, binding.Name, type);
@@ -1026,10 +989,9 @@ internal sealed class FunctionLowerer
             return true;
         }
 
-        // Ein gefangenes 'var' lebt in einer Zelle (ADR-018) — der Slot haelt dann die Zelle, und
-        // sie muss existieren, BEVOR irgendjemand hineinschreibt. Deshalb steht das newobj hier
-        // und nicht bei der ersten Zuweisung: ein 'var n: int;' ohne Initialisierer wird spaeter
-        // beschrieben, und dort waere die Zelle sonst noch nicht da.
+        // A captured 'var' lives in a cell, so the slot holds the cell, and it has to exist BEFORE anyone
+        // writes into it. Hence the newobj here rather than at the first assignment: a 'var n: int;'
+        // without an initializer is written later, and the cell would not be there yet.
         if (_types.IsBoxed(local))
         {
             var cellType = _typeTable.CellOf(type);
@@ -1048,8 +1010,8 @@ internal sealed class FunctionLowerer
 
         var slot = _slots.DeclareFor(local, type);
 
-        // Ohne Initializer bleibt der Slot ungeschrieben: die Definite-Assignment-Analyse hat
-        // bewiesen, dass jeder Read eine Zuweisung sieht.
+        // Without an initializer the slot stays unwritten: the definite-assignment analysis proved that
+        // every read sees an assignment.
         if (binding.Initializer is not null)
             _b.Emit(new StoreLocal(slot, LowerExprAs(binding.Initializer, type), binding.Span));
 
@@ -1057,11 +1019,11 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>let (a, b) = paar;</c> — den Wert einmal auswerten, dann Feld fuer Feld binden (§4).
+    /// <c>let (a, b) = pair;</c> — evaluate the value once, then bind field by field.
     ///
-    /// <para><b>Einmal</b> auswerten ist die eigentliche Aussage: <c>let (a, b) = f();</c> darf
-    /// <c>f</c> nicht zweimal rufen. Deshalb landet das Tupel zuerst in einem Temp und die
-    /// Bindungen lesen daraus — nicht aus dem Ausdruck.</para>
+    /// <para>Evaluating ONCE is the actual statement: <c>let (a, b) = f();</c> must not call <c>f</c>
+    /// twice. The tuple therefore lands in a temp first and the bindings read from it rather than from
+    /// the expression.</para>
     /// </summary>
     private bool LowerDestructuring(DestructuringStmt stmt)
     {
@@ -1074,8 +1036,8 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Bindet die Namen eines Tupel-Musters an die Felder eines Objekts — rekursiv, weil Muster
-    /// sich schachteln (<c>let (a, (b, c)) = …</c>).
+    /// Binds the names of a tuple pattern to the fields of an object, recursively, because patterns nest
+    /// (<c>let (a, (b, c)) = …</c>).
     /// </summary>
     private void BindTupleElements(TuplePattern pattern, TempId source, TypeId type, Core.Span span)
     {
@@ -1087,8 +1049,8 @@ internal sealed class FunctionLowerer
 
             switch (pattern.Elements[i])
             {
-                // '_' bindet nichts. Das Feld wird deshalb gar nicht erst gelesen — ein 'ldfld',
-                // dessen Ergebnis niemand benutzt, waere toter Code im Bytecode.
+                // '_' binds nothing, so the field is not even read: an 'ldfld' whose result nobody uses
+                // would be dead code in the bytecode.
                 case WildcardPattern:
                     continue;
 
@@ -1126,8 +1088,8 @@ internal sealed class FunctionLowerer
 
     private bool LowerReturn(ReturnStmt stmt)
     {
-        // Der Rueckgabewert wird VOR den defer-Rumpfen ausgewertet: 'defer' darf den Wert nicht
-        // mehr aendern, den 'return' bereits bestimmt hat (Go haelt es genauso).
+        // The return value is evaluated BEFORE the defer bodies: a 'defer' must not change the value a
+        // 'return' has already determined. Go behaves the same way.
         var returned = stmt.Value is null ? null : (TempId?)LowerExprAs(stmt.Value, _returnType);
         EmitAllPendingDefers();
         _b.Seal(new Return(returned, stmt.Span));
@@ -1149,9 +1111,9 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der Merge-Block wird erst angelegt, wenn mindestens ein Zweig durchfällt. Bei
-    /// <c>if (c) { return 1; } else { return 2; }</c> entsteht keiner — er hätte keine
-    /// Prädecessoren und der Verifier würde ihn als unerreichbar melden.
+    /// The merge block is created only once at least one branch falls through. For
+    /// <c>if (c) { return 1; } else { return 2; }</c> none arises: it would have no predecessors and the
+    /// verifier would report it as unreachable.
     /// </summary>
     private bool LowerIf(IfStmt stmt)
     {
@@ -1160,8 +1122,8 @@ internal sealed class FunctionLowerer
 
         if (stmt.Else is null)
         {
-            // Ohne else ist der false-Zweig der Merge-Block; er ist über die false-Kante
-            // garantiert erreichbar und darf deshalb sofort entstehen.
+            // Without an else the false branch is the merge block; it is reachable through the false edge
+            // and may therefore arise immediately.
             var merge = _b.NewBlock();
             _b.Seal(new CondBranch(condition, thenBlock, merge, stmt.Span));
 
@@ -1177,10 +1139,10 @@ internal sealed class FunctionLowerer
 
         _b.SwitchTo(thenBlock);
         var thenFallsThrough = LowerStatements(stmt.Then);
-        var thenExit = _b.CurrentId; // nach verschachteltem Kontrollfluss nicht mehr thenBlock
+        var thenExit = _b.CurrentId; // after nested control flow this is no longer thenBlock
 
         _b.SwitchTo(elseBlock);
-        var elseFallsThrough = LowerStmt(stmt.Else); // Block oder else-if
+        var elseFallsThrough = LowerStmt(stmt.Else); // a block or an else-if
         var elseExit = _b.CurrentId;
 
         if (!thenFallsThrough && !elseFallsThrough) return false;
@@ -1194,16 +1156,15 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>for (x in e) { … }</c> — eine Schleife ueber <c>next()</c> (Sprache.md §5).
+    /// <c>for (x in e) { … }</c> — a loop over <c>next()</c>.
     ///
-    /// <para>Der Rumpf laeuft, solange <c>next()</c> einen Wert liefert; <c>null</c> beendet die
-    /// Schleife. Das ist das gesamte Protokoll, und es ist dasselbe fuer einen eigenen Iterator
-    /// wie fuer die eingebauten Formen — bei denen beschafft der Compiler den Iterator, indem er
-    /// einen Adapter aus <c>std.iter</c> baut.</para>
+    /// <para>The body runs as long as <c>next()</c> yields a value; <c>null</c> ends the loop. That is
+    /// the entire protocol, and it is the same for a user-written iterator as for the built-in forms,
+    /// where the compiler obtains the iterator by building an adapter from <c>std.iter</c>.</para>
     ///
-    /// <para><b>Ein Aufruf, keine drei.</b> Die Alternative — <c>hasNext()</c> pruefen, dann
-    /// <c>next()</c> holen — stellt dieselbe Frage zweimal und kann zwischen beiden aus dem Tritt
-    /// geraten. Rust und Python machen es aus demselben Grund mit einem Aufruf.</para>
+    /// <para>ONE CALL, NOT THREE. The alternative — check <c>hasNext()</c>, then fetch <c>next()</c> —
+    /// asks the same question twice and can fall out of step between the two. Rust and Python use one
+    /// call for the same reason.</para>
     /// </summary>
     private bool LowerForIn(ForInStmt stmt)
     {
@@ -1213,8 +1174,8 @@ internal sealed class FunctionLowerer
         var (iterator, iteratorType, owner) = BuildIterator(stmt);
         var elementType = LowerType(loopVar.Type, stmt.Span);
 
-        // Der Iterator lebt in einem Slot: er wird bei jedem Durchlauf gelesen und veraendert
-        // sich dabei — ein Temp wuerde nach dem ersten Block nicht mehr gelten.
+        // The iterator lives in a slot: it is read on every pass and changes while doing so, and a temp
+        // would no longer be valid after the first block.
         var slot = _slots.DeclareSynthetic("iter", iteratorType);
         _b.Emit(new StoreLocal(slot, iterator, stmt.Span));
 
@@ -1233,13 +1194,13 @@ internal sealed class FunctionLowerer
         _b.Emit(new OptIsSome(hasValue, produced, stmt.Span));
 
         var bodyBlock = _b.NewBlock();
-        var exitBlock = _b.NewBlock(); // vor dem Body: 'break' braucht sein Ziel
+        var exitBlock = _b.NewBlock(); // before the body: 'break' needs its target
         _b.Seal(new CondBranch(hasValue, bodyBlock, exitBlock, stmt.Span));
 
         _b.SwitchTo(bodyBlock);
 
-        // Das 'optget' kann nicht panicken: es steht hinter dem 'optissome', der den Beweis
-        // gefuehrt hat — dieselbe Arbeitsteilung wie beim Flow-Narrowing.
+        // The 'optget' cannot panic: it stands behind the 'optissome' that carried the proof — the same
+        // division of labour as in flow narrowing.
         var value = _slots.NewTemp(elementType);
         _b.Emit(new OptGet(value, produced, elementType, stmt.Span));
 
@@ -1255,28 +1216,25 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Beschafft den Iterator fuer einen <c>for-in</c>-Kopf.
+    /// Obtains the iterator for a <c>for-in</c> head.
     ///
-    /// <para>Ein Wert, der <c>Iterator&lt;T&gt;</c> selbst erfuellt, wird direkt benutzt. Die
-    /// eingebauten Formen bekommen einen Adapter aus <c>std.iter</c>: sie haben keine
-    /// Deklaration, an die sich eine Konformanz haengen liesse.</para>
+    /// <para>A value that satisfies <c>Iterator&lt;T&gt;</c> itself is used directly. The built-in forms
+    /// get an adapter from <c>std.iter</c>: they have no declaration a conformance could hang on.</para>
     /// </summary>
     private (TempId Value, IrType Type, GenericInstance? Owner) BuildIterator(ForInStmt stmt)
     {
-        // Substituiert, weil ein 'for-in' in einer monomorphisierten Instanz stehen kann:
-        // 'fn total<T :: [P]>(xs: T[]) { for (x in xs) … }'. Ohne die Substitution wuerde der
-        // ArrayIterator mit dem Typ-PARAMETER interniert, und die Typtabelle suchte nach einer
-        // Klasse namens 'T'. Dieselbe Stelle, an der LowerDeclaredReturnType die Substitution
-        // treffen muss — ein syntaktisch geschriebener Typ traegt sie nicht von allein.
+        // Substituted, because a 'for-in' can stand in a monomorphized instance:
+        // 'fn total<T :: [P]>(xs: T[]) { for (x in xs) … }'. Without the substitution the ArrayIterator
+        // would be interned with the type PARAMETER, and the type table would look for a class named 'T'.
         var source = SubstituteType(_types.TypeOf(stmt.Iterable));
 
-        // 'Iterable<T>' zuerst: der Traeger SAGT, wie man ihn durchlaeuft, und liefert bei jedem
-        // Aufruf einen frischen Cursor. Deshalb stoeren zwei Schleifen ueber dieselbe Liste
-        // einander nicht — waere die Liste ihr eigener Iterator, wuerden sie es.
+        // 'Iterable<T>' first: the container SAYS how to walk it and yields a fresh cursor on every call.
+        // Two loops over the same list therefore do not disturb each other — if the list were its own
+        // iterator, they would.
         //
-        // Der Rueckgabetyp ist 'Iterator<T>', also ein INTERFACE — 'next()' geht damit ueber
-        // callvirt. Das ist der Preis der Entkopplung und derselbe Weg, den ein Iterator nimmt,
-        // der ueber sein Interface vorliegt.
+        // The return type is 'Iterator<T>', so an INTERFACE, and 'next()' therefore goes through
+        // callvirt. That is the price of the decoupling and the same route an iterator takes that is
+        // available through its interface.
         if (_types.Iterable is { } iterable
             && TypeFacts.SymbolOf(source) is { } carrier
             && Conformance.Implements(carrier, iterable, _typeTable.Binding)
@@ -1289,10 +1247,10 @@ internal sealed class FunctionLowerer
                     ? direct
                     : throw NotSupported($"'{carrier.Name}.iter' was not lowered", stmt.Span);
 
-            // 'Iterator<T>' mit dem KONKRETEN Elementtyp, nicht die Definition: eine generische
-            // Instanz hat ihre eigene Slot-Tabelle, und 'callvirt' liest den Index daraus.
-            // Woher der Elementtyp kommt, weiss die Sema laengst — er steht am Symbol der
-            // Schleifenvariable, und ihn hier neu abzuleiten waere eine zweite Wahrheit.
+            // 'Iterator<T>' with the CONCRETE element type rather than the definition: a generic instance
+            // has its own slot table, and 'callvirt' reads the index from it. Where the element type
+            // comes from is long known to the sema — it stands on the symbol of the loop variable, and
+            // deriving it again here would be a second truth.
             var element = _types.RefOf(stmt) is LocalSymbol bound
                 ? SubstituteType(bound.Type)
                 : throw Bug($"for-in at {stmt.Span} has no bound loop variable");
@@ -1323,11 +1281,10 @@ internal sealed class FunctionLowerer
             return (instance, new IrRefType(type), owner);
         }
 
-        // Ein String laeuft ueber seine Codepoints (Sprache.md 4: 'char' IST ein Codepoint).
-        // Der Adapter bekommt sie als Array — 'toChars' loest sie EINMAL heraus. Ein Iterator,
-        // der stattdessen 'charAt' riefe, muesste pro Schritt von vorn zaehlen und machte die
-        // Schleife quadratisch; das sieht man einem 'for (c in s)' nicht an, und genau deshalb
-        // darf es nicht so gebaut sein.
+        // A string is walked over its code points, since a 'char' IS a code point. The adapter gets them
+        // as an array: 'toChars' extracts them ONCE. An iterator calling 'charAt' instead would have to
+        // count from the front on every step and would make the loop quadratic; that is not visible in a
+        // 'for (c in s)'.
         if (source is PrimitiveType { Kind: PrimitiveKind.String })
         {
             var symbol = _types.StringIterator ?? throw NotSupported(
@@ -1354,8 +1311,8 @@ internal sealed class FunctionLowerer
             var low = LowerExprAs(range.Low, new IrScalarType(IrScalar.I64));
             var high = LowerExprAs(range.High, new IrScalarType(IrScalar.I64));
 
-            // Ein inklusiver Bereich endet eins spaeter. Die Umrechnung hier statt eines zweiten
-            // Adapters: 'a..b' und 'a..=b' unterscheiden sich allein im Endwert.
+            // An inclusive range ends one later. Converted here rather than through a second adapter:
+            // 'a..b' and 'a..=b' differ in the end value alone.
             if (range.IsInclusive)
             {
                 var one = IntConstant(1, stmt.Span);
@@ -1377,19 +1334,19 @@ internal sealed class FunctionLowerer
                 "iterating a string (std.iter has no adapter for it yet — a string has no "
                 + "'length' to walk with)", stmt.Span);
 
-        // Ein eigener Iterator: direkt benutzen.
+        // A user-written iterator is used directly.
         var own = LowerType(source, stmt.Span);
         return (LowerExpr(stmt.Iterable), own,
             SubstituteType(source) as GenericInstance);
     }
 
-    /// <summary>Der <c>next()</c>-Aufruf — virtuell, wenn der Iterator ueber sein Interface
-    /// vorliegt, sonst direkt auf der Instanz.</summary>
+    /// <summary>The <c>next()</c> call: virtual when the iterator is available through its interface,
+    /// otherwise directly on the instance.</summary>
     private void EmitNextCall(TempId dest, TempId iterator, IrType iteratorType,
         GenericInstance? owner, IrType returns, Core.Span span)
     {
-        // Liegt der Iterator ueber seinem Interface vor, entscheidet erst die Laufzeit, welche
-        // Implementierung laeuft — das ist der eine Fall, in dem 'for-in' dynamisch dispatcht.
+        // When the iterator is available through its interface, only the runtime decides which
+        // implementation runs — the one case in which 'for-in' dispatches dynamically.
         if (iteratorType is IrInterfaceType iface)
         {
             var slots = _typeTable.MethodSlotsOf(iface.Type);
@@ -1403,8 +1360,8 @@ internal sealed class FunctionLowerer
             || method.Declaration is not FunctionDecl decl)
             throw NotSupported($"'{declaring.Name}' has no 'next' to iterate with", span);
 
-        // Ein konkreter Iterator wird direkt gerufen: welche Funktion laeuft, steht fest, und ein
-        // callvirt haette hier nur eine Tabelle zu befragen, deren Antwort der Compiler kennt.
+        // A concrete iterator is called directly: which function runs is settled, and a callvirt would
+        // only consult a table whose answer the compiler already knows.
         var target = owner is not null
             ? _instances.RequestMethod(method, decl, owner, span)
             : TryResolveFunction(method, out var direct)
@@ -1414,7 +1371,7 @@ internal sealed class FunctionLowerer
         _b.Emit(new Call(dest, target, [iterator], span));
     }
 
-    /// <summary>Das Symbol hinter einem nicht-generischen Iterator-Wert.</summary>
+    /// <summary>The symbol behind a non-generic iterator value.</summary>
     private TypeSymbol IteratorSymbolOf(IrType type, Core.Span span)
     {
         if (type is IrRefType reference)
@@ -1439,10 +1396,10 @@ internal sealed class FunctionLowerer
 
         _b.SwitchTo(condBlock);
         var condition = LowerExpr(stmt.Condition);
-        var condExit = _b.CurrentId; // die Bedingung kann selbst Blöcke erzeugt haben (&&, ||)
+        var condExit = _b.CurrentId; // the condition may have produced blocks itself (&&, ||)
 
         var bodyBlock = _b.NewBlock();
-        var exitBlock = _b.NewBlock(); // muss vor dem Body stehen: 'break' braucht sein Ziel
+        var exitBlock = _b.NewBlock(); // has to stand before the body: 'break' needs its target
         _b.SealBlock(condExit, new CondBranch(condition, bodyBlock, exitBlock, stmt.Condition.Span));
 
         _b.SwitchTo(bodyBlock);
@@ -1451,21 +1408,19 @@ internal sealed class FunctionLowerer
         _loops.Pop();
 
         _b.SwitchTo(exitBlock);
-        return true; // über die false-Kante der Bedingung immer erreichbar
+        return true; // always reachable through the condition's false edge
     }
 
     /// <summary>
-    /// <c>do { … } while (cond);</c> — der Rumpf laeuft mindestens einmal, die Bedingung steht
-    /// dahinter.
+    /// <c>do { … } while (cond);</c> — the body runs at least once, the condition stands behind it.
     ///
-    /// <para><b>Und genau deshalb ist das die einzige Schleife, deren Bedingung unerreichbar sein
-    /// kann.</b> Terminiert der Rumpf auf jedem Pfad (<c>do { return 1; } while (true);</c>), kommt
-    /// niemand bei ihr an — und der Verifier lehnt einen unerreichbaren Block ab, weil es keinen
-    /// <c>SimplifyCfg</c>-Pass gibt. Bis 2026-08-11 war das ein Compiler-Absturz.</para>
+    /// <para>That makes it the only loop whose condition can be unreachable. If the body terminates on
+    /// every path (<c>do { return 1; } while (true);</c>) nobody arrives at it, and the verifier rejects
+    /// an unreachable block, because there is no <c>SimplifyCfg</c> pass.</para>
     ///
-    /// <para>Die Bloecke entstehen deshalb <b>bedarfsgesteuert</b> (siehe <see cref="LoopScope"/>).
-    /// Die Frage ist „hat jemand hierher gesprungen", nicht „faellt der Rumpf durch": ein
-    /// <c>break</c> erreicht den Ausgang auch aus einem Rumpf, der nicht durchfaellt.</para>
+    /// <para>The blocks therefore arise ON DEMAND (see <see cref="LoopScope"/>). The question is "did
+    /// anyone jump here", not "does the body fall through": a <c>break</c> reaches the exit even from a
+    /// body that does not fall through.</para>
     /// </summary>
     private bool LowerDoWhile(DoWhileStmt stmt)
     {
@@ -1478,8 +1433,8 @@ internal sealed class FunctionLowerer
         var fallsThrough = LowerStatements(stmt.Body);
         _loops.Pop();
 
-        // Die Bedingung wird gebraucht, wenn der Rumpf durchfaellt ODER ein 'continue' zu ihr
-        // springt. Sonst gibt es sie nicht — und mit ihr auch die false-Kante zum Ausgang nicht.
+        // The condition is needed when the body falls through OR a 'continue' jumps to it. Otherwise it
+        // does not exist, and neither does the false edge to the exit.
         if (fallsThrough || loop.ContinueRequested)
         {
             var condBlock = loop.ContinueTarget;
@@ -1490,22 +1445,21 @@ internal sealed class FunctionLowerer
             _b.Seal(new CondBranch(condition, bodyBlock, loop.BreakTarget, stmt.Condition.Span));
         }
 
-        // Kein Ausgang: die Schleife wird nie verlassen. Der Kontrollfluss faellt hier nicht durch,
-        // und das meldet diese Methode nach oben — statt einen Block zu hinterlassen, den niemand
-        // betritt.
+        // No exit: the loop is never left. Control flow does not fall through here, and that is what
+        // this method reports upwards, rather than leaving a block nobody enters.
         if (!loop.BreakRequested) return false;
 
         _b.SwitchTo(loop.BreakTarget);
         return true;
     }
 
-    // ------------------------------------------------------------------ Ausdrücke
+    // ------------------------------------------------------------------ expressions
 
     private TempId LowerExpr(Expr expr) =>
         LowerExprOrVoid(expr) ?? throw Bug($"expression at {expr.Span} produced no value");
 
-    /// <summary>Liefert null nur für den Aufruf einer void-Funktion — der einzige Ausdruck ohne
-    /// Wert. Sonst immer ein Temp.</summary>
+    /// <summary>Returns null only for a call to a void function, the one expression without a value.
+    /// Otherwise always a temp.</summary>
     private TempId? LowerExprOrVoid(Expr expr) =>
         _chainReceivers.TryGetValue(expr, out var alreadyUnwrapped) ? alreadyUnwrapped : expr switch
     {
@@ -1547,23 +1501,23 @@ internal sealed class FunctionLowerer
     {
         var type = TypeOfExpr(expr);
 
-        // Ein untypisiertes Ganzzahl-Literal in Float-Kontext IST ein Float-Wert, es wird nicht
-        // konvertiert (Sprache.md §6.5). `let f: float = 5;` muss also ein FloatConst werden —
-        // ein IntConst mit Float-Typ wäre malformed, und der Verifier sagt das auch.
+        // An untyped integer literal in float context IS a float value; it is not converted. A
+        // `let f: float = 5;` therefore has to become a FloatConst — an IntConst with a float type would
+        // be malformed, and the verifier says so.
         if (type is IrScalarType { Kind: IrScalar.F32 or IrScalar.F64 })
             return EmitConst(new FloatConst(expr.Value), type, expr.Span);
 
-        // Die Kodierung von IntConst ist Zweierkomplement, nullerweitert auf 64 Bit. Der Parser
-        // liefert die Magnitude; ein Minuszeichen ist ein eigener UnaryExpr(Neg).
+        // The encoding of IntConst is two's complement, zero-extended to 64 bits. The parser yields the
+        // magnitude; a minus sign is a UnaryExpr(Neg) of its own.
         return EmitConst(new IntConst(expr.Value), type, expr.Span);
     }
 
     private TempId LowerFloatLiteral(FloatLiteralExpr expr)
     {
         var type = TypeOfExpr(expr);
-        // f32 muss hier verengt werden: ein Const vom Typ f32, dessen Wert kein f32-Wert ist,
-        // wäre malformed (und der Verifier meldet es). Die Verengung gehört ins Lowering, damit
-        // der Wert im Bytecode deterministisch derselbe ist.
+        // f32 has to be narrowed here: a const of type f32 whose value is no f32 value would be
+        // malformed, and the verifier reports it. The narrowing belongs in the lowering, so the value in
+        // the bytecode is deterministically the same.
         var value = type is IrScalarType { Kind: IrScalar.F32 } ? (float)expr.Value : expr.Value;
         return EmitConst(new FloatConst(value), type, expr.Span);
     }
@@ -1572,24 +1526,24 @@ internal sealed class FunctionLowerer
     {
         var symbol = _types.RefOf(expr) ?? throw Bug($"identifier '{expr.Name}' is unbound");
 
-        // Ein Modul-'let' hat keinen Frame-Slot, sondern einen globalen.
+        // A module 'let' has no frame slot but a global one.
         if (TryLowerGlobalIdentifier(expr) is { } global) return global;
 
-        // In einer Coroutine liegt jede Variable im Zustandsobjekt.
+        // In a coroutine every variable lives in the state object.
         if (InCoroutine && _stateFields.TryGetValue(symbol, out var stateField))
             return Narrow(expr, LoadStateField(stateField, expr.Span), _stateTypes[stateField]);
 
-        // In einem angehobenen Lambda liegt ein gefangenes Symbol im Environment, nicht in einem
-        // Slot. Erst Slots fragen: ein gleichnamiges lokales Symbol IST ein anderes Symbol, und
-        // die Referenzgleichheit haelt beide auseinander.
+        // In a lifted lambda a captured symbol lies in the environment rather than in a slot. Slots are
+        // asked first: a local symbol of the same name IS a different symbol, and reference equality
+        // keeps the two apart.
         if (!_slots.TryLookup(symbol, out var slot))
         {
             if (_captureFields.ContainsKey(symbol))
             {
                 var (capturedType, capturedValue) = LoadCaptured(symbol, expr.Span);
 
-                // Ist das Gefangene eine Zelle, steht hier ihr Inhalt zur Debatte, nicht sie
-                // selbst — die Zelle ist Transportmittel, kein Wert des Programms.
+                // When the captured thing is a cell, its content is what is at issue here rather than
+                // the cell itself: the cell is a carrier, not a value of the program.
                 if (capturedType is IrRefType reference && _typeTable.IsCell(reference.Type))
                 {
                     var inner = _typeTable.Defs[reference.Type.Value].FieldTypes[0];
@@ -1602,23 +1556,20 @@ internal sealed class FunctionLowerer
                 return Narrow(expr, capturedValue, capturedType);
             }
 
-            // Eine deklarierte Funktion als WERT: 'map(o, verdoppeln)' statt
-            // 'map(o, (n: int) => verdoppeln(n))'.
+            // A declared function as a VALUE: 'map(o, double)' rather than
+            // 'map(o, (n: int) => double(n))'.
             //
-            // Sie ist eine Closure ohne Umgebung — mehr nicht. 'MakeClosure' nimmt sein
-            // Environment seit P6 optional (der haeufige Fall '(x) => x > 0' faengt nichts), und
-            // die VM entscheidet am 'HasEnvironment'-Bit, ob Slot 0 belegt wird. Es brauchte
-            // also weder eine Instruktion noch eine Opcode-Aenderung, sondern nur diese Stelle:
-            // bis 2026-08-11 stand hier ein 'LYR-IR0001', obwohl die Sema den Ausdruck laengst
-            // als 'fn(…) -> …' typte.
+            // It is a closure without an environment, nothing more. 'MakeClosure' takes its environment
+            // optionally — the common case '(x) => x > 0' captures nothing — and the VM decides from the
+            // 'HasEnvironment' bit whether slot 0 is occupied.
             //
-            // 'Reachability' kennt 'MakeClosure' bereits als Wurzel — eine nur so referenzierte
-            // Funktion faellt der Erreichbarkeitsanalyse also nicht zum Opfer.
+            // 'Reachability' already knows 'MakeClosure' as a root, so a function referenced only this
+            // way does not fall victim to the reachability analysis.
             if (symbol is FunctionSymbol function)
             {
-                // VOR der Typberechnung: `TypeOfExpr` auf einer generischen Signatur wirft selbst,
-                // und zwar mit „type parameter 'T' reached lowering unsubstituted" — einer
-                // Meldung ueber das Innenleben des Compilers statt ueber das Programm.
+                // BEFORE the type computation: `TypeOfExpr` on a generic signature throws itself, with
+                // "type parameter 'T' reached lowering unsubstituted" — a message about the compiler's
+                // internals rather than about the program.
                 if (function.Declaration is FunctionDecl { Generics.Length: > 0 })
                     throw NotSupported(
                         $"a generic function ('{expr.Name}') as a value — the type arguments have "
@@ -1641,18 +1592,16 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Flow-Narrowing (§7): nach <c>if (x != null)</c> sagt die Sema fuer x den Typ T, die Stelle
-    /// im Speicher haelt aber weiter ?T — die Einengung ist eine Aussage ueber den Kontrollfluss,
-    /// keine ueber den Speicher. Hier wird sie eingeloest: der Lowerer packt aus, wo die Sema T
-    /// erwartet.
+    /// Flow narrowing: after <c>if (x != null)</c> the sema says the type of x is T, while the place in
+    /// memory still holds ?T — the narrowing is a statement about control flow, not about memory. It is
+    /// redeemed here: the lowerer unwraps where the sema expects T.
     ///
-    /// <para>Dass das sicher ist, hat die Sema bewiesen — sie engt nur ein, wo sie null
-    /// ausgeschlossen hat. Das <c>optget</c> kann deshalb nie panicken; es ist die
-    /// Materialisierung eines schon gefuehrten Beweises.</para>
+    /// <para>That this is sound was proven by the sema, which narrows only where it excluded null. The
+    /// <c>optget</c> can therefore never panic; it is the materialization of a proof already made.</para>
     ///
-    /// <para>Herausgezogen, als Captures dazukamen: ein gefangenes <c>?T</c> braucht dieselbe
-    /// Einengung wie ein lokales, und zwei Kopien derselben vier Zeilen waeren zwei Orte gewesen,
-    /// an denen sie haette fehlen koennen.</para>
+    /// <para>Pulled out when captures arrived: a captured <c>?T</c> needs the same narrowing as a local
+    /// one, and two copies of the same four lines would have been two places it could have been missing
+    /// from.</para>
     /// </summary>
     private TempId Narrow(Expr expr, TempId value, IrType type)
     {
@@ -1684,8 +1633,8 @@ internal sealed class FunctionLowerer
         _ => throw Bug($"unhandled postfix operator {expr.Operator}")
     };
 
-    /// <summary><c>++</c>/<c>--</c> in beiden Stellungen: Prefix liefert den neuen Wert, Postfix den
-    /// alten. Beide schreiben denselben Store.</summary>
+    /// <summary><c>++</c> and <c>--</c> in both positions: prefix yields the new value, postfix the old.
+    /// Both write the same store.</summary>
     private TempId LowerIncDec(Expr target, bool increment, bool yieldOldValue, Span span)
     {
         var slot = ResolveLocalTarget(target, "increment/decrement");
@@ -1717,9 +1666,9 @@ internal sealed class FunctionLowerer
         var rhs = LowerExpr(expr.Right);
         var type = TypeOfExpr(expr);
 
-        // xs + ys und xs * n sind eingebaute Sprachsemantik (Sprache.md §6.5), aber KEIN BinOp:
-        // der add-Opcode bliebe sonst polymorph und müsste zur Laufzeit Typ-Dispatch machen —
-        // dieselbe Begründung wie bei string + string, nur mit eigener Instruktion statt Call.
+        // xs + ys and xs * n are built-in language semantics but NO BinOp: the add opcode would otherwise
+        // stay polymorphic and would have to dispatch on the type at runtime — the same reasoning as for
+        // string + string, only with an instruction of its own instead of a call.
         if (type is IrArrayType result)
         {
             var built = _slots.NewTemp(type);
@@ -1732,10 +1681,9 @@ internal sealed class FunctionLowerer
             return built;
         }
 
-        // Sprache.md §6.5 ueberlaedt '+' und '*' fuer string; das ist eingebaute Semantik, aber
-        // KEIN BinOp — sonst waere der add-Opcode polymorph und muesste zur Laufzeit
-        // Typ-Dispatch machen (gegen ADR-013). Es lowert zu einem Call in std.string, genau wie
-        // das f-String-Lowering seine Teile zusammensetzt.
+        // '+' and '*' are overloaded for string; that is built-in semantics but NO BinOp — the add opcode
+        // would otherwise be polymorphic and would have to dispatch on the type at runtime. It lowers to
+        // a call in std.string, exactly as the f-string lowering assembles its parts.
         if (!kind.IsComparison() && type is IrScalarType { Kind: IrScalar.String })
             return kind switch
             {
@@ -1750,9 +1698,8 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>a &amp;&amp; b</c> / <c>a || b</c>: der rechte Operand darf nur bedingt laufen, also
-    /// Kontrollfluss. Das Ergebnis fließt über ein synthetisches Local, weil ein Temp nur einmal
-    /// definiert werden darf.
+    /// <c>a &amp;&amp; b</c> and <c>a || b</c>: the right operand may run only conditionally, so control
+    /// flow. The result travels through a synthetic local, because a temp may be defined only once.
     /// </summary>
     private TempId LowerShortCircuit(BinaryExpr expr)
     {
@@ -1764,7 +1711,7 @@ internal sealed class FunctionLowerer
 
         var rhsBlock = _b.NewBlock();
         var mergeBlock = _b.NewBlock();
-        // '&&' wertet rechts nur bei true aus, '||' nur bei false — die Kanten sind getauscht.
+        // '&&' evaluates the right side only on true, '||' only on false; the edges are swapped.
         _b.Seal(isAnd
             ? new CondBranch(left, rhsBlock, mergeBlock, expr.Span)
             : new CondBranch(left, mergeBlock, rhsBlock, expr.Span));
@@ -1780,9 +1727,9 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Wie <see cref="LowerShortCircuit"/>, nur mit zwei schreibenden Zweigen. Beide
-    /// Zweige sind Ausdrücke und liefern garantiert einen Wert (Sprache.md §6.2), fallen also
-    /// immer durch — anders als beim if-<i>Statement</i> braucht es hier keine Fallunterscheidung.</summary>
+    /// <summary>Like <see cref="LowerShortCircuit"/>, but with two writing branches. Both branches are
+    /// expressions and are guaranteed to yield a value, so they always fall through — unlike the if
+    /// STATEMENT, no case distinction is needed here.</summary>
     private TempId LowerIfExpr(IfExpr expr)
     {
         var type = TypeOfExpr(expr);
@@ -1793,9 +1740,9 @@ internal sealed class FunctionLowerer
         var elseBlock = _b.NewBlock();
         _b.Seal(new CondBranch(condition, thenBlock, elseBlock, expr.Span));
 
-        // `LowerExprAs` und nicht `LowerExpr`: der Zweigtyp muss nicht der Ergebnistyp sein.
-        // `if (c) 5 else null` ist `?int`, und beide Zweige brauchen den Zieltyp — das `null`,
-        // weil es keinen eigenen hat, und die `5`, weil sie verpackt werden muss.
+        // `LowerExprAs` rather than `LowerExpr`: the branch type need not be the result type.
+        // `if (c) 5 else null` is `?int`, and both branches need the target type — the `null` because it
+        // has none of its own, and the `5` because it has to be wrapped.
         _b.SwitchTo(thenBlock);
         _b.Emit(new StoreLocal(slot, LowerExprAs(expr.Then, type), expr.Then.Span));
         var thenExit = _b.CurrentId;
@@ -1829,8 +1776,8 @@ internal sealed class FunctionLowerer
 
         if (expr.Operator is null)
         {
-            // Der Slot-Typ ist die erwartete Form — sonst landete bei 'var d: Damageable; d = p;'
-            // eine nackte Klassenreferenz in einem Interface-Slot.
+            // The slot type is the expected shape; otherwise 'var d: Damageable; d = p;' would put a bare
+            // class reference into an interface slot.
             var value = LowerExprAs(expr.Value, ValueTypeOf(slot));
             StoreValue(slot, value, expr.Span);
             return value;
@@ -1853,12 +1800,11 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>resume co</c> — die Coroutine fortsetzen und den naechsten Wert holen.
+    /// <c>resume co</c> — continue the coroutine and fetch the next value.
     ///
-    /// <para>Ein gewoehnlicher <c>callind</c>: der Coroutine-Wert IST ein Funktionswert ueber dem
-    /// Zustandsobjekt (Sprache.md §8, ADR-018). Der Sprungverteiler im Rumpf sorgt dafuer, dass
-    /// der Aufruf dort weitermacht, wo der letzte <c>yield</c> aufgehoert hat — von hier aus sieht
-    /// das aus wie jeder andere Aufruf, und das ist der ganze Punkt der Transformation.</para>
+    /// <para>An ordinary <c>callind</c>: the coroutine value IS a function value over the state object.
+    /// The jump table in the body makes the call continue where the last <c>yield</c> stopped; from here
+    /// it looks like any other call, and that is the whole point of the transformation.</para>
     /// </summary>
     private TempId LowerResume(ResumeExpr expr)
     {
@@ -1873,22 +1819,21 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>yield x</c> — der Punkt, an dem die Coroutine aufhoert und spaeter wieder anfaengt.
+    /// <c>yield x</c> — the point where the coroutine stops and later starts again.
     ///
-    /// <para>Drei Schritte: den Wiedereintrittspunkt ins Zustandsobjekt schreiben, den Wert
-    /// zurueckgeben, und den Block DANACH als Ziel merken. Was danach steht, laeuft erst beim
-    /// naechsten <c>resume</c> — deshalb ist der Rumpf einer Coroutine kein durchgehender
-    /// Kontrollfluss mehr, sondern eine Menge von Einstiegspunkten.</para>
+    /// <para>Three steps: write the re-entry point into the state object, return the value, and remember
+    /// the block AFTER it as a target. What stands after it runs only at the next <c>resume</c>, which is
+    /// why the body of a coroutine is no longer one continuous control flow but a set of entry
+    /// points.</para>
     ///
-    /// <para>Der Wiedereintrittspunkt wird <b>vor</b> dem Verlassen geschrieben und nicht danach:
-    /// es gibt kein Danach. Ein <c>ret</c> beendet den Frame; das Objekt ist das Einzige, was
-    /// bleibt.</para>
+    /// <para>The re-entry point is written BEFORE leaving rather than after: there is no after. A
+    /// <c>ret</c> ends the frame; the object is the only thing that remains.</para>
     /// </summary>
     private bool LowerYield(YieldStmt stmt)
     {
         if (!InCoroutine) throw Bug("'yield' outside a coroutine body reached the lowerer");
 
-        // Der naechste Einstiegspunkt hat die Nummer n+1: 0 ist "noch nicht gestartet".
+        // The next entry point has the number n+1: 0 means "not started yet".
         var point = _resumePoints.Count + 1;
 
         var marker = _slots.NewTemp(new IrScalarType(IrScalar.I32));
@@ -1901,7 +1846,7 @@ internal sealed class FunctionLowerer
 
         _b.Seal(new Return(value, stmt.Span));
 
-        // Hier geht es beim naechsten 'resume' weiter.
+        // Execution continues here at the next 'resume'.
         var continuation = _b.NewBlock();
         _resumePoints.Add(continuation);
         _b.SwitchTo(continuation);
@@ -1910,16 +1855,14 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der erste Block einer Coroutine: springt dorthin, wo sie aufgehoert hat.
+    /// The first block of a coroutine: it jumps to where the coroutine stopped.
     ///
-    /// <para>Er entsteht <b>zuletzt</b> — vorher sind die Einstiegspunkte nicht bekannt. Dass er
-    /// trotzdem der erste ist, sagt <see cref="IrFunction.Entry"/>; die IR nummeriert Bloecke, sie
-    /// ordnet sie nicht.</para>
+    /// <para>It arises LAST — before that the entry points are unknown. That it is nevertheless the first
+    /// is stated by <see cref="IrFunction.Entry"/>; the IR numbers blocks, it does not order them.</para>
     ///
-    /// <para>Eine Kette von Vergleichen und keine Sprungtabelle: die IR hat keinen
-    /// <c>switch</c>-Terminator, und ihn allein hierfuer einzufuehren waere ein Opcode fuer einen
-    /// einzigen Anwendungsfall. Bei den Groessenordnungen, um die es geht — ein Vergleich je
-    /// <c>yield</c> im Quelltext —, ist der Unterschied nicht messbar.</para>
+    /// <para>A chain of comparisons rather than a jump table: the IR has no <c>switch</c> terminator, and
+    /// introducing one for this alone would be an opcode for a single use case. At the sizes involved —
+    /// one comparison per <c>yield</c> in the source — the difference is not measurable.</para>
     /// </summary>
     private void BuildResumeDispatch(BlockId dispatch, BlockId start, Core.Span span)
     {
@@ -1928,9 +1871,9 @@ internal sealed class FunctionLowerer
         var i32 = new IrScalarType(IrScalar.I32);
         var current = LoadStateField(0, span);
 
-        // Zuerst der Endzustand: -1 heisst „Rumpf durchgelaufen", und ein weiteres 'resume' ist
-        // dann ein Fehler (Sprache.md §8). Ohne diese Pruefung liefe die Vergleichskette ins
-        // Leere und die Coroutine finge von vorn an — still und falsch.
+        // The end state first: -1 means "the body ran through", and a further 'resume' is then an error.
+        // Without this check the comparison chain would run into nothing and the coroutine would start
+        // over — silently and wrongly.
         var ended = _slots.NewTemp(i32);
         _b.Emit(new Const(ended, i32, new IntConst(unchecked((ulong)(uint)-1)), span));
 
@@ -1953,8 +1896,8 @@ internal sealed class FunctionLowerer
             _b.Emit(new Const(wanted, i32, new IntConst((ulong)(i + 1)), span));
 
             var matches = _slots.NewTemp(BoolType);
-            // Bei einem Vergleich traegt BinOp.Type den ERGEBNIS-Typ, nicht den der Operanden —
-            // dieselbe Konvention wie bei jedem anderen Vergleich im Lowering.
+            // For a comparison BinOp.Type carries the RESULT type rather than that of the operands, the
+            // same convention as for every other comparison in the lowering.
             _b.Emit(new BinOp(matches, IrBinKind.Eq, BoolType, current, wanted, span));
 
             var next = _b.NewBlock();
@@ -1962,11 +1905,11 @@ internal sealed class FunctionLowerer
             _b.SwitchTo(next);
         }
 
-        // Kein Treffer heisst "noch nicht gestartet" — der Rumpf beginnt von vorn.
+        // No match means "not started yet": the body begins from the front.
         _b.Seal(new Branch(start, span));
     }
 
-    /// <summary>Zeigt dieses Zuweisungsziel auf eine Variable im Zustandsobjekt?</summary>
+    /// <summary>Does this assignment target point at a variable in the state object?</summary>
     private bool TryStateField(Expr target, out int field)
     {
         field = -1;
@@ -1975,9 +1918,9 @@ internal sealed class FunctionLowerer
         return _stateFields.TryGetValue(symbol, out field);
     }
 
-    /// <summary>Zuweisung an eine Variable im Zustandsobjekt — dieselben drei Formen wie beim
-    /// Slot-Pfad, nur dass gelesen und geschrieben wird, wo die Variable den <c>yield</c>
-    /// ueberlebt.</summary>
+    /// <summary>An assignment to a variable in the state object: the same three forms as on the slot
+    /// path, except that reading and writing happen where the variable survives the <c>yield</c>.
+    /// </summary>
     private TempId LowerStateAssign(AssignExpr expr, int field)
     {
         var type = _stateTypes[field];
@@ -2002,8 +1945,8 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Zuweisung an eine gefangene Zelle. Dieselben drei Formen wie beim Slot-Pfad, nur dass
-    /// gelesen und geschrieben wird, wo die Variable wirklich lebt.
+    /// An assignment to a captured cell. The same three forms as on the slot path, except that reading
+    /// and writing happen where the variable really lives.
     /// </summary>
     private TempId LowerCapturedAssign(AssignExpr expr, TempId cell, TypeId cellType, IrType type)
     {
@@ -2029,12 +1972,12 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>obj.f = v</c> und <c>obj.f += v</c>.
+    /// <c>obj.f = v</c> and <c>obj.f += v</c>.
     ///
-    /// <para><b>Das Objekt wird genau einmal ausgewertet.</b> Bei <c>+=</c> ist das der Unterschied
-    /// zwischen richtig und falsch, sobald der Ziel-Ausdruck Seiteneffekte hat: <c>next().f += 1</c>
-    /// darf <c>next()</c> nicht zweimal rufen. Deshalb wird die Referenz einmal in ein Temp gelowert
-    /// und für Lesen und Schreiben wiederverwendet.</para>
+    /// <para>THE OBJECT IS EVALUATED EXACTLY ONCE. For <c>+=</c> that is the difference between right and
+    /// wrong as soon as the target expression has side effects: <c>next().f += 1</c> must not call
+    /// <c>next()</c> twice. The reference is therefore lowered once into a temp and reused for reading
+    /// and writing.</para>
     /// </summary>
     private TempId LowerFieldAssign(MemberExpr member, AssignExpr expr)
     {
@@ -2064,8 +2007,8 @@ internal sealed class FunctionLowerer
         return result;
     }
 
-    /// <summary><c>this</c> ist der Slot 0. Dass er existiert, hat die Sema geprüft
-    /// (<c>LYR-SEM0008</c> in einer static-Methode) — hier ist ein fehlender Slot ein Bug.</summary>
+    /// <summary><c>this</c> is slot 0. That it exists was checked by the sema (<c>LYR-SEM0008</c> in a
+    /// static method), so a missing slot is a bug here.</summary>
     private TempId LowerThis(ThisExpr expr)
     {
         if (_thisSlot is not { } slot || _thisType is not { } type)
@@ -2077,18 +2020,18 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>xs[i] = v</c> und <c>xs[i] += v</c>.
+    /// <c>xs[i] = v</c> and <c>xs[i] += v</c>.
     ///
-    /// <para>Array <b>und</b> Index werden genau einmal ausgewertet — bei <c>+=</c> ist das der
-    /// Unterschied zwischen richtig und falsch, sobald einer von beiden Seiteneffekte hat:
-    /// <c>xs[next()] += 1</c> darf <c>next()</c> nicht zweimal rufen.</para>
+    /// <para>Array AND index are evaluated exactly once — for <c>+=</c> that is the difference between
+    /// right and wrong as soon as either has side effects: <c>xs[next()] += 1</c> must not call
+    /// <c>next()</c> twice.</para>
     /// </summary>
     private TempId LowerElementAssign(IndexExpr indexed, AssignExpr expr)
     {
-        // 'xs[i] = v' auf einem Container: 'Indexable<T>.set(i, v)'. Ein Compound-Assign
-        // ('xs[i] += 1') ist hier NICHT abgedeckt und meldet sich als Scope-Grenze — es braeuchte
-        // ein Lesen und ein Schreiben mit demselben Index, und ob der Index dabei zweimal
-        // ausgewertet werden darf, ist eine Sprachfrage, die §6.4 nicht beantwortet.
+        // 'xs[i] = v' on a container is 'Indexable<T>.set(i, v)'. A compound assignment ('xs[i] += 1') is
+        // NOT covered here and reports as a scope boundary: it would need a read and a write with the
+        // same index, and whether the index may be evaluated twice is a language question the spec does
+        // not answer.
         if (TypeOfExpr(indexed.Target) is not IrArrayType)
         {
             if (expr.Operator is not null)
@@ -2097,7 +2040,7 @@ internal sealed class FunctionLowerer
 
             var stored = LowerExpr(expr.Value);
             if (LowerIndexableCall(indexed, "set", stored) is null)
-                ResolveIndexAccess(indexed); // meldet die Scope-Grenze mit dem Typnamen
+                ResolveIndexAccess(indexed); // reports the scope boundary with the type name
             return stored;
         }
 
@@ -2105,9 +2048,9 @@ internal sealed class FunctionLowerer
 
         if (expr.Operator is null)
         {
-            // Ueber den ERWARTETEN Typ, nicht nackt: sonst hat 'xs[i] = null' auf einem
-            // '(?T)[]' keinen Zieltyp, an dem 'null' seine Form faende — und ein 'T' in einem
-            // '?T'-Slot bliebe unverpackt. Dieselbe Regel wie bei 'stloc' in LowerAssign.
+            // Through the EXPECTED type rather than bare: otherwise 'xs[i] = null' on a '(?T)[]' has no
+            // target type for 'null' to take its shape from, and a 'T' in a '?T' slot would stay
+            // unwrapped. The same rule as for 'stloc' in LowerAssign.
             var assigned = LowerExprAs(expr.Value, element);
             _b.Emit(new StoreElem(array, index, assigned, expr.Span));
             return assigned;
@@ -2130,15 +2073,15 @@ internal sealed class FunctionLowerer
         return result;
     }
 
-    // ------------------------------------------------------------------ Enums (§3.4)
+    // ------------------------------------------------------------------ enums
 
     /// <summary>
-    /// Der Enum-Eintrag, zu dem ein Wert gehört — oder eine Scope-Grenze.
+    /// The enum entry a value belongs to, or a scope boundary.
     ///
-    /// <para><b>Gefragt wird der Typ, nicht das Symbol.</b> <c>TypeFacts.SymbolOf</c> liefert bei
-    /// einer <c>GenericInstance</c> die Definition und wirft die Typargumente weg; damit landeten
-    /// <c>Opt&lt;int&gt;</c> und <c>Opt&lt;string&gt;</c> auf demselben Eintrag. Der Sema-Typ des
-    /// Ausdrucks trägt sie, also kommt er von dort.</para>
+    /// <para>THE TYPE IS ASKED, NOT THE SYMBOL. <c>TypeFacts.SymbolOf</c> yields the definition for a
+    /// <c>GenericInstance</c> and throws the type arguments away, which would land
+    /// <c>Opt&lt;int&gt;</c> and <c>Opt&lt;string&gt;</c> on the same entry. The sema type of the
+    /// expression carries them, so it comes from there.</para>
     /// </summary>
     private IrEnumType RequireEnum(Expr expr) => RequireEnum(_types.TypeOf(expr), expr.Span);
 
@@ -2150,17 +2093,17 @@ internal sealed class FunctionLowerer
         _ => throw NotSupported($"'{TypeFacts.Display(type)}' is not an enum", span),
     };
 
-    /// <summary><c>Shape.Circle(2.0)</c> und <c>Shape.Empty</c> — eine Tuple- bzw. Unit-Variante.
-    /// Die Struct-Form <c>Triangle { a = … }</c> läuft über <see cref="LowerObjectInit"/>.</summary>
-    /// <param name="constructed">Der Ausdruck, dessen Typ die konstruierte INSTANZ ist: bei
-    /// <c>Shape.Circle(2.0)</c> der Aufruf, bei der Unit-Variante <c>Shape.Empty</c> das Member
-    /// selbst. Am Ziel steht sie nicht — <c>Opt.Some(5)</c> nennt seine Typargumente nirgends,
-    /// die Sema hat sie aus dem Kontext aufgeloest.</param>
+    /// <summary><c>Shape.Circle(2.0)</c> and <c>Shape.Empty</c> — a tuple variant and a unit variant.
+    /// The struct form <c>Triangle { a = … }</c> goes through <see cref="LowerObjectInit"/>.</summary>
+    /// <param name="constructed">The expression whose type is the constructed INSTANCE: for
+    /// <c>Shape.Circle(2.0)</c> the call, for the unit variant <c>Shape.Empty</c> the member itself. It
+    /// does not stand at the target — <c>Opt.Some(5)</c> names its type arguments nowhere, and
+    /// the sema resolved them from the context.</param>
     private TempId LowerVariantCall(MemberExpr callee, Expr[] arguments, Expr constructed, Span span)
     {
-        // Welche INSTANZ konstruiert wird, steht im Ergebnistyp des Aufrufs und nicht am Ziel:
-        // 'Opt.Some(5)' in einer Position mit erwartetem 'Opt<int>' nennt die Argumente nirgends,
-        // die Sema hat sie aber aufgeloest.
+        // Which INSTANCE is constructed stands in the call's result type rather than at the target:
+        // 'Opt.Some(5)' in a position with an expected 'Opt<int>' names the arguments nowhere, but the
+        // sema resolved them.
         RefEnumSymbol(callee.Target, callee.Span);
         var enumType = RequireEnum(_types.TypeOf(constructed), span);
         var variant = _typeTable.VariantOf(enumType.Type, callee.Member, span);
@@ -2173,9 +2116,9 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary><c>Shape.Tri { a = 3, b = 4 }</c>. Wie beim Objekt-Literal wird in
-    /// <b>Layout</b>-Reihenfolge geschrieben, ausgewertet aber in Quelltext-Reihenfolge — nur dass
-    /// Slot 0 das Tag ist und die Nutzfelder bei 1 beginnen.</summary>
+    /// <summary><c>Shape.Tri { a = 3, b = 4 }</c>. As with an object literal, writing happens in LAYOUT
+    /// order while evaluation happens in source order, except that slot 0 is the tag and the payload
+    /// fields start at 1.</summary>
     private TempId LowerStructVariant(StructInitExpr expr)
     {
         var variantName = expr.Path[^1];
@@ -2209,31 +2152,30 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>match</c> als Ausdruck und als Statement — derselbe Code, nur der Ergebnis-Slot fehlt im
-    /// Statement-Fall.
+    /// <c>match</c> as an expression and as a statement — the same code, only the result slot is missing
+    /// in the statement case.
     ///
-    /// <para><b>Kein Sprungtabellen-Opcode.</b> Gelesen wird das Tag, verglichen wird mit einer
-    /// Konstante, verzweigt wird wie überall sonst. Eine Sprungtabelle wäre eine Optimierung —
-    /// die Semantik ist eine Kette von Vergleichen, und die Exhaustivität hat die Sema bereits
-    /// bewiesen (<c>LYR-SEM0050</c>), weshalb der letzte Arm ohne Fallback auskommt.</para>
+    /// <para>NO JUMP TABLE OPCODE. The tag is read, compared against a constant, and branched on as
+    /// everywhere else. A jump table would be an optimization; the semantics are a chain of comparisons,
+    /// and exhaustiveness was already proven by the sema (<c>LYR-SEM0050</c>), which is why the last arm
+    /// needs no fallback.</para>
     /// </summary>
     /// <summary>
-    /// <c>match</c> als Ausdruck und als Statement, über Enums <b>und</b> über Skalare.
+    /// <c>match</c> as an expression and as a statement, over enums AND over scalars.
     ///
-    /// <para><b>Kein eigener Opcode.</b> Ein <c>match</c> verzweigt über eine Folge von Tests wie
-    /// jede andere Fallunterscheidung — bei einem Enum über sein Tag, sonst über den Wert selbst.
-    /// Eine Sprungtabelle wäre eine Optimierung, keine Semantik.</para>
+    /// <para>NO OPCODE OF ITS OWN. A <c>match</c> branches over a sequence of tests like any other case
+    /// distinction — over its tag for an enum, over the value itself otherwise. A jump table would be an
+    /// optimization, not semantics.</para>
     ///
-    /// <para><b>Der letzte Arm wird nur dann ungeprüft übernommen, wenn sein Muster
-    /// unwiderlegbar ist</b> (<c>_</c> oder eine reine Bindung) und er keinen Guard hat. Die Sema
-    /// hat Exhaustivität bewiesen — aber ein Guard kann trotzdem fehlschlagen, und ein
-    /// Literal-Arm am Ende ist nur deshalb erschöpfend, weil ein anderer Arm die Lücke deckt.
-    /// Der Fehlpfad wird dann <c>unreachable</c>: erreichbar im CFG, unmöglich zur Laufzeit.</para>
+    /// <para>The last arm is taken unchecked only when its pattern is irrefutable (<c>_</c> or a plain
+    /// binding) and it has no guard. The sema proved exhaustiveness, but a guard can still fail, and a
+    /// literal arm at the end is exhaustive only because another arm covers the gap. The failure path
+    /// then becomes <c>unreachable</c>: reachable in the CFG, impossible at runtime.</para>
     /// </summary>
-    /// <summary>Ob das zuletzt gelowerte <c>match</c> hinter sich weiterlaeuft. Ein Rueckgabewert
-    /// waere sauberer, aber <see cref="LowerMatch"/> liefert bereits den Ergebnis-Temp des
-    /// Ausdrucks-Falls; ein zweiter Kanal fuer eine Frage, die nur der Statement-Fall stellt,
-    /// haette jede Aufrufstelle verbreitert.</summary>
+    /// <summary>Whether the last lowered <c>match</c> continues behind itself. A return value would be
+    /// cleaner, but <see cref="LowerMatch"/> already yields the result temp of the expression case, and a
+    /// second channel for a question only the statement case asks would have widened every call
+    /// site.</summary>
     private bool _matchFellThrough = true;
 
     private TempId? LowerMatch(Expr scrutinee, MatchArm[] arms, IrType? resultType, Span span)
@@ -2242,8 +2184,8 @@ internal sealed class FunctionLowerer
         var value = LowerExpr(scrutinee);
         var slot = resultType is null ? (LocalId?)null : _slots.DeclareSynthetic("match", resultType);
 
-        // Bei einem Enum wird über das Tag verglichen, nicht über den Wert — welche Variante
-        // vorliegt, steht in Slot 0 und sonst nirgends.
+        // For an enum the comparison goes over the tag rather than over the value: which variant is
+        // present stands in slot 0 and nowhere else.
         TypeId? enumId = null;
         TempId subject = value;
         IrType subjectType = scrutineeType;
@@ -2257,14 +2199,10 @@ internal sealed class FunctionLowerer
             subjectType = new IrScalarType(IrScalar.I64);
         }
 
-        // Der Merge-Block entsteht ERST, wenn ein Arm ihn braucht. Faellt keiner durch — jeder
-        // returnt, wirft oder springt —, gibt es hinter dem 'match' keinen Kontrollfluss mehr,
-        // und ein angelegter Block waere vom Einstieg aus unerreichbar. Genau das lehnt der
-        // Verifier ab, und zu Recht: ein Block, den niemand erreichen kann, ist entweder tot oder
-        // ein Fehler im Lowering.
-        //
-        // Bis 2026-08-06 wurde er immer angelegt, und der haeufigste Statement-Fall —
-        // 'match (e) { A => { return 1; }, B => { return 2; } }' — war deshalb eine Scope-Grenze.
+        // The merge block arises ONLY when an arm needs it. If none falls through — every arm returns,
+        // throws or jumps — there is no control flow behind the 'match', and a created block would be
+        // unreachable from the entry. The verifier rejects exactly that, and rightly: a block nobody can
+        // reach is either dead or a lowering error.
         BlockId? merge = null;
 
         for (var i = 0; i < arms.Length; i++)
@@ -2272,12 +2210,12 @@ internal sealed class FunctionLowerer
             var arm = arms[i];
             var last = i == arms.Length - 1;
 
-            // Der letzte Arm wird nicht geprueft: die Sema hat Exhaustivitaet bewiesen
-            // (LYR-SEM0050), also passt er, wenn keiner davor gepasst hat. Der Test waere immer
-            // wahr — und bei einem Enum ein zusaetzlicher Vergleich pro match.
+            // The last arm is not checked: the sema proved exhaustiveness (LYR-SEM0050), so it matches
+            // when none before it did. The test would always be true, and for an enum it would be an
+            // extra comparison per match.
             //
-            // Mit Guard gilt das nicht: ein Guard kann fehlschlagen, und dann braucht es einen
-            // Fehlpfad. Der wird 'unreachable' — im CFG erreichbar, zur Laufzeit unmoeglich.
+            // With a guard that does not hold: a guard can fail, and then a failure path is needed. It
+            // becomes 'unreachable' — reachable in the CFG, impossible at runtime.
             var unconditional = last && arm.Guard is null;
 
             var body = _b.NewBlock();
@@ -2289,7 +2227,7 @@ internal sealed class FunctionLowerer
 
             _b.SwitchTo(body);
 
-            // Bindungen stehen vor dem Guard: 'n if n > 0' braucht 'n'.
+            // Bindings come before the guard: 'n if n > 0' needs 'n'.
             BindPattern(arm.Pattern, value, subjectType, enumId);
 
             if (arm.Guard is { } guard)
@@ -2308,24 +2246,22 @@ internal sealed class FunctionLowerer
             if (next is { } fallthrough)
             {
                 _b.SwitchTo(fallthrough);
-                // Nach dem letzten Arm ist der Fehlpfad zur Laufzeit unmöglich — die Sema hat
-                // Exhaustivität bewiesen. Im CFG ist er erreichbar, also braucht er einen
-                // Terminator, und 'unreachable' ist genau die Aussage.
+                // After the last arm the failure path is impossible at runtime, because the sema proved
+                // exhaustiveness. In the CFG it is reachable and therefore needs a terminator, and
+                // 'unreachable' is exactly that statement.
                 if (last) _b.Seal(new Unreachable(span));
             }
         }
 
-        // Kein Arm faellt durch — jeder returnt, wirft oder springt. Dann endet der
-        // Kontrollfluss hier, und der Merge-Block ist unerreichbar.
+        // No arm falls through — every one returns, throws or jumps. Control flow then ends here and the
+        // merge block is unreachable.
         //
-        // Das ist kein Randfall, sondern das uebliche Muster fuer ein 'match' als Statement:
-        // 'match (e) { A => { return 1; }, B => { return 2; } }'. Bis 2026-08-06 war es eine
-        // Scope-Grenze — der Merge-Block wurde angelegt, blieb leer, und der Verifier haette
-        // einen Block ohne Terminator gemeldet.
+        // That is not an edge case but the usual pattern for a 'match' as a statement:
+        // 'match (e) { A => { return 1; }, B => { return 2; } }'.
         if (merge is not { } after)
         {
-            // Kein Arm faellt durch: der Kontrollfluss endet hier. Der Aufrufer erfaehrt es ueber
-            // _matchFellThrough und versiegelt nicht noch einmal.
+            // No arm falls through: control flow ends here. The caller learns that through
+            // _matchFellThrough and does not seal a second time.
             _matchFellThrough = false;
             return null;
         }
@@ -2340,29 +2276,28 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Verzweigt nach <paramref name="onMatch"/> oder <paramref name="onFail"/>, je nachdem ob das
-    /// Muster passt. Versiegelt dabei den aktuellen Block.
+    /// Branches to <paramref name="onMatch"/> or <paramref name="onFail"/> depending on whether the
+    /// pattern matches. Seals the current block while doing so.
     ///
-    /// <para><b>Verzweigung statt eines bool-Temps</b>, und das ist keine Stilfrage: ein Range
-    /// braucht zwei Vergleiche, ein Or-Pattern beliebig viele, und die zu einem Wert zu
-    /// verknuepfen hiesse <c>and</c>/<c>or</c> auf <c>bool</c> — beide sind in dieser IR
-    /// ganzzahlig, und der Verifier sagt das auch. Dieselbe Loesung wie bei <c>&amp;&amp;</c> und
-    /// <c>||</c>, die aus demselben Grund Kontrollfluss sind und keine Opcodes.</para>
+    /// <para>A BRANCH RATHER THAN A bool TEMP, and that is no matter of style: a range needs two
+    /// comparisons, an or-pattern arbitrarily many, and combining them into a value would mean
+    /// <c>and</c>/<c>or</c> on <c>bool</c> — both are integral in this IR, and the verifier says so. The
+    /// same solution as for <c>&amp;&amp;</c> and <c>||</c>, which are control flow for the same reason
+    /// rather than opcodes.</para>
     /// </summary>
     private void EmitPatternBranch(Pattern pattern, TempId subject, IrType subjectType,
         TypeId? enumId, BlockId onMatch, BlockId onFail, Span span)
     {
         switch (pattern)
         {
-            // Faengt alles — kein Test noetig.
+            // Catches everything: no test needed.
             case WildcardPattern:
                 _b.Seal(new Branch(onMatch, span));
                 return;
 
-            // Ein Tupel-Muster (§4) kann nicht FEHLSCHLAGEN: die Aritaet steht im Typ, und die
-            // Sema hat sie geprueft. Es ist also reine Bindung — die macht BindPattern, nicht
-            // dieser Zweig hier. (Muster INNERHALB des Tupels, die testen koennten, meldet
-            // BindTupleElements als Scope-Grenze.)
+            // A tuple pattern cannot FAIL: the arity stands in the type and the sema checked it. It is
+            // therefore pure binding, which BindPattern does rather than this branch. Patterns INSIDE
+            // the tuple that could test are reported as a scope boundary by BindTupleElements.
             case TuplePattern:
                 _b.Seal(new Branch(onMatch, span));
                 return;
@@ -2381,10 +2316,10 @@ internal sealed class FunctionLowerer
                     onMatch, onFail, variant.Span));
                 return;
 
-            // 'null' als Muster ist KEIN Vergleich, sondern die Frage nach der Anwesenheit
-            // eines Wertes — dieselbe Antwort wie bei 'x == null' (TryLowerNullTest). Ein echter
-            // Gleichheitsvergleich braeuchte einen null-Wert als Operanden, und den gibt es
-            // nicht; der Verifier sagt das auch ("equality comparison on type ?…").
+            // 'null' as a pattern is NO comparison but the question of a value's presence — the same
+            // answer as for 'x == null' (TryLowerNullTest). A real equality comparison would need a null
+            // value as an operand, and there is none; the verifier says so too ("equality comparison on
+            // type ?…").
             case LiteralPattern { Literal: NullLiteralExpr } nullPattern:
             {
                 if (subjectType is not IrOptionalType)
@@ -2407,7 +2342,7 @@ internal sealed class FunctionLowerer
                 return;
             }
 
-            // 'lo <= v' und dann 'v <= hi' — zwei Blocke statt einer Verknuepfung.
+            // 'lo <= v' and then 'v <= hi': two blocks rather than one combination.
             case RangePattern range:
             {
                 var low = LowerExprAs(range.Low, subjectType);
@@ -2426,7 +2361,7 @@ internal sealed class FunctionLowerer
                 return;
             }
 
-            // Jede Alternative bekommt ihren eigenen Versuch; die erste, die passt, gewinnt.
+            // Every alternative gets its own attempt; the first that matches wins.
             case OrPattern or:
             {
                 for (var i = 0; i < or.Alternatives.Length; i++)
@@ -2456,15 +2391,15 @@ internal sealed class FunctionLowerer
         var expected = EmitConst(new IntConst((ulong)_typeTable.TagOf(id, variant, span)),
             new IrScalarType(IrScalar.I64), span);
 
-        // Das Type-Feld eines Vergleichs ist sein ERGEBNIS-Typ (bool); den Operandentyp schlaegt
-        // der Emitter in der Temp-Tabelle nach, weil signed/unsigned verschiedene Opcodes sind.
+        // The Type field of a comparison is its RESULT type (bool); the emitter looks the operand type up
+        // in the temp table, because signed and unsigned are different opcodes.
         var matches = _slots.NewTemp(BoolType);
         _b.Emit(new BinOp(matches, IrBinKind.Eq, BoolType, tag, expected, span));
         return matches;
     }
 
-    /// <summary>Bindet, was das Muster bindet: eine reine Bindung den Wert selbst, ein
-    /// Varianten-Muster seine Felder.</summary>
+    /// <summary>Binds what the pattern binds: a plain binding the value itself, a variant pattern its
+    /// fields.</summary>
     private void BindPattern(Pattern pattern, TempId value, IrType valueType,
         TypeId? enumId)
     {
@@ -2473,12 +2408,11 @@ internal sealed class FunctionLowerer
             var slotType = LowerType(local.Type, binding.Span);
             var slot = _slots.DeclareFor(local, slotType);
 
-            // Bindet ein Arm den Rest eines '?T', gibt die Sema dem Namen den EINGEENGTEN Typ 'T'
-            // — der Arm ist ja nur erreichbar, wenn ein Wert da ist. Der Wert im Subject traegt
-            // aber weiter '?T': das Narrowing ist eine Aussage ueber den Kontrollfluss, nicht
-            // ueber den Speicher (P2b). Ausgepackt wird deshalb hier, genau wie an jeder anderen
-            // Stelle, an der die Sema 'T' erwartet. Das 'optget' kann nie panicken — der Beweis
-            // steht im 'optissome' des null-Arms davor.
+            // When an arm binds the rest of a '?T', the sema gives the name the NARROWED type 'T': the
+            // arm is reachable only when a value is present. The value in the subject still carries
+            // '?T', because the narrowing is a statement about control flow rather than about memory.
+            // It is therefore unwrapped here, exactly as everywhere else the sema expects 'T'. The
+            // 'optget' can never panic — the proof stands in the 'optissome' of the null arm before it.
             if (valueType is IrOptionalType && slotType is not IrOptionalType)
             {
                 var unwrapped = _slots.NewTemp(slotType);
@@ -2491,14 +2425,13 @@ internal sealed class FunctionLowerer
             return;
         }
 
-        // Ein Tupel-Muster bindet Feld fuer Feld — dieselbe Routine wie beim
-        // Destructuring-Binding. Sie muss HIER stehen und nicht im Verzweigungs-Zweig: der letzte
-        // Arm eines 'match' wird gar nicht geprueft (die Sema hat Exhaustivitaet bewiesen), also
-        // liefe dort keine Bindung.
+        // A tuple pattern binds field by field, the same routine as for a destructuring binding. It has
+        // to stand HERE rather than in the branching path: the last arm of a 'match' is not checked at
+        // all, because the sema proved exhaustiveness, so no binding would run there.
         if (pattern is TuplePattern tuple)
         {
-            // Der Typ kommt vom WERT und nicht aus dem Muster: '_' bindet nichts und hat deshalb
-            // keinen, den man ablesen koennte.
+            // The type comes from the VALUE rather than from the pattern: '_' binds nothing and therefore
+            // has none to read off.
             if (valueType is not IrRefType tupleType)
                 throw Bug("tuple pattern on a value that is not a tuple");
 
@@ -2509,7 +2442,7 @@ internal sealed class FunctionLowerer
         if (enumId is { } id) BindPatternFields(pattern, id, value);
     }
 
-    /// <summary>Lowert den Rumpf eines Arms. Liefert „faellt durch".</summary>
+    /// <summary>Lowers the body of an arm. Returns whether it falls through.</summary>
     private bool LowerArm(MatchArm arm, TempId value, LocalId? slot, IrType? resultType)
     {
         if (arm.Body is Expr expr)
@@ -2522,9 +2455,8 @@ internal sealed class FunctionLowerer
         return LowerScope((Block)arm.Body);
     }
 
-    /// <summary>Der Tag, auf den ein Muster passt. Eine Unit-Variante parst als
-    /// <see cref="BindingPattern"/> — ob sie eine Bindung oder eine Variante ist, weiß erst die
-    /// Sema, und die hat es entschieden.</summary>
+    /// <summary>The tag a pattern matches. A unit variant parses as a <see cref="BindingPattern"/>;
+    /// whether it is a binding or a variant is known only to the sema, and it decided.</summary>
     private int TagOfPattern(TypeId enumId, Pattern pattern) => pattern switch
     {
         VariantPattern v => _typeTable.TagOf(enumId, v.Path[^1], v.Span),
@@ -2534,8 +2466,8 @@ internal sealed class FunctionLowerer
         _ => throw NotSupported($"a {pattern.GetType().Name} in a match over an enum", pattern.Span),
     };
 
-    /// <summary>Zerlegt eine Variante: <c>enumas</c> engt ein, danach ist jedes Feld ein
-    /// gewöhnliches <c>ldfld</c> mit dem Layout der Variante.</summary>
+    /// <summary>Decomposes a variant: <c>enumas</c> narrows, after which every field is an ordinary
+    /// <c>ldfld</c> with the variant's layout.</summary>
     private void BindPatternFields(Pattern pattern, TypeId enumId, TempId value)
     {
         if (pattern is not VariantPattern variant) return;
@@ -2557,8 +2489,8 @@ internal sealed class FunctionLowerer
                 var index = Array.IndexOf(layout.FieldNames, field.Name);
                 if (index < 0) throw NotSupported($"unknown field '{field.Name}' in a pattern", field.Span);
 
-                // Kurzform `{ a, b }`: kein Untermuster, der Feldname IST die Bindung. Die Sema
-                // hat sie an ein LocalSymbol gebunden — an den FieldPattern-Knoten selbst.
+                // Short form `{ a, b }`: no sub-pattern, the field name IS the binding. The sema bound it
+                // to a LocalSymbol, on the FieldPattern node itself.
                 BindOne(field.Pattern ?? (Node)field, narrowed, variantType,
                     new FieldId(index), layout.FieldTypes[index], field.Name, field.Span);
             }
@@ -2567,17 +2499,16 @@ internal sealed class FunctionLowerer
     private void BindOne(Node? sub, TempId obj, TypeId variantType, FieldId field, IrType type,
         string? shorthandName = null, Span shorthandSpan = default)
     {
-        // Nur Bindungen und '_' — verschachtelte Muster brauchen rekursive Dekomposition und sind
-        // eine eigene Ausbaustufe.
+        // Bindings and '_' only; nested patterns need recursive decomposition and are a later stage.
         if (sub is null or WildcardPattern) return;
 
         var name = sub is BindingPattern binding ? binding.Name : shorthandName;
         if (name is null)
             throw NotSupported($"a nested {sub.GetType().Name} in a pattern", sub.Span);
 
-        // Die Sema hat der Muster-Bindung schon ein LocalSymbol gegeben — über dasselbe Symbol
-        // findet LowerIdentifier den Slot später wieder. Ein eigener Namensraum hier wäre eine
-        // zweite Wahrheit über Scoping.
+        // The sema already gave the pattern binding a LocalSymbol; LowerIdentifier finds the slot again
+        // through the same symbol later. A namespace of its own here would be a second truth about
+        // scoping.
         if (_types.RefOf(sub) is not LocalSymbol local)
             throw Bug($"pattern binding '{name}' was not bound by the type checker");
 
@@ -2588,12 +2519,12 @@ internal sealed class FunctionLowerer
         _b.Emit(new StoreLocal(slot, loaded, span));
     }
 
-    // ------------------------------------------------------------------ Optionals (§7)
+    // ------------------------------------------------------------------ optionals
 
     /// <summary>
-    /// Ein Ausdruck an einer Position mit <b>erwartetem Typ</b>. Zwei Dinge passieren nur hier:
-    /// <c>null</c> bekommt seinen Typ (es hat keinen eigenen — die Sema gibt ihm <c>NullType</c>),
-    /// und ein <c>T</c> wird zu <c>?T</c> verpackt, weil §6.5 die Richtung implizit erlaubt.
+    /// An expression at a position with an EXPECTED TYPE. Two things happen only here: <c>null</c> gets
+    /// its type, having none of its own — the sema gives it <c>NullType</c> — and a <c>T</c> is wrapped
+    /// into <c>?T</c>, because the language allows that direction implicitly.
     /// </summary>
     private TempId LowerExprAs(Expr expr, IrType expected)
     {
@@ -2610,16 +2541,15 @@ internal sealed class FunctionLowerer
         return Coerce(LowerExpr(expr), TypeOfExpr(expr), expected, expr.Span);
     }
 
-    /// <summary>Ein <c>null</c> ohne erwarteten Typ. Sollte nie vorkommen — jede Position, an der
-    /// <c>null</c> gültig ist, kennt ihren Zieltyp und geht über <see cref="LowerExprAs"/>.</summary>
+    /// <summary>A <c>null</c> without an expected type. Should never occur: every position where
+    /// <c>null</c> is valid knows its target type and goes through <see cref="LowerExprAs"/>.</summary>
     private TempId LowerNull(NullLiteralExpr expr) =>
         throw NotSupported("'null' in a position without an expected type", expr.Span);
 
     /// <summary>
-    /// <c>x != null</c> und <c>x == null</c> sind <b>keine</b> Vergleiche, sondern die Frage nach
-    /// der Anwesenheit eines Wertes — genau das, was <c>optissome</c> beantwortet. Ein echter
-    /// Vergleich würde einen <c>null</c>-Wert auf den Stack verlangen, und den gibt es nicht:
-    /// „kein Wert" ist eine leere Referenz, kein Operand.
+    /// <c>x != null</c> and <c>x == null</c> are NO comparisons but the question of a value's presence —
+    /// exactly what <c>optissome</c> answers. A real comparison would demand a <c>null</c> value on the
+    /// stack, and there is none: "no value" is an empty reference, not an operand.
     /// </summary>
     private TempId? TryLowerNullTest(BinaryExpr expr)
     {
@@ -2637,45 +2567,44 @@ internal sealed class FunctionLowerer
         _b.Emit(new OptIsSome(isSome, value, expr.Span));
         if (expr.Operator is BinaryOp.Ne) return isSome;
 
-        // '== null' ist die Verneinung. 'not' ist der einzige Opcode ohne Typ-Tag — nur bool.
+        // '== null' is the negation. 'not' is the only opcode without a type tag: bool only.
         var isNone = _slots.NewTemp(BoolType);
         _b.Emit(new UnOp(isNone, IrUnKind.Not, BoolType, isSome, expr.Span));
         return isNone;
     }
 
     /// <summary>
-    /// Passt einen Wert an den Typ an, den seine Position erwartet. Zwei implizite Uebergaenge
-    /// kennt die Sprache, und beide werden hier materialisiert:
+    /// Adapts a value to the type its position expects. The language knows two implicit transitions, and
+    /// both are materialized here:
     ///
-    /// <para><c>T</c> → <c>?T</c> ist implizit (Sprache.md §6.5) und wird zu <c>optsome</c>.</para>
+    /// <para><c>T</c> to <c>?T</c> is implicit and becomes <c>optsome</c>.</para>
     ///
-    /// <para>Ein Klassen- oder Enum-Wert → sein Interface wird zu <c>mkiface</c>: der Interface-Wert
-    /// ist ein Fat Pointer, der den konkreten Typ mitfuehrt, und der steht genau hier zur
-    /// Compile-Zeit fest. Spaeter — am <c>callvirt</c> — weiss niemand mehr, welche Klasse es war,
-    /// weil ein Objekt kein Typ-Tag traegt (M6/P1).</para>
+    /// <para>A class or enum value to its interface becomes <c>mkiface</c>: the interface value is a fat
+    /// pointer carrying the concrete type, and that is settled at compile time exactly here. Later, at
+    /// the <c>callvirt</c>, nobody knows which class it was any more, because an object carries no type
+    /// tag.</para>
     ///
-    /// <para>Die Reihenfolge ist nicht beliebig: bei <c>?SomeInterface</c> muss erst das Interface
-    /// entstehen und dann das Optional darum, sonst verpackte man eine Klassenreferenz und
-    /// <c>optget</c> lieferte etwas, worauf kein <c>callvirt</c> laufen kann.</para>
+    /// <para>The order is not arbitrary: for <c>?SomeInterface</c> the interface has to arise first and
+    /// the optional around it second, or a class reference would be wrapped and <c>optget</c> would yield
+    /// something no <c>callvirt</c> can run on.</para>
     /// </summary>
     private TempId Coerce(TempId value, IrType from, IrType to, Span span)
     {
         var target = to is IrOptionalType outer ? outer.Inner : to;
         var source = from is IrOptionalType inner ? inner.Inner : from;
 
-        // Wert-Semantik (Sprache.md §3.2). Der Bindepunkt ist die Stelle, an der ein struct-Wert
-        // eine neue Heimat bekommt — genau dort wird kopiert, und nur dort. Ein frisch gebauter
-        // Wert braucht es nicht: er hat noch keinen anderen Besitzer, von dem er sich loesen
-        // muesste.
+        // Value semantics. The binding point is where a struct value gets a new home; that is where the
+        // copy happens, and only there. A freshly built value does not need it: it has no other owner to
+        // detach from.
         if (target is IrStructType value_ && from is not IrOptionalType && !_fresh.Contains(value))
             value = CopyStructValue(value, value_, span);
 
         if (target is IrInterfaceType iface && source is not IrInterfaceType
             && from is not IrOptionalType)
         {
-            // Auch der Weg hinter ein Interface ist ein Bindepunkt: ein struct wird dabei
-            // kopiert, sonst teilte der Interface-Wert das Slot-Array mit seiner Quelle und eine
-            // Mutation ueber das Interface schluege auf das Original durch.
+            // The way behind an interface is a binding point too: a struct is copied there, or the
+            // interface value would share the slot array with its source and a mutation through the
+            // interface would hit the original.
             if (source is IrStructType boxed && !_fresh.Contains(value))
                 value = CopyStructValue(value, boxed, span);
 
@@ -2691,11 +2620,11 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Legt eine unabhaengige Kopie eines struct-Wertes an.
+    /// Creates an independent copy of a struct value.
     ///
-    /// <para>Die Kopie ist zur Laufzeit rekursiv ueber verschachtelte Structs und flach ueber
-    /// alles andere: ein Feld vom Typ <c>class</c> oder <c>T[]</c> traegt eine Referenz, und die
-    /// wird geteilt. Kopiert wird der Wert, nicht die Welt dahinter.</para>
+    /// <para>The copy is recursive at runtime over nested structs and shallow over everything else: a
+    /// field of type <c>class</c> or <c>T[]</c> carries a reference, and that is shared. The value is
+    /// copied, not the world behind it.</para>
     /// </summary>
     private TempId CopyStructValue(TempId value, IrStructType type, Span span)
     {
@@ -2705,7 +2634,7 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Hebt eine Objektreferenz auf ihren Interface-Typ.</summary>
+    /// <summary>Lifts an object reference to its interface type.</summary>
     private TempId MakeInterfaceValue(TempId value, IrType concrete, IrInterfaceType iface,
         Span span)
     {
@@ -2737,9 +2666,9 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>a ?? b</c> — die rechte Seite wird <b>nur</b> ausgewertet, wenn links kein Wert steht.
-    /// Deshalb Verzweigung statt Instruktion, genau wie bei <c>&amp;&amp;</c> und <c>||</c>: eine
-    /// Stack-Maschine kann keinen unausgewerteten Ausdruck transportieren.
+    /// <c>a ?? b</c> — the right side is evaluated ONLY when there is no value on the left. Hence a
+    /// branch rather than an instruction, exactly as for <c>&amp;&amp;</c> and <c>||</c>: a stack machine
+    /// cannot transport an unevaluated expression.
     /// </summary>
     private TempId LowerCoalesce(BinaryExpr expr)
     {
@@ -2776,12 +2705,11 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>x ??= v</c> — weist nur zu, wenn <c>x</c> keinen Wert hat.
+    /// <c>x ??= v</c> — assigns only when <c>x</c> has no value.
     ///
-    /// <para>Wie <c>??</c> eine Verzweigung und kein Opcode: die rechte Seite wird <b>nur dann</b>
-    /// ausgewertet, und ein unausgewerteter Ausdruck laesst sich auf einer Stack-Maschine nicht
-    /// transportieren. Der Unterschied zu <c>??</c> ist allein, dass das Ergebnis in den
-    /// vorhandenen Slot zurueckgeht statt in einen neuen.</para>
+    /// <para>Like <c>??</c> a branch rather than an opcode: the right side is evaluated only then, and an
+    /// unevaluated expression cannot be transported on a stack machine. The only difference from
+    /// <c>??</c> is that the result goes back into the existing slot rather than into a new one.</para>
     /// </summary>
     private TempId LowerCoalesceAssign(LocalId slot, AssignExpr expr)
     {
@@ -2797,8 +2725,7 @@ internal sealed class FunctionLowerer
 
         var whenNone = _b.NewBlock();
         var merge = _b.NewBlock();
-        // Hat es schon einen Wert, bleibt der Slot unberuehrt — auch die rechte Seite laeuft dann
-        // nicht.
+        // When there is already a value, the slot stays untouched, and the right side does not run.
         _b.Seal(new CondBranch(test, merge, whenNone, expr.Span));
 
         _b.SwitchTo(whenNone);
@@ -2812,24 +2739,18 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>a?.b</c> — Feldzugriff, der bei „kein Wert" keinen macht.
+    /// <c>a?.b</c> — a field access that does not happen when there is no value.
     ///
-    /// <para>Ergebnis ist immer ein Optional (Sprache.md §7): hat <c>a</c> keinen Wert, ist es
-    /// <c>optnone</c>, sonst das ausgepackte Feld in <c>optsome</c>. Auch das ist eine
-    /// Verzweigung — der Feldzugriff darf bei einer leeren Referenz <b>nicht</b> laufen, und ein
-    /// Opcode koennte das nicht ausdruecken, ohne selbst zu verzweigen.</para>
+    /// <para>The result is always an optional: when <c>a</c> has no value it is <c>optnone</c>, otherwise
+    /// the unwrapped field in <c>optsome</c>. That too is a branch — the field access must NOT run on an
+    /// empty reference, and an opcode could not express that without branching itself.</para>
     /// </summary>
     /// <summary>
-    /// <c>b?.get()</c> — der Empfaenger ist optional, also ist es auch das Ergebnis (§7).
+    /// <c>b?.get()</c> — the receiver is optional, so the result is too.
     ///
-    /// <para>Bis 2026-08-11 war das <c>LYR-SEM0013: '?fn() -> int' is not callable</c> — eine
-    /// Auskunft ueber einen Zwischentyp, den niemand hingeschrieben hat. Der Ausweg war
-    /// <c>if (b != null) { b.get() }</c>, dreimal so lang.</para>
-    ///
-    /// <para><b>Der Aufruf laeuft durch dieselbe Aufloesung wie jeder andere</b> — nur mit einem
-    /// bereits ausgepackten Empfaenger. Ein eigener Pfad hier haette Virtual-Dispatch, Natives,
-    /// Extensions und Generics ein zweites Mal beantworten muessen; das ist die Sorte
-    /// Zweitkopie, die in diesem Projekt neunmal auseinandergelaufen ist.</para>
+    /// <para>THE CALL RUNS THROUGH THE SAME RESOLUTION AS ANY OTHER, only with an already unwrapped
+    /// receiver. A path of its own here would have to answer virtual dispatch, natives, extensions and
+    /// generics a second time.</para>
     /// </summary>
     private TempId LowerOptionalCall(CallExpr expr, MemberExpr callee)
     {
@@ -2839,8 +2760,8 @@ internal sealed class FunctionLowerer
         if (TypeOfExpr(callee.Target) is not IrOptionalType target)
             throw NotSupported("'?.' on a non-optional", expr.Span);
 
-        // Der eigentliche Rueckgabetyp der Methode. 'TypeOfExpr(expr)' taugt dafuer nicht: die
-        // Sema hat dem Aufruf den Ketten-Typ '?int' gegeben, die Methode liefert aber 'int'.
+        // The method's actual return type. 'TypeOfExpr(expr)' is no good for that: the sema gave the call
+        // the chain type '?int', while the method yields 'int'.
         if (_types.TypeOf(callee) is not Sema.Optional { Inner: FnType signature })
             throw NotSupported("'?.' with a call on something that is not a method", expr.Span);
 
@@ -2860,20 +2781,18 @@ internal sealed class FunctionLowerer
         _b.SwitchTo(whenSome);
         var unwrapped = _slots.NewTemp(target.Inner);
 
-        // Kann nicht panicken: der Zweig steht hinter dem 'optissome'. Dieselbe Arbeitsteilung
-        // wie beim Feldzugriff und beim Flow-Narrowing.
+        // Cannot panic: the branch stands behind the 'optissome'. The same division of labour as for the
+        // field access and for flow narrowing.
         _b.Emit(new OptGet(unwrapped, option, target.Inner, expr.Span));
 
-        // Der Aufruf laeuft danach durch LowerCall wie jeder andere. Was er anders sieht, sind
-        // genau zwei Dinge, und beide haengen am AST-Knoten statt an einer Parameterkette: der
-        // Empfaenger liegt schon ausgepackt vor, und der Rueckgabetyp ist der der Methode.
+        // The call then runs through LowerCall like any other. What it sees differently is exactly two
+        // things, and both hang on the AST node rather than on a parameter chain: the receiver is already
+        // unwrapped, and the return type is the method's.
         //
-        // Ein eigener Aufrufpfad haette Virtual-Dispatch, Generics, Constraints, Natives und
-        // Extensions ein zweites Mal beantworten muessen. Ein erster Versuch tat das ueber einen
-        // Sonderfall im 'switch' — und verdeckte prompt die Generics-Erkennung, sodass
-        // 'b?.get()' auf einem 'Box<int>' als 'external or bodiless' gemeldet wurde. Eine
-        // Diagnose auf die falsche Ursache; die Sorte Fehler, die dieses Projekt schon mehrfach
-        // gekostet hat.
+        // A call path of its own would have to answer virtual dispatch, generics, constraints, natives
+        // and extensions a second time. A first attempt did that through a special case in the 'switch'
+        // and promptly hid the generics detection, so 'b?.get()' on a 'Box<int>' was reported as
+        // 'external or bodiless'.
         TempId? produced;
         _chainReceivers[callee.Target] = unwrapped;
         _chainResults[expr] = returned;
@@ -2890,9 +2809,9 @@ internal sealed class FunctionLowerer
         if (produced is not { } value)
             throw NotSupported("'?.' with a call that returns nothing", expr.Span);
 
-        // Liefert die METHODE selbst schon ein Optional ('fn leer(): ?int'), ist ihr Ergebnis
-        // bereits der Ergebnistyp — die Sema hat '??int' zu '?int' kollabiert (§4). Ein zweites
-        // Verpacken erzeugte eine Ebene, die es in der Sprache nicht gibt.
+        // When the METHOD itself already yields an optional ('fn empty(): ?int'), its result is already
+        // the result type: the sema collapsed '??int' to '?int'. Wrapping a second time would create a
+        // level the language does not have.
         var stored = value;
         if (returned is not IrOptionalType)
         {
@@ -2939,15 +2858,15 @@ internal sealed class FunctionLowerer
         var unwrapped = _slots.NewTemp(target.Inner);
         _b.Emit(new OptGet(unwrapped, option, target.Inner, expr.Span));
 
-        // Das 'optget' kann nicht panicken: der Zweig steht hinter dem 'optissome', der Beweis
-        // ist also gefuehrt. Dieselbe Arbeitsteilung wie beim Flow-Narrowing in P2b.
+        // The 'optget' cannot panic: the branch stands behind the 'optissome', so the proof is made. The
+        // same division of labour as in flow narrowing.
         var (type, field, fieldType) = ResolveFieldOn(target.Inner, expr);
         var value = _slots.NewTemp(fieldType);
         _b.Emit(new LoadField(value, unwrapped, type, field, fieldType, expr.Span));
 
-        // Ist das FELD selbst optional ('w: ?int'), ist sein Wert bereits der Ergebnistyp: die
-        // Sema hat '??int' zu '?int' kollabiert (§4). Ein zweites Verpacken erzeugte eine Ebene,
-        // die es in der Sprache nicht gibt.
+        // When the FIELD itself is optional ('w: ?int'), its value is already the result type: the sema
+        // collapsed '??int' to '?int'. Wrapping a second time would create a level the language does not
+        // have.
         var stored = value;
         if (fieldType is not IrOptionalType)
         {
@@ -2970,9 +2889,9 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Feldindex und -typ am ausgepackten Traeger. Getrennt von
-    /// <c>ResolveFieldAccess</c>, weil dort der Traeger-Ausdruck selbst gelowert wird — hier liegt
-    /// er schon ausgepackt vor.</summary>
+    /// <summary>The field index and type on the unwrapped carrier. Separate from
+    /// <c>ResolveFieldAccess</c>, because there the carrier expression itself is lowered; here it is
+    /// already unwrapped.</summary>
     private (TypeId Type, FieldId Field, IrType FieldType) ResolveFieldOn(IrType carrier,
         MemberExpr expr)
     {
@@ -2986,10 +2905,10 @@ internal sealed class FunctionLowerer
         return (type, field, _typeTable.Defs[type.Value].FieldTypes[field.Value]);
     }
 
-    // ------------------------------------------------------------------ Arrays (ADR-016)
+    // ------------------------------------------------------------------ arrays
 
-    /// <summary><c>[a, b, c]</c> — eine Instruktion, nicht drei Stores. Die Werte liegen beim
-    /// <c>newarr</c> in Quelltext-Reihenfolge auf dem Stack.</summary>
+    /// <summary><c>[a, b, c]</c> — one instruction rather than three stores. The values lie on the stack
+    /// in source order at the <c>newarr</c>.</summary>
     private TempId LowerArrayLiteral(ArrayLitExpr expr)
     {
         if (TypeOfExpr(expr) is not IrArrayType type)
@@ -3005,9 +2924,9 @@ internal sealed class FunctionLowerer
 
     private TempId LowerIndexRead(IndexExpr expr)
     {
-        // Ein Container aus std.collections geht ueber 'Indexable<T>.get(i)' — dieselbe
-        // Arbeitsteilung wie bei 'for-in': der Compiler kennt EINE eingebaute Form (das Array),
-        // alles andere laeuft ueber das Interface.
+        // A container from std.collections goes through 'Indexable<T>.get(i)' — the same division of
+        // labour as for 'for-in': the compiler knows ONE built-in form, the array, and everything else
+        // runs through the interface.
         if (LowerIndexableCall(expr, "get", null) is { } viaInterface) return viaInterface;
 
         var (array, index, element) = ResolveIndexAccess(expr);
@@ -3017,14 +2936,13 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>xs[i]</c> und <c>xs[i] = v</c> auf einem Typ, der <c>Indexable&lt;T&gt;</c> erfuellt —
-    /// als Aufruf von <c>get</c> bzw. <c>set</c>. Liefert <c>null</c>, wenn der Traeger ein Array
-    /// ist; dann laeuft der eingebaute Weg ueber <c>ldelem</c>/<c>stelem</c>.
+    /// <c>xs[i]</c> and <c>xs[i] = v</c> on a type satisfying <c>Indexable&lt;T&gt;</c>, as a call to
+    /// <c>get</c> or <c>set</c>. Returns <c>null</c> when the carrier is an array; the built-in route
+    /// through <c>ldelem</c> and <c>stelem</c> then applies.
     ///
-    /// <para>Der Aufruf geht <b>direkt</b>, nicht virtuell: der Empfaengertyp steht statisch
-    /// fest, und bei einer generischen Instanz hat die Monomorphisierung die Methode ohnehin
-    /// erzeugt. Das ist derselbe Gewinn wie beim Constraint-Dispatch (P8) — ein Interface
-    /// bedeutet nicht automatisch eine vtable.</para>
+    /// <para>The call goes DIRECTLY rather than virtually: the receiver type is statically settled, and
+    /// for a generic instance the monomorphization has produced the method anyway. That is the same gain
+    /// as in constraint dispatch — an interface does not automatically mean a vtable.</para>
     /// </summary>
     private TempId? LowerIndexableCall(IndexExpr expr, string method, TempId? value)
     {
@@ -3048,7 +2966,7 @@ internal sealed class FunctionLowerer
             ? new[] { receiver, index, stored }
             : new[] { receiver, index };
 
-        // 'set' liefert void, 'get' den Elementtyp.
+        // 'set' yields void, 'get' the element type.
         if (value is { } assigned)
         {
             _b.Emit(new Call(null, target, arguments, expr.Span));
@@ -3061,9 +2979,8 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Gemeinsamer Teil von Lesen und Schreiben. <c>[i]</c> ist heute nur auf <c>T[]</c>
-    /// gültig; für alles andere sieht ADR-016 das <c>Indexable&lt;T&gt;</c>-Interface vor, das
-    /// Interfaces (P3) und Generics (P8) voraussetzt.</summary>
+    /// <summary>The shared part of reading and writing. <c>[i]</c> is built in on <c>T[]</c> only;
+    /// everything else goes through the <c>Indexable&lt;T&gt;</c> interface.</summary>
     private (TempId Array, TempId Index, IrType Element) ResolveIndexAccess(IndexExpr expr)
     {
         if (TypeOfExpr(expr.Target) is not IrArrayType array)
@@ -3084,31 +3001,29 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    // ------------------------------------------------------------------ Objekte (Sprache.md §3.3)
+    // ------------------------------------------------------------------ objects
 
     /// <summary>
-    /// <c>Account { owner = a, balance = b }</c> → ein <c>newobj</c> und ein <c>storefield</c> je
-    /// Feld.
+    /// <c>Account { owner = a, balance = b }</c> becomes one <c>newobj</c> and one <c>storefield</c> per
+    /// field.
     ///
-    /// <para><b>Geschrieben wird in Deklarations-, nicht in Schreibreihenfolge.</b> Die
-    /// Initialisierer dürfen im Quelltext beliebig stehen; das Layout ist aber die Deklaration, und
-    /// nur eine feste Ordnung macht den Bytecode deterministisch (ADR-013). Die Werte werden
-    /// trotzdem in <b>Quelltext</b>-Reihenfolge ausgewertet — bei Seiteneffekten ist das die
-    /// Reihenfolge, die der Leser erwartet.</para>
+    /// <para>WRITING HAPPENS IN DECLARATION ORDER, NOT IN WRITE ORDER. The initializers may stand in any
+    /// order in the source, but the layout is the declaration, and only a fixed order makes the bytecode
+    /// deterministic. The values are nevertheless evaluated in SOURCE order — with side effects that is
+    /// the order the reader expects.</para>
     /// </summary>
     private TempId LowerObjectInit(StructInitExpr expr)
     {
-        // 'Shape.Tri { a = 3, b = 4 }' und 'Ev<int>.Hit { … }' — eine Struct-Variante. Sieht aus
-        // wie ein Objekt-Literal, ist aber eine Varianten-Konstruktion und geht deshalb ueber
-        // newvariant. Welche INSTANZ, steht im Typ des Ausdrucks.
+        // 'Shape.Tri { a = 3, b = 4 }' and 'Ev<int>.Hit { … }' are struct variants. They look like an
+        // object literal but are a variant construction and therefore go through newvariant. Which
+        // INSTANCE is meant stands in the type of the expression.
         if (SubstituteType(_types.TypeOf(expr)) is NamedRef { Symbol.Kind: TypeSymbolKind.Enum }
             or GenericInstance { Definition.Kind: TypeSymbolKind.Enum })
             return LowerStructVariant(expr);
 
-        // Ein Initialisierer fuer eine Instanz eines generischen Typs ('Box<int> { v = 3 }'):
-        // die Typargumente entscheiden ueber das Layout, also muessen sie beim Internieren dabei
-        // sein — und durch die eigene Substitution, falls die rufende Funktion selbst eine
-        // Instanz ist.
+        // An initializer for an instance of a generic type ('Box<int> { v = 3 }'): the type arguments
+        // decide the layout, so they have to be present when interning — and through the own
+        // substitution, in case the calling function is itself an instance.
         TypeId type;
         TypeSymbol declaring;
         if (SubstituteType(_types.TypeOf(expr)) is GenericInstance instance
@@ -3131,26 +3046,26 @@ internal sealed class FunctionLowerer
 
         var layout = _typeTable.Defs[type.Value];
 
-        // Erst alle Werte auswerten (Quelltext-Reihenfolge), dann in Layout-Reihenfolge schreiben.
+        // Evaluate all values first, in source order, then write in layout order.
         var values = new Dictionary<string, TempId>(StringComparer.Ordinal);
         foreach (var field in expr.Fields)
         {
             if (values.ContainsKey(field.Name))
                 throw Bug($"duplicate initializer for '{field.Name}' reached lowering");
-            // An den deklarierten Feldtyp anpassen: ein Feld vom Typ eines Interfaces nimmt eine
-            // Klasse nur als Fat Pointer auf.
+            // Adapt to the declared field type: a field of an interface type takes a class only as a fat
+            // pointer.
             var fieldIndex = Array.IndexOf(layout.FieldNames, field.Name);
             values[field.Name] = fieldIndex >= 0
                 ? LowerExprAs(field.Value, layout.FieldTypes[fieldIndex])
                 : LowerExpr(field.Value);
         }
 
-        // Ein weggelassenes Feld bekommt seinen Default — ausgewertet HIER, an der
-        // Konstruktionsstelle, nicht einmal beim Typ. Ein Default ist ein Ausdruck; ihn im Layout
-        // abzulegen hiesse, einen Ausdruck in eine Typtabelle zu schreiben.
+        // An omitted field gets its default, evaluated HERE at the construction site rather than once at
+        // the type. A default is an expression, and storing it in the layout would mean writing an
+        // expression into a type table.
         //
-        // Ohne Default bleibt es beim Fehler: ein stillschweigender Nullwert waere geraten, und
-        // die Sema kennt keine Regel, die das erlaubt.
+        // Without a default it stays an error: a silent zero value would be a guess, and the sema knows
+        // no rule that allows it.
         var declaredFields = declaring.Declaration switch
         {
             ClassDecl c => c.Members.OfType<FieldDecl>().ToArray(),
@@ -3176,8 +3091,8 @@ internal sealed class FunctionLowerer
             if (!values.ContainsKey(name))
                 throw Bug($"field '{name}' of '{declaring.Name}' has neither a value nor a default");
 
-        // Ein struct-Wert ist zur Laufzeit dasselbe Slot-Array wie ein Klassenobjekt — 'newobj'
-        // taugt fuer beides. Der Unterschied steckt allein in den Bindepunkten.
+        // A struct value is the same slot array as a class object at runtime, so 'newobj' serves both.
+        // The difference lies solely in the binding points.
         IrType result = _typeTable.IsStruct(type)
             ? new IrStructType(type)
             : new IrRefType(type);
@@ -3187,14 +3102,13 @@ internal sealed class FunctionLowerer
         for (var i = 0; i < layout.FieldNames.Length; i++)
             _b.Emit(new StoreField(dest, type, new FieldId(i), values[layout.FieldNames[i]], expr.Span));
 
-        // Frisch gebaut: dieser Wert gehoert noch niemandem, eine Kopie beim Binden waere Ballast.
+        // Freshly built: this value belongs to nobody yet, and a copy when binding would be ballast.
         _fresh.Add(dest);
         return dest;
     }
 
-    /// <summary>Fuellt einen globalen Slot. Kommt ausschliesslich im synthetischen Initialisierer
-    /// vor — im Nutzer-Quelltext gibt es keine Zuweisung an ein Global, weil sie alle <c>let</c>
-    /// sind (§2.3).</summary>
+    /// <summary>Fills a global slot. Occurs only in the synthetic initializer: in user source there is no
+    /// assignment to a global, because they are all <c>let</c>.</summary>
     private void LowerGlobalInit(GlobalInitStmt stmt)
     {
         var (id, type) = _globals.Resolve(stmt.Symbol, stmt.Span);
@@ -3202,8 +3116,8 @@ internal sealed class FunctionLowerer
         _b.Emit(new StoreGlobal(id, value, stmt.Span));
     }
 
-    /// <summary>Ein globaler Slot ueber einen blossen Namen — ein Modul-<c>let</c> im eigenen
-    /// oder importierten Modul.</summary>
+    /// <summary>A global slot through a bare name: a module <c>let</c> in the own or an imported
+    /// module.</summary>
     private TempId? TryLowerGlobalIdentifier(IdentifierExpr expr)
     {
         var symbol = _types.RefOf(expr);
@@ -3211,8 +3125,8 @@ internal sealed class FunctionLowerer
         return symbol is GlobalSymbol global ? LowerGlobalRead(global, expr.Span) : null;
     }
 
-    /// <summary>Ein globaler Slot — Modul-<c>let</c> oder <c>static let</c>. Beide sind
-    /// dasselbe im Bytecode; der Unterschied ist nur, wo der Name sichtbar ist.</summary>
+    /// <summary>A global slot: a module <c>let</c> or a <c>static let</c>. Both are the same in the
+    /// bytecode; the difference is only where the name is visible.</summary>
     private TempId LowerGlobalRead(GlobalSymbol symbol, Span span)
     {
         var (id, type) = _globals.Resolve(symbol, span);
@@ -3223,20 +3137,20 @@ internal sealed class FunctionLowerer
 
     private TempId LowerFieldRead(MemberExpr expr)
     {
-        // 'P.ZERO' ist keine Feld-, sondern eine Konstanten-Lesung: ein 'static let' ist ein
-        // globaler Slot, kein Objekt-Slot.
+        // 'P.ZERO' is not a field read but a constant read: a 'static let' is a global slot rather than
+        // an object slot.
         if (_types.RefOf(expr) is GlobalSymbol constant) return LowerGlobalRead(constant, expr.Span);
 
-        // 'Shape.Empty' — eine Unit-Variante. Sie sieht aus wie ein Member-Zugriff, ist aber eine
-        // Konstruktion ohne Argumente.
+        // 'Shape.Empty' is a unit variant. It looks like a member access but is a construction without
+        // arguments.
         if (_types.RefOf(expr) is EnumVariantSymbol)
             return LowerVariantCall(expr, [], expr, expr.Span);
 
-        // '.length' auf einem Array ist eingebaut (ADR-016), kein Feld und keine Methode.
+        // '.length' on an array is built in: neither a field nor a method.
         if (expr.Member == "length" && TypeOfExpr(expr.Target) is IrArrayType)
             return LowerArrayLength(expr);
 
-        // 'a?.b' greift nur zu, wenn 'a' einen Wert hat (Sprache.md §7).
+        // 'a?.b' accesses only when 'a' has a value.
         if (expr.IsOptional) return LowerOptionalMember(expr);
 
         var (obj, type, field, fieldType) = ResolveFieldAccess(expr);
@@ -3245,13 +3159,13 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Gemeinsamer Teil von Lesen und Schreiben: das Objekt auswerten und Typ, Feldindex
-    /// und Feldtyp bestimmen.</summary>
+    /// <summary>The shared part of reading and writing: evaluate the object and determine the type, the
+    /// field index and the field type.</summary>
     private (TempId Object, TypeId Type, FieldId Field, IrType FieldType) ResolveFieldAccess(MemberExpr expr)
     {
-        // Der Empfaenger kann eine Instanz eines generischen Typs sein ('Box<int>'). Dann
-        // entscheidet SIE ueber das Layout, nicht die Definition — 'Box<int>' und 'Box<string>'
-        // haben verschiedene Feldtypen an derselben Position.
+        // The receiver may be an instance of a generic type ('Box<int>'). It then decides the layout
+        // rather than the definition — 'Box<int>' and 'Box<string>' have different field types at the
+        // same position.
         var target = SubstituteType(_types.TypeOf(expr.Target));
 
         var declaring = target switch
@@ -3268,8 +3182,8 @@ internal sealed class FunctionLowerer
             ? _typeTable.Intern(instance.Definition, instance.Arguments)
             : _typeTable.Intern(declaring);
 
-        // Index und Feldtyp kommen beide aus dem Layout DIESER Instanz. Ueber das Symbol zu gehen
-        // ginge nicht: 'Box' allein hat kein Layout, nur 'Box<int>' hat eines.
+        // Index and field type both come from the layout of THIS instance. Going through the symbol
+        // would not work: 'Box' alone has no layout, only 'Box<int>' has one.
         var layout = _typeTable.Defs[type.Value];
         var index = Array.IndexOf(layout.FieldNames, expr.Member);
         if (index < 0)
@@ -3284,8 +3198,8 @@ internal sealed class FunctionLowerer
         var to = TypeOfExpr(expr);
         var operand = LowerExpr(expr.Operand);
 
-        // 'x as int' bei x: int ist legales Lyric, ergibt aber keinen sinnvollen Opcode. Das
-        // Lowering elidiert die Identität — der Verifier lehnt sie ab.
+        // 'x as int' for x: int is legal Lyric but yields no meaningful opcode. The lowering elides the
+        // identity; the verifier rejects it.
         if (IrType.Equal(from, to)) return operand;
 
         var dest = _slots.NewTemp(to);
@@ -3294,19 +3208,19 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Ein Aufruf ueber einen <b>Funktionswert</b>: <c>f(1)</c>, wo <c>f</c> eine Closure ist.
+    /// A call through a FUNCTION VALUE: <c>f(1)</c>, where <c>f</c> is a closure.
     ///
-    /// <para>Kein Default-Argument und kein <c>params</c>: beide sind Aufrufstellen-Transformationen
-    /// (P5b-5), die die DEKLARATION des Aufgerufenen brauchen — ein Funktionswert hat keine. Der
-    /// Typ <c>fn(int) -&gt; int</c> sagt „ein Argument", und mehr gibt es nicht zu wissen. Dieselbe
-    /// Grenze zieht C# bei Delegates, aus demselben Grund.</para>
+    /// <para>No default argument and no <c>params</c>: both are call-site transformations needing the
+    /// DECLARATION of the callee, and a function value has none. The type <c>fn(int) -&gt; int</c> says
+    /// "one argument", and there is nothing more to know. C# draws the same line at delegates, for the
+    /// same reason.</para>
     /// </summary>
     /// <summary>
-    /// Ein Methodenaufruf auf einer Instanz eines generischen Typs (§12).
+    /// A method call on an instance of a generic type.
     ///
-    /// <para>Die Methode wird <b>pro Typinstanz</b> monomorphisiert: <c>Box&lt;int&gt;.get</c> und
-    /// <c>Box&lt;string&gt;.get</c> sind zwei Funktionen. Die Substitution kommt dabei vom TYP und
-    /// nicht vom Aufruf — <c>get()</c> hat selbst keine Typparameter, sein <c>T</c> ist das von
+    /// <para>The method is monomorphized PER TYPE INSTANCE: <c>Box&lt;int&gt;.get</c> and
+    /// <c>Box&lt;string&gt;.get</c> are two functions. The substitution comes from the TYPE rather than
+    /// from the call — <c>get()</c> has no type parameters of its own, its <c>T</c> is that of
     /// <c>Box</c>.</para>
     /// </summary>
     private TempId? LowerGenericMethodCall(MemberExpr member, GenericInstance owner, CallExpr expr)
@@ -3323,8 +3237,8 @@ internal sealed class FunctionLowerer
         var receiver = LowerExpr(member.Target);
         var supplied = MaterializeArguments(declaration, expr.Arguments, member.Member, expr.Span);
 
-        // MaterializeArguments liefert bereits gelowerte Werte samt Defaults und 'params'
-        // (P5b-5) — der Empfaenger kommt davor, wie bei jedem Methodenaufruf (ADR-014).
+        // MaterializeArguments yields already lowered values including defaults and 'params'; the
+        // receiver comes before them, as in every method call.
         var args = new TempId[supplied.Length + 1];
         args[0] = receiver;
         Array.Copy(supplied, 0, args, 1, supplied.Length);
@@ -3343,11 +3257,11 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// <c>Pair&lt;int&gt;.of(3)</c> — eine statische Methode auf einer generischen Instanz.
+    /// <c>Pair&lt;int&gt;.of(3)</c> — a static method on a generic instance.
     ///
-    /// <para>Bis auf den fehlenden Empfaenger ist das <see cref="LowerGenericMethodCall"/>: dieselbe
-    /// Monomorphisierungs-Anforderung, dieselbe Substitution des Rueckgabetyps. Getrennt steht es
-    /// nur, weil ADR-014 den Empfaenger zu Parameter 0 macht — und den gibt es hier nicht.</para>
+    /// <para>Apart from the missing receiver this is <see cref="LowerGenericMethodCall"/>: the same
+    /// monomorphization request, the same substitution of the return type. It stands separately only
+    /// because the receiver is parameter 0, and there is none here.</para>
     /// </summary>
     private TempId? LowerGenericStaticCall(MemberExpr member, GenericInstance owner, CallExpr expr)
     {
@@ -3374,8 +3288,8 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Der Rueckgabetyp einer Methode, gesehen aus der Instanz: das <c>T</c> in
-    /// <c>fn get(): T</c> ist das Typargument des Empfaengers.</summary>
+    /// <summary>The return type of a method seen from the instance: the <c>T</c> in <c>fn get(): T</c> is
+    /// the type argument of the receiver.</summary>
     private IrType ReturnTypeOfInstanceMethod(FunctionDecl declaration, GenericInstance owner,
         Core.Span span) =>
         declaration.ReturnType is null
@@ -3383,18 +3297,17 @@ internal sealed class FunctionLowerer
             : LowerWithOwner(declaration.ReturnType, owner, span);
 
     /// <summary>
-    /// Lowert einen geschriebenen Typ im Kontext einer Typinstanz — die Substitution geht an die
-    /// <b>Typtabelle</b>, statt hier eine zweite Auflegung nachzubauen.
+    /// Lowers a written type in the context of a type instance — the substitution goes to the TYPE TABLE
+    /// rather than rebuilding a second resolution here.
     /// </summary>
     /// <remarks>
-    /// <para>Hier stand eine Teilkopie, und sie ist <b>dreimal</b> zu kurz gewesen: erst nur der
-    /// nackte Fall (<c>fn get(): T</c>), dann <c>?T</c> nachgezogen, dann <c>T[]</c> — und
-    /// <c>Iterator&lt;T&gt;</c> fehlte immer noch. Damit war jede Methode nicht lowerbar, die
-    /// einen GENERISCHEN Typ liefert: <c>fn iter(): Iterator&lt;T&gt;</c> ist die Signatur, an der
-    /// <c>Set&lt;T&gt;</c> gescheitert ist.</para>
-    /// <para>Dasselbe Muster und dieselbe Antwort wie bei <see cref="LowerSubstituted"/>: die
-    /// Tabelle kann es vollstaendig — sie benutzt denselben Stack beim Lowern der Member einer
-    /// generischen Instanz. Sie musste nur erfahren, dass hier eine Substitution gilt.</para>
+    /// <para>A partial copy here was three times too short: first only the bare case
+    /// (<c>fn get(): T</c>), then <c>?T</c>, then <c>T[]</c> — and <c>Iterator&lt;T&gt;</c> was still
+    /// missing. Every method returning a GENERIC type was therefore not lowerable:
+    /// <c>fn iter(): Iterator&lt;T&gt;</c> is the signature <c>Set&lt;T&gt;</c> failed on.</para>
+    /// <para>The same answer as in <see cref="LowerSubstituted"/>: the table can do it completely — it
+    /// uses the same stack when lowering the members of a generic instance. It only had to learn that a
+    /// substitution applies here.</para>
     /// </remarks>
     private IrType LowerWithOwner(TypeNode node, GenericInstance owner, Core.Span span)
     {
@@ -3402,8 +3315,8 @@ internal sealed class FunctionLowerer
         var n = Math.Min(owner.Definition.Generics.Length, owner.Arguments.Length);
 
         for (var i = 0; i < n; i++)
-            // Durch die EIGENE Substitution: ein Argument der Instanz kann selbst ein
-            // Typ-Parameter der rufenden Funktion sein ('Box<T>' in 'wrap<T>').
+            // Through the OWN substitution: an argument of the instance may itself be a type parameter of
+            // the calling function ('Box<T>' in 'wrap<T>').
             mapping[owner.Definition.Generics[i].Name] = SubstituteType(owner.Arguments[i]);
 
         using var scope = _typeTable.PushSubstitution(mapping);
@@ -3411,27 +3324,24 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Ein Methodenaufruf auf einem <b>Typ-Parameter mit Constraint</b> (§12).
+    /// A method call on a TYPE PARAMETER WITH A CONSTRAINT.
     ///
-    /// <para>Die Sema bindet <c>x.price()</c> an die Interface-Deklaration — mehr weiss sie in
-    /// einer generischen Funktion nicht. In einer <b>Instanz</b> steht der eingesetzte Typ fest,
-    /// und damit auch die Methode, die wirklich laeuft: aus dem dynamischen Dispatch wird ein
-    /// direkter Aufruf.</para>
+    /// <para>The sema binds <c>x.price()</c> to the interface declaration — that is all it knows in a
+    /// generic function. In an INSTANCE the substituted type is settled and with it the method that
+    /// really runs: the dynamic dispatch becomes a direct call.</para>
     ///
-    /// <para>Das ist der Gewinn der Monomorphisierung, den Rust und C++ genauso einstreichen —
-    /// und der Grund, warum ein Constraint hier keine vtable braucht. Ein Wert, der ueber sein
-    /// Interface vorliegt (<c>let p: P = item;</c>), geht weiterhin ueber <c>callvirt</c>; das
-    /// sind zwei verschiedene Fragen und deshalb zwei Pfade.</para>
+    /// <para>That is the gain of monomorphization, which Rust and C++ collect the same way, and the
+    /// reason a constraint needs no vtable here. A value available through its interface
+    /// (<c>let p: P = item;</c>) still goes through <c>callvirt</c>; those are two different questions
+    /// and therefore two paths.</para>
     /// </summary>
     private TempId? LowerConstraintCall(MemberExpr member, LyrType concrete, CallExpr expr)
     {
-        // Ein BUILTIN als eingesetzter Typ: 'render(42)' mit 'extend int :: [Display]'. Primitive
-        // haben kein Symbol in SymbolOf — und das bleibt auch so, weil genau daran die Grenze
-        // haengt, dass ein Skalar nicht in einen Interface-Slot passt (das braeuchte Boxing).
-        // Hier stoert sie nicht: die Monomorphisierung hat den Typ eingesetzt, die Methode steht
-        // fest, und der Aufruf ist direkt. Es entsteht nie ein Fat Pointer, also nie ein
-        // Boxing-Bedarf — der Grund, warum 'println<T :: [Display]>(42)' ohne eine einzige
-        // Format-Aenderung baubar ist.
+        // A BUILTIN as the substituted type: 'render(42)' with 'extend int :: [Display]'. Primitives have
+        // no symbol in SymbolOf, and that stays so, because on it hangs the boundary that a scalar does
+        // not fit into an interface slot, which would need boxing. It does not get in the way here: the
+        // monomorphization substituted the type, the method is settled, and the call is direct. No fat
+        // pointer ever arises, so no boxing is ever needed.
         if (TypeFacts.SymbolOf(concrete) is not { } owner)
         {
             if (_typeTable.BuiltinSymbolOf(concrete) is { } builtin
@@ -3463,10 +3373,10 @@ internal sealed class FunctionLowerer
                 expr.Span);
         }
 
-        // Eigenes Member schlaegt Default (§3.5). Hat der konkrete Typ die Methode NICHT, kommt
-        // sie als Default vom Interface — und deren 'this' ist der Interface-Typ. Dann fuehrt kein
-        // direkter Aufruf hin: der Empfaenger muss erst gehoben werden, und das ist genau, was
-        // 'callvirt' seit P3 tut. Der Constraint nennt das Interface, also ist es bekannt.
+        // An own member beats a default. When the concrete type does NOT have the method, it comes as a
+        // default from the interface, and its 'this' is the interface type. No direct call leads there:
+        // the receiver has to be lifted first, which is exactly what 'callvirt' does. The constraint
+        // names the interface, so it is known.
         if (owner.Members.LookupLocal(member.Member) is not FunctionSymbol method
             || method.Declaration is not FunctionDecl declaration)
         {
@@ -3475,9 +3385,9 @@ internal sealed class FunctionLowerer
                     if (_typeTable.ConstraintInterface(constraint) is { } iface
                         && iface.Members.LookupLocal(member.Member) is FunctionSymbol)
                     {
-                        // Der Empfaenger liegt als Klassenreferenz vor, 'callvirt' braucht einen
-                        // Interface-Wert: erst heben (mkiface), dann rufen. Dasselbe tut jede
-                        // andere Stelle, an der eine Klasse in einen Interface-Slot wandert.
+                        // The receiver is available as a class reference and 'callvirt' needs an interface
+                        // value: lift first (mkiface), then call. The same as at every other place where
+                        // a class moves into an interface slot.
                         var lifted = LowerExprAs(member.Target, _typeTable.InterfaceOf(iface));
                         return LowerVirtualCall(member, iface, expr, receiver: lifted);
                     }
@@ -3487,8 +3397,8 @@ internal sealed class FunctionLowerer
                 + "is a lowering gap and not a program error", expr.Span);
         }
 
-        // Bei einem generischen Empfaenger gehoert die Methode der Instanz; sonst wurde sie in
-        // Pass 1 mit allen anderen gelowert.
+        // For a generic receiver the method belongs to the instance; otherwise it was lowered in pass 1
+        // with all the others.
         var target = concrete is GenericInstance instance
             ? _instances.RequestMethod(method, declaration, instance, expr.Span)
             : TryResolveFunction(method, out var direct)
@@ -3528,7 +3438,7 @@ internal sealed class FunctionLowerer
         for (var i = 0; i < args.Length; i++)
             args[i] = i < signature.Parameters.Length
                 ? LowerExprAs(expr.Arguments[i], signature.Parameters[i])
-                : LowerExpr(expr.Arguments[i]); // Aritaetsfehler hat die Sema schon gemeldet
+                : LowerExpr(expr.Arguments[i]); // an arity error was already reported by the sema
 
         if (IsVoid(signature.Return))
         {
@@ -3539,39 +3449,38 @@ internal sealed class FunctionLowerer
         var dest = _slots.NewTemp(signature.Return);
         _b.Emit(new CallIndirect(dest, callee, args, signature.Return, expr.Span));
 
-        // Das Ergebnis gehoert noch niemandem — bei einem struct spart das den structcopy beim
-        // Binden, genau wie bei einem gewoehnlichen Call.
+        // The result belongs to nobody yet; for a struct that saves the structcopy when binding, exactly
+        // as for an ordinary call.
         _fresh.Add(dest);
         return dest;
     }
 
     private TempId? LowerCall(CallExpr expr)
     {
-        // 'b?.get()' — Optional-Chaining mit Aufruf (§7). Dieselbe Verzweigung wie beim
-        // Feldzugriff, nur dass im 'some'-Zweig ein Aufruf statt eines 'ldfld' steht. Der Aufruf
-        // selbst landet danach wieder hier, mit ausgepacktem Empfaenger.
+        // 'b?.get()' — optional chaining with a call. The same branch as for the field access, except
+        // that the 'some' branch holds a call rather than an 'ldfld'. The call itself lands back here
+        // afterwards, with an unwrapped receiver.
         if (expr.Callee is MemberExpr { IsOptional: true } chained
             && !_chainReceivers.ContainsKey(chained.Target))
             return LowerOptionalCall(expr, chained);
 
-        // Der Empfänger ist Parameter 0 (ADR-014). Bei `p.get()` wird 'p' also zum ersten Argument;
-        // bei `P.new(…)` gibt es keinen, und der Aufruf ist ein gewöhnlicher Call. Beide Formen
-        // laufen danach durch denselben Pfad — der Unterschied steckt allein in der Argumentliste.
+        // The receiver is parameter 0. For `p.get()` the 'p' therefore becomes the first argument; for
+        // `P.new(…)` there is none and the call is an ordinary one. Both forms then run through the same
+        // path — the difference lies solely in the argument list.
         TempId? receiver = null;
         string calleeName;
         Symbol? bound;
 
-        // Der Aufgerufene ist ein WERT und keine Deklaration: eine Closure, ein Parameter vom Typ
-        // 'fn(…) -> …', ein Feld, das Ergebnis eines anderen Aufrufs.
+        // The callee is a VALUE rather than a declaration: a closure, a parameter of type
+        // 'fn(…) -> …', a field, the result of another call.
         //
-        // Der Typ allein entscheidet das NICHT: eine deklarierte Funktion hat ebenfalls einen
-        // Funktionstyp, und eine Enum-Variante mit Payload ('Shape.Line(1.0)') auch — sie ist ein
-        // Konstruktor, kein Wert. Was den indirekten Aufruf ausmacht, ist die BINDUNG: er zeigt
-        // auf etwas, das einen Funktionswert HAELT, oder auf gar nichts wie bei 'mk()()'.
+        // The type alone does NOT decide that: a declared function also has a function type, and so does
+        // an enum variant with a payload ('Shape.Line(1.0)') — which is a constructor, not a value. What
+        // makes the call indirect is the BINDING: it points at something HOLDING a function value, or at
+        // nothing at all, as in 'mk()()'.
         //
-        // Positiv aufgezaehlt statt negativ: eine Liste von Verboten haette bei jeder neuen
-        // Symbolart stillschweigend die falsche Antwort gegeben, und zwar in die gefaehrliche
-        // Richtung — 'Shape.Line(1.0)' wurde so zu einem callind auf einen Enum-Wert.
+        // Enumerated positively rather than negatively: a list of prohibitions would silently give the
+        // wrong answer for every new kind of symbol, and in the dangerous direction.
         if (_types.TypeOf(expr.Callee) is FnType
             && _types.RefOf(expr.Callee) is null or LocalSymbol or ParameterSymbol
                or FieldSymbol or GlobalSymbol)
@@ -3579,55 +3488,52 @@ internal sealed class FunctionLowerer
 
         switch (expr.Callee)
         {
-            // Shape.Circle(2.0) und Opt<int>.Some(5) — eine Tuple-Variante. Kein Call, sondern
-            // eine Konstruktion, und das gilt unabhaengig davon, wie das Ziel geschrieben ist.
-            // Deshalb steht der Fall VOR dem statischen Aufruf: 'Opt<int>.Some' sieht wie eine
-            // statische Methode auf einer Instanz aus und ist keine.
+            // Shape.Circle(2.0) and Opt<int>.Some(5) are tuple variants. Not a call but a construction,
+            // and that holds regardless of how the target is written. The case therefore stands BEFORE
+            // the static call: 'Opt<int>.Some' looks like a static method on an instance and is not.
             case MemberExpr member when _types.RefOf(member) is EnumVariantSymbol:
                 return LowerVariantCall(member, expr.Arguments, expr, expr.Span);
 
-            // 'Pair<int>.of(3)' — eine statische Methode auf einer generischen INSTANZ. Das Ziel
-            // ist hier kein Wert, sondern ein Typpfad; einen Empfaenger gibt es nicht (ADR-014),
-            // die Instanziierung aber schon. Der Fall steht ganz vorn, weil alle Faelle darunter
-            // den Typ des Ziel-AUSDRUCKS befragen, und ein Typpfad hat keinen.
+            // 'Pair<int>.of(3)' — a static method on a generic INSTANCE. The target here is not a value
+            // but a type path; there is no receiver, but there is an instantiation. The case stands
+            // first, because every case below asks the type of the target EXPRESSION, and a type path
+            // has none.
             case MemberExpr { Target: TypePathExpr } member
                 when _types.TypeOf(((MemberExpr)expr.Callee).Target)
                      is Sema.NonValueType { Instance: { } owner }:
                 return LowerGenericStaticCall(member, owner, expr);
 
-            // Empfaenger ist ein Interface-Wert: welche Implementierung laeuft, steht erst zur
-            // Laufzeit fest. Das ist der einzige dynamische Dispatch der Sprache.
+            // The receiver is an interface value: which implementation runs is settled only at runtime.
+            // That is the language's only dynamic dispatch.
             case MemberExpr member
                 when ReceiverType(member.Target) is NamedRef
                      { Symbol.Kind: TypeSymbolKind.Interface } iface:
                 return LowerVirtualCall(member, iface.Symbol, expr);
 
-            // Ein generisches Interface als Empfaenger ('Iterator<int>'): derselbe dynamische
-            // Dispatch, nur dass die Slot-Tabelle an der INSTANZ haengt — 'Iterator<int>' und
-            // 'Iterator<string>' sind verschiedene Eintraege.
+            // A generic interface as the receiver ('Iterator<int>'): the same dynamic dispatch, except
+            // that the slot table hangs on the INSTANCE — 'Iterator<int>' and 'Iterator<string>' are
+            // different entries.
             case MemberExpr member
                 when SubstituteType(ReceiverType(member.Target)) is GenericInstance
                      { Definition.Kind: TypeSymbolKind.Interface } genericIface:
                 return LowerVirtualCall(member, genericIface, expr);
 
-            // Der Empfaenger ist ein TYP-PARAMETER mit Constraint: 'fn total<T :: [P]>(x: T)
-            // { x.price(); }'. Die Sema bindet 'price' an das Interface — dort hat es keinen
-            // Rumpf. In einer Instanz steht T aber fest, also gibt es eine echte Methode.
+            // The receiver is a TYPE PARAMETER with a constraint: 'fn total<T :: [P]>(x: T)
+            // { x.price(); }'. The sema binds 'price' to the interface, where it has no body. In an
+            // instance T is settled, so there is a real method.
             case MemberExpr member
                 when ReceiverType(member.Target) is TypeParamType parameter
                      && _substitution.ContainsKey(parameter.Param):
                 return LowerConstraintCall(member, SubstituteType(ReceiverType(member.Target)),
                     expr);
 
-            // Eine INTERFACE-DEFAULT-Methode auf einem konkreten Empfaenger: 'it.isFree()', wo
-            // 'isFree' dem Interface gehoert und nicht dem Struct. Ihr 'this' ist der
-            // Interface-Typ, also fuehrt kein direkter Aufruf hin — der Empfaenger wird gehoben
-            // (mkiface) und dann virtuell gerufen. Genau denselben Weg geht LowerConstraintCall
-            // seit dem P8-Nachtrag; er fehlte nur fuer den Fall ohne Constraint, weil bis dahin
-            // kein Beispiel eine Default-Methode direkt aufrief.
+            // An INTERFACE DEFAULT method on a concrete receiver: 'it.isFree()', where 'isFree' belongs
+            // to the interface rather than to the struct. Its 'this' is the interface type, so no direct
+            // call leads there — the receiver is lifted (mkiface) and then called virtually. The same
+            // route LowerConstraintCall takes.
             //
-            // 'Eigenes Member schlaegt Default' (§3.5) steckt in der LookupLocal-Bedingung: hat
-            // der konkrete Typ die Methode selbst, faellt dieser Fall durch zum direkten Aufruf.
+            // 'An own member beats a default' sits in the LookupLocal condition: when the concrete type
+            // has the method itself, this case falls through to the direct call.
             case MemberExpr member
                 when ReceiverType(member.Target) is NamedRef
                      { Symbol: { Kind: TypeSymbolKind.Class or TypeSymbolKind.Struct
@@ -3646,21 +3552,20 @@ internal sealed class FunctionLowerer
                 receiver = LowerExpr(member.Target);
                 break;
 
-            // Der Empfaenger ist eine Instanz eines generischen Typs: 'Box<int>.get()'. Die
-            // Methode gehoert der INSTANZ, nicht der Definition — ihr Rueckgabetyp kann T sein.
+            // The receiver is an instance of a generic type: 'Box<int>.get()'. The method belongs to the
+            // INSTANCE rather than to the definition, and its return type may be T.
             case MemberExpr member
                 when SubstituteType(ReceiverType(member.Target)) is GenericInstance owner
                      && owner.Definition.Kind is TypeSymbolKind.Class or TypeSymbolKind.Struct:
                 return LowerGenericMethodCall(member, owner, expr);
 
-            // Eine Extension auf einem Builtin (§3.6): 'n.double()' mit 'extend int'. Der
-            // Empfaenger ist ein Skalar und deshalb KEIN NamedRef — ohne diesen Fall faellt er in
-            // den Typ-/Modul-Zweig darunter, der keinen Empfaenger anhaengt, und der Verifier
-            // meldet einen Aufruf mit einem Argument zu wenig. Genau so ist es aufgefallen.
+            // An extension on a builtin: 'n.double()' with 'extend int'. The receiver is a scalar and
+            // therefore NO NamedRef; without this case it falls into the type or module branch below,
+            // which attaches no receiver, and the verifier reports a call with one argument too few.
             //
-            // Ein Skalar als Parameter 0 braucht nichts Neues: kein Boxing, kein Fat Pointer, kein
-            // Dispatch. Welche Funktion laeuft, steht statisch fest — das ist der ganze Unterschied
-            // zwischen einer inhaerenten Extension und einer ueber ein Interface.
+            // A scalar as parameter 0 needs nothing new: no boxing, no fat pointer, no dispatch. Which
+            // function runs is statically settled — that is the whole difference between an inherent
+            // extension and one through an interface.
             case MemberExpr member
                 when ReceiverType(member.Target) is PrimitiveType
                      && _types.RefOf(member) is FunctionSymbol:
@@ -3669,7 +3574,7 @@ internal sealed class FunctionLowerer
                 receiver = LowerExpr(member.Target);
                 break;
 
-            case MemberExpr member: // Typ- oder Modul-Ziel: P.new(…), console.println(…)
+            case MemberExpr member: // a type or module target: P.new(…), console.println(…)
                 calleeName = member.Member;
                 bound = _types.RefOf(member);
                 break;
@@ -3683,25 +3588,24 @@ internal sealed class FunctionLowerer
                 throw NotSupported("call target (only functions and methods)", expr.Callee.Span);
         }
 
-        // Ein selektiver Import bindet über ein ImportBindingSymbol; das eigentliche Ziel liegt
-        // darunter. Ohne das Auspacken sieht `import std.io.console { println };` anders aus als
-        // ein Aufruf im selben Modul, obwohl es dieselbe Funktion ist.
+        // A selective import binds through an ImportBindingSymbol; the actual target lies beneath it.
+        // Without unwrapping, `import std.io.console { println };` looks different from a call in the
+        // same module although it is the same function.
         if (bound is ImportBindingSymbol binding) bound = binding.Target;
 
         if (bound is not FunctionSymbol symbol)
             throw NotSupported($"call to '{calleeName}' (not a function or method)", expr.Span);
 
-        // Nativ hinterlegt (Stdlib oder Host): eigener Instruktionstyp, eigener Indexraum.
+        // Natively backed, by the stdlib or the host: its own instruction type and its own index space.
         //
-        // Bei einer METHODE auf einem Host-Typ (M10/E4b) traegt der Import den Empfaenger als
-        // Parameter 0 — dieselbe Konvention wie jede andere Methode (ADR-014). Er steht in
-        // 'receiver', weil der Aufruf 'e.schaden(30)' ihn nicht in der Argumentliste hat.
+        // For a METHOD on a host type the import carries the receiver as parameter 0, the same convention
+        // as every other method. It stands in 'receiver', because the call 'e.damage(30)' does not have
+        // it in the argument list.
         if (_imports.IsNative(symbol))
             return LowerImportCall(_imports.Intern(symbol), expr.Arguments, expr.Span, receiver);
 
-        // 'panic' ist ein Sprach-Built-in (§9) und hat deshalb kein Modul, in dem es deklariert
-        // waere — der Resolver legt es in den Wurzel-Scope. Gebunden wird es wie jeder andere
-        // Native, ueber seinen symbolischen Namen.
+        // 'panic' is a language builtin and therefore has no module it is declared in; the resolver puts
+        // it into the root scope. It is bound like any other native, through its symbolic name.
         if (symbol.Name == "panic" && !_functions.ContainsKey(symbol))
         {
             var message = expr.Arguments.Length == 1
@@ -3710,8 +3614,8 @@ internal sealed class FunctionLowerer
 
             CallHelper("std.core.panic", expr.Span, message);
 
-            // panic kehrt nie zurueck (Rueckgabetyp 'never'). Der Block endet hier — alles
-            // dahinter waere toter Code, und der Verifier lehnt unerreichbare Bloecke ab.
+            // panic never returns, its return type being 'never'. The block ends here: everything behind
+            // it would be dead code, and the verifier rejects unreachable blocks.
             _b.Seal(new Unreachable(expr.Span));
             return null;
         }
@@ -3720,15 +3624,15 @@ internal sealed class FunctionLowerer
             throw NotSupported($"call to '{calleeName}' (no declaration to read parameters from)",
                 expr.Span);
 
-        // Generisch: nicht die Deklaration wird gerufen, sondern eine INSTANZ von ihr. Welche,
-        // sagen die Typargumente, die die Sema an der Aufrufstelle inferiert hat — sie ein
-        // zweites Mal abzuleiten waere eine zweite Wahrheit ueber dieselbe Frage.
+        // Generic: not the declaration is called but an INSTANCE of it. Which one is said by the type
+        // arguments the sema inferred at the call site; deriving them a second time would be a second
+        // truth about the same question.
         FunctionId target;
         if (symbol.Generics.Length > 0)
         {
-            // Ein Typargument kann selbst ein Typ-Parameter SEIN, wenn die rufende Funktion
-            // schon eine Instanz ist: in 'wrap<T>' ruft 'id(x)' die Instanz 'id<T>', und welches
-            // T das ist, weiss nur die eigene Substitution.
+            // A type argument may itself BE a type parameter when the calling function is already an
+            // instance: in 'wrap<T>' the call 'id(x)' calls the instance 'id<T>', and which T that is is
+            // known only to the own substitution.
             var typeArguments = _types.TypeArgumentsOf(expr)
                 .Select(t => t is TypeParamType p && _substitution.TryGetValue(p.Param, out var b)
                     ? b : t)
@@ -3746,17 +3650,17 @@ internal sealed class FunctionLowerer
             throw NotSupported($"call to '{calleeName}' (no declaration to read parameters from)",
                 expr.Span);
 
-        // Die Typargumente dieser Aufrufstelle, nach Namen — die Form, in der die Typtabelle
-        // Substitutionen fuehrt. Nur so kann der Parametertyp 'Iterator<T>' zu 'Iterator<int>'
-        // werden und die Coercion Klasse -> Interface entstehen.
+        // The type arguments of this call site, by name — the form in which the type table keeps
+        // substitutions. Only that way can the parameter type 'Iterator<T>' become 'Iterator<int>' and
+        // the coercion from class to interface arise.
         var calleeSubstitution = symbol.Generics.Length > 0
             ? NamedSubstitutionFor(symbol, _types.TypeArgumentsOf(expr)) : null;
 
         var supplied = MaterializeArguments(declaration, expr.Arguments, calleeName, expr.Span,
             calleeSubstitution);
 
-        // Der Empfänger steht vorn — die Reihenfolge ist die Parameter-Konvention der IR und
-        // muss zu der passen, in der FunctionLowerer die Slots angelegt hat.
+        // The receiver comes first: the order is the IR's parameter convention and has to match the one
+        // in which FunctionLowerer allocated the slots.
         var offset = receiver is null ? 0 : 1;
         var args = new TempId[supplied.Length + offset];
         if (receiver is { } self) args[0] = self;
@@ -3776,17 +3680,14 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Die Argumentliste, wie der Callee sie erwartet: genau ein Wert je deklariertem Parameter.
+    /// The argument list as the callee expects it: exactly one value per declared parameter.
     ///
-    /// <para>Hier entstehen die beiden Formen, die an der Quelle anders aussehen als in der
-    /// Signatur — <b>Default-Werte</b> für weggelassene Trailing-Parameter und das
-    /// <b>params</b>-Array für den Rest. Beides ist eine Aufrufstellen-Transformation: die IR
-    /// kennt keine variadischen Signaturen und keine optionalen Parameter, und sie soll auch
-    /// keine kennen. Nach dieser Methode ist ein Aufruf ein Aufruf.</para>
+    /// <para>Here the two forms arise that look different at the source than in the IR: a <c>params</c>
+    /// array and an omitted default.</para>
     ///
-    /// <para>Der Default-Ausdruck wird <b>an der Aufrufstelle</b> ausgewertet, nicht einmal beim
-    /// Callee — dieselbe Wahl wie in C#. Sonst müsste er in einem Kontext gelowert werden, in dem
-    /// die Argumente des Aufrufers nicht sichtbar sind.</para>
+    /// <para>The default expression is evaluated AT THE CALL SITE rather than once at the callee, the
+    /// same choice as in C#. Otherwise it would have to be lowered in a context where the caller's
+    /// arguments are not visible.</para>
     /// </summary>
     private TempId[] MaterializeArguments(FunctionDecl callee, Expr[] provided, string name,
         Span span, IReadOnlyDictionary<string, LyrType>? calleeSubstitution = null)
@@ -3798,8 +3699,8 @@ internal sealed class FunctionLowerer
         {
             var parameter = parameters[i];
 
-            // 'params xs: T[]' sammelt alles ab hier. Die Sema erlaubt es nur am letzten
-            // Parameter (§3.1), also ist der Rest wirklich der Rest.
+            // 'params xs: T[]' collects everything from here on. The sema allows it only on the last
+            // parameter, so the rest really is the rest.
             if (parameter.IsParams)
             {
                 args[i] = CollectVariadic(parameter, provided, i, span);
@@ -3818,7 +3719,7 @@ internal sealed class FunctionLowerer
                 continue;
             }
 
-            // Die Sema hat die Arity geprueft; hier zu landen hiesse, sie waere durchgerutscht.
+            // The sema checked the arity; landing here would mean it slipped through.
             throw Bug($"call to '{name}' at {span} passes {provided.Length} argument(s) but " +
                       $"parameter '{parameter.Name}' has no default");
         }
@@ -3831,13 +3732,12 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Die restlichen Argumente als Array — <c>sum(1, 2, 3)</c> wird zu <c>sum([1, 2, 3])</c>.
+    /// The remaining arguments as an array: <c>sum(1, 2, 3)</c> becomes <c>sum([1, 2, 3])</c>.
     ///
-    /// <para><b>Ein fertiges Array darf als Ganzes durch</b>: <c>sum(xs)</c> mit <c>xs: int[]</c>
-    /// ist das Array selbst, kein Array mit einem Array darin. Ohne diesen Weg koennte eine
-    /// variadische Funktion an keine andere delegieren. Erkennbar am Typ des einzigen
-    /// verbleibenden Arguments — mehr braucht es nicht, weil ein Element nie denselben Typ hat wie
-    /// das Array, das es aufnimmt (§3.1).</para>
+    /// <para>A READY-MADE ARRAY PASSES THROUGH AS A WHOLE: <c>sum(xs)</c> with <c>xs: int[]</c> is the
+    /// array itself, not an array with an array inside. Without this route a variadic function could not
+    /// delegate to another. Recognisable from the type of the single remaining argument — nothing more
+    /// is needed, because an element never has the same type as the array taking it.</para>
     /// </summary>
     private TempId CollectVariadic(Param parameter, Expr[] provided, int from, Span span)
     {
@@ -3860,33 +3760,30 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Ein Argument, angepasst an den <b>deklarierten</b> Parametertyp.
+    /// An argument adapted to the DECLARED parameter type.
     ///
-    /// <para>Ohne diesen Schritt bliebe eine Klasse eine Klasse, auch wenn der Parameter ein
-    /// Interface ist — und der Aufgerufene bekaeme eine nackte Referenz statt eines Fat Pointers.
-    /// Der Verifier faengt das, aber als Typ-Mismatch tief im Callee statt als das, was es ist:
-    /// eine fehlende Coercion am Aufrufort.</para>
+    /// <para>Without this step a class stays a class even when the parameter is an interface, and the
+    /// callee gets a bare reference instead of a fat pointer. The verifier catches that, but as a type
+    /// mismatch deep in the callee rather than as what it is: a missing coercion at the call site.</para>
     /// </summary>
     private TempId LowerArgument(Expr argument, Param parameter,
         IReadOnlyDictionary<string, LyrType>? calleeSubstitution = null)
     {
-        // Nur das Lowern des Parametertyps wird abgeschirmt — ein Typ, den dieser Compiler-Stand
-        // nicht kennt, meldet ohnehin gleich die Funktion selbst, und hier doppelt zu klagen waere
-        // Laerm. Die Coercion steht BEWUSST ausserhalb: als sie mit im try lag, verschluckte der
-        // catch ein fehlendes 'mkiface' und machte aus einer Diagnose malformed IR — der Fehler
-        // tauchte dann als Verifier-Befund tief im Aufrufer auf.
+        // Only the lowering of the parameter type is shielded: a type this compiler build does not know
+        // is reported by the function itself anyway, and complaining twice would be noise. The coercion
+        // stands DELIBERATELY outside: inside the try, the catch swallows a missing 'mkiface' and turns a
+        // diagnostic into malformed IR.
         IrType expected;
         try
         {
-            // Unter der Substitution DES CALLEES lowern, nicht der eigenen: bei
-            // 'fn zaehle<T>(source: Iterator<T>)' ist 'Iterator<T>' der geschriebene Parametertyp,
-            // und welches T gemeint ist, weiss nur die Aufrufstelle.
+            // Lowered under the substitution OF THE CALLEE rather than the own one: in
+            // 'fn count<T>(source: Iterator<T>)' the written parameter type is 'Iterator<T>', and which T
+            // is meant is known only to the call site.
             //
-            // Ohne sie warf das Lowern des Parametertyps (unaufgeloestes T), der catch unten
-            // griff, und das Argument ging OHNE Coercion durch — eine Klasse landete dort, wo ein
-            // Interface-Wert stehen musste. Der Verifier meldete das als malformed IR, also stuerzte
-            // der Compiler ab statt zu diagnostizieren. Nicht-generische Aufrufe waren nie
-            // betroffen, weshalb es bis zum ersten generischen Iterator-Adapter unentdeckt blieb.
+            // Without it, lowering the parameter type throws on the unresolved T, the catch below fires,
+            // and the argument passes WITHOUT a coercion — a class lands where an interface value has to
+            // stand. The verifier reports that as malformed IR, so the compiler crashes instead of
+            // diagnosing.
             using (calleeSubstitution is null
                        ? null : _typeTable.PushSubstitution(calleeSubstitution))
                 expected = _typeTable.Lower(parameter.Type);
@@ -3900,12 +3797,12 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Der dynamische Aufruf. Der Empfaenger ist ein Interface-Wert und traegt seinen konkreten
-    /// Typ mit sich; die Runtime schlaegt damit in der vtable nach.
+    /// The dynamic call. The receiver is an interface value and carries its concrete type along; the
+    /// runtime uses that to look up the vtable.
     ///
-    /// <para>Der Slot statt des Namens ist dieselbe Entscheidung wie beim Feldindex (P1): Lyric ist
-    /// statisch typisiert und kennt kein Monkey-Patching, also steht die Position zur Compile-Zeit
-    /// fest. Ein Namens-Lookup mit Inline-Cache loeste ein Problem, das diese Sprache nicht hat.</para>
+    /// <para>The slot rather than the name is the same decision as for the field index: Lyric is
+    /// statically typed and has no monkey patching, so the position is fixed at compile time. A name
+    /// lookup with an inline cache would solve a problem this language does not have.</para>
     /// </summary>
     private TempId? LowerVirtualCall(MemberExpr member, GenericInstance instance, CallExpr expr) =>
         LowerVirtualCall(member, instance.Definition, expr,
@@ -3914,12 +3811,12 @@ internal sealed class FunctionLowerer
     private TempId? LowerVirtualCall(MemberExpr member, TypeSymbol iface, CallExpr expr,
         TypeId? instanceType = null, TempId? receiver = null)
     {
-        // Bei einem generischen Interface haengt die Slot-Tabelle an der INSTANZ; der Slot-INDEX
-        // ist derselbe, weil er aus der Deklaration kommt und fuer alle Instanzen gilt.
+        // For a generic interface the slot table hangs on the INSTANCE; the slot INDEX is the same,
+        // because it comes from the declaration and holds for all instances.
         var interfaceId = instanceType ?? _typeTable.InterfaceOf(iface).Type;
 
-        // Den Slot aus dem Eintrag DIESER Instanz lesen: ueber das Symbol zu gehen wuerde
-        // 'Src' ohne Typargumente internieren, und das hat keinen Eintrag.
+        // Read the slot from the entry of THIS instance: going through the symbol would intern 'Src'
+        // without type arguments, and that has no entry.
         var slots = _typeTable.MethodSlotsOf(interfaceId);
         var slot = Array.IndexOf(slots, member.Member);
         if (slot < 0)
@@ -3928,11 +3825,11 @@ internal sealed class FunctionLowerer
 
         var args = new TempId[expr.Arguments.Length + 1];
 
-        // Der Empfaenger kann schon gehoben vorliegen — etwa bei einem Constraint, dessen
-        // Default-Methode ueber das Interface laeuft.
+        // The receiver may already be lifted, for instance for a constraint whose default method goes
+        // through the interface.
         args[0] = receiver ?? LowerExpr(member.Target);
 
-        // Die Signatur steht am Interface, nicht an einer Implementierung — sie ist der Vertrag.
+        // The signature stands on the interface rather than on an implementation: it is the contract.
         var declaration = iface.Members.LookupLocal(member.Member) is FunctionSymbol method
             ? method.Declaration as FunctionDecl
             : null;
@@ -3954,10 +3851,10 @@ internal sealed class FunctionLowerer
         return dest;
     }
 
-    /// <summary>Aufruf einer nativ hinterlegten Funktion. Die Signatur kommt aus der Import-Tabelle,
-    /// nicht aus einer Funktion — ein Import hat keinen Rumpf.</summary>
-    /// <param name="receiver">Bei einer Methode auf einem Host-Typ der Empfaenger; er wird
-    /// Parameter 0 (ADR-014). <c>null</c> bei jeder freien Funktion.</param>
+    /// <summary>A call to a natively backed function. The signature comes from the import table rather
+    /// than from a function: an import has no body.</summary>
+    /// <param name="receiver">For a method on a host type the receiver, which becomes parameter 0.
+    /// <c>null</c> for every free function.</param>
     private TempId? LowerImportCall(ImportId target, Expr[] arguments, Span span,
         TempId? receiver = null)
     {
@@ -3983,12 +3880,11 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Direkter Aufruf eines Runtime-Helfers ueber seinen festen Namen.
+    /// A direct call to a runtime helper through its fixed name.
     ///
-    /// <para>Das Lowering referenziert <c>std.string.concat</c> und <c>std.core.panic</c>, ohne
-    /// dass jemand die Module importiert haette — dasselbe Modell wie Roslyns Verweis auf
-    /// <c>String.Concat</c>. Benutzt von f-Strings, von <c>string</c>-<c>+</c>/<c>*</c> (§6.5) und
-    /// von <c>panic</c> (§9).</para>
+    /// <para>The lowering references <c>std.string.concat</c> and <c>std.core.panic</c> without anyone
+    /// having imported the modules — the same model as Roslyn's reference to <c>String.Concat</c>. Used
+    /// by f-strings, by <c>+</c> and <c>*</c> on <c>string</c>, and by <c>panic</c>.</para>
     /// </summary>
     private TempId CallHelper(string name, Span span, params TempId[] args)
     {
@@ -4009,9 +3905,9 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// f-String → Kette aus <c>concat</c> und den <c>fromXxx</c>-Wandlern. Keine Arrays, keine
-    /// Varargs — beides kann die IR nicht, und so braucht sie es auch nicht. Roslyn macht es für
-    /// <c>$"…"</c> ohne Format-Spec genauso.
+    /// An f-string becomes a chain of <c>concat</c> and the <c>fromXxx</c> converters. No arrays and no
+    /// varargs — the IR can do neither, and this way it does not need to. Roslyn does the same for
+    /// <c>$"…"</c> without a format spec.
     /// </summary>
     private TempId LowerInterpolatedString(InterpolatedStringExpr expr)
     {
@@ -4031,8 +3927,8 @@ internal sealed class FunctionLowerer
             switch (segment)
             {
                 case InterpText text:
-                    // Der Parser speichert die Textstücke roh (siehe InterpText) — hier werden die
-                    // Escapes aufgelöst. Benachbarte Stücke sammeln sich zu einer Konstante.
+                    // The parser stores the text pieces raw (see InterpText); the escapes are resolved
+                    // here. Adjacent pieces collect into one constant.
                     pendingText.Append(Escapes.Resolve(text.Text));
                     break;
 
@@ -4057,15 +3953,14 @@ internal sealed class FunctionLowerer
         return result;
     }
 
-    /// <summary>Ein Loch mit Format-Spec: <c>{avg:N2}</c> wird zu
-    /// <c>std.fmt.formatFloat(avg, "N2")</c>.
+    /// <summary>A hole with a format spec: <c>{avg:N2}</c> becomes <c>std.fmt.formatFloat(avg, "N2")</c>.
     ///
-    /// <para>Die Spec ist ein <b>Literal</b> und wird als Konstante uebergeben, nicht als Teil
-    /// des Funktionsnamens. Sonst braeuchte jede Spec ihre eigene Import-Deklaration, und
-    /// <c>{x:N2}</c> und <c>{x:N3}</c> waeren zwei verschiedene Funktionen.</para>
+    /// <para>The spec is a LITERAL and is passed as a constant rather than as part of the function name.
+    /// Otherwise every spec would need its own import declaration, and <c>{x:N2}</c> and <c>{x:N3}</c>
+    /// would be two different functions.</para>
     ///
-    /// <para>Ohne Spec bleibt es bei den <c>fromXxx</c>-Wandlern: ein Format-Aufruf, der nur den
-    /// Standard nachbaut, waere ein zweiter Weg zu demselben Ergebnis.</para></summary>
+    /// <para>Without a spec the <c>fromXxx</c> converters remain: a format call that only rebuilds the
+    /// default would be a second route to the same result.</para></summary>
     private TempId FormattedValue(Expr expr, string spec)
     {
         var value = LowerExpr(expr);
@@ -4090,8 +3985,8 @@ internal sealed class FunctionLowerer
         return CallHelper(helper, expr.Span, WidenForHelper(value, scalar.Kind, expr.Span), specValue);
     }
 
-    /// <summary>Ein Loch im f-String als string. Strings bleiben, wie sie sind; alles andere geht
-    /// durch den passenden Wandler — die Namen unterscheiden nach Quelltyp, weil Lyric kein
+    /// <summary>A hole in an f-string as a string. Strings stay as they are; everything else goes through
+    /// the matching converter — the names distinguish by source type, because Lyric has no
     /// Overloading hat.</summary>
     private TempId ToStringValue(Expr expr)
     {
@@ -4107,8 +4002,8 @@ internal sealed class FunctionLowerer
             IrScalar.Char => CallHelper("std.string.fromChar", expr.Span, value),
             IrScalar.F32 or IrScalar.F64 => CallHelper("std.string.fromFloat", expr.Span,
                 WidenForHelper(value, scalar.Kind, expr.Span)),
-            // Vorzeichenlos zuerst: 'fromInt' deutet ein grosses uint als negative Zahl um.
-            // Gemessen lieferte f"{u}" mit u = uint64.MaxValue vorher "-1".
+            // Unsigned first: 'fromInt' reinterprets a large uint as a negative number. Measured,
+            // f"{u}" with u = uint64.MaxValue previously yielded "-1".
             _ when IsUnsignedScalar(scalar.Kind) => CallHelper("std.string.fromUint", expr.Span,
                 WidenForHelper(value, scalar.Kind, expr.Span)),
             _ when IsIntegerScalar(scalar.Kind) => CallHelper("std.string.fromInt", expr.Span,
@@ -4118,30 +4013,29 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Verbreitert einen Skalar auf die Signatur seines Wandlers: Ganzzahlen auf <c>i64</c>,
-    /// <c>f32</c> auf <c>f64</c>.
+    /// Widens a scalar to the signature of its converter: integers to <c>i64</c>, <c>f32</c> to
+    /// <c>f64</c>.
     ///
-    /// <para><b>Warum das noetig ist.</b> Die Wandler in <c>std.string</c> und <c>std.fmt</c>
-    /// heissen <c>fromInt</c> und <c>fromFloat</c> — Einzahl, weil Lyric kein Overloading hat
-    /// (ADR-015). Es gibt also genau <i>eine</i> Signatur je Sorte, und die nimmt den breitesten
-    /// Typ. Wer einen <c>int8</c> hineinreicht, muss ihn vorher verbreitern.</para>
+    /// <para>The converters in <c>std.string</c> and <c>std.fmt</c> are called <c>fromInt</c> and
+    /// <c>fromFloat</c>, singular, because Lyric has no overloading. There is therefore exactly ONE
+    /// signature per kind, and it takes the widest type. Whoever passes an <c>int8</c> has to widen it
+    /// first.</para>
     ///
-    /// <para>Ohne diesen Schritt liess <c>f"{x}"</c> mit <c>x: int8</c> den Compiler im
-    /// IR-Verifier <b>abstuerzen</b> („arg 0 is i8, expected i64") — mit Stack-Trace statt
-    /// Diagnose, und das fuer jeden Typ ausser <c>int</c> und <c>float</c>. Gefunden beim Bau von
-    /// ADR-022, weil <c>char</c> zufaellig danebenlag.</para>
+    /// <para>Without this step <c>f"{x}"</c> with <c>x: int8</c> crashes the compiler in the IR verifier
+    /// ("arg 0 is i8, expected i64") — with a stack trace instead of a diagnostic, and for every type
+    /// except <c>int</c> and <c>float</c>.</para>
     ///
-    /// <para><b>Bekannte Grenze</b>: ein <c>uint</c> jenseits von <c>int64.MaxValue</c> wird als
-    /// negative Zahl gedruckt — der Bitmuster-Cast nach <c>i64</c> deutet ihn um. Das ist kein
-    /// Absturz, sondern eine falsche Ausgabe, und der Fix waere ein eigener <c>fromUint</c>.</para>
+    /// <para>KNOWN LIMIT: a <c>uint</c> beyond <c>int64.MaxValue</c> is printed as a negative number, the
+    /// bit-pattern cast to <c>i64</c> reinterpreting it. That is not a crash but wrong output, and the fix
+    /// would be a <c>fromUint</c> of its own.</para>
     /// </summary>
     private TempId WidenForHelper(TempId value, IrScalar kind, Span span)
     {
         var widened = kind switch
         {
             IrScalar.F32 => IrScalar.F64,
-            // Ein uint8 wird zu u64 und nicht zu i64: der Zwischenschritt ueber einen
-            // vorzeichenbehafteten Typ wuerde das oberste Bit umdeuten.
+            // A uint8 becomes u64 rather than i64: the intermediate step through a signed type would
+            // reinterpret the top bit.
             _ when IsUnsignedScalar(kind) => IrScalar.U64,
             _ when IsIntegerScalar(kind) => IrScalar.I64,
             _ => kind,
@@ -4166,10 +4060,9 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Zeigt dieses Zuweisungsziel auf eine <b>gefangene Zelle</b> (ADR-018)? Dann liegt es nicht
-    /// in einem Slot dieser Funktion, sondern in einem Feld ihres Environments — und der Schreib-
-    /// vorgang muss dorthin, sonst schriebe die Closure in eine Kopie und die Semantik waere
-    /// still by-value.
+    /// Does this assignment target point at a CAPTURED CELL? It then lies not in a slot of this function
+    /// but in a field of its environment, and the write has to go there, or the closure would write into
+    /// a copy and the semantics would silently be by-value.
     /// </summary>
     private bool TryCapturedCell(Expr target, out TempId cell, out TypeId cellType,
         out IrType valueType)
@@ -4211,11 +4104,9 @@ internal sealed class FunctionLowerer
         _ => throw NotSupported("increment/decrement on a non-numeric type", span)
     };
 
-    /// <summary>Vorzeichenlos — entscheidet, welcher Wandler einen Wert in Text bringt.</summary>
-    /// <remarks>Ohne diese Unterscheidung ging jede Ganzzahl durch <c>fromInt</c>, und ein
-    /// <c>uint</c> jenseits von <c>int64.MaxValue</c> erschien als negative Zahl. Kein Absturz,
-    /// eine falsche Ausgabe — die Sorte Fehler, die niemand meldet, weil sie wie ein eigener
-    /// Rechenfehler aussieht.</remarks>
+    /// <summary>Unsigned: decides which converter turns a value into text.</summary>
+    /// <remarks>Without this distinction every integer goes through <c>fromInt</c>, and a <c>uint</c>
+    /// beyond <c>int64.MaxValue</c> appears as a negative number. Not a crash but wrong output.</remarks>
     private static bool IsUnsignedScalar(IrScalar kind) => kind is
         IrScalar.U8 or IrScalar.U16 or IrScalar.U32 or IrScalar.U64;
 
@@ -4231,11 +4122,11 @@ internal sealed class FunctionLowerer
             : LowerType(_types.TypeOf(expr), expr.Span);
 
     /// <summary>
-    /// Sema-Typ eines Aufruf-Empfaengers, ausgepackt wenn er aus einer <c>?.</c>-Kette stammt.
+    /// The sema type of a call receiver, unwrapped when it comes from a <c>?.</c> chain.
     ///
-    /// <para>Die Fallunterscheidung in <see cref="LowerCall"/> fragt den STATISCHEN Typ des Ziels,
-    /// und der ist in der Kette <c>?Box</c> und nicht <c>Box</c>. Ohne diese Stelle faende sie
-    /// weder die Klasse noch die generische Instanz noch das Interface.</para>
+    /// <para>The case distinction in <see cref="LowerCall"/> asks the STATIC type of the target, and in
+    /// the chain that is <c>?Box</c> rather than <c>Box</c>. Without this place it would find neither the
+    /// class nor the generic instance nor the interface.</para>
     /// </summary>
     private LyrType ReceiverType(Expr target) =>
         _chainReceivers.ContainsKey(target) && _types.TypeOf(target) is Sema.Optional option
@@ -4243,44 +4134,42 @@ internal sealed class FunctionLowerer
             : _types.TypeOf(target);
 
     /// <summary>
-    /// Sema-Typ → IR-Typ. Hier sitzt der Substitutions-Haken der Monomorphisierung, und sonst
-    /// nichts: die Abbildung selbst liegt in <see cref="TypeTable.Lower(Sema.LyrType, Core.Span)"/>.
+    /// A sema type to an IR type. The substitution hook of the monomorphization sits here and nothing
+    /// else: the mapping itself lives in <see cref="TypeTable.Lower(Sema.LyrType, Core.Span)"/>.
     ///
-    /// <para><b>Warum nicht beides hier?</b> Weil es beides hier schon gab. Diese Methode war eine
-    /// zweite, vollständige Kopie derselben Abbildung — und wie jede zweite Antwort auf dieselbe
-    /// Frage ist sie von der ersten weggedriftet: <c>T[]</c> und <c>?T</c> standen hier und fehlten
-    /// dort, weshalb ein Modul-<c>let</c> mit Array überhaupt nicht übersetzbar war — in einer
-    /// Funktion ging derselbe Ausdruck. Der Unterschied ist jetzt nur noch die Substitution.</para>
+    /// <para>Not both here, because both were here once. This method used to be a second, complete copy
+    /// of the same mapping and, like every second answer to the same question, drifted from the first:
+    /// <c>T[]</c> and <c>?T</c> stood here and were missing there, which made a module <c>let</c> with an
+    /// array untranslatable while the same expression worked inside a function. The difference is now the
+    /// substitution alone.</para>
     /// </summary>
     private IrType LowerType(LyrType type, Span span)
     {
-        // Erst substituieren, dann abbilden. Rekursiv, damit auch 'Box<T>', '?T' und 'T[]' die
-        // Argumente der Instanz sehen — die TypeTable kennt die Substitution dieser Funktion nicht.
+        // Substitute first, then map. Recursively, so 'Box<T>', '?T' and 'T[]' see the instance's
+        // arguments too: the TypeTable does not know this function's substitution.
         var concrete = SubstituteType(type);
 
-        // Ein Typ-Parameter, den die eigene Substitution nicht kennt: das ist die Grenze der
-        // Monomorphisierung und gehört hierher gemeldet, wo der Name noch bekannt ist.
+        // A type parameter the own substitution does not know: that is the boundary of the
+        // monomorphization and belongs reported here, where the name is still known.
         if (concrete is TypeParamType parameter)
             throw NotSupported($"type parameter '{parameter.Param.Name}'", span);
 
         return _typeTable.Lower(concrete, span);
     }
 
-    /// <summary>Der Rückgabetyp kommt aus dem syntaktischen <see cref="TypeNode"/>, weil die Sema
-    /// ihn nicht in <see cref="TypeResult"/> ablegt. Die Auflösung liegt in der
-    /// <see cref="TypeTable"/> — dieselbe Stelle, die auch Feld- und Parametertypen auflöst, damit
-    /// eine Fabrik <c>static fn new(): P</c> denselben Typ liefert wie ein Feld vom Typ
-    /// <c>P</c>.</summary>
-    /// <summary>Setzt die Typargumente dieser Instanz in einen Typ ein — rekursiv, weil ein
-    /// Argument selbst zusammengesetzt sein kann (<c>Box&lt;T[]&gt;</c>).</summary>
+    /// <summary>The return type comes from the syntactic <see cref="TypeNode"/>, because the sema does
+    /// not put it into <see cref="TypeResult"/>. The resolution lives in the <see cref="TypeTable"/>, the
+    /// same place that resolves field and parameter types, so a factory <c>static fn new(): P</c> yields
+    /// the same type as a field of type <c>P</c>.</summary>
+    /// <summary>Substitutes the type arguments of this instance into a type, recursively, because an
+    /// argument may itself be composite (<c>Box&lt;T[]&gt;</c>).</summary>
     /// <summary>
-    /// Die Id, unter der eine Funktion aufrufbar ist. Zwei Quellen, und die Reihenfolge ist
-    /// bedeutsam: geschriebene Funktionen haben ihre Id aus Pass 1, eine Extension-Methode
-    /// bekommt sie <b>erst hier</b> — bei ihrem ersten Aufruf.
+    /// The id under which a function is callable. Two sources, and the order matters: written functions
+    /// have their id from pass 1, an extension method gets it ONLY HERE, at its first call.
     ///
-    /// <para>Genau das ist der Punkt von S1a: eine nie gerufene Extension landet nicht im
-    /// Bytecode. Ohne die Unterscheidung trug jedes Programm die fuenf Display-Extensions aus
-    /// <c>std.core</c> mit, weil dieses Modul immer geladen wird.</para>
+    /// <para>That is the point: an extension that is never called does not reach the bytecode. Without
+    /// the distinction every program carries the five Display extensions from <c>std.core</c>, because
+    /// that module is always loaded.</para>
     /// </summary>
     private bool TryResolveFunction(FunctionSymbol symbol, out FunctionId id)
     {
@@ -4299,13 +4188,12 @@ internal sealed class FunctionLowerer
     }
 
     /// <summary>
-    /// Setzt die Typargumente dieser Instanz überall ein, wo ein Typ-Parameter steht.
+    /// Substitutes the type arguments of this instance everywhere a type parameter stands.
     ///
-    /// <para><b>Vollständig zu sein ist hier keine Kür.</b> Dieselbe Funktion war schon dreimal
-    /// eine Teilkopie — erst fehlte <c>?T</c>, dann <c>T[]</c>, dann <c>Box&lt;T&gt;</c>, und jedes
-    /// Mal sah der Fehler wie ein neuer aus. Wer hier einen Typ-Konstruktor ergänzt, ergänzt ihn
-    /// auch hier: ein nicht substituierter Parameter kommt sonst als „unsubstituted" in der
-    /// <see cref="TypeTable"/> an, weit weg von seiner Ursache.</para>
+    /// <para>BEING COMPLETE IS NOT OPTIONAL HERE. This function was a partial copy three times — first
+    /// <c>?T</c> was missing, then <c>T[]</c>, then <c>Box&lt;T&gt;</c>, and every time the error looked
+    /// like a new one. Whoever adds a type constructor here adds it here too: an unsubstituted parameter
+    /// otherwise arrives as "unsubstituted" in the <see cref="TypeTable"/>, far from its cause.</para>
     /// </summary>
     private LyrType SubstituteType(LyrType type) => type switch
     {
@@ -4327,44 +4215,37 @@ internal sealed class FunctionLowerer
     {
         if (_decl!.ReturnType is null) return VoidType;
 
-        // In einer monomorphisierten Instanz kann der geschriebene Rueckgabetyp ein
-        // Typ-Parameter sein ('fn id<T>(x: T): T') oder einen enthalten ('fn next(): ?T'). Die
-        // Parameter gehen ueber den LyrType-Pfad und treffen die Substitution dort; der
-        // Rueckgabetyp kommt syntaktisch und muss sie hier treffen — sonst suchte die Typtabelle
-        // nach einer Klasse namens 'T'.
+        // In a monomorphized instance the written return type may be a type parameter ('fn id<T>(x: T): T')
+        // or contain one ('fn next(): ?T'). The parameters go through the LyrType path and meet the
+        // substitution there; the return type comes syntactically and has to meet it here, or the type
+        // table would look for a class named 'T'.
         return _substitution.Count > 0
             ? LowerSubstituted(_decl.ReturnType)
             : _typeTable.Lower(_decl.ReturnType);
     }
 
     /// <summary>
-    /// Lowert einen geschriebenen Typ mit der Substitution dieser Instanz — <b>rekursiv</b>, weil
-    /// ein Typ-Parameter tief stecken kann: <c>?T</c>, <c>T[]</c>.
+    /// Lowers a written type with the substitution of this instance, RECURSIVELY, because a type
+    /// parameter can sit deep: <c>?T</c>, <c>T[]</c>.
     ///
-    /// <para>Nur den nackten Fall zu behandeln reichte fuer <c>fn get(): T</c> und fiel bei
-    /// <c>fn next(): ?T</c> um — und genau das ist die Signatur jedes Iterators.</para>
+    /// <para>Handling only the bare case sufficed for <c>fn get(): T</c> and fell over at
+    /// <c>fn next(): ?T</c> — which is the signature of every iterator.</para>
     /// </summary>
     private IrType LowerSubstituted(TypeNode node)
     {
-        // Die Substitution geht an die TYPTABELLE, statt hier eine zweite Auflegung nachzubauen.
-        //
-        // Vorher stand hier eine Teilkopie: erst nur der nackte Fall ('fn get(): T'), dann '?T'
-        // nachgezogen, dann 'T[]' — und 'Box<T>' fehlte immer noch, womit eine generische
-        // Funktion, die einen generischen Typ LIEFERT, gar nicht lowerbar war. Dreimal dieselbe
-        // Ursache: zwei Stellen, die dieselbe Frage beantworten, driften auseinander.
-        //
-        // Die Tabelle kann es vollstaendig — sie benutzt denselben Stack beim Lowern der Member
-        // einer generischen Instanz. Sie musste nur erfahren, dass hier eine Substitution gilt.
+        // The substitution goes to the TYPE TABLE rather than rebuilding a second resolution here. The
+        // table can do it completely — it uses the same stack when lowering the members of a generic
+        // instance. It only had to learn that a substitution applies here.
         using var scope = _typeTable.PushSubstitution(NamedSubstitution());
         return _typeTable.Lower(node);
     }
 
     /// <summary>
-    /// Die Typargumente einer Aufrufstelle als Namens-Map fuer die Typtabelle.
+    /// The type arguments of a call site as a name map for the type table.
     /// </summary>
-    /// <remarks>Ein Typargument kann selbst ein Typ-Parameter der RUFENDEN Funktion sein
-    /// (<c>wrap&lt;T&gt;</c> ruft <c>id&lt;T&gt;</c>); deshalb geht jedes noch durch die eigene
-    /// Substitution, bevor es in die Map kommt.</remarks>
+    /// <remarks>A type argument may itself be a type parameter of the CALLING function
+    /// (<c>wrap&lt;T&gt;</c> calls <c>id&lt;T&gt;</c>), so every one goes through the own substitution
+    /// before it enters the map.</remarks>
     private Dictionary<string, LyrType> NamedSubstitutionFor(
         FunctionSymbol callee, IReadOnlyList<LyrType> typeArguments)
     {
@@ -4377,9 +4258,9 @@ internal sealed class FunctionLowerer
         return mapping;
     }
 
-    /// <summary>Die Substitution dieser Instanz mit Namen als Schluessel — die Form, in der die
-    /// Typtabelle sie fuehrt. Sie kennt keine <see cref="GenericParamSymbol"/>e, weil sie
-    /// geschriebene Typen aufloest und dort nur Namen stehen.</summary>
+    /// <summary>The substitution of this instance with names as keys, the form in which the type table
+    /// keeps it. It knows no <see cref="GenericParamSymbol"/>, because it resolves written types, where
+    /// only names stand.</summary>
     private Dictionary<string, LyrType> NamedSubstitution()
     {
         var mapping = new Dictionary<string, LyrType>(StringComparer.Ordinal);
@@ -4387,13 +4268,13 @@ internal sealed class FunctionLowerer
         return mapping;
     }
 
-    /// <summary>Scope-Grenze: gültiges Lyric, für das der Backend-Teil noch fehlt. Wird von
-    /// <see cref="ModuleLowerer"/> zu einer <c>LYR-IR0001</c>-Diagnose mit Datei/Zeile/Spalte —
-    /// deshalb hier keine Position in den Text schreiben, die rendert die DiagnosticEngine.</summary>
+    /// <summary>A scope boundary: valid Lyric for which the backend part is still missing. Turned by
+    /// <see cref="ModuleLowerer"/> into a <c>LYR-IR0001</c> diagnostic with file, line and column, so no
+    /// position is written into the text here; the DiagnosticEngine renders it.</summary>
     private static UnsupportedConstructException NotSupported(string what, Span span) =>
         new($"{what} is not supported by this compiler version yet", span);
 
-    /// <summary>Interne Inkonsistenz — der Compiler ist kaputt, nicht der Quelltext.</summary>
+    /// <summary>An internal inconsistency: the compiler is broken, not the source.</summary>
     private InternalCompilationException Bug(string message) =>
         new($"lowering: {message} (in '{_name}')");
 }

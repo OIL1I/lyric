@@ -6,64 +6,60 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Einstieg ins Lowering: typgeprüfte Compilation → <see cref="IrModule"/>.
+/// The entry point of the lowering: a type-checked compilation to an <see cref="IrModule"/>.
 ///
-/// <para><b>Zwei Pässe.</b> Pass 1 vergibt jeder zu lowernden Funktion ihre
-/// <see cref="FunctionId"/>, Pass 2 lowert die Bodies. Ohne die Trennung scheitert jeder
-/// Vorwärts-Call und jede (wechselseitige) Rekursion, weil das Ziel beim Lowern des Calls noch
-/// keine Id hätte. Dieselbe Lösung wie das 2-Pass-Deklarieren im Resolver — dasselbe Problem an
-/// anderer Stelle.</para>
+/// <para>TWO PASSES. Pass 1 assigns every function to be lowered its <see cref="FunctionId"/>, pass 2
+/// lowers the bodies. Without the split every forward call and every (mutual) recursion fails, because
+/// the target would have no id while the call is lowered. The same solution as the two-pass
+/// declaration in the resolver.</para>
 ///
-/// <para><b>Der Verifier läuft als Abnahme.</b> Ein Befund ist ein Bug in diesem Lowering, keine
-/// User-Diagnose, deshalb wirft <see cref="IrVerifier.VerifyOrThrow"/>. In Tests und Debug-Builds
-/// immer an; für Release-Builds kann der Aufrufer ihn abschalten (Vorbild: LLVMs Verifier in
-/// Assert-Builds).</para>
+/// <para>THE VERIFIER RUNS AS ACCEPTANCE. A finding is a bug in this lowering rather than a user
+/// diagnostic, which is why <see cref="IrVerifier.VerifyOrThrow"/> throws. Always on in tests and
+/// debug builds; for release builds the caller can switch it off, as LLVM's verifier is on in assert
+/// builds.</para>
 ///
-/// <para><b>Was übersprungen wird</b>: bodylose Deklarationen (nichts zu lowern) und generische
-/// Funktionen. Letztere brauchen die Worklist-Monomorphisierung — pro konkretem Typargument-Tupel
-/// eine Instanz, ausgehend von den Wurzeln. Ein Call auf eine übersprungene Funktion findet keine
-/// Id und meldet das als <c>LYR-IR0001</c> statt still falschen Code zu erzeugen.</para>
+/// <para>WHAT IS SKIPPED: bodyless declarations, which have nothing to lower, and generic functions.
+/// The latter need the worklist monomorphization — one instance per concrete type argument tuple,
+/// starting from the roots. A call to a skipped function finds no id and reports that as
+/// <c>LYR-IR0001</c> rather than silently producing wrong code.</para>
 /// </summary>
 public static class ModuleLowerer
 {
-    /// <summary>Wie oft die nachgelagerten Tabellen abwechselnd geleert werden, bevor der Compiler
-    /// aufgibt. Jede Runde muss etwas Neues liefern, sonst bricht die Schleife ohnehin ab — die
-    /// Grenze faengt nur den Fall, dass sich zwei Tabellen endlos gegenseitig fuettern.</summary>
+    /// <summary>How often the downstream tables are drained in turn before the compiler gives up. Every
+    /// round has to produce something new, or the loop ends anyway; the bound only catches two tables
+    /// feeding each other forever.</summary>
     private const int MaxLoweringRounds = 100;
 
     internal static readonly Dictionary<GenericParamSymbol, LyrType> NoSubstitution =
         new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
-    /// Läuft der Verifier, wenn der Aufrufer nichts anderes sagt? In Debug-Builds ja, im Release
-    /// nein — Vorbild ist LLVMs Verifier in Assert-Builds.
+    /// Does the verifier run when the caller says nothing else? Yes in debug builds, no in release, as
+    /// LLVM's verifier is on in assert builds.
     ///
-    /// <para>Gemessen an 400 Funktionen / 18 400 Instruktionen: Lowering mit Verifikation 30 ms,
-    /// ohne 2,8 ms. Die Prüfung ist also <b>90 % der Gesamtzeit</b>, nicht der vernachlässigbare
-    /// Posten, nach dem sie aussieht — das meiste davon steckt im Availability-Dataflow, der pro
-    /// Block HashSets alloziert und zum Fixpunkt iteriert.</para>
+    /// <para>Measured over 400 functions and 18,400 instructions: lowering with verification takes
+    /// 30 ms, without it 2.8 ms. The check is therefore 90% of the total time, most of it in the
+    /// availability data flow, which allocates hash sets per block and iterates to a fixed point.</para>
     ///
-    /// <para>Das Risiko bleibt beherrschbar, weil der Bytecode-Leser beim Laden ohnehin
-    /// vollständig validiert (<c>LYR-BC####</c>). Ein Lowering-Bug im Release-Compiler äußert sich
-    /// also nicht als still falscher Code, sondern spätestens beim Laden — nur mit schlechterer
-    /// Fehlermeldung als ein Verifier-Befund.</para>
+    /// <para>The risk stays manageable, because the bytecode reader validates completely at load time
+    /// anyway (<c>LYR-BC####</c>). A lowering bug in the release compiler therefore does not show as
+    /// silently wrong code but at load time at the latest, only with a worse message than a verifier
+    /// finding.</para>
     ///
-    /// <para>Die Bedingung selbst steht in <see cref="Pipeline.VerifiesIr"/>: sie entscheidet
-    /// zugleich, welche Phasen <c>--verbose</c> auflistet, und diese Frage stellen auch die
-    /// Werkzeug-Tests.</para>
+    /// <para>The condition itself lives in <see cref="Pipeline.VerifiesIr"/>: it also decides which
+    /// phases <c>--verbose</c> lists, and the tooling tests ask that question too.</para>
     /// </summary>
     public static bool VerifyByDefault => Pipeline.VerifiesIr;
 
-    /// <summary>Lowert die Compilation. Liefert <c>null</c>, wenn Scope-Grenzen als
-    /// <c>LYR-IR0001</c> gemeldet wurden — dann steht die Ursache in
-    /// <paramref name="de"/>.</summary>
-    /// <param name="verify"><c>null</c> = <see cref="VerifyByDefault"/>. Tests setzen den Wert
-    /// explizit, damit ihr Ergebnis nicht von der Build-Konfiguration abhängt.</param>
+    /// <summary>Lowers the compilation. Returns <c>null</c> when scope boundaries were reported as
+    /// <c>LYR-IR0001</c>; the cause then stands in <paramref name="de"/>.</summary>
+    /// <param name="verify"><c>null</c> means <see cref="VerifyByDefault"/>. Tests set the value
+    /// explicitly, so their result does not depend on the build configuration.</param>
     public static IrModule? Lower(Compilation compilation, BindingResult binding, TypeResult types,
         DiagnosticEngine de, bool? verify = null)
     {
-        // Receiver == null: freie Funktion oder 'static fn'. Sonst der Typ, dessen Instanz als
-        // Parameter 0 übergeben wird (ADR-014).
+        // Receiver == null means a free function or a 'static fn'. Otherwise the type whose instance is
+        // passed as parameter 0.
         var pending = new List<(FunctionDecl Decl, string Name, TypeSymbol? Receiver, TypeNode? ExtendTarget)>();
         var ids = new Dictionary<FunctionSymbol, FunctionId>(ReferenceEqualityComparer.Instance);
         var imports = new ImportTable();
@@ -72,8 +68,8 @@ public static class ModuleLowerer
         FunctionId? entry = null;
         var failed = false;
 
-        // Pass 1 — Funktionstabelle. Die Reihenfolge ist Modul- dann Deklarations-Reihenfolge und
-        // damit deterministisch: FunctionIds landen als Indizes im Bytecode (ADR-013).
+        // Pass 1: the function table. The order is module order then declaration order and therefore
+        // deterministic; FunctionIds land as indices in the bytecode.
         foreach (var module in compilation.Modules)
         {
             foreach (var decl in compilation.AstOf(module).Declarations)
@@ -82,16 +78,16 @@ public static class ModuleLowerer
                 if (function.Generics.Length > 0) continue;
                 if (module.Members.LookupLocal(function.Name) is not FunctionSymbol symbol) continue;
 
-                // Rumpflos in einem Stdlib-Modul = native Deklaration. Die Signatur steht in Lyric,
-                // die Implementierung liegt im Host und wird beim Laden über den Namen gebunden.
-                // In User-Code hat die Sema das schon als LYR-SEM0051 abgelehnt.
+                // Bodyless in a stdlib module means a native declaration. The signature is in Lyric, the
+                // implementation lives in the host and is bound by name at load time. In user code the
+                // sema already rejected this as LYR-SEM0051.
                 if (function.Body is null)
                 {
                     if (!compilation.IsNative(module)) continue;
 
-                    // Gefangen, nicht geworfen: eine native Signatur mit einem Typ, den das
-                    // Lowering nicht kennt, ist eine Scope-Grenze wie jede andere — und der
-                    // Nutzer soll eine Diagnose mit Position sehen statt eines Compiler-Absturzes.
+                    // Caught rather than thrown: a native signature with a type the lowering does not
+                    // know is a scope boundary like any other, and the user should see a diagnostic with
+                    // a position rather than a compiler crash.
                     try
                     {
                         var host = HostTypeResolver(module, compilation);
@@ -114,16 +110,15 @@ public static class ModuleLowerer
                 ids[symbol] = id;
                 pending.Add((function, NameMangling.ForFunction(module, function.Name), null, null));
 
-                // Entry-Contract (Sprache.md §11): genau ein 'main' pro Executable. Dass es
-                // eindeutig ist, hat die Sema geprüft — hier wird es nur festgehalten.
+                // The entry contract: exactly one 'main' per executable. The sema checked that it is
+                // unique; here it is only recorded.
                 if (function.Name != "main") continue;
 
                 if (function.Parameters.Length == 0) { entry = id; continue; }
 
-                // §11 kennt zwei Formen: 'fn main(): int' und 'fn main(args: string[]): int'. Die
-                // zweite bekommt ihr Array von der Runtime; welche Form vorliegt, liest diese aus
-                // der Signatur des Einstiegs — die Funktionstabelle traegt sie ohnehin, also
-                // braucht das Format dafuer kein Flag.
+                // There are two forms: 'fn main(): int' and 'fn main(args: string[]): int'. The second
+                // gets its array from the runtime, which reads the form from the entry's signature; the
+                // function table carries it anyway, so the format needs no flag for it.
                 if (function.Parameters is [{ Type: ArrayType { Element: NamedType arg, Size: null } }]
                     && arg.Path[^1] == "string")
                 {
@@ -136,24 +131,23 @@ public static class ModuleLowerer
                 failed = true;
             }
 
-            // Methoden sind gewöhnliche Funktionen mit dem Empfänger als Parameter 0 — dieselbe
-            // Konvention wie CIL. Der Unterschied zwischen Instanz- und static-Methode ist damit
-            // allein die Parameterliste, und P3 muss für die vtable nur noch entscheiden, WELCHE
-            // Funktion gerufen wird, nicht wie sie aussieht.
+            // Methods are ordinary functions with the receiver as parameter 0, the same convention as
+            // CIL. The difference between an instance and a static method is therefore the parameter list
+            // alone, and the vtable only has to decide WHICH function is called, not what it looks like.
             foreach (var decl in compilation.AstOf(module).Declarations)
             {
-                // Klassen und Enums tragen beide Methoden; für das Lowering sind sie derselbe Fall
-                // (Empfänger als Parameter 0), nur die Member-Liste steckt woanders im AST.
+                // Classes and enums both carry methods; for the lowering they are the same case, with the
+                // receiver as parameter 0, only the member list sits elsewhere in the AST.
                 var (typeName, members) = decl switch
                 {
                     ClassDecl c when c.Generics.Length == 0 => (c.Name, c.Members),
                     StructDecl v when v.Generics.Length == 0 => (v.Name, v.Members),
                     EnumDecl e when e.Generics.Length == 0 => (e.Name, e.Methods.Cast<Decl>().ToArray()),
-                    // Default-Methoden eines Interfaces sind gewoehnliche Funktionen mit dem
-                    // Empfaenger als Parameter 0 — nur dass dessen statischer Typ das Interface
-                    // selbst ist. Ein 'this.foo()' darin wird damit zu einem callvirt, und das ist
-                    // richtig: welche Implementierung laeuft, steht erst zur Laufzeit fest.
-                    // Abstrakte Methoden (ohne Rumpf) fallen unten durch die Body-Pruefung.
+                    // The default methods of an interface are ordinary functions with the receiver as
+                    // parameter 0, except that its static type is the interface itself. A 'this.foo()'
+                    // inside therefore becomes a callvirt, which is right: which implementation runs is
+                    // settled only at runtime. Abstract methods without a body fall through the body check
+                    // below.
                     InterfaceDecl i when i.Generics.Length == 0 => (i.Name, i.Members.Cast<Decl>().ToArray()),
                     _ => (null, null),
                 };
@@ -166,11 +160,10 @@ public static class ModuleLowerer
                     if (method.Generics.Length > 0) continue;
                     if (type.Members.LookupLocal(method.Name) is not FunctionSymbol symbol) continue;
 
-                    // Eine bodylose Methode auf einem HOST-Typ ist ein Native mit dem Empfaenger
-                    // als Parameter 0 (M10/E4b) — dieselbe Konvention wie bei jeder anderen
-                    // Methode (ADR-014), nur dass die Implementierung beim Host liegt. Ohne diesen
-                    // Fall wuerde sie hier stillschweigend uebersprungen, und der Aufruf im Skript
-                    // faende keine Id.
+                    // A bodyless method on a HOST type is a native with the receiver as parameter 0, the
+                    // same convention as for every other method, except that the implementation lives at
+                    // the host. Without this case it would be silently skipped here and the call in the
+                    // script would find no id.
                     if (method.Body is null)
                     {
                         if (HostTypes.NameOf(type, compilation) is not { } owner) continue;
@@ -202,15 +195,12 @@ public static class ModuleLowerer
             }
         }
 
-        // Extend-Bloecke bekommen hier KEINE Ids. Eine Extension-Methode wird erst bei ihrem
-        // ersten Aufruf angefordert (ExtensionTable) — dieselbe Worklist-Form wie bei Lambdas und
-        // monomorphisierten Instanzen, und aus demselben Grund: im Bytecode soll nur stehen, was
-        // benutzt wird. Bis M8/S1a standen sie hier, was harmlos war, solange Extensions nur in
-        // Nutzer-Programmen vorkamen; mit den Display-Extensions in 'std.core' — einem Modul, das
-        // immer geladen wird — trug ploetzlich jedes Programm fuenf ungenutzte Funktionen.
+        // extend blocks get NO ids here. An extension method is requested at its first call
+        // (ExtensionTable), the same worklist shape as for lambdas and monomorphized instances and for
+        // the same reason: only what is used should stand in the bytecode.
 
-        // Globals werden VOR den Rumpfen gesammelt: eine Funktion darf eine Konstante lesen, die
-        // weiter unten im Quelltext steht. Dieselbe Zwei-Phasen-Form wie bei den FunctionIds.
+        // Globals are collected BEFORE the bodies: a function may read a constant that stands further
+        // down in the source. The same two-phase shape as for the FunctionIds.
         try
         {
             globals.Collect(compilation, types, typeTable);
@@ -221,15 +211,11 @@ public static class ModuleLowerer
             return null;
         }
 
-        // Angehobene Lambdas kommen ganz ans Ende der Funktionsliste — hinter die geschriebenen
-        // Funktionen UND hinter den Global-Initialisierer. Die Reihenfolge ist kein Geschmack:
-        // die Position IST die FunctionId (ADR-013), und ein Lambda im Initialisierer
-        // (`let f = () => 1;`) wuerde sonst seine eigene Id verschieben.
-        // Coroutine-Rumpfe kommen hinter die geschriebenen Funktionen und den Initialisierer,
-        // Lambdas dahinter — die Position IST die FunctionId (ADR-013), also muss die Reihenfolge
-        // festliegen, bevor der erste Rumpf gelowert wird.
-        // Alle drei Sorten nachgelagerter Funktionen teilen sich EINEN Zaehler: sie wachsen
-        // gleichzeitig und unbegrenzt, also kann keine einen eigenen Bereich reservieren.
+        // Coroutine bodies come after the written functions and the initializer, lifted lambdas behind
+        // them. The position IS the FunctionId, so the order has to be settled before the first body is
+        // lowered: a lambda in the initializer (`let f = () => 1;`) would otherwise shift its own id.
+        // All three kinds of downstream function share ONE counter: they grow simultaneously and without
+        // bound, so none can reserve a range of its own.
         var nextId = new FunctionIds(pending.Count + (globals.IsEmpty ? 0 : 1));
         var coroutines = new CoroutineTable(nextId);
         var instances = new InstanceTable(nextId);
@@ -237,17 +223,16 @@ public static class ModuleLowerer
         var extensions = new ExtensionTable(nextId);
         typeTable.Extensions = extensions;
 
-        // Pass 2 — Bodies. Scope-Grenzen werden gemeldet, nicht geworfen: der Nutzer soll alle
-        // fehlenden Konstrukte seines Programms in einem Durchlauf sehen, nicht eines pro Aufruf.
+        // Pass 2: the bodies. Scope boundaries are reported rather than thrown, so the user sees all the
+        // missing constructs of their program in one run rather than one per call.
         var functions = new List<IrFunction>(pending.Count);
         var reported = new HashSet<(Span Span, string Message)>();
         foreach (var (decl, name, receiver, extendTarget) in pending)
         {
             try
             {
-                // Eine Coroutine wird zu ZWEI Funktionen: die Fabrik traegt den geschriebenen
-                // Namen und liefert ein Zustandsobjekt, der Rumpf wird angemeldet und hinten
-                // angehaengt (Sprache.md §8).
+                // A coroutine becomes TWO functions: the factory carries the written name and yields a
+                // state object, the body is registered and appended at the end.
                 if (CoroutineYield(decl) is { } yieldNode)
                 {
                     var state = typeTable.ReserveCoroutineState(name);
@@ -268,17 +253,17 @@ public static class ModuleLowerer
             }
             catch (UnsupportedConstructException ex)
             {
-                // Eine Scope-Grenze im Layout eines Typs trifft jede Funktion, die ihn benutzt —
-                // gemeldet werden soll sie einmal. Der Nutzer soll alle FEHLENDEN KONSTRUKTE seines
-                // Programms sehen, nicht jede Stelle, an der dasselbe fehlt.
+                // A scope boundary in the layout of a type hits every function using it, and it should be
+                // reported once: the user should see all the MISSING CONSTRUCTS of their program, not
+                // every place the same one is missing.
                 if (reported.Add((ex.Span, ex.Message)))
                     de.Report(LoweringDiagnostics.NotSupported, Severity.Error, ex.Span, ex.Message);
                 failed = true;
             }
         }
 
-        // Eine übersprungene Funktion würde die FunctionIds der folgenden verschieben — der
-        // Modulaufbau ist damit nicht mehr rettbar. Kein Teilergebnis zurückgeben.
+        // A skipped function would shift the FunctionIds of the following ones, so the module build is
+        // beyond saving. No partial result is returned.
         if (failed) return null;
 
         FunctionId? globalInit = null;
@@ -296,10 +281,9 @@ public static class ModuleLowerer
             }
         }
 
-        // Die nachgelagerten Funktionen: Coroutine-Rumpfe, monomorphisierte Instanzen und
-        // angehobene Lambdas. Jede Sorte kann beim Lowern die anderen anfordern, deshalb wird
-        // dreimal abwechselnd geleert, bis nichts mehr nachkommt — und am Ende nach Id sortiert,
-        // weil die Position in der Liste die Id IST (ADR-013).
+        // The downstream functions: coroutine bodies, monomorphized instances and lifted lambdas. Each
+        // kind can request the others while being lowered, so they are drained in turn until nothing
+        // more arrives, and sorted by id at the end, because the position in the list IS the id.
         var deferred = new List<(FunctionId Id, IrFunction Function)>();
         try
         {
@@ -323,9 +307,9 @@ public static class ModuleLowerer
 
         functions.AddRange(deferred.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
 
-        // Die vtable-Zeilen ZUERST, denn sie koennen eine Extension anfordern, die bisher niemand
-        // gerufen hat: 'extend A :: [I]' wird gebraucht, sobald ein A in einem I-Slot landet —
-        // auch wenn die Methode im Quelltext nirgends direkt steht.
+        // The vtable rows FIRST, because they can request an extension nobody has called yet:
+        // 'extend A :: [I]' is needed as soon as an A lands in an I slot, even when the method appears
+        // nowhere directly in the source.
         var impls = BuildImpls(typeTable, binding, compilation, ids, extensions, instances,
             de, ref failed);
         if (failed) return null;
@@ -336,11 +320,10 @@ public static class ModuleLowerer
             for (var round = 0; round < MaxLoweringRounds; round++)
             {
                 var before = late.Count;
-                // Alle drei, nicht nur zwei: eine vtable-Zeile fuer eine generische Instanz
-                // fordert deren Methode an (ListIterator<int>.next), und die entsteht erst durch
-                // die Monomorphisierung. Fehlte 'instances' hier, zeigte die Zeile auf eine
-                // FunctionId, die niemand gefuellt hat — der Verifier meldet das als
-                // "targets f7, which is out of range".
+                // All three, not only two: a vtable row for a generic instance requests its method
+                // (ListIterator<int>.next), and that arises only through the monomorphization. With
+                // 'instances' missing here, the row points at a FunctionId nobody filled, which the
+                // verifier reports as "targets f7, which is out of range".
                 late.AddRange(instances.LowerAll(types, ids, imports, typeTable, globals, lambdas));
                 late.AddRange(extensions.LowerAll(types, ids, imports, typeTable, globals,
                     lambdas, instances));
@@ -356,9 +339,9 @@ public static class ModuleLowerer
 
         functions.AddRange(late.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
 
-        // Types nach dem Lowering eingesammelt, nicht davor: die Tabelle enthält nur, was
-        // tatsächlich benutzt wurde — eine deklarierte, nie instanziierte Klasse gehört nicht in
-        // den Bytecode. Gleiche Regel wie bei den Imports.
+        // Types are collected after the lowering rather than before: the table contains only what was
+        // actually used — a declared but never instantiated class does not belong in the bytecode. The
+        // same rule as for the imports.
         var result = new IrModule(functions)
         {
             EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
@@ -368,18 +351,16 @@ public static class ModuleLowerer
         };
         if (failed) return null;
 
-        // VOR dem Verifier: was gestrichen wird, muss er nicht pruefen — und der Verifier laeuft
-        // ohnehin noch einmal beim Laden (ADR-013), also ist das die einzige Stelle, an der die
-        // Ersparnis zweimal zaehlt.
+        // BEFORE the verifier: what gets deleted does not need checking, and the verifier runs again at
+        // load time anyway, so this is the one place where the saving counts twice.
         Reachability.Prune(result);
 
         if (verify ?? VerifyByDefault) IrVerifier.VerifyOrThrow(result);
         return result;
     }
 
-    /// <summary>Erkennt einen Host-Typ in der Signatur einer nativen Deklaration — die Regel
-    /// selbst steht in <see cref="HostTypes"/>, weil dieselbe Frage auch an der Aufrufstelle
-    /// gestellt wird.</summary>
+    /// <summary>Recognises a host type in the signature of a native declaration; the rule itself lives
+    /// in <see cref="HostTypes"/>, because the same question is asked at the call site.</summary>
     private static Func<TypeNode, string?> HostTypeResolver(ModuleSymbol module,
         Compilation compilation) => node =>
         node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
@@ -387,13 +368,11 @@ public static class ModuleLowerer
             : null;
 
     /// <summary>
-    /// Was dieses Programm an Capabilities verlangt: die Vereinigung ueber alle geladenen Module
-    /// (ADR-007, Doku §20.1).
+    /// What capabilities this program requires: the union over all loaded modules.
     ///
-    /// <para>Gezaehlt wird <b>geladen</b>, nicht <b>importiert</b>: ein Modul, das <c>std.os</c>
-    /// importiert, zieht es in die Compilation, und sein Bedarf gehoert zum Programm — auch wenn
-    /// die Hauptdatei den Namen nie nennt. Wer nur die Import-Zeilen der Wurzel zaehlte, haette
-    /// eine Luecke, die genau eine Indirektion tief ist.</para>
+    /// <para>What counts is LOADED, not IMPORTED: a module importing <c>std.os</c> pulls it into the
+    /// compilation, and its requirement belongs to the program, even when the main file never names it.
+    /// Counting only the import lines of the root would leave a gap exactly one indirection deep.</para>
     /// </summary>
     private static Capability RequiredCapabilities(Compilation compilation)
     {
@@ -404,21 +383,18 @@ public static class ModuleLowerer
     }
 
     /// <summary>
-    /// Die vtable-Zeilen: fuer jede internierte Klasse und jedes internierte Interface, das sie
-    /// implementiert, Slot fuer Slot die Zielfunktion.
+    /// The vtable rows: for every interned class and every interned interface it implements, the target
+    /// function slot by slot.
     ///
-    /// <para><b>Nach</b> dem Lowering, weil erst dann feststeht, welche Typen ueberhaupt im
-    /// Bytecode landen — dieselbe Regel wie bei Types und Imports: eine deklarierte, nie benutzte
-    /// Klasse gehoert nicht hinein. Interfaces sind zu diesem Zeitpunkt bereits interniert, weil
-    /// jedes <c>mkiface</c> und <c>callvirt</c> ihre Id schon beim Lowern gebraucht hat.</para>
+    /// <para>AFTER the lowering, because only then is it settled which types reach the bytecode at all —
+    /// the same rule as for types and imports. Interfaces are already interned by then, because every
+    /// <c>mkiface</c> and <c>callvirt</c> needed their id while lowering.</para>
     ///
-    /// <para><b>Die Aufloesungsreihenfolge faellt hier, nicht zur Laufzeit</b> (Sprache.md §3.5:
-    /// eigenes Member vor Interface-Default). Der Dispatch findet damit einen fertigen
-    /// Funktionsindex vor und muss nichts suchen.</para>
+    /// <para>THE RESOLUTION ORDER IS DECIDED HERE, NOT AT RUNTIME: own member before interface default.
+    /// The dispatch therefore finds a finished function index and has to search for nothing.</para>
     ///
-    /// <para>Deterministisch sortiert: die Zeilen landen als Sektion im Bytecode, und ADR-013
-    /// verlangt byte-identischen Output bei gleichem Input. Die Aufzaehlungsreihenfolge eines
-    /// Dictionary erfuellt das nicht.</para>
+    /// <para>Sorted deterministically: the rows land as a section in the bytecode, and the same input
+    /// has to give byte-identical output. The enumeration order of a dictionary does not do that.</para>
     /// </summary>
     private static List<IrImpl> BuildImpls(TypeTable typeTable, BindingResult binding,
         Compilation compilation, Dictionary<FunctionSymbol, FunctionId> ids,
@@ -436,9 +412,8 @@ public static class ModuleLowerer
         {
             foreach (var (iface, ifaceId) in interfaces.OrderBy(t => t.Id.Value))
             {
-                // Konformanz kann deklariert sein ODER aus einem 'extend T :: [I]' kommen
-                // (§3.6). Die vtable-Zeile ist dieselbe — welcher der beiden Wege sie begruendet
-                // hat, ist zur Laufzeit nicht mehr unterscheidbar und soll es auch nicht sein.
+                // Conformance may be declared OR come from an 'extend T :: [I]'. The vtable row is the
+                // same; which of the two established it is no longer distinguishable at runtime.
                 var viaExtension = ExtendBlocksFor(compilation, type, iface, binding);
                 if (!Conformance.Implements(type, iface, binding) && viaExtension.Count == 0)
                     continue;
@@ -449,26 +424,21 @@ public static class ModuleLowerer
 
                 for (var i = 0; i < slots.Length; i++)
                 {
-                    // Eigenes Member schlaegt Default — Sprache.md §3.5.
-                    // Reihenfolge ist §3.5/§3.6: eigenes Member, dann Extension, dann der
-                    // Default des Interfaces. Eine Extension-Methode steht NICHT in
-                    // 'type.Members' — sie gehoert dem extend-Block, nicht dem Zieltyp.
-                    // Bei einer generischen Instanz gehoert die Methode der INSTANZ, nicht der
-                    // Definition: 'ListIterator<int>.next' entsteht erst durch die
-                    // Monomorphisierung, und die Definition hat keine lowerbare Fassung.
+                    // The order is: own member, then extension, then the interface's default. An
+                    // extension method does NOT stand in 'type.Members' — it belongs to the extend block,
+                    // not to the target type.
                     //
-                    // Das fiel bis M8/S5 nicht auf, weil 'for-in' ueber 'ArrayIterator<T>' den
-                    // DIREKTEN Pfad nimmt und die vtable nie befragt. Erst ein 'iter()', das
-                    // einen Interface-Wert liefert, braucht sie.
+                    // For a generic instance the method belongs to the INSTANCE rather than to the
+                    // definition: 'ListIterator<int>.next' arises only through the monomorphization, and
+                    // the definition has no lowerable version.
                     var target = ResolveInInstance(typeTable, typeId, slots[i], instances)
                                  ?? Resolve(type, slots[i], ids)
                                  ?? ResolveInExtensions(viaExtension, slots[i], extensions)
                                  ?? Resolve(iface, slots[i], ids);
                     if (target is { } id) { methods[i] = id; continue; }
 
-                    // Die Sema hat Konformanz bereits geprueft (LYR-SEM). Fehlt hier trotzdem
-                    // etwas, ist es eine Lowering-Luecke — etwa eine generische oder rumpflose
-                    // Implementierung, die Pass 1 uebersprungen hat.
+                    // The sema already checked conformance. If something is missing here all the same, it
+                    // is a lowering gap — a generic or bodyless implementation pass 1 skipped.
                     de.Report(LoweringDiagnostics.NotSupported, Severity.Error,
                         type.Declaration?.Span ?? default,
                         $"'{type.Name}' implements '{iface.Name}', but its '{slots[i]}' is not "
@@ -486,9 +456,8 @@ public static class ModuleLowerer
     }
 
     /// <summary>
-    /// Ist das eine Coroutine, und was liefert sie? Der Typ steht syntaktisch da:
-    /// <c>Coroutine&lt;T&gt;</c> ist ein eingebauter Typ (Sprache.md §8), keine Bibliotheksklasse,
-    /// und v1 kennt keine anderen generischen Typen — eine Verwechslung ist damit ausgeschlossen.
+    /// Is this a coroutine, and what does it yield? The type stands there syntactically:
+    /// <c>Coroutine&lt;T&gt;</c> is a built-in type rather than a library class.
     /// </summary>
     internal static TypeNode? CoroutineYield(FunctionDecl decl) =>
         decl.ReturnType is NamedType { TypeArguments.Length: 1 } named
@@ -496,8 +465,8 @@ public static class ModuleLowerer
             ? named.TypeArguments[0]
             : null;
 
-    /// <summary>Die sichtbaren <c>extend T :: [I]</c>-Bloecke, die genau diese Konformanz
-    /// herstellen. Leer heisst: wenn ueberhaupt, dann ist sie deklariert.</summary>
+    /// <summary>The visible <c>extend T :: [I]</c> blocks that establish exactly this conformance. Empty
+    /// means that if it holds at all, it is declared.</summary>
     private static List<ExtensionBlock> ExtendBlocksFor(Compilation compilation, TypeSymbol type,
         TypeSymbol iface, BindingResult binding)
     {
@@ -515,8 +484,8 @@ public static class ModuleLowerer
         return found;
     }
 
-    /// <summary>Die Methode einer generischen Instanz, ueber die Monomorphisierung angefordert.
-    /// <c>null</c>, wenn der Typ nicht generisch ist oder die Methode nicht hat.</summary>
+    /// <summary>The method of a generic instance, requested through the monomorphization. <c>null</c>
+    /// when the type is not generic or does not have the method.</summary>
     private static FunctionId? ResolveInInstance(TypeTable typeTable, TypeId typeId, string method,
         InstanceTable instances)
     {
@@ -536,7 +505,7 @@ public static class ModuleLowerer
             if (symbol.Declaration is not FunctionDecl decl || decl.Body is null) continue;
             if (block.Target is not { } target) continue;
 
-            // Fordert an, falls noch nicht geschehen — eine vtable-Zeile ist eine Benutzung.
+            // requests it if that has not happened yet: a vtable row is a use
             return extensions.Request(symbol, decl, block.Module, target.Name,
                 decl.IsStatic ? null : target, decl.IsStatic ? null : block.Decl.Target);
         }

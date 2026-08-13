@@ -5,23 +5,21 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Ordnet jedem gelowerten <c>class</c> eine <see cref="TypeId"/> zu und baut sein Layout.
+/// Assigns a <see cref="TypeId"/> to every lowered <c>class</c> and builds its layout.
 ///
-/// <para><b>Interniert wird bei Bedarf</b>, wie bei <see cref="ImportTable"/>: eine deklarierte,
-/// nie benutzte Klasse gehört nicht in die Typ-Tabelle des Bytecodes. Die Reihenfolge ergibt sich
-/// aus der Lowering-Reihenfolge und ist damit deterministisch (ADR-013).</para>
+/// <para>INTERNED ON DEMAND, as in <see cref="ImportTable"/>: a declared but never used class does not
+/// belong in the bytecode's type table. The order follows the lowering order and is therefore
+/// deterministic.</para>
 ///
-/// <para><b>Die Id wird vor dem Layout vergeben.</b> Das ist der ganze Trick, der
-/// <c>class Node { next: Node }</c> möglich macht: beim Betreten wird der Platz reserviert und die
-/// Id eingetragen, erst danach werden die Feldtypen gelowert. Ein rekursiver Verweis findet die Id
-/// dann schon vor und terminiert, statt sich selbst erneut zu internieren. Dieselbe Zwei-Phasen-
-/// Form wie beim Funktions-Lowering (Pass 1 vergibt die <see cref="FunctionId"/>s, Pass 2 lowert),
-/// und aus demselben Grund.</para>
+/// <para>THE ID IS ASSIGNED BEFORE THE LAYOUT. That is the whole trick making
+/// <c>class Node { next: Node }</c> possible: on entry the place is reserved and the id recorded, and
+/// only then are the field types lowered. A recursive reference then already finds the id and
+/// terminates rather than interning itself again. The same two-phase shape as the function lowering,
+/// and for the same reason.</para>
 ///
-/// <para><b>Feldreihenfolge kommt aus dem AST, nicht aus der Symboltabelle.</b> Der Feldindex ist
-/// der Slot im Objekt — er muss die Deklarationsreihenfolge sein, und die garantiert nur die
-/// AST-Liste. Eine Symboltabelle ist eine Map; sich auf ihre Aufzählungsreihenfolge zu verlassen
-/// hieße, ein Layout an ein Implementierungsdetail zu hängen.</para>
+/// <para>FIELD ORDER COMES FROM THE AST, NOT FROM THE SYMBOL TABLE. The field index is the slot in the
+/// object — it has to be declaration order, and only the AST list guarantees that. A symbol table is a
+/// map, and relying on its enumeration order would hang a layout on an implementation detail.</para>
 /// </summary>
 internal sealed class TypeTable
 {
@@ -29,42 +27,42 @@ internal sealed class TypeTable
     private readonly List<IrTypeDef> _defs = new();
     private readonly Dictionary<TypeSymbol, UnsupportedConstructException> _failed =
         new(ReferenceEqualityComparer.Instance);
-    /// <summary>Variantennamen je Enum-Eintrag — nur fürs Lowering, im Bytecode steht der Index.</summary>
+    /// <summary>The variant names per enum entry, for the lowering only; the bytecode holds the index.
+    /// </summary>
     private readonly Dictionary<int, string[]> _variantNames = new();
     private readonly BindingResult _binding;
 
-    /// <param name="binding">Der Resolver hat jeden <c>NamedType</c> bereits an sein Symbol
-    /// gebunden. Diese Tabelle zu benutzen statt Namen selbst aufzulösen ist keine Bequemlichkeit:
-    /// eine zweite Auflösung wäre eine zweite Wahrheit über Sichtbarkeit und Schattierung.</param>
+    /// <param name="binding">The resolver has already bound every <c>NamedType</c> to its symbol. Using
+    /// this table instead of resolving names again is not convenience: a second resolution would be a
+    /// second truth about visibility and shadowing.</param>
     public TypeTable(BindingResult binding) => _binding = binding;
 
-    /// <summary>Die Compilation, sofern der Lowerer sie durchreicht. Gebraucht fuer zwei Fragen,
-    /// die ohne sie nicht beantwortbar sind: welches Symbol ein Builtin-Typ hat, und welche
-    /// <c>extend</c>-Bloecke sichtbar sind.</summary>
-    /// <summary>Die Namensbindung — fuer Konformanz-Fragen, die das Lowering stellt.</summary>
+    /// <summary>The compilation, when the lowerer passes it through. Needed for two questions that
+    /// cannot be answered without it: which symbol a builtin type has, and which <c>extend</c> blocks are
+    /// visible.</summary>
+    /// <summary>The name binding, for the conformance questions the lowering asks.</summary>
     public BindingResult Binding => _binding;
 
     public Compilation? Compilation { get; init; }
 
-    /// <summary>Die Worklist der benutzten Extension-Methoden. Sie haengt hier und wird nicht
-    /// durch jeden Lowerer gefaedelt: den TypeTable hat ohnehin JEDER, und die Alternative waere
-    /// ein zusaetzlicher Parameter an vier Tabellen (Instanzen, Lambdas, Coroutinen, Extensions
-    /// selbst) — vier Gelegenheiten, ihn an einer Stelle zu vergessen. Genau das ist beim ersten
-    /// Versuch passiert: eine Extension, die eine andere ruft, fand sie nicht.</summary>
+    /// <summary>The worklist of used extension methods. It hangs here rather than being threaded through
+    /// every lowerer: EVERY one has the TypeTable anyway, and the alternative would be an extra parameter
+    /// on four tables (instances, lambdas, coroutines, extensions themselves) — four opportunities to
+    /// forget it in one place.</summary>
     public ExtensionTable? Extensions { get; set; }
 
-    /// <summary>Das Symbol hinter einem Primitivtyp (<c>int</c>, <c>string</c>, …) — der Anker,
-    /// an dem ein <c>extend int { … }</c> haengt. Primitive haben kein Symbol in
-    /// <see cref="TypeFacts.SymbolOf"/>, und das soll auch so bleiben: daran haengt die Grenze,
-    /// dass ein Skalar NICHT in einen Interface-Slot passt (das braeuchte Boxing).</summary>
+    /// <summary>The symbol behind a primitive type (<c>int</c>, <c>string</c>, …), the anchor an
+    /// <c>extend int { … }</c> hangs on. Primitives have no symbol in <see cref="TypeFacts.SymbolOf"/>,
+    /// and that is deliberate: on it hangs the boundary that a scalar does NOT fit into an interface
+    /// slot, which would need boxing.</summary>
     public TypeSymbol? BuiltinSymbolOf(LyrType type) =>
         type is PrimitiveType prim && Compilation is { } comp
             ? comp.Builtins.LookupLocal(TypeFacts.Display(prim)) as TypeSymbol
             : null;
 
-    /// <summary>Der <c>extend</c>-Block, zu dem dieses Methoden-Symbol gehoert — samt Zielname
-    /// und deklarierendem Modul, den beiden Angaben, die das Mangling braucht. <c>null</c>, wenn
-    /// das Symbol keine Extension-Methode ist.</summary>
+    /// <summary>The <c>extend</c> block this method symbol belongs to, with the target name and the
+    /// declaring module, the two facts the mangling needs. <c>null</c> when the symbol is not an
+    /// extension method.</summary>
     public (ModuleSymbol Module, string TargetName, TypeSymbol Target, TypeNode TargetNode)?
         ExtensionOwnerOf(FunctionSymbol symbol)
     {
@@ -79,8 +77,8 @@ internal sealed class TypeTable
         return null;
     }
 
-    /// <summary>Eine Extension-Methode dieses Namens auf diesem Typ, ueber alle sichtbaren
-    /// <c>extend</c>-Bloecke.</summary>
+    /// <summary>An extension method of this name on this type, across all visible <c>extend</c> blocks.
+    /// </summary>
     public FunctionSymbol? ExtensionMethod(TypeSymbol target, string member)
     {
         if (Compilation is not { } comp) return null;
@@ -94,18 +92,18 @@ internal sealed class TypeTable
 
     public List<IrTypeDef> Defs => _defs;
 
-    /// <summary>Das Interface hinter einem Constraint (<c>T :: [P]</c>). Der Lowerer braucht es,
-    /// um eine Default-Methode zu finden, die der konkrete Typ nicht selbst hat — die Aufloesung
-    /// gehoert hierher, weil hier das Binding liegt.</summary>
+    /// <summary>The interface behind a constraint (<c>T :: [P]</c>). The lowerer needs it to find a
+    /// default method the concrete type does not have itself; the resolution belongs here, because the
+    /// binding lives here.</summary>
     public TypeSymbol? ConstraintInterface(TypeNode node) => Conformance.InterfaceOf(node, _binding);
 
-    /// <summary>Das Interface, von dem <paramref name="ts"/> ein Member namens
-    /// <paramref name="member"/> erbt — oder <c>null</c>, wenn keins es hat.
+    /// <summary>The interface <paramref name="ts"/> inherits a member named <paramref name="member"/>
+    /// from, or <c>null</c> when none has it.
     ///
-    /// <para>Gebraucht fuer Default-Methoden (§3.5): eine solche gehoert dem INTERFACE, ihr
-    /// <c>this</c> ist der Interface-Typ, und dorthin fuehrt kein direkter Aufruf. Der Empfaenger
-    /// muss erst gehoben werden. Aufgerufen wird das nur, wenn der konkrete Typ das Member
-    /// <b>nicht</b> selbst hat — eigenes Member schlaegt Default.</para></summary>
+    /// <para>Needed for default methods: such a method belongs to the INTERFACE, its <c>this</c> is the
+    /// interface type, and no direct call leads there. The receiver has to be lifted first. This is
+    /// called only when the concrete type does NOT have the member itself, since an own member beats a
+    /// default.</para></summary>
     public TypeSymbol? InterfaceProviding(TypeSymbol ts, string member)
     {
         foreach (var iface in Conformance.DeclaredInterfaces(ts, _binding))
@@ -114,57 +112,54 @@ internal sealed class TypeTable
         return null;
     }
 
-    /// <summary>Eine Zelle je Elementtyp — <c>&lt;cell:int&gt;</c> gibt es genau einmal, egal wie
-    /// viele Variablen darin leben.</summary>
+    /// <summary>One cell per element type: <c>&lt;cell:int&gt;</c> exists exactly once, however many
+    /// variables live in it.</summary>
     private readonly List<(IrType Element, TypeId Id)> _cells = new();
 
     /// <summary>
-    /// Instanzen generischer Typen, unter ihrem vollen Namen (<c>Box&lt;int&gt;</c>).
+    /// Instances of generic types, under their full name (<c>Box&lt;int&gt;</c>).
     ///
-    /// <para>Getrennt von <see cref="_assigned"/>, weil dort das SYMBOL der Schluessel ist —
-    /// <c>Box&lt;int&gt;</c> und <c>Box&lt;string&gt;</c> teilen sich eines und sind trotzdem zwei
-    /// Typen mit verschiedenem Layout (§12).</para>
+    /// <para>Separate from <see cref="_assigned"/>, where the SYMBOL is the key: <c>Box&lt;int&gt;</c>
+    /// and <c>Box&lt;string&gt;</c> share one and are still two types with different layouts.</para>
     /// </summary>
     private readonly Dictionary<string, TypeId> _instances = new(StringComparer.Ordinal);
 
-    /// <summary>Symbol und Id jeder Instanz — fuer die Impl-Tabelle, die wissen muss, welche
-    /// Klasse welches Interface erfuellt (auch wenn beide Instanzen sind).</summary>
-    /// <summary>Jede internierte generische Instanz samt ihrer Typargumente.
+    /// <summary>The symbol and id of every instance, for the impl table, which has to know which class
+    /// satisfies which interface even when both are instances.</summary>
+    /// <summary>Every interned generic instance with its type arguments.
     ///
-    /// <para>Die Argumente stehen dabei, weil die Impl-Tabelle sie braucht: eine vtable-Zeile
-    /// fuer <c>ListIterator&lt;int&gt;</c> muss die Methode der INSTANZ eintragen, und die
-    /// entsteht erst auf Anfrage bei der Monomorphisierung. Ohne sie liesse sich aus der TypeId
-    /// nicht zurueckrechnen, welche Instanz gemeint war.</para></summary>
+    /// <para>The arguments stand there because the impl table needs them: a vtable row for
+    /// <c>ListIterator&lt;int&gt;</c> has to record the method of the INSTANCE, and that arises only on
+    /// request during the monomorphization. Without them, which instance was meant could not be computed
+    /// back from the TypeId.</para></summary>
     private readonly List<(TypeSymbol Symbol, TypeId Id, LyrType[] Arguments)> _instanceSymbols = new();
 
     /// <summary>
-    /// Die Typargumente, die gerade eingesetzt werden, waehrend das Layout einer Instanz entsteht.
+    /// The type arguments currently being substituted while the layout of an instance is built.
     ///
-    /// <para>Ein Stapel, weil Layouts sich schachteln: <c>Box&lt;Pair&lt;int&gt;&gt;</c> lowert das
-    /// Feld <c>v: T</c> zu <c>Pair&lt;int&gt;</c>, und dessen Felder brauchen dann DESSEN
-    /// Substitution, nicht die von <c>Box</c>.</para>
+    /// <para>A stack, because layouts nest: <c>Box&lt;Pair&lt;int&gt;&gt;</c> lowers the field
+    /// <c>v: T</c> to <c>Pair&lt;int&gt;</c>, and its fields then need ITS substitution rather than that
+    /// of <c>Box</c>.</para>
     /// </summary>
     private readonly Stack<IReadOnlyDictionary<string, LyrType>> _substitutions = new();
 
-    /// <summary>Ein Tupel-Layout je Elementfolge — <c>(int, int)</c> gibt es genau einmal.</summary>
+    /// <summary>One tuple layout per element sequence: <c>(int, int)</c> exists exactly once.</summary>
     private readonly List<(IrType[] Elements, TypeId Id)> _tuples = new();
 
     /// <summary>
-    /// Der Typ eines Tupels (Sprache.md §4): ein Objekt mit einem Feld je Element.
+    /// The type of a tuple: an object with one field per element.
     ///
-    /// <para>Kein eigener IR-Typ und kein eigener Opcode — dieselbe Entscheidung wie bei Zellen
-    /// und Closure-Environments (ADR-018). Ein Tupel IST ein Objekt mit N Feldern, also tun es
-    /// <c>newobj</c> und <c>ldfld</c>; der Verifier prueft es wie jedes andere Objekt, und das
-    /// Bytecode-Format bleibt unveraendert.</para>
+    /// <para>No IR type and no opcode of its own, the same decision as for cells and closure
+    /// environments. A tuple IS an object with N fields, so <c>newobj</c> and <c>ldfld</c> do it; the
+    /// verifier checks it like any other object, and the bytecode format stays unchanged.</para>
     ///
-    /// <para><b>Referenz statt Wert-Semantik</b>, und das ist nicht beobachtbar: ein Tupel ist
-    /// unveraenderlich. Es gibt keinen Elementzugriff und damit keine Zuweisung an ein Element —
-    /// der einzige Weg hinein ist Destructuring, und der liest. Damit ist „kopieren" von
-    /// „teilen" nicht unterscheidbar, und die Kopie waere nur teurer. Dieselbe Begruendung wie
-    /// bei den <c>let</c>-Captures in ADR-018.</para>
+    /// <para>REFERENCE RATHER THAN VALUE SEMANTICS, and that is not observable: a tuple is immutable.
+    /// There is no element access and therefore no assignment to an element — the only way in is
+    /// destructuring, and that reads. "Copying" is thus indistinguishable from "sharing", and the copy
+    /// would only be more expensive.</para>
     ///
-    /// <para>Interniert, weil zwei Tupel derselben Form dasselbe Layout haben. Die Feldnamen sind
-    /// die Positionen — sie stehen nur in Disassembly und Diagnose.</para>
+    /// <para>Interned, because two tuples of the same shape have the same layout. The field names are
+    /// the positions and appear only in disassembly and diagnostics.</para>
     /// </summary>
     public IrRefType TupleOf(IrType[] elements)
     {
@@ -183,22 +178,21 @@ internal sealed class TypeTable
         return new IrRefType(fresh);
     }
 
-    /// <summary>Ist dieser Typ eine Zelle? Gefragt wird das beim Lesen eines Captures: eine
-    /// gefangene Zelle transportiert eine Variable, und was das Programm sehen will, ist ihr
-    /// Inhalt.</summary>
+    /// <summary>Is this type a cell? Asked when reading a capture: a captured cell transports a variable,
+    /// and what the program wants to see is its content.</summary>
     public bool IsCell(TypeId id) => _cells.Any(c => c.Id == id);
 
     /// <summary>
-    /// Der Typ, in dem ein gefangenes <c>var</c> lebt (ADR-018): ein Objekt mit <b>einem</b> Feld.
+    /// The type a captured <c>var</c> lives in: an object with ONE field.
     ///
-    /// <para>Bewusst kein eigener IR-Typ und kein eigener Opcode. Eine Zelle ist ein Objekt, also
-    /// tun es <c>newobj</c>, <c>ldfld 0</c> und <c>stfld 0</c> — der Verifier prueft sie damit wie
-    /// jedes andere Objekt, der Disassembler zeigt sie ohne Sonderfall, und das Bytecode-Format
-    /// bleibt unveraendert. Ein <c>newcell</c>/<c>ldcell</c>/<c>stcell</c>-Trio waere ein zweiter
-    /// Mechanismus fuer „Feld eines Objekts".</para>
+    /// <para>Deliberately no IR type and no opcode of its own. A cell is an object, so <c>newobj</c>,
+    /// <c>ldfld 0</c> and <c>stfld 0</c> do it — the verifier checks it like any other object, the
+    /// disassembler shows it without a special case, and the bytecode format stays unchanged. A
+    /// <c>newcell</c>/<c>ldcell</c>/<c>stcell</c> trio would be a second mechanism for "field of an
+    /// object".</para>
     ///
-    /// <para>Interniert, weil zwei Zellen desselben Elementtyps ununterscheidbar sind. Das haelt
-    /// die Typtabelle klein, wenn eine Funktion mehrere <c>var</c>-Captures hat.</para>
+    /// <para>Interned, because two cells of the same element type are indistinguishable. That keeps the
+    /// type table small when a function has several <c>var</c> captures.</para>
     /// </summary>
     public IrRefType CellOf(IrType element)
     {
@@ -212,16 +206,14 @@ internal sealed class TypeTable
     }
 
     /// <summary>
-    /// Reserviert den Zustandstyp einer Coroutine — <b>ohne Layout</b> (Sprache.md §8).
+    /// Reserves the state type of a coroutine, WITHOUT a layout.
     ///
-    /// <para>Dieselbe Zwei-Phasen-Form wie bei einer rekursiven Klasse, und aus demselben Grund:
-    /// die Id muss stehen, bevor das Layout bekannt ist. Welche Locals ein <c>yield</c>
-    /// ueberleben, weiss man erst, wenn der Rumpf gelowert ist — und der Rumpf braucht die Id
-    /// schon bei seinem ersten Feldzugriff.</para>
+    /// <para>The same two-phase shape as for a recursive class, and for the same reason: the id has to
+    /// stand before the layout is known. Which locals survive a <c>yield</c> is known only once the body
+    /// is lowered, and the body needs the id at its first field access.</para>
     ///
-    /// <para>Slot 0 ist der <b>Wiedereintrittspunkt</b>: 0 heisst „noch nicht gestartet", n der
-    /// Block hinter dem n-ten <c>yield</c>, -1 „durchgelaufen". Danach kommen Parameter und
-    /// Locals.</para>
+    /// <para>Slot 0 is the RE-ENTRY POINT: 0 means "not started yet", n the block behind the nth
+    /// <c>yield</c>, -1 "ran through". Parameters and locals follow.</para>
     /// </summary>
     public TypeId ReserveCoroutineState(string name)
     {
@@ -230,21 +222,19 @@ internal sealed class TypeTable
         return id;
     }
 
-    /// <summary>Traegt das Layout nach, sobald der Rumpf gelowert ist.</summary>
+    /// <summary>Supplies the layout once the body is lowered.</summary>
     public void CompleteCoroutineState(TypeId id, IrType[] fieldTypes, string[] fieldNames) =>
         _defs[id.Value] = _defs[id.Value] with { FieldTypes = fieldTypes, FieldNames = fieldNames };
 
     /// <summary>
-    /// Der Typ des Environments einer Closure: ein Objekt, dessen Felder die gefangenen Werte
-    /// sind (ADR-018).
+    /// The type of a closure's environment: an object whose fields are the captured values.
     ///
-    /// <para><b>Nicht</b> interniert, anders als eine Zelle: zwei Lambdas mit gleich geformten
-    /// Captures fangen trotzdem verschiedene Variablen, und ihre Environments zu teilen haette
-    /// keinen Nutzen — es gibt nie zwei Instanzen desselben Environment-Typs, die man sparen
-    /// koennte.</para>
+    /// <para>NOT interned, unlike a cell: two lambdas with identically shaped captures still capture
+    /// different variables, and sharing their environments would have no use — there are never two
+    /// instances of the same environment type that could be saved.</para>
     ///
-    /// <para>Der Name taucht in Disassembly und Diagnosen auf und traegt deshalb den Namen der
-    /// Funktion, zu der das Lambda gehoert.</para>
+    /// <para>The name appears in disassembly and diagnostics and therefore carries the name of the
+    /// function the lambda belongs to.</para>
     /// </summary>
     public IrRefType EnvironmentFor(string lambdaName, IrType[] fieldTypes, string[] fieldNames)
     {
@@ -253,29 +243,28 @@ internal sealed class TypeTable
         return new IrRefType(id);
     }
 
-    /// <summary>Der Typ eines Wertes dieser Klasse: eine Referenz, kein eingebetteter Wert
-    /// (Sprache.md §3.3).</summary>
+    /// <summary>The type of a value of this class: a reference, not an embedded value.</summary>
     public IrRefType RefTo(TypeSymbol symbol) => new(Intern(symbol));
 
-    /// <summary>Der Typ eines Enum-Wertes: eine Referenz auf den Enum-Eintrag, nicht auf eine
-    /// Variante. Welche Variante vorliegt, steht zur Laufzeit in ihrem Slot 0.</summary>
+    /// <summary>The type of an enum value: a reference to the enum entry rather than to a variant. Which
+    /// variant is present stands in its slot 0 at runtime.</summary>
     public IrEnumType EnumOf(TypeSymbol symbol) => new(Intern(symbol));
 
-    /// <summary>Der Typ eines ueber ein Interface angesprochenen Wertes (Lyrics <c>dyn</c>).</summary>
+    /// <summary>The type of a value addressed through an interface.</summary>
     public IrInterfaceType InterfaceOf(TypeSymbol symbol) => new(Intern(symbol));
 
-    /// <summary>Der Typ eines <c>struct</c>-Wertes: dasselbe Layout wie eine Klasse, aber
-    /// Wert-Semantik (Sprache.md §3.2).</summary>
+    /// <summary>The type of a <c>struct</c> value: the same layout as a class, but value
+    /// semantics.</summary>
     public IrStructType StructOf(TypeSymbol symbol) => new(Intern(symbol));
 
-    /// <summary>Ist dieser Tabellen-Eintrag ein Wert-Typ? Das Lowering fragt das, um zu
-    /// entscheiden, ob an einem Bindepunkt ein <c>structcopy</c> noetig ist.</summary>
+    /// <summary>Is this table entry a value type? The lowering asks to decide whether a
+    /// <c>structcopy</c> is needed at a binding point.</summary>
     public bool IsStruct(TypeId id) => _defs[id.Value].IsStruct;
 
     /// <summary>
-    /// Der Methoden-Slot eines Interfaces. Der <b>Index</b> ist der Vertrag, nicht der Name: er
-    /// steht zur Compile-Zeit fest, weil Lyric statisch typisiert ist und kein Monkey-Patching
-    /// kennt. Genau wie beim Feldindex einer Klasse.
+    /// The method slot of an interface. The INDEX is the contract, not the name: it is fixed at compile
+    /// time, because Lyric is statically typed and has no monkey patching, exactly like the field index
+    /// of a class.
     /// </summary>
     public int SlotOf(TypeSymbol interfaceSymbol, string method, Core.Span span)
     {
@@ -287,19 +276,18 @@ internal sealed class TypeTable
             $"interface '{interfaceSymbol.Name}' has no method '{method}'", span);
     }
 
-    /// <summary>Die Slot-Namen eines Interfaces, in Deklarationsreihenfolge. Der
-    /// <see cref="ModuleLowerer"/> braucht sie, um die vtable-Zeilen zu fuellen.</summary>
+    /// <summary>The slot names of an interface, in declaration order. The <see cref="ModuleLowerer"/>
+    /// needs them to fill the vtable rows.</summary>
     public string[] MethodSlotsOf(TypeId id) => _defs[id.Value].MethodSlots;
 
-    /// <summary>Alle bisher internierten Typen mit ihrem Symbol — die Grundlage der Impl-Tabelle.
-    /// Nur was interniert wurde, steht im Bytecode, und nur dafuer braucht es vtable-Zeilen.</summary>
+    /// <summary>All types interned so far with their symbol, the basis of the impl table. Only what was
+    /// interned stands in the bytecode, and only that needs vtable rows.</summary>
     public IEnumerable<(TypeSymbol Symbol, TypeId Id)> Interned =>
         _assigned.Select(pair => (pair.Key, pair.Value))
             .Concat(_instanceSymbols.Select(entry => (entry.Symbol, entry.Id)));
 
-    /// <summary>Die generische Instanz hinter einer TypeId — oder <c>null</c>, wenn der Typ
-    /// nicht generisch ist. Die Impl-Tabelle braucht sie, um die Methode der Instanz statt der
-    /// Definition einzutragen.</summary>
+    /// <summary>The generic instance behind a TypeId, or <c>null</c> when the type is not generic. The
+    /// impl table needs it to record the method of the instance rather than of the definition.</summary>
     public GenericInstance? InstanceOf(TypeId id)
     {
         foreach (var entry in _instanceSymbols)
@@ -311,14 +299,12 @@ internal sealed class TypeTable
     public bool IsInterface(TypeId id) => _defs[id.Value].IsInterface;
 
     /// <summary>
-    /// Der Types-Index einer Variante. Sie ist ein eigener Layout-Eintrag (ADR-016s
-    /// Nachbar-Entscheidung, Bytecode.md §2); ihr Slot 0 ist das Tag.
+    /// The Types index of a variant. A variant is a layout entry of its own, and its slot 0 is the tag.
     ///
-    /// <para><b>Der Eintrag kommt herein, er wird nicht hier bestimmt.</b> Bei einem generischen
-    /// Enum haengt die Variante an der INSTANZ — <c>Opt&lt;int&gt;.Some</c> und
-    /// <c>Opt&lt;string&gt;.Some</c> sind verschiedene Layouts. Wuerde diese Methode den Eintrag
-    /// selbst aus dem Symbol bestimmen, entschiede sie ein zweites Mal, welche Instanz gemeint
-    /// ist — und zwar ohne die Typargumente zu kennen.</para>
+    /// <para>THE ENTRY COMES IN, IT IS NOT DETERMINED HERE. For a generic enum the variant hangs on the
+    /// INSTANCE — <c>Opt&lt;int&gt;.Some</c> and <c>Opt&lt;string&gt;.Some</c> are different layouts. If
+    /// this method determined the entry from the symbol itself, it would decide a second time which
+    /// instance was meant, and without knowing the type arguments.</para>
     /// </summary>
     public TypeId VariantOf(TypeId enumId, string variantName, Core.Span span)
     {
@@ -329,9 +315,8 @@ internal sealed class TypeTable
             $"'{_defs[enumId.Value].Name}' has no variant '{variantName}'", span);
     }
 
-    /// <summary>Die Tag-Nummer einer Variante — ihr Index in der Deklarationsreihenfolge. Sie ist
-    /// fuer alle Instanzen dieselbe, weil sie aus der Deklaration kommt; der EINTRAG ist es
-    /// nicht.</summary>
+    /// <summary>The tag number of a variant: its index in declaration order. It is the same for all
+    /// instances, because it comes from the declaration; the ENTRY is not.</summary>
     public int TagOf(TypeId enumId, string variantName, Core.Span span)
     {
         var index = Array.IndexOf(_variantNames[enumId.Value], variantName);
@@ -344,13 +329,12 @@ internal sealed class TypeTable
     public TypeId Intern(TypeSymbol symbol) => Intern(symbol, []);
 
     /// <summary>
-    /// Die <see cref="TypeId"/> eines Typs — bei einem generischen die seiner <b>Instanz</b> fuer
-    /// genau diese Typargumente (§12).
+    /// The <see cref="TypeId"/> of a type; for a generic one that of its INSTANCE for exactly these type
+    /// arguments.
     ///
-    /// <para><c>Box&lt;int&gt;</c> und <c>Box&lt;string&gt;</c> bekommen verschiedene Eintraege mit
-    /// eigenem Layout. Das ist dieselbe Monomorphisierung wie bei Funktionen und aus demselben
-    /// Grund: die VM kennt keine Typen zur Laufzeit, also muss ein Feld-Layout zur Compile-Zeit
-    /// feststehen.</para>
+    /// <para><c>Box&lt;int&gt;</c> and <c>Box&lt;string&gt;</c> get different entries with their own
+    /// layout. That is the same monomorphization as for functions and for the same reason: the VM knows
+    /// no types at runtime, so a field layout has to be settled at compile time.</para>
     /// </summary>
     public TypeId Intern(TypeSymbol symbol, IReadOnlyList<LyrType> typeArguments)
     {
@@ -372,9 +356,8 @@ internal sealed class TypeTable
             _substitutions.Push(mapping);
             try
             {
-                // Interface und Enum haben eigene Eintragsformen (Methoden-Slots bzw. Varianten)
-                // und kein Feld-Layout. Sie muessen deshalb ihre eigenen Pfade nehmen — nur die
-                // Substitution ist gemeinsam.
+                // Interfaces and enums have entry forms of their own — method slots and variants — and no
+                // field layout. They therefore take their own paths; only the substitution is shared.
                 if (symbol.Kind == TypeSymbolKind.Interface)
                 {
                     var id = InternInterface(symbol, instanceName);
@@ -400,11 +383,9 @@ internal sealed class TypeTable
 
     private TypeId InternNonGeneric(TypeSymbol symbol)
     {
-        // Ein Typ, dessen Layout schon einmal gescheitert ist, scheitert wieder — mit derselben
-        // Meldung. Ohne das bliebe der Platzhalter aus dem ersten Versuch stehen, und der zweite
-        // Aufrufer läse ein Layout mit FieldNames == null: eine NullReferenceException im Compiler
-        // statt einer Diagnose. Genau das passierte bei `examples/bank.lyr`, dessen Account einen
-        // Feld-Default hat.
+        // A type whose layout has failed once fails again, with the same message. Without this the
+        // placeholder from the first attempt would remain, and the second caller would read a layout with
+        // FieldNames == null: a NullReferenceException in the compiler instead of a diagnostic.
         if (_failed.TryGetValue(symbol, out var failure))
             throw new UnsupportedConstructException(failure.Message, failure.Span);
 
@@ -419,8 +400,8 @@ internal sealed class TypeTable
                 SpanOf(symbol));
 
 
-        // Klasse und struct teilen sich das gesamte Layout-Verfahren; sie unterscheiden sich
-        // ausschliesslich in der Bindungs-Semantik, und die steckt im Lowering, nicht hier.
+        // Class and struct share the entire layout procedure; they differ solely in binding semantics,
+        // and that lives in the lowering rather than here.
         var members = symbol.Declaration switch
         {
             ClassDecl c => c.Members,
@@ -437,12 +418,12 @@ internal sealed class TypeTable
     }
 
     /// <summary>
-    /// Baut das Layout und traegt es ein. Fuer eine Instanz ist <paramref name="registry"/> die
-    /// Instanz-Map und <paramref name="name"/> traegt die Typargumente; sonst zaehlt das Symbol.
+    /// Builds the layout and records it. For an instance <paramref name="registry"/> is the instance map
+    /// and <paramref name="name"/> carries the type arguments; otherwise the symbol counts.
     /// </summary>
-    /// <param name="instanceArguments">Die Typargumente, wenn dies eine generische Instanz ist.
-    /// Sie werden mitgefuehrt, weil die Impl-Tabelle aus einer TypeId zurueckrechnen muss, welche
-    /// Instanz gemeint war — die vtable-Zeile traegt die Methode der INSTANZ ein.</param>
+    /// <param name="instanceArguments">The type arguments when this is a generic instance. They are
+    /// carried along, because the impl table has to compute back from a TypeId which instance was meant:
+    /// the vtable row records the method of the INSTANCE.</param>
     private TypeId InternLayout(TypeSymbol symbol, string name, Dictionary<string, TypeId>? registry,
         LyrType[]? instanceArguments = null)
     {
@@ -457,9 +438,9 @@ internal sealed class TypeTable
             throw new UnsupportedConstructException(
                 $"type '{symbol.Name}' has no declaration to read a layout from", SpanOf(symbol));
 
-        // Platz reservieren UND Id eintragen, bevor die Feldtypen gelowert werden — siehe
-        // Klassen-Doku. Der Platzhalter wird unten überschrieben; sichtbar wird er nie, weil
-        // Lower(field) nur die Id braucht, nicht das Layout.
+        // Reserve the place AND record the id before the field types are lowered — see the class
+        // documentation. The placeholder is overwritten below and never becomes visible, because
+        // Lower(field) needs only the id, not the layout.
         var id = new TypeId(_defs.Count);
         if (registry is null) _assigned[symbol] = id;
         else { registry[name] = id; _instanceSymbols.Add((symbol, id, instanceArguments ?? [])); }
@@ -473,9 +454,9 @@ internal sealed class TypeTable
 
             for (var i = 0; i < fields.Length; i++)
             {
-                // Ein Feld-Default gehoert NICHT ins Layout: er ist ein Ausdruck, kein Typ, und
-                // wird an der Konstruktionsstelle ausgewertet — dort, wo auch die explizit
-                // angegebenen Werte entstehen. Im Bytecode steht davon nichts.
+                // A field default does NOT belong in the layout: it is an expression rather than a type
+                // and is evaluated at the construction site, where the explicitly given values arise too.
+                // Nothing of it stands in the bytecode.
                 names[i] = fields[i].Name;
                 types[i] = Lower(fields[i].Type, fields[i].Span);
             }
@@ -488,31 +469,30 @@ internal sealed class TypeTable
         }
         catch (UnsupportedConstructException ex)
         {
-            // Die Id NICHT zurückgeben: zwischenzeitlich kann ein Feldtyp weitere Typen interniert
-            // haben, deren Ids sonst verschöben. Stattdessen den Fehlschlag merken — das Modul wird
-            // ohnehin verworfen (ModuleLowerer liefert null), die Tabelle muss nur konsistent
-            // bleiben, bis alle Funktionen ihre Diagnose abgesetzt haben.
+            // The id is NOT given back: in the meantime a field type may have interned further types
+            // whose ids would otherwise shift. The failure is remembered instead — the module is discarded
+            // anyway, and the table only has to stay consistent until every function has reported.
             _failed[symbol] = ex;
             throw;
         }
     }
 
     /// <summary>
-    /// Ein Enum wird zu <b>einem</b> Enum-Eintrag plus <b>je einem Layout-Eintrag pro Variante</b>
-    /// (Bytecode.md §2). Slot 0 jeder Variante ist ihr Tag; die Nutzfelder folgen ab Slot 1.
+    /// An enum becomes ONE enum entry plus ONE LAYOUT ENTRY PER VARIANT. Slot 0 of every variant is its
+    /// tag; the payload fields follow from slot 1.
     ///
-    /// <para>Wie bei einer Klasse wird die Id <b>vor</b> den Varianten vergeben — ein Enum darf
-    /// sich über eine Variante selbst nennen (<c>enum Tree { Leaf, Node(Tree, Tree) }</c>), und
-    /// ohne die vorgezogene Id liefe das in eine Endlosschleife.</para>
+    /// <para>As with a class the id is assigned BEFORE the variants — an enum may name itself through a
+    /// variant (<c>enum Tree { Leaf, Node(Tree, Tree) }</c>), and without the id up front that would run
+    /// into an infinite loop.</para>
     /// </summary>
     private TypeId InternEnum(TypeSymbol symbol) => InternEnum(symbol, symbol.Name, null, null);
 
-    /// <param name="name">Bei einer Instanz der volle Name (<c>Opt&lt;int&gt;</c>). Er steht in
-    /// Disassembly und Diagnosen, und die Varianten erben ihn.</param>
-    /// <param name="registry">Bei einer Instanz die Instanz-Map, sonst <c>null</c>. Wie bei
-    /// <see cref="InternLayout"/>: ein generisches Enum darf sich <b>nicht</b> unter seinem Symbol
-    /// eintragen, sonst bekaeme <c>Opt&lt;string&gt;</c> die Id von <c>Opt&lt;int&gt;</c> — und
-    /// damit dessen Varianten-Layouts, also einen <c>i64</c>-Slot fuer einen String.</param>
+    /// <param name="name">For an instance the full name (<c>Opt&lt;int&gt;</c>). It appears in
+    /// disassembly and diagnostics, and the variants inherit it.</param>
+    /// <param name="registry">For an instance the instance map, otherwise <c>null</c>. As in
+    /// <see cref="InternLayout"/>: a generic enum must NOT record itself under its symbol, or
+    /// <c>Opt&lt;string&gt;</c> would get the id of <c>Opt&lt;int&gt;</c> and with it its variant layouts,
+    /// meaning an <c>i64</c> slot for a string.</param>
     private TypeId InternEnum(TypeSymbol symbol, string name, Dictionary<string, TypeId>? registry,
         LyrType[]? instanceArguments)
     {
@@ -520,11 +500,10 @@ internal sealed class TypeTable
             throw new UnsupportedConstructException(
                 $"enum '{symbol.Name}' has no declaration to read its variants from", SpanOf(symbol));
 
-        // Id eintragen, BEVOR die Varianten interniert werden — ein Enum darf sich ueber eine
-        // Variante selbst nennen ('enum Tree<T> { Leaf, Node(Tree<T>, Tree<T>) }'), und ohne die
-        // vorgezogene Eintragung liefe genau das in eine Endlosschleife. Fuer den
-        // nicht-generischen Fall stand das schon so da; fuer die Instanz muss es in die REGISTRY,
-        // weil die Rekursion ueber den Instanznamen zurueckkommt und nicht ueber das Symbol.
+        // Record the id BEFORE the variants are interned — an enum may name itself through a variant
+        // ('enum Tree<T> { Leaf, Node(Tree<T>, Tree<T>) }'), and without recording it up front that would
+        // run into an infinite loop. For an instance it has to go into the REGISTRY, because the
+        // recursion comes back through the instance name rather than through the symbol.
         var id = new TypeId(_defs.Count);
         if (registry is null) _assigned[symbol] = id;
         else { registry[name] = id; _instanceSymbols.Add((symbol, id, instanceArguments ?? [])); }
@@ -548,20 +527,18 @@ internal sealed class TypeTable
     }
 
     /// <summary>
-    /// Ein Interface wird zu einem Eintrag <b>ohne Felder</b>, der nur seine Methoden-Slots
-    /// benennt. Die Reihenfolge kommt aus der Deklaration, nicht aus der Symboltabelle: der Slot
-    /// ist ein Vertrag, die Aufzaehlungsreihenfolge einer Map ist ein Implementierungsdetail —
-    /// dieselbe Regel wie bei den Feldern einer Klasse.
+    /// An interface becomes an entry WITHOUT FIELDS that only names its method slots. The order comes
+    /// from the declaration rather than from the symbol table: the slot is a contract, the enumeration
+    /// order of a map is an implementation detail — the same rule as for the fields of a class.
     ///
-    /// <para>Aufgenommen werden <b>alle</b> deklarierten Methoden, abstrakte wie Default. Ein
-    /// Default belegt einen Slot, weil eine Klasse ihn ueberschreiben darf; ohne Slot waere er
-    /// nicht ueberschreibbar.</para>
+    /// <para>ALL declared methods are taken in, abstract and default alike. A default occupies a slot,
+    /// because a class may override it; without a slot it would not be overridable.</para>
     /// </summary>
     private TypeId InternInterface(TypeSymbol symbol) => InternInterface(symbol, symbol.Name);
 
-    /// <param name="name">Bei einer Instanz der volle Name (<c>Iterator&lt;int&gt;</c>) — er steht
-    /// in Disassembly und Diagnosen, und zwei Instanzen desselben Interfaces sollen dort
-    /// unterscheidbar sein.</param>
+    /// <param name="name">For an instance the full name (<c>Iterator&lt;int&gt;</c>): it appears in
+    /// disassembly and diagnostics, and two instances of the same interface should be distinguishable
+    /// there.</param>
     private TypeId InternInterface(TypeSymbol symbol, string name)
     {
         if (symbol.Declaration is not InterfaceDecl decl)
@@ -577,9 +554,8 @@ internal sealed class TypeTable
 
         var id = new TypeId(_defs.Count);
 
-        // Ein generisches Interface hat pro Instanz einen eigenen Eintrag; nur das
-        // nicht-generische traegt sich unter seinem Symbol ein. Sonst bekaeme
-        // 'Iterator<string>' die Id von 'Iterator<int>'.
+        // A generic interface has an entry per instance; only a non-generic one records itself under its
+        // symbol. Otherwise 'Iterator<string>' would get the id of 'Iterator<int>'.
         if (symbol.Generics.Length == 0) _assigned[symbol] = id;
 
         _defs.Add(new IrTypeDef(name, [], []) { MethodSlots = slots });
@@ -588,8 +564,8 @@ internal sealed class TypeTable
 
     private TypeId InternVariant(string ownerName, EnumVariant variant)
     {
-        // Slot 0 ist das Tag. Es steht im Layout, damit der Feldzugriff nach dem 'enumas' ein
-        // gewoehnliches ldfld bleibt — die Variante ist dann eine ganz normale Klasse.
+        // Slot 0 is the tag. It stands in the layout so the field access after an 'enumas' stays an
+        // ordinary ldfld: the variant is then a perfectly normal class.
         var names = new List<string> { "$tag" };
         var types = new List<IrType> { new IrScalarType(IrScalar.I64) };
 
@@ -614,8 +590,8 @@ internal sealed class TypeTable
         return id;
     }
 
-    /// <summary>Findet den Feldindex. Der Name existiert nur hier und in der Diagnose; im Bytecode
-    /// steht ausschließlich die Position.</summary>
+    /// <summary>Finds the field index. The name exists here and in diagnostics only; the bytecode holds
+    /// the position alone.</summary>
     public FieldId FieldOf(TypeSymbol symbol, string name, Core.Span span)
     {
         var def = _defs[Intern(symbol).Value];
@@ -630,9 +606,9 @@ internal sealed class TypeTable
 
     public IrType Lower(LyrType type, Core.Span span) => type switch
     {
-        // Host-Typ VOR der gewoehnlichen Klasse: eine leere Klasse in einem nativen Modul ist
-        // keine Referenz auf ein Modul-Layout, sondern eine auf ein Host-Objekt (ADR-026). Die
-        // Frage beantwortet 'HostTypes' fuer beide Stellen, an denen sie sich stellt.
+        // Host type BEFORE the ordinary class: an empty class in a native module is a reference to a host
+        // object rather than to a module layout. 'HostTypes' answers the question for both places where
+        // it arises.
         NamedRef { Symbol.Kind: TypeSymbolKind.Class } h
             when HostTypes.NameOf(h.Symbol, Compilation) is { } hostName
             => new IrHostType(hostName),
@@ -642,45 +618,42 @@ internal sealed class TypeTable
         NamedRef { Symbol.Kind: TypeSymbolKind.Enum } n => EnumOf(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Interface } n => InterfaceOf(n.Symbol),
 
-        // Ein Funktionstyp traegt seine Signatur strukturell und braucht deshalb keinen Eintrag in
-        // dieser Tabelle — anders als jeder benannte Typ. Rekursiv gelowert, weil Parameter und
-        // Rueckgabe selbst Klassen, Enums oder wieder Funktionen sein duerfen.
-        // Ein Tupel: ein Objekt mit einem Feld je Element (§4).
+        // A function type carries its signature structurally and therefore needs no entry in this table,
+        // unlike every named type. Lowered recursively, because parameters and the return may themselves
+        // be classes, enums or functions again.
+        // A tuple: an object with one field per element.
         Sema.TupleOf t => TupleOf(t.Elements.Select(e => Lower(e, span)).ToArray()),
 
-        // Eine Instanz eines generischen Typs: 'Box<int>' ist ein eigener Tabellen-Eintrag mit
-        // eigenem Layout (§12).
+        // An instance of a generic type: 'Box<int>' is a table entry of its own with its own layout.
         GenericInstance g => InstanceType(g, span),
 
-        // Coroutine<T> IST ein Funktionswert ohne Parameter (§8): 'resume co' setzt sie fort und
-        // liefert den naechsten Wert — das ist ein Aufruf, und die Coroutine unterscheidet sich von
-        // einer gewoehnlichen Funktion nur darin, WO sie beim naechsten Mal anfaengt. Dass die Sema
-        // beide trennt, ist richtig und gehoert dorthin; die IR prueft Konsistenz, nicht
-        // Sprachregeln.
+        // Coroutine<T> IS a function value without parameters: 'resume co' continues it and yields the
+        // next value, which is a call. A coroutine differs from an ordinary function only in WHERE it
+        // starts the next time. That the sema keeps them apart is right and belongs there; the IR checks
+        // consistency, not language rules.
         CoroutineOf c => new IrFunctionType([], Lower(c.Yield, span)),
 
         FnType f => new IrFunctionType(
             f.Parameters.Select(p => Lower(p, span)).ToArray(), Lower(f.Return, span)),
 
-        // T[] (ADR-016). Ein Array ist ein Referenztyp mit dem Elementtyp inline; es braucht keinen
-        // Tabellen-Eintrag, weil es kein benanntes Layout hat.
+        // T[] is a reference type with the element type inline; it needs no table entry, because it has
+        // no named layout.
         ArrayOf a => new IrArrayType(Lower(a.Element, span)),
 
-        // ?T (§7). Nicht schachtelbar — die Sema kollabiert '??T' bereits, hier steht trotzdem eine
-        // Grenze statt einer stillen Annahme.
+        // ?T is not nestable. The sema already collapses '??T'; a boundary stands here all the same,
+        // rather than a silent assumption.
         Optional o => OptionalOf(Lower(o.Inner, span), span),
 
-        // Ein Typ-Parameter erreicht diese Stelle nur, wenn der Rufer ihn nicht substituiert hat.
-        // Das ist ein Lowering-Fehler und keine Sprachgrenze — deshalb eine eigene Meldung statt
-        // des generischen „not lowerable".
+        // A type parameter reaches this place only when the caller did not substitute it. That is a
+        // lowering error rather than a language boundary, hence a message of its own instead of the
+        // generic "not lowerable".
         TypeParamType p => throw new UnsupportedConstructException(
             $"type parameter '{p.Param.Name}' reached lowering unsubstituted", span),
 
         _ => TypeLowering.Lower(type)
     };
 
-    /// <summary>'?T' mit der Schachtelungs-Grenze an einer Stelle, statt an jeder Rufstelle.
-    /// </summary>
+    /// <summary>'?T' with the nesting boundary in one place rather than at every call site.</summary>
     private static IrType OptionalOf(IrType inner, Core.Span span) =>
         inner is IrOptionalType
             ? throw new UnsupportedConstructException(
@@ -689,15 +662,14 @@ internal sealed class TypeTable
             : new IrOptionalType(inner);
 
     /// <summary>
-    /// Ein syntaktisch geschriebener Typ (Feld, Parameter, Rückgabetyp). Ein Klassentyp interniert
-    /// rekursiv — das terminiert, weil <see cref="Intern"/> die Id vor dem Layout vergibt.
+    /// A syntactically written type: a field, a parameter, a return type. A class type interns
+    /// recursively, and that terminates, because <see cref="Intern"/> assigns the id before the layout.
     /// </summary>
     public IrType Lower(TypeNode node) => Lower(node, node.Span);
 
     private IrType Lower(TypeNode node, Core.Span span)
     {
-        // T[] (ADR-016). Eine Size im Typ gibt es nicht mehr — T[N] ist aus v1 gestrichen, die
-        // Länge ist eine Eigenschaft des Wertes.
+        // T[]. There is no size in the type: the length is a property of the value.
         if (node is ArrayType array)
         {
             if (array.Size is not null)
@@ -711,12 +683,12 @@ internal sealed class TypeTable
         if (node is NullableType option)
             return new IrOptionalType(Lower(option.Inner, option.Inner.Span));
 
-        // '(A, B)' — ein Tupel, geschrieben als Feld-, Parameter- oder Rueckgabetyp (§4).
+        // '(A, B)' — a tuple written as a field, parameter or return type.
         if (node is AST.TupleType written)
             return TupleOf(written.Elements.Select(e => Lower(e, e.Span)).ToArray());
 
-        // 'fn(A, B) -> R' — geschrieben in Parameter- und Rueckgabepositionen. Braucht keinen
-        // Tabelleneintrag: der Typ traegt seine Signatur selbst.
+        // 'fn(A, B) -> R' — written in parameter and return positions. It needs no table entry: the type
+        // carries its signature itself.
         if (node is FunctionType signature)
             return new IrFunctionType(
                 signature.Parameters.Select(p => Lower(p, p.Span)).ToArray(),
@@ -724,9 +696,8 @@ internal sealed class TypeTable
 
         if (node is NamedType named)
         {
-            // Ein Typ-Parameter im Layout einer Instanz: 'v: T' in 'Box<int>' ist ein int. Die
-            // Frage muss VOR der Symbolaufloesung kommen — 'T' ist kein Typ, den man finden
-            // koennte.
+            // A type parameter in the layout of an instance: 'v: T' in 'Box<int>' is an int. The question
+            // has to come BEFORE the symbol resolution — 'T' is not a type one could find.
             if (named.TypeArguments.Length == 0 && _substitutions.Count > 0
                 && _substitutions.Peek().TryGetValue(named.Path[^1], out var substituted))
                 return Lower(substituted, span);
@@ -738,9 +709,9 @@ internal sealed class TypeTable
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
 
-            // Geschriebene Typargumente ('Box<int>' als Feld- oder Parametertyp): sie werden
-            // gelowert, BEVOR die Instanz interniert wird — ein Argument kann selbst ein
-            // Typ-Parameter der umgebenden Instanz sein ('Box<T>' in 'Pair<T>').
+            // Written type arguments ('Box<int>' as a field or parameter type) are lowered BEFORE the
+            // instance is interned: an argument may itself be a type parameter of the surrounding
+            // instance ('Box<T>' in 'Pair<T>').
             if (named.TypeArguments.Length > 0 && bound is TypeSymbol generic)
             {
                 var arguments = named.TypeArguments.Select(a => Resolve(a, span)).ToArray();
@@ -765,16 +736,16 @@ internal sealed class TypeTable
     }
 
     /// <summary>
-    /// Ein geschriebenes Typargument als <see cref="LyrType"/> — das, was <see cref="Intern"/> als
-    /// Schluessel braucht.
+    /// A written type argument as a <see cref="LyrType"/>, which is what <see cref="Intern"/> needs as a
+    /// key.
     ///
-    /// <para>Nicht ueber <see cref="Lower(TypeNode)"/>: der liefert einen IR-Typ, und aus dem
-    /// laesst sich der Sema-Typ nicht zurueckgewinnen. Der Name einer Instanz muss aber aus
-    /// Sema-Typen gebildet werden, sonst hiessen <c>Box&lt;int&gt;</c> und <c>Box&lt;int64&gt;</c>
-    /// verschieden, obwohl sie dasselbe sind.</para>
+    /// <para>Not through <see cref="Lower(TypeNode)"/>: that yields an IR type, and the sema type cannot
+    /// be recovered from it. The name of an instance has to be formed from sema types, or
+    /// <c>Box&lt;int&gt;</c> and <c>Box&lt;int64&gt;</c> would be named differently although they are the
+    /// same.</para>
     /// </summary>
-    /// <summary>Der IR-Typ einer Instanz — Referenz, Wert, Enum oder Interface, je nach dem, was
-    /// die Definition ist.</summary>
+    /// <summary>The IR type of an instance: a reference, a value, an enum or an interface, depending on
+    /// what the definition is.</summary>
     public IrType InstanceType(GenericInstance instance, Core.Span span)
     {
         var id = Intern(instance.Definition, instance.Arguments);
@@ -788,13 +759,13 @@ internal sealed class TypeTable
     }
 
     /// <summary>
-    /// Legt eine Substitution fuer die Dauer des zurueckgegebenen Scopes auf den Stack — dieselbe,
-    /// die <see cref="Intern"/> beim Lowern der Member einer generischen Instanz benutzt.
+    /// Pushes a substitution onto the stack for the lifetime of the returned scope — the same one
+    /// <see cref="Intern"/> uses while lowering the members of a generic instance.
     ///
-    /// <para>Gebraucht vom <see cref="FunctionLowerer"/>: eine monomorphisierte <b>Funktion</b>
-    /// (nicht Methode) kennt ihre Typargumente, aber die Typtabelle erfaehrt davon sonst nichts.
-    /// Ohne das war <c>fn make&lt;T&gt;(x: T): Box&lt;T&gt;</c> nicht lowerbar — der Rueckgabetyp
-    /// wurde ohne Substitution aufgeloest, und <c>T</c> fand nichts.</para>
+    /// <para>Needed by the <see cref="FunctionLowerer"/>: a monomorphized FUNCTION, not method, knows its
+    /// type arguments, but the type table otherwise learns nothing of them. Without this,
+    /// <c>fn make&lt;T&gt;(x: T): Box&lt;T&gt;</c> is not lowerable — the return type gets resolved without
+    /// a substitution and <c>T</c> finds nothing.</para>
     /// </summary>
     public IDisposable PushSubstitution(IReadOnlyDictionary<string, LyrType> mapping)
     {
@@ -822,13 +793,9 @@ internal sealed class TypeTable
             if (bound is TypeSymbol symbol) return new NamedRef(symbol);
         }
 
-        // Ein generischer Typ als Typargument oder Rueckgabetyp: 'fn empty<T>(): List<T>'. Die
-        // Argumente laufen durch dieselbe Aufloesung, also greift die Substitution auch in der
-        // Tiefe — aus 'List<T>' wird in der Instanz 'List<int>'.
-        //
-        // Ohne diesen Fall war eine generische Funktion, die einen generischen Typ LIEFERT, nicht
-        // lowerbar. Das fiel nie auf, weil sie ohne explizite Typargumente ohnehin nicht
-        // aufrufbar war: die Inferenz braucht ein Argument, aus dem sie T ziehen kann.
+        // A generic type as a type argument or return type: 'fn empty<T>(): List<T>'. The arguments run
+        // through the same resolution, so the substitution reaches into the depth too — 'List<T>' becomes
+        // 'List<int>' inside the instance.
         if (node is NamedType { TypeArguments.Length: > 0 } generic)
         {
             var definition = _binding.Resolve(generic);
@@ -841,16 +808,13 @@ internal sealed class TypeTable
         if (node is ArrayType { Size: null } array) return new ArrayOf(Resolve(array.Element, span), null);
         if (node is NullableType option) return new Optional(Resolve(option.Inner, span));
 
-        // Ein Tupel als Typargument: 'Iterator<(int, T)>'. Das ist die Signatur von 'enumerate'
-        // und 'zip' — und damit von genau den beiden Funktionen, fuer die Tupel (T1–T3)
-        // ueberhaupt eingefuehrt wurden. Ohne diese Zeile war 'std.iter' an der Stelle blockiert,
-        // an der Tupel ihren Zweck erfuellen.
+        // A tuple as a type argument: 'Iterator<(int, T)>'. That is the signature of 'enumerate' and
+        // 'zip'.
         if (node is AST.TupleType tuple)
             return new TupleOf(tuple.Elements.Select(e => Resolve(e, span)).ToArray());
 
-        // 'fn(A) -> B' als Typargument. Kein bekannter Fall braucht es heute; es steht hier, weil
-        // die Liste sonst wieder eine Teilkopie waere — dreimal hat genau das in diesem Projekt
-        // Zeit gekostet (LowerWithOwner, LowerSubstituted, SubstituteType).
+        // 'fn(A) -> B' as a type argument. No known case needs it today; it stands here so the list is
+        // not a partial copy of the others.
         if (node is FunctionType fn)
             return new FnType(fn.Parameters.Select(p => Resolve(p, span)).ToArray(),
                 Resolve(fn.ReturnType, span));
