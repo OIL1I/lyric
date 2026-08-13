@@ -204,8 +204,8 @@ extend string :: [Hashable<string>] {
     // FNV-1a over the code points. In Lyric rather than native: a `char` is a number and the
     // overflow wraps in a defined way.
     //
-    // Die Konstanten sind die 64-Bit-Variante. Ein Hash muss nicht kryptographisch sein, er muss
-    // streuen und ueberall dasselbe liefern — beides tut FNV, und es passt in acht Zeilen.
+    // The constants are the 64-bit variant. A hash need not be cryptographic; it must spread and
+    // produce the same result everywhere.
     fn hash(): int {
         var h = -3750763034362895579;      // FNV-Offset-Basis, 64 Bit
         let n = length(this);
@@ -235,16 +235,11 @@ extend uint :: [Hashable<uint>] {
     fn hash(): int { return this as int; }
 }
 
-// KEIN `Hashable` fuer `float` — mit Absicht.
+// No `Hashable` for `float`, deliberately.
 //
-// Eine Hash-Tabelle verlangt: gleiche Werte, gleicher Hash. Fliesskomma bricht die Voraussetzung
-// davon, nicht die Zusage: `NaN != NaN` (IEEE 754), also findet ein Schluessel sich selbst nicht
-// wieder; `0.0 == -0.0` bei verschiedenen Bitmustern, also braeuchte der Hash eine Sonderregel.
-// Beides ist loesbar, aber keine Loesung ist die offensichtlich richtige — und eine falsche
-// Voreinstellung in `std.core` wuerde niemandem auffallen, bis eine Map Werte verliert.
+// A hash table requires equal values to hash equally. Floating point breaks the premise rather
+// than the promise: `NaN != NaN`, so a key does not find itself; `0.0 == -0.0` with different bit
+// patterns, so the hash would need a special rule. Both are solvable, but no solution is the
+// obviously right one, and a wrong default here would surface only as a map losing values.
 //
-// `Equatable` und `Ordered` bleiben: dort ist `NaN != NaN` genau das erwartete Verhalten.
-//
-// Die schmalen Ganzzahltypen (`int8` … `uint32`) haben ebenfalls keine Konformanz. Sie
-// nachzutragen sind 24 weitere `extend`-Bloecke fuer einen Fall, den es noch nicht gibt; wenn er
-// kommt, ist es mechanische Arbeit.
+// `Equatable` and `Ordered` remain: there `NaN != NaN` is the expected behaviour.

@@ -71,13 +71,13 @@ pub fn tempDir(): string;
 // Nothing below is native: a path is a string, and finding separators is something the language
 // does. A host would bring its own platform convention into a platform-neutral bytecode.
 
-/// Beide Trennzeichen gelten. Windows versteht `/`, und ein Skript, das auf beiden Systemen
-/// laufen soll, sollte nicht raten muessen, welches es gerade ist.
+/// Both separators count. Windows understands `/`, and a script running on both systems should
+/// not have to guess which one applies.
 fn istTrenner(c: char): bool {
     return c == '/' || c == '\\';
 }
 
-/// Fuegt zwei Pfadteile zusammen — ohne doppeltes Trennzeichen und ohne fehlendes.
+/// Joins two path parts, with neither a doubled nor a missing separator.
 pub fn joinPath(links: string, rechts: string): string {
     if (length(links) == 0) {
         return rechts;
@@ -98,7 +98,7 @@ pub fn joinPath(links: string, rechts: string): string {
     return links + "/" + rechts;
 }
 
-// Der Index nach dem letzten Trennzeichen — 0, wenn es keines gibt.
+// The index after the last separator, or 0 when there is none.
 fn nachLetztemTrenner(path: string): int {
     var i = length(path) - 1;
     while (i >= 0) {
@@ -110,19 +110,19 @@ fn nachLetztemTrenner(path: string): int {
     return 0;
 }
 
-/// Der letzte Bestandteil. `"a/b/c.txt"` wird `"c.txt"`.
+/// The last component. `"a/b/c.txt"` becomes `"c.txt"`.
 pub fn fileName(path: string): string {
     let start = nachLetztemTrenner(path);
     return substring(path, start, length(path) - start);
 }
 
-/// Alles vor dem letzten Trennzeichen. `""`, wenn es keines gibt.
+/// Everything before the last separator, or `""` when there is none.
 pub fn parentDir(path: string): string {
     let start = nachLetztemTrenner(path);
     if (start == 0) {
         return "";
     }
-    // Das Trennzeichen selbst faellt weg — ausser bei "/x", wo der Elternpfad die Wurzel ist.
+    // The separator itself is dropped, except for "/x", where the parent is the root.
     if (start == 1) {
         return substring(path, 0, 1);
     }
@@ -131,8 +131,8 @@ pub fn parentDir(path: string): string {
 
 /// Die Endung OHNE Punkt. `""`, wenn es keine gibt.
 ///
-/// Ein fuehrender Punkt zaehlt nicht: `".gitignore"` hat keine Endung, sondern heisst so. Diese
-/// Regel unterscheidet sich zwischen Sprachen, und sie hier hinzuschreiben ist billiger, als sie
+/// A leading dot does not count: `".gitignore"` has no extension, that is its name. This rule
+/// differs between languages, so it is stated here.
 /// jemanden herausfinden zu lassen.
 pub fn extension(path: string): string {
     let name = fileName(path);
@@ -149,7 +149,7 @@ pub fn extension(path: string): string {
     return "";
 }
 
-/// Der Name ohne Endung. `"a/b/c.txt"` wird `"c"`.
+/// The name without its extension. `"a/b/c.txt"` becomes `"c"`.
 pub fn stem(path: string): string {
     let name = fileName(path);
     let ext = extension(name);
@@ -159,7 +159,7 @@ pub fn stem(path: string): string {
     return substring(name, 0, length(name) - length(ext) - 1);
 }
 
-/// Tauscht die Endung. Eine leere Endung entfernt sie.
+/// Replaces the extension. An empty extension removes it.
 pub fn withExtension(path: string, ext: string): string {
     let ordner = parentDir(path);
     let basis = stem(path);
@@ -167,7 +167,7 @@ pub fn withExtension(path: string, ext: string): string {
     return if (length(ordner) == 0) neu else joinPath(ordner, neu);
 }
 
-/// Beginnt der Pfad an der Wurzel? Erkennt `/x` und `C:\x`.
+/// Does the path start at the root? Recognises `/x` and `C:\x`.
 pub fn isAbsolute(path: string): bool {
     if (length(path) == 0) {
         return false;

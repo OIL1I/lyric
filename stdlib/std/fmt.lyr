@@ -67,7 +67,7 @@ pub fn formatRadix(value: int, radix: int): string {
 fn ziffernZeichen(value: int): string {
     if (value < 10) {
         let c = digitToChar(value);
-        // Seit dem Narrowing im `if`-AUSDRUCK geht die kurze Form: `c` ist im else-Zweig ein
+        // The short form works because the `if` expression narrows `c` in the else branch.
         // `char`. Vorher stand hier ein Umweg ueber zwei Statements.
         return if (c == null) "?" else fromChar(c);
     }
@@ -86,8 +86,8 @@ pub fn formatOctal(value: int): string {
     return formatRadix(value, 8);
 }
 
-/// Hexadezimal mit fester Stellenzahl und fuehrenden Nullen — `formatHexPadded(255, 4)` ist
-/// `"00ff"`. Fuer Adressen und Farbwerte, wo die Breite die Bedeutung traegt.
+/// Hexadecimal with a fixed number of digits and leading zeros: `formatHexPadded(255, 4)` is
+/// `"00ff"`, for addresses and colour values where the width carries meaning.
 pub fn formatHexPadded(value: int, width: int): string {
     return padStart(formatHex(value), width, '0');
 }
@@ -102,7 +102,7 @@ pub fn padRight(value: string, width: int): string {
     return padEnd(value, width, ' ');
 }
 
-/// Zentriert. Bei ungerader Restbreite geht das zusaetzliche Zeichen nach RECHTS — eine
+/// Centres. On an odd remainder the extra character goes to the RIGHT.
 /// Festlegung, keine Selbstverstaendlichkeit, aber ohne sie liefert dieselbe Eingabe je nach
 /// Implementierung zwei verschiedene Ergebnisse.
 pub fn center(value: string, width: int): string {
@@ -116,11 +116,10 @@ pub fn center(value: string, width: int): string {
 
 // ------------------------------------------------------------------ Groessen
 
-/// Bytes in lesbarer Form: `1536` wird `"1.5 KB"`.
+/// Bytes in readable form: `1536` becomes `"1.5 KB"`.
 ///
-/// Basis 1024 und die Praefixe ohne `i` (`KB` statt `KiB`) — das ist die Schreibweise, die
-/// Betriebssysteme und Werkzeuge tatsaechlich benutzen. Wer es normgerecht will, formatiert selbst;
-/// wer eine Dateigroesse anzeigt, will das hier.
+/// Base 1024 with the prefixes without `i` (`KB` rather than `KiB`), the spelling operating
+/// systems and tools actually use.
 pub fn formatBytes(bytes: int): string {
     if (bytes < 1024) {
         return formatInt(bytes, "") + " B";
@@ -130,7 +129,7 @@ pub fn formatBytes(bytes: int): string {
     var wert = bytes as float;
     var stufe = -1;
 
-    // Solange teilen, wie es eine groessere Einheit gibt UND der Wert sie fuellt.
+    // Divide while a larger unit exists and the value fills it.
     while (wert >= 1024.0 && stufe + 1 < einheiten.length) {
         wert = wert / 1024.0;
         stufe = stufe + 1;
@@ -141,18 +140,16 @@ pub fn formatBytes(bytes: int): string {
 
 // ------------------------------------------------------------------ Tabellen
 
-/// Richtet Spalten aneinander aus. Jede Zeile ist ein `string[]`; kurze Zeilen werden mit leeren
-/// Zellen aufgefuellt.
+/// Aligns columns. Each row is a `string[]`; short rows are padded with empty cells.
 ///
-/// Ohne Rahmen und ohne Kopfzeilen-Sonderbehandlung: was eine Tabelle bedeutet, weiss der
-/// Aufrufer. Diese Funktion macht nur das, was von Hand laestig ist — zweimal ueber die Daten
-/// laufen, um die Spaltenbreiten zu kennen, bevor die erste Zeile gedruckt wird.
+/// No borders and no header handling: what a table means is the caller's business. This does the
+/// tedious part — two passes over the data, to know the column widths before printing.
 pub fn table(rows: (string[])[], separator: string): string {
     if (rows.length == 0) {
         return "";
     }
 
-    // Erster Durchgang: die breiteste Zelle je Spalte.
+    // First pass: the widest cell per column.
     var spalten = 0;
     var i = 0;
     while (i < rows.length) {
@@ -176,7 +173,7 @@ pub fn table(rows: (string[])[], separator: string): string {
         i = i + 1;
     }
 
-    // Zweiter Durchgang: auffuellen und fuegen.
+    // Second pass: pad and join.
     var result = "";
     i = 0;
     while (i < rows.length) {
@@ -189,8 +186,7 @@ pub fn table(rows: (string[])[], separator: string): string {
                 result = result + separator;
             }
             let zelle = if (j < rows[i].length) rows[i][j] else "";
-            // Die letzte Spalte NICHT auffuellen: sonst haengen unsichtbare Leerzeichen am
-            // Zeilenende, und die sieht man erst im Diff.
+            // The last column is NOT padded, or invisible trailing spaces would remain.
             result = result + (if (j == spalten - 1) zelle else padEnd(zelle, breiten[j], ' '));
             j = j + 1;
         }

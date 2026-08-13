@@ -126,18 +126,18 @@ pub fn powInt(base: int, exponent: int): ?int {
 /// Division rounding towards negative infinity rather than towards zero.
 ///
 /// `/` and `%` follow the sign of the dividend, so `-7 / 2` is -3.
-/// Wer auf einem Raster rechnet (Kacheln, Zeitfenster), braucht -4. Beide Formen stehen hier
-/// nebeneinander, damit die Wahl sichtbar ist statt versteckt.
+/// Computing on a grid (tiles, time windows) needs -4. Both forms stand side by side so the
+/// choice is visible.
 pub fn divFloor(a: int, b: int): int {
     let q = a / b;
-    // Rest ungleich null UND Vorzeichen verschieden: dann hat die Division nach oben gerundet.
+    // Remainder non-zero AND signs differing: the division rounded up.
     if (a % b != 0 && ((a < 0) != (b < 0))) {
         return q - 1;
     }
     return q;
 }
 
-/// Der zu `divFloor` passende Rest — immer mit dem Vorzeichen von `b`.
+/// The remainder matching `divFloor`, always carrying the sign of `b`.
 pub fn modFloor(a: int, b: int): int {
     let rest = a % b;
     if (rest != 0 && ((rest < 0) != (b < 0))) {
@@ -162,13 +162,13 @@ pub fn sign(value: float): float {
     return if (value < 0.0) 0.0 - 1.0 else 0.0;
 }
 
-/// Schneidet Richtung null ab — `trunc(-2.7)` ist `-2.0`, `floor(-2.7)` waere `-3.0`.
+/// Truncates towards zero: `trunc(-2.7)` is `-2.0`, while `floor(-2.7)` would be `-3.0`.
 pub fn trunc(value: float): float {
     return if (value < 0.0) ceil(value) else floor(value);
 }
 
-/// `NaN` ist der einzige Wert, der sich selbst ungleich ist (IEEE 754). Deshalb braucht diese
-/// Funktion keine native Kante und keinen Bit-Zugriff.
+/// `NaN` is the only value unequal to itself (IEEE 754), so this needs no native edge and no bit
+/// access.
 pub fn isNaN(value: float): bool {
     return value != value;
 }
@@ -177,7 +177,7 @@ pub fn isInfinite(value: float): bool {
     if (isNaN(value)) {
         return false;
     }
-    // Unendlich ist der einzige Wert, der sich beim Verdoppeln nicht aendert und nicht null ist.
+    // Infinity is the only non-zero value unchanged by doubling.
     return value != 0.0 && value * 2.0 == value;
 }
 
@@ -189,13 +189,8 @@ pub fn exp(value: float): float {
     return pow(e, value);
 }
 
-// Nativ, obwohl `log(x) / log(basis)` sie ausdrueckt — und genau so standen sie zuerst hier.
-// Gemessen lieferte `log10(1000.0)` dabei 2.9999999999999996, und `as int` machte daraus 2. Eine
-// Bibliothek, bei der `log10` einer Zehnerpotenz danebenliegt, ist fuer ihren haeufigsten Zweck
-// kaputt.
-//
-// **Ableitbar heisst nicht gleichwertig.** Die Vorgabe "was die Sprache kann, bleibt in Lyric"
-// zielt auf Ausdrucksstaerke, nicht gegen Genauigkeit; ein Test hat den Unterschied gefunden.
+// Native although `log(x) / log(base)` expresses them: the derived form gave 2.9999999999999996
+// for `log10(1000.0)`, which `as int` turns into 2.
 pub fn log2(value: float): float;
 pub fn log10(value: float): float;
 
@@ -206,8 +201,8 @@ pub fn logBase(value: float, base: float): float {
 
 /// Kubikwurzel — auch für negative Werte.
 ///
-/// `pow(x, 1/3)` allein liefert für negative `x` NaN: eine gebrochene Potenz ist dort nicht
-/// definiert. Die dritte Wurzel schon, und das Vorzeichen wandert einfach heraus.
+/// `pow(x, 1/3)` alone yields NaN for negative `x`: a fractional power is undefined there. The
+/// cube root is not, and the sign simply moves out.
 pub fn cbrt(value: float): float {
     if (value < 0.0) {
         return 0.0 - pow(0.0 - value, 1.0 / 3.0);
@@ -215,7 +210,7 @@ pub fn cbrt(value: float): float {
     return pow(value, 1.0 / 3.0);
 }
 
-/// Die Länge der Hypotenuse.
+/// The length of the hypotenuse.
 pub fn hypot(a: float, b: float): float {
     return sqrt(a * a + b * b);
 }
@@ -242,16 +237,14 @@ pub fn toDegrees(radians: float): float {
 
 // ------------------------------------------------------------------ Zufall
 //
-// **xorshift64***, in Lyric. Der Zustand ist ein einziger `int`, und die drei Schiebeoperationen
-// samt Multiplikation sind gewoehnliche Arithmetik — es braucht keine native Kante.
+// xorshift64*, in Lyric. The state is a single `int` and three shifts.
 //
-// **Nicht kryptographisch.** Wer Schluessel erzeugt, braucht eine Quelle aus dem Betriebssystem;
-// das gehoert zu `std.os` und nicht hierher. Fuer Simulationen, Spiele und Testdaten ist xorshift
-// gut genug und schnell.
+// Not cryptographic. Generating keys needs a source from the operating system, which belongs to
+// `std.os`. For simulations, games and test data this is enough and fast.
 //
 // **Der Seed kommt vom Aufrufer** — es gibt kein `newRandom()` ohne Argument. Eine Zeitquelle als
-// Voreinstellung waere bequem und wuerde einen Lauf unreproduzierbar machen, und zwar
-// stillschweigend. Wer Zufall pro Lauf will, holt sich die Zeit aus `std.os` und sagt das damit
+// There is no default seed: it would make a run irreproducible, and silently so. A caller wanting
+// per-run randomness takes the time from `std.os` and says so.
 // hin.
 
 pub class Random {
@@ -272,14 +265,13 @@ pub class Random {
         if (hi <= lo) {
             return lo;
         }
-        // Der Betrag ERST, dann Modulo: ein negativer Rohwert gaebe sonst einen Rest unterhalb
-        // von `lo`.
+        // Magnitude first, then modulo: a negative raw value would otherwise land below `lo`.
         return lo + absInt(this.nextInt()) % (hi - lo);
     }
 
     /// Gleichverteilt in `[0, 1)`.
     pub mut fn nextFloat(): float {
-        // 53 Bit sind genau die Mantisse eines float64: mehr Bits waeren nicht darstellbar,
+        // 53 bits are exactly the mantissa of a float64; more would not be representable.
         // weniger verschenkten Auflösung.
         let bits = absInt(this.nextInt()) % 9007199254740992;
         return (bits as float) / 9007199254740992.0;
@@ -290,11 +282,10 @@ pub class Random {
     }
 }
 
-/// Ein Generator mit ausdrücklichem Seed.
+/// A generator with an explicit seed.
 ///
-/// Ein Seed von 0 wäre bei xorshift ein Fixpunkt — die Folge bliebe für immer 0. Er wird deshalb
-/// still ersetzt; das ist die eine Stelle, an der Stillschweigen richtig ist, weil die Alternative
-/// ein `panic` für eine völlig plausible Eingabe wäre.
+/// A seed of 0 is a fixed point for xorshift — the sequence would stay 0 forever — so it is
+/// replaced silently rather than panicking on a plausible input.
 pub fn newRandom(seed: int): Random {
     return Random { state = if (seed == 0) 0x2545F4914F6CDD1D else seed };
 }
