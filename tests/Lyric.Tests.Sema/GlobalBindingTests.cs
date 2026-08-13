@@ -6,15 +6,14 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Modul-Bindungen sind unveränderlich — ADR-025.
+/// Module bindings are immutable.
 ///
-/// <para><b>Beide Seiten stehen hier</b>, und das ist der Zweck dieser Datei: die Regel verbietet
-/// die Neubindung des <i>Namens</i>, nicht veränderlichen globalen Zustand. Ein Test, der nur das
-/// Verbot festhielte, ließe offen, wie weit es reicht — und genau diese Unklarheit hat bei ADR-020
-/// und ADR-023 je eine Regel überleben lassen, die niemand mehr begründen konnte.</para>
+/// <para>BOTH SIDES STAND HERE, and that is the purpose of this file: the rule forbids rebinding the
+/// NAME rather than mutable global state. A test holding only the prohibition would leave open how far
+/// it reaches — and exactly that vagueness let a rule nobody could justify survive twice before.</para>
 ///
-/// <para>Die Regel galt seit P5b und stand bis 2026-08-09 nur als Klammerkommentar in der
-/// Grammatik und als Parser-Meldung — ohne Begründung an einer Stelle, an der jemand sie
+/// <para>The rule stood only as a parenthesised comment in the grammar and as a parser message, without
+/// a reason at a place where someone would
 /// findet.</para>
 /// </summary>
 public class GlobalBindingTests
@@ -48,8 +47,8 @@ public class GlobalBindingTests
 
     [Fact]
     public void The_content_of_a_global_array_stays_mutable() =>
-        // ADR-020: 'let' bindet den Namen, nicht den Inhalt. Ohne diesen Test läse sich ADR-025
-        // wie ein Verbot von globalem Zustand, und das ist es nicht.
+        // A 'let' binds the name rather than the content. Without this test the rule would read as a
+        // prohibition of global state, and it is not that.
         Allowed("""
             let zahlen = [1, 2, 3];
             fn main(): int { zahlen[0] = 99; return zahlen[0]; }
@@ -65,7 +64,7 @@ public class GlobalBindingTests
 
     [Fact]
     public void The_name_itself_cannot_be_rebound() =>
-        // Das Einzige, was die Regel wirklich verhindert.
+        // The only thing the rule really prevents.
         Assert.Contains(Check("""
             let n = 0;
             fn main(): int { n = 5; return n; }

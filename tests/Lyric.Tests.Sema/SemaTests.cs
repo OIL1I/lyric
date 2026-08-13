@@ -8,9 +8,8 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Typprüfung (M3-Slice 2a). Die Tests zurren die vereinbarten Entscheidungen fest:
-/// ①A strikte Numerik, ②a Literal-Fit, `+`/`*` für string/T[], ④ Numerik-Casts,
-/// ⑤ Nullable-Operatoren (ohne Flow-Narrowing).
+/// Type checking. The tests pin down the agreed decisions: strict arithmetic, the literal fit, `+` and
+/// `*` for string and T[], numeric casts, and the nullable operators without flow narrowing.
 /// </summary>
 public class SemaTests
 {
@@ -47,7 +46,7 @@ public class SemaTests
         return acc;
     }
 
-    // Typ des Initializers der LETZTEN Bindung über alle Top-Level-Funktionen.
+    // The type of the initializer of the LAST binding over all top-level functions.
     private static (LyrType type, DiagnosticEngine de) LastInit(string program)
     {
         var (types, de, module) = Check(program);
@@ -63,7 +62,7 @@ public class SemaTests
     private static void AssertType(LyrType expected, LyrType actual) =>
         Assert.True(LyrType.Equal(expected, actual), $"expected '{TypeFacts.Display(expected)}', got '{TypeFacts.Display(actual)}'");
 
-    // --- ①A Numerik strikt + ②a Literal-Fit ---
+    // --- strict arithmetic and the literal fit ---
 
     [Fact]
     public void Int_arithmetic_is_int()
@@ -85,7 +84,7 @@ public class SemaTests
     public void Mixed_sized_arithmetic_is_rejected()
     {
         var (_, de) = LastInit("fn t(a: int, b: int8) { let x = a + b; }");
-        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0003"); // strikt: kein implizites Widening
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0003"); // strict: no implicit widening
     }
 
     [Fact]
@@ -93,7 +92,7 @@ public class SemaTests
     {
         var (t, de) = LastInit("fn t(a: int8) { let x = a + 1; }");
         Assert.False(de.HasErrors);
-        AssertType(Prim(PrimitiveKind.Int8), t); // '1' passt sich int8 an
+        AssertType(Prim(PrimitiveKind.Int8), t); // the '1' adapts to int8
     }
 
     [Fact]
@@ -114,7 +113,7 @@ public class SemaTests
         Assert.False(Check("fn t() { let x: float = 3; }").de.HasErrors);
     }
 
-    // --- `+`/`*` für string und T[] ---
+    // --- `+` and `*` for string and T[] ---
 
     [Fact]
     public void String_concat_and_repeat()
@@ -136,7 +135,7 @@ public class SemaTests
         Assert.Contains(LastInit("fn t() { let x = \"a\" + 1; }").de.Diagnostics, d => d.Code == "LYR-SEM0003");
     }
 
-    // --- Nullable (⑤ Operatoren, ohne Narrowing) ---
+    // --- nullable operators, without narrowing ---
 
     [Fact]
     public void Optional_widening_is_allowed()
@@ -184,7 +183,7 @@ public class SemaTests
         Assert.Contains(LastInit("fn t() { let x = true as int; }").de.Diagnostics, d => d.Code == "LYR-SEM0006");
     }
 
-    // --- Vergleiche / Logik / Bedingungen ---
+    // --- comparisons, logic, conditions ---
 
     [Fact]
     public void Comparison_and_logic_are_bool()
@@ -199,7 +198,7 @@ public class SemaTests
         Assert.Contains(Check("fn t(a: int) { if (a) { } }").de.Diagnostics, d => d.Code == "LYR-SEM0004");
     }
 
-    // --- Index / for-in / Inferenz-Fluss ---
+    // --- indexing, for-in, the inference flow ---
 
     [Fact]
     public void Array_index_yields_element_type()
@@ -212,10 +211,10 @@ public class SemaTests
     {
         var (t, de) = LastInit("fn t(a: int[]) { for (i in a) { let y = i; } }");
         Assert.False(de.HasErrors);
-        AssertType(LyrType.Int, t); // y = i, i ist das Array-Element
+        AssertType(LyrType.Int, t); // y = i, and i is the array element
     }
 
-    // --- Fehlerfälle ---
+    // --- error cases ---
 
     [Fact]
     public void Unknown_identifier_is_reported()
@@ -241,7 +240,7 @@ public class SemaTests
         Assert.Contains(Check("fn t() { let x; }").de.Diagnostics, d => d.Code == "LYR-SEM0010");
     }
 
-    // --- Slice 2b: Calls / Member / Struct-Init / composite ---
+    // --- calls, members, struct initializers, composites ---
 
     private static void AssertNamed(string name, LyrType t) => Assert.Equal(name, Assert.IsType<NamedRef>(t).Symbol.Name);
 
@@ -305,8 +304,8 @@ public class SemaTests
     [Fact]
     public void Enum_variant_construction()
     {
-        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Circle(2.5); }").type);   // tuple variant als Konstruktor
-        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Empty; }").type);         // Unit-Variante
+        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Circle(2.5); }").type);   // a tuple variant as a constructor
+        AssertNamed("Sh", LastInit("enum Sh { Circle(float), Empty; } fn t() { let a = Sh.Empty; }").type);         // a unit variant
     }
 
     [Fact]
@@ -327,7 +326,7 @@ public class SemaTests
     {
         var (t, de) = LastInit("fn t(n: int) { let r = match (n) { v => v }; }");
         Assert.False(de.HasErrors);
-        AssertType(LyrType.Int, t); // v bindet den int-Scrutinee, Arm-Body v → int
+        AssertType(LyrType.Int, t); // v binds the int scrutinee, and the arm body v is an int
     }
 
     [Fact]
@@ -338,7 +337,7 @@ public class SemaTests
         AssertType(LyrType.Int, fn.Return);
     }
 
-    // --- Slice 3a: Flow (Return-Coverage / DAA / Narrowing) ---
+    // --- flow: return coverage, definite assignment, narrowing ---
 
     [Fact]
     public void Missing_return_is_reported()
@@ -351,7 +350,7 @@ public class SemaTests
     public void Full_return_coverage_passes()
     {
         Assert.False(Check("fn f(c: bool): int { if (c) { return 1; } else { return 2; } }").de.HasErrors);
-        Assert.False(Check("fn f(): int { while (true) { } }").de.HasErrors); // divergiert
+        Assert.False(Check("fn f(): int { while (true) { } }").de.HasErrors); // diverges
         Assert.False(Check("fn f() { }").de.HasErrors);                       // void
     }
 
@@ -395,7 +394,7 @@ public class SemaTests
         Assert.Contains(Check("fn f(q: ?int) { var p = q; if (p != null) { p = null; let x = p + 1; } }").de.Diagnostics, d => d.Code == "LYR-SEM0003");
     }
 
-    // --- Robustheit ---
+    // --- robustness ---
 
     [Theory]
     [InlineData("fn t() { let x = ; }")]

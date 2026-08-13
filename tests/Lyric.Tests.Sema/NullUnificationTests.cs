@@ -6,18 +6,17 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Ein <c>null</c>-Zweig macht den anderen optional: <c>if (c) 5 else null</c> ist <c>?int</c>.
+/// A <c>null</c> branch makes the other one optional: <c>if (c) 5 else null</c> is <c>?int</c>.
 ///
-/// <para><b>Der Anlass ist ein Befund aus M8b/S9.</b> Beim Bau von <c>std.option</c> war
-/// <c>if (n &gt; 0) n * 10 else null</c> ein <c>LYR-SEM0016</c> — dieselbe Funktion mit zwei
-/// <c>return</c>-Statements daneben ging. Die Widening-Regel <c>T</c> → <c>?T</c> (§4) griff nur
-/// dort, wo ein Zieltyp bereits feststand (Zuweisung, Parameter, Rückgabe); bei einer
-/// Arm-Unifikation entsteht der Ergebnistyp erst.</para>
+/// <para>While building <c>std.option</c>, <c>if (n &gt; 0) n * 10 else null</c> was a
+/// <c>LYR-SEM0016</c>, while the same function with two <c>return</c> statements next to it worked. The
+/// widening rule <c>T</c> to <c>?T</c> applied only where a target type already stood — an assignment, a
+/// parameter, a return; in an arm unification the result type only arises there.</para>
 ///
-/// <para><b>Warum <c>match</c> hier mitgeprüft wird</b>: gemeldet war nur der <c>if</c>-Fall. Beim
-/// Nachmessen des Fixes zeigte sich, dass <c>match</c> eine <b>zweite</b> Unifikation hat, die den
-/// Fall ebenfalls nicht kannte — dieselbe Frage an zwei Stellen mit zwei Antworten. Der Test hält
-/// beide nebeneinander, damit die nächste Regel nicht wieder nur an einer landet.</para>
+/// <para>WHY <c>match</c> IS CHECKED HERE TOO: only the <c>if</c> case was reported. Re-measuring the
+/// fix showed that <c>match</c> has a SECOND unification which did not know the case either — the same
+/// question at two places with two answers. The test holds both side by side, so the next rule does not
+/// land at one of them again.</para>
 /// </summary>
 public class NullUnificationTests
 {
@@ -52,8 +51,8 @@ public class NullUnificationTests
             }
             """);
 
-    /// <summary>Die andere Reihenfolge. Ein Fix, der nur eine Seite kennt, bliebe mit nur einem
-    /// der beiden Tests grün — und zwar zufällig, je nachdem welche Seite geprüft wird.</summary>
+    /// <summary>The other order. A fix knowing only one side would stay green with only one of the two
+    /// tests, and by accident, depending on which side is checked.</summary>
     [Fact]
     public void The_null_branch_may_come_first() =>
         Compiles("""
@@ -62,8 +61,8 @@ public class NullUnificationTests
             }
             """);
 
-    /// <summary><c>?T</c> gegen <c>null</c> bleibt <c>?T</c> — Optionals verschachteln nicht, und
-    /// ein <c>??T</c> gäbe es in Lyric ohnehin nicht.</summary>
+    /// <summary><c>?T</c> against <c>null</c> stays <c>?T</c>: optionals do not nest, and a <c>??T</c>
+    /// would not exist in Lyric anyway.</summary>
     [Fact]
     public void An_already_optional_branch_does_not_nest() =>
         Compiles("""
@@ -73,7 +72,7 @@ public class NullUnificationTests
             """);
 
     /// <summary>
-    /// Die Gegenprobe. Ohne sie bliebe der Test auch grün, wenn <c>Unify</c> ab jetzt <b>jede</b>
+    /// The counter-check. Without it the test would stay green even if <c>Unify</c> accepted EVERY
     /// Kombination durchwinkte.
     /// </summary>
     [Fact]

@@ -8,21 +8,21 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// <b>Nichts wird stillschweigend ungeprüft durchgelassen.</b>
+/// NOTHING IS SILENTLY LET THROUGH UNCHECKED.
 ///
-/// <para>Diese Tests schützen eine Invariante, keine einzelne Regel: <see cref="ErrorType"/>
-/// bedeutet <i>ausschließlich</i> „hierfür wurde bereits eine Diagnose gemeldet". Jeder Konsument
-/// verlässt sich darauf und schweigt bei <c>Error</c> — wer den Typ auch für „ich weiß nicht, was
-/// das ist" benutzt, macht daraus ein stummes Durchwinken.</para>
+/// <para>These tests protect an invariant rather than a single rule: <see cref="ErrorType"/> means
+/// EXCLUSIVELY "a diagnostic has already been reported for this". Every consumer relies on it and stays
+/// silent on <c>Error</c>; whoever uses the type for "I do not know what this is" turns it into a silent
+/// pass.</para>
 ///
-/// <para>Genau das war der Zustand: sechs Konstrukte prüften vollständig durch, obwohl sie ungültig
-/// sind, und rissen jede Verwendung mit. Der schlimmste Fall war ein Tippfehler im Modulnamen —
-/// <c>import std.io.consle</c> — der die Prüfung jeder Nutzung des Imports abschaltete.</para>
+/// <para>That was the state: six constructs checked out completely although they are invalid, and took
+/// every use along. The worst case was a typo in a module name — <c>import std.io.consle</c> — which
+/// switched off the checking of every use of the import.</para>
 ///
-/// <para>Jede Fixture hier enthält deshalb <b>zusätzlich</b> einen groben Folgefehler
-/// (<c>.quatsch</c>, falsche Arität). Würde die Prüfung stumm abbrechen, meldete der Compiler gar
-/// nichts — <see cref="Assert.True(bool, string)"/> auf <c>HasErrors</c> ist die eigentliche
-/// Aussage, der Code-Vergleich nur die Präzisierung.</para>
+/// <para>Every fixture here therefore ALSO contains a coarse follow-up error (<c>.nonsense</c>, a wrong
+/// arity). Were the check to break off silently, the compiler would report nothing at all —
+/// <see cref="Assert.True(bool, string)"/> on <c>HasErrors</c> is the actual statement, the code
+/// comparison only the refinement.</para>
 /// </summary>
 public class SilentSkipTests
 {
@@ -52,20 +52,20 @@ public class SilentSkipTests
         Assert.Contains(de.Diagnostics, d => d.Code == code);
     }
 
-    // --- Ein Typ- oder Modulname in Wert-Position ---
+    // --- a type or module name in value position ---
 
     [Theory]
-    // Sieht aus wie ein Konstruktor, ist keiner: Lyric konstruiert über 'P { … }'. Vorher lieferte
-    // das Error, und Arität, Argumenttypen und '.quatsch' blieben allesamt ungeprüft.
+    // Looks like a constructor and is none: Lyric constructs through 'P { … }'. This used to yield Error,
+    // and the arity, the argument types and the '.nonsense' all stayed unchecked.
     [InlineData("class P { hp: int }\nfn main(): int { return P(1, 2, 3).quatsch; }")]
     [InlineData("class P { hp: int }\nfn main(): int { let x = P; return x.quatsch; }")]
     [InlineData("import std.io.console;\nfn main(): int { let x = console; return x.quatsch; }")]
     public void A_type_or_module_in_value_position_is_reported(string source) =>
         AssertReports(source, "LYR-SEM0052");
 
-    /// <summary>Die Gegenprobe — <b>ohne die wäre der Fix eine Verschlechterung</b>: als
-    /// Member-Ziel ist ein Typ- oder Modulname legitim, und beide Formen müssen weiter durchgehen.
-    /// Genau daran scheitert der naheliegende Fix „melde es einfach am Erzeuger".</summary>
+    /// <summary>The counter-check, without which the fix would be a regression: as a member target a type
+    /// or module name is legitimate, and both forms have to keep passing. That is what the obvious fix
+    /// "just report it at the producer" fails on.</summary>
     [Theory]
     [InlineData("class P {\n  hp: int,\n  static fn make(): P { return P { hp = 1 }; }\n}\nfn main(): int { return P.make().hp; }")]
     [InlineData("import std.io.console;\nfn main(): int { console.println(\"hi\"); return 0; }")]
@@ -80,10 +80,10 @@ public class SilentSkipTests
     // --- Unauffindbare Module ---
 
     /// <summary>
-    /// Der teuerste Fall. Ein fehlendes 'o' in <c>consle</c> galt als „extern/opak" — eine Regel
-    /// aus M3, als es den <c>ModuleLoader</c> noch nicht gab. Der Import blieb stumm, und beide
-    /// <c>println</c>-Aufrufe darunter ebenfalls, obwohl der eine den falschen Argumenttyp und der
-    /// andere die falsche Arität hat.
+    /// The most expensive case. A missing 'o' in <c>consle</c> counted as "external and opaque", a rule
+    /// from before the <c>ModuleLoader</c> existed. The import stayed silent, and so did both
+    /// <c>println</c> calls below, although one has the wrong argument type and the other the wrong
+    /// arity.
     /// </summary>
     [Fact]
     public void A_typo_in_a_module_path_is_reported() =>
@@ -101,8 +101,8 @@ public class SilentSkipTests
     public void An_unresolvable_module_is_reported(string source) =>
         AssertReports(source, "LYR-RES0003");
 
-    /// <summary>Ein unbekanntes <b>Symbol</b> in einem bekannten Modul wurde schon immer gemeldet.
-    /// Der Test hält die Asymmetrie fest, die es vorher gab: Symbol ja, Modul nein.</summary>
+    /// <summary>An unknown SYMBOL in a known module was always reported. The test holds the asymmetry
+    /// that existed before: symbol yes, module no.</summary>
     [Fact]
     public void An_unknown_symbol_in_a_known_module_is_reported() =>
         AssertReports("import std.io.console { printlnn };\nfn main(): int { return 0; }",
@@ -116,8 +116,8 @@ public class SilentSkipTests
 
     // --- Kontrolle ---
 
-    /// <summary>Zeigt, dass der Harness überhaupt Fehler sieht — sonst könnten alle Tests oben aus
-    /// dem falschen Grund grün sein.</summary>
+    /// <summary>Shows that the harness sees errors at all; otherwise every test above could be green for
+    /// the wrong reason.</summary>
     [Fact]
     public void The_harness_reports_an_ordinary_type_error() =>
         AssertReports("fn main(): int { let s: string = 1; return 0; }", "LYR-SEM0001");

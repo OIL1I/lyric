@@ -7,13 +7,13 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Die Regeln aus <b>ADR-014</b>: ein Member ohne Marker ist Instanz-Member mit gebundenem
-/// <c>this</c>, <c>static</c> heißt kein Empfänger.
+/// A member without a marker is an instance member with a bound <c>this</c>; <c>static</c> means no
+/// receiver.
 ///
-/// <para>Vor dieser Entscheidung war <b>jede Methode zugleich statisch und instanzgebunden</b> —
-/// gemessen gingen <c>P.getHp()</c> ohne Empfänger, <c>p.new()</c> auf einer Instanz und sogar
-/// <c>this.hp</c> in einer als <c>P.new()</c> gerufenen Methode durch die Typprüfung. Der letzte
-/// Fall hätte beim Lowering einen Feldzugriff ohne Objekt erzeugt.</para>
+/// <para>Before this decision EVERY METHOD WAS BOTH STATIC AND INSTANCE-BOUND — measured,
+/// <c>P.getHp()</c> without a receiver, <c>p.new()</c> on an instance and even <c>this.hp</c> in a
+/// method called as <c>P.new()</c> passed the type check. The last case would have produced a field
+/// access without an object in the lowering.</para>
 /// </summary>
 public class StaticMemberTests
 {
@@ -66,8 +66,8 @@ public class StaticMemberTests
             fn main(): int { let p = P { hp = 2 }; return p.make().hp; }
             """, "LYR-SEM0055");
 
-    /// <summary>Der gefährlichste Fall: <c>this</c> ohne jedes Objekt. Er lief durch, weil eine
-    /// Fabrik dieselbe Methode war wie eine Instanzmethode.</summary>
+    /// <summary>The most dangerous case: <c>this</c> without any object. It passed, because a factory was
+    /// the same method as an instance method.</summary>
     [Fact]
     public void This_inside_a_static_member_is_reported() =>
         AssertReports(
@@ -87,7 +87,7 @@ public class StaticMemberTests
             fn main(): int { return P.hp; }
             """, "LYR-SEM0055");
 
-    // --- Marker-Kombinationen ---
+    // --- marker combinations ---
 
     [Fact]
     public void Static_and_mut_together_are_reported() =>
@@ -101,11 +101,11 @@ public class StaticMemberTests
             """, "LYR-SEM0054");
 
     /// <summary>
-    /// <c>mut</c> an einer Klassen-Methode bleibt <b>erlaubt</b>. Es setzt dort nichts durch, aber
-    /// <c>Doku.md</c> §10.2 führt es ausdrücklich als Lesbarkeits-Konvention, und Interfaces
-    /// deklarieren <c>mut fn</c>, das implementierende Klassen erfüllen müssen.
+    /// <c>mut</c> on a class method stays ALLOWED. It enforces nothing there, but the documentation lists
+    /// it explicitly as a readability convention, and interfaces declare <c>mut fn</c> that implementing
+    /// classes have to satisfy.
     ///
-    /// <para>Die erste Fassung von ADR-014 wollte das verbieten; der Test hält fest, warum nicht.</para>
+    /// <para>The first version of the decision wanted to forbid it; the test holds why not.</para>
     /// </summary>
     [Fact]
     public void Mut_on_a_class_method_stays_legal() =>
@@ -136,8 +136,8 @@ public class StaticMemberTests
             fn main(): int { let p = P.new(7); return p.get() + P.ZERO; }
             """);
 
-    /// <summary>Eine <c>static let</c>-Konstante hat kein <c>this</c> — ihr Initialisierer wird
-    /// ohne Empfänger geprüft.</summary>
+    /// <summary>A <c>static let</c> constant has no <c>this</c>: its initializer is checked without a
+    /// receiver.</summary>
     [Fact]
     public void This_inside_a_static_binding_is_reported() =>
         AssertReports(

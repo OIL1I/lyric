@@ -8,11 +8,10 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Pattern-Match voll — M4-Slice 2 (Sprache.md §5/§6.3). Enum-Payload-Destructuring mit
-/// echten Typen (Tuple-/Struct-Varianten, generisch substituiert), Struct-/Tuple-
-/// Destructuring, Or-Pattern-Konsistenz, Literal-/Range-Pattern-Typprüfung,
-/// Exhaustivität (SEM0050, D4 pragmatisch), Block-Arm-Regel im match-Ausdruck (SEM0033)
-/// und kontextuelle/qualifizierte Enum-Varianten-Konstruktion (§3.4).
+/// Pattern matching in full: enum payload destructuring with real types (tuple and struct variants,
+/// generically substituted), struct and tuple destructuring, or-pattern consistency, literal and range
+/// pattern type checking, exhaustiveness (SEM0050), the block arm rule in a match expression (SEM0033)
+/// and contextual and qualified enum variant construction.
 /// </summary>
 public class PatternTests
 {
@@ -60,7 +59,7 @@ public class PatternTests
         return acc;
     }
 
-    // Typ des Initializers der LETZTEN Bindung über alle Top-Level-Funktionen.
+    // The type of the initializer of the LAST binding over all top-level functions.
     private static (LyrType type, DiagnosticEngine de) LastInit(string body)
     {
         var (types, de, module) = Check(Prelude + "\n" + body);
@@ -79,7 +78,7 @@ public class PatternTests
     private static void AssertClean(DiagnosticEngine de) =>
         Assert.False(de.HasErrors, string.Join("; ", de.Diagnostics.Select(d => $"{d.Code}: {d.Message}")));
 
-    // --- Enum-Payload-Destructuring bindet mit echten Typen ---
+    // --- enum payload destructuring binds with real types ---
 
     [Fact]
     public void Tuple_variant_payload_binds_with_real_type()
@@ -136,13 +135,13 @@ public class PatternTests
         AssertClean(de);
     }
 
-    // --- Tuple-/Struct-Destructuring ---
+    // --- tuple and struct destructuring ---
 
     [Fact]
     public void Tuple_pattern_destructures_and_is_exhaustive()
     {
         var (t, de) = LastInit("fn u(p: (int, string)) { let x = match (p) { (a, b) => a }; }");
-        AssertClean(de); // irrefutabel → kein SEM0050
+        AssertClean(de); // irrefutable, so no SEM0050
         AssertType(LyrType.Int, t);
     }
 
@@ -154,14 +153,14 @@ public class PatternTests
         AssertType(LyrType.Int, t);
     }
 
-    // --- Optional im match (Doku §6): null-Arm plus Inner-Bindung ---
+    // --- an optional in a match: the null arm plus the inner binding ---
 
     [Fact]
     public void Optional_binding_arm_narrows_to_inner_type()
     {
         var (t, de) = LastInit("fn u(m: ?int) { let x = match (m) { null => 0, v => v }; }");
         AssertClean(de);
-        AssertType(LyrType.Int, t); // v bindet int, nicht ?int
+        AssertType(LyrType.Int, t); // v binds int rather than ?int
     }
 
     [Fact]
@@ -171,7 +170,7 @@ public class PatternTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0050" && d.Message.Contains("null"));
     }
 
-    // --- Literal-/Range-Patterns werden typgeprüft ---
+    // --- literal and range patterns are type-checked ---
 
     [Fact]
     public void Literal_pattern_type_mismatch_is_reported()
@@ -208,7 +207,7 @@ public class PatternTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0029");
     }
 
-    // --- Varianten-Fehler ---
+    // --- variant errors ---
 
     [Fact]
     public void Unknown_variant_is_reported()
@@ -259,7 +258,7 @@ public class PatternTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0029");
     }
 
-    // --- Or-Patterns: Bindungs-Konsistenz ---
+    // --- or-patterns: binding consistency ---
 
     [Fact]
     public void Or_pattern_with_consistent_binding_is_clean()
@@ -283,7 +282,7 @@ public class PatternTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0032");
     }
 
-    // --- Exhaustivität (SEM0050, D4) ---
+    // --- exhaustiveness (SEM0050) ---
 
     [Fact]
     public void Missing_variants_are_reported_by_name()
@@ -369,7 +368,7 @@ public class PatternTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0050");
     }
 
-    // --- Block-Arme (Block-Wert-Regel): im match-Ausdruck nur mit return/throw ---
+    // --- block arms: in a match expression only with a return or a throw ---
 
     [Fact]
     public void Diverging_block_arm_in_match_expression_is_allowed()
@@ -399,7 +398,7 @@ public class PatternTests
         AssertClean(de);
     }
 
-    // --- Exhaustivität speist Return-Coverage und DAA ---
+    // --- exhaustiveness feeds return coverage and definite assignment ---
 
     [Fact]
     public void Exhaustive_match_counts_for_return_coverage()
@@ -414,7 +413,7 @@ public class PatternTests
                 }
             }
             """);
-        AssertClean(de); // kein SEM0017
+        AssertClean(de); // no SEM0017
     }
 
     [Fact]
@@ -430,10 +429,10 @@ public class PatternTests
                 return x;
             }
             """);
-        AssertClean(de); // kein SEM0018
+        AssertClean(de); // no SEM0018
     }
 
-    // --- Enum-Varianten-Konstruktion (§3.4): qualifiziert + kontextuell ---
+    // --- enum variant construction: qualified and contextual ---
 
     [Fact]
     public void Contextual_variant_construction_from_declared_binding()
@@ -507,7 +506,7 @@ public class PatternTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0031");
     }
 
-    // --- Leeres Array-Literal nimmt den Kontext-Typ ---
+    // --- an empty array literal takes the context type ---
 
     [Fact]
     public void Empty_array_literal_takes_expected_element_type()

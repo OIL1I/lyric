@@ -7,20 +7,19 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// <c>panic</c> divergiert (§9, Rückgabetyp <c>never</c>) — und die Flussanalyse muss das sehen,
-/// egal über welchen Namen es erreicht wurde.
+/// <c>panic</c> diverges, having the return type <c>never</c>, and the flow analysis has to see that no
+/// matter which name it was reached through.
 ///
-/// <para><b>Der Anlass ist ein Befund aus M8b/S9</b>, und die gemeldete Ursache war die falsche.
-/// Notiert war „<c>never</c> ist für die Flussanalyse unsichtbar"; gemessen war es das <b>nicht</b>
-/// — <c>Flow.AlwaysReturns</c> behandelt einen divergierenden <c>ExprStmt</c> seit jeher. Die
-/// eigentliche Ursache: <c>panic</c> gibt es <b>zweimal</b>. Einmal als Builtin im Wurzel-Scope,
-/// damit es ohne Import aufrufbar ist, und einmal als native Deklaration in <c>std.core</c>, die
-/// ihm Signatur und Native-Bindung gibt. Nur das Builtin trug <c>never</c>; wer
-/// <c>import std.core { panic }</c> schrieb, bekam ein <c>void</c>.</para>
+/// <para>The reported cause was the wrong one. What was noted was "<c>never</c> is invisible to the flow
+/// analysis"; measured, it was NOT — <c>Flow.AlwaysReturns</c> has always handled a diverging
+/// <c>ExprStmt</c>. The actual cause: <c>panic</c> exists TWICE. Once as a builtin in the root scope, so
+/// it is callable without an import, and once as a native declaration in <c>std.core</c>, which gives it
+/// its signature and native binding. Only the builtin carried <c>never</c>; whoever wrote
+/// <c>import std.core { panic }</c> got a <c>void</c>.</para>
 ///
-/// <para>Deshalb steht jeder Fall hier <b>doppelt</b> — einmal über den Builtin-Namen, einmal über
-/// den importierten. Genau diese Verdopplung hat den Fehler sichtbar gemacht, und ohne sie wäre er
-/// beim nächsten Mal wieder unsichtbar.</para>
+/// <para>Every case therefore stands here TWICE — once through the builtin name, once through the
+/// imported one. Exactly that duplication made the fault visible, and without it it would be invisible
+/// next time.</para>
 /// </summary>
 public class PanicDivergenceTests
 {
@@ -48,12 +47,12 @@ public class PanicDivergenceTests
             string.Join("\n", de.Diagnostics.Select(d => $"{d.Code}: {d.Message}")));
     }
 
-    /// <summary>Ohne Import — das eingebaute <c>panic</c>. Mit Import — die Deklaration aus
-    /// <c>std.core</c>. Dieselbe Funktion, und ab jetzt dieselbe Antwort.</summary>
+    /// <summary>Without an import: the built-in <c>panic</c>. With an import: the declaration from
+    /// <c>std.core</c>. The same function, and from now on the same answer.</summary>
     private const string Builtin = "";
     private const string Imported = "import std.core { panic };\n";
 
-    // ------------------------------------------------------------------ Rückgabe-Abdeckung
+    // ------------------------------------------------------------------ return coverage
 
     [Theory]
     [InlineData(Builtin)]
@@ -82,9 +81,9 @@ public class PanicDivergenceTests
     // ------------------------------------------------------------------ Gegenprobe
 
     /// <summary>
-    /// Ohne diesen Test bliebe alles oben auch dann grün, wenn die Rückgabe-Abdeckung ab jetzt
-    /// jede Funktion durchwinkte. Eine gewöhnliche <c>void</c>-Funktion am Ende deckt kein
-    /// <c>return</c> ab — sie kommt zurück.
+    /// Without this test everything above would stay green even if the return coverage waved every
+    /// function through. An ordinary <c>void</c> function at the end covers no <c>return</c>: it comes
+    /// back.
     /// </summary>
     [Fact]
     public void An_ordinary_void_call_does_not_cover_a_missing_return()

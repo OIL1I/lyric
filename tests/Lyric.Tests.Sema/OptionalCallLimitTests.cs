@@ -6,15 +6,15 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Wo <c>?.</c> mit einem Aufruf <b>aufhört</b> (Sprache.md §7).
+/// Where <c>?.</c> with a call STOPS.
 ///
-/// <para><b>Ein Glied kann eine Methode sein oder einen Funktions-Wert halten</b>, und nur im
-/// ersten Fall gibt es eine Frage. Bei <c>f: ?fn() -&gt; int</c> sind es zwei — ob der Empfänger
-/// da ist und ob das Feld belegt ist — und ein einzelnes <c>?</c>. Wer hier auspackt, beantwortet
-/// die zweite stillschweigend mit ja, und das ist ein Aufruf auf null.</para>
+/// <para>A LINK CAN BE A METHOD OR HOLD A FUNCTION VALUE, and only in the first case is there one
+/// question. For <c>f: ?fn() -&gt; int</c> there are two — whether the receiver is there and whether the
+/// field is set — and a single <c>?</c>. Unwrapping here answers the second silently with yes, and that
+/// is a call on null.</para>
 ///
-/// <para>Die Sprache hat kein <c>?()</c>. Also gibt es die Form nicht, und die Meldung sagt das
-/// samt Ausweg — statt der alten Auskunft über einen Zwischentyp, den niemand hingeschrieben
+/// <para>The language has no <c>?()</c>. The form therefore does not exist, and the message says so
+/// together with the way out, rather than the old statement about an intermediate type nobody
 /// hat.</para>
 /// </summary>
 public class OptionalCallLimitTests
@@ -30,7 +30,7 @@ public class OptionalCallLimitTests
         return de.Diagnostics;
     }
 
-    /// <summary>Der gefährliche Fall: ohne die Meldung würde der Aufruf auf einem <c>null</c>
+    /// <summary>The dangerous case: without the message the call would run on a <c>null</c>
     /// stattfinden.</summary>
     [Fact]
     public void A_chain_onto_a_nullable_function_field_is_rejected()
@@ -48,10 +48,9 @@ public class OptionalCallLimitTests
     }
 
     /// <summary>
-    /// Und der harmlose daneben. Er ist <b>ebenfalls</b> abgelehnt, weil die Unterscheidung an der
-    /// Bindung hängt und nicht an der Nullbarkeit — ein indirekter Aufruf über ein
-    /// <c>?.</c>-Glied ist keine Form der Sprache. Die Meldung nennt den Ausweg, und der ist eine
-    /// Zeile.
+    /// And the harmless one beside it. It is rejected AS WELL, because the distinction hangs on the
+    /// binding rather than on nullability — an indirect call through a <c>?.</c> link is no form of the
+    /// language. The message names the way out, and it is one line.
     /// </summary>
     [Fact]
     public void A_chain_onto_a_plain_function_field_is_rejected_too() =>
@@ -64,7 +63,7 @@ public class OptionalCallLimitTests
             }
             """), d => d.Code == "LYR-SEM0062");
 
-    /// <summary>Der Ausweg aus der Meldung muss tatsächlich funktionieren — sonst ist sie ein
+    /// <summary>The way out named by the message has to work; otherwise it is a
     /// Hinweis ins Leere.</summary>
     [Fact]
     public void Reading_the_field_first_works()
@@ -82,8 +81,8 @@ public class OptionalCallLimitTests
         Assert.Empty(diagnostics);
     }
 
-    /// <summary>Die Gegenprobe: eine METHODE bleibt aufrufbar. Ohne sie wäre eine zu strenge
-    /// Bedingung grün.</summary>
+    /// <summary>The counter-check: a METHOD stays callable. Without it a condition that is too strict
+    /// would be green.</summary>
     [Fact]
     public void A_method_is_still_callable_through_a_chain() =>
         Assert.Empty(Check("""

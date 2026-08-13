@@ -9,10 +9,10 @@ namespace Lyric.Tests.Sema;
 
 /// <summary>
 /// Lambdas + Closures — M4-Slice 4a (Sprache.md §6.2, ADR-011, D5/D9). Bidirektionale
-/// Inferenz: unannotierte Parameter nehmen den Kontext-FnType (Call-Argument, Binding,
-/// Return, Feld); generische Calls laufen zweiphasig (T aus eager Argumenten, U aus dem
-/// Lambda-Return). Block-Lambdas liefern Werte über 'return' und brauchen Annotation
-/// oder Kontext (SEM0046); 'return' checkt gegen die Lambda. Captures werden erfasst.
+/// Inference: unannotated parameters take the context FnType (a call argument, a binding, a return, a
+/// field); generic calls run in two phases (T from the eagerly typed arguments, U from the lambda
+/// return). Block lambdas deliver values through 'return' and need an annotation or a context
+/// (SEM0046); a 'return' checks against the lambda. Captures are recorded.
 /// </summary>
 public class LambdaTests
 {
@@ -77,7 +77,7 @@ public class LambdaTests
     private static void AssertType(LyrType expected, LyrType actual) =>
         Assert.True(LyrType.Equal(expected, actual), $"expected '{TypeFacts.Display(expected)}', got '{TypeFacts.Display(actual)}'");
 
-    // --- Kontext aus der Call-Position (D5) ---
+    // --- context from the call position ---
 
     [Fact]
     public void Call_argument_types_unannotated_params()
@@ -100,7 +100,7 @@ public class LambdaTests
     {
         var (t, de) = LastInit("""fn u(xs: int[]) { let ys = map(xs, (x) => f"{x}"); }""");
         AssertClean(de);
-        AssertType(new ArrayOf(LyrType.String, null), t); // U = string aus dem Lambda-Body
+        AssertType(new ArrayOf(LyrType.String, null), t); // U = string from the lambda body
     }
 
     [Fact]
@@ -110,7 +110,7 @@ public class LambdaTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001");
     }
 
-    // --- Kontext aus Binding / Return / Feld ---
+    // --- context from a binding, a return or a field ---
 
     [Fact]
     public void Binding_context_types_the_lambda()
@@ -162,7 +162,7 @@ public class LambdaTests
         AssertType(new FnType([LyrType.Int], new FnType([LyrType.Int], LyrType.Int)), t);
     }
 
-    // --- Block-Lambdas (D9) ---
+    // --- block lambdas ---
 
     [Fact]
     public void Block_lambda_with_context_is_clean()
@@ -180,13 +180,13 @@ public class LambdaTests
     public void Return_in_lambda_checks_against_the_lambda()
     {
         var de = Diags("""fn u() { let f: fn(int) -> int = (x) => { return "no"; }; }""");
-        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001"); // string → int (Lambda-Return!)
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001"); // string to int, on the lambda return
     }
 
     [Fact]
     public void Return_in_lambda_does_not_leak_into_the_function()
     {
-        // return x (int) gehört der Lambda — die umgebende Funktion returnt string.
+        // 'return x' with an int belongs to the lambda; the enclosing function returns a string.
         AssertClean(Diags("""
             fn t(): string {
                 let f: fn(int) -> int = (x) => { return x; };
@@ -202,7 +202,7 @@ public class LambdaTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0046");
     }
 
-    // --- D11: wertlose Block-Lambdas ohne Kontext sind void ---
+    // --- valueless block lambdas without a context are void ---
 
     [Fact]
     public void Void_block_lambda_without_context_defaults_to_void()
@@ -229,7 +229,7 @@ public class LambdaTests
     [Fact]
     public void Void_defaulted_block_lambda_returning_a_value_is_still_flagged()
     {
-        // Wert-return im Body → HasValueReturn → SEM0046 (braucht Annotation/Kontext), kein void-Default.
+        // A value return in the body gives HasValueReturn and SEM0046, not the void default.
         var de = Diags("fn u() { let f = (x: int) => { let y = x; return y; }; }");
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0046");
     }
@@ -250,7 +250,7 @@ public class LambdaTests
     [Fact]
     public void Void_expression_lambda_discards_the_value()
     {
-        AssertClean(Diags("fn u() { each((x) => x + 1); }")); // Wert wird verworfen, kein Fehler
+        AssertClean(Diags("fn u() { each((x) => x + 1); }")); // the value is discarded, which is no error
     }
 
     // --- Captures (ADR-011) ---
@@ -286,7 +286,7 @@ public class LambdaTests
         Assert.Empty(captured);
     }
 
-    // --- DAA über die Lambda-Grenze ---
+    // --- definite assignment across the lambda boundary ---
 
     [Fact]
     public void Unassigned_capture_at_creation_is_reported()

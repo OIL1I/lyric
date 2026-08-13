@@ -6,29 +6,25 @@ using Lyric.Sema;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Konformanz gegen ein <b>generisches</b> Interface: <c>Src&lt;int&gt;</c> und
-/// <c>Src&lt;string&gt;</c> sind dasselbe Symbol und verschiedene Anforderungen.
+/// Conformance against a GENERIC interface: <c>Src&lt;int&gt;</c> and <c>Src&lt;string&gt;</c> are the
+/// same symbol and different requirements.
 ///
-/// <para><b>Der Anlass ist der ernsteste Befund dieser Meilenstein-Arbeit.</b> Bis 2026-08-11
-/// verglich die Konformanz nur das Interface-<i>Symbol</i>. Damit erfüllte
-/// <c>class Ones :: [Src&lt;int&gt;]</c> ein <c>&lt;T :: [Src&lt;string&gt;]&gt;</c>, und der
-/// Rumpf legte einen <c>i64</c> in einen <c>string</c>-Slot. Gemessen:</para>
-///
+/// <para>The conformance used to compare only the interface SYMBOL. A
+/// <c>class Ones :: [Src&lt;int&gt;]</c> therefore satisfied a <c>&lt;T :: [Src&lt;string&gt;]&gt;</c>, and
+/// the body put an <c>i64</c> into a <c>string</c> slot. Measured:</para>
 /// <list type="bullet">
-///   <item><description><b>Debug</b>: Verifier-Absturz
-///     (<c>store of t1 (i64) into l1 (string)</c>).</description></item>
-///   <item><description><b>Release</b> — also das, was ausgeliefert wird — <b>lief durch</b> und
-///     lieferte eine stille falsche Antwort. Der Bytecode-Loader fing es ebenfalls
-///     nicht.</description></item>
+///   <item><description>DEBUG: a verifier crash.</description></item>
+///   <item><description>RELEASE — what gets shipped — RAN THROUGH and gave a silently wrong answer. The
+///     bytecode loader did not catch it either.</description></item>
 /// </list>
 ///
-/// <para>Das ist kein fehlendes Feature, sondern ein Typprüfer, der ein Programm annimmt, dessen
-/// Typen nicht halten. Dass .NET den Schaden eindämmt (ein leerer String statt eines
-/// Speicherfehlers), ist Glück der Wertdarstellung und keine Zusage der Sprache.</para>
+/// <para>That is not a missing feature but a type checker accepting a program whose types do not hold.
+/// That .NET contains the damage — an empty string rather than a memory fault — is luck of the value
+/// representation and no promise of the language.</para>
 ///
-/// <para><b>Beide Richtungen stehen hier</b>: die falsche Instanziierung muss scheitern, und die
-/// richtige muss weiter durchgehen. Ein Fix, der nur die erste Hälfte prüft, könnte
-/// <c>Map&lt;K, V&gt;</c> und <c>Iterator&lt;T&gt;</c> unbenutzbar machen, ohne dass es
+/// <para>BOTH DIRECTIONS STAND HERE: the wrong instantiation has to fail, and the right one has to keep
+/// passing. A fix checking only the first half could make <c>Map&lt;K, V&gt;</c> and
+/// <c>Iterator&lt;T&gt;</c> unusable without it
 /// auffiele.</para>
 /// </summary>
 public class GenericConformanceTests
@@ -67,7 +63,7 @@ public class GenericConformanceTests
 
     // ------------------------------------------------------------------ Constraints
 
-    /// <summary>Der gemeldete Fall.</summary>
+    /// <summary>The reported case.</summary>
     [Fact]
     public void A_constraint_rejects_the_wrong_type_argument() =>
         Rejects(Interface + """
@@ -75,7 +71,7 @@ public class GenericConformanceTests
             fn main(): int { let x = nimm(Ones { }); return 0; }
             """);
 
-    /// <summary>Die Gegenprobe — ohne sie wäre ein Fix grün, der <b>alles</b> ablehnt.</summary>
+    /// <summary>The counter-check: without it a fix rejecting EVERYTHING would be green.</summary>
     [Fact]
     public void A_constraint_accepts_the_right_type_argument() =>
         Compiles(Interface + """
@@ -84,9 +80,8 @@ public class GenericConformanceTests
             """);
 
     /// <summary>
-    /// Ein Constraint, der den eigenen Typ-Parameter nennt (ADR-024, der M4-Rest). Er ist der
-    /// Grund, warum die volle Substitutionsabbildung durchgereicht wird und nicht ein Parameter
-    /// nach dem anderen.
+    /// A constraint naming its own type parameter. It is the reason the full substitution map is passed
+    /// through rather than one parameter at a time.
     /// </summary>
     [Fact]
     public void A_constraint_over_its_own_parameter_still_works() =>
@@ -98,8 +93,8 @@ public class GenericConformanceTests
             fn main(): int { let x = beide(P { }, P { }); return 0; }
             """);
 
-    /// <summary>Eine generische Klasse erfüllt das Interface mit <b>ihrem</b> Typargument:
-    /// <c>Box&lt;int&gt;</c> ist ein <c>Src&lt;int&gt;</c> und kein <c>Src&lt;string&gt;</c>.
+    /// <summary>A generic class satisfies the interface with ITS OWN type argument:
+    /// a <c>Box&lt;int&gt;</c> is a <c>Src&lt;int&gt;</c> and no <c>Src&lt;string&gt;</c>.
     /// </summary>
     [Fact]
     public void A_generic_class_conforms_with_its_own_type_argument() =>
@@ -121,11 +116,11 @@ public class GenericConformanceTests
             fn main(): int { return nimm(Box<string> { v = "a" }); }
             """);
 
-    // ------------------------------------------------------------------ Zuweisung
+    // ------------------------------------------------------------------ assignment
 
     /// <summary>
-    /// Dieselbe Frage an der zweiten Stelle: die Zuweisung an einen Interface-Typ. Sie ging über
-    /// denselben Vergleich und hatte deshalb dieselbe Lücke — <b>eine Frage, zwei Stellen</b>.
+    /// The same question at the second place: an assignment to an interface type. It went through the
+    /// same comparison and therefore had the same gap — ONE QUESTION, TWO PLACES.
     /// </summary>
     [Fact]
     public void An_assignment_to_a_generic_interface_checks_the_type_argument() =>
@@ -145,12 +140,12 @@ public class GenericConformanceTests
             }
             """);
 
-    // ------------------------------------------------------------------ nicht-generisch
+    // ------------------------------------------------------------------ non-generic
 
     /// <summary>
-    /// Ein Interface <b>ohne</b> Typargumente vergleicht weiter über das Symbol — dort gibt es
-    /// nichts zu unterscheiden. Ohne diesen Test bliebe unbemerkt, wenn der strengere Vergleich
-    /// den gewöhnlichen Fall mitnimmt, und das ist die Mehrzahl allen Codes.
+    /// An interface WITHOUT type arguments still compares through the symbol: there is nothing to
+    /// distinguish there. Without this test it would go unnoticed if the stricter comparison took the
+    /// ordinary case along with it, and that is the majority of all code.
     /// </summary>
     [Fact]
     public void A_plain_interface_still_conforms() =>
@@ -162,8 +157,8 @@ public class GenericConformanceTests
             fn main(): int { let s = nimm(A { }); return 0; }
             """);
 
-    /// <summary>Und über einen <c>extend</c>-Block (§3.6) — der zweite Weg zur Konformanz, der
-    /// seit P9b durch dieselbe Funktion läuft.</summary>
+    /// <summary>And through an <c>extend</c> block: the second route to conformance, running through the
+    /// same function.</summary>
     [Fact]
     public void Conformance_through_an_extend_block_still_works() =>
         Compiles("""

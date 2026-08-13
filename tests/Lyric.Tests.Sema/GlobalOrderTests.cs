@@ -7,13 +7,13 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Konstanten werden in <b>Deklarationsreihenfolge</b> initialisiert; ein Initialisierer darf nur
-/// lesen, was vor ihm steht (<c>LYR-SEM0057</c>).
+/// Constants are initialized in DECLARATION ORDER; an initializer may read only what stands before it
+/// (<c>LYR-SEM0057</c>).
 ///
-/// <para>Diese Prüfung existiert wegen der überladenen <c>ErrorType</c>-Invariante: ohne sie lieferte
-/// der Lookup eines noch nicht berechneten Globals still <see cref="LyrType.Error"/> — „schon
-/// gemeldet" —, die Sema schwieg, und das Lowering stürzte später über einen <c>&lt;error&gt;</c>-Typ
-/// ab. Der Fehler muss dort entstehen, wo er sichtbar ist.</para>
+/// <para>This check exists because of the overloaded <c>ErrorType</c> invariant: without it the lookup
+/// of a global not yet computed silently yields <see cref="LyrType.Error"/> — "already reported" — the
+/// sema stays silent, and the lowering later trips over an <c>&lt;error&gt;</c> type. The error has to
+/// arise where it is visible.</para>
 /// </summary>
 public class GlobalOrderTests
 {
@@ -82,8 +82,8 @@ public class GlobalOrderTests
 
     [Fact]
     public void A_function_body_may_read_any_constant() =>
-        // Nur INNERHALB eines Initialisierers gilt die Reihenfolge. Wenn ein Rumpf läuft, ist die
-        // Init-Phase längst vorbei — dort wäre die Einschränkung reine Schikane.
+        // The order applies INSIDE an initializer only. Once a body runs the init phase is long over, and
+        // the restriction would be pure harassment there.
         AssertClean("""
             fn f(): int { return k; }
             let k = 4;

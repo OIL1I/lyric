@@ -8,15 +8,14 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Generics — M4-Slice 1a (Sprache.md §3.1/§4). Fundament: Typ-Params lösen auf
-/// (kein RES0002 mehr), generische Instanzen substituieren Member-Typen (Stack&lt;int&gt;.value
-/// → int), Member auf einem Typ-Param T kommen ausschließlich aus dessen Constraints (D2),
-/// Arity wird geprüft. Konstruktion (Stack&lt;int&gt; { }) und Call-Inferenz sind Slice 1b.
+/// Generics, the foundation: type parameters resolve (no RES0002 any more), generic instances
+/// substitute member types (Stack&lt;int&gt;.value becomes int), members on a type parameter T come
+/// exclusively from its constraints, and the arity is checked.
 /// </summary>
 public class GenericsTests
 {
-    // Gemeinsame Definitionen; jeder Test hängt seinen eigenen Code an. Die Prelude-Funktionen
-    // haben keine let-Bindungen → sie stören LastInit nicht.
+    // Shared definitions; every test appends its own code. The prelude functions have no let bindings, so
+    // they do not disturb LastInit.
     private const string Prelude = """
         struct Box<T> { value: T }
         struct Vec<T> { items: T[] }
@@ -60,7 +59,7 @@ public class GenericsTests
         return acc;
     }
 
-    // Typ des Initializers der LETZTEN Bindung über alle Top-Level-Funktionen.
+    // The type of the initializer of the LAST binding over all top-level functions.
     private static (LyrType type, DiagnosticEngine de) LastInit(string body)
     {
         var (types, de, module) = Check(Prelude + "\n" + body);
@@ -76,7 +75,7 @@ public class GenericsTests
     private static void AssertType(LyrType expected, LyrType actual) =>
         Assert.True(LyrType.Equal(expected, actual), $"expected '{TypeFacts.Display(expected)}', got '{TypeFacts.Display(actual)}'");
 
-    // --- Definitionen typen sauber (kein RES0002/Fehler) ---
+    // --- definitions type cleanly, with no RES0002 or error ---
 
     [Fact]
     public void Generic_struct_definition_checks_clean()
@@ -99,7 +98,7 @@ public class GenericsTests
         Assert.False(de.HasErrors);
     }
 
-    // --- Instanz-Member werden substituiert ---
+    // --- instance members are substituted ---
 
     [Fact]
     public void Generic_instance_field_is_substituted()
@@ -136,7 +135,7 @@ public class GenericsTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001"); // int → string
     }
 
-    // --- Generische Instanzen sind invariant-gleich ---
+    // --- generic instances are invariantly equal ---
 
     [Fact]
     public void Same_generic_instance_is_assignable()
@@ -161,7 +160,7 @@ public class GenericsTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0026");
     }
 
-    // --- Constraint-Member-Zugriff (D2) ---
+    // --- constraint member access ---
 
     [Fact]
     public void Member_on_type_param_comes_from_constraint()
@@ -201,7 +200,7 @@ public class GenericsTests
     public void Generic_construction_checks_substituted_field_types()
     {
         var de = Diags("""fn u() { let b = Box<int> { value = "nope" }; }""");
-        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001"); // value: T→int, string passt nicht
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001"); // value: T becomes int, and string does not fit
     }
 
     [Fact]
@@ -215,7 +214,7 @@ public class GenericsTests
     public void Generic_construction_without_type_args_is_rejected()
     {
         var de = Diags("fn u() { let b = Box { value = 1 }; }");
-        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0026"); // Feld-Inferenz gibt's nicht (D3)
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0026"); // there is no field inference
     }
 
     [Fact]
@@ -223,7 +222,7 @@ public class GenericsTests
     {
         var (t, de) = LastInit("fn u() { let bb = Box<Box<int>> { value = Box<int> { value = 1 } }; }");
         Assert.False(de.HasErrors, string.Join("; ", de.Diagnostics.Select(d => d.Code)));
-        var gi = Assert.IsType<GenericInstance>(t); // '>>' wird gesplittet
+        var gi = Assert.IsType<GenericInstance>(t); // the '>>' is split
         var inner = Assert.IsType<GenericInstance>(gi.Arguments[0]);
         AssertType(LyrType.Int, inner.Arguments[0]);
     }
@@ -232,17 +231,17 @@ public class GenericsTests
     public void Comparison_is_not_mistaken_for_generic_construction()
     {
         var de = Diags("fn u(a: int, c: int): int { if (a < c) { return 1; } return 0; }");
-        Assert.False(de.HasErrors); // 'a < c' bleibt ein Vergleich, kein Struct-Init-Versuch
+        Assert.False(de.HasErrors); // 'a < c' stays a comparison rather than an attempted struct initializer
     }
 
-    // --- Call-Inferenz (D3: kein Turbofish) ---
+    // --- call inference ---
 
     [Fact]
     public void Call_infers_type_arg_from_argument()
     {
         var (t, de) = LastInit("fn u() { let x = ident(5); }");
         Assert.False(de.HasErrors);
-        AssertType(LyrType.Int, t); // ident(5) → T=int → Rückgabe int
+        AssertType(LyrType.Int, t); // ident(5) gives T = int, so the return is int
     }
 
     [Fact]
@@ -250,7 +249,7 @@ public class GenericsTests
     {
         var (t, de) = LastInit("fn u(xs: string[]) { let x = firstOf(xs); }");
         Assert.False(de.HasErrors);
-        AssertType(LyrType.String, t); // T[] gegen string[] → T=string
+        AssertType(LyrType.String, t); // T[] against string[] gives T = string
     }
 
     [Fact]
@@ -269,7 +268,7 @@ public class GenericsTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0001"); // int → string
     }
 
-    // --- Constraint-Erfüllung (Slice 1b) ---
+    // --- constraint satisfaction ---
 
     [Fact]
     public void Satisfying_type_passes_constraint_on_call()
@@ -302,7 +301,7 @@ public class GenericsTests
     [Fact]
     public void Type_param_with_same_constraint_satisfies_it()
     {
-        // T trägt selbst Ord → needOrd(x) mit x: T erfüllt den Constraint über die T-Constraints
+        // T carries Ord itself, so needOrd(x) with x: T satisfies the constraint through T's constraints
         var de = Diags("fn chain<T :: [Ord]>(x: T): T { return needOrd(x); }");
         Assert.False(de.HasErrors, string.Join("; ", de.Diagnostics.Select(d => d.Code)));
     }
