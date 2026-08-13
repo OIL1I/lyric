@@ -1,84 +1,75 @@
-// std.io.file — Dateien lesen und schreiben.
+// std.io.file — reading and writing files.
 //
-// **Permission-gated** (ADR-007, Doku §20.1): ein Import verlangt `fileAccess`. Das ist die
-// Capability, für die das Modell erfunden wurde — ein Mod-Skript in einer Game-Engine soll die
-// Festplatte nicht anfassen, während dieselbe Sprache im Standalone-Modus ein CLI-Tool sein darf.
+// Capability-gated: an import requires `fileAccess`. A script embedded in a host must not reach
+// the disk, while the same language standalone may be a CLI tool.
 //
-// **Fehler sind Rückgabewerte, keine Exceptions.** Eine Datei, die nicht existiert, ist ein
-// gewöhnlicher Zustand der Welt und kein Programmierfehler — `readText` liefert deshalb `?string`
-// und nicht `string` mit `throws`. Das ist dieselbe Entscheidung wie bei `List.pop` und bei
-// `std.os.env`; ein `panic` bliebe dem vorbehalten, was der Programmierer falsch gemacht hat.
+// Failures are return values, not exceptions. A file that does not exist is an ordinary state of
+// the world, so `readText` returns `?string` rather than `string` with `throws`. A panic stays
+// reserved for what the programmer got wrong.
 
 module std.io.file;
 
-// Fuer die Pfad-Helfer unten. 'std.string' importiert nichts, also kein Zyklus.
+// For the path helpers below. 'std.string' imports nothing, so there is no cycle.
 import std.string { length, charAt, substring };
 
-// Der gesamte Inhalt als Text (UTF-8), oder `null`, wenn die Datei nicht existiert oder nicht
-// lesbar ist.
+// The whole content as text (UTF-8), or `null` when the file does not exist or is not
+// readable.
 pub fn readText(path: string): ?string;
 
-// Schreibt Text (UTF-8) und überschreibt eine vorhandene Datei. `true` bei Erfolg.
+// Writes text (UTF-8), replacing an existing file. `true` on success.
 pub fn writeText(path: string, content: string): bool;
 
-// Hängt an eine vorhandene Datei an oder legt sie an. `true` bei Erfolg.
+// Appends to an existing file or creates it. `true` on success.
 pub fn appendText(path: string, content: string): bool;
 
 pub fn exists(path: string): bool;
 
-// `true`, wenn die Datei danach weg ist — auch wenn sie vorher schon nicht existierte.
+// `true` when the file is gone afterwards, including when it never existed.
 pub fn remove(path: string): bool;
 
-// Die Zeilen einer Datei, oder ein leeres Array, wenn sie nicht lesbar ist. Zeilenenden werden
-// entfernt; ob die Datei mit CRLF oder LF geschrieben war, ist danach nicht mehr sichtbar.
+// The lines of a file, or an empty array when it is not readable. Terminators are removed, so
+// whether the file used CRLF or LF is no longer visible.
 pub fn readLines(path: string): string[];
 
-// ---------------------------------------------------------- Erweiterung (M8b/S8)
+// ------------------------------------------------------------------------------------------
 //
-// Alle Rueckgaben sind `?T` oder `bool`: eine Datei, die nicht existiert, ein Verzeichnis ohne
-// Leserecht, ein voller Datentraeger — das sind gewoehnliche Zustaende der Welt und keine
-// Programmierfehler. Ein `panic` waere hier falsch, und eine Exception braeuchte einen
-// Throwable-Typ je Fall.
+// Every return is a `?T` or a `bool`: a missing file, an unreadable directory, a full disk are
+// states of the world rather than programming errors.
 //
-// Die Capability haengt am MODULNAMEN (ADR-007): alles hier verlangt `FileAccess`, ohne dass eine
-// einzelne Funktion es sagen muesste.
+// The capability hangs off the module name, so no individual function has to state it.
 
 pub fn size(path: string): ?int;
 pub fn isFile(path: string): bool;
 pub fn isDirectory(path: string): bool;
 
-/// Kopiert. `false`, wenn die Quelle fehlt oder das Ziel nicht schreibbar ist.
+/// Copies. `false` when the source is missing or the target is not writable.
 pub fn copy(from: string, to: string): bool;
 
-/// Verschiebt oder benennt um — dasselbe auf jedem Dateisystem.
+/// Moves or renames; the same operation on every file system.
 pub fn move(from: string, to: string): bool;
 
 pub fn createDir(path: string): bool;
 
-/// Legt auch fehlende Elternverzeichnisse an. Ein bereits vorhandenes Verzeichnis ist Erfolg,
-/// kein Fehler — der gewuenschte Zustand ist ja erreicht.
+/// Creates missing parent directories too. An existing directory counts as success.
 pub fn createDirAll(path: string): bool;
 
-/// Loescht ein LEERES Verzeichnis. Ein rekursives Loeschen gibt es bewusst nicht: der Unterschied
-/// zwischen `rm -r pfad` und `rm -r pfad/` hat schon genug Datenverlust verursacht, und wer es
-/// braucht, schreibt die Schleife sichtbar hin.
+/// Deletes an EMPTY directory. There is no recursive delete; a caller that needs one writes
+/// the loop visibly.
 pub fn removeDir(path: string): bool;
 
-/// Die Eintraege eines Verzeichnisses — Namen, keine Pfade, alphabetisch sortiert.
+/// The entries of a directory: names rather than paths, sorted alphabetically.
 ///
-/// Ein leeres Array bei einem nicht lesbaren Verzeichnis, kein `?string[]`: dieselbe Wahl wie bei
-/// `readLines`. Wer den Unterschied zwischen "leer" und "nicht lesbar" braucht, fragt vorher mit
-/// `isDirectory`.
+/// An empty array for an unreadable directory rather than a `?string[]`, as in `readLines`. A
+/// caller that needs the difference asks `isDirectory` first.
 pub fn listDir(path: string): string[];
 
-/// Ein Pfad im Temp-Verzeichnis des Systems. Legt die Datei NICHT an.
+/// A path in the system's temporary directory. Does NOT create the file.
 pub fn tempDir(): string;
 
-// ---------------------------------------------------------- Pfade (in Lyric)
+// ------------------------------------------------------------------------ paths, in Lyric
 //
-// Ab hier ist nichts mehr nativ: ein Pfad ist ein String, und Trennzeichen zu suchen kann die
-// Sprache selbst. Der Host wuerde hier nur seine eigene Plattform-Konvention hineinbringen — und
-// die ist bei einem plattformneutralen Bytecode (ADR-013) genau das Falsche.
+// Nothing below is native: a path is a string, and finding separators is something the language
+// does. A host would bring its own platform convention into a platform-neutral bytecode.
 
 /// Beide Trennzeichen gelten. Windows versteht `/`, und ein Skript, das auf beiden Systemen
 /// laufen soll, sollte nicht raten muessen, welches es gerade ist.

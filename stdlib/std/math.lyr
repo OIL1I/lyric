@@ -1,14 +1,12 @@
-// std.math — Fließkomma-Mathematik.
+// std.math — floating-point mathematics.
 //
-// **Keine Capability nötig** (Doku §20.1): Rechnen fasst nichts an. Das Modul steht in derselben
-// Zeile wie `std.string` und `std.collections`.
+// No capability required: arithmetic reaches nothing.
 //
-// Alle Funktionen arbeiten auf `float` (64-bit IEEE 754, §4). Ganzzahlige Varianten gibt es
-// nicht: `abs` auf einem `int` wäre eine zweite Funktion für dasselbe Konzept, und Lyric hat
-// keine Überladung (ADR-015). Wer eine Ganzzahl braucht, castet — `as` ist ohnehin Pflicht (§6.5).
+// Every function works on `float` (64-bit IEEE 754). There are no integer variants: `abs` on an
+// `int` would be a second function for the same concept, and there is no overloading. Cast with
+// `as`, which is required anyway.
 //
-// Die Sonderwerte folgen IEEE 754, wie es `Sprache.md` §6.6 für Fließkomma festlegt: `sqrt(-1.0)`
-// ist NaN und kein `panic`. Ein Fehlerfall wäre hier eine Erfindung — die Hardware kennt keinen.
+// Special values follow IEEE 754: `sqrt(-1.0)` is NaN, not a panic.
 
 module std.math;
 
@@ -18,9 +16,8 @@ pub let e: float = 2.718281828459045;
 pub fn sqrt(value: float): float;
 pub fn abs(value: float): float;
 
-// Runden: `floor` ab, `ceil` auf, `round` zur nächsten geraden Zahl bei .5 (IEEE 754s
-// "round half to even" — dasselbe, was .NET und die meisten Sprachen tun, weil konsequentes
-// Aufrunden über viele Werte einen systematischen Fehler einträgt).
+// Rounding: `floor` down, `ceil` up, `round` to even on .5 (IEEE 754 round-half-to-even, which
+// avoids the systematic bias of always rounding up).
 pub fn floor(value: float): float;
 pub fn ceil(value: float): float;
 pub fn round(value: float): float;
@@ -33,29 +30,28 @@ pub fn sin(radians: float): float;
 pub fn cos(radians: float): float;
 pub fn tan(radians: float): float;
 
-// Natürlicher Logarithmus. Für andere Basen: `log(x) / log(basis)`.
+// Natural logarithm. For other bases: `log(x) / log(base)`.
 pub fn log(value: float): float;
 
-// Die Umkehrfunktionen der Trigonometrie. Die vier sind die EINZIGEN neuen nativen Kanten in
-// diesem Modul — alles andere unten laesst sich aus `sqrt`, `pow` und `log` ableiten, und was
-// ableitbar ist, gehoert nicht ueber die Host-Grenze (ADR-013: jede native Signatur ist eine
-// Zeile im Bytecode-Vertrag).
+// The inverse trigonometric functions. These four are the only new native edges in this module;
+// everything below is derivable from `sqrt`, `pow` and `log`, and what is derivable stays on this
+// side of the host boundary.
 //
-// Eine Reihenentwicklung in Lyric waere moeglich und waere die falsche Sparsamkeit: sie ist an den
-// Raendern ungenau, und Genauigkeit ist bei genau diesen Funktionen der ganze Punkt.
+// A series expansion in Lyric would be imprecise at the edges, and precision is the point of these
+// functions.
 pub fn asin(value: float): float;
 pub fn acos(value: float): float;
 pub fn atan(value: float): float;
 pub fn atan2(y: float, x: float): float;
 
-// ====================================================== In Lyric geschrieben (M8b/S6)
+// ================================================================== written in Lyric
 
 pub let tau: float = 6.283185307179586;
 
-// ------------------------------------------------------------------ Ganzzahlen
+// ------------------------------------------------------------------------------ integers
 //
-// Eigene Namen statt Ueberladung (ADR-015). `absInt` neben `abs` liest sich unschoen und ist
-// ehrlich: es sind zwei Funktionen, weil `int` und `float` zwei Typen sind.
+// Distinct names rather than overloading: `absInt` beside `abs` is two functions, because `int`
+// and `float` are two types.
 
 pub fn absInt(value: int): int {
     return if (value < 0) 0 - value else value;
@@ -69,8 +65,7 @@ pub fn maxInt(a: int, b: int): int {
     return if (a > b) a else b;
 }
 
-/// Klemmt auf `[lo, hi]`. Ein `lo > hi` liefert `lo` — die Grenzen sind Sache des Aufrufers, und
-/// ein `panic` waere hier ein Fehler in einer Funktion, die nur rechnet.
+/// Clamps to `[lo, hi]`. A `lo > hi` yields `lo`; the bounds are the caller's business.
 pub fn clampInt(value: int, lo: int, hi: int): int {
     if (value < lo) {
         return lo;
@@ -85,7 +80,7 @@ pub fn signInt(value: int): int {
     return if (value < 0) 0 - 1 else 0;
 }
 
-/// Groesster gemeinsamer Teiler, euklidisch. Immer nicht-negativ.
+/// Greatest common divisor, Euclidean. Always non-negative.
 pub fn gcd(a: int, b: int): int {
     var x = absInt(a);
     var y = absInt(b);
@@ -97,20 +92,19 @@ pub fn gcd(a: int, b: int): int {
     return x;
 }
 
-/// Kleinstes gemeinsames Vielfaches. `lcm(0, n)` ist 0.
+/// Least common multiple. `lcm(0, n)` is 0.
 pub fn lcm(a: int, b: int): int {
     if (a == 0 || b == 0) {
         return 0;
     }
-    // Erst teilen, dann malnehmen: die andere Reihenfolge laeuft bei grossen Zahlen ueber, obwohl
-    // das Ergebnis passt.
+    // Divide first, then multiply: the other order overflows for large values even when the
+    // result fits.
     return absInt(a / gcd(a, b) * b);
 }
 
-/// Ganzzahlige Potenz durch wiederholtes Quadrieren.
+/// Integer power by repeated squaring.
 ///
-/// Ein negativer Exponent liefert `null`: das Ergebnis waere ein Bruch, und stillschweigend 0 zu
-/// liefern hiesse, einen Fehler als Zahl zu verkleiden.
+/// A negative exponent yields `null`: the result would be a fraction.
 pub fn powInt(base: int, exponent: int): ?int {
     if (exponent < 0) {
         return null;
@@ -129,9 +123,9 @@ pub fn powInt(base: int, exponent: int): ?int {
     return ergebnis;
 }
 
-/// Division mit Abrunden Richtung minus unendlich — nicht Richtung null.
+/// Division rounding towards negative infinity rather than towards zero.
 ///
-/// `%` und `/` folgen in Lyric dem Vorzeichen des Dividenden (§6.6), also ist `-7 / 2` gleich -3.
+/// `/` and `%` follow the sign of the dividend, so `-7 / 2` is -3.
 /// Wer auf einem Raster rechnet (Kacheln, Zeitfenster), braucht -4. Beide Formen stehen hier
 /// nebeneinander, damit die Wahl sichtbar ist statt versteckt.
 pub fn divFloor(a: int, b: int): int {
