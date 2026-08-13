@@ -10,17 +10,17 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Format-Specs in f-Strings — `std.fmt` (M8/S3).
+/// Format specs in f-strings — `std.fmt`.
 ///
-/// <para>`f"{avg:N2}"` wird zu `std.fmt.formatFloat(avg, "N2")`. Die Spec-Sprache ist die von
-/// .NET, wie `Sprache.md` §2.2 es verlangt, und sie wird unverändert durchgereicht — Lyric
-/// erfindet keine eigene Notation daneben.</para>
+/// <para>`f"{avg:N2}"` becomes `std.fmt.formatFloat(avg, "N2")`. The spec language is .NET's, as the
+/// specification requires, and it is passed through unchanged: Lyric invents no notation of its own
+/// beside it.</para>
 ///
-/// <para><b>Zwei Zusicherungen sind wichtiger als die Formate selbst</b>: dass ohne Spec
-/// weiterhin die `fromXxx`-Wandler laufen (ein Format-Aufruf, der nur den Standard nachbaut, wäre
-/// ein zweiter Weg zu demselben Ergebnis), und dass die Ausgabe <b>invariant</b> ist. Eine Zahl,
-/// die unter deutscher Locale anders aussieht als unter englischer, ist kein
-/// Formatierungsdetail, sondern ein Programm, das sich je nach Rechner anders verhält.</para>
+/// <para>TWO PROMISES MATTER MORE THAN THE FORMATS THEMSELVES: that without a spec the `fromXxx`
+/// converters still run (a format call that only rebuilds the default would be a second route to the
+/// same result), and that the output is INVARIANT. A number that looks different under a German locale
+/// than under an English one is no formatting detail but a program that behaves differently per
+/// machine.</para>
 /// </summary>
 public class FormatTests
 {
@@ -58,7 +58,7 @@ public class FormatTests
 
     [Fact]
     public void N_rounds_to_the_given_digits() =>
-        // Der Fall, auf den 'examples/stats.lyr' seit M6 wartet.
+        // The case 'examples/stats.lyr' has been waiting for.
         Assert.Equal("12.35\n", Out("let avg = 12.3456; println(f\"{avg:N2}\");"));
 
     [Fact]
@@ -75,25 +75,25 @@ public class FormatTests
 
     [Fact]
     public void The_thousands_separator_is_invariant() =>
-        // Invariant heißt: Punkt als Dezimaltrenner, Komma als Tausendertrenner — überall.
-        // Unter deutscher Locale wäre es umgekehrt, und dasselbe Programm gäbe auf zwei
-        // Rechnern zwei verschiedene Zahlen aus.
+        // Invariant means a dot as the decimal separator and a comma as the thousands separator,
+        // everywhere. Under a German locale it would be the other way round, and the same program would
+        // print two different numbers on two machines.
         Assert.Equal("1,234.57\n", Out("let x = 1234.567; println(f\"{x:N2}\");"));
 
-    // ------------------------------------------------------------------ ohne Spec
+    // ------------------------------------------------------------------ without a spec
 
     [Fact]
     public void Without_a_spec_the_plain_converter_still_runs() =>
-        // Die wichtigste Zusicherung der Datei. Liefe hier ebenfalls std.fmt, gäbe es zwei Wege
-        // zu demselben Ergebnis — genau das, was CONTRIBUTING §Rule 2 verbietet.
+        // The most important promise of the file. Were std.fmt to run here too, there would be two routes
+        // to the same result — exactly what the project rules forbid.
         Assert.Equal("42\n", Out("let n = 42; println(f\"{n}\");"));
 
     [Fact]
     public void A_program_without_format_specs_does_not_pull_in_std_fmt()
     {
-        // Dieselbe Regel wie bei den Display-Extensions (S1a): im Bytecode steht nur, was
-        // benutzt wird. 'std.fmt' ist ein Well-Known-Modul und wird IMMER geladen — geladen zu
-        // werden und im Modul zu landen sind zwei verschiedene Dinge.
+        // The same rule as for the Display extensions: only what is used stands in the bytecode. 'std.fmt'
+        // is a well-known module and is ALWAYS loaded — being loaded and landing in the module are two
+        // different things.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr", "fn main(): int { let n = 42; return n; }");
         var de = new DiagnosticEngine(sm);
@@ -110,12 +110,12 @@ public class FormatTests
         Assert.DoesNotContain(ir!.Imports, i => i.Name.StartsWith("std.fmt", StringComparison.Ordinal));
     }
 
-    // ------------------------------------------------------------------ andere Typen
+    // ------------------------------------------------------------------ other types
 
     [Fact]
     public void A_string_spec_is_a_width() =>
-        // .NET kennt für Strings keine Standardformate. Statt eine zweite Notation zu erfinden,
-        // ist die Spec hier schlicht eine Breite — positiv füllt rechts, negativ links.
+        // .NET knows no standard formats for strings. Rather than inventing a second notation, the spec is
+        // simply a width here: positive pads on the right, negative on the left.
         Assert.Equal("ab   |\n", Out("let s = \"ab\"; println(f\"{s:5}|\");"));
 
     [Fact]
@@ -126,34 +126,32 @@ public class FormatTests
     public void Bool_and_char_take_a_width_too() =>
         Assert.Equal("true |x    |\n", Out("let b = true; let c = 'x'; println(f\"{b:5}|{c:5}|\");"));
 
-    // ------------------------------------------------------------------ was schiefgehen darf
+    // ------------------------------------------------------------------ what may go wrong
 
     [Fact]
     public void An_invalid_spec_panics_with_the_spec_in_the_message()
     {
-        // Kein stilles Ausweichen auf die Standarddarstellung: die Spec steht als Literal im
-        // Quelltext und hängt nicht von der Eingabe ab. Ein '{x:Q9}' ist falsch geschrieben,
-        // nicht unglücklich gelaufen — und ein Fallback trüge den Tippfehler bis in die Ausgabe.
+        // No silent fallback to the default representation: the spec stands as a literal in the source and
+        // does not depend on the input. A '{x:Q9}' is written wrongly rather than unlucky, and a fallback
+        // would carry the typo into the output.
         var panic = Assert.Throws<LyricPanic>(() =>
             Out("let n = 42; println(f\"{n:Q9}\");"));
 
         Assert.Contains("Q9", panic.Message);
     }
 
-    // ------------------------------------------- schmale Skalare in einem f-String
+    // ------------------------------------------- narrow scalars in an f-string
 
     /// <summary>
-    /// Jeder Ganzzahl- und Fliesskomma-Typ laesst sich interpolieren, nicht nur <c>int</c> und
-    /// <c>float</c>.
+    /// Every integer and floating-point type can be interpolated, not only <c>int</c> and <c>float</c>.
     ///
-    /// <para><b>Vorher stuerzte der Compiler ab.</b> Die Wandler heissen <c>fromInt</c> und
-    /// <c>fromFloat</c> — Einzahl, weil Lyric kein Overloading hat (ADR-015) — und nehmen den
-    /// breitesten Typ. Das Lowering reichte den Wert ungewidert durch, und der IR-Verifier warf
-    /// „arg 0 is i8, expected i64" als InternalCompilationException mit Stack-Trace.</para>
+    /// <para>The compiler used to crash. The converters are called <c>fromInt</c> and <c>fromFloat</c> —
+    /// singular, because Lyric has no overloading — and take the widest type. The lowering passed the
+    /// value through unwidened, and the IR verifier threw "arg 0 is i8, expected i64" as an
+    /// InternalCompilationException with a stack trace.</para>
     ///
-    /// <para>Betroffen war <b>jeder</b> Typ ausser <c>int</c> und <c>float</c>. Gefunden nur, weil
-    /// <c>char</c> (ADR-022) zufaellig danebenlag — ohne diesen Zufall waere es liegengeblieben.
-    /// Deshalb steht hier eine Theory ueber alle Breiten und nicht ein Beispiel.</para>
+    /// <para>EVERY type except <c>int</c> and <c>float</c> was affected. Found only because <c>char</c>
+    /// happened to lie next to it. Hence a theory over all widths here rather than one example.</para>
     /// </summary>
     [Theory]
     [InlineData("int8", "-5", "-5")]
@@ -170,7 +168,7 @@ public class FormatTests
 
     [Fact]
     public void A_narrow_scalar_takes_a_format_spec() =>
-        // Der zweite Weg: mit Spec geht es ueber std.fmt statt std.string. Zwei Pfade, derselbe
-        // Fehler — ohne diesen Test waere nur einer davon abgesichert.
+        // The second route: with a spec it goes through std.fmt rather than std.string. Two paths, the
+        // same fault; without this test only one of them would be secured.
         Assert.Equal("-005", Out("let x: int8 = -5; println(f\"{x:D3}\");").Trim());
 }

@@ -3,22 +3,21 @@ using Lyric.Core;
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Die Kommando-Matrix ueber <c>examples/</c>.
+/// The command matrix over <c>examples/</c>.
 ///
-/// <para>Der Test, der seit M6 gefehlt hat. Dass <c>check</c> den <c>ModuleLoader</c> nicht
-/// verdrahtete und deshalb jeden Stdlib-Aufruf <i>stumm gar nicht</i> prueste, fiel damals nur
-/// beim Handprobieren auf — die Sema-Tests setzen den Loader selbst. Ein Test, der die Kommandos
-/// gegen die Beispiele faehrt, haette es gefangen.</para>
+/// <para>That <c>check</c> did not wire up the <c>ModuleLoader</c> and therefore checked every stdlib
+/// call SILENTLY NOT AT ALL showed only when trying it by hand — the sema tests set the loader
+/// themselves. A test running the commands against the examples would have caught it.</para>
 /// </summary>
 public sealed class CommandTests
 {
-    /// <summary>Die Programme, die mit dem heutigen Backend-Stand laufen: Name, Exit-Code und ob
-    /// das Programm <b>selbst</b> auf stderr schreibt.
+    /// <summary>The programs that run with today's backend: name, exit code, and whether the program
+    /// ITSELF writes to stderr.
     ///
-    /// <para>Die dritte Spalte trennt zwei Dinge, die vorher eines waren: <c>bank.lyr</c> faengt
-    /// einen Fehler und meldet ihn auf stderr — das ist die Pointe des Beispiels und nicht
-    /// Rauschen der Toolchain. Ohne die Spalte muesste es aus der Matrix fallen, und ein Beispiel
-    /// aus der Matrix zu nehmen, damit die Matrix gruen bleibt, ist die falsche Richtung.</para>
+    /// <para>The third column separates two things that used to be one: <c>bank.lyr</c> catches an error
+    /// and reports it on stderr — that is the point of the example rather than noise from the toolchain.
+    /// Without the column it would have to fall out of the matrix, and taking an example out of the
+    /// matrix so the matrix stays green is the wrong direction.</para>
     /// </summary>
     public static TheoryData<string, int, bool> RunnableExamples => new()
     {
@@ -44,7 +43,7 @@ public sealed class CommandTests
         { "fibonacci.lyr", 0, false },
     };
 
-    /// <summary>Beispiele, die absichtlich nicht in der Matrix stehen — mit Grund.</summary>
+    /// <summary>Examples deliberately not in the matrix, with a reason.</summary>
     private static readonly Dictionary<string, string> NotInTheMatrix = new()
     {
         ["wc.lyr"] = "hat eigene Tests in GateTests: es liest eine Datei und braucht Argumente",
@@ -52,13 +51,13 @@ public sealed class CommandTests
     };
 
     /// <summary>
-    /// <b>Jedes</b> Beispiel steht in der Matrix oder auf der Ausnahmeliste.
+    /// EVERY example stands in the matrix or on the exception list.
     ///
-    /// <para>Ohne diesen Test ist die Matrix eine handgepflegte Liste, und eine handgepflegte Liste
-    /// vergisst. Genau das ist passiert: <c>stack.lyr</c> hat ADR-016 nicht überlebt — <c>T[]</c>
-    /// wurde ein echtes Array ohne <c>push</c> — und lag danach <i>drei Meilensteine lang kaputt
-    /// im Verzeichnis</i>, weil kein Test es je angefasst hat. <c>bank.lyr</c> und
-    /// <c>fibonacci.lyr</c> liefen zwar, aber aus Glück und nicht aus Zusicherung.</para>
+    /// <para>Without this test the matrix is a hand-maintained list, and a hand-maintained list forgets.
+    /// That is what happened: <c>stack.lyr</c> did not survive the array change — <c>T[]</c> became a
+    /// real array without <c>push</c> — and then lay broken in the directory for three milestones,
+    /// because no test ever touched it. <c>bank.lyr</c> and <c>fibonacci.lyr</c> did run, but by luck
+    /// rather than by promise.</para>
     /// </summary>
     [Fact]
     public void Every_example_is_covered_or_listed_as_an_exception()
@@ -89,7 +88,7 @@ public sealed class CommandTests
 
     [Theory]
     [MemberData(nameof(RunnableExamples))]
-    #pragma warning disable xUnit1026 // Die Matrix ist dreispaltig; check braucht nur den Namen.
+    #pragma warning disable xUnit1026 // the matrix has three columns; check needs only the name
     public void Lyric_check_accepts_every_runnable_example(string example, int _, bool __)
     {
         var result = Toolchain.Lyric("check", Toolchain.Example(example));
@@ -99,9 +98,9 @@ public sealed class CommandTests
     }
 
     /// <summary>
-    /// Die Aequivalenz, die den Split zusammenhaelt: die bequeme Oberflaeche muss dasselbe tun
-    /// wie die technische. Waeren es zwei Pipelines, drifteten sie — der Treiber ruft deshalb
-    /// dieselben Bibliotheks-Einstiege (ADR-017).
+    /// The equivalence that holds the split together: the convenient surface has to do the same as the
+    /// technical one. Were they two pipelines, they would drift, which is why the driver calls the same
+    /// library entry points.
     /// </summary>
     [Theory]
     [MemberData(nameof(RunnableExamples))]
@@ -121,16 +120,15 @@ public sealed class CommandTests
     }
 
     /// <summary>
-    /// Frueher stand hier <c>In_process_and_foreign_vm_paths_agree</c> — der Beweis, dass zwei
-    /// Ausfuehrungspfade dasselbe liefern. Seit ADR-019 gibt es nur einen: der Treiber startet
-    /// immer ein Werkzeug. Der Test ist damit nicht gestrichen, sondern <b>gegenstandslos</b>;
-    /// was er absicherte, kann nicht mehr auseinanderlaufen.
+    /// <c>In_process_and_foreign_vm_paths_agree</c> used to stand here, the proof that two execution
+    /// paths deliver the same. There is only one now: the driver always starts a tool. The test is
+    /// therefore not deleted but MOOT; what it secured can no longer drift apart.
     /// </summary>
     [Fact]
     public void Program_arguments_reach_a_main_that_asks_for_them()
     {
-        // Punkt 4 des Runner-Vertrags (Bytecode.md §9): alles nach dem ersten '--' gehoert dem
-        // Programm. greet.lyr gibt ihre Zahl zurueck.
+        // Point 4 of the runner contract: everything after the first '--' belongs to the program.
+        // greet.lyr returns their number.
         var result = Toolchain.Lyric("run", Toolchain.Example("greet.lyr"), "--", "Welt", "Lyric");
 
         Assert.Equal(2, result.ExitCode);
@@ -141,8 +139,8 @@ public sealed class CommandTests
     [Fact]
     public void A_parameterless_main_ignores_program_arguments()
     {
-        // Kein Fehler — dieselbe Freiheit, die jede Shell hat. Vorher lehnte die Runtime hier ab,
-        // weil sie Argumente ueberhaupt nicht zustellen konnte.
+        // No error: the same freedom every shell has. The runtime used to reject this, because it could
+        // not deliver arguments at all.
         var result = Toolchain.Lyric("run", Toolchain.Example("arith.lyr"), "--", "ignoriert");
 
         Assert.Equal(55, result.ExitCode);
@@ -151,9 +149,9 @@ public sealed class CommandTests
     [Fact]
     public void A_module_without_a_main_builds_but_does_not_run()
     {
-        // Der Embedding-Fall: gueltiger Bytecode, aber kein Programm. Ein Host laedt so etwas und
-        // ruft einzelne Funktionen daraus — 'run' ist dafuer die falsche Frage, und die Antwort
-        // muss das sagen statt still nichts zu tun.
+        // The embedding case: valid bytecode but no program. A host loads such a thing and calls
+        // individual functions from it; 'run' is the wrong question for that, and the answer has to say
+        // so rather than silently doing nothing.
         using var module = Toolchain.Temp(".lyrbc");
 
         var build = Toolchain.Lyrc("build", Toolchain.Example("embedded.lyr"), "-o", module.Path);
@@ -168,7 +166,7 @@ public sealed class CommandTests
 
     [Fact]
     public void Info_names_a_library_as_such() =>
-        // Was ein Host zuerst wissen will: hat dieses Modul einen Einstieg?
+        // What a host wants to know first: does this module have an entry point?
         Assert.Contains("library", Toolchain.Lyrvm("info", BuildLibrary()).Out);
 
     private static string BuildLibrary()
@@ -191,8 +189,8 @@ public sealed class CommandTests
     [Fact]
     public void Flag_beats_environment_variable()
     {
-        // Die Variable zeigt ins Leere, das Flag auf die echte Runtime. Laeuft es trotzdem,
-        // hat das Flag gewonnen — die Staffelung aus ADR-017.
+        // The variable points into nothing, the flag at the real runtime. If it runs all the same, the
+        // flag won.
         var result = Toolchain.RunWithEnvironment(Toolchain.LyricPath,
             new Dictionary<string, string?> { ["LYRIC_VM"] = "/nonexistent/runtime" },
             "run", Toolchain.Example("arith.lyr"), "--vm", Toolchain.LyrvmPath);
@@ -231,15 +229,15 @@ public sealed class CommandTests
         var result = Toolchain.Lyrvm("verify", module.Path);
 
         Assert.Equal(ExitCodes.Success, result.ExitCode);
-        // Haette 'verify' ausgefuehrt, staende hier die Programmausgabe.
+        // Had 'verify' executed, the program output would stand here.
         Assert.DoesNotContain("Hello, Lyric!", result.Out);
     }
 
     [Fact]
     public void Build_output_is_deterministic_across_binaries()
     {
-        // ADR-013 verlangt byte-identischen Output bei gleichem Input. 'lyrc' und 'lyric' rufen
-        // denselben Writer — wenn nicht, faellt es hier auf.
+        // The same input has to give byte-identical output. 'lyrc' and 'lyric' call the same writer; if
+        // not, it shows here.
         using var fromLyrc = Toolchain.Temp(".lyrbc");
         using var fromDriver = Toolchain.Temp(".lyrbc");
 
@@ -252,8 +250,8 @@ public sealed class CommandTests
     [Fact]
     public void Program_output_goes_to_stdout_and_stays_out_of_stderr()
     {
-        // Punkt 3 des Runner-Vertrags. Ohne die Trennung kann ein aufrufendes Werkzeug die
-        // Ausgabe eines Lyric-Programms nicht von der Klage der Runtime unterscheiden.
+        // Point 3 of the runner contract. Without the separation a calling tool cannot distinguish the
+        // output of a Lyric program from the runtime's complaint.
         var result = Toolchain.Lyrvm("--help");
         Assert.Equal(ExitCodes.Success, result.ExitCode);
         Assert.Equal("", result.Err);

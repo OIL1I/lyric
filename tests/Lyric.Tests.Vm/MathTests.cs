@@ -10,17 +10,16 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// `std.math` — die Erweiterung aus M8b/S6.
+/// `std.math`.
 ///
-/// <para><b>Vier neue native Kanten, mehr nicht</b>: `asin`, `acos`, `atan`, `atan2`. Alles andere
-/// ist aus `sqrt`, `pow` und `log` ableitbar und steht in Lyric — `exp` als `pow(e, x)`, `log2`
-/// als `log(x)/log(2)`, die Hyperbelfunktionen über `exp`. Jede native Signatur ist eine Zeile im
-/// Bytecode-Vertrag (ADR-013), und was ableitbar ist, gehört nicht darüber.</para>
+/// <para>FOUR NEW NATIVE EDGES, NO MORE: `asin`, `acos`, `atan`, `atan2`. Everything else is derivable
+/// from `sqrt`, `pow` and `log` and is written in Lyric — `exp` as `pow(e, x)`, `log2` as
+/// `log(x)/log(2)`, the hyperbolic functions through `exp`. Every native signature is a line in the
+/// bytecode contract, and what is derivable does not belong there.</para>
 ///
-/// <para>Die Tests hier prüfen bevorzugt <b>exakte</b> Werte (`gcd`, `divFloor`, `powInt`) oder
-/// Invarianten (`nextFloat` liegt in `[0,1)`), nicht Fließkomma-Näherungen: ein Test, der
-/// `exp(1.0) == 2.718…` auf zwölf Stellen vergleicht, misst die Genauigkeit der Host-Bibliothek
-/// und nicht diese Stdlib.</para>
+/// <para>The tests here prefer EXACT values (`gcd`, `divFloor`, `powInt`) or invariants (`nextFloat`
+/// lies in `[0,1)`) over floating-point approximations: a test comparing `exp(1.0) == 2.718…` to twelve
+/// digits measures the accuracy of the host library rather than this stdlib.</para>
 /// </summary>
 public class MathTests
 {
@@ -62,13 +61,13 @@ public class MathTests
     [Theory]
     [InlineData("gcd(48, 18)", 6)]
     [InlineData("gcd(17, 5)", 1)]        // teilerfremd
-    [InlineData("gcd(0, 5)", 5)]         // Null ist neutral
-    [InlineData("gcd(-48, 18)", 6)]      // immer nicht-negativ
+    [InlineData("gcd(0, 5)", 5)]         // zero is neutral
+    [InlineData("gcd(-48, 18)", 6)]      // always non-negative
     [InlineData("lcm(4, 6)", 12)]
     [InlineData("lcm(0, 5)", 0)]
     [InlineData("powInt(2, 10) ?? -1", 1024)]
     [InlineData("powInt(2, 0) ?? -1", 1)]
-    [InlineData("powInt(2, -1) ?? -1", -1)]   // negativer Exponent: null, nicht 0
+    [InlineData("powInt(2, -1) ?? -1", -1)]   // a negative exponent gives null rather than 0
     [InlineData("absInt(-7)", 7)]
     [InlineData("minInt(3, 9)", 3)]
     [InlineData("maxInt(3, 9)", 9)]
@@ -81,29 +80,29 @@ public class MathTests
         Assert.Equal(expected, Run(Head + $"fn main(): int {{ return {expression}; }}"));
 
     /// <summary>
-    /// <c>divFloor</c> rundet Richtung minus unendlich, <c>/</c> Richtung null.
+    /// <c>divFloor</c> rounds towards minus infinity, <c>/</c> towards zero.
     /// </summary>
-    /// <remarks>Der Unterschied zeigt sich nur bei negativen Zahlen und ist genau der Grund für
-    /// die Funktion: wer auf einem Raster rechnet (Kacheln, Zeitfenster), braucht -4 und nicht -3.
-    /// Ohne diese Zeilen wäre eine Implementierung grün, die schlicht <c>/</c> weiterreicht.</remarks>
+    /// <remarks>The difference shows only for negative numbers and is exactly the reason for the
+    /// function: whoever computes on a grid — tiles, time windows — needs -4 rather than -3. Without
+    /// these lines an implementation simply forwarding <c>/</c> would be green.</remarks>
     [Theory]
     [InlineData("divFloor(7, 2)", 3)]
     [InlineData("divFloor(-7, 2)", -4)]
     [InlineData("divFloor(7, -2)", -4)]
     [InlineData("divFloor(-7, -2)", 3)]
-    [InlineData("divFloor(-6, 2)", -3)]      // glatt: kein Abrunden nötig
-    [InlineData("modFloor(-7, 2)", 1)]       // Vorzeichen von b
+    [InlineData("divFloor(-6, 2)", -3)]      // even: no rounding down needed
+    [InlineData("modFloor(-7, 2)", 1)]       // the sign of b
     [InlineData("modFloor(7, -2)", -1)]
     [InlineData("modFloor(-6, 2)", 0)]
     public void Floor_division_rounds_towards_negative_infinity(string expression, long expected) =>
         Assert.Equal(expected, Run(Head + $"fn main(): int {{ return {expression}; }}"));
 
-    // ------------------------------------------------------------------ Fließkomma
+    // ------------------------------------------------------------------ floating point
 
     [Fact]
     public void NaN_is_recognised_without_a_native_call() =>
-        // 'NaN' ist der einzige Wert, der sich selbst ungleich ist (IEEE 754) — deshalb braucht
-        // 'isNaN' weder eine native Kante noch Bit-Zugriff.
+        // 'NaN' is the only value unequal to itself under IEEE 754, so 'isNaN' needs neither a native edge
+        // nor bit access.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let nan = 0.0 / 0.0;
@@ -125,7 +124,7 @@ public class MathTests
             """));
 
     [Theory]
-    [InlineData("trunc(0.0 - 2.7)", -2)]     // Richtung null, floor wäre -3
+    [InlineData("trunc(0.0 - 2.7)", -2)]     // towards zero; floor would be -3
     [InlineData("trunc(2.7)", 2)]
     [InlineData("sign(0.0 - 5.0)", -1)]
     [InlineData("sign(0.0)", 0)]
@@ -133,19 +132,19 @@ public class MathTests
     [InlineData("log2(8.0)", 3)]
     [InlineData("log10(1000.0)", 3)]
     [InlineData("cbrt(27.0)", 3)]
-    [InlineData("cbrt(0.0 - 27.0)", -3)]     // negativ: pow(x, 1/3) allein gäbe NaN
+    [InlineData("cbrt(0.0 - 27.0)", -3)]     // negative: pow(x, 1/3) alone would give NaN
     [InlineData("hypot(3.0, 4.0)", 5)]
     [InlineData("sinh(0.0)", 0)]
     [InlineData("cosh(0.0)", 1)]
     [InlineData("tanh(0.0)", 0)]
     public void Float_helpers_hit_their_exact_values(string expression, long expected) =>
-        // Nur Werte, die exakt herauskommen — sonst misst der Test die Genauigkeit der
-        // Host-Bibliothek statt dieser Stdlib.
+        // Only values that come out exactly; otherwise the test measures the accuracy of the host library
+        // rather than this stdlib.
         Assert.Equal(expected, Run(Head + $"fn main(): int {{ return ({expression}) as int; }}"));
 
     [Fact]
     public void Exp_and_the_constants_are_close_enough() =>
-        // Hier geht es nicht exakt auf. Geprüft wird ein Fenster, nicht eine Ziffernfolge.
+        // This does not come out exactly. A window is checked rather than a sequence of digits.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let a = exp(1.0);
@@ -159,8 +158,8 @@ public class MathTests
 
     [Fact]
     public void The_same_seed_gives_the_same_sequence() =>
-        // Der Grund, warum es kein 'newRandom()' ohne Argument gibt: eine Zeitquelle als
-        // Voreinstellung wäre bequem und machte jeden Lauf stillschweigend unreproduzierbar.
+        // The reason there is no 'newRandom()' without an argument: a time source as the default would be
+        // convenient and would make every run silently irreproducible.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let a = newRandom(42);
@@ -186,9 +185,9 @@ public class MathTests
 
     [Fact]
     public void A_zero_seed_does_not_freeze_the_generator() =>
-        // Bei xorshift ist 0 ein Fixpunkt: die Folge bliebe für immer 0. Der Seed wird deshalb
-        // still ersetzt — die eine Stelle, an der Stillschweigen besser ist als ein panic für
-        // eine völlig plausible Eingabe.
+        // For xorshift 0 is a fixed point: the sequence would stay 0 forever. The seed is therefore
+        // replaced silently — the one place where silence is better than a panic for a perfectly
+        // plausible input.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let r = newRandom(0);
@@ -200,9 +199,9 @@ public class MathTests
 
     [Fact]
     public void NextIntRange_stays_inside_its_bounds() =>
-        // 1000 Ziehungen. Der Rohwert kann negativ sein, und ohne die Betragsbildung VOR dem
-        // Modulo läge das Ergebnis unterhalb von 'lo' — ein Fehler, den ein einzelner Zug mit
-        // Wahrscheinlichkeit 1/2 nicht sieht.
+        // A thousand draws. The raw value may be negative, and without taking the absolute value BEFORE
+        // the modulo the result would lie below 'lo' — a fault a single draw misses with probability
+        // one half.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let r = newRandom(7);
@@ -242,8 +241,7 @@ public class MathTests
 
     [Fact]
     public void NextBool_produces_both_values() =>
-        // Ein 'nextBool', das immer dasselbe liefert, erfüllt jede Bereichsprüfung und ist
-        // trotzdem wertlos.
+        // A 'nextBool' always yielding the same value satisfies every range check and is still worthless.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
                 let r = newRandom(11);
