@@ -3,18 +3,17 @@ using Lyric.Core;
 namespace Lyric.Ir;
 
 /// <summary>
-/// Wie IR-Begriffe geschrieben werden: Skalar-Namen und Op-Mnemonics an einer Stelle.
+/// How IR terms are spelled: scalar names and op mnemonics in one place.
 ///
-/// <para>Der Grund für die eigene Klasse ist Drift-Vermeidung. <see cref="IrPrinter"/> braucht die
-/// Namen für den Dump, <see cref="IrVerifier"/> für seine Befunde. Solange beide ihre eigene
-/// Mapping-Tabelle hatten, konnte eine Umbenennung („and" → „bitand") die Verifier-Meldungen
-/// gegen die Printer-Ausgabe laufen lassen — und man liest beide nebeneinander, wenn man einen
-/// Lowering-Bug sucht. Jetzt ändern sich beide zugleich.</para>
+/// <para>A class of its own to avoid drift. <see cref="IrPrinter"/> needs the names for the dump,
+/// <see cref="IrVerifier"/> for its findings. As long as both had their own mapping table, a rename
+/// ("and" to "bitand") could make the verifier messages disagree with the printer output — and the two
+/// get read side by side while hunting a lowering bug. Now both change at once.</para>
 ///
-/// <para>Alle drei Methoden werfen im <c>default</c>-Zweig statt einen Ersatznamen zu liefern:
-/// ein Enum-Wert ohne Namen heißt, dass eine Erweiterung nicht nachgezogen wurde, und das soll
-/// auffallen statt als „I17" im Snapshot zu landen. Gleiche Konvention wie
-/// <see cref="IrType.Equal"/> und <see cref="TypeLowering.Lower"/>.</para>
+/// <para>All three methods throw in the <c>default</c> branch rather than yielding a substitute name:
+/// an enum value without a name means an extension was not followed through, and that should show
+/// rather than land in a snapshot as "I17". The same convention as <see cref="IrType.Equal"/> and
+/// <see cref="TypeLowering.Lower"/>.</para>
 /// </summary>
 internal static class IrNames
 {

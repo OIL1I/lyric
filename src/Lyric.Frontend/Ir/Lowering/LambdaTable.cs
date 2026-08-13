@@ -5,25 +5,24 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Die angehobenen Lambdas eines Moduls (ADR-018).
+/// The lifted lambdas of a module.
 ///
-/// <para>Ein Lambda wird zu einer <b>gewoehnlichen</b> <see cref="IrFunction"/>: Parameter 0 ist
-/// sein Environment, danach kommen die geschriebenen Parameter. Damit ist ein Closure-Aufruf
-/// derselbe Mechanismus wie ein Methodenaufruf mit Empfaenger (ADR-014) und nicht ein zweiter
-/// daneben — die VM braucht fuer <c>callind</c> keinen eigenen Frame-Aufbau.</para>
+/// <para>A lambda becomes an ORDINARY <see cref="IrFunction"/>: parameter 0 is its environment,
+/// followed by the written parameters. A closure call is therefore the same mechanism as a method call
+/// with a receiver rather than a second one beside it, and the VM needs no separate frame setup for
+/// <c>callind</c>.</para>
 ///
-/// <para><b>Warum eine Tabelle mit Worklist und keine Rekursion.</b> Der ModuleLowerer vergibt
-/// alle FunctionIds in Pass 1, bevor irgendein Rumpf gelowert wird — ein Lambda taucht aber erst
-/// in Pass 2 auf. Es bekommt seine Id deshalb bei der <b>Registrierung</b>, und gelowert wird es
-/// erst danach; dabei darf es weitere Lambdas registrieren, die hinten anwachsen. Eine direkte
-/// Rekursion haette dasselbe geleistet, aber die Reihenfolge in der Funktionsliste von der
-/// Aufrufverschachtelung abhaengig gemacht — und die Liste ist im Bytecode indexbehaftet
-/// (ADR-013).</para>
+/// <para>A TABLE WITH A WORKLIST RATHER THAN RECURSION. The ModuleLowerer assigns all FunctionIds in
+/// pass 1, before any body is lowered, but a lambda only appears in pass 2. It therefore gets its id
+/// at REGISTRATION and is lowered afterwards, and while being lowered it may register further lambdas
+/// that grow at the end. Direct recursion would have achieved the same but would have made the order
+/// in the function list depend on the call nesting, and that list is index-bearing in the
+/// bytecode.</para>
 /// </summary>
 internal sealed class LambdaTable
 {
-    /// <summary>Ein registriertes, noch nicht gelowertes Lambda samt allem, was sein Rumpf
-    /// braucht.</summary>
+    /// <summary>A registered lambda that has not been lowered yet, with everything its body
+    /// needs.</summary>
     private readonly record struct Pending(
         LambdaExpr Lambda,
         string Name,
@@ -36,11 +35,11 @@ internal sealed class LambdaTable
 
     private readonly List<Pending> _pending = new();
 
-    /// <summary>Die erste Id, die an ein Lambda gehen darf — hinter allen geschriebenen Funktionen
-    /// und hinter dem Global-Initialisierer.</summary>
-    /// <summary>Bis wohin schon gelowert wurde. Die Tabelle wird MEHRFACH geleert — eine
-    /// Instanz kann ein Lambda anfordern, ein Lambda eine Instanz —, und ohne diese Marke
-    /// entstuende bei jedem Durchgang alles noch einmal.</summary>
+    /// <summary>The first id a lambda may take: behind all written functions and behind the global
+    /// initializer.</summary>
+    /// <summary>How far the lowering has come. The table is drained SEVERAL times — an instance can
+    /// request a lambda, a lambda an instance — and without this mark everything would arise anew on
+    /// every pass.</summary>
     private int _lowered;
 
     private readonly FunctionIds _ids;
@@ -50,23 +49,22 @@ internal sealed class LambdaTable
     public bool IsEmpty => _pending.Count == 0;
 
     /// <summary>
-    /// Meldet ein Lambda an und liefert die Id, unter der es aufrufbar sein wird. Der Rumpf ist zu
-    /// diesem Zeitpunkt noch nicht gelowert — deshalb kann der Aufrufer sein <c>mkclosure</c>
-    /// sofort schreiben.
+    /// Registers a lambda and returns the id under which it will be callable. The body is not lowered
+    /// at that point, which is why the caller can write its <c>mkclosure</c> immediately.
     /// </summary>
-    /// <param name="substitution">Die Substitution der umgebenden Funktion. Ein Lambda IN einer
-    /// monomorphisierten Instanz sieht deren Typ-Parameter — <c>(a: T, b: T) =&gt; …</c> in
-    /// <c>sortList&lt;T&gt;</c> ist der Normalfall, nicht die Ausnahme. Ohne sie blieb das <c>T</c>
-    /// im Rumpf unaufgeloest und das Lowering brach ab.</param>
+    /// <param name="substitution">The substitution of the enclosing function. A lambda IN a monomorphized
+    /// instance sees its type parameters — <c>(a: T, b: T) =&gt; …</c> inside <c>sortList&lt;T&gt;</c> is
+    /// the normal case, not the exception. Without it the <c>T</c> in the body stays unresolved and the
+    /// lowering aborts.</param>
     public FunctionId Register(LambdaExpr lambda, string enclosing, IReadOnlyList<Symbol> captures,
         bool capturesThis, IrType environmentType, TypeSymbol? receiver,
         IReadOnlyDictionary<GenericParamSymbol, LyrType> substitution)
     {
         var id = _ids.Next();
 
-        // Der Name landet im Bytecode und in jeder Diagnose. '<' kann in keinem Lyric-Bezeichner
-        // vorkommen (Sprache.md §1.3), also kollidiert er mit nichts; die laufende Nummer haelt
-        // zwei Lambdas derselben Funktion auseinander.
+        // The name lands in the bytecode and in every diagnostic. '<' cannot occur in any Lyric
+        // identifier, so it collides with nothing; the running number keeps two lambdas of the same
+        // function apart.
         var name = $"{enclosing}.<lambda{_pending.Count}>";
 
         _pending.Add(new Pending(lambda, name, id, captures, capturesThis, environmentType,
@@ -75,9 +73,9 @@ internal sealed class LambdaTable
     }
 
     /// <summary>
-    /// Lowert alle angemeldeten Lambdas — auch die, die dabei erst entstehen. Die Schleife laeuft
-    /// ueber einen Index statt ueber einen Enumerator, weil <see cref="_pending"/> waehrend des
-    /// Durchlaufs waechst: ein Lambda in einem Lambda ist der Normalfall, kein Sonderfall.
+    /// Lowers all registered lambdas, including the ones that arise while doing so. The loop runs over
+    /// an index rather than an enumerator, because <see cref="_pending"/> grows during the pass: a
+    /// lambda inside a lambda is the normal case, not a special one.
     /// </summary>
     public List<(FunctionId Id, IrFunction Function)> LowerAll(TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,

@@ -3,19 +3,17 @@ using Lyric.Resolver;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Die nativen Deklarationen der geladenen Stdlib, und welche davon dieses Modul tatsächlich
-/// benutzt.
+/// The native declarations of the loaded stdlib, and which of them this module actually uses.
 ///
-/// <para><b>Interniert wird bei Bedarf, nicht auf Vorrat.</b> Wer nur <c>println</c> aufruft, soll
-/// keine Import-Tabelle mit <c>print</c> und <c>eprintln</c> bekommen — die Runtime müsste sonst
-/// auch die binden und das Modul ablehnen, wenn eine davon fehlt. Die Reihenfolge ergibt sich aus
-/// der Lowering-Reihenfolge und ist damit deterministisch (ADR-013).</para>
+/// <para>INTERNED ON DEMAND, NOT IN ADVANCE. Whoever calls only <c>println</c> should not get an
+/// import table with <c>print</c> and <c>eprintln</c>: the runtime would have to bind those too and
+/// would reject the module if one were missing. The order follows the lowering order and is therefore
+/// deterministic.</para>
 ///
-/// <para>Zwei Zugriffswege, weil es zwei Arten von Aufrufern gibt: der Nutzer ruft über ein
-/// aufgelöstes <see cref="FunctionSymbol"/> auf, das f-String-Lowering über einen
-/// <b>festen Namen</b> — es referenziert <c>std.string.concat</c>, ohne dass jemand
-/// <c>std.string</c> importiert hätte. Dasselbe Modell wie Roslyns Verweis auf
-/// <c>String.Concat</c>.</para>
+/// <para>Two access paths, because there are two kinds of caller: the user calls through a resolved
+/// <see cref="FunctionSymbol"/>, the f-string lowering through a FIXED NAME — it references
+/// <c>std.string.concat</c> without anyone having imported <c>std.string</c>. The same model as
+/// Roslyn's reference to <c>String.Concat</c>.</para>
 /// </summary>
 internal sealed class ImportTable
 {

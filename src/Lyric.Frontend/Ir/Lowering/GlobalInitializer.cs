@@ -5,36 +5,35 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Baut die synthetische Funktion, die alle globalen Slots fuellt.
+/// Builds the synthetic function that fills all global slots.
 ///
-/// <para>Sie sieht aus wie jede andere Funktion — keine Parameter, Rueckgabetyp <c>void</c>, ein
-/// Block, ein <c>ret</c> — und wird auch so verifiziert und ausgefuehrt. Ihre Sonderrolle steht
-/// ausschliesslich im Modul (<see cref="IrModule.GlobalInit"/>) und in der Zusage, dass eine
-/// Runtime sie <b>vor</b> dem Einstiegspunkt ruft.</para>
+/// <para>It looks like any other function — no parameters, return type <c>void</c>, one block, one
+/// <c>ret</c> — and is verified and executed as one. Its special role stands solely in the module
+/// (<see cref="IrModule.GlobalInit"/>) and in the promise that a runtime calls it BEFORE the entry
+/// point.</para>
 ///
-/// <para><b>Warum eine Funktion und keine Werte in der Sektion.</b> Ein <c>static let ZERO:
-/// Vector3 = Vector3 { … }</c> ist ein Ausdruck, kein Literal (ADR-014) — als Wert im Bytecode
-/// waere er nur fuer Skalare darstellbar, und der Rest brauchte doch wieder Code. Eine Funktion
-/// kann alles, was das Lowering ohnehin kann, und der Instruktionssatz bekommt keinen Sonderfall.
-/// CIL loest es mit <c>.cctor</c> genauso.</para>
+/// <para>A FUNCTION RATHER THAN VALUES IN THE SECTION. A <c>static let ZERO: Vector3 =
+/// Vector3 { … }</c> is an expression, not a literal — as a value in the bytecode it would be
+/// representable for scalars only, and the rest would need code anyway. A function can do everything
+/// the lowering can do, and the instruction set gets no special case. CIL solves it the same way with
+/// <c>.cctor</c>.</para>
 ///
-/// <para><b>Reihenfolge ist Deklarationsreihenfolge.</b> Ein Global darf ein frueher deklariertes
-/// lesen, ein spaeteres nicht — das ergibt sich daraus, dass die Slots hier der Reihe nach
-/// gefuellt werden, und ist die einzige Ordnung ohne Abhaengigkeitsanalyse. Wird ein spaeteres
-/// gelesen, steht dort der Nullwert; das ist heute <b>nicht</b> geprueft und in STATUS vermerkt.</para>
+/// <para>THE ORDER IS DECLARATION ORDER. A global may read an earlier declared one, not a later one;
+/// that follows from filling the slots in sequence here, and it is the only order without a dependency
+/// analysis. Reading a later one yields the zero value.</para>
 /// </summary>
 internal static class GlobalInitializer
 {
-    /// <summary>Der Name taucht im Bytecode auf und muss deshalb mit keinem Lyric-Bezeichner
-    /// kollidieren koennen — <c>&lt;</c> ist in einem Identifier nicht erlaubt (§1.3).</summary>
+    /// <summary>The name appears in the bytecode and must therefore be unable to collide with any Lyric
+    /// identifier: <c>&lt;</c> is not allowed in an identifier.</summary>
     public const string Name = "<globals>";
 
     public static IrFunction Build(GlobalTable globals, TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,
         TypeTable typeTable, LambdaTable lambdas, InstanceTable instances)
     {
-        // Ein synthetischer FunctionDecl: der FunctionLowerer arbeitet auf einer Deklaration, und
-        // ihm hier eine zu bauen ist ehrlicher, als ihm einen zweiten Einstieg zu geben.
+        // A synthetic FunctionDecl: the FunctionLowerer works on a declaration, and building one here is
+        // more honest than giving it a second entry point.
         var body = new Block(
             globals.Pending
                 .Select(entry => (Stmt)new GlobalInitStmt(entry.Symbol, entry.Binding))
@@ -51,12 +50,12 @@ internal static class GlobalInitializer
 }
 
 /// <summary>
-/// „Fuelle diesen globalen Slot mit diesem Initialisierer" — ein Statement, das es nur im
-/// synthetischen Initialisierer gibt.
+/// "Fill this global slot with this initializer" — a statement that exists only in the synthetic
+/// initializer.
 ///
-/// <para>Ein eigener Knoten statt eines umgedeuteten <c>BindingStmt</c>: ein <c>BindingStmt</c>
-/// legt ein <b>Local</b> an, und genau das darf hier nicht passieren. Der Unterschied im Typ
-/// macht die Verwechslung unmoeglich, statt sie durch eine Bedingung im Lowerer auszuschliessen.</para>
+/// <para>A node of its own rather than a repurposed <c>BindingStmt</c>: a <c>BindingStmt</c> creates a
+/// LOCAL, and that is exactly what must not happen here. The difference in type makes the confusion
+/// impossible instead of ruling it out through a condition in the lowerer.</para>
 /// </summary>
 internal sealed record GlobalInitStmt(GlobalSymbol Symbol, BindingStmt Binding)
     : Stmt(Binding.Span);

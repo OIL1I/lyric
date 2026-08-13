@@ -6,17 +6,17 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Syntaktischer <see cref="TypeNode"/> → <see cref="IrType"/>.
+/// A syntactic <see cref="TypeNode"/> to an <see cref="IrType"/>.
 ///
-/// <para>Nötig, weil die Sema die aufgelösten Signatur-Typen nicht in <c>TypeResult</c> ablegt —
-/// dort stehen nur Ausdrucks-Typen. Für Rückgabetypen und die Parameter nativer Deklarationen
-/// muss das Lowering den Knoten selbst lesen.</para>
+/// <para>Needed because the sema does not put the resolved signature types into <c>TypeResult</c>,
+/// which holds expression types only. For return types and the parameters of native declarations the
+/// lowering has to read the node itself.</para>
 ///
-/// <para>Builtins sind laut <c>Types.cs</c> <see cref="NamedType"/> mit einelementigem Pfad.
-/// Dazu kommt seit M8/S2 <c>T[]</c> ueber einem Primitiv — <c>split</c> liefert
-/// <c>string[]</c>, <c>toChars</c> liefert <c>char[]</c>. Die Grenze bleibt scharf: ein Array
-/// hat, anders als eine Klasse, <b>kein Layout</b>, das der Host kennen muesste. Alles andere
-/// meldet sich als Scope-Grenze, statt still etwas Falsches zu liefern.</para>
+/// <para>Builtins are <see cref="NamedType"/> with a single-element path. On top of that comes
+/// <c>T[]</c> over a primitive — <c>split</c> yields <c>string[]</c>, <c>toChars</c> yields
+/// <c>char[]</c>. The line stays sharp: unlike a class, an array has NO LAYOUT the host would have to
+/// know. Everything else reports as a scope boundary rather than silently yielding something
+/// wrong.</para>
 /// </summary>
 internal static class DeclaredTypes
 {
@@ -24,25 +24,23 @@ internal static class DeclaredTypes
 
     public static IrType Lower(TypeNode? node, Func<TypeNode, string?>? hostType = null)
     {
-        if (node is null) return VoidType; // fehlender Rückgabetyp = void
+        if (node is null) return VoidType; // a missing return type means void
 
         if (node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
             && TypeFacts.FromBuiltinName(named.Path[0]) is { } primitive)
             return TypeLowering.Lower(primitive);
 
-        // '?T' in einer nativen Signatur: 'readText' liefert '?string', 'env' auch. Ein
-        // Fehlschlag, der ein gewoehnlicher Zustand der Welt ist, gehoert in den Rueckgabewert
-        // und nicht in eine Exception — dafuer muss der Typ ausdrueckbar sein.
+        // '?T' in a native signature: 'readText' yields '?string', and so does 'env'. A failure that is
+        // an ordinary state of the world belongs in the return value rather than in an exception, and
+        // for that the type has to be expressible.
         if (node is NullableType option) return new IrOptionalType(Lower(option.Inner, hostType));
 
-        // Ein HOST-Typ (M10/E4, ADR-026). Er ist die eine Sorte Nicht-Primitiv, die eine native
-        // Signatur nennen darf — und zwar genau deshalb, weil der Host sein Layout kennt und das
-        // Modul nicht. Die Begruendung im Absatz darueber ("ein Array hat kein Layout") zieht die
-        // Linie an derselben Stelle, nur von der anderen Seite.
+        // A HOST type. It is the one kind of non-primitive a native signature may name, precisely
+        // because the host knows its layout and the module does not.
         if (hostType?.Invoke(node) is { } name) return new IrHostType(name);
 
-        // 'T[]' in einer nativen Signatur. Der Elementtyp bleibt primitiv: ein Array von
-        // Objekten wuerde vom Host verlangen, ein Modul-Layout zu kennen.
+        // 'T[]' in a native signature. The element type stays primitive: an array of objects would
+        // require the host to know a module layout.
         if (node is ArrayType { Size: null } array
             && array.Element is NamedType { Path.Length: 1, TypeArguments.Length: 0 } element
             && TypeFacts.FromBuiltinName(element.Path[0]) is { } elementPrimitive)

@@ -6,18 +6,17 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Ordnet jedem Modul-<c>let</c> und jedem <c>static let</c> einen globalen Slot zu.
+/// Assigns a global slot to every module <c>let</c> and every <c>static let</c>.
 ///
-/// <para><b>Anders als <see cref="TypeTable"/> und <see cref="ImportTable"/> wird hier
-/// <i>vollstaendig</i> vorab gesammelt, nicht bei Bedarf interniert.</b> Der Grund ist die
-/// Init-Funktion: sie muss jeden Slot fuellen, auch einen, den kein Programmpfad je liest. Ein
-/// ungefuellter Slot waere ein Wert ohne Wert, und §6.6 kennt keinen.</para>
+/// <para>Unlike <see cref="TypeTable"/> and <see cref="ImportTable"/>, everything is collected UP
+/// FRONT here rather than interned on demand. The reason is the init function: it has to fill every
+/// slot, including one no program path ever reads. An unfilled slot would be a value without a value,
+/// and the language has none.</para>
 ///
-/// <para>Die Reihenfolge ist Modul- dann Deklarationsreihenfolge und damit deterministisch
-/// (ADR-013). Sie ist zugleich die <b>Initialisierungsreihenfolge</b>: ein Global darf ein
-/// frueher deklariertes benutzen, ein spaeteres nicht. Das ist keine Einschraenkung, die diese
-/// Implementierung erfindet — es ist die einzige Ordnung, die ohne Abhaengigkeitsanalyse
-/// auskommt, und C# (Feld-Initialisierer) sowie Go (ohne dessen Sortierung) machen es genauso.</para>
+/// <para>The order is module order then declaration order and therefore deterministic. It is at the
+/// same time the INITIALIZATION ORDER: a global may use an earlier declared one, not a later one. That
+/// is the only order that works without a dependency analysis; C# does the same for field
+/// initializers, and so does Go without its sorting.</para>
 /// </summary>
 internal sealed class GlobalTable
 {
@@ -26,8 +25,7 @@ internal sealed class GlobalTable
 
     private readonly List<IrGlobal> _defs = new();
 
-    /// <summary>Der Initialisierer je Slot, in derselben Reihenfolge — Quelle fuer die
-    /// Init-Funktion.</summary>
+    /// <summary>The initializer per slot, in the same order; the source for the init function.</summary>
     private readonly List<(GlobalSymbol Symbol, BindingStmt Binding, ModuleSymbol Module)> _pending = new();
 
     public List<IrGlobal> Defs => _defs;
@@ -38,20 +36,16 @@ internal sealed class GlobalTable
     public bool IsEmpty => _defs.Count == 0;
 
     /// <summary>
-    /// Sammelt alle Globals einer Compilation. Laeuft <b>vor</b> dem Funktions-Lowering: ein
-    /// Funktionsrumpf darf ein Global lesen, das erst spaeter im Quelltext steht.
+    /// Collects all globals of a compilation. Runs BEFORE the function lowering: a function body may
+    /// read a global that stands later in the source.
     /// </summary>
     public void Collect(Compilation compilation, TypeResult types, TypeTable typeTable)
     {
         foreach (var module in compilation.Modules)
         {
-            // Native Module werden NICHT uebersprungen. Die alte Begruendung — "sie deklarieren
-            // nur Signaturen" — gilt fuer rumpflose 'fn', aber ein 'pub let pi: float = 3.14…'
-            // hat einen Wert, und der muss in die Globals-Sektion wie jeder andere.
-            //
-            // Ohne das war eine Konstante in der Stdlib nicht benutzbar: 'std.math.pi' meldete
-            // "was not collected (is it declared outside this compilation?)" — eine Meldung, die
-            // auf ein fremdes Modul zeigt, obwohl das Modul direkt danebenlag.
+            // Native modules are NOT skipped. "They only declare signatures" holds for bodyless 'fn',
+            // but a 'pub let pi: float = 3.14…' has a value, and that has to go into the Globals section
+            // like any other.
 
             foreach (var decl in compilation.AstOf(module).Declarations)
             {
@@ -62,8 +56,8 @@ internal sealed class GlobalTable
                         Add(symbol, global.Binding, module, symbol.Name, types, typeTable);
                         break;
 
-                    // 'static let' auf einem Typ ist derselbe Mechanismus — nur der Name traegt
-                    // den Typ, damit 'Player.MAX' und 'Wall.MAX' nicht zusammenfallen.
+                    // A 'static let' on a type is the same mechanism; only the name carries the type, so
+                    // 'Player.MAX' and 'Wall.MAX' do not collide.
                     case ClassDecl or StructDecl or EnumDecl:
                         CollectStatics(decl, module, types, typeTable);
                         break;
@@ -99,9 +93,9 @@ internal sealed class GlobalTable
     {
         if (_assigned.ContainsKey(symbol)) return;
 
-        // Ohne Initialisierer bliebe der Slot leer. Auf Modulebene erlaubt die Grammatik nur
-        // 'let' (§2.3), und ein 'let' ohne Wert ist auf Top-Level nicht sinnvoll auffuellbar:
-        // es gibt keinen spaeteren Punkt, an dem eine Zuweisung stehen koennte.
+        // Without an initializer the slot would stay empty. At module level the grammar allows 'let'
+        // only, and a 'let' without a value cannot sensibly be filled in later: there is no later point
+        // at which an assignment could stand.
         if (binding.Initializer is null)
             throw new UnsupportedConstructException(
                 $"the constant '{name}' has no initializer; a module-level 'let' needs one",
@@ -114,8 +108,8 @@ internal sealed class GlobalTable
         _pending.Add((symbol, binding, module));
     }
 
-    /// <summary>Slot und Typ eines Globals. Ein unbekanntes Symbol ist ein Lowering-Bug: gesammelt
-    /// wurde vollstaendig, bevor die erste Funktion gelowert wurde.</summary>
+    /// <summary>The slot and type of a global. An unknown symbol is a lowering bug: collection was
+    /// complete before the first function was lowered.</summary>
     public (GlobalId Id, IrType Type) Resolve(GlobalSymbol symbol, Span span)
     {
         if (_assigned.TryGetValue(symbol, out var id)) return (id, _defs[id.Value].Type);

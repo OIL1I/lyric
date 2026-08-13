@@ -3,16 +3,16 @@ using Lyric.Core;
 namespace Lyric.Ir;
 
 /// <summary>
-/// Struktur-Zugriff auf Instruktionen: welche Temps liest sie, welches schreibt sie, wohin
-/// verzweigt sie.
+/// Structural access to instructions: which temps does one read, which does it write, where does it
+/// branch.
 ///
-/// <para>Eigene Klasse, weil inzwischen mehrere Stufen dieselbe Frage stellen — der Verifier für
-/// Def/Use und Reachability, der Bytecode-Emitter fürs Stack-Scheduling. Zwei Kopien dieser
-/// <c>switch</c>-Blöcke wären ein Drift-Risiko der übelsten Sorte: eine neue Instruktion, die in
-/// einer Kopie fehlt, führt zu still falschem Code statt zu einem Fehler.</para>
+/// <para>A class of its own, because several stages ask the same question — the verifier for def/use
+/// and reachability, the bytecode emitter for stack scheduling. Two copies of these <c>switch</c>
+/// blocks would be a drift risk of the worst kind: a new instruction missing from one copy leads to
+/// silently wrong code rather than to an error.</para>
 ///
-/// <para>Der <c>default</c>-Wurf ist auch hier die Vollständigkeits-Garantie: eine neue Instruktion
-/// bricht sofort und sichtbar, statt stillschweigend als operandenlos durchzugehen.</para>
+/// <para>The <c>default</c> throw is the completeness guarantee here too: a new instruction breaks
+/// immediately and visibly rather than silently passing as operand-free.</para>
 /// </summary>
 public static class IrShape
 {
@@ -28,14 +28,14 @@ public static class IrShape
         CallImport k => k.Args,
         NewObject => Array.Empty<TempId>(),
         LoadField f => new[] { f.Object },
-        // Reihenfolge ist Vertrag, nicht Geschmack: der Stack-Scheduler legt die Operanden in
-        // genau dieser Folge ab, und Bytecode.md §5 schreibt fest, dass bei stfld die Referenz
-        // unter dem Wert liegt. Vertauschen hier heißt vertauschte Argumente in der VM.
+        // The order is a contract, not taste: the stack scheduler places the operands in exactly this
+        // sequence, and the format fixes that for stfld the reference lies below the value. Swapping
+        // here means swapped arguments in the VM.
         StoreField f => new[] { f.Object, f.Value },
 
         NewArray a => a.Elements,
         LoadElem e => new[] { e.Array, e.Index },
-        // Reihenfolge ist Vertrag (Bytecode.md §5): Array, Index, Wert — von unten nach oben.
+        // The order is a contract: array, index, value, from the bottom up.
         StoreElem e => new[] { e.Array, e.Index, e.Value },
         ArrayLen a => new[] { a.Array },
         ArrayConcat c => new[] { c.Left, c.Right },
@@ -56,12 +56,12 @@ public static class IrShape
         LoadGlobal => Array.Empty<TempId>(),
         StoreGlobal g => new[] { g.Value },
 
-        // Das Environment ist der einzige Operand — der Funktionsindex steht in der Instruktion.
+        // The environment is the only operand; the function index stands in the instruction.
         MakeClosure m => m.Environment is { } env ? new[] { env } : Array.Empty<TempId>(),
-        // Der Aufgerufene liegt VOR den Argumenten, wie der Empfaenger bei callvirt.
+        // The callee lies BEFORE the arguments, like the receiver at a callvirt.
         CallIndirect c => new[] { c.Callee }.Concat(c.Args).ToArray(),
-        // Der Empfaenger ist Arg 0 und liegt damit zuunterst — dieselbe Konvention wie bei Call
-        // (ADR-014). CallVirt braucht keine Sonderbehandlung.
+        // The receiver is argument 0 and therefore lies lowest, the same convention as at Call.
+        // CallVirt needs no special handling.
         CallVirt c => c.Args,
 
         _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
@@ -79,8 +79,8 @@ public static class IrShape
             $"ir: unhandled terminator {terminator.GetType().Name}")
     };
 
-    /// <summary>Das Temp, das die Instruktion definiert — <c>null</c>, wenn sie keins schreibt
-    /// (<c>store</c>, void-<c>call</c>).</summary>
+    /// <summary>The temp the instruction defines, or <c>null</c> when it writes none (<c>store</c>, a
+    /// void <c>call</c>).</summary>
     public static TempId? DestOf(IrOp op) => op switch
     {
         Const c => c.Dest,
@@ -128,9 +128,9 @@ public static class IrShape
         Return => Array.Empty<BlockId>(),
         Branch b => new[] { b.Target },
         CondBranch c => new[] { c.IfTrue, c.IfFalse },
-        // Throw und EndFinally haben keine Nachfolger IM CFG — wohin es weitergeht, entscheidet
-        // die Handler-Tabelle, nicht der Kontrollfluss des Blocks. Der Verifier behandelt
-        // Handler-Bloecke deshalb gesondert als erreichbar.
+        // Throw and EndFinally have no successors IN THE CFG: where execution continues is decided by
+        // the handler table, not by the block's control flow. The verifier therefore treats handler
+        // blocks separately as reachable.
         Unreachable or Throw or EndFinally => Array.Empty<BlockId>(),
         _ => throw new InternalCompilationException(
             $"ir: unhandled terminator {terminator.GetType().Name}")

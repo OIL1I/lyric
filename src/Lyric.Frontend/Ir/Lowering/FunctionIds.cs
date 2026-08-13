@@ -1,18 +1,17 @@
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Vergibt die <see cref="FunctionId"/>s der Funktionen, die erst <b>waehrend</b> des Lowerings
-/// entstehen: angehobene Lambdas (ADR-018), Coroutine-Rumpfe (§8) und monomorphisierte Instanzen
-/// (§12).
+/// Assigns the <see cref="FunctionId"/>s of the functions that arise DURING the lowering: lifted
+/// lambdas, coroutine bodies and monomorphized instances.
 ///
-/// <para><b>Warum gemeinsam und nicht je Tabelle ein eigener Bereich.</b> Alle drei wachsen
-/// gleichzeitig und unbegrenzt: eine Instanz kann ein Lambda enthalten, ein Lambda eine generische
-/// Funktion rufen. Getrennte Bereiche muessten ihre Groesse vorher kennen — und die steht erst
-/// fest, wenn alles gelowert ist. Ein gemeinsamer Zaehler loest das, weil die Id dann in der
-/// Reihenfolge der Anforderung vergeben wird und nicht in der einer Kategorie.</para>
+/// <para>ONE COUNTER RATHER THAN A RANGE PER TABLE. All three grow simultaneously and without bound:
+/// an instance can contain a lambda, a lambda can call a generic function. Separate ranges would have
+/// to know their size in advance, and that is settled only once everything is lowered. A shared
+/// counter solves it, because the id is then assigned in request order rather than in the order of a
+/// category.</para>
 ///
-/// <para>Die Position in der Funktionsliste <b>ist</b> die Id (ADR-013), also wird am Ende nach ihr
-/// sortiert. Deterministisch bleibt das, weil die Anforderungsreihenfolge es ist.</para>
+/// <para>The position in the function list IS the id, so the list is sorted by it at the end. That
+/// stays deterministic, because the request order is.</para>
 /// </summary>
 internal sealed class FunctionIds
 {

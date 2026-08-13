@@ -3,25 +3,24 @@ using Lyric.Core;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Emit-Cursor über die Basic-Blocks einer Funktion: legt Blöcke an, schreibt Instruktionen in den
-/// aktuellen Block und versiegelt Blöcke mit ihrem Terminator.
+/// An emit cursor over the basic blocks of a function: creates blocks, writes instructions into the
+/// current block and seals blocks with their terminator.
 ///
-/// <para><b>Dichte Block-Ids sind strukturell garantiert</b>: <see cref="Append"/> bildet die Id aus
-/// <c>Count</c> und hängt den Block unmittelbar danach an, also gilt immer
-/// <c>Blocks[i].Id.Value == i</c>. Der erste angelegte Block ist <c>bb0</c> und damit der Entry —
-/// die zweite Verifier-Invariante fällt genauso von selbst ab.</para>
+/// <para>DENSE BLOCK IDS ARE STRUCTURALLY GUARANTEED: <see cref="Append"/> forms the id from
+/// <c>Count</c> and appends the block immediately afterwards, so <c>Blocks[i].Id.Value == i</c> always
+/// holds. The first block created is <c>bb0</c> and therefore the entry, which gives the second
+/// verifier invariant for free.</para>
 ///
-/// <para><b>Warum <see cref="SealBlock"/> einen fremden Block versiegeln kann</b>: ein
-/// <c>if</c>-Zweig darf erst dann nach vorn springen, wenn feststeht, dass es überhaupt einen
-/// Merge-Block gibt — und das weiß man erst, nachdem beide Zweige gelowert sind. Der Cursor ist
-/// dann längst weitergezogen. Die Alternative wäre, den Merge-Block vorsorglich anzulegen und bei
-/// Nichtgebrauch wieder zu entfernen; das bricht die Dichtheit, sobald der Zweig selbst Blöcke
-/// angelegt hat. Nachträgliches Versiegeln ist der billigere Weg.</para>
+/// <para>WHY <see cref="SealBlock"/> CAN SEAL A FOREIGN BLOCK: an <c>if</c> branch may only jump
+/// forward once it is settled that a merge block exists at all, and that is known only after both
+/// branches are lowered. By then the cursor has long moved on. The alternative would be to create the
+/// merge block eagerly and remove it when unused, which breaks density as soon as the branch created
+/// blocks of its own.</para>
 ///
-/// <para>Die Reihenfolge der Blöcke in der Liste ist Anlage-Reihenfolge, nicht Kontrollfluss-
-/// Reihenfolge: bei Schleifen muss der Exit-Block existieren, bevor der Body gelowert wird (ein
-/// <c>break</c> im Body braucht sein Sprungziel), also steht er vor den Body-Blöcken. Das ist
-/// korrekt und dicht, liest sich im Dump aber nicht linear.</para>
+/// <para>The order of the blocks in the list is creation order rather than control-flow order: for
+/// loops the exit block has to exist before the body is lowered, because a <c>break</c> in the body
+/// needs its jump target, so it stands before the body blocks. That is correct and dense, but does not
+/// read linearly in the dump.</para>
 /// </summary>
 internal sealed class BlockBuilder
 {
@@ -31,16 +30,16 @@ internal sealed class BlockBuilder
     public BlockBuilder(List<IrBlock> blocks)
     {
         _blocks = blocks;
-        _current = Append(); // bb0 = Entry
+        _current = Append(); // bb0 is the entry
     }
 
     public BlockId CurrentId => _current.Id;
 
-    /// <summary>Ist der aktuelle Block abgeschlossen? Wenn ja, ist der Kontrollfluss an dieser
-    /// Stelle beendet und alles Folgende unerreichbar.</summary>
+    /// <summary>Is the current block closed? If so, control flow ends at this point and everything
+    /// following is unreachable.</summary>
     public bool IsSealed => _current.Terminator is not null;
 
-    /// <summary>Legt einen Block an, <b>ohne</b> den Cursor umzusetzen.</summary>
+    /// <summary>Creates a block WITHOUT moving the cursor.</summary>
     public BlockId NewBlock() => Append().Id;
 
     public void SwitchTo(BlockId id) => _current = _blocks[id.Value];

@@ -5,13 +5,13 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Die Rumpf-Funktionen der Coroutinen eines Moduls (Sprache.md §8).
+/// The body functions of a module's coroutines.
 ///
-/// <para>Aus einer geschriebenen Coroutine werden <b>zwei</b> Funktionen: die <b>Fabrik</b> behaelt
-/// die regulaere <see cref="FunctionId"/>, damit ein Aufrufer unveraendert <c>call</c> schreibt und
-/// ein Zustandsobjekt zurueckbekommt; der <b>Rumpf</b> wird hier angemeldet und hinten angehaengt,
-/// genau wie ein angehobenes Lambda (ADR-018) — und aus demselben Grund: er entsteht erst in
-/// Pass 2, seine Id muss aber schon feststehen, waehrend die Fabrik gelowert wird.</para>
+/// <para>A written coroutine becomes TWO functions: the FACTORY keeps the regular
+/// <see cref="FunctionId"/>, so a caller writes an unchanged <c>call</c> and gets a state object back;
+/// the BODY is registered here and appended at the end, exactly like a lifted lambda and for the same
+/// reason — it arises only in pass 2, but its id has to be settled while the factory is
+/// lowered.</para>
 /// </summary>
 internal sealed class CoroutineTable
 {
@@ -20,9 +20,9 @@ internal sealed class CoroutineTable
         TypeSymbol? Receiver);
 
     private readonly List<Pending> _pending = new();
-    /// <summary>Bis wohin schon gelowert wurde. Die Tabelle wird MEHRFACH geleert — eine
-    /// Instanz kann ein Lambda anfordern, ein Lambda eine Instanz —, und ohne diese Marke
-    /// entstuende bei jedem Durchgang alles noch einmal.</summary>
+    /// <summary>How far the lowering has come. The table is drained SEVERAL times — an instance can
+    /// request a lambda, a lambda an instance — and without this mark everything would arise anew on
+    /// every pass.</summary>
     private int _lowered;
 
     private readonly FunctionIds _ids;
@@ -32,15 +32,15 @@ internal sealed class CoroutineTable
     public bool IsEmpty => _pending.Count == 0;
     public int Count => _pending.Count;
 
-    /// <summary>Meldet einen Rumpf an und liefert die Id, unter der die Fabrik ihn spaeter
-    /// referenziert.</summary>
+    /// <summary>Registers a body and returns the id under which the factory later references it.
+    /// </summary>
     public FunctionId Register(FunctionDecl decl, string name, TypeId state, IrType yield,
         TypeSymbol? receiver)
     {
         var id = _ids.Next();
 
-        // '<' kann in keinem Lyric-Bezeichner vorkommen (§1.3), also kollidiert der Name mit
-        // nichts — dieselbe Konvention wie bei '<globals>' und '<lambda0>'.
+        // '<' cannot occur in any Lyric identifier, so the name collides with nothing — the same
+        // convention as for '<globals>' and '<lambda0>'.
         _pending.Add(new Pending(decl, $"{name}.<body>", id, state, yield, receiver));
         return id;
     }

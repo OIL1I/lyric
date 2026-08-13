@@ -4,30 +4,25 @@ using Lyric.Resolver;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Was ein <b>Host-Typ</b> ist (M10/E4, ADR-026) — an <b>einer</b> Stelle.
+/// What a HOST TYPE is, in ONE place.
 ///
-/// <para><b>Die Regel</b>: eine <c>class</c> in einem <b>nativen</b> Modul, die <b>kein Feld</b>
-/// und <b>keinen Methodenrumpf</b> hat. Beides zusammen, und beides ist noetig — eine feldlose
-/// Klasse allein waere in User-Code eine gewoehnliche (wenn auch nutzlose) Klasse, und ein natives
-/// Modul enthaelt auch gewoehnliche Klassen mit Feldern.</para>
+/// <para>THE RULE: a <c>class</c> in a NATIVE module that has NO FIELD and NO METHOD BODY. Both
+/// together, and both are necessary — a field-less class alone would be an ordinary (if useless) class
+/// in user code, and a native module also contains ordinary classes with fields.</para>
 ///
-/// <para><b>„Kein Feld" ist die eigentliche Aussage</b>, nicht „leer": ein Host-Typ hat kein
-/// Layout, das dieses Modul kennt. Methoden aendern daran nichts — sie sind Natives und liegen
-/// beim Host, genau wie die freien Funktionen, ueber die E4a lief. Bis E4b hiess die Regel
-/// „leerer Rumpf", was dasselbe meinte, solange es keine Methoden gab.</para>
+/// <para>"No field" is the actual statement, not "empty": a host type has no layout this module knows.
+/// Methods change nothing about that — they are natives and live at the host, exactly like the free
+/// functions.</para>
 ///
-/// <para><b>Warum kein Marker.</b> <c>@host</c> waere deutlicher, aber Attribute sind post-v1
-/// (Sprache.md §10) — sie einzufuehren hiesse, fuer ein Werkzeug-Thema eine Grammatik-Entscheidung
-/// zu treffen. „Leere Klasse in einem nativen Modul" sagt dasselbe: ein Typ ohne Inhalt, ueber den
-/// das Modul nichts weiss.</para>
+/// <para>NO MARKER. <c>@host</c> would be clearer, but attributes are post-v1; introducing them would
+/// mean making a grammar decision for a tooling topic. "An empty class in a native module" says the
+/// same thing: a type without content, about which the module knows nothing.</para>
 ///
-/// <para><b>Warum diese Datei existiert.</b> Die Frage wird an <b>zwei</b> Stellen gestellt — beim
-/// Lowern einer nativen Signatur (<see cref="DeclaredTypes"/>, ueber den syntaktischen Knoten) und
-/// beim Lowern eines Sema-Typs an der Aufrufstelle (<see cref="TypeTable"/>, ueber das Symbol).
-/// Beim ersten Anlauf stand sie nur an der ersten; das Ergebnis war
-/// <c>cannot compare IrRefType with IrHostType</c> im Verifier, weil dieselbe Klasse einmal als
-/// Host-Typ und einmal als gewoehnliche Referenz gelowert wurde. <b>Eine Frage, zwei Stellen, eine
-/// Antwort</b> — dasselbe Muster, das in diesem Projekt achtmal Zeit gekostet hat.</para>
+/// <para>WHY THIS FILE EXISTS. The question is asked at TWO places — when lowering a native signature
+/// (<see cref="DeclaredTypes"/>, through the syntactic node) and when lowering a sema type at the call
+/// site (<see cref="TypeTable"/>, through the symbol). With it in one place only, the same class gets
+/// lowered once as a host type and once as an ordinary reference, and the verifier reports
+/// <c>cannot compare IrRefType with IrHostType</c>.</para>
 /// </summary>
 internal static class HostTypes
 {
@@ -39,14 +34,13 @@ internal static class HostTypes
         if (symbol is not { Kind: TypeSymbolKind.Class, Declaration: ClassDecl declaration })
             return null;
 
-        // Ein Feld oder ein Methodenrumpf macht daraus eine gewoehnliche Klasse: dann kennt das
-        // Modul ein Layout beziehungsweise Code, und beides gehoert nicht dem Host.
+        // A field or a method body makes it an ordinary class: the module then knows a layout or code,
+        // and neither belongs to the host.
         foreach (var member in declaration.Members)
             if (member is not FunctionDecl { Body: null }) return null;
 
-        // In welchem Modul steht die Deklaration? Der Symboltabelle sieht man das nicht an, also
-        // wird gesucht — die Modulliste ist kurz, und diese Frage stellt sich nur fuer eine
-        // leere Klasse.
+        // Which module does the declaration stand in? The symbol table does not show that, so it is
+        // searched: the module list is short, and this question arises only for an empty class.
         foreach (var module in compilation.Modules)
         {
             if (!ReferenceEquals(module.Members.LookupLocal(symbol.Name), symbol)) continue;

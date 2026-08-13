@@ -4,17 +4,16 @@ using Lyric.Core;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Baut die <b>Fabrik</b> einer Coroutine: die Funktion, die unter dem geschriebenen Namen steht
-/// und ein Zustandsobjekt liefert (Sprache.md §8).
+/// Builds the FACTORY of a coroutine: the function that stands under the written name and yields a
+/// state object.
 ///
-/// <para>Sie ist winzig und tut genau drei Dinge: Objekt anlegen, Parameter hineinschreiben,
-/// zurueckgeben. Der Wiedereintrittspunkt in Feld 0 bleibt auf 0 — „noch nicht gestartet" — weil
-/// ein frisch angelegtes Objekt seine Felder genullt bekommt.</para>
+/// <para>It is tiny and does exactly three things: allocate the object, write the parameters into it,
+/// return it. The re-entry point in field 0 stays at 0 — "not started yet" — because a freshly
+/// allocated object has its fields zeroed.</para>
 ///
-/// <para><b>Warum eine eigene Datei und kein Modus im FunctionLowerer</b>: die Fabrik lowert
-/// keinen geschriebenen Code. Sie hat keinen Rumpf, keine Ausdruecke und keinen Kontrollfluss —
-/// sie im grossen Lowerer unterzubringen hiesse, dort einen Zweig zu haben, der von dessen
-/// gesamter Maschinerie nichts benutzt.</para>
+/// <para>A file of its own rather than a mode in the FunctionLowerer, because the factory lowers no
+/// written code. It has no body, no expressions and no control flow; housing it in the big lowerer
+/// would mean a branch there that uses none of its machinery.</para>
 /// </summary>
 internal static class CoroutineFactory
 {
@@ -23,10 +22,10 @@ internal static class CoroutineFactory
     {
         var slots = new SlotAllocator();
         var blocks = new List<IrBlock>();
-        var builder = new BlockBuilder(blocks); // legt bb0 an und setzt den Cursor darauf
+        var builder = new BlockBuilder(blocks); // creates bb0 and points the cursor at it
 
-        // Die Parameter der Fabrik sind die der Coroutine — in derselben Reihenfolge, damit ein
-        // Aufrufer nichts anders macht als bei jeder anderen Funktion.
+        // The factory's parameters are the coroutine's, in the same order, so a caller does nothing
+        // different from any other function.
         if (hasReceiver && receiverType is not null) slots.Declare("this", receiverType);
         for (var i = 0; i < decl.Parameters.Length; i++)
             slots.Declare(decl.Parameters[i].Name, parameterTypes[i]);
@@ -35,8 +34,8 @@ internal static class CoroutineFactory
         var instance = slots.NewTemp(stateType);
         builder.Emit(new NewObject(instance, state, stateType, span));
 
-        // Feld 0 ist der Wiedereintrittspunkt und bleibt 0. Dahinter kommen erst 'this', dann die
-        // Parameter — dieselbe Reihenfolge, die der Rumpf-Lowerer beim Anlegen benutzt.
+        // Field 0 is the re-entry point and stays 0. Behind it come 'this' first, then the parameters —
+        // the same order the body lowerer uses when allocating.
         var field = 1;
         var slot = 0;
 
@@ -56,9 +55,9 @@ internal static class CoroutineFactory
             builder.Emit(new StoreField(instance, state, new FieldId(field), value, span));
         }
 
-        // Der Rueckgabewert ist eine CLOSURE ueber dem Zustandsobjekt (ADR-018): Fat Pointer aus
-        // Objektreferenz und Rumpf-Index. Damit ist 'resume co' ein gewoehnliches 'callind' und
-        // braucht weder einen Opcode noch einen Wert-Typ fuer sich.
+        // The return value is a CLOSURE over the state object: a fat pointer of object reference and
+        // body index. That makes 'resume co' an ordinary 'callind', needing neither an opcode nor a
+        // value type of its own.
         var signature = new IrFunctionType([], yieldType);
         var closure = slots.NewTemp(signature);
         builder.Emit(new MakeClosure(closure, body, instance, signature, span));

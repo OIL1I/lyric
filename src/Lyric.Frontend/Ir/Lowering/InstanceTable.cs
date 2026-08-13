@@ -5,25 +5,24 @@ using Lyric.Sema;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Die <b>monomorphisierten Instanzen</b> generischer Funktionen (Sprache.md §12).
+/// The MONOMORPHIZED INSTANCES of generic functions.
 ///
-/// <para>Pro konkretem Typargument-Tupel eine eigene <see cref="IrFunction"/>: <c>id&lt;int&gt;</c>
-/// und <c>id&lt;string&gt;</c> sind zwei Funktionen, nicht eine mit einem Typ-Parameter. Damit
-/// bleibt die IR <b>vollstaendig monomorph</b> — Verifier, Bytecode-Format und VM erfahren von
-/// Generics nichts, sie sehen nur mehr Funktionen.</para>
+/// <para>One <see cref="IrFunction"/> per concrete type argument tuple: <c>id&lt;int&gt;</c> and
+/// <c>id&lt;string&gt;</c> are two functions, not one with a type parameter. The IR therefore stays
+/// FULLY MONOMORPHIC — the verifier, the bytecode format and the VM learn nothing about generics, they
+/// only see more functions.</para>
 ///
-/// <para><b>Warum monomorph und nicht generisch zur Laufzeit.</b> C# reifiziert Generics und
-/// braucht dafuer einen JIT, der pro Instanziierung Code erzeugt; Java erased sie und bezahlt mit
-/// Boxing an jeder Grenze. Beides setzt voraus, dass die Runtime Typen kennt — und ein Lyric-Wert
-/// traegt kein Typ-Tag (ADR-013). Monomorphisierung ist deshalb nicht eine von drei Optionen,
-/// sondern die einzige, die zu dieser VM passt. Rust und C++ machen es aus demselben Grund.</para>
+/// <para>MONOMORPHIC RATHER THAN GENERIC AT RUNTIME. C# reifies generics and needs a JIT that produces
+/// code per instantiation; Java erases them and pays with boxing at every boundary. Both assume the
+/// runtime knows types, and a Lyric value carries no type tag. Rust and C++ do the same for the same
+/// reason.</para>
 ///
-/// <para>Der Preis ist Code-Duplikation pro Instanziierung. Er ist sichtbar und begrenzt: eine
-/// Instanz je tatsaechlich benutztem Typ-Tupel, nicht je moeglichem.</para>
+/// <para>The price is code duplication per instantiation. It is visible and bounded: one instance per
+/// type tuple actually used, not per possible one.</para>
 /// </summary>
 internal sealed class InstanceTable
 {
-    /// <summary>Eine angeforderte, noch nicht gelowerte Instanz.</summary>
+    /// <summary>A requested instance that has not been lowered yet.</summary>
     private readonly record struct Pending(
         FunctionDecl Decl, string Name, FunctionId Id, TypeSymbol? Receiver,
         IReadOnlyDictionary<GenericParamSymbol, LyrType> Substitution,
@@ -31,13 +30,13 @@ internal sealed class InstanceTable
 
     private readonly List<Pending> _pending = new();
 
-    /// <summary>Was schon angefordert wurde — damit zwei Aufrufe von <c>id(7)</c> dieselbe Instanz
-    /// bekommen und nicht zwei gleiche Funktionen entstehen.</summary>
+    /// <summary>What has already been requested, so two calls of <c>id(7)</c> get the same instance
+    /// rather than producing two identical functions.</summary>
     private readonly Dictionary<string, FunctionId> _byKey = new(StringComparer.Ordinal);
 
-    /// <summary>Bis wohin schon gelowert wurde. Die Tabelle wird MEHRFACH geleert — eine
-    /// Instanz kann ein Lambda anfordern, ein Lambda eine Instanz —, und ohne diese Marke
-    /// entstuende bei jedem Durchgang alles noch einmal.</summary>
+    /// <summary>How far the lowering has come. The table is drained SEVERAL times — an instance can
+    /// request a lambda, a lambda an instance — and without this mark everything would arise anew on
+    /// every pass.</summary>
     private int _lowered;
 
     private readonly FunctionIds _ids;
@@ -47,11 +46,11 @@ internal sealed class InstanceTable
     public bool IsEmpty => _pending.Count == 0;
 
     /// <summary>
-    /// Fordert eine Instanz an und liefert ihre Id — beim ersten Mal eine neue, danach dieselbe.
+    /// Requests an instance and returns its id: a new one the first time, the same one afterwards.
     ///
-    /// <para>Die Id steht sofort fest, obwohl der Rumpf noch nicht gelowert ist. Genau das macht
-    /// Rekursion moeglich: <c>fn depth&lt;T&gt;(n: int): int { return depth&lt;T&gt;(n - 1); }</c>
-    /// fordert sich selbst an und findet die eigene Id schon vor.</para>
+    /// <para>The id is settled immediately although the body is not lowered yet. That is what makes
+    /// recursion possible: <c>fn depth&lt;T&gt;(n: int): int { return depth&lt;T&gt;(n - 1); }</c>
+    /// requests itself and finds its own id already there.</para>
     /// </summary>
     public FunctionId Request(FunctionSymbol symbol, FunctionDecl decl, string baseName,
         TypeSymbol? receiver, IReadOnlyList<LyrType> typeArguments, TypeTable typeTable,
@@ -62,13 +61,13 @@ internal sealed class InstanceTable
                 $"call to '{baseName}' supplies {typeArguments.Count} type argument(s), "
                 + $"but it declares {symbol.Generics.Length}", span);
 
-        // Der Name IST der Schluessel: er enthaelt die Typargumente, ist damit eindeutig, und ein
-        // Mensch kann in einer Disassembly ablesen, welche Instanz er vor sich hat.
+        // The name IS the key: it contains the type arguments, is therefore unique, and a human can read
+        // off a disassembly which instance is in front of them.
         var name = $"{baseName}<{string.Join(", ", typeArguments.Select(TypeFacts.Display))}>";
         if (_byKey.TryGetValue(name, out var existing)) return existing;
 
-        // Ein noch offener Typ-Parameter heisst, dass die Inferenz an der Aufrufstelle nicht
-        // durchgekommen ist — dann gibt es keine Instanz, die man bauen koennte.
+        // A type parameter still open means the inference did not get through at the call site, and then
+        // there is no instance that could be built.
         for (var i = 0; i < typeArguments.Count; i++)
             if (typeArguments[i] is TypeParamType or Sema.ErrorType)
                 throw new UnsupportedConstructException(
@@ -87,11 +86,11 @@ internal sealed class InstanceTable
     }
 
     /// <summary>
-    /// Fordert eine <b>Methode einer Typinstanz</b> an: <c>Box&lt;int&gt;.get</c>.
+    /// Requests a METHOD OF A TYPE INSTANCE: <c>Box&lt;int&gt;.get</c>.
     ///
-    /// <para>Die Substitution kommt vom Typ und nicht vom Aufruf — <c>get()</c> hat selbst keine
-    /// Typparameter, sein <c>T</c> ist das von <c>Box</c>. Deshalb eine eigene Anforderung und
-    /// nicht dieselbe wie fuer generische Funktionen.</para>
+    /// <para>The substitution comes from the type rather than from the call — <c>get()</c> has no type
+    /// parameters of its own, its <c>T</c> is that of <c>Box</c>. Hence a separate request rather than
+    /// the same one as for generic functions.</para>
     /// </summary>
     public FunctionId RequestMethod(FunctionSymbol method, FunctionDecl decl,
         GenericInstance owner, Core.Span span)
@@ -108,17 +107,17 @@ internal sealed class InstanceTable
 
         var id = _ids.Next();
         _byKey[name] = id;
-        // Eine STATISCHE Methode bekommt kein 'this' (ADR-014). 'Owner' bleibt trotzdem gesetzt:
-        // ihr 'T' ist das des Typs, auch wenn kein Empfaenger es mitbringt.
+        // A STATIC method gets no 'this'. 'Owner' stays set all the same: its 'T' is that of the type,
+        // even when no receiver brings it along.
         _pending.Add(new Pending(decl, name, id, method.IsStatic ? null : owner.Definition,
             substitution, owner));
         return id;
     }
 
     /// <summary>
-    /// Lowert alle angeforderten Instanzen — <b>als Worklist</b>, weil eine Instanz beim Lowern
-    /// weitere anfordern kann: <c>id&lt;T&gt;</c> ruft <c>wrap&lt;T&gt;</c>, und erst hier steht
-    /// fest, welches <c>T</c> gemeint war.
+    /// Lowers all requested instances AS A WORKLIST, because an instance can request further ones while
+    /// being lowered: <c>id&lt;T&gt;</c> calls <c>wrap&lt;T&gt;</c>, and only here is it settled which
+    /// <c>T</c> was meant.
     /// </summary>
     public List<(FunctionId Id, IrFunction Function)> LowerAll(TypeResult types,
         IReadOnlyDictionary<FunctionSymbol, FunctionId> functions, ImportTable imports,

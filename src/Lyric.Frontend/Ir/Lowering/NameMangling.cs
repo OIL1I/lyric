@@ -3,45 +3,42 @@ using Lyric.Resolver;
 namespace Lyric.Ir.Lowering;
 
 /// <summary>
-/// Erzeugt die Namen, unter denen Funktionen in der IR stehen. Sie sind nicht kosmetisch:
-/// aus ihnen werden die Symbolnamen im Bytecode (ADR-013), und der Verifier lehnt
-/// Kollisionen ab, weil zwei Funktionen unter demselben Namen ein stiller Falsch-Call wären.
+/// Produces the names under which functions stand in the IR. They are not cosmetic: they become the
+/// symbol names in the bytecode, and the verifier rejects collisions, because two functions under the
+/// same name would be a silent wrong call.
 ///
-/// <para>Schema heute: <c>&lt;modulpfad&gt;.&lt;funktion&gt;</c>, also <c>main.add</c>. Der Modulpfad
-/// ist schon eindeutig (eine Datei = ein Modul, ADR-012), damit reicht das für alles, was P4
-/// lowert.</para>
+/// <para>The scheme is <c>&lt;module path&gt;.&lt;function&gt;</c>, so <c>main.add</c>. The module path
+/// is already unique — one file is one module — so that suffices.</para>
 ///
-/// <para>Erweiterung für die Monomorphisierung: eine Instanz braucht ihre Typargumente im Namen,
-/// sonst fallen <c>max&lt;int&gt;</c> und <c>max&lt;float&gt;</c> zusammen. Das gehört hierher und
-/// nirgends sonst — genau deshalb steht das Mangling in einer eigenen Klasse und nicht als
-/// String-Interpolation im Lowerer.</para>
+/// <para>For monomorphization an instance needs its type arguments in the name, or
+/// <c>max&lt;int&gt;</c> and <c>max&lt;float&gt;</c> collide. That belongs here and nowhere else, which
+/// is why the mangling lives in a class of its own rather than as string interpolation in the
+/// lowerer.</para>
 /// </summary>
 internal static class NameMangling
 {
     public static string ForFunction(ModuleSymbol module, string functionName) =>
         $"{module.FullName}.{functionName}";
 
-    /// <summary>Eine Methode: <c>&lt;modul&gt;.&lt;Typ&gt;.&lt;methode&gt;</c>. Der Typname muss
-    /// hinein, sonst kollidieren <c>Account.get</c> und <c>Player.get</c> — und der Verifier lehnt
-    /// doppelte Funktionsnamen ab, weil sie ein stiller Falsch-Call wären.</summary>
+    /// <summary>A method: <c>&lt;module&gt;.&lt;type&gt;.&lt;method&gt;</c>. The type name has to be in
+    /// it, or <c>Account.get</c> and <c>Player.get</c> collide, and the verifier rejects duplicate
+    /// function names, because they would be a silent wrong call.</summary>
     public static string ForMethod(ModuleSymbol module, string typeName, string methodName) =>
         $"{module.FullName}.{typeName}.{methodName}";
 
-    /// <summary>Eine Extension-Methode (§3.6):
-    /// <c>&lt;deklarierendes-modul&gt;.&lt;extend&gt;.&lt;Ziel&gt;.&lt;methode&gt;</c>.
+    /// <summary>An extension method:
+    /// <c>&lt;declaring module&gt;.&lt;extend&gt;.&lt;target&gt;.&lt;method&gt;</c>.
     ///
-    /// <para>Zwei Dinge unterscheiden das von <see cref="ForMethod"/>, und beide sind gemessen,
-    /// nicht vermutet. Erstens steht hier das <b>deklarierende</b> Modul, nicht das des Zieltyps:
-    /// <c>extend string</c> darf in beliebig vielen Modulen stehen, und der Zieltyp gehoert
-    /// womoeglich keinem davon. Zweitens der <c>&lt;extend&gt;</c>-Infix: §3.6 laesst eine
-    /// Extension zu, die einen gleichnamigen Member verdeckt — die Sema meldet das <b>nicht</b>,
-    /// sie laesst nur den eigenen Member gewinnen. Ohne den Infix hiessen beide
-    /// <c>main.Player.get</c>, und der Verifier lehnt doppelte Funktionsnamen ab: ein sauber
-    /// typgepruefes Programm wuerde im Lowering abstuerzen.</para>
+    /// <para>Two things distinguish this from <see cref="ForMethod"/>. First, the DECLARING module
+    /// stands here rather than that of the target type: <c>extend string</c> may stand in any number of
+    /// modules, and the target type may belong to none of them. Second, the <c>&lt;extend&gt;</c> infix:
+    /// an extension may shadow a member of the same name — the sema does NOT report that, it simply lets
+    /// the own member win. Without the infix both would be called <c>main.Player.get</c>, and the
+    /// verifier rejects duplicate function names: a cleanly type-checked program would crash in the
+    /// lowering.</para>
     ///
-    /// <para>Die spitzen Klammern sind kein Zufall — ein Bezeichner kann sie nicht enthalten, der
-    /// Name ist also im Quelltext nicht erzeugbar. Dieselbe Konvention wie bei
-    /// <c>&lt;globals&gt;</c>.</para></summary>
+    /// <para>The angle brackets are no accident — an identifier cannot contain them, so the name is not
+    /// producible in source. The same convention as for <c>&lt;globals&gt;</c>.</para></summary>
     public static string ForExtension(ModuleSymbol declaringModule, string targetName, string methodName) =>
         $"{declaringModule.FullName}.<extend>.{targetName}.{methodName}";
 }
