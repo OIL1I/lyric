@@ -4,15 +4,14 @@ using Lyric.Parsing;
 namespace Lyric.Tests.Parsing;
 
 /// <summary>
-/// Zwei Formen, die Lyric nicht hat — und die deshalb <b>sagen müssen, dass es sie nicht gibt</b>.
+/// Two forms Lyric does not have, which therefore have to SAY that they do not exist.
 ///
-/// <para><b>Beide meldeten bis 2026-08-11 etwas anderes.</b> Ein Attribut an einem Parameter wurde
-/// als Parametername gelesen; danach fehlte der Rumpf, und der Compiler sprach von nativen
-/// Deklarationen — zu jemandem, der ein Attribut schreiben wollte.
-/// <c>interface B :: [A]</c> lief in eine Meldung über Parameter-Klammern.</para>
+/// <para>Both used to report something else. An attribute on a parameter was read as a parameter name;
+/// the body was then missing and the compiler spoke of native declarations — to someone who wanted to
+/// write an attribute. <c>interface B :: [A]</c> ran into a message about parameter parentheses.</para>
 ///
-/// <para>Das ist kein Schönheitsfehler: eine Diagnose, die auf die falsche Ursache zeigt, kostet
-/// mehr Zeit als gar keine. Wer sie liest, sucht an der genannten Stelle.</para>
+/// <para>That is no blemish: a diagnostic pointing at the wrong cause costs more time than none at all.
+/// Whoever reads it searches at the place it names.</para>
 /// </summary>
 public class RejectedSyntaxTests
 {
@@ -27,7 +26,7 @@ public class RejectedSyntaxTests
 
     // ------------------------------------------------------------------ Attribute (§10)
 
-    /// <summary>An einer Deklaration sagte es das schon immer — hier steht es als Bezugspunkt.
+    /// <summary>On a declaration it always said so; here it stands as the reference point.
     /// </summary>
     [Fact]
     public void An_attribute_on_a_declaration_says_attributes_are_post_v1() =>
@@ -35,8 +34,8 @@ public class RejectedSyntaxTests
             d => d.Code == "LYR-PAR0038");
 
     /// <summary>
-    /// An einem Parameter sagte es bis heute <c>LYR-SEM0051</c> — „only standard-library modules
-    /// may declare native functions". Der Parser hatte den Rumpf verloren.
+    /// On a parameter it used to say <c>LYR-SEM0051</c> — "only standard-library modules may declare
+    /// native functions". The parser had lost the body.
     /// </summary>
     [Fact]
     public void An_attribute_on_a_parameter_says_the_same_thing()
@@ -45,23 +44,23 @@ public class RejectedSyntaxTests
 
         Assert.Contains(diagnostics, d => d.Code == "LYR-PAR0038");
 
-        // Und der Rumpf geht dabei NICHT verloren: keine Folgemeldung über eine fehlende
-        // Deklaration. Ohne diese Zusicherung wäre die neue Meldung nur eine zusätzliche.
+        // And the body is NOT lost in the process: no follow-up message about a missing declaration.
+        // Without this promise the new message would only be an additional one.
         Assert.Single(diagnostics);
     }
 
-    /// <summary>Mehrere Attribute an einem Parameter ergeben mehrere Meldungen und keinen
-    /// Absturz — die Schleife muss terminieren.</summary>
+    /// <summary>Several attributes on one parameter give several messages and no crash: the loop has to
+    /// terminate.</summary>
     [Fact]
     public void Several_attributes_on_one_parameter_each_get_a_diagnostic() =>
         Assert.Equal(2, Parse("fn f(@a @b x: int): int { return x; }")
             .Count(d => d.Code == "LYR-PAR0038"));
 
-    // ------------------------------------------------------------------ Interface-Vererbung (§7)
+    // ------------------------------------------------------------------ interface inheritance
 
     /// <summary>
-    /// Die Meldung nennt den Ausweg, weil es einen gibt: <c>std.core</c> löst dasselbe mit zwei
-    /// Constraints nebeneinander (<c>K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;]</c>, ADR-024).
+    /// The message names the way out, because there is one: <c>std.core</c> solves the same with two
+    /// constraints side by side (<c>K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;]</c>).
     /// </summary>
     [Fact]
     public void An_interface_conformance_list_says_there_is_no_interface_inheritance()
@@ -72,14 +71,14 @@ public class RejectedSyntaxTests
         Assert.Contains("no interface inheritance", reported.Message, StringComparison.Ordinal);
         Assert.Contains("[A, B]", reported.Message, StringComparison.Ordinal);
 
-        // EINE Meldung je Ursache: die Konformanzliste wird gelesen und verworfen, sonst
-        // stolperte der Parser gleich noch einmal über '[A]'.
+        // ONE message per cause: the conformance list is read and discarded, or the parser would stumble
+        // over '[A]' a second time.
         Assert.Single(diagnostics);
     }
 
     /// <summary>
-    /// Die Gegenprobe. Ein <c>::</c> an einer <b>Klasse</b> ist gültig und darf von dieser
-    /// Meldung nicht getroffen werden — sonst wäre die halbe Stdlib ein Syntaxfehler.
+    /// The counter-check. A <c>::</c> on a CLASS is valid and must not be hit by this message, or half
+    /// the stdlib would be a syntax error.
     /// </summary>
     [Fact]
     public void A_conformance_list_on_a_class_is_still_fine() =>
@@ -88,7 +87,7 @@ public class RejectedSyntaxTests
             class K :: [A] { fn a(): int { return 1; } }
             """));
 
-    /// <summary>Und ein gewöhnliches Interface bleibt gewöhnlich.</summary>
+    /// <summary>And an ordinary interface stays ordinary.</summary>
     [Fact]
     public void A_plain_interface_parses() =>
         Assert.Empty(Parse("interface A<T> { fn a(): T; }"));

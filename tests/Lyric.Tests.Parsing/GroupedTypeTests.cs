@@ -5,15 +5,15 @@ using Lyric.Parsing;
 namespace Lyric.Tests.Parsing;
 
 /// <summary>
-/// Runde Klammern in Typ-Position (Sprache.md §4).
+/// Round brackets in type position.
 ///
-/// <para>Sie sind noetig, weil <c>fn(A) -&gt; R</c> als einziger Typ der Sprache nach rechts offen
-/// ist: <c>fn(int) -&gt; void[]</c> ist eine Funktion, die <c>void[]</c> liefert, und ein Array von
-/// Funktionswerten liess sich vorher <b>gar nicht hinschreiben</b> — der Typ existierte (ein
-/// Array-Literal von Lambdas hat ihn), er war nur nicht benennbar.</para>
+/// <para>They are needed because <c>fn(A) -&gt; R</c> is the only type in the language open to the
+/// right: <c>fn(int) -&gt; void[]</c> is a function returning <c>void[]</c>, and an array of function
+/// values could not be written down at all — the type existed, an array literal of lambdas has it, it
+/// was only not nameable.</para>
 ///
-/// <para>Ein Konflikt mit Tupeln entsteht nicht: <c>TupleType</c> verlangt seit jeher Aritaet 2,
-/// der Platz fuer <c>(T)</c> war frei. Rust braucht dafuer <c>(T,)</c>.</para>
+/// <para>No conflict with tuples arises: <c>TupleType</c> requires arity 2, so the place for <c>(T)</c>
+/// was free. Rust needs <c>(T,)</c> for this.</para>
 /// </summary>
 public class GroupedTypeTests
 {
@@ -31,7 +31,7 @@ public class GroupedTypeTests
     {
         var (type, de) = ParseType("(int)");
         Assert.False(de.HasErrors);
-        // Kein TupleType mit einem Element — der innere Knoten wandert unveraendert nach oben.
+        // No TupleType with one element: the inner node moves up unchanged.
         Assert.IsType<NamedType>(type);
     }
 
@@ -46,7 +46,7 @@ public class GroupedTypeTests
     [Fact]
     public void An_array_of_function_values_is_now_writable()
     {
-        // Der Fall, fuer den es die Klammerung gibt.
+        // The case the grouping exists for.
         var (type, de) = ParseType("(fn(int) -> void)[]");
         Assert.False(de.HasErrors);
 
@@ -57,8 +57,8 @@ public class GroupedTypeTests
     [Fact]
     public void Without_parentheses_the_bracket_belongs_to_the_return_type()
     {
-        // Die Praezedenz bleibt, wie sie war — sie umzudrehen haette 'fn(): int[]' still zu etwas
-        // anderem gemacht als bisher.
+        // The precedence stays as it was: reversing it would silently turn 'fn(): int[]' into something
+        // other than before.
         var (type, de) = ParseType("fn(int) -> void[]");
         Assert.False(de.HasErrors);
 
@@ -76,16 +76,16 @@ public class GroupedTypeTests
 
     [Fact]
     public void A_trailing_comma_is_not_a_one_tuple() =>
-        // '(T,)' hiess „Tupel", und dafuer fehlt das zweite Element. Ohne diese Unterscheidung
-        // waere die Klammerung eine stille Umdeutung dessen, was jemand geschrieben hat.
+        // '(T,)' means a tuple, and its second element is missing. Without this distinction the grouping
+        // would be a silent reinterpretation of what someone wrote.
         Assert.Contains(ParseType("(int,)").De.Diagnostics, d => d.Code == "LYR-PAR0010");
 
     [Fact]
     public void The_ast_dumper_handles_a_static_binding()
     {
-        // 'lyrc parse' stuerzte hier ab: der Dumper kannte StaticBindingDecl nicht, obwohl check
-        // und lower das Konstrukt seit P1b/P5c koennen. Ein Debug-Kommando, das bei gueltigem
-        // Code wirft, ist genau die Sorte Luecke, die kein Gate misst — gefunden im Sweep.
+        // 'lyrc parse' crashed here: the dumper did not know StaticBindingDecl although check and lower
+        // handle the construct. A debug command that throws on valid code is exactly the kind of gap no
+        // gate measures.
         var sm = new SourceManager();
         var id = sm.AddVirtual("t.lyr", "struct V { x: int, static let ZERO: int = 0; }");
         var de = new DiagnosticEngine(sm);

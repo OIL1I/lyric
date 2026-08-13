@@ -8,14 +8,13 @@ using Xunit;
 namespace Lyric.Tests.Parsing;
 
 /// <summary>
-/// Golden-Tests für den Parser. Jede Fixture (golden/&lt;name&gt;.lyr) enthält genau
-/// EINE Top-Level-Form (ein Ausdruck bzw. ein Statement — ein Block deckt Sequenzen
-/// ab). Sie wird geparst, der AST-Dump (+ gerenderte Diagnostics bei Negativ-Fällen)
-/// gegen den committeten Snapshot (golden/&lt;name&gt;.ast) verglichen.
+/// Golden tests for the parser. Every fixture (golden/&lt;name&gt;.lyr) contains exactly ONE top-level
+/// form — an expression or a statement, with a block covering sequences. It is parsed and the AST dump,
+/// plus rendered diagnostics for negative cases, is compared against the committed snapshot
+/// (golden/&lt;name&gt;.ast).
 ///
-/// Snapshots werden NICHT von Hand gepflegt: einmal mit Env-Var
-/// LYRIC_UPDATE_SNAPSHOTS=1 erzeugen, drüberlesen, committen. Danach lockt der
-/// Vergleich den AST fest.
+/// Snapshots are NOT maintained by hand: produce them once with the environment variable
+/// LYRIC_UPDATE_SNAPSHOTS=1, read them over, commit. From then on the comparison locks the AST.
 /// </summary>
 public class GoldenTests
 {
@@ -72,55 +71,55 @@ public class GoldenTests
     }
 
     // ---------------------------------------------------------------------
-    // Expressions (§6) — Einstieg ParseExpression
+    // Expressions, entered through ParseExpression.
     // ---------------------------------------------------------------------
 
     [Theory]
-    // Positiv — kein Diagnostic, nur AST-Dump.
-    [InlineData("precedence")]        // arithmetische Präzedenz + Linksassoziativität
+    // Positive cases: no diagnostic, only the AST dump.
+    [InlineData("precedence")]        // arithmetic precedence and left associativity
     [InlineData("prefix_postfix")]    // prefix !/-/~/--  vs. postfix ++/!(unwrap)
-    [InlineData("assignment")]        // Rechtsassoziativität + Compound-Assign
-    [InlineData("logical_comparison")]// lange Präzedenz-Kette < == && || ??
-    [InlineData("bitwise_shift")]     // << >> & ^ | Präzedenz
-    [InlineData("range")]             // ..= gegen + Präzedenz
-    [InlineData("coalesce")]          // ?? Rechtsassoziativität
-    [InlineData("cast")]              // 'as' + TypeExpr, Linksassoziativität
+    [InlineData("assignment")]        // right associativity and compound assignment
+    [InlineData("logical_comparison")]// a long precedence chain < == && || ??
+    [InlineData("bitwise_shift")]     // << >> & ^ | precedence
+    [InlineData("range")]             // ..= against + precedence
+    [InlineData("coalesce")]          // ?? right associativity
+    [InlineData("cast")]              // 'as' plus a type expression, left associative
     [InlineData("postfix_chain")]     // . ?. ( ) [ ] Kette
-    [InlineData("literals")]          // alle Literal-Klassen in einem Array-Lit
-    [InlineData("fstring")]           // InterpolatedStringExpr mit Loch + FormatSpec
-    [InlineData("fstring_plain")]     // f-String ohne Interpolation
-    [InlineData("array_tuple")]       // Array-Lit + Tuple-Lit verschachtelt
-    [InlineData("tuple_big")]         // Tuple mit 5 Elementen (keine Arity-Obergrenze)
-    [InlineData("empty_array")]       // []  (leeres Array-Literal)
-    [InlineData("lambda")]            // LambdaExpr mit Param-Typ-Annotation
+    [InlineData("literals")]          // every literal class in one array literal
+    [InlineData("fstring")]           // an InterpolatedStringExpr with a hole and a format spec
+    [InlineData("fstring_plain")]     // an f-string without interpolation
+    [InlineData("array_tuple")]       // an array literal and a tuple literal, nested
+    [InlineData("tuple_big")]         // a tuple with 5 elements; there is no arity bound
+    [InlineData("empty_array")]       // [] — the empty array literal
+    [InlineData("lambda")]            // a LambdaExpr with a parameter type annotation
     [InlineData("nested_lambda")]     // rechts-verschachteltes Lambda
-    [InlineData("lambda_block")]      // Lambda mit Block-Body '=> { ... }'
-    [InlineData("grouping")]          // Klammer-Gruppierung überschreibt Präzedenz
-    [InlineData("atident")]           // AtIdentifierExpr mit Argumenten
-    [InlineData("match_expr")]        // match als Ausdruck (Or-Pattern-Arme)
-    [InlineData("if_expr")]           // if/else als Ausdruck
-    [InlineData("if_expr_chain")]     // if/else-if/else als Ausdruck
+    [InlineData("lambda_block")]      // a lambda with a block body '=> { ... }'
+    [InlineData("grouping")]          // parentheses override precedence
+    [InlineData("atident")]           // an AtIdentifierExpr with arguments
+    [InlineData("match_expr")]        // match as an expression, with or-pattern arms
+    [InlineData("if_expr")]           // if/else as an expression
+    [InlineData("if_expr_chain")]     // if/else-if/else as an expression
     [InlineData("struct_init")]       // Point { x = 1, y = 2 }
     [InlineData("struct_init_empty")] // Empty { }
-    [InlineData("struct_init_nested")]// verschachteltes Struct-Init im Feldwert
+    [InlineData("struct_init_nested")]// a nested struct initializer in a field value
     [InlineData("struct_init_qualified")] // dotted TypePath game.Player { … }
     // TypeExpr (§4) — via 'as'-Cast erreicht.
-    [InlineData("type_generics")]     // NamedType mit Typargumenten
-    [InlineData("type_nested_generics")] // '>>'-Split bei verschachtelten Generics
+    [InlineData("type_generics")]     // a NamedType with type arguments
+    [InlineData("type_nested_generics")] // the '>>' split for nested generics
     [InlineData("type_function")]     // FunctionType fn(...) -> R
     [InlineData("type_array")]        // ArrayType T[N]
     [InlineData("type_nullable")]     // NullableType ?T
     [InlineData("type_tuple")]        // TupleType (A, B, C)
-    // Negativ — Snapshot enthält AST-Dump (ggf. ErrorExpr) UND gerenderte Diagnostics.
+    // Negative cases: the snapshot holds the AST dump, possibly an ErrorExpr, AND rendered diagnostics.
     [InlineData("unclosed_paren")]    // (1 + 2
     [InlineData("missing_rhs")]       // 1 +
     [InlineData("leading_operator")]  // * 3
-    [InlineData("type_error")]        // x as 5  (Nicht-Typ nach 'as')
+    [InlineData("type_error")]        // x as 5 — a non-type after 'as'
     public void Golden_expression_matches_snapshot(string name)
         => Check(name, p => p.ParseExpression());
 
     // ---------------------------------------------------------------------
-    // Statements (§5) — Einstieg ParseStatement
+    // Statements, entered through ParseStatement.
     // ---------------------------------------------------------------------
 
     [Theory]
@@ -137,7 +136,7 @@ public class GoldenTests
     [InlineData("loop_jumps")]        // break; continue;
     [InlineData("return_value")]      // return expr;
     [InlineData("return_void")]       // return;
-    [InlineData("yield_resume")]      // yield/resume (+ resume mit Wert)
+    [InlineData("yield_resume")]      // yield and resume, including resume with a value
     [InlineData("defer_block")]       // defer { ... }
     [InlineData("defer_expr")]        // defer expr;
     [InlineData("throw_stmt")]        // throw expr;
@@ -145,15 +144,15 @@ public class GoldenTests
     [InlineData("expr_stmt")]         // call();
     // Negativ.
     [InlineData("missing_semicolon")] // let x = 1
-    [InlineData("try_no_catch")]      // try { } ohne catch
+    [InlineData("try_no_catch")]      // try { } without a catch
     [InlineData("if_without_block")]  // if (a) b();
-    [InlineData("match_stmt")]        // match (…) { arms } mit Guard + Block-Arm
-    [InlineData("struct_init_binding")] // let p = Point { … };  (Struct-Init in Wert-Position)
+    [InlineData("match_stmt")]        // match (…) { arms } with a guard and a block arm
+    [InlineData("struct_init_binding")] // let p = Point { … }; — a struct initializer in value position
     public void Golden_statement_matches_snapshot(string name)
         => Check(name, p => p.ParseStatement());
 
     // ---------------------------------------------------------------------
-    // Declarations / Module (§2/§3) — Einstieg ParseModule
+    // Declarations and modules, entered through ParseModule.
     // ---------------------------------------------------------------------
 
     [Theory]
@@ -165,29 +164,29 @@ public class GoldenTests
     // Funktionen.
     [InlineData("fn_simple")]         // fn add(a, b): int { ... }
     [InlineData("fn_abstract")]       // fn getHp(): int;  (bodyless)
-    [InlineData("fn_generic")]        // fn map<T, U>(...)  + fn-Typ-Param
+    [InlineData("fn_generic")]        // fn map<T, U>(...) plus a function type parameter
     [InlineData("fn_throws")]         // throws FileNotFound
-    [InlineData("fn_throws_any")]     // throws (ohne Typ)
+    [InlineData("fn_throws_any")]     // throws without a type
     [InlineData("fn_variadic")]       // params-Parameter
-    [InlineData("fn_default_param")]  // Default-Parameterwert
-    // Typen.
+    [InlineData("fn_default_param")]  // a default parameter value
+    // Types.
     [InlineData("struct_decl")]       // Felder + Methoden + :: [Interfaces]
-    [InlineData("class_decl")]        // Default-Feldwert + mut fn
-    [InlineData("enum_decl")]         // Tuple-/Struct-/Unit-Varianten + Methode
-    [InlineData("interface_decl")]    // abstrakte + Default-Methoden
+    [InlineData("class_decl")]        // a default field value and a mut fn
+    [InlineData("enum_decl")]         // tuple, struct and unit variants plus a method
+    [InlineData("interface_decl")]    // abstract and default methods
     [InlineData("extend_decl")]       // extend T :: [I] { ... }
     // Alias, Global, ganzes Modul.
     [InlineData("type_alias")]        // type X = int;
     [InlineData("global_let")]        // pub let ...
     [InlineData("module_full")]       // Header + Import + Struct + Fn
     // Negativ.
-    [InlineData("global_var")]        // var auf Top-Level (LYR-PAR0027)
+    [InlineData("global_var")]        // var at top level (LYR-PAR0027)
     [InlineData("bad_toplevel")]      // Ausdruck statt Deklaration
     public void Golden_module_matches_snapshot(string name)
         => Check(name, p => p.ParseModule());
 
     // ---------------------------------------------------------------------
-    // Patterns (§6.3) — Einstieg ParsePattern
+    // Patterns, entered through ParsePattern.
     // ---------------------------------------------------------------------
 
     [Theory]

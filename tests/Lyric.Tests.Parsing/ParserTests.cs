@@ -6,10 +6,9 @@ using Xunit;
 namespace Lyric.Tests.Parsing;
 
 /// <summary>
-/// Direkte AST-Assertions gegen den Parser-Kontrakt — unabhängig vom AstDumper.
-/// Die Golden-Tests sichern den *ganzen* Baum über den Dumper ab; diese Tests
-/// prüfen einzelne Invarianten (Assoziativität, Präzedenz, Recovery) direkt am
-/// Record-Baum, damit ein Dumper-Bug keinen Parser-Bug maskiert.
+/// Direct AST assertions against the parser contract, independent of the AstDumper. The golden tests
+/// secure the WHOLE tree through the dumper; these tests check individual invariants — associativity,
+/// precedence, recovery — directly on the record tree, so a dumper bug cannot mask a parser bug.
 /// </summary>
 public class ParserTests
 {
@@ -31,7 +30,7 @@ public class ParserTests
         return (stmt, de);
     }
 
-    // --- Assoziativität ---
+    // --- associativity ---
 
     [Fact]
     public void Coalesce_is_right_associative()
@@ -81,7 +80,7 @@ public class ParserTests
         Assert.IsType<CastExpr>(outer.Operand);
     }
 
-    // --- Präzedenz ---
+    // --- precedence ---
 
     [Fact]
     public void Multiplication_binds_tighter_than_addition()
@@ -182,7 +181,7 @@ public class ParserTests
     [Fact]
     public void Single_element_with_trailing_comma_is_not_a_tuple()
     {
-        // Untergrenze bleibt: 1 Element ist Gruppierung, kein Tuple.
+        // The lower bound stays: one element is a grouping rather than a tuple.
         var (_, de) = Parse("(x,)");
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-PAR0010");
     }
@@ -209,7 +208,7 @@ public class ParserTests
     [InlineData("(((((((((")]
     public void Parser_never_throws_and_reports_on_garbage(string source)
     {
-        // Kontrakt: der Parser wirft nie — jeder Fehler geht als Diagnostic raus.
+        // The contract: the parser never throws; every error goes out as a diagnostic.
         var (expr, de) = Parse(source);
         Assert.NotNull(expr);
         Assert.True(de.HasErrors);
@@ -262,7 +261,7 @@ public class ParserTests
         Assert.Equal(2, t.Catches.Length);
         Assert.Equal("e", t.Catches[0].BindingName);
         Assert.IsType<NamedType>(t.Catches[0].BindingType);
-        Assert.Null(t.Catches[1].BindingName);           // '_' bindet nicht
+        Assert.Null(t.Catches[1].BindingName);           // '_' binds nothing
         Assert.Null(t.Catches[1].BindingType);
     }
 
@@ -316,7 +315,7 @@ public class ParserTests
         Assert.False(de.HasErrors);
         var m = Assert.IsType<MatchStmt>(stmt);
         Assert.NotNull(m.Arms[0].Guard);           // 'if n > 0'
-        Assert.IsType<Block>(m.Arms[0].Body);       // Block-Arm
+        Assert.IsType<Block>(m.Arms[0].Body);       // a block arm
     }
 
     [Theory]
@@ -391,7 +390,7 @@ public class ParserTests
     {
         var fn = Assert.IsType<FunctionDecl>(ParseModule("fn risky() throws { }").module.Declarations[0]);
         Assert.NotNull(fn.Throws);
-        Assert.Null(fn.Throws!.Type);   // 'throws' ohne Typ
+        Assert.Null(fn.Throws!.Type);   // 'throws' without a type
     }
 
     [Fact]
@@ -521,7 +520,7 @@ public class ParserTests
     {
         var v = Assert.IsType<VariantPattern>(ParsePattern("Shape.Circle").pattern);
         Assert.Equal(["Shape", "Circle"], v.Path);
-        Assert.Null(v.TupleElements);   // Unit-Variante, aber qualifiziert
+        Assert.Null(v.TupleElements);   // a unit variant, but qualified
         Assert.Null(v.StructFields);
     }
 
@@ -539,7 +538,7 @@ public class ParserTests
         var (e, de) = Parse("if (a) 1 else 2");
         Assert.False(de.HasErrors);
         var ifx = Assert.IsType<IfExpr>(e);
-        Assert.IsType<IntLiteralExpr>(ifx.Then);   // Branch ist ein Ausdruck, kein Block
+        Assert.IsType<IntLiteralExpr>(ifx.Then);   // the branch is an expression rather than a block
         Assert.IsType<IntLiteralExpr>(ifx.Else);
     }
 
@@ -568,7 +567,7 @@ public class ParserTests
         Assert.True(de.HasErrors);
     }
 
-    // --- Struct-Init (§6.2) + '{'-Disambiguierung ---
+    // --- struct initializers and the '{' disambiguation ---
 
     [Fact]
     public void Struct_init_parses_fields()
@@ -599,7 +598,7 @@ public class ParserTests
     [Fact]
     public void Struct_init_re_enabled_inside_call_arguments()
     {
-        // Statement-Anfang verbietet Struct-Init, aber das Argument liegt in einem Delimiter.
+        // The start of a statement forbids a struct initializer, but the argument lies in a delimiter.
         var (stmt, de) = ParseStatement("f(Point { x = 1 });");
         Assert.False(de.HasErrors);
         var call = Assert.IsType<CallExpr>(Assert.IsType<ExprStmt>(stmt).Expr);
@@ -609,7 +608,7 @@ public class ParserTests
     [Fact]
     public void Bare_struct_init_at_statement_start_is_not_recognized()
     {
-        // '{'-Disambiguierung: 'Foo { … };' als Statement wird NICHT als Struct-Init gelesen.
+        // The '{' disambiguation: 'Foo { … };' as a statement is NOT read as a struct initializer.
         var (stmt, de) = ParseStatement("Point { x = 1 };");
         Assert.True(de.HasErrors);
         Assert.IsType<IdentifierExpr>(Assert.IsType<ExprStmt>(stmt).Expr);

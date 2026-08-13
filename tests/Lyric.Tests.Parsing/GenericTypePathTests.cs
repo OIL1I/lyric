@@ -5,15 +5,15 @@ using Lyric.Parsing;
 namespace Lyric.Tests.Parsing;
 
 /// <summary>
-/// Wann <c>&lt;</c> eine Typargument-Liste ist und wann ein Vergleich (Sprache.md §6.1/§6.2).
+/// When a <c>&lt;</c> is a type argument list and when it is a comparison.
 ///
-/// <para><b>Die Regel ist dieselbe wie für <c>f&lt;int&gt;()</c>:</b> Typargumente, wenn zwischen
-/// <c>&lt;</c> und dem passenden <c>&gt;</c> ausschließlich typartige Tokens stehen und direkt
-/// danach ein <c>.</c> folgt. Im Zweifel ein Vergleich.</para>
+/// <para>The rule is the same as for <c>f&lt;int&gt;()</c>: type arguments when only type-like tokens
+/// stand between the <c>&lt;</c> and its match and a <c>.</c> follows directly. In doubt a
+/// comparison.</para>
 ///
-/// <para><b>Die Gegenproben sind die wichtigere Hälfte.</b> Eine zu gierige Erkennung kostet keine
-/// Diagnose, sondern eine falsche Deutung — <c>a &lt; b</c> wäre dann kein Vergleich mehr, und das
-/// fiele erst in der Sema auf, wenn überhaupt.</para>
+/// <para>The counter-checks are the more important half. A detection that is too greedy costs no
+/// diagnostic but a wrong reading — <c>a &lt; b</c> would no longer be a comparison, and that would show
+/// only in the sema, if at all.</para>
 /// </summary>
 public class GenericTypePathTests
 {
@@ -46,7 +46,7 @@ public class GenericTypePathTests
         Assert.Equal("of", member.Member);
     }
 
-    /// <summary>Ein dotted Pfad — der Typ kann aus einem Modul kommen.</summary>
+    /// <summary>A dotted path: the type may come from a module.</summary>
     [Fact]
     public void A_module_qualified_type_path_keeps_its_segments()
     {
@@ -57,7 +57,7 @@ public class GenericTypePathTests
         Assert.Equal(["game", "Pair"], path.Path);
     }
 
-    /// <summary>Verschachtelt: <c>&gt;&gt;</c> schließt zwei Ebenen auf einmal.</summary>
+    /// <summary>Nested: a <c>&gt;&gt;</c> closes two levels at once.</summary>
     [Fact]
     public void A_nested_type_argument_parses()
     {
@@ -68,7 +68,7 @@ public class GenericTypePathTests
         Assert.IsType<TypePathExpr>(((MemberExpr)((CallExpr)FirstInitializer(ast)).Callee).Target);
     }
 
-    /// <summary>Zwei Argumente.</summary>
+    /// <summary>Two arguments.</summary>
     [Fact]
     public void Two_type_arguments_parse()
     {
@@ -81,7 +81,7 @@ public class GenericTypePathTests
 
     // ------------------------------------------------------------------ counter-checks
 
-    /// <summary>Ohne folgenden Punkt ist es ein Vergleich — das ist der Normalfall in jedem
+    /// <summary>Without a following dot it is a comparison, which is the normal case in every
     /// Programm.</summary>
     [Fact]
     public void A_bare_comparison_is_not_a_type_path()
@@ -93,9 +93,9 @@ public class GenericTypePathTests
     }
 
     /// <summary>
-    /// Die böse Form: eine Vergleichskette, hinter der wirklich ein Punkt steht.
-    /// <c>a &lt; b &gt; c.d</c> hat zwischen <c>&lt;</c> und <c>&gt;</c> nur typartige Tokens —
-    /// aber danach steht <c>c</c> und nicht <c>.</c>, also bleibt es ein Vergleich.
+    /// The nasty form: a comparison chain really followed by a dot. <c>a &lt; b &gt; c.d</c> has only
+    /// type-like tokens between the <c>&lt;</c> and the <c>&gt;</c>, but what follows is <c>c</c> rather
+    /// than <c>.</c>, so it stays a comparison.
     /// </summary>
     [Fact]
     public void A_comparison_chain_followed_by_a_member_access_stays_a_comparison()
@@ -106,8 +106,8 @@ public class GenericTypePathTests
         Assert.IsType<BinaryExpr>(FirstInitializer(ast));
     }
 
-    /// <summary>Ein Struct-Init bleibt ein Struct-Init — dort folgt ein <c>{</c> statt eines
-    /// <c>.</c>, und der ältere Zweig greift zuerst.</summary>
+    /// <summary>A struct initializer stays a struct initializer: there a <c>{</c> follows rather than a
+    /// <c>.</c>, and the older branch applies first.</summary>
     [Fact]
     public void A_generic_struct_init_is_still_a_struct_init()
     {
@@ -115,9 +115,8 @@ public class GenericTypePathTests
         Assert.IsType<StructInitExpr>(FirstInitializer(ast));
     }
 
-    /// <summary>Und der nicht-generische Typpfad bleibt ein Bezeichner — er braucht den neuen
-    /// Knoten nicht, und ihn trotzdem zu erzeugen hieße, eine Frage an zwei Stellen zu
-    /// beantworten.</summary>
+    /// <summary>And the non-generic type path stays an identifier: it does not need the new
+    /// node, and producing it anyway would mean answering one question at two places.</summary>
     [Fact]
     public void A_plain_static_call_stays_an_identifier()
     {
@@ -130,8 +129,8 @@ public class GenericTypePathTests
     // ------------------------------------------------------------------ Dumper
 
     /// <summary>
-    /// Der <c>AstDumper</c> wirft bei jedem Knoten, den er nicht kennt (<c>lyrc ast</c>). Ohne
-    /// diesen Test wäre der neue Knoten dort ein Absturz, den kein anderer Test berührt.
+    /// The <c>AstDumper</c> throws on every node it does not know (<c>lyrc ast</c>). Without this test
+    /// the new node would be a crash there that no other test touches.
     /// </summary>
     [Fact]
     public void The_dumper_knows_the_new_node()
