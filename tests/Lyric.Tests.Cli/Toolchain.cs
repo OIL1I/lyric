@@ -49,6 +49,8 @@ public static class Toolchain
 
     public static string LyrreplPath => BinaryPath("Lyrrepl", "lyrrepl");
 
+    public static string LyrlsPath => BinaryPath("Lyrls", "lyrls");
+
     /// <summary>
     /// Runs a tool and writes something to its stdin, for the REPL, which cannot be checked otherwise.
     ///

@@ -87,10 +87,12 @@ target directory is wiped first. What the toolchain itself contributes, and noth
 ```
 lyric.exe  lyrc.exe               driver and compiler
 lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
+lyrls.exe                          language server, for editors
 lyrcore.dll                        diagnostics and the bytecode reader
 lyrfe.dll                          lexer through emitter
 lyrrt.dll                          interpreter
 lyrembed.dll                       host API
+lyrlsp.dll                         language server protocol
 *.runtimeconfig.json               framework version to load
 stdlib/                            standard library, as .lyr source
 ```
@@ -115,6 +117,7 @@ That is what a release ships, one archive per platform.
 | `lyrc` | Compiler: `build`, `check`, and the `lower`/`parse`/`tokenize` dumps |
 | `lyrvm` | Runtime: `run`, `disasm`, `verify` on `.lyrbc` |
 | `lyrrepl` | Interactive prompt |
+| `lyrls` | Language server: diagnostics and hover over stdio, started by an editor |
 
 `lyrembed.dll` is the host library: compile and run Lyric from C#.
 
@@ -141,9 +144,11 @@ lyric/
 │   ├── Lyric.Frontend/   → lyrfe.dll     lexer, parser, resolver, sema, IR, emitter
 │   ├── Lyric.Vm/         → lyrrt.dll     interpreter
 │   ├── Lyric.Embedding/  → lyrembed.dll  host API
+│   ├── Lyric.Lsp/        → lyrlsp.dll    language server protocol and analysis
 │   ├── Lyrc/             → lyrc.exe
 │   ├── Lyrvm/            → lyrvm.exe
 │   ├── Lyrrepl/          → lyrrepl.exe
+│   ├── Lyrls/            → lyrls.exe
 │   └── Lyric.Cli/        → lyric.exe
 ├── stdlib/               standard library, written in Lyric
 ├── tests/                xUnit test projects
