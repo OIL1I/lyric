@@ -93,6 +93,35 @@ public sealed record ServerCapabilities
 {
     public required TextDocumentSyncOptions TextDocumentSync { get; init; }
     public required string PositionEncoding { get; init; }
+
+    /// <summary>Announced only because it is implemented. A capability a server declares and then
+    /// answers with nothing is worse than one it never claimed: the editor shows an empty tooltip
+    /// instead of leaving the gesture to another provider.</summary>
+    public required bool HoverProvider { get; init; }
+}
+
+public sealed record TextDocumentPositionParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+    public required Position Position { get; init; }
+}
+
+/// <summary>Text with a declared format. Markdown, so a signature can be a fenced code block and
+/// the client highlights it with the same grammar it uses for the file.</summary>
+public sealed record MarkupContent
+{
+    public string Kind => "markdown";
+    public required string Value { get; init; }
+}
+
+public sealed record Hover
+{
+    public required MarkupContent Contents { get; init; }
+
+    /// <summary>What the answer is about. The editor underlines it, which is the only feedback the
+    /// user gets that the cursor hit what they meant.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Range? Range { get; init; }
 }
 
 public sealed record ServerInfo
@@ -176,6 +205,7 @@ public static class LspMethods
     public const string DidChange = "textDocument/didChange";
     public const string DidClose = "textDocument/didClose";
     public const string DidSave = "textDocument/didSave";
+    public const string Hover = "textDocument/hover";
 
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";

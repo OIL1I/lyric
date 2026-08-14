@@ -98,7 +98,11 @@ public sealed class LifecycleTests
         await using var harness = new ServerHarness();
         await harness.InitializeAsync();
 
-        var id = await harness.RequestAsync("textDocument/hover", "{}");
+        // Formatting, because it is the one method in this area the project has deliberately put
+        // outside the language server: a 'lyric fmt' is post-v1 and is not one of M11's slices.
+        // This test previously used hover, and hover became real — a method that is only unknown
+        // for now makes the test expire rather than fail meaningfully.
+        var id = await harness.RequestAsync("textDocument/formatting", "{}");
         var response = await harness.ReceiveResponseAsync(id);
 
         // The honest answer for a capability this server does not announce. Answering null instead

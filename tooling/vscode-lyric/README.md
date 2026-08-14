@@ -6,6 +6,9 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
 
 - **Diagnostics** while you type. The `lyrls` language server compiles the buffer — not the file on
   disk — and reports exactly what `lyric check` reports, at the same positions.
+- **Hover** over a name to see what the compiler thinks it is: the binding form and type of a local,
+  a parameter's type, a function's signature, what kind of type a type name names. It keeps
+  answering while the buffer does not parse, from the last analysis that got through.
 - **Highlighting** for `.lyr` files — keywords, types, strings with interpolation, nested block
   comments, all numeric literal forms.
 - **Run** the active file with `Ctrl+F5`, the play button in the editor title bar, or the
@@ -13,7 +16,9 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
 
 ## What it does not do
 
-No completion, no hover, no go-to-definition. The server answers one question so far.
+No completion and no go-to-definition yet. Hover shows no documentation either, and that is not an
+omission to be filled in later: `///` is a token the lexer produces and nothing carries it into the
+syntax tree, so there is nothing to show.
 
 ## Setup
 

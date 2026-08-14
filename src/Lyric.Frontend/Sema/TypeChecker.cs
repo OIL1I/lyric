@@ -3193,6 +3193,13 @@ public sealed class TypeChecker
         {
             case NamedType n:
                 var sym = _binding.Resolve(n) ?? ResolveTypePath(n.Path, scope);
+
+                // Recorded in the SAME table the resolver writes into. The resolver binds the type
+                // names it walks — those in declarations — while the ones inside a function body
+                // are reached only from here, and they were resolved and then dropped. One question
+                // ("what does this type name refer to") answered by one table, whoever asked it.
+                if (sym is not null && _binding.Resolve(n) is null) _binding.Bind(n, sym);
+
                 if (sym is ImportBindingSymbol ibt) sym = ibt.Target;
                 if (sym is null)
                     return Report(n.Span, "LYR-SEM0011", $"unresolved type '{string.Join('.', n.Path)}'");

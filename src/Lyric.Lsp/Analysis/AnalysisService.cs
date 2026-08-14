@@ -6,6 +6,25 @@ using Lyric.Lsp.Protocol;
 namespace Lyric.Lsp.Analysis;
 
 /// <summary>
+/// One finished analysis, kept so questions can be answered between compiles.
+///
+/// <para>They belong together and are useless apart: the model is keyed by nodes whose spans point
+/// at <see cref="File"/> in <see cref="Sources"/>, and <see cref="Text"/> is what those offsets
+/// count into. A position converted against any other text addresses this tree at the wrong
+/// place.</para>
+///
+/// <para><see cref="Sources"/> is carried rather than reached through the model: a
+/// <c>Compilation</c> keeps its source manager to itself, and a span cannot be turned into a line
+/// and a column without one.</para>
+/// </summary>
+public sealed record AnalysisSnapshot(
+    Compiler.SemanticModel Model,
+    Core.SourceManager Sources,
+    Core.FileId File,
+    string Text,
+    int Version);
+
+/// <summary>
 /// Turns buffer changes into published diagnostics.
 ///
 /// <para>An object with state rather than a function, because the state is the point: which
@@ -33,6 +52,21 @@ public sealed class AnalysisService : IDisposable
     /// <summary>The pending analysis per document path. Replacing an entry cancels the run it
     /// stands for.</summary>
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _pending =
+        new(DocumentUri.PathComparer);
+
+    /// <summary>
+    /// The last analysis that produced a model, per document path.
+    ///
+    /// <para>Kept because a question about the program has to be answerable while the program does
+    /// not parse. Half the time a cursor rests somewhere, the buffer is mid-edit; a server that
+    /// only answered from the current text would go silent exactly when someone is looking
+    /// something up. The answer is then one edit old, which is visible and harmless, as against no
+    /// answer, which reads as "there is nothing here".</para>
+    ///
+    /// <para>The TEXT is kept with it: a position from the client has to be turned into an offset
+    /// against the text the model was built from, not against the buffer that has moved on.</para>
+    /// </summary>
+    private readonly ConcurrentDictionary<string, AnalysisSnapshot> _lastGood =
         new(DocumentUri.PathComparer);
 
     private bool _disposed;
@@ -131,6 +165,14 @@ public sealed class AnalysisService : IDisposable
             ? DiagnosticMapper.ForFile(result.Sources, result.Diagnostics.SortedSnapshot(), file)
             : [];
 
+        // Errors do not disqualify a model — a program with a type error still has resolved names
+        // and types for everything around it, which is the state an editor is in most of the time.
+        if (file.IsValid && result.Model is { } model)
+        {
+            _lastGood[document.Path] =
+                new AnalysisSnapshot(model, result.Sources, file, document.Text, document.Version);
+        }
+
         // The entry file is missing from the source manager only when the run never opened it. The
         // diagnostic explaining why is in the result and is addressed to no file, so it would be
         // dropped by the filter and the editor would show a clean document that does not compile.
@@ -163,12 +205,23 @@ public sealed class AnalysisService : IDisposable
             pending.Dispose();
         }
 
+        // The model goes with the buffer. Keeping it would answer questions about a file the editor
+        // has closed, from text it no longer holds.
+        _lastGood.TryRemove(document.Path, out _);
+
         await _publish(new PublishDiagnosticsParams
         {
             Uri = document.Uri,
             Diagnostics = [],
         }, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The newest analysis of this document that produced a model, or <c>null</c> when none ever
+    /// did — a file whose very first version failed to open.
+    /// </summary>
+    public AnalysisSnapshot? LastGood(string path) =>
+        _lastGood.TryGetValue(path, out var snapshot) ? snapshot : null;
 
     /// <summary>Logging must not itself throw on a connection that is already going down.</summary>
     private async Task SafeLogAsync(string message)

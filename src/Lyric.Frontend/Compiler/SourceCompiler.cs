@@ -128,9 +128,13 @@ public static class SourceCompiler
         var types = Semantics.Analyze(compilation, binding, diagnostics);
         report?.EndPhase();
 
+        // From here on every exit carries it. A program WITH errors still has a model, and that is
+        // the case an editor cares about most: the text under a cursor is usually mid-edit.
+        var model = new SemanticModel(compilation, entry, binding, types);
+
         // On a faulty AST any lowering result would be guesswork.
         if (diagnostics.HasErrors)
-            return new CompileResult(sources, diagnostics, null, null);
+            return new CompileResult(sources, diagnostics, null, null, model);
 
         // Lowering limits arrive as LYR-IR0001 in the same engine and are rendered with file, line and
         // column like any other error.
@@ -143,7 +147,7 @@ public static class SourceCompiler
         if (ir is not null) report?.UpdateDetail(FunctionCount(ir));
         report?.EndPhase();
         if (ir is null || stage == Stage.Lower)
-            return new CompileResult(sources, diagnostics, ir, null);
+            return new CompileResult(sources, diagnostics, ir, null, model);
 
         if (ModuleLowerer.VerifyByDefault)
         {
@@ -155,13 +159,13 @@ public static class SourceCompiler
         // Everything a build does except turning the IR into bytes. Writing them is mechanical and
         // cannot fail on the program, so stopping here answers the same question a build answers.
         if (stage == Stage.Check)
-            return new CompileResult(sources, diagnostics, ir, null);
+            return new CompileResult(sources, diagnostics, ir, null, model);
 
         report?.BeginPhase(Phase.Emit, FunctionCount(ir));
         var bytes = BytecodeWriter.Write(ir);
         report?.EndPhase();
 
-        return new CompileResult(sources, diagnostics, ir, bytes);
+        return new CompileResult(sources, diagnostics, ir, bytes, model);
     }
 
     private static string ModuleCount(List<string> loaded) =>
@@ -197,6 +201,21 @@ public static class SourceCompiler
 ///
 /// <para>A record rather than a growing parameter list.</para>
 /// </summary>
+/// <summary>
+/// The front end's answer about a program, as opposed to its output.
+///
+/// <para>The three tables belong together and are useless apart: a symbol from
+/// <see cref="Binding"/> is looked up in <see cref="Types"/>, and both are keyed by nodes that only
+/// <see cref="Compilation"/> can hand out. Passing them as one value keeps a caller from holding a
+/// binding table from one run beside a type table from another.</para>
+/// </summary>
+/// <param name="Entry">The module that was compiled, as opposed to the ones it imported.</param>
+public sealed record SemanticModel(
+    Compilation Compilation,
+    Module Entry,
+    BindingResult Binding,
+    TypeResult Types);
+
 public sealed record CompilerOptions
 {
     /// <summary>Where the standard library lives. <c>null</c> means
@@ -227,11 +246,22 @@ public sealed record CompilerOptions
 /// What a compiler run leaves behind. <see cref="Ir"/> and <see cref="Bytes"/> are <c>null</c>
 /// when the requested stage was not reached or was not requested at all;
 /// </summary>
+/// <param name="Model">
+/// What the front end knew when it was done: the modules, the resolved names, the types. It is
+/// <c>null</c> only when the run stopped before the sema, which happens when the source could not
+/// be opened at all.
+///
+/// <para>Carried out rather than dropped because a batch compile is not the only caller. Everything
+/// a tool can say ABOUT a program rather than about its bytes — a type under the cursor, the
+/// declaration a name refers to — is in these three tables, and rebuilding them outside would mean
+/// running the front end a second time and getting a second answer to the same question.</para>
+/// </param>
 public sealed record CompileResult(
     SourceManager Sources,
     DiagnosticEngine Diagnostics,
     IrModule? Ir,
-    byte[]? Bytes)
+    byte[]? Bytes,
+    SemanticModel? Model = null)
 {
     /// <summary>No error was reported. Warnings do not count.</summary>
     public bool Ok => !Diagnostics.HasErrors;

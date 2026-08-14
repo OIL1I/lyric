@@ -153,6 +153,10 @@ public sealed class LspServer : IDisposable
                     "the server is already initialized", cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.Hover when _state == State.Running:
+                await SendHoverAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -276,6 +280,59 @@ public sealed class LspServer : IDisposable
         await _analysis.ClearAsync(document, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answers a hover, or answers with null.
+    ///
+    /// <para>A null result is the protocol's way of saying "nothing here", and it is the RIGHT
+    /// answer more often than not: whitespace, a comment, a keyword. An error would make the
+    /// client log a failure for every cursor rest.</para>
+    ///
+    /// <para>The answer comes from the last analysis that produced a model, which may be one edit
+    /// behind. That is the trade: the alternative is silence during exactly the seconds someone is
+    /// looking something up, because the buffer they are editing does not parse.</para>
+    /// </summary>
+    private async Task SendHoverAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(
+            message.Params, LspJson.Default.TextDocumentPositionParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document and a position", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var offset = TextOffsets.ToOffset(snapshot.Text, parameters.Position);
+        var found = HoverProvider.At(snapshot.Model, snapshot.File, offset);
+
+        if (found is null)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var hover = new Hover
+        {
+            Contents = new MarkupContent { Value = found.Markdown },
+
+            // Ranged against the snapshot's own source manager, which is where the span's offsets
+            // are valid. Against the current buffer they would be off by whatever was typed since.
+            Range = DiagnosticMapper.ToRange(snapshot.Sources, found.Span),
+        };
+
+        await SendResultAsync(id, hover, LspJson.Default.Hover, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private InitializeResult BuildInitializeResult() => new()
     {
         Capabilities = new ServerCapabilities
@@ -285,6 +342,8 @@ public sealed class LspServer : IDisposable
             // The encoding Span already counts in. Announcing anything else would mean converting
             // every offset twice per message for no gain.
             PositionEncoding = "utf-16",
+
+            HoverProvider = true,
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };
