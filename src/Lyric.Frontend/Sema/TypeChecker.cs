@@ -1866,7 +1866,19 @@ public sealed class TypeChecker
             FieldSymbol => (Report(span, "LYR-SEM0055",
                 $"'{member}' is a field of '{ts.Name}' and belongs to an instance, not to the type"), null),
 
-            _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no static member '{member}'"), null)
+            // The same fallback the instance path has: an extension block may add a static member,
+            // and the lowering already emits one without a receiver.
+            _ => ExtensionMember(ts, member, span) switch
+            {
+                { IsStatic: true } ext => (Of(FnTypeOf(ext)), ext),
+
+                { } ext => (Report(span, "LYR-SEM0055",
+                    $"'{ext.Name}' is an instance method and needs a receiver — " +
+                    $"call it on a value, or declare it 'static fn {member}(…)'"), ext),
+
+                null => (Report(span, "LYR-SEM0012",
+                    $"'{ts.Name}' has no static member '{member}'"), null),
+            }
         };
     }
 

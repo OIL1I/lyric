@@ -312,7 +312,7 @@ public sealed partial class Parser
 
         var methods = new List<FunctionDecl>();
         if (_buffer.Match(TokenKind.Semicolon))
-            ParseMethodSequence(methods);
+            ParseMethodSequence(methods, allowStatic: true);
 
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close enum body");
         return new EnumDecl(isPublic, name, generics, interfaces, variants.ToArray(), methods.ToArray(),
@@ -375,7 +375,7 @@ public sealed partial class Parser
 
         _buffer.Expect(TokenKind.LBrace, "LYR-PAR0017", "expected '{' to open interface body");
         var members = new List<FunctionDecl>();
-        ParseMethodSequence(members);
+        ParseMethodSequence(members, allowStatic: false);
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close interface body");
         return new InterfaceDecl(isPublic, name, generics, members.ToArray(), Span.Union(start, close.Span));
     }
@@ -389,23 +389,82 @@ public sealed partial class Parser
         var interfaces = _buffer.Check(TokenKind.ColonColon) ? ParseInterfaceList() : [];
         _buffer.Expect(TokenKind.LBrace, "LYR-PAR0017", "expected '{' to open extend body");
         var methods = new List<FunctionDecl>();
-        ParseMethodSequence(methods);
+        ParseMethodSequence(methods, allowStatic: true);
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close extend body");
         return new ExtendDecl(isPublic, target, interfaces, methods.ToArray(), Span.Union(start, close.Span));
     }
 
-    // A sequence of FunctionDecl without separators (interface, extend and enum methods).
-    private void ParseMethodSequence(List<FunctionDecl> methods)
+    /// <summary>
+    /// A sequence of FunctionDecl without separators (interface, extend and enum methods).
+    ///
+    /// <para>The modifier order is the one of FunctionDecl: 'pub' and 'static' are read here, 'mut'
+    /// and 'fn' by ParseFunctionDecl.</para>
+    /// </summary>
+    /// <param name="allowStatic">False in an interface body, where a member is dispatched on a
+    /// receiver and a static one has none.</param>
+    private void ParseMethodSequence(List<FunctionDecl> methods, bool allowStatic)
     {
         while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
         {
             var before = _buffer.Position;
             var start = _buffer.Current.Span;
             var isPublic = _buffer.Check(TokenKind.Pub)
-                           && _buffer.Peek(1).TokenKind is TokenKind.Fn or TokenKind.Mut
+                           && _buffer.Peek(1).TokenKind is TokenKind.Fn or TokenKind.Mut or TokenKind.Static
                            && _buffer.Match(TokenKind.Pub);
-            methods.Add(ParseFunctionDecl(isPublic, start));
+
+            var isStatic = false;
+            if (_buffer.Check(TokenKind.Static))
+            {
+                var kw = _buffer.Advance();
+
+                // 'static let' is a StaticBinding, and that is a member of a struct or class body
+                // only. Reported here rather than left to ParseFunctionDecl, which would fail on
+                // the missing 'fn' and report three times about something else.
+                if (_buffer.Check(TokenKind.Let) || _buffer.Check(TokenKind.Var))
+                {
+                    _de.Report("LYR-PAR0040", Severity.Error, kw.Span,
+                        "a 'static let' is a member of a struct or class body only");
+                    SkipMember();
+                    continue;
+                }
+
+                if (!allowStatic)
+                    _de.Report("LYR-PAR0041", Severity.Error, kw.Span,
+                        "an interface member cannot be 'static' — it is dispatched on a receiver, "
+                        + "and a static member has none. Declare it on the implementing type");
+
+                // Read on either way: the rest of the member is well formed, and stopping here
+                // would report every following one as well.
+                isStatic = allowStatic;
+            }
+
+            methods.Add(ParseFunctionDecl(isPublic, start, isStatic));
             if (_buffer.Position == before) _buffer.Advance(); // force progress
+        }
+    }
+
+    /// <summary>Recovery inside a member sequence: consumes up to the end of the member, so one
+    /// rejected member gives one message.</summary>
+    private void SkipMember()
+    {
+        var depth = 0;
+        while (!_buffer.AtEnd)
+        {
+            var kind = _buffer.Current.TokenKind;
+            if (kind == TokenKind.LBrace) depth++;
+            else if (kind == TokenKind.RBrace)
+            {
+                if (depth == 0) return; // the body's own '}'
+                depth--;
+            }
+            else if (kind == TokenKind.Semicolon && depth == 0)
+            {
+                _buffer.Advance();
+                return;
+            }
+
+            _buffer.Advance();
+            if (depth == 0 && kind == TokenKind.RBrace) return; // the member's block ended
         }
     }
 

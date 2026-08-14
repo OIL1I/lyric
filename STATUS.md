@@ -290,11 +290,18 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
   supported by this compiler version yet"). Found on 2026-08-12 while writing the user guide — the
   example the documentation wanted to show did not compile. The sema resolves the alias, the lowering
   does not.
-- **`static fn` does not parse in an enum, interface OR extend body** — wider than recorded,
-  remeasured 2026-08-14. All three go through `ParseMethodSequence`, which does not know the
-  modifier; a class or struct body does, through `ParseTypeMember`. Gives `LYR-PAR0008`
-  ("expected ')' after parameters") plus two follow-up messages, all three about something other
-  than the cause. ~1 h.
+- ~~**`static fn` does not parse in an enum, interface or extend body**~~ **done** (2026-08-14).
+  Wider than recorded: all three go through `ParseMethodSequence`. Enum and extend now accept it —
+  the enum needed the parser alone, the extend needed one more place in the sema, where static
+  lookup consulted the type's own members only while the instance path had consulted the extension
+  registry all along. The lowering was ready for both.
+  - **An interface stays rejected**, and that is the finding of the slice: accepting it there put a
+    receiverless function into a vtable slot and CRASHED THE VERIFIER once the type was used as an
+    interface value — worse than the parse error it replaced, and in Release, where the verifier can
+    be off, it would have been malformed bytecode. Now `LYR-PAR0041`, one message, naming the way
+    out. `docs/Grammar.md` §3.5 records the restriction; the production alone did not imply it.
+  - `static let` in one of those bodies gave **21 messages for one cause** and now gives one
+    (`LYR-PAR0040`): a StaticBinding is a member of a struct or class body only.
 - **A block lambda does not deliver its return type to the inference**: `(n: int) => n` binds `U`,
   `(n: int) => { return n; }` does not. *Not a gap but a documented limit* — `LYR-SEM0046` says so
   and suggests the annotation, and that works. It stands here because I wrongly reported it as a bug
@@ -364,7 +371,7 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 ## Last relevant commit
 
-`compiler: check runs the lowering, so it answers the same question as build`
+`parsing: static members on an enum and through an extend block`
 
 ---
 

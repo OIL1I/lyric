@@ -234,6 +234,9 @@ InterfaceMember = FunctionDecl .
 An interface member with a body is a default implementation. An interface declares no interface
 list; there is no interface inheritance.
 
+A member carries no `static`: it is reached through a vtable slot, which takes a receiver, and a
+static member has none. Declare it on the implementing type instead.
+
 ### 3.6 Extend blocks
 
 ```ebnf
