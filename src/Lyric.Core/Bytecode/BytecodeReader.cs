@@ -89,7 +89,13 @@ public static class BytecodeReader
                     globalInit = init == 0 ? null : init - 1;
                     break;
                 }
-                default: break; // unknown or reserved: skipped, which is what the length is for
+                // Unknown or reserved: skipped, which is what the length is for. The payload has to
+                // be consumed rather than merely ignored, or the trailing-byte check below rejects
+                // exactly the section it is meant to let through — and with it the forward
+                // compatibility a new minor version rests on.
+                default:
+                    payload.Skip(payload.Remaining);
+                    break;
             }
 
             if (!payload.AtEnd)

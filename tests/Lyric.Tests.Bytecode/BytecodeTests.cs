@@ -187,6 +187,42 @@ public class BytecodeTests
     }
 
     [Fact]
+    public void Skips_a_section_with_an_unknown_id()
+    {
+        // The forward compatibility a new minor version rests on: "a new minor version may only add
+        // skippable sections". Nothing had ever WRITTEN an unknown section, so nothing had ever
+        // skipped one, and the reader rejected the payload it was supposed to step over.
+        var bytes = ValidBytes();
+
+        // Id 11 ascends past every id the writer emits, so appending keeps the file well formed.
+        var extended = bytes.Concat(new byte[] { 11, 2, 0xAA, 0xBB }).ToArray();
+
+        var de = new DiagnosticEngine(new SourceManager());
+        var module = BytecodeReader.Read(extended, de);
+
+        Assert.NotNull(module);
+        Assert.Empty(de.Diagnostics);
+
+        // The skipped bytes changed nothing about what was read.
+        Assert.Equal(BytecodeReader.ReadOrThrow(bytes).Functions.Count, module!.Functions.Count);
+    }
+
+    [Fact]
+    public void Tolerates_an_unknown_minor_version()
+    {
+        // The other half of the same promise: the major decides whether a file is readable, the
+        // minor only says which skippable sections it may contain.
+        var bytes = ValidBytes();
+        bytes[6] = 0xFF; // the minor version, little-endian behind the major
+        bytes[7] = 0x00;
+
+        var de = new DiagnosticEngine(new SourceManager());
+
+        Assert.NotNull(BytecodeReader.Read(bytes, de));
+        Assert.Empty(de.Diagnostics);
+    }
+
+    [Fact]
     public void Rejects_a_truncated_file()
     {
         var bytes = ValidBytes();

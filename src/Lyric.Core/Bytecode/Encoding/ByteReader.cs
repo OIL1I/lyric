@@ -108,6 +108,14 @@ internal sealed class ByteReader
         return slice;
     }
 
+    /// <summary>Advances past <paramref name="count"/> bytes without copying them. What a reader
+    /// does with a section it does not understand.</summary>
+    public void Skip(int count)
+    {
+        Need(count);
+        _position += count;
+    }
+
     public void ExpectMagic()
     {
         Need(Format.Magic.Length);
