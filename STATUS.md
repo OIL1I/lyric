@@ -11,14 +11,17 @@
 
 ## Current milestone
 
-**v1.0.0 is released** — the annotated tag is on the remote. M0–M10 are finished and tagged
-(`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+**v1.0.0 and v1.0.1 are released** — both annotated tags are on the remote, both with a release page
+and three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
 **M11, the language server, is the current milestone. Slices 1 and 2 are done**: an editor shows the
 compiler's diagnostics while you type, and answers what a name under the cursor is.
 
-3212 tests green **in Debug and Release**, bytecode format **3.0**, **five** binaries plus
-`lyrembed.dll`, version **1.0.0**.
+3222 tests green **in Debug and Release**, bytecode format **3.1**, **five** binaries plus
+`lyrembed.dll`, version **1.0.1**.
+
+**v1.1.0 is unreleased and waiting for a tag**: the format is at 3.1 and `CHANGELOG.md` holds its
+entry, while `ToolchainVersion` still says 1.0.1 — it is raised at the tag, not before.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -31,6 +34,31 @@ functions out of them and hands its own functions and types in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **Source maps — a panic names the line** (2026-08-15). 3222 tests green, Debug and Release.
+  - Section 6 had been reserved and described since format 3.0 and never written. It now maps a byte
+    offset in a function's code to a file and a line, **one row per position CHANGE** — a loop body
+    is dozens of instructions across a handful of lines. Format **3.1**, `--no-source-map` leaves it
+    out, and without it the file is byte for byte what it was before the section existed.
+  - **Byte offsets, not instruction indices.** An index is not a notion of the format: it
+    presupposes a runtime that decodes into an array before it runs, and `docs/Bytecode.md` claims a
+    second runtime can be built from it alone.
+  - **Nothing in the front end had to grow a field.** Every IR instruction has carried a `Span` since
+    the lowering was built, every `BytecodeInstruction` its `.Offset`, and `Prepared.From` already
+    built an offset table. One field was missing — `Prepared.Index`, because a `BytecodeFunction`
+    does not know where it sits. The third time this project has found the data already there.
+  - **The blocker was older than the slice**: a reader could not SKIP a section it does not know.
+    `default: break` consumed nothing and the trailing-byte check three lines later rejected the
+    payload it was meant to step over. That is the mechanism the format's forward compatibility rests
+    on, and it had never run, because nothing had ever written an unknown section. Consequence for
+    users is under `## Still open`.
+  - **The obvious test measured nothing.** With `return a / b` the faulting `div` is followed by the
+    `retval` of the same statement, so `Ip` and `Ip - 1` give one line and a wrong implementation
+    stays green — measured by writing `Ip` and watching it pass. The test that holds pulls the
+    expression onto its own line, where the two answers differ by one.
+  - The row carries **no column**, and a minor may only add skippable sections, so that is fixed
+    until a major. Deliberate: no consumer today, and a column beside this section later would be a
+    second mechanism for the same thing.
 
 - [x] **M11 slice 2 — hover** (2026-08-14). 3212 tests green, Debug and Release.
   - The cursor gets the binding form and type of a local, a parameter's type, a function's
@@ -117,28 +145,6 @@ functions out of them and hands its own functions and types in.
     the same resolution.
   - Remaining: in an **argument position** the context does not reach (`take(Opt.Some(5))`) — the
     expected type is not passed through to there. Recorded as a test rather than as a guess.
-
-- [x] **`Pair<int>.of(3)` works** (2026-08-12) — a static factory on a generic type.
-  - The parser read `Pair` as an identifier and `<` as a comparison, then stumbled over the dot.
-    **The detection costs no ambiguity**: the `<` counts as a type argument list when it closes
-    balanced and a `.` follows — a dot after a comparison chain is not a valid expression anyway.
-    The same rule the grammar has drawn for `f<int>()` since 2026-08-07; Rust's `::<>` would be a
-    second mechanism for the same concept.
-  - **The sema was the actual gap.** `MemberOfType` returned the member type unsubstituted, which
-    produced "cannot assign 'int' to 'T'", a message about the consequence. Now `NonValueType`
-    carries the resolved instance, and without arguments there is `LYR-SEM0063`, which names the
-    cause: the arguments are required, and `Pair.of(3)` does not infer.
-  - Found in the lowering: `InstanceTable.RequestMethod` also appended a `this` to a **static**
-    method. The verifier saw "passes 1 arg(s), expected 2".
-  - **`std.collections` carried the evidence as a comment** — `emptyList` is a free function
-    "because a static method on a generic instance is not expressible". That sentence is no longer
-    true and now stands correctly; the function stays, because the rework costs every caller and
-    gains nothing.
-  - **`Opt<int>.Some(5)` is therefore NOT done** and was never the same item: the lowering does not
-    know generic enums at all (`TypeTable.InternEnum` throws `LYR-IR0001` as soon as one occurs even
-    as a parameter type). Measured, not assumed — see `## Still open`.
-  - 24 new tests, of which 9 are parser counter-checks (`a < b > c.d` stays a comparison) and one
-    secures `lyrc ast`: the `AstDumper` throws on every node it does not know.
 
 ## Measurements
 
@@ -235,8 +241,11 @@ is the thing to check.
 
 **Tooling and format:**
 
-- **The source map section** (id 6) is reserved and described but is not written — panics therefore
-  show the function, not the line.
+- **A `v1.0.1` runtime cannot read a module with a source map.** The skip that lets a reader step
+  over a section it does not know was broken until 3.1, so the forward compatibility the format
+  promises does not hold for the one release before it. `--no-source-map` produces a module those
+  runtimes accept. Nothing can be done on their side; it is recorded so the next format addition is
+  not mistaken for the same bug.
 - **Section byte sizes are missing from `lyrvm info`**: the reader discards them after parsing.
   Retrofitting them would mean extending the model with provenance data — a decision of its own.
 - **Measure the verifier share in a Release profile** — the Debug numbers are riddled with JIT
@@ -291,7 +300,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`lsp: answer what the compiler knows about the name under the cursor`
+`cli: build writes a source map, --no-source-map leaves it out`
 
 ---
 
