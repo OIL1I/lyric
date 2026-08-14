@@ -98,6 +98,15 @@ public sealed record ServerCapabilities
     /// answers with nothing is worse than one it never claimed: the editor shows an empty tooltip
     /// instead of leaving the gesture to another provider.</summary>
     public required bool HoverProvider { get; init; }
+
+    public required bool DefinitionProvider { get; init; }
+}
+
+/// <summary>A place in a file. The answer to "where is this declared".</summary>
+public sealed record Location
+{
+    public required string Uri { get; init; }
+    public required Range Range { get; init; }
 }
 
 public sealed record TextDocumentPositionParams
@@ -206,6 +215,7 @@ public static class LspMethods
     public const string DidClose = "textDocument/didClose";
     public const string DidSave = "textDocument/didSave";
     public const string Hover = "textDocument/hover";
+    public const string Definition = "textDocument/definition";
 
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";

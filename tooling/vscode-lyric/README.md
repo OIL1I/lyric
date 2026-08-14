@@ -14,11 +14,18 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
 - **Run** the active file with `Ctrl+F5`, the play button in the editor title bar, or the
   command palette (`Lyric: Run File`).
 
+- **Go to definition** (`F12`) on a name, including into the standard library — those files are
+  read from disk, so the jump opens the real `.lyr` source.
+
 ## What it does not do
 
-No completion and no go-to-definition yet. Hover shows no documentation either, and that is not an
+No completion and no find-references yet. Hover shows no documentation either, and that is not an
 omission to be filled in later: `///` is a token the lexer produces and nothing carries it into the
 syntax tree, so there is nothing to show.
+
+A jump lands on the **start** of a declaration rather than on its name. The syntax tree records no
+span for a name on its own, and searching the text for it would be a second, weaker way of knowing
+where it is.
 
 ## Setup
 

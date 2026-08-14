@@ -157,6 +157,10 @@ public sealed class LspServer : IDisposable
                 await SendHoverAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.Definition when _state == State.Running:
+                await SendDefinitionAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -326,10 +330,60 @@ public sealed class LspServer : IDisposable
 
             // Ranged against the snapshot's own source manager, which is where the span's offsets
             // are valid. Against the current buffer they would be off by whatever was typed since.
-            Range = DiagnosticMapper.ToRange(snapshot.Sources, found.Span),
+            Range = SpanMapper.ToRange(snapshot.Sources, found.Span),
         };
 
         await SendResultAsync(id, hover, LspJson.Default.Hover, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Answers where a name is declared, or answers with null.
+    ///
+    /// <para>The target may be in ANOTHER file, and usually is: every call into the standard
+    /// library lands there. Its URI is built from the path the source manager holds, except when
+    /// it is the requested document itself — then the client's own spelling goes back, so the
+    /// editor recognises the file it just asked about.</para>
+    /// </summary>
+    private async Task SendDefinitionAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(
+            message.Params, LspJson.Default.TextDocumentPositionParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document and a position", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot
+            || DefinitionProvider.At(snapshot.Model, snapshot.File, TextOffsets.ToOffset(
+                snapshot.Text, parameters.Position)) is not { } target)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var targetPath = snapshot.Sources.GetPath(target.File);
+        var uri = DocumentUri.PathComparer.Equals(targetPath, path)
+            ? parameters.TextDocument.Uri
+            : DocumentUri.FromFilePath(targetPath);
+
+        var location = new Location
+        {
+            Uri = uri,
+
+            // The START of the declaration rather than the whole of it. A struct with twenty
+            // members is a twenty-line span, and selecting all of it on a jump is noise; the AST
+            // records no span for the NAME alone, and finding it by searching the text would be a
+            // second, weaker way of knowing where it is.
+            Range = SpanMapper.ToStart(snapshot.Sources, target.Span),
+        };
+
+        await SendResultAsync(id, location, LspJson.Default.Location, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -344,6 +398,7 @@ public sealed class LspServer : IDisposable
             PositionEncoding = "utf-16",
 
             HoverProvider = true,
+            DefinitionProvider = true,
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };
