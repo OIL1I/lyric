@@ -1,5 +1,9 @@
 [
   {
+    "version": "nightly",
+    "stable": false
+  },
+  {
     "version": "v1.0.1",
     "stable": true
   },

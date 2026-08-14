@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.math — Lyric nightly</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<span class="version">nightly</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+</ul>
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.0</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/" class="here">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.math</h1>
+<nav class="contents">
+<ul>
+<li><a href="#binding-pi">pi</a></li>
+<li><a href="#binding-e">e</a></li>
+<li><a href="#function-sqrt">sqrt</a></li>
+<li><a href="#function-abs">abs</a></li>
+<li><a href="#function-floor">floor</a></li>
+<li><a href="#function-ceil">ceil</a></li>
+<li><a href="#function-round">round</a></li>
+<li><a href="#function-min">min</a></li>
+<li><a href="#function-max">max</a></li>
+<li><a href="#function-pow">pow</a></li>
+<li><a href="#function-sin">sin</a></li>
+<li><a href="#function-cos">cos</a></li>
+<li><a href="#function-tan">tan</a></li>
+<li><a href="#function-log">log</a></li>
+<li><a href="#function-asin">asin</a></li>
+<li><a href="#function-acos">acos</a></li>
+<li><a href="#function-atan">atan</a></li>
+<li><a href="#function-atan2">atan2</a></li>
+<li><a href="#binding-tau">tau</a></li>
+<li><a href="#function-absint">absInt</a></li>
+<li><a href="#function-minint">minInt</a></li>
+<li><a href="#function-maxint">maxInt</a></li>
+<li><a href="#function-clampint">clampInt</a></li>
+<li><a href="#function-signint">signInt</a></li>
+<li><a href="#function-gcd">gcd</a></li>
+<li><a href="#function-lcm">lcm</a></li>
+<li><a href="#function-powint">powInt</a></li>
+<li><a href="#function-divfloor">divFloor</a></li>
+<li><a href="#function-modfloor">modFloor</a></li>
+<li><a href="#function-clamp">clamp</a></li>
+<li><a href="#function-sign">sign</a></li>
+<li><a href="#function-trunc">trunc</a></li>
+<li><a href="#function-isnan">isNaN</a></li>
+<li><a href="#function-isinfinite">isInfinite</a></li>
+<li><a href="#function-isfinite">isFinite</a></li>
+<li><a href="#function-exp">exp</a></li>
+<li><a href="#function-log2">log2</a></li>
+<li><a href="#function-log10">log10</a></li>
+<li><a href="#function-logbase">logBase</a></li>
+<li><a href="#function-cbrt">cbrt</a></li>
+<li><a href="#function-hypot">hypot</a></li>
+<li><a href="#function-sinh">sinh</a></li>
+<li><a href="#function-cosh">cosh</a></li>
+<li><a href="#function-tanh">tanh</a></li>
+<li><a href="#function-toradians">toRadians</a></li>
+<li><a href="#function-todegrees">toDegrees</a></li>
+<li><a href="#class-random">Random</a></li>
+<li><a href="#function-newrandom">newRandom</a></li>
+</ul>
+</nav>
+<section class="item" id="binding-pi">
+<h2><a href="#binding-pi">pi</a> <span class="kind">binding</span></h2>
+<pre class="signature"><code class="language-lyr">pub let pi: float = 3.141592653589793</code></pre>
+<p class="source">stdlib/std/math.lyr:13</p>
+</section>
+<section class="item" id="binding-e">
+<h2><a href="#binding-e">e</a> <span class="kind">binding</span></h2>
+<pre class="signature"><code class="language-lyr">pub let e: float = 2.718281828459045</code></pre>
+<p class="source">stdlib/std/math.lyr:14</p>
+</section>
+<section class="item" id="function-sqrt">
+<h2><a href="#function-sqrt">sqrt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sqrt(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:16</p>
+</section>
+<section class="item" id="function-abs">
+<h2><a href="#function-abs">abs</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn abs(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:17</p>
+</section>
+<section class="item" id="function-floor">
+<h2><a href="#function-floor">floor</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn floor(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:21</p>
+</section>
+<section class="item" id="function-ceil">
+<h2><a href="#function-ceil">ceil</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn ceil(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:22</p>
+</section>
+<section class="item" id="function-round">
+<h2><a href="#function-round">round</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn round(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:23</p>
+</section>
+<section class="item" id="function-min">
+<h2><a href="#function-min">min</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn min(a: float, b: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:25</p>
+</section>
+<section class="item" id="function-max">
+<h2><a href="#function-max">max</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn max(a: float, b: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:26</p>
+</section>
+<section class="item" id="function-pow">
+<h2><a href="#function-pow">pow</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn pow(base: float, exponent: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:27</p>
+</section>
+<section class="item" id="function-sin">
+<h2><a href="#function-sin">sin</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sin(radians: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:29</p>
+</section>
+<section class="item" id="function-cos">
+<h2><a href="#function-cos">cos</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn cos(radians: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:30</p>
+</section>
+<section class="item" id="function-tan">
+<h2><a href="#function-tan">tan</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn tan(radians: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:31</p>
+</section>
+<section class="item" id="function-log">
+<h2><a href="#function-log">log</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn log(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:34</p>
+</section>
+<section class="item" id="function-asin">
+<h2><a href="#function-asin">asin</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn asin(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:42</p>
+</section>
+<section class="item" id="function-acos">
+<h2><a href="#function-acos">acos</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn acos(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:43</p>
+</section>
+<section class="item" id="function-atan">
+<h2><a href="#function-atan">atan</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn atan(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:44</p>
+</section>
+<section class="item" id="function-atan2">
+<h2><a href="#function-atan2">atan2</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn atan2(y: float, x: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:45</p>
+</section>
+<section class="item" id="binding-tau">
+<h2><a href="#binding-tau">tau</a> <span class="kind">binding</span></h2>
+<pre class="signature"><code class="language-lyr">pub let tau: float = 6.283185307179586</code></pre>
+<p class="source">stdlib/std/math.lyr:49</p>
+</section>
+<section class="item" id="function-absint">
+<h2><a href="#function-absint">absInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn absInt(value: int): int</code></pre>
+<p class="source">stdlib/std/math.lyr:56</p>
+</section>
+<section class="item" id="function-minint">
+<h2><a href="#function-minint">minInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn minInt(a: int, b: int): int</code></pre>
+<p class="source">stdlib/std/math.lyr:60</p>
+</section>
+<section class="item" id="function-maxint">
+<h2><a href="#function-maxint">maxInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn maxInt(a: int, b: int): int</code></pre>
+<p class="source">stdlib/std/math.lyr:64</p>
+</section>
+<section class="item" id="function-clampint">
+<h2><a href="#function-clampint">clampInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn clampInt(value: int, lo: int, hi: int): int</code></pre>
+<p>Clamps to <code>[lo, hi]</code>. A <code>lo &gt; hi</code> yields <code>lo</code>; the bounds are the caller's business.</p>
+<p class="source">stdlib/std/math.lyr:69</p>
+</section>
+<section class="item" id="function-signint">
+<h2><a href="#function-signint">signInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn signInt(value: int): int</code></pre>
+<p class="source">stdlib/std/math.lyr:76</p>
+</section>
+<section class="item" id="function-gcd">
+<h2><a href="#function-gcd">gcd</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn gcd(a: int, b: int): int</code></pre>
+<p>Greatest common divisor, Euclidean. Always non-negative.</p>
+<p class="source">stdlib/std/math.lyr:84</p>
+</section>
+<section class="item" id="function-lcm">
+<h2><a href="#function-lcm">lcm</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn lcm(a: int, b: int): int</code></pre>
+<p>Least common multiple. <code>lcm(0, n)</code> is 0.</p>
+<p class="source">stdlib/std/math.lyr:96</p>
+</section>
+<section class="item" id="function-powint">
+<h2><a href="#function-powint">powInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn powInt(base: int, exponent: int): ?int</code></pre>
+<p>Integer power by repeated squaring.</p>
+<p>A negative exponent yields <code>null</code>: the result would be a fraction.</p>
+<p class="source">stdlib/std/math.lyr:108</p>
+</section>
+<section class="item" id="function-divfloor">
+<h2><a href="#function-divfloor">divFloor</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn divFloor(a: int, b: int): int</code></pre>
+<p>Division rounding towards negative infinity rather than towards zero.</p>
+<p><code>/</code> and <code>%</code> follow the sign of the dividend, so <code>-7 / 2</code> is -3.
+Computing on a grid (tiles, time windows) needs -4. Both forms stand side by side so the
+choice is visible.</p>
+<p class="source">stdlib/std/math.lyr:131</p>
+</section>
+<section class="item" id="function-modfloor">
+<h2><a href="#function-modfloor">modFloor</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn modFloor(a: int, b: int): int</code></pre>
+<p>The remainder matching <code>divFloor</code>, always carrying the sign of <code>b</code>.</p>
+<p class="source">stdlib/std/math.lyr:141</p>
+</section>
+<section class="item" id="function-clamp">
+<h2><a href="#function-clamp">clamp</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn clamp(value: float, lo: float, hi: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:151</p>
+</section>
+<section class="item" id="function-sign">
+<h2><a href="#function-sign">sign</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sign(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:158</p>
+</section>
+<section class="item" id="function-trunc">
+<h2><a href="#function-trunc">trunc</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn trunc(value: float): float</code></pre>
+<p>Truncates towards zero: <code>trunc(-2.7)</code> is <code>-2.0</code>, while <code>floor(-2.7)</code> would be <code>-3.0</code>.</p>
+<p class="source">stdlib/std/math.lyr:166</p>
+</section>
+<section class="item" id="function-isnan">
+<h2><a href="#function-isnan">isNaN</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isNaN(value: float): bool</code></pre>
+<p><code>NaN</code> is the only value unequal to itself (IEEE 754), so this needs no native edge and no bit
+access.</p>
+<p class="source">stdlib/std/math.lyr:172</p>
+</section>
+<section class="item" id="function-isinfinite">
+<h2><a href="#function-isinfinite">isInfinite</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isInfinite(value: float): bool</code></pre>
+<p class="source">stdlib/std/math.lyr:176</p>
+</section>
+<section class="item" id="function-isfinite">
+<h2><a href="#function-isfinite">isFinite</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isFinite(value: float): bool</code></pre>
+<p class="source">stdlib/std/math.lyr:184</p>
+</section>
+<section class="item" id="function-exp">
+<h2><a href="#function-exp">exp</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn exp(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:188</p>
+</section>
+<section class="item" id="function-log2">
+<h2><a href="#function-log2">log2</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn log2(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:194</p>
+</section>
+<section class="item" id="function-log10">
+<h2><a href="#function-log10">log10</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn log10(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:195</p>
+</section>
+<section class="item" id="function-logbase">
+<h2><a href="#function-logbase">logBase</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn logBase(value: float, base: float): float</code></pre>
+<p>Logarithmus zu beliebiger Basis.</p>
+<p class="source">stdlib/std/math.lyr:198</p>
+</section>
+<section class="item" id="function-cbrt">
+<h2><a href="#function-cbrt">cbrt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn cbrt(value: float): float</code></pre>
+<p>The cube root, negative values included.</p>
+<p><code>pow(x, 1/3)</code> alone yields NaN for negative <code>x</code>: a fractional power is undefined there. The
+cube root is not, and the sign simply moves out.</p>
+<p class="source">stdlib/std/math.lyr:206</p>
+</section>
+<section class="item" id="function-hypot">
+<h2><a href="#function-hypot">hypot</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn hypot(a: float, b: float): float</code></pre>
+<p>The length of the hypotenuse.</p>
+<p class="source">stdlib/std/math.lyr:214</p>
+</section>
+<section class="item" id="function-sinh">
+<h2><a href="#function-sinh">sinh</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sinh(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:218</p>
+</section>
+<section class="item" id="function-cosh">
+<h2><a href="#function-cosh">cosh</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn cosh(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:222</p>
+</section>
+<section class="item" id="function-tanh">
+<h2><a href="#function-tanh">tanh</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn tanh(value: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:226</p>
+</section>
+<section class="item" id="function-toradians">
+<h2><a href="#function-toradians">toRadians</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn toRadians(degrees: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:230</p>
+</section>
+<section class="item" id="function-todegrees">
+<h2><a href="#function-todegrees">toDegrees</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn toDegrees(radians: float): float</code></pre>
+<p class="source">stdlib/std/math.lyr:234</p>
+</section>
+<section class="item" id="class-random">
+<h2><a href="#class-random">Random</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class Random</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">state: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextInt(): int</code></pre>
+<p>The next raw value. It may have either sign.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextIntRange(lo: int, hi: int): int</code></pre>
+<p>Uniformly distributed in <code>[lo, hi)</code>. An empty range yields <code>lo</code>.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextFloat(): float</code></pre>
+<p>Uniformly distributed in <code>[0, 1)</code>.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextBool(): bool</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/math.lyr:250</p>
+</section>
+<section class="item" id="function-newrandom">
+<h2><a href="#function-newrandom">newRandom</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn newRandom(seed: int): Random</code></pre>
+<p>A generator with an explicit seed.</p>
+<p>A seed of 0 is a fixed point for xorshift — the sequence would stay 0 forever — so it is
+replaced silently rather than panicking on a plausible input.</p>
+<p class="source">stdlib/std/math.lyr:288</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.iter/">std.iter</a>
+<a class="next" href="../../stdlib/std.option/">std.option</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

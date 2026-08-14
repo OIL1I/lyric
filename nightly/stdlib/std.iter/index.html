@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.iter — Lyric nightly</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<span class="version">nightly</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+</ul>
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.0</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/" class="here">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.iter</h1>
+<nav class="contents">
+<ul>
+<li><a href="#interface-iterator">Iterator</a></li>
+<li><a href="#class-rangeiterator">RangeIterator</a></li>
+<li><a href="#class-arrayiterator">ArrayIterator</a></li>
+<li><a href="#class-stringiterator">StringIterator</a></li>
+<li><a href="#interface-iterable">Iterable</a></li>
+<li><a href="#class-mapiterator">MapIterator</a></li>
+<li><a href="#function-map">map</a></li>
+<li><a href="#class-filteriterator">FilterIterator</a></li>
+<li><a href="#function-filter">filter</a></li>
+<li><a href="#class-takeiterator">TakeIterator</a></li>
+<li><a href="#function-take">take</a></li>
+<li><a href="#class-skipiterator">SkipIterator</a></li>
+<li><a href="#function-skip">skip</a></li>
+<li><a href="#class-takewhileiterator">TakeWhileIterator</a></li>
+<li><a href="#function-takewhile">takeWhile</a></li>
+<li><a href="#class-enumerateiterator">EnumerateIterator</a></li>
+<li><a href="#function-enumerate">enumerate</a></li>
+<li><a href="#class-zipiterator">ZipIterator</a></li>
+<li><a href="#function-zip">zip</a></li>
+<li><a href="#class-chainiterator">ChainIterator</a></li>
+<li><a href="#function-chain">chain</a></li>
+<li><a href="#function-fold">fold</a></li>
+<li><a href="#function-count">count</a></li>
+<li><a href="#function-sum">sum</a></li>
+<li><a href="#function-sumfloat">sumFloat</a></li>
+<li><a href="#function-any">any</a></li>
+<li><a href="#function-all">all</a></li>
+<li><a href="#function-none">none</a></li>
+<li><a href="#function-find">find</a></li>
+<li><a href="#function-position">position</a></li>
+<li><a href="#function-collectarray">collectArray</a></li>
+<li><a href="#function-minvalue">minValue</a></li>
+<li><a href="#function-maxvalue">maxValue</a></li>
+</ul>
+</nav>
+<section class="item" id="interface-iterator">
+<h2><a href="#interface-iterator">Iterator</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Iterator&lt;T&gt;</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:16</p>
+</section>
+<section class="item" id="class-rangeiterator">
+<h2><a href="#class-rangeiterator">RangeIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class RangeIterator :: [Iterator&lt;int&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">current: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">end: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?int</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:23</p>
+</section>
+<section class="item" id="class-arrayiterator">
+<h2><a href="#class-arrayiterator">ArrayIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class ArrayIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: T[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">index: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:39</p>
+</section>
+<section class="item" id="class-stringiterator">
+<h2><a href="#class-stringiterator">StringIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class StringIterator :: [Iterator&lt;char&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">chars: char[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">index: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?char</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:56</p>
+</section>
+<section class="item" id="interface-iterable">
+<h2><a href="#interface-iterable">Iterable</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Iterable&lt;T&gt;</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn iter(): Iterator&lt;T&gt;</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:82</p>
+</section>
+<section class="item" id="class-mapiterator">
+<h2><a href="#class-mapiterator">MapIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class MapIterator&lt;T, U&gt; :: [Iterator&lt;U&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">f: fn(T) -&gt; U</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?U</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:98</p>
+</section>
+<section class="item" id="function-map">
+<h2><a href="#function-map">map</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn map&lt;T, U&gt;(source: Iterator&lt;T&gt;, f: fn(T) -&gt; U): Iterator&lt;U&gt;</code></pre>
+<p class="source">stdlib/std/iter.lyr:112</p>
+</section>
+<section class="item" id="class-filteriterator">
+<h2><a href="#class-filteriterator">FilterIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class FilterIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">keep: fn(T) -&gt; bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:116</p>
+</section>
+<section class="item" id="function-filter">
+<h2><a href="#function-filter">filter</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn filter&lt;T&gt;(source: Iterator&lt;T&gt;, keep: fn(T) -&gt; bool): Iterator&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/iter.lyr:133</p>
+</section>
+<section class="item" id="class-takeiterator">
+<h2><a href="#class-takeiterator">TakeIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class TakeIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">remaining: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:137</p>
+</section>
+<section class="item" id="function-take">
+<h2><a href="#function-take">take</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn take&lt;T&gt;(source: Iterator&lt;T&gt;, count: int): Iterator&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/iter.lyr:152</p>
+</section>
+<section class="item" id="class-skipiterator">
+<h2><a href="#class-skipiterator">SkipIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class SkipIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pending: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:156</p>
+</section>
+<section class="item" id="function-skip">
+<h2><a href="#function-skip">skip</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn skip&lt;T&gt;(source: Iterator&lt;T&gt;, count: int): Iterator&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/iter.lyr:172</p>
+</section>
+<section class="item" id="class-takewhileiterator">
+<h2><a href="#class-takewhileiterator">TakeWhileIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class TakeWhileIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">keep: fn(T) -&gt; bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">done: bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:176</p>
+</section>
+<section class="item" id="function-takewhile">
+<h2><a href="#function-takewhile">takeWhile</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn takeWhile&lt;T&gt;(source: Iterator&lt;T&gt;, keep: fn(T) -&gt; bool): Iterator&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/iter.lyr:201</p>
+</section>
+<section class="item" id="class-enumerateiterator">
+<h2><a href="#class-enumerateiterator">EnumerateIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class EnumerateIterator&lt;T&gt; :: [Iterator&lt;(int, T)&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">index: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?(int, T)</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:205</p>
+</section>
+<section class="item" id="function-enumerate">
+<h2><a href="#function-enumerate">enumerate</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn enumerate&lt;T&gt;(source: Iterator&lt;T&gt;): Iterator&lt;(int, T)&gt;</code></pre>
+<p>Numbers the elements: <code>a, b, c</code> becomes <code>(0, a), (1, b), (2, c)</code>.</p>
+<p class="source">stdlib/std/iter.lyr:221</p>
+</section>
+<section class="item" id="class-zipiterator">
+<h2><a href="#class-zipiterator">ZipIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class ZipIterator&lt;A, B&gt; :: [Iterator&lt;(A, B)&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">left: Iterator&lt;A&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">right: Iterator&lt;B&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?(A, B)</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:225</p>
+</section>
+<section class="item" id="function-zip">
+<h2><a href="#function-zip">zip</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn zip&lt;A, B&gt;(left: Iterator&lt;A&gt;, right: Iterator&lt;B&gt;): Iterator&lt;(A, B)&gt;</code></pre>
+<p>Walks both in step and ends with the shorter one.</p>
+<p>The one surplus call on <code>left</code> is the price of both sides sharing the same interface; avoiding
+it would need a <code>peek</code> on <code>Iterator&lt;T&gt;</code> that exists nowhere else.</p>
+<p class="source">stdlib/std/iter.lyr:246</p>
+</section>
+<section class="item" id="class-chainiterator">
+<h2><a href="#class-chainiterator">ChainIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class ChainIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">first: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">second: Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">onFirst: bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/iter.lyr:250</p>
+</section>
+<section class="item" id="function-chain">
+<h2><a href="#function-chain">chain</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn chain&lt;T&gt;(first: Iterator&lt;T&gt;, second: Iterator&lt;T&gt;): Iterator&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/iter.lyr:267</p>
+</section>
+<section class="item" id="function-fold">
+<h2><a href="#function-fold">fold</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn fold&lt;T, A&gt;(source: Iterator&lt;T&gt;, seed: A, step: fn(A, T) -&gt; A): A</code></pre>
+<p>Folds from the left: <code>fold(1..4, 0, (acc, n) =&gt; acc + n)</code> is <code>((0+1)+2)+3</code>.</p>
+<p>The most general terminator; <code>count</code>, <code>sum</code>, <code>any</code> and <code>all</code> are special cases of it. They
+exist separately because <code>fold</code> with a closure is too much ceremony for counting.</p>
+<p class="source">stdlib/std/iter.lyr:284</p>
+</section>
+<section class="item" id="function-count">
+<h2><a href="#function-count">count</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn count&lt;T&gt;(source: Iterator&lt;T&gt;): int</code></pre>
+<p class="source">stdlib/std/iter.lyr:295</p>
+</section>
+<section class="item" id="function-sum">
+<h2><a href="#function-sum">sum</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sum(source: Iterator&lt;int&gt;): int</code></pre>
+<p class="source">stdlib/std/iter.lyr:307</p>
+</section>
+<section class="item" id="function-sumfloat">
+<h2><a href="#function-sumfloat">sumFloat</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sumFloat(source: Iterator&lt;float&gt;): float</code></pre>
+<p class="source">stdlib/std/iter.lyr:317</p>
+</section>
+<section class="item" id="function-any">
+<h2><a href="#function-any">any</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn any&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): bool</code></pre>
+<p>Stops at the first match; the rest is never evaluated.</p>
+<p class="source">stdlib/std/iter.lyr:328</p>
+</section>
+<section class="item" id="function-all">
+<h2><a href="#function-all">all</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn all&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): bool</code></pre>
+<p>Stops at the first counterexample. An empty iterator yields <code>true</code>, the only convention for
+which <code>all(a) &amp;&amp; all(b) == all(chain(a, b))</code> holds.</p>
+<p class="source">stdlib/std/iter.lyr:342</p>
+</section>
+<section class="item" id="function-none">
+<h2><a href="#function-none">none</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn none&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): bool</code></pre>
+<p class="source">stdlib/std/iter.lyr:354</p>
+</section>
+<section class="item" id="function-find">
+<h2><a href="#function-find">find</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn find&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): ?T</code></pre>
+<p>The first element that matches, or <code>null</code>.</p>
+<p class="source">stdlib/std/iter.lyr:359</p>
+</section>
+<section class="item" id="function-position">
+<h2><a href="#function-position">position</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn position&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): ?int</code></pre>
+<p>The position of the first match. Separate from <code>find</code>, because a <code>(int, T)</code> tuple would cost
+the common case where only one of the two is needed.</p>
+<p class="source">stdlib/std/iter.lyr:373</p>
+</section>
+<section class="item" id="function-collectarray">
+<h2><a href="#function-collectarray">collectArray</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn collectArray&lt;T&gt;(source: Iterator&lt;T&gt;): T[]</code></pre>
+<p>Everything into an array.</p>
+<p>Quadratic: a <code>T[]</code> has a fixed length, so every append copies. For large iterators use
+<code>std.collections.collect</code>, which gathers into a doubling <code>List&lt;T&gt;</code>. It stands here because
+<code>std.iter</code> must not import <code>std.collections</code>; the dependency runs the other way.</p>
+<p class="source">stdlib/std/iter.lyr:392</p>
+</section>
+<section class="item" id="function-minvalue">
+<h2><a href="#function-minvalue">minValue</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn minValue&lt;T :: [Ordered&lt;T&gt;]&gt;(source: Iterator&lt;T&gt;): ?T</code></pre>
+<p>The smallest element, or <code>null</code> for an empty source.</p>
+<p class="source">stdlib/std/iter.lyr:403</p>
+</section>
+<section class="item" id="function-maxvalue">
+<h2><a href="#function-maxvalue">maxValue</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn maxValue&lt;T :: [Ordered&lt;T&gt;]&gt;(source: Iterator&lt;T&gt;): ?T</code></pre>
+<p class="source">stdlib/std/iter.lyr:418</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.io.file/">std.io.file</a>
+<a class="next" href="../../stdlib/std.math/">std.math</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
