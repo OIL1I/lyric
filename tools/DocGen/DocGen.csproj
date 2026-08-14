@@ -17,4 +17,13 @@
     <ProjectReference Include="..\..\src\Lyric.Frontend\Lyric.Frontend.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The only NuGet dependency in the repository, and it stays out of the shipping path: this is a
+      tool and no binary references it. Markdown is a solved problem, and a parser of our own would
+      be several hundred lines that have nothing to do with the language.
+    -->
+    <PackageReference Include="Markdig" Version="1.3.2" />
+  </ItemGroup>
+
 </Project>
