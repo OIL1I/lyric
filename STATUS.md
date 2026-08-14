@@ -14,10 +14,10 @@
 **v1.0.0 is released** — the annotated tag is on the remote. M0–M10 are finished and tagged
 (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
-**M11, the language server, is the current milestone. Slice 1 is done**: an editor shows the
-compiler's diagnostics while you type.
+**M11, the language server, is the current milestone. Slices 1 and 2 are done**: an editor shows the
+compiler's diagnostics while you type, and answers what a name under the cursor is.
 
-3102 tests green **in Debug and Release**, bytecode format **3.0**, **five** binaries plus
+3212 tests green **in Debug and Release**, bytecode format **3.0**, **five** binaries plus
 `lyrembed.dll`, version **1.0.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
@@ -31,6 +31,38 @@ functions out of them and hands its own functions and types in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M11 slice 2 — hover** (2026-08-14). 3212 tests green, Debug and Release.
+  - The cursor gets the binding form and type of a local, a parameter's type, a function's
+    signature, what kind of type a type name names, and the plain type of a subexpression that
+    binds to no symbol at all. Rendered with `TypeFacts.Display`, the function the diagnostics use,
+    so hover and an error message never disagree about what a type is called.
+  - **`CompileResult` dropped everything the front end had learned.** It carried diagnostics and
+    bytes; the `Compilation`, the bindings and the types were built and thrown away. Everything a
+    tool can say ABOUT a program rather than about its output is in those three tables. They come
+    out as one `SemanticModel` rather than three fields — a binding table from one run beside a type
+    table from another is a fault nobody would find.
+  - **`AstChildren` is a switch, not reflection.** A reflective walk handles a new node without
+    being told, which reads as the better property until a node holds its children in a shape the
+    walk does not recognise: it is silently skipped. The throwing `default` makes an added node a
+    build-time question, and the test asks the ASSEMBLY which node types exist rather than trusting
+    a list that would drift.
+  - **That test found a node I did not know existed**: `GlobalInitStmt`, which the lowering
+    synthesises. It is not syntax, a case for it would mean the AST knows about the lowering, and
+    meeting one during a syntax walk means something leaked — so the walk refuses it, and a test
+    holds that too.
+  - **Type names inside a function body were resolved and dropped.** The resolver binds the ones it
+    walks — those in declarations — while an annotation on a local is reached only from the sema's
+    `ResolveType`, which computed the symbol and discarded it. It now writes into the SAME table,
+    so one question has one answer whoever asked it. Found by a test, not by reading.
+  - **A generic call shows the DECLARED signature**, type parameters included. `T` at a call site is
+    `int`, and showing that would be better — but the substitution lives in a private function of
+    the type checker, and a second one in the server would be a second answer to what `T` became.
+    Recorded as a limit with a test that measures it, rather than half-substituted.
+  - **The last analysis that produced a model is kept per document.** Mid-edit is the normal state
+    of a file someone is looking things up in; answering only from text that parses would go silent
+    exactly when it is wanted. Errors do not disqualify a model — a program with a type error still
+    has resolved names everywhere around it.
 
 - [x] **M11 slice 1 — diagnostics in the editor** (2026-08-14). 3102 tests green, Debug and Release.
   - `lyrls` and `lyrlsp.dll` beside it: the base protocol, the lifecycle state machine, an overlay
@@ -108,17 +140,6 @@ functions out of them and hands its own functions and types in.
   - 24 new tests, of which 9 are parser counter-checks (`a < b > c.d` stays a comparison) and one
     secures `lyrc ast`: the `AstDumper` throws on every node it does not know.
 
-- [x] **`List<T>.clear()` and `.toArray()`** (2026-08-12, written by the maintainer).
-  - `toArray` is the more interesting part: the return is `T[]`, the backing is `(?T)[]`, and
-    **there is no reinterpretation between them**. `!` unwraps a single value, not an array element
-    by element — `?T[]` is an *array of optionals* and not an optional array. The first version tried
-    `return result!;` and was `LYR-SEM0005`.
-  - It is now built as `T[]` from the start. The empty list has no first element to build one from
-    and is caught beforehand (`return [];`).
-  - Seven tests, among them: the length is `count` and not `capacity` (the same mistake `get` once
-    made), the copy is a copy, and `clear` really releases the backing rather than leaving it
-    standing behind `count`.
-
 ## Measurements
 
 Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
@@ -163,15 +184,22 @@ have bought an incremental compiler nobody needs.
 
 ## What we are working on
 
-**M11, the language server.** Slice 1 ships diagnostics. The remaining slices are hover,
+**M11, the language server.** Slices 1 and 2 ship diagnostics and hover. The remaining slices are
 go-to-definition, document symbols with find-references, and completion. None of them is built.
 
-**What the next slice will hit, measured while building this one.** `Symbol.Declaration` holds the
-AST node and every node carries a `Span`, so hover and go-to-definition need no new compiler data.
-Two things are missing, and both live in the FRONT END rather than in the server: there is no
-"which node covers offset X" anywhere, and neither `BindingResult` nor the reference table of
-`TypeResult` can be enumerated, which find-references needs. Those slices are therefore bigger than
-their feature list looks.
+**Go-to-definition should now be small.** The two things slice 2 had to build are exactly what it
+needs: `AstChildren` answers which node covers an offset, and `Symbol.Declaration` holds the node to
+jump to. What is left is turning that node's span into a location and deciding what to do when the
+declaration lies in another file — the standard library is in the same `SourceManager`, so the
+target exists, but its URI has to be built rather than echoed.
+
+**Find-references is still the expensive one.** Neither `BindingResult` nor the reference table of
+`TypeResult` can be enumerated, so there is no way to ask "who else points at this symbol" without a
+reverse index. That is an addition to the FRONT END, not to the server.
+
+**Two limits hover left behind**, both recorded with tests rather than as intentions: a generic call
+shows the declared signature because the substitution is private to the type checker, and there is
+no documentation to show at all — `///` is a token kind that reaches no AST node.
 
 **The open question to answer before E4**: the lifetime and identity of a host object across the
 boundary — does the host keep it alive or the VM? That is the one place in M10 where I have no
@@ -263,7 +291,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`lsp: answer an editor with the compiler's diagnostics`
+`lsp: answer what the compiler knows about the name under the cursor`
 
 ---
 
