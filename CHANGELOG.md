@@ -10,6 +10,47 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.1.0 — unreleased
+
+Bytecode format **3.1**. A minor of the format may only add skippable sections, so a 1.0 runtime
+reads a module built by this release and a 1.1 runtime reads one built by 1.0 — with one caveat
+below.
+
+### Added
+
+- **A panic names the line it happened on**, not just the function:
+
+  ```
+  panic [LYR-VM0002]: division by zero
+      in main.divide (app.lyr:3)
+      in main.main (app.lyr:8)
+  ```
+
+  The innermost frame points at the instruction that failed, every frame below it at the call it was
+  waiting on.
+
+- **The SourceMap section of the bytecode format now has a payload.** It was reserved and named in
+  3.0 and never written. It maps a byte offset in a function's code to a file and a line, one row per
+  position change.
+
+- **`lyrc build --no-source-map`** leaves the section out. Without it the file is byte for byte what
+  the same build produced before the section existed, so stripping costs nothing else. The section is
+  written by default: the moment a line number is wanted is the moment nobody planned for it.
+
+  Paths are stored relative to the entry file's directory, and a file outside it — the standard
+  library sits beside the toolchain — keeps its bare name. Nothing absolute reaches the file, so a
+  module does not carry the directory layout of the machine that built it.
+
+### Fixed
+
+- **A reader rejected a section id it did not know**, with `LYR-BC0003`, instead of skipping it. That
+  is the mechanism the format's forward compatibility rests on, and it had never run, because nothing
+  had ever written an unknown section.
+
+  **This is the caveat above**: a 1.0.1 runtime cannot read a module carrying a SourceMap, even
+  though the format says it must. Building with `--no-source-map` produces a module those runtimes
+  accept.
+
 ## v1.0.1 — 2026-08-14
 
 ### Fixed

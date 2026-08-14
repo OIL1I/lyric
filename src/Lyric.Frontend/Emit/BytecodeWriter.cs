@@ -17,10 +17,14 @@ namespace Lyric.Bytecode;
 /// </summary>
 public static class BytecodeWriter
 {
-    public static byte[] Write(IrModule module)
+    /// <param name="sourceMap">Where the spans point. Without it no SourceMap section is written —
+    /// line numbers cannot be produced from an <see cref="IrModule"/> alone, and a caller that has
+    /// no sources has nothing to say about positions.</param>
+    public static byte[] Write(IrModule module, SourceMapContext? sourceMap = null)
     {
         var strings = new StringPool();
         var layouts = new List<FunctionLayout>(module.Functions.Count);
+        var positions = sourceMap is null ? null : new SourceMapBuilder(sourceMap);
 
         // Names are interned first, so the start of the pool depends stably on function order.
         // Type names belong here rather than in the Types section: the string pool is section 2 and
@@ -37,7 +41,12 @@ public static class BytecodeWriter
         // section.
         var bodies = new List<byte[]>(module.Functions.Count);
         for (var i = 0; i < module.Functions.Count; i++)
-            bodies.Add(WriteFunction(module.Functions[i], layouts[i], strings, module.Imports.Count));
+            bodies.Add(WriteFunction(module.Functions[i], layouts[i], strings, module.Imports.Count,
+                positions));
+
+        // The file names go into the pool here, for the same reason the type names do above: the
+        // Strings section is serialized below, long before section 6 is written.
+        positions?.InternNames(strings.Intern);
 
         var writer = new ByteWriter();
         writer.Raw(Format.Magic);
@@ -111,6 +120,11 @@ public static class BytecodeWriter
             s.ULeb(bodies.Count);
             foreach (var body in bodies) s.Raw(body);
         });
+
+        // Strippable, and left out entirely when nothing was recorded: SourceMap is 6, between
+        // Functions (5) and Start (7).
+        if (positions is { IsEmpty: false })
+            WriteSection(writer, SectionId.SourceMap, s => positions.WritePayload(s, strings.Intern));
 
         // Absent for library modules. Has to come after Functions: section ids ascend.
         //
@@ -195,15 +209,29 @@ public static class BytecodeWriter
         writer.Raw(bytes);
     }
 
-    private static byte[] WriteFunction(IrFunction function, FunctionLayout layout, StringPool strings, int importCount)
+    private static byte[] WriteFunction(IrFunction function, FunctionLayout layout, StringPool strings,
+        int importCount, SourceMapBuilder? positions)
     {
         var code = new ByteWriter();
         var blockOffsets = new int[function.Blocks.Count];
 
+        // Every function opens its own row list, including one that ends up empty: the section
+        // carries one entry per function and finds them by position.
+        positions?.BeginFunction();
+
         foreach (var block in function.Blocks)
         {
             blockOffsets[block.Id.Value] = code.Position;
-            foreach (var op in block.Insts) WriteOp(code, function, layout, strings, op, importCount);
+
+            foreach (var op in block.Insts)
+            {
+                // Recorded BEFORE the instruction, so the slot loads that belong to it fall under
+                // its position rather than under the one before.
+                positions?.At(code.Position, op.Span);
+                WriteOp(code, function, layout, strings, op, importCount);
+            }
+
+            positions?.At(code.Position, block.Terminator!.Span);
             WriteTerminator(code, layout, block.Terminator!);
         }
 

@@ -11,15 +11,18 @@
 
 ## Current milestone
 
-**v1.0.0 is released** — the annotated tag is on the remote. M0–M10 are finished and tagged
-(`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+**v1.0.0 and v1.0.1 are released** — both annotated tags are on the remote, both with a release page
+and three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
 **M11, the language server, is the current milestone. Slices 1 to 3 are done**: an editor shows the
 compiler's diagnostics while you type, says what a name under the cursor is, and jumps to where it
 was declared.
 
-3227 tests green **in Debug and Release**, bytecode format **3.0**, **five** binaries plus
+3237 tests green **in Debug and Release**, bytecode format **3.1**, **five** binaries plus
 `lyrembed.dll`, version **1.0.1**.
+
+**v1.1.0 is unreleased and waiting for a tag**: the format is at 3.1 and `CHANGELOG.md` holds its
+entry, while `ToolchainVersion` still says 1.0.1 — it is raised at the tag, not before.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -33,7 +36,32 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
-- [x] **M11 slice 3 — go to definition** (2026-08-14). 3227 tests green, Debug and Release.
+- [x] **Source maps — a panic names the line** (2026-08-15). Merged as PR #4.
+  - Section 6 had been reserved and described since format 3.0 and never written. It now maps a byte
+    offset in a function's code to a file and a line, **one row per position CHANGE** — a loop body
+    is dozens of instructions across a handful of lines. Format **3.1**, `--no-source-map` leaves it
+    out, and without it the file is byte for byte what it was before the section existed.
+  - **Byte offsets, not instruction indices.** An index is not a notion of the format: it
+    presupposes a runtime that decodes into an array before it runs, and `docs/Bytecode.md` claims a
+    second runtime can be built from it alone.
+  - **Nothing in the front end had to grow a field.** Every IR instruction has carried a `Span` since
+    the lowering was built, every `BytecodeInstruction` its `.Offset`, and `Prepared.From` already
+    built an offset table. One field was missing — `Prepared.Index`, because a `BytecodeFunction`
+    does not know where it sits. The third time this project has found the data already there.
+  - **The blocker was older than the slice**: a reader could not SKIP a section it does not know.
+    `default: break` consumed nothing and the trailing-byte check three lines later rejected the
+    payload it was meant to step over. That is the mechanism the format's forward compatibility rests
+    on, and it had never run, because nothing had ever written an unknown section. Consequence for
+    users is under `## Still open`.
+  - **The obvious test measured nothing.** With `return a / b` the faulting `div` is followed by the
+    `retval` of the same statement, so `Ip` and `Ip - 1` give one line and a wrong implementation
+    stays green — measured by writing `Ip` and watching it pass. The test that holds pulls the
+    expression onto its own line, where the two answers differ by one.
+  - The row carries **no column**, and a minor may only add skippable sections, so that is fixed
+    until a major. Deliberate: no consumer today, and a column beside this section later would be a
+    second mechanism for the same thing.
+
+- [x] **M11 slice 3 — go to definition** (2026-08-14). Merged as PR #3.
   **Merged into `main` as PR #3** together with slices 1 and 2, after CI was green on Linux and
   Windows — the platform-dependent halves of the URI tests had only ever run here.
   - **It needed nothing from the front end.** `Symbol.Declaration` holds the node and every node
@@ -115,32 +143,6 @@ functions out of them and hands its own functions and types in.
     hand; no test project pulled it in, so a clean Release run had no directory to inspect. The
     fix is one `ReferenceOutputAssembly="false"` line, and the rule now stands in the project file:
     every binary an architecture test INSPECTS has to be referenced there.
-
-- [x] **Generic enums** (2026-08-12). 2711 tests green, Debug and Release.
-  - `enum Opt<T>` was **not present at all** in the lowering: `TypeTable.InternEnum` threw as soon as
-    such an enum appeared even as a parameter type. Now `Opt<int>.Some(5)`, `.None`,
-    `Ev<int>.Hit { at = 4 }`, `match` with payload binding and a guard, the recursive `Tree<T>`, a
-    generic enum inside a generic function and as a field all work.
-  - **It was not a missing feature but missing wiring.** The substitution was there and already
-    routed enums correctly; `InternVariant` would always have lowered `Some(T)` to `Some(int)`. What
-    was missing were four places that threw the instance away, above all `TypeFacts.SymbolOf`, which
-    returns the definition for a `GenericInstance` and loses the type arguments.
-  - **My estimate was too high by a factor of three.** I had said "two to three sessions" before I
-    had read `Intern`. It was one. The mistake was estimating the size from the symptom rather than
-    from the code.
-  - **The load-bearing guarantee**: `Opt<int>` and `Opt<string>` get their own variant layouts. If
-    they shared an entry, an `i64` would lie in a string slot — in Debug a verifier finding, in
-    Release a silently wrong answer. Exactly the asymmetry that made the conformance gap of
-    2026-08-11 so expensive.
-  - The sharpest trap was the recursion: the id has to stand in the instance registry *before* the
-    variants are interned, or `Node(Tree<T>, …)` requests precisely the instance that is being
-    created. `InternLayout` showed how.
-  - **An older inconsistency was removed along the way**: the struct form had always read the
-    expected type (`let e: Ev<int> = Ev.Hit { … }`), the tuple form had not (`Opt.Some(7)` was an
-    error). One question, two answers, depending on the shape of the variant. Both now run through
-    the same resolution.
-  - Remaining: in an **argument position** the context does not reach (`take(Opt.Some(5))`) — the
-    expected type is not passed through to there. Recorded as a test rather than as a guess.
 
 ## Measurements
 
@@ -237,8 +239,11 @@ is the thing to check.
 
 **Tooling and format:**
 
-- **The source map section** (id 6) is reserved and described but is not written — panics therefore
-  show the function, not the line.
+- **A `v1.0.1` runtime cannot read a module with a source map.** The skip that lets a reader step
+  over a section it does not know was broken until 3.1, so the forward compatibility the format
+  promises does not hold for the one release before it. `--no-source-map` produces a module those
+  runtimes accept. Nothing can be done on their side; it is recorded so the next format addition is
+  not mistaken for the same bug.
 - **Section byte sizes are missing from `lyrvm info`**: the reader discards them after parsing.
   Retrofitting them would mean extending the model with provenance data — a decision of its own.
 - **Measure the verifier share in a Release profile** — the Debug numbers are riddled with JIT
@@ -293,7 +298,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`lsp: jump to where a name was declared`
+`Merge pull request #4 from OIL1I/feature/source-map`
 
 ---
 

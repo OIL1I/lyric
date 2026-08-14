@@ -165,6 +165,48 @@ public sealed class CommandTests
     }
 
     [Fact]
+    public void A_panic_names_its_line_unless_the_source_map_is_omitted()
+    {
+        // The flag has to be ACCEPTED by the binary a user actually calls, not merely defined on
+        // CompilerOptions. A switch nothing passes is a switch nothing tests.
+        using var source = Toolchain.Temp(".lyr");
+        File.WriteAllText(source.Path, """
+            fn divide(a: int, b: int): int {
+                return
+                    a / b;
+            }
+
+            fn main(): int {
+                let n = 0;
+                return divide(10, n);
+            }
+            """);
+
+        using var mapped = Toolchain.Temp(".lyrbc");
+        using var stripped = Toolchain.Temp(".lyrbc");
+
+        Assert.Equal(ExitCodes.Success,
+            Toolchain.Lyrc("build", source.Path, "-o", mapped.Path).ExitCode);
+        Assert.Equal(ExitCodes.Success,
+            Toolchain.Lyrc("build", source.Path, "-o", stripped.Path, "--no-source-map").ExitCode);
+
+        var withMap = Toolchain.Lyrvm("run", mapped.Path);
+        var without = Toolchain.Lyrvm("run", stripped.Path);
+
+        // Same failure, same exit code: the map changes what is REPORTED, never what happens.
+        Assert.Equal(withMap.ExitCode, without.ExitCode);
+
+        // The expression stands on its own line, so the faulting division is line 3 and not the
+        // line of the return it belongs to.
+        var name = Path.GetFileName(source.Path);
+        Assert.Contains($"in main.divide ({name}:3)", withMap.Err, StringComparison.Ordinal);
+        Assert.Contains($"in main.main ({name}:8)", withMap.Err, StringComparison.Ordinal);
+
+        Assert.Contains("in main.divide", without.Err, StringComparison.Ordinal);
+        Assert.DoesNotContain(name, without.Err, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Info_names_a_library_as_such() =>
         // What a host wants to know first: does this module have an entry point?
         Assert.Contains("library", Toolchain.Lyrvm("info", BuildLibrary()).Out);

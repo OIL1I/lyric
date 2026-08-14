@@ -36,6 +36,10 @@ public sealed class BytecodeModule
     /// <summary>Index of the entry function in the shared index space, or <c>null</c> for a
     /// library module.</summary>
     public int? Start { get; init; }
+
+    /// <summary>Positions from the SourceMap section, or <c>null</c> when the module carries none.
+    /// A stripped module is valid; a runtime then names a function rather than a line.</summary>
+    public BytecodeSourceMap? SourceMap { get; init; }
 }
 
 /// <summary>
