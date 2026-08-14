@@ -15,5 +15,5 @@ public static class ToolchainVersion
     /// <para>The VS Code extension in <c>tooling/vscode-lyric/package.json</c> versions
     /// independently.</para>
     /// </summary>
-    public const string Value = "1.0.0";
+    public const string Value = "1.0.1";
 }
