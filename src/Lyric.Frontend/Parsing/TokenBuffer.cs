@@ -1,4 +1,5 @@
-﻿using Lyric.Core;
+﻿using System.Text;
+using Lyric.Core;
 using Lyric.Lexing;
 
 namespace Lyric.Parsing
@@ -6,14 +7,17 @@ namespace Lyric.Parsing
     /// <summary>
     /// An eager token buffer: pulls the complete token stream, f-string sub-tokens included, out of
     /// the lexer on construction and offers the parser lookahead (<see cref="Peek"/>) plus the
-    /// '&gt;&gt;' split for nested generics (<see cref="SplitCurrentGreater"/>). Doc comments are
-    /// discarded.
+    /// '&gt;&gt;' split for nested generics (<see cref="SplitCurrentGreater"/>).
+    ///
+    /// <para>Doc comments are kept out of the token stream and collected in <see cref="DocComments"/>
+    /// instead: the parser never sees them, so no production has to skip them.</para>
     /// </summary>
     public sealed class TokenBuffer
     {
         private readonly FileId _id;
         private readonly DiagnosticEngine _de;
         private readonly List<Token> _buffer = [];
+        private readonly Dictionary<int, string> _docs = [];
         private int _pos = 0;
 
         public TokenBuffer(SourceManager sm, FileId id, DiagnosticEngine de)
@@ -21,15 +25,92 @@ namespace Lyric.Parsing
             _id = id;
             _de = de;
 
+            var text = sm.GetText(id);
             var lexer = new Lexer(sm, id, de);
+            var pending = new List<Span>();
+
             var current = lexer.Next();
             while (current.TokenKind != TokenKind.Eof)
             {
-                if (current.TokenKind is not TokenKind.DocComment)
+                if (current.TokenKind is TokenKind.DocComment)
+                {
+                    // A blank line ends a block: what stands before it belongs to nothing.
+                    if (pending.Count > 0 && Separated(text, pending[^1].End, current.Span.Start))
+                        pending.Clear();
+                    pending.Add(current.Span);
+                }
+                else
+                {
+                    Attach(text, pending, current.Span.Start);
                     _buffer.Add(current);
+                }
                 current = lexer.Next();
             }
+
+            Attach(text, pending, current.Span.Start);
             _buffer.Add(current); //Add Eof
+        }
+
+        /// <summary>
+        /// The doc comment blocks of this file, keyed by the source offset of the token that follows
+        /// them. A declaration span starts at its first token, so a lookup with
+        /// <c>decl.Span.Start</c> finds the block written above it.
+        /// </summary>
+        public IReadOnlyDictionary<int, string> DocComments => _docs;
+
+        /// <summary>
+        /// Is there a blank line between the two offsets?
+        ///
+        /// <para>A blank line is a line break followed by a line holding nothing but whitespace, not
+        /// merely a second line break: an ordinary '//' comment is no token and stays in the raw text
+        /// between the two offsets, so counting breaks alone would read it as a blank line.</para>
+        /// </summary>
+        private static bool Separated(string text, int from, int to)
+        {
+            var blank = false; // only meaningful once the first break has been seen
+            for (var i = from; i < to; i++)
+            {
+                if (text[i] == '\n')
+                {
+                    if (blank) return true;
+                    blank = true;
+                }
+                else if (!char.IsWhiteSpace(text[i]))
+                {
+                    blank = false;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>Binds the collected block to <paramref name="offset"/> unless a blank line
+        /// separates the two, and empties the block either way.</summary>
+        private void Attach(string text, List<Span> pending, int offset)
+        {
+            if (pending.Count == 0) return;
+            if (!Separated(text, pending[^1].End, offset))
+                _docs[offset] = Join(text, pending);
+            pending.Clear();
+        }
+
+        private static string Join(string text, List<Span> lines)
+        {
+            var sb = new StringBuilder();
+            foreach (var line in lines)
+            {
+                if (sb.Length > 0) sb.Append('\n');
+                sb.Append(Strip(text, line));
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>Drops the '///' and one optional space behind it, plus trailing whitespace —
+        /// a '\r' before the line break included.</summary>
+        private static string Strip(string text, Span line)
+        {
+            var start = line.Start + 3;
+            if (start < line.End && text[start] == ' ') start++;
+            return text.AsSpan(start, line.End - start).TrimEnd().ToString();
         }
 
         public Token Peek(int offset = 0)
@@ -45,8 +126,7 @@ namespace Lyric.Parsing
 
         /// <summary>Resets the read head. Used to disambiguate <c>f&lt;int&gt;()</c> from
         /// <c>(f &lt; int) &gt; (…)</c>: read the type arguments speculatively first, and when no
-        /// <c>(</c> follows, it was a
-        /// Vergleich.</summary>
+        /// <c>(</c> follows, it was a comparison.</summary>
         public void Rewind(int position) => _pos = position;
 
         public Token Advance()

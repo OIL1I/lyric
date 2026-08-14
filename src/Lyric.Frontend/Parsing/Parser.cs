@@ -31,6 +31,17 @@ public sealed partial class Parser
         _buffer = new TokenBuffer(sm, id, de);
     }
 
+    /// <summary>
+    /// The '///' blocks of this file, keyed by the source offset of what follows them. A side table
+    /// rather than a field on <see cref="Decl"/>: the AST records stay untouched, and so does every
+    /// pattern match over them.
+    /// </summary>
+    /// <remarks>Consumers look a declaration up through <see cref="DocOf"/>.</remarks>
+    public IReadOnlyDictionary<int, string> DocComments => _buffer.DocComments;
+
+    /// <summary>The doc comment written above <paramref name="node"/>, or <c>null</c>.</summary>
+    public string? DocOf(Node node) => _buffer.DocComments.GetValueOrDefault(node.Span.Start);
+
     // ---------------------------------------------------------------------
     // Public entry point: exactly ONE expression.
     // ---------------------------------------------------------------------
@@ -87,7 +98,7 @@ public sealed partial class Parser
         {
             var op = _buffer.Current.TokenKind;
             var (leftBp, rightBp) = BindingPower(op);
-            if (leftBp < minBp) break; // deckt auch (-1, -1) ab
+            if (leftBp < minBp) break; // covers (-1, -1) as well
 
             // 'as': the right-hand side is a type, not an expression.
             if (op == TokenKind.As)
@@ -524,7 +535,7 @@ public sealed partial class Parser
                     break; // type-like, depth unchanged
                 default: return -1; // ';', '{', a literal or an operator is no type argument
             }
-            if (depth == 0) return i + 1; // sauber geschlossen
+            if (depth == 0) return i + 1; // closed cleanly
             if (depth < 0) return -1;      // over-closed
         }
     }
@@ -565,8 +576,8 @@ public sealed partial class Parser
     }
 
     // ---------------------------------------------------------------------
-    // f-strings. The lexer already yields the sub-tokens; this only
-    // zusammensetzen: FStringStart { Chunk | InterpStart Expr [FormatSpec] InterpEnd } FStringEnd.
+    // f-strings. The lexer already yields the sub-tokens; this only assembles them:
+    // FStringStart { Chunk | InterpStart Expr [FormatSpec] InterpEnd } FStringEnd.
     // ---------------------------------------------------------------------
 
     private InterpolatedStringExpr ParseFString()
