@@ -21,6 +21,11 @@ public sealed class TypeChecker
     private readonly TypeResult _result = new();
     private readonly Dictionary<GlobalSymbol, LyrType> _globals = new(ReferenceEqualityComparer.Instance);
 
+    // The aliases currently being expanded, and the ones already reported as cyclic. An alias names a
+    // type rather than being one, so expanding it is a recursion with no base case of its own.
+    private readonly HashSet<TypeSymbol> _expanding = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<TypeSymbol> _cyclic = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>
     /// Is a global initializer running? Then a global that has not been computed yet is an ERROR
     /// rather than merely an unknown type.
@@ -3153,10 +3158,36 @@ public sealed class TypeChecker
         }
     }
 
+    /// <summary>
+    /// The type an alias names. An alias is a NAME for a type, not a type of its own, so it is
+    /// replaced by what it names wherever it stands.
+    ///
+    /// <para>Guarded against a cycle. <c>type A = B; type B = A;</c> expands forever, and the result
+    /// was not a diagnostic but a STACK OVERFLOW — which .NET cannot catch, so the compiler process
+    /// died instead of the compilation failing. Reported once per alias: the cycle is a property of
+    /// the declaration, and one message per use site would be the same fault repeated.</para>
+    /// </summary>
+    private LyrType ExpandAlias(TypeSymbol alias, SymbolTable scope)
+    {
+        if (alias.Declaration is not TypeAliasDecl decl) return LyrType.Error;
+
+        if (!_expanding.Add(alias))
+        {
+            if (_cyclic.Add(alias))
+                Report(decl.Span, "LYR-SEM0064",
+                    $"the type alias '{alias.Name}' expands to itself; an alias names a type and " +
+                    "cannot be defined through itself");
+            return LyrType.Error;
+        }
+
+        try { return ResolveType(decl.Aliased, scope); }
+        finally { _expanding.Remove(alias); }
+    }
+
     private LyrType SymbolToType(Symbol sym, SymbolTable scope) => sym switch
     {
         TypeSymbol { Kind: TypeSymbolKind.Builtin } t => TypeFacts.FromBuiltinName(t.Name) ?? LyrType.Error,
-        TypeSymbol { Kind: TypeSymbolKind.Alias } t => ResolveType(((TypeAliasDecl)t.Declaration!).Aliased, scope),
+        TypeSymbol { Kind: TypeSymbolKind.Alias } t => ExpandAlias(t, scope),
         GenericParamSymbol g => new TypeParamType(g),
         TypeSymbol t => new NamedRef(t),
         ImportBindingSymbol ib => SymbolToType(ib.Target, scope),

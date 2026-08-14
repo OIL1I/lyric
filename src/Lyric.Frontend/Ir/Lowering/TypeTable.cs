@@ -725,6 +725,13 @@ internal sealed class TypeTable
                 };
             }
 
+            // A type alias carries no layout and gets no table entry: it is a NAME for a type, and
+            // what it names is lowered in its place. The sema does the same through SymbolToType,
+            // which is why an alias reaches this far at all. A cycle cannot arrive here — the sema
+            // reports it and the lowering does not run on a faulty AST.
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Alias, Declaration: TypeAliasDecl aliased })
+                return Lower(aliased.Aliased, span);
+
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Enum } enumType) return EnumOf(enumType);
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Interface } iface) return InterfaceOf(iface);
             if (bound is TypeSymbol { Kind: TypeSymbolKind.Struct } value) return StructOf(value);
@@ -790,6 +797,12 @@ internal sealed class TypeTable
 
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
+
+            // As in Lower: an alias stands for what it names, here as a type ARGUMENT — 'List<Id>'
+            // has to key the same instance as 'List<int>', or the two would intern separately.
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Alias, Declaration: TypeAliasDecl aliased })
+                return Resolve(aliased.Aliased, span);
+
             if (bound is TypeSymbol symbol) return new NamedRef(symbol);
         }
 

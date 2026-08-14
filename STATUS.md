@@ -285,11 +285,16 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
   the lowering can report a limit and none was reachable from `check`.
   `tests/Lyric.Tests.Cli/CheckAgreesWithBuildTests.cs` compares the two **exit codes** rather than
   pinning a diagnostic code, so it keeps holding as the limits close one by one.
-- **A `type` alias carries at two places only.** As a parameter type and as a local annotation it
-  works; as a **return type** and as a **field type** it is `LYR-IR0001` ("a type alias is not
-  supported by this compiler version yet"). Found on 2026-08-12 while writing the user guide — the
-  example the documentation wanted to show did not compile. The sema resolves the alias, the lowering
-  does not.
+- ~~**A `type` alias carries at two places only**~~ **done** (2026-08-14). The sema always replaced
+  an alias by what it names; the lowering reached `InternNonGeneric` with a symbol that has no
+  layout. It now resolves the alias in both places it can arrive — as a type and as a type ARGUMENT,
+  the second so `List<Id>` keys the same instance as `List<int>` instead of interning twice. An
+  alias leaves no entry in the module; both are held by a test.
+  - **The slice found something worse than the gap**: `type A = B; type B = A;` was not a diagnostic
+    but a STACK OVERFLOW in the sema — uncatchable in .NET, so the compiler process died rather than
+    the compilation failing. Now `LYR-SEM0064`, reported once per alias rather than once per use.
+    Guarding the sema is also what makes the lowering fix safe: a cycle never reaches it, because
+    errors stop the pipeline before lowering.
 - ~~**`static fn` does not parse in an enum, interface or extend body**~~ **done** (2026-08-14).
   Wider than recorded: all three go through `ParseMethodSequence`. Enum and extend now accept it —
   the enum needed the parser alone, the extend needed one more place in the sema, where static
@@ -371,7 +376,7 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 ## Last relevant commit
 
-`parsing: static members on an enum and through an extend block`
+`sema, ir: a type alias resolves everywhere, and a cyclic one is a diagnostic`
 
 ---
 
