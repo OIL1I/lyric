@@ -239,8 +239,9 @@ one is fixed until a major: a column cannot be added here later, and adding it b
 would be a second mechanism for the same thing.
 
 A reader must reject: a `functionCount` that differs from the Functions section, a file index outside
-the file table, a string index outside the pool, an offset beyond that function's `codeLength`, and a
-delta of `0` on any row but the first.
+the file table, a string index outside the pool, an offset that does not lie inside that function's
+`code` — a row marks where an instruction begins, so `offset == codeLength` is already outside — and
+a delta of `0` on any row but the first.
 
 ### Start (Id 7)
 

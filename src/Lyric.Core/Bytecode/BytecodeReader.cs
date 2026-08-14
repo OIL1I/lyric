@@ -54,6 +54,7 @@ public static class BytecodeReader
         IReadOnlyList<BytecodeHandler> handlers = Array.Empty<BytecodeHandler>();
         IReadOnlyList<BytecodeType> globals = Array.Empty<BytecodeType>();
         int? globalInit = null;
+        BytecodeSourceMap? sourceMap = null;
 
         var previousId = -1;
         while (!reader.AtEnd)
@@ -75,6 +76,9 @@ public static class BytecodeReader
                 case SectionId.Types: types = ReadTypes(payload, strings); break;
                 case SectionId.Imports: imports = ReadImports(payload); break;
                 case SectionId.Functions: functions = ReadFunctions(payload, strings); break;
+                // Reads after Functions, which the ids guarantee: the rows are checked against the
+                // code they point into.
+                case SectionId.SourceMap: sourceMap = ReadSourceMap(payload, strings, functions); break;
                 case SectionId.Start: start = payload.ULebAsCount(); break;
                 case SectionId.Impls: impls = ReadImpls(payload); break;
                 case SectionId.Handlers: handlers = ReadHandlers(payload); break;
@@ -117,10 +121,81 @@ public static class BytecodeReader
             Handlers = handlers,
             Globals = globals,
             GlobalInit = globalInit,
+            SourceMap = sourceMap,
         };
 
         Validate(module);
         return module;
+    }
+
+    /// <summary>
+    /// The SourceMap section: a file table, then one row list per function.
+    ///
+    /// <para>Everything it points at is checked here, so a consumer can index without guarding: the
+    /// file names against the pool, the row count against the function count, and every offset
+    /// against the code it claims to describe.</para>
+    /// </summary>
+    private static BytecodeSourceMap ReadSourceMap(ByteReader payload, IReadOnlyList<string> strings,
+        IReadOnlyList<BytecodeFunction> functions)
+    {
+        var fileCount = payload.ULebAsCount();
+        var files = new List<string>(Math.Min(fileCount, 1024));
+        for (var i = 0; i < fileCount; i++)
+        {
+            var index = payload.ULebAsCount();
+            if (index >= strings.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"source map file {i} names string {index}, the pool holds {strings.Count}");
+            files.Add(strings[index]);
+        }
+
+        var functionCount = payload.ULebAsCount();
+        if (functionCount != functions.Count)
+            throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                $"source map covers {functionCount} function(s), the module has {functions.Count}");
+
+        var perFunction = new List<IReadOnlyList<BytecodeSourceRow>>(functionCount);
+        for (var f = 0; f < functionCount; f++)
+        {
+            var rowCount = payload.ULebAsCount();
+            var rows = new List<BytecodeSourceRow>(Math.Min(rowCount, 1024));
+            var codeLength = functions[f].Code.Length;
+            var offset = 0;
+
+            for (var i = 0; i < rowCount; i++)
+            {
+                var delta = payload.ULebAsCount();
+
+                // Only the first row may sit at the offset it starts from; afterwards a zero delta
+                // would put two positions on one byte, and the bisection in Locate assumes an
+                // ascent.
+                if (i > 0 && delta == 0)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"source map row {i} of function {f} repeats offset {offset}");
+
+                offset += delta;
+
+                var fileIndex = payload.ULebAsCount();
+                if (fileIndex >= files.Count)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"source map row {i} of function {f} names file {fileIndex} of {files.Count}");
+
+                var line = payload.ULebAsCount();
+
+                // A row marks where an instruction BEGINS, so the offset has to lie inside the code
+                // rather than merely not past its end.
+                if (offset >= codeLength)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"source map row {i} of function {f} is at offset {offset}, "
+                        + $"outside its {codeLength}-byte code");
+
+                rows.Add(new BytecodeSourceRow(offset, fileIndex, line));
+            }
+
+            perFunction.Add(rows);
+        }
+
+        return new BytecodeSourceMap { Files = files, Functions = perFunction };
     }
 
     private static IReadOnlyList<string> ReadStrings(ByteReader payload)

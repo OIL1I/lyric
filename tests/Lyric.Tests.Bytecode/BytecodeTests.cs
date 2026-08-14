@@ -376,6 +376,35 @@ public class BytecodeTests
     }
 
     [Fact]
+    public void The_source_map_names_the_lines_the_code_came_from()
+    {
+        // The first test of the CONTENT rather than the shape. A builder that consistently records
+        // the line before is green on every other test in this section.
+        var bytes = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var sources),
+            new SourceMapContext(sources, Directory.GetCurrentDirectory()));
+
+        var map = BytecodeReader.ReadOrThrow(bytes).SourceMap;
+        Assert.NotNull(map);
+
+        var rows = Assert.Single(map!.Functions);
+
+        // Four lines carry code: 'let a' on 2, 'let b' on 3, 'return a + b' on 4. Line 1 is the
+        // signature and produces none.
+        Assert.Equal([2, 3, 4], rows.Select(r => r.Line).Distinct());
+
+        // Every row lies inside the code and they ascend, which is what Locate bisects over.
+        Assert.Equal(rows.OrderBy(r => r.Offset), rows);
+
+        // Resolving the first row's own offset gives its line back.
+        var position = map.Locate(0, rows[0].Offset);
+        Assert.NotNull(position);
+        Assert.Equal(2, position!.Value.Line);
+
+        // A file compiled from a virtual name keeps it; nothing absolute reaches the pool.
+        Assert.Equal("test.lyr", Assert.Single(map.Files));
+    }
+
+    [Fact]
     public void The_source_map_is_deterministic()
     {
         // Same input, same bytes — the promise of section 1. The trap would be a file table in hash
