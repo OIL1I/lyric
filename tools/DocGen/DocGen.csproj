@@ -26,4 +26,10 @@
     <PackageReference Include="Markdig" Version="1.3.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The stylesheet and the switcher, copied into every version directory at write time. -->
+    <Content Include="assets\**\*" Link="assets\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

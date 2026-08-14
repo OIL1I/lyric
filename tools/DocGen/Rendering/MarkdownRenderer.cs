@@ -33,7 +33,12 @@ public static class MarkdownRenderer
         .Build();
 
     /// <param name="fromSource">Repository-relative path of the document, for resolving its links.</param>
-    public static RenderedMarkdown Render(string markdown, string fromSource, LinkResolver links)
+    /// <param name="dropTitle">Removes the first level-1 heading from the OUTPUT while still
+    /// reporting it in <see cref="RenderedMarkdown.Headings"/>. The page shell prints the title
+    /// itself, and printing it twice would put the table of contents above the heading it belongs
+    /// under.</param>
+    public static RenderedMarkdown Render(string markdown, string fromSource, LinkResolver links,
+        bool dropTitle = false)
     {
         var document = Markdown.Parse(markdown, Pipeline);
 
@@ -51,6 +56,11 @@ public static class MarkdownRenderer
         var headings = document.Descendants<HeadingBlock>()
             .Select(h => new Heading(h.Level, Text(h.Inline), h.GetAttributes().Id ?? ""))
             .ToArray();
+
+        // After the headings are collected, so the title is still reported.
+        if (dropTitle &&
+            document.OfType<HeadingBlock>().FirstOrDefault(h => h.Level == 1) is { } title)
+            document.Remove(title);
 
         var writer = new StringWriter();
         var renderer = new HtmlRenderer(writer);
