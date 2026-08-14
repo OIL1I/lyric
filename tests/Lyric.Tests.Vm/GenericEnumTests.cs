@@ -137,27 +137,39 @@ public class GenericEnumTests
             """));
 
     /// <summary>
-    /// WHERE THE CONTEXT DOES NOT REACH: an argument position. The expected type is not passed through
-    /// to there, so the instance has to stand written out.
+    /// THE CONTEXT REACHES INTO AN ARGUMENT POSITION (2026-08-14). It did not: an argument was the one
+    /// value position with no expected type, while a binding, a return and a field all had one, so the
+    /// instance had to stand written out.
     ///
-    /// <para>That is not a consequence of this work — it was the same before — but it is the edge one
-    /// hits first when writing. The test holds it, so next time it is measured rather than guessed.</para>
+    /// <para>These two tests held that limit and are turned around here rather than deleted — what
+    /// they measure is the same question, and the answer changed.</para>
     /// </summary>
     [Fact]
-    public void The_context_does_not_reach_into_an_argument_position() =>
-        Assert.Contains(Check("""
+    public void The_context_reaches_into_an_argument_position() =>
+        Assert.Equal(6, Run("""
             enum Ev<T> { Hit { at: T }, Miss }
             fn nimm(e: Ev<int>): int { return match (e) { Hit { at } => at, Miss => 0 }; }
             fn main(): int { return nimm(Ev.Hit { at = 6 }); }
-            """), d => d.Code == "LYR-SEM0026");
+            """));
 
-    /// <summary>The same for the tuple form, where the message is <c>LYR-SEM0063</c> and names the direct
-    /// way out.</summary>
+    /// <summary>The same for the tuple form.</summary>
     [Fact]
-    public void A_tuple_variant_without_arguments_says_to_write_them() =>
-        Assert.Contains(Check(Opt + """
+    public void A_tuple_variant_takes_its_instance_from_the_parameter() =>
+        Assert.Equal(5, Run(Opt + """
             fn nimm(o: Opt<int>): int { return match (o) { Some(v) => v, None => 0 }; }
             fn main(): int { return nimm(Opt.Some(5)); }
+            """));
+
+    /// <summary>
+    /// Where there is still nothing to read: a generic function's parameter holds the type parameter
+    /// itself, and offering <c>Opt&lt;T&gt;</c> as the expectation would fix the very instance the
+    /// inference is supposed to determine from this argument.
+    /// </summary>
+    [Fact]
+    public void An_open_parameter_type_is_no_expectation() =>
+        Assert.Contains(Check(Opt + """
+            fn nimm<T>(o: Opt<T>): int { return 0; }
+            fn main(): int { return nimm(Opt.None); }
             """), d => d.Code == "LYR-SEM0063");
 
     // ------------------------------------------------------------------ the load-bearing promise

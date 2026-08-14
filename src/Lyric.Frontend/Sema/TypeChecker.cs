@@ -1267,10 +1267,17 @@ public sealed class TypeChecker
         var args = call.Arguments;
         var argTypes = new LyrType[args.Length];
 
-        // Phase A: non-lambdas, eagerly.
+        // Phase A: non-lambdas, eagerly — with the declared parameter type as the context, the same
+        // one phase C gives a lambda. It is what lets 'f(Opt.Some(5))' name its instance: without
+        // it an argument position was the one value position with no expected type, while a
+        // binding, a return and a field all had one.
+        //
+        // Only when the parameter is CONCRETE. In 'fn f<T>(o: Opt<T>)' the parameter still holds the
+        // type parameter, and offering 'Opt<T>' as the expected type would fix the instance to
+        // something the inference is supposed to determine from this very argument.
         for (var i = 0; i < args.Length; i++)
             if (args[i] is not LambdaExpr)
-                argTypes[i] = CheckExpr(args[i], scope);
+                argTypes[i] = CheckExpr(args[i], scope, ConcreteExpectation(fn, decl, i));
 
         // Phase B: type arguments from the eagerly typed arguments.
         Dictionary<GenericParamSymbol, LyrType>? map = null;
@@ -1349,6 +1356,30 @@ public sealed class TypeChecker
         // If the receiver was optional the result is too, collapsed, because optionals do not nest.
         return optionalCall ? Optionalized(substituted.Return) : substituted.Return;
     }
+
+    /// <summary>
+    /// The declared type of parameter <paramref name="i"/>, but only when it names no type parameter
+    /// that is still open.
+    ///
+    /// <para>An expectation is a statement about which instance is meant. A type still holding a
+    /// <c>T</c> makes no such statement — it is the question the inference answers from the argument
+    /// — and passing it down would answer that question with itself.</para>
+    /// </summary>
+    private static LyrType? ConcreteExpectation(FnType fn, FunctionDecl? decl, int i) =>
+        ExpectedParamAt(fn, decl, i) is { } t && !MentionsTypeParam(t) ? t : null;
+
+    /// <summary>Does this type still carry a type parameter anywhere inside it?</summary>
+    private static bool MentionsTypeParam(LyrType type) => type switch
+    {
+        TypeParamType => true,
+        Optional o => MentionsTypeParam(o.Inner),
+        ArrayOf a => MentionsTypeParam(a.Element),
+        CoroutineOf c => MentionsTypeParam(c.Yield),
+        TupleOf t => t.Elements.Any(MentionsTypeParam),
+        GenericInstance g => g.Arguments.Any(MentionsTypeParam),
+        FnType f => f.Parameters.Any(MentionsTypeParam) || MentionsTypeParam(f.Return),
+        _ => false,
+    };
 
     private static LyrType? ExpectedParamAt(FnType fn, FunctionDecl? decl, int i)
     {
@@ -1947,15 +1978,28 @@ public sealed class TypeChecker
             return LyrType.Error;
         }
 
-        // A generic type takes explicit type arguments (Stack<int> { }); there is no field inference.
+        // A generic type takes its type arguments from what is WRITTEN, else from the context. There
+        // is still no inference from the field values: 'P { v = 1 }' with no context anywhere is an
+        // error, not a guess from the '1'.
         LyrType result;
         Dictionary<GenericParamSymbol, LyrType> subst;
         if (ts.Generics.Length > 0 || si.TypeArguments.Length > 0)
         {
-            var args = si.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
+            // Written arguments beat the context, as they do for an enum variant: 'Box<int> { … }'
+            // says itself which instance is meant, and that holds where there is no context at all.
+            LyrType[] args;
+            if (si.TypeArguments.Length > 0)
+                args = si.TypeArguments.Select(a => ResolveType(a, scope)).ToArray();
+            else if (InstanceFromExpected(expected, ts) is { } fromContext)
+                args = fromContext.Arguments;
+            else
+                args = [];
+
             if (args.Length != ts.Generics.Length)
                 _de.Report("LYR-SEM0026", Severity.Error, si.Span,
-                    $"generic type '{ts.Name}' expects {ts.Generics.Length} type argument(s), got {args.Length}");
+                    $"generic type '{ts.Name}' expects {ts.Generics.Length} type argument(s), got "
+                    + $"{args.Length} — write them ('{ts.Name}<…> {{ … }}') or use it where the type "
+                    + "is known");
             var gi = new GenericInstance(ts, args);
             subst = SubstMap(gi);
             CheckConstraints(ts.Generics, args, si.Span);
@@ -2049,6 +2093,20 @@ public sealed class TypeChecker
 
     private static GenericInstance? ExpectedInstance(LyrType? expected, TypeSymbol owner) =>
         EnumFromExpected(expected) is { } x && ReferenceEquals(x.def, owner) ? x.instance : null;
+
+    /// <summary>
+    /// The instance the context asks for, when it is an instance of <paramref name="owner"/>.
+    ///
+    /// <para>The counterpart of <see cref="ExpectedInstance"/> for a struct or class initializer.
+    /// The definition must MATCH: an expectation of <c>Box&lt;int&gt;</c> says nothing about a
+    /// <c>Pair { … }</c>, and taking its arguments anyway would silently build the wrong instance.
+    /// </para>
+    /// </summary>
+    private static GenericInstance? InstanceFromExpected(LyrType? expected, TypeSymbol owner)
+    {
+        var t = expected is Optional o ? o.Inner : expected;
+        return t is GenericInstance gi && ReferenceEquals(gi.Definition, owner) ? gi : null;
+    }
 
     private LyrType CheckVariantInit(StructInitExpr si, EnumVariantSymbol ev, TypeSymbol enumTs,
         GenericInstance? instance, SymbolTable scope)
