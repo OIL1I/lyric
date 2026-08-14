@@ -39,6 +39,7 @@
     <SelfContained Condition="'$(SelfContained)' == '' and '$(Rid)' != ''">true</SelfContained>
     <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
 
+
     <!-- Handed to every project below. With no Rid this is just the configuration, as before. -->
     <PublishProperties>Configuration=$(Configuration)</PublishProperties>
     <PublishProperties Condition="'$(Rid)' != ''">$(PublishProperties);RuntimeIdentifier=$(Rid);SelfContained=$(SelfContained)</PublishProperties>
@@ -74,6 +75,27 @@
              Targets="Restore"
              BuildInParallel="false"
              Properties="$(PublishProperties)" />
+  </Target>
+
+  <!--
+    Trimming and the shared directory above cannot both hold.
+
+    It looks like a free win — measured on win-x64 it takes the archive from 79 MB to 21 MB and the
+    .NET assemblies from 168 to 17 — and it produces a toolchain that does not start. Each app is
+    trimmed against ITS OWN reachable set and writes its own copy of the assemblies they SHARE, so
+    the last publish wins: 'lyrcore.dll' came out at 56320 bytes instead of 84480, without
+    'Lyric.Core.CliDiagnostics', and three of the four binaries died with a TypeLoadException on
+    startup. Only 'lyrrepl' worked, because it is published last. 'TrimMode=partial' behaves the
+    same, and ILLink refuses 'lyrembed' outright — a library has no entry point to root from, so the
+    host library would be missing from the archive entirely.
+
+    Stopped here rather than left as a comment: a property on the command line overrides anything
+    this file sets, and the damage shows on a user's machine rather than in the build. A trimmed
+    build would need one directory per binary, which multiplies the runtime by four.
+  -->
+  <Target Name="RejectTrimming" BeforeTargets="Publish">
+    <Error Condition="'$(PublishTrimmed)' == 'true'"
+           Text="PublishTrimmed cannot be used here: the binaries share one directory, each is trimmed against its own reachable set, and the last publish overwrites the shared assemblies. Three of the four binaries then fail at startup. See the comment above this target." />
   </Target>
 
   <Target Name="Publish" DependsOnTargets="Clean;Restore">
