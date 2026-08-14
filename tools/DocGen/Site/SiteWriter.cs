@@ -14,6 +14,12 @@ public static class SiteWriter
     /// <param name="assets">Directory holding site.css and site.js.</param>
     public static void Write(SiteContent site, string siteRoot, bool stable, string assets)
     {
+        // The version becomes a directory that is deleted before it is rewritten, so it has to be
+        // one segment. '..' would take the directory above the site root with it.
+        if (!IsSegment(site.Version))
+            throw new InvalidOperationException(
+                $"'{site.Version}' is not a usable version directory name");
+
         var versionRoot = Path.Combine(siteRoot, site.Version);
 
         // Emptied so a page deleted at the source does not survive in the output. Only THIS
@@ -39,6 +45,13 @@ public static class SiteWriter
         if (index.Landing is { } landing)
             Write(Path.Combine(siteRoot, "index.html"), Template.SiteLanding(landing));
     }
+
+    /// <summary>A single path segment: not empty, not a directory traversal, no separators.</summary>
+    private static bool IsSegment(string name) =>
+        name.Length > 0
+        && name is not ("." or "..")
+        && name.IndexOfAny(['/', '\\']) < 0
+        && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
 
     /// <summary>Always '\n', so the output does not depend on the machine that produced it.</summary>
     private static void Write(string path, string content) =>

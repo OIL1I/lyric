@@ -141,6 +141,7 @@ lyric/
 ├── examples/             22 example programs, plus embedded-host/
 ├── build/                publish.proj
 ├── tooling/              VS Code extension
+├── tools/                DocGen, the documentation site generator
 └── docs/                 specifications and documentation sources
 ```
 
@@ -154,6 +155,16 @@ lyric/
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution rules and process |
 
 Every Lyric snippet in the guide is compiled by the test suite.
+
+These sources are also the input of the documentation site. `tools/DocGen` renders the guide, both
+specifications and a standard library reference generated from the `.lyr` signatures:
+
+```bash
+dotnet run --project tools/DocGen -- site . artifacts/site nightly
+```
+
+One directory per version, side by side; a release is frozen once written. `.github/workflows/docs.yml`
+publishes `nightly` after a green nightly build and a `vX.Y.Z` directory on a release tag.
 
 ## Versioning
 

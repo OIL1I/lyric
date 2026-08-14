@@ -1,0 +1,130 @@
+name: Docs
+
+# Publishes one version of the documentation site.
+#
+# A release tag publishes a frozen '/vX.Y.Z/'; a finished nightly replaces '/nightly/'. The two
+# never collide, because a build only ever writes its own version directory and merges the version
+# index rather than replacing it.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_run:
+    workflows: [Nightly]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One deploy at a time. Two jobs pushing to gh-pages in parallel would race for the same branch.
+# Queued rather than cancelled: a cancelled release deploy would leave its version off the site.
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    # A nightly that failed already says the state is broken; documenting it would publish pages
+    # describing a build that does not work.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      # Includes the DocGen suite, which builds the whole site in process. A document linking to
+      # something the site does not hold fails here rather than at deploy time.
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+
+  publish:
+    name: Publish
+    needs: verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+        with:
+          path: repo
+
+      # A second working tree of the same repository. Cloned rather than initialised, so 'origin'
+      # and the push credentials are already in place.
+      - name: Checkout the published site
+        uses: actions/checkout@v7
+        with:
+          path: site
+
+      # Every earlier version lives on this branch as ordinary files, which is what keeps a frozen
+      # release reachable after later deploys.
+      - name: Switch to the publishing branch
+        working-directory: site
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch --depth=1 origin gh-pages
+            git checkout -B gh-pages origin/gh-pages
+          else
+            # First deploy: an empty branch without the source history. The index may already be
+            # empty, and 'git rm' treats that as an error — which would fail the step, because
+            # Actions runs this script under 'bash -e'.
+            git checkout --orphan gh-pages
+            git rm -rf --cached . >/dev/null 2>&1 || true
+            find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          fi
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # A tag names its own version and is a release; everything else is the nightly.
+      - name: Decide what is being published
+        id: target
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "version=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "flag=--stable" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=nightly" >> "$GITHUB_OUTPUT"
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate
+        run: >
+          dotnet run --project repo/tools/DocGen -c Release --
+          site repo site ${{ steps.target.outputs.version }} ${{ steps.target.outputs.flag }}
+
+      # Without it Pages runs the tree through Jekyll, which drops paths beginning with an
+      # underscore. Nothing here does today, and the file costs nothing.
+      - name: Keep Pages from processing the tree
+        run: touch site/.nojekyll
+
+      - name: Publish
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "the site is unchanged"
+            exit 0
+          fi
+          git commit -m "docs: ${{ steps.target.outputs.version }} from ${GITHUB_SHA::7}"
+          git push origin HEAD:gh-pages

@@ -240,6 +240,31 @@ public class SiteTests
         finally { root.Delete(recursive: true); }
     }
 
+    [Theory]
+    [InlineData("..")]
+    [InlineData(".")]
+    [InlineData("")]
+    [InlineData("a/b")]
+    [InlineData("a\\b")]
+    public void A_version_that_is_not_one_directory_name_is_refused(string version)
+    {
+        // The version directory is deleted before it is rewritten, so '..' would take the directory
+        // above the site root with it.
+        var root = Directory.CreateTempSubdirectory("docgen-site");
+        try
+        {
+            var marker = Path.Combine(root.FullName, "keep.txt");
+            File.WriteAllText(marker, "keep");
+
+            var content = Build() with { Version = version };
+            Assert.Throws<InvalidOperationException>(
+                () => SiteWriter.Write(content, Path.Combine(root.FullName, "inner"), true, Assets()));
+
+            Assert.True(File.Exists(marker));
+        }
+        finally { root.Delete(recursive: true); }
+    }
+
     [Fact]
     public void Writing_twice_produces_the_same_bytes()
     {
