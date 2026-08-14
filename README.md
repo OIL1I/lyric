@@ -117,6 +117,7 @@ That is what a release ships, one archive per platform.
 | `lyrc` | Compiler: `build`, `check`, and the `lower`/`parse`/`tokenize` dumps |
 | `lyrvm` | Runtime: `run`, `disasm`, `verify` on `.lyrbc` |
 | `lyrrepl` | Interactive prompt |
+| `lyrls` | Language server: diagnostics and hover over stdio, started by an editor |
 
 `lyrembed.dll` is the host library: compile and run Lyric from C#.
 
