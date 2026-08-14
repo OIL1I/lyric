@@ -25,9 +25,12 @@ public class BytecodeTests
 {
     // ------------------------------------------------------------------ helpers
 
-    private static IrModule LowerSource(string source)
+    private static IrModule LowerSource(string source) => LowerSource(source, out _);
+
+    private static IrModule LowerSource(string source, out SourceManager sources)
     {
         var sm = new SourceManager();
+        sources = sm;
         var id = sm.AddVirtual("test.lyr", source);
         var de = new DiagnosticEngine(sm);
         var comp = new Compilation(sm, de);
@@ -326,6 +329,63 @@ public class BytecodeTests
         // and deduplicating states both in one comparison.
         var ids = SectionIds(BytecodeWriter.Write(Fixture(name)));
         Assert.Equal(ids.Order().Distinct(), ids);
+    }
+
+    // ------------------------------------------------------------------ 5) the source map
+
+    private const string TwoLineProgram = """
+        fn f(): int {
+            let a = 1;
+            let b = 2;
+            return a + b;
+        }
+        """;
+
+    [Fact]
+    public void Without_sources_the_output_is_unchanged()
+    {
+        // The section is strippable, and this is what that has to mean: a build without it produces
+        // exactly the bytes it produced before the section existed. If the two ever differ, "strip
+        // it" stops being a decision a user can make without changing anything else.
+        var withMap = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var sources),
+            new SourceMapContext(sources, Directory.GetCurrentDirectory()));
+        var without = BytecodeWriter.Write(LowerSource(TwoLineProgram));
+
+        Assert.NotEqual(withMap, without);
+        Assert.DoesNotContain((byte)SectionId.SourceMap, SectionIds(without));
+        Assert.Contains((byte)SectionId.SourceMap, SectionIds(withMap));
+    }
+
+    [Fact]
+    public void A_module_with_a_source_map_still_loads_and_stays_in_order()
+    {
+        // Two statements on two lines, so the map holds more than one row and the section is not
+        // trivially empty.
+        var bytes = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var sources),
+            new SourceMapContext(sources, Directory.GetCurrentDirectory()));
+
+        var ids = SectionIds(bytes);
+        Assert.Contains((byte)SectionId.SourceMap, ids);
+        Assert.Equal(ids.Order().Distinct(), ids);
+
+        // The reader does not parse section 6 yet. That it loads anyway is the point: the section
+        // is skippable, which is what lets an older runtime read a newer module.
+        var de = new DiagnosticEngine(new SourceManager());
+        Assert.NotNull(BytecodeReader.Read(bytes, de));
+        Assert.Empty(de.Diagnostics);
+    }
+
+    [Fact]
+    public void The_source_map_is_deterministic()
+    {
+        // Same input, same bytes — the promise of section 1. The trap would be a file table in hash
+        // order, the same one the string pool avoids by interning in first-use order.
+        var first = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var a),
+            new SourceMapContext(a, Directory.GetCurrentDirectory()));
+        var second = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var b),
+            new SourceMapContext(b, Directory.GetCurrentDirectory()));
+
+        Assert.Equal(first, second);
     }
 
     [Fact]
