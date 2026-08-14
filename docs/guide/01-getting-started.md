@@ -24,7 +24,7 @@ The return value of `main` becomes the process exit code, masked with `& 0xFF`.
 | Command | Purpose |
 |---|---|
 | `lyric run <file>` | compile and execute |
-| `lyric check <file>` | type-check only, produce nothing |
+| `lyric check <file>` | compile without writing a file |
 | `lyric build <file> -o <out>` | compile to `.lyrbc` |
 | `lyric disasm <file>` | print the bytecode |
 | `lyric repl` | interactive prompt |

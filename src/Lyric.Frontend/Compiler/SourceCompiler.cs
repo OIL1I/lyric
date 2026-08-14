@@ -24,7 +24,13 @@ namespace Lyric.Compiler;
 /// </summary>
 public static class SourceCompiler
 {
-    /// <summary>Resolve and sema, without lowering. The basis of <c>lyrc check</c>.</summary>
+    /// <summary>
+    /// Everything a build does except writing the bytes. The basis of <c>lyrc check</c>.
+    ///
+    /// <para>Lowering is part of it: a limit the backend cannot express is reported as
+    /// <c>LYR-IR0001</c>, and stopping after the sema would let <c>check</c> answer 'ok' for a
+    /// program that <c>build</c> rejects.</para>
+    /// </summary>
     public static CompileResult Check(string path, CompilerOptions? options = null) =>
         Check(ScriptSource.FromDisk(path), options);
 
@@ -79,7 +85,6 @@ public static class SourceCompiler
 
         // Supplied modules first, then disk. Chained rather than a second loader mechanism:
         // 'Compilation' knows exactly one delegate.
-        // bleiben.
         var provided = options.NativeModules;
         if (provided is { Count: > 0 })
         {
@@ -124,7 +129,7 @@ public static class SourceCompiler
         report?.EndPhase();
 
         // On a faulty AST any lowering result would be guesswork.
-        if (stage == Stage.Check || diagnostics.HasErrors)
+        if (diagnostics.HasErrors)
             return new CompileResult(sources, diagnostics, null, null);
 
         // Lowering limits arrive as LYR-IR0001 in the same engine and are rendered with file, line and
@@ -146,6 +151,11 @@ public static class SourceCompiler
             IrVerifier.VerifyOrThrow(ir);
             report?.EndPhase();
         }
+
+        // Everything a build does except turning the IR into bytes. Writing them is mechanical and
+        // cannot fail on the program, so stopping here answers the same question a build answers.
+        if (stage == Stage.Check)
+            return new CompileResult(sources, diagnostics, ir, null);
 
         report?.BeginPhase(Phase.Emit, FunctionCount(ir));
         var bytes = BytecodeWriter.Write(ir);

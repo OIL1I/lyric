@@ -265,24 +265,36 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 **From the M10 plan, found while measuring:**
 
 - **The member separator is written for block bodies.** A bodiless method in a class needs `int;,` —
-  a semicolon *and* a comma in a row. It works, but it is a spelling nobody guesses.
+  a semicolon *and* a comma in a row. Remeasured 2026-08-14: **effectively unreachable**. A bodiless
+  method in a class is `LYR-SEM0051` outside the standard library, and no standard library class
+  declares one. A latent inconsistency of one line in `ParseTypeMembers`, not a gap anyone can hit.
 
 **Language gaps to close before v1:**
 
-- **The expected type does not reach an argument position.** `let o: Opt<int> = Opt.Some(7)` works,
-  `take(Opt.Some(7))` does not — there the type arguments have to stand. Affects every construction
-  that draws its instance from the context, not only enums.
-- **`lyric check` runs only up to the sema** (`SourceCompiler.cs:132`). A program with a lowering
-  limit reports `ok` and dies on `run`. Noticed on 2026-08-12 while measuring the enum gap, and it
-  made the measurement look harmless at first.
+- **The expected type does not reach an argument position.** Remeasured 2026-08-14, and the earlier
+  entry was wrong in both directions: the **return position does reach** —
+  `fn g(): O<int> { return O.S(1); }` compiles — while an argument position does not.
+  `f(O.S(1))` is `LYR-SEM0063`, `f(O.S { v = 1 })` is `LYR-SEM0026`, `f(O.N)` is `LYR-SEM0063`.
+  The way out works: `f(O<int>.S(1))`.
+- **A generic struct initializer draws its instance from NO context.** A gap of its own rather than a
+  shade of the one above, found 2026-08-14: `let p: P<int> = P { v = 1 }` is `LYR-SEM0001`
+  (*cannot assign 'P&lt;&gt;' to 'P&lt;int&gt;'*) even WITH the annotation that carries the enum
+  case. Only `P<int> { v = 1 }` works.
+- ~~**`lyric check` runs only up to the sema**~~ **done** (2026-08-14). It runs the lowering and the
+  verifier and stops before the bytes, so `check` and `build` answer the same question. 82 places in
+  the lowering can report a limit and none was reachable from `check`.
+  `tests/Lyric.Tests.Cli/CheckAgreesWithBuildTests.cs` compares the two **exit codes** rather than
+  pinning a diagnostic code, so it keeps holding as the limits close one by one.
 - **A `type` alias carries at two places only.** As a parameter type and as a local annotation it
   works; as a **return type** and as a **field type** it is `LYR-IR0001` ("a type alias is not
   supported by this compiler version yet"). Found on 2026-08-12 while writing the user guide — the
   example the documentation wanted to show did not compile. The sema resolves the alias, the lowering
   does not.
-- **`static fn` in an enum body does not parse** — `LYR-PAR0008` ("expected ')' after parameters")
-  plus two follow-up messages, all three about something other than the cause. Noticed on 2026-08-12
-  while measuring the enum gap. ~1 h.
+- **`static fn` does not parse in an enum, interface OR extend body** — wider than recorded,
+  remeasured 2026-08-14. All three go through `ParseMethodSequence`, which does not know the
+  modifier; a class or struct body does, through `ParseTypeMember`. Gives `LYR-PAR0008`
+  ("expected ')' after parameters") plus two follow-up messages, all three about something other
+  than the cause. ~1 h.
 - **A block lambda does not deliver its return type to the inference**: `(n: int) => n` binds `U`,
   `(n: int) => { return n; }` does not. *Not a gap but a documented limit* — `LYR-SEM0046` says so
   and suggests the annotation, and that works. It stands here because I wrongly reported it as a bug
@@ -352,7 +364,7 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 ## Last relevant commit
 
-`repo: English comments and current references in the build, tooling and examples`
+`compiler: check runs the lowering, so it answers the same question as build`
 
 ---
 

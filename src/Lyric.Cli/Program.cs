@@ -135,7 +135,7 @@ public static class Program
             Commands:
               run <file>               Compile and execute (.lyr or .lyrbc)
               build <file> [-o <out>]  Compile .lyr to .lyrbc
-              check <file>             Resolve and type-check only
+              check <file>             Compile without writing a file
               disasm <file.lyrbc>      Print a readable disassembly
               repl                     Start a REPL session
 

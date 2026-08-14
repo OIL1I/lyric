@@ -67,7 +67,7 @@ public static class Program
         return ExitCodes.Success;
     }
 
-    /// <summary>Resolve and sema only: no lowering, no file produced.</summary>
+    /// <summary>Everything a build does except writing the file.</summary>
     private static int Check(string path, string[] args, TerminalOutput terminal)
     {
         var result = SourceCompiler.Check(path, Options(args, terminal));
@@ -162,7 +162,7 @@ public static class Program
         Console.Out.WriteLine();
         Console.Out.WriteLine("Commands:");
         Console.Out.WriteLine("  build <file> [-o <out>]  Compile .lyr to .lyrbc");
-        Console.Out.WriteLine("  check <file>             Resolve and type-check only");
+        Console.Out.WriteLine("  check <file>             Compile without writing a file");
         Console.Out.WriteLine("  lower <file>             Print the mid-IR dump (debug)");
         Console.Out.WriteLine("  parse <file>             Print the AST dump (debug)");
         Console.Out.WriteLine("  tokenize <file>          Print the token stream (debug)");
