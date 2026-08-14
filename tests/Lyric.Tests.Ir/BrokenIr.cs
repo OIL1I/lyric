@@ -4,15 +4,15 @@ using Lyric.Ir;
 namespace Lyric.Tests.Ir;
 
 /// <summary>
-/// Bausteine für absichtlich kaputtes IR. Getrennt von <see cref="Fixtures"/>, das per Vertrag
-/// nur gültiges IR enthält.
+/// Building blocks for deliberately broken IR. Separate from <see cref="Fixtures"/>, which by contract
+/// contains valid IR only.
 ///
-/// Zwei Wege, ein defektes Modul zu bekommen:
+/// Two ways to get a defective module:
 /// <list type="bullet">
-/// <item><see cref="Mutate"/> — eine gültige Fixture nehmen und <b>eine</b> Sache brechen. Der
-/// Regelfall: der Test zeigt damit genau den Unterschied zwischen gültig und ungültig.</item>
-/// <item>Die <c>Fn</c>/<c>Block</c>-Helfer — für Defekte, die per Mutation nicht erreichbar sind,
-/// weil das Feld <c>init</c>-only ist (ReturnType, Block-Id) oder die Struktur leer sein muss.</item>
+/// <item><see cref="Mutate"/> — take a valid fixture and break ONE thing. The regular case: the test
+/// then shows exactly the difference between valid and invalid.</item>
+/// <item>The <c>Fn</c> and <c>Block</c> helpers — for defects unreachable by mutation, because the field
+/// is <c>init</c>-only (ReturnType, block id) or the structure has to be empty.</item>
 /// </list>
 /// </summary>
 internal static class BrokenIr
@@ -25,8 +25,8 @@ internal static class BrokenIr
     public static readonly IrType Bool = new IrScalarType(IrScalar.Bool);
     public static readonly IrType Str = new IrScalarType(IrScalar.String);
 
-    // CharT/VoidT statt Char/Void: über 'using static' würden die mit System.Char und System.Void
-    // kollidieren (CS0229).
+    // CharT and VoidT rather than Char and Void: through 'using static' those would collide with
+    // System.Char and System.Void (CS0229).
     public static readonly IrType CharT = new IrScalarType(IrScalar.Char);
     public static readonly IrType VoidT = new IrScalarType(IrScalar.Void);
     public static readonly Span Sp = default;
@@ -39,15 +39,15 @@ internal static class BrokenIr
     public static FieldId Fld(int n) => new(n);
     public static IrType Ref(int n) => new IrRefType(Ty(n));
 
-    /// <summary>Ein Modul mit Typ-Tabelle. <c>Module(params …)</c> bleibt daneben bestehen, damit
-    /// die vorhandenen Tests unverändert lesen.</summary>
+    /// <summary>A module with a type table. <c>Module(params …)</c> stays beside it, so the existing tests
+    /// read unchanged.</summary>
     public static IrModule ModuleWithTypes(List<IrTypeDef> types, params IrFunction[] functions)
         => new(functions.ToList()) { Types = types };
 
     public static IrTypeDef TypeDef(string name, params (string Name, IrType Type)[] fields)
         => new(name, fields.Select(f => f.Type).ToArray(), fields.Select(f => f.Name).ToArray());
 
-    /// <summary>Nimmt eine gültige Fixture und wendet einen Defekt darauf an.</summary>
+    /// <summary>Takes a valid fixture and applies a defect to it.</summary>
     public static IrModule Mutate(string fixture, Action<IrModule> breakIt)
     {
         var module = Fixtures.Build(fixture);
@@ -55,7 +55,7 @@ internal static class BrokenIr
         return module;
     }
 
-    // Entry ist an IrFunction settable, defekte Entries werden deshalb per Mutate gebaut.
+    // Entry is settable on IrFunction, so defective entries are built through Mutate.
     public static IrFunction Fn(string name, IrType returnType, int paramCount,
         List<IrLocal> locals, List<IrTemp> temps, List<IrBlock> blocks)
         => new(name, returnType, paramCount, locals, temps, blocks) { Entry = B(0) };
@@ -65,10 +65,10 @@ internal static class BrokenIr
 
     public static IrModule Module(params IrFunction[] functions) => new(functions.ToList());
 
-    /// <summary>Ein IrOp-Typ, den der Verifier nicht kennt — für den Nachweis, dass der
+    /// <summary>An IrOp type the verifier does not know, to show that the
     /// <c>default</c>-Zweig wirft statt stillschweigend durchzulassen.</summary>
     public sealed record UnknownOp(Span Span) : IrOp(Span);
 
-    /// <summary>Dito für Terminatoren.</summary>
+    /// <summary>The same for terminators.</summary>
     public sealed record UnknownTerminator(Span Span) : IrTerminator(Span);
 }

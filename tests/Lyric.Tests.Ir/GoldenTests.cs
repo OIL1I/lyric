@@ -5,21 +5,20 @@ using Lyric.Ir;
 namespace Lyric.Tests.Ir;
 
 /// <summary>
-/// Golden-Tests für den <see cref="IrPrinter"/>. Jede Fixture wird in <see cref="Fixtures"/>
-/// als IR-Objekt gebaut, gedumpt und gegen den committeten Snapshot (golden/&lt;name&gt;.ir)
-/// verglichen.
+/// Golden tests for the <see cref="IrPrinter"/>. Every fixture is built as an IR object in
+/// <see cref="Fixtures"/>, dumped and compared against the committed snapshot (golden/&lt;name&gt;.ir).
 ///
-/// Snapshots werden NICHT von Hand gepflegt: einmal mit LYRIC_UPDATE_SNAPSHOTS=1 erzeugen,
-/// drüberlesen, committen (gleiche Mechanik wie die Parser-Goldens). Danach lockt der
-/// Vergleich das Dump-Format fest.
+/// Snapshots are NOT maintained by hand: produce them once with LYRIC_UPDATE_SNAPSHOTS=1, read them
+/// over, commit — the same mechanics as the parser goldens. From then on the comparison locks the dump
+/// format.
 /// </summary>
 public class GoldenTests
 {
     private static bool UpdateMode =>
         Environment.GetEnvironmentVariable("LYRIC_UPDATE_SNAPSHOTS") is "1" or "true";
 
-    // [CallerFilePath] liefert den Pfad dieser Datei zur Compile-Zeit → Snapshots liegen
-    // im Source-Baum, nicht im bin/-Output.
+    // [CallerFilePath] gives the path of this file at compile time, so the snapshots lie in the source tree
+    // rather than in the bin/ output.
     private static string GoldenDir([CallerFilePath] string thisFile = "")
         => Path.Combine(Path.GetDirectoryName(thisFile)!, "golden");
 
@@ -48,11 +47,11 @@ public class GoldenTests
 
     [Theory]
     [InlineData("single_block")]       // load + binop + ret, Grundlayout
-    [InlineData("comparison")]         // Dest-Typ bool ≠ Operandentyp i64
-    [InlineData("diamond")]            // condbr / br / store über 4 Blöcke
+    [InlineData("comparison")]         // the destination type bool differs from the operand type i64
+    [InlineData("diamond")]            // condbr, br and store over 4 blocks
     [InlineData("void_store")]         // void: nacktes ret + dest-loses store
-    [InlineData("convert")]            // convert mit From/To sichtbar
-    [InlineData("two_functions_call")] // CallContext: Name + Rückgabetyp, value- + void-Call
-    [InlineData("loop")]               // Back-Edge: br zurück auf einen früheren Block
+    [InlineData("convert")]            // a convert with From and To visible
+    [InlineData("two_functions_call")] // CallContext: name and return type, a value call and a void call
+    [InlineData("loop")]               // a back edge: br back to an earlier block
     public void Golden_ir_matches_snapshot(string name) => Check(name);
 }

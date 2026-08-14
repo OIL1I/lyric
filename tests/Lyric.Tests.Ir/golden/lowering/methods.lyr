@@ -1,11 +1,10 @@
-// Methoden (ADR-014): der Empfaenger ist Parameter 0, genau wie in CIL. Der Unterschied zwischen
-// Instanz- und static-Methode steckt damit allein in der Parameterliste — was P3s vtable-Frage auf
-// "welche Funktion" reduziert statt "wie sieht sie aus".
+// Methods: the receiver is parameter 0, exactly as in CIL. The difference between an instance and a
+// static method therefore lies in the parameter list alone.
 class Counter {
     value: int,
 
-    // Fabrik: kein Empfaenger, deshalb 'static'. Ohne den Marker braeuchte sie ein Objekt, das es
-    // an dieser Stelle noch gar nicht gibt.
+    // A factory: no receiver, hence 'static'. Without the marker it would need an object that does not
+    // exist yet at this point.
     static fn new(start: int): Counter {
         return Counter { value = start };
     }
@@ -18,7 +17,7 @@ class Counter {
         this.value += by;
     }
 
-    // this als Argument weiterreichen: der Empfaenger ist ein gewoehnlicher Wert.
+    // Passing this on as an argument: the receiver is an ordinary value.
     fn twice(): int {
         return add(this.get(), this.get());
     }

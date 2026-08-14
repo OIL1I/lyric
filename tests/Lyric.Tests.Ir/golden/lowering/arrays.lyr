@@ -1,5 +1,5 @@
-// Arrays (ADR-016): T[] ist ein echtes Array, die Laenge steht bei der Erzeugung fest.
-// Gebaut wird es aus dem Literal, aus [x] * n und aus xs + ys — alle drei liefern ein NEUES Array.
+// Arrays: T[] is a real array whose length is fixed at creation. It is built from the literal, from
+// [x] * n and from xs + ys, and all three yield a NEW array.
 fn build(n: int): int[] {
     return [0] * n;
 }
@@ -18,10 +18,9 @@ fn main(): int {
     let xs = [3, 7, 1];
     let zeros = build(2);
 
-    // Element-Zuweisung, auch zusammengesetzt: Array und Index werden je einmal ausgewertet.
-    // 'var', weil Sprache.md 6.4 fuer den Index-Operator ein mutables Ziel verlangt — anders als
-    // bei einem Klassen-Feld, das durch jede Bindung schreibbar ist. Beides sind Referenztypen;
-    // die Ungleichbehandlung ist offen (siehe STATUS.md).
+    // Element assignment, compound as well: the array and the index are each evaluated once.
+    // 'var', because the index operator requires a mutable target, unlike a class field, which is
+    // writable through any binding.
     var ys = xs + zeros;
     ys[3] = 10;
     ys[4] += 5;

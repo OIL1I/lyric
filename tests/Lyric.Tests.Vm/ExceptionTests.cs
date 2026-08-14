@@ -473,7 +473,7 @@ public class ExceptionTests
             """));
     }
 
-    // ------------------------------------------------------------------ Merge-Block
+    // ------------------------------------------------------------------ the merge block
 
     [Fact]
     public void A_try_where_both_paths_return_needs_no_merge_block()

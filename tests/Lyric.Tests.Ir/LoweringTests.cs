@@ -77,7 +77,7 @@ public class LoweringTests
     [InlineData("if_else")]         // both branches fall through, so there is a merge block
     [InlineData("if_both_return")]  // both branches return, so there is NO merge block
     [InlineData("if_no_else")]      // without an else the false branch is the merge block
-    [InlineData("while_loop")]      // Back-Edge, break, continue, verschachtelte ifs
+    [InlineData("while_loop")]      // a back edge, break, continue, nested ifs
     [InlineData("do_while")]        // continue jumps to the condition, not to the start of the body
     [InlineData("if_expr")]         // if as an expression through a synthetic local
     [InlineData("short_circuit")]   // && and || as control flow
@@ -88,8 +88,8 @@ public class LoweringTests
     [InlineData("objects_nested")]  // a class as a field type, plus a recursive type
     [InlineData("methods")]         // the receiver as parameter 0, a static factory, 'this'
     [InlineData("arrays")]          // Literal, [x]*n, xs+ys, Index lesend/schreibend, .length
-    [InlineData("optionals")]       // null, ??, !, Flow-Narrowing
-    [InlineData("enums")]           // Varianten, match, Tag-Dispatch, Pattern-Dekomposition
+    [InlineData("optionals")]       // null, ??, !, flow narrowing
+    [InlineData("enums")]           // variants, match, tag dispatch, pattern decomposition
     [InlineData("interfaces")]      // mkiface, callvirt, vtable rows, default against override
     [InlineData("structs")]         // structcopy at the binding points, a nested value type
     public void Golden_lowering_matches_snapshot(string name)
@@ -461,7 +461,7 @@ public class LoweringTests
         Assert.Equal(IrPrinter.Dump(Lower(source)), IrPrinter.Dump(Lower(source)));
     }
 
-    // ------------------------------------------------------------------ 3) Scope-Grenzen
+    // ------------------------------------------------------------------ 3) scope boundaries
 
     // The rule still holds: a type boundary is reported at the TYPE rather than at the expression using
     // it. There is no type left that the sema accepts and the lowering rejects.

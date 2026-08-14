@@ -1,17 +1,16 @@
 namespace Lyric.Tests.Cli;
 
 /// <summary>
-/// Die REPL — `lyrrepl`, gefahren als echter Prozess über eine Pipe.
+/// The REPL — `lyrrepl`, run as a real process over a pipe.
 ///
-/// <para><b>Die zentrale Zusicherung</b> ist die Trennung aus ADR-021: Deklarationen sammeln sich
-/// an, Statements laufen einmal. Wer schlicht den Quelltext akkumuliert und alles neu übersetzt,
-/// lässt jedes `println` bei jeder folgenden Eingabe erneut laufen — der Test
-/// <c>An_earlier_print_does_not_repeat</c> misst genau das, und ohne ihn wäre der Fehler
-/// unsichtbar, weil alles andere richtig aussieht.</para>
+/// <para>THE CENTRAL PROMISE is the separation: declarations accumulate, statements run once. Whoever
+/// simply accumulates the source and recompiles everything lets every `println` run again on every
+/// following input — the test <c>An_earlier_print_does_not_repeat</c> measures exactly that, and without
+/// it the fault would be invisible, because everything else looks right.</para>
 /// </summary>
 public sealed class ReplTests
 {
-    /// <summary>Fährt eine Sitzung: jede Zeile eine Eingabe, am Ende <c>:quit</c>.</summary>
+    /// <summary>Runs a session: one input per line, with <c>:quit</c> at the end.</summary>
     private static ToolResult Session(params string[] lines) =>
         Toolchain.RunWithInput(Toolchain.LyrreplPath,
             ["--stdlib", Path.Combine(Toolchain.RepositoryRoot, "stdlib")],
@@ -23,7 +22,7 @@ public sealed class ReplTests
 
     [Fact]
     public void A_declaration_survives_to_the_next_entry() =>
-        // Der Kern einer REPL. Ohne ihn waere sie ein Taschenrechner.
+        // The core of a REPL. Without it, it would be a calculator.
         Assert.Contains("10", Session("let x = 5", "x * 2").Out);
 
     [Fact]
@@ -35,8 +34,8 @@ public sealed class ReplTests
     [Fact]
     public void An_earlier_print_does_not_repeat()
     {
-        // DER Test des Slice. Eine REPL, die den Quelltext akkumuliert, druckt 'erste' bei jeder
-        // folgenden Eingabe erneut — hier steht es genau einmal.
+        // The core test. A REPL accumulating the source prints 'first' again on every following input;
+        // here it stands exactly once.
         var result = Session(
             "console.println(\"einmal\")",
             "1 + 1",
@@ -49,8 +48,8 @@ public sealed class ReplTests
     [Fact]
     public void A_failed_entry_changes_nothing()
     {
-        // Wer sich vertippt, sitzt danach nicht auf einem Vorspann, der nicht mehr uebersetzt.
-        // Ohne diese Eigenschaft ist eine Sitzung nach dem ersten Fehler unbrauchbar.
+        // Whoever mistypes does not end up with a preamble that no longer compiles. Without this property
+        // a session is unusable after the first error.
         var result = Session(
             "let good = 1",
             "fn broken(: int { }",
@@ -62,8 +61,8 @@ public sealed class ReplTests
     [Fact]
     public void A_panic_ends_the_entry_but_not_the_session()
     {
-        // In einem Programm beendet ein panic die VM (Sprache.md 9). Interaktiv beendet er die
-        // EINGABE — sonst waere jeder Tippfehler das Ende der Sitzung.
+        // In a program a panic ends the VM. Interactively it ends the INPUT; otherwise every typo would be
+        // the end of the session.
         var result = Session(
             "let xs = [1, 2]",
             "xs[5]",

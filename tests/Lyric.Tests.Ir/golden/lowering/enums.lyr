@@ -1,9 +1,9 @@
-// Enums (Sprache.md 3.4). Jede Variante ist ein eigener Typ mit eigenem Layout; Slot 0 ist ihr
-// Tag, die Nutzfelder folgen ab Slot 1.
+// Enums. Every variant is a type of its own with its own layout; slot 0 is its tag and the payload
+// fields follow from slot 1.
 //
-// 'match' hat keine eigene Instruktion: es liest mit enumtag das Tag und verzweigt darueber wie
-// jede andere Fallunterscheidung. Nach der Verzweigung engt enumas ein — und der Feldzugriff
-// darauf ist ein gewoehnliches loadfield mit dem Layout der Variante.
+// 'match' has no instruction of its own: it reads the tag with enumtag and branches over it like any
+// other case distinction. After the branch enumas narrows, and a field access on that is an ordinary
+// loadfield with the layout of the variant.
 enum Shape {
     Circle(int),
     Rect { w: int, h: int },

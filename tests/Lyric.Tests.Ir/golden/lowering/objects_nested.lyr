@@ -1,9 +1,9 @@
-// Ein Feld, dessen Typ selbst eine Klasse ist — und ein REKURSIVER Typ.
+// A field whose type is itself a class, and a RECURSIVE type.
 //
-// Node kann in diesem Compiler-Stand nicht konstruiert werden: jedes Node braucht ein next, und
-// ohne Optionals (?T) endet diese Kette nie. Der TYP muss trotzdem kodierbar sein, und genau das
-// prueft diese Fixture — Node wird ueber einen Parameter interniert, nicht ueber ein newobj.
-// Strukturell waere das Layout nicht endlich; ueber die Typ-Id ist es das.
+// Node is not constructed here: every Node needs a next, and without optionals that chain never ends.
+// The TYPE still has to be encodable, and that is what this fixture checks — Node is interned through
+// a parameter rather than through a newobj. Structurally the layout would not be finite; through the
+// type id it is.
 class Node {
     payload: int,
     next: Node

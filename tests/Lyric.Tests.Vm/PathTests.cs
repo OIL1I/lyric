@@ -147,7 +147,7 @@ public class PathTests
     /// value".</para>
     /// <para>Without <c>LyrValue.Some</c> it silently returned <c>null</c>: the file existed,
     /// <c>isFile</c> saw it, and <c>size</c> reported nothing.</para>
-    /// </remarks>
+    /// </summary>
     [Fact]
     public void An_optional_native_over_a_scalar_returns_its_value() =>
         Assert.Equal("5 true", Out("""

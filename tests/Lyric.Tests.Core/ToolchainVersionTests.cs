@@ -4,19 +4,18 @@ using Lyric.Core;
 namespace Lyric.Tests.Core;
 
 /// <summary>
-/// Die Toolchain-Version steht an zwei Stellen: als C#-Konstante in
-/// <see cref="ToolchainVersion.Value"/> (dort liest sie <c>lyric --version</c>) und als
-/// <c>&lt;Version&gt;</c> in <c>Directory.Build.props</c> (dort brauchen sie die
-/// Datei-Eigenschaften der Binaries).
+/// The toolchain version stands at two places: as a C# constant in <see cref="ToolchainVersion.Value"/>,
+/// where <c>lyric --version</c> reads it, and as <c>&lt;Version&gt;</c> in
+/// <c>Directory.Build.props</c>, where the file properties of the binaries need it.
 ///
-/// <para>Eine der beiden muss die Quelle sein, und MSBuild kann keine C#-Konstante lesen. Statt
-/// die Doppelung wegzudiskutieren, wird sie bewacht: laufen die Zahlen auseinander, faellt dieser
-/// Test — nicht erst der Nutzer, dem <c>lyric --version</c> etwas anderes sagt als die
-/// Datei-Eigenschaften der exe.</para>
+/// <para>One of the two has to be the source, and MSBuild cannot read a C# constant. Rather than
+/// arguing the duplication away, it is guarded: when the numbers drift apart this test fails rather than
+/// the user, to whom <c>lyric --version</c> says something other than the file properties of the exe.
+/// </para>
 ///
-/// <para>Genau dieser Fehler ist in diesem Projekt schon einmal passiert, eine Ebene tiefer: die
-/// Start-Sektion wurde vom Writer anders indiziert als vom Reader, und 1300 Tests haben es nicht
-/// gemerkt, weil beide Lesarten in den Testprogrammen zufaellig zusammenfielen.</para>
+/// <para>Exactly this fault happened once already, one level deeper: the Start section was indexed
+/// differently by the writer than by the reader, and 1300 tests did not notice, because both readings
+/// coincided by accident in the test programs.</para>
 /// </summary>
 public class ToolchainVersionTests
 {
@@ -29,8 +28,8 @@ public class ToolchainVersionTests
 
         Assert.NotNull(stamped);
 
-        // Das SDK haengt bei Source-Link-Builds '+<commit-sha>' an. Uns interessiert der Teil
-        // davor — die Zahl, die ein Mensch getippt hat.
+        // The SDK appends '+<commit-sha>' in source-link builds. What matters is the part before it: the
+        // number a human typed.
         var version = stamped!.Split('+')[0];
 
         Assert.Equal(ToolchainVersion.Value, version);

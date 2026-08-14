@@ -4,11 +4,10 @@ using Lyric.Ir;
 namespace Lyric.Tests.Ir;
 
 /// <summary>
-/// Handgebautes IR für die Printer-Tests. P2 hat noch kein Lowering, also werden die
-/// IR-Objekte hier direkt konstruiert. Spans sind irrelevant (der Printer druckt sie
-/// nicht) und durchweg <c>default</c>. Temps sind der Vollständigkeit halber typkorrekt
-/// befüllt, auch wenn der Printer sie (noch) nicht konsumiert — so bleiben die Fixtures
-/// gültiges IR für den P3-Verifier.
+/// Hand-built IR for the printer tests. There is no lowering at this stage, so the IR objects are
+/// constructed directly here. Spans are irrelevant, since the printer does not print them, and are
+/// <c>default</c> throughout. Temps are filled type-correctly for completeness, even where the printer
+/// does not consume them, so the fixtures stay valid IR for the verifier.
 /// </summary>
 internal static class Fixtures
 {
@@ -42,7 +41,7 @@ internal static class Fixtures
         _ => throw new ArgumentException($"unknown fixture: {name}")
     };
 
-    /// <summary>Alle Fixtures, die gültiges IR sind — der Verifier muss auf jeder davon
+    /// <summary>Every fixture that is valid IR: the verifier has to run on each of them
     /// befundfrei durchlaufen.</summary>
     public static readonly string[] AllNames =
     [
@@ -66,7 +65,7 @@ internal static class Fixtures
         return new IrModule(new List<IrFunction> { Fn("main.add", I64, 2, locals, temps, new List<IrBlock> { bb0 }) });
     }
 
-    // fn main.isNeg(x) -> bool  { return x < 0; }   — Dest-Typ bool, Operanden i64
+    // fn main.isNeg(x) -> bool { return x < 0; } — the destination type is bool, the operands are i64
     private static IrModule Comparison()
     {
         var locals = new List<IrLocal> { new(L(0), "x", I64) };
@@ -82,7 +81,7 @@ internal static class Fixtures
         return new IrModule(new List<IrFunction> { Fn("main.isNeg", Bool, 1, locals, temps, new List<IrBlock> { bb0 }) });
     }
 
-    // fn main.clamp(x) -> i64  { r = x < 0 ? 0 : x; return r; }  — condbr/br/store, 4 Blöcke
+    // fn main.clamp(x) -> i64 { r = x < 0 ? 0 : x; return r; } — condbr, br, store over 4 blocks
     private static IrModule Diamond()
     {
         var locals = new List<IrLocal> { new(L(0), "x", I64), new(L(1), "r", I64) };
@@ -119,7 +118,7 @@ internal static class Fixtures
         return new IrModule(new List<IrFunction> { Fn("main.reset", Void, 0, locals, temps, new List<IrBlock> { bb0 }) });
     }
 
-    // fn main.widen(x: i32) -> i64  { return x as i64; }  — convert mit From/To
+    // fn main.widen(x: i32) -> i64 { return x as i64; } — a convert with From and To
     private static IrModule ConvertWiden()
     {
         var locals = new List<IrLocal> { new(L(0), "x", I32) };
@@ -128,13 +127,13 @@ internal static class Fixtures
             new List<IrOp>
             {
                 new LoadLocal(T(0), L(0), I32, Sp),
-                new Lyric.Ir.Convert(T(1), I32, I64, T(0), Sp), // qualifiziert: Convert kollidiert mit System.Convert
+                new Lyric.Ir.Convert(T(1), I32, I64, T(0), Sp), // qualified: Convert collides with System.Convert
             },
             new Return(T(1), Sp));
         return new IrModule(new List<IrFunction> { Fn("main.widen", I64, 1, locals, temps, new List<IrBlock> { bb0 }) });
     }
 
-    // Drei Funktionen: double (f0), log/void (f1), main (f2 ruft f0 + f1).
+    // Three functions: double (f0), log returning void (f1), main (f2, calling f0 and f1).
     private static IrModule TwoFunctionsCall()
     {
         // f0: main.double(n) -> i64  { return n * 2; }
@@ -172,9 +171,9 @@ internal static class Fixtures
 
     // fn main.sumTo(n) -> i64  { var acc = 0; for (i in 0..n) { acc += i; } return acc; }
     //
-    // Der einzige Fixture mit einer Back-Edge (bb2 -> bb1). Wichtig für den Verifier: das
-    // Availability-Dataflow muss über den Loop-Header zum Fixpunkt konvergieren, und der
-    // optimistische TOP-Startwert wird nur hier überhaupt ausgeübt.
+    // The only fixture with a back edge (bb2 to bb1). Important for the verifier: the availability data
+    // flow has to converge to a fixed point over the loop header, and the optimistic TOP start value is
+    // exercised only here.
     private static IrModule Loop()
     {
         var locals = new List<IrLocal> { new(L(0), "n", I64), new(L(1), "i", I64), new(L(2), "acc", I64) };
@@ -196,7 +195,7 @@ internal static class Fixtures
             },
             new Branch(B(1), Sp));
 
-        // bb1 (Loop-Header): i < n ?
+        // bb1, the loop header: i < n?
         var bb1 = Block(1,
             new List<IrOp>
             {
@@ -206,7 +205,7 @@ internal static class Fixtures
             },
             new CondBranch(T(4), B(2), B(3), Sp));
 
-        // bb2 (Body): acc += i; i += 1  — springt zurück auf bb1
+        // bb2, the body: acc += i; i += 1, jumping back to bb1
         var bb2 = Block(2,
             new List<IrOp>
             {

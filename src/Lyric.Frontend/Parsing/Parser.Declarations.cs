@@ -420,7 +420,6 @@ public sealed partial class Parser
         return new GlobalBindingDecl(isPublic, binding, Span.Union(start, binding.Span));
     }
 
-    /// <summary>
     /// <summary>A constant has ONE name. Destructuring exists for local bindings only: a global
     /// slot is a named thing, and taking several names from one expression would let one
     /// declaration produce several slots.</summary>

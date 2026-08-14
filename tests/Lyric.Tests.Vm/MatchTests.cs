@@ -9,12 +9,12 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// <c>match</c> über <b>Nicht-Enums</b> (M7/P5b): Literale, Or-Patterns, Ranges, Guards,
-/// Bindungen — die Musterformen aus <c>Sprache.md</c> §6.3, die P3b nicht mitgenommen hat.
+/// <c>match</c> over NON-ENUMS: literals, or-patterns, ranges, guards, bindings — the pattern forms the
+/// grammar allows that the enum work did not take along.
 ///
-/// <para>Jede Form kommt <b>doppelt</b> vor: einmal treffend, einmal daneben. Ein Test, der nur
-/// den Treffer prüft, bliebe auch grün, wenn jedes Muster auf alles passte — und genau so sähe
-/// ein vergessener Test aus.</para>
+/// <para>Every form appears TWICE: once matching, once missing. A test checking only the hit would stay
+/// green even if every pattern matched everything, and that is exactly what a forgotten test looks
+/// like.</para>
 /// </summary>
 public class MatchTests
 {
@@ -50,34 +50,34 @@ public class MatchTests
 
     [Theory]
     [InlineData("1", 1)]
-    [InlineData("5", 1)]   // letzte Alternative
+    [InlineData("5", 1)]   // the last alternative
     [InlineData("9", 0)]
     public void An_or_pattern_tries_every_alternative(string input, long expected) =>
         Assert.Equal(expected, Classify(input, "1 | 2 | 5 => 1, _ => 0,"));
 
     [Theory]
-    [InlineData("0", 1)]   // untere Grenze
-    [InlineData("9", 1)]   // obere Grenze, inklusiv
+    [InlineData("0", 1)]   // the lower bound
+    [InlineData("9", 1)]   // the upper bound, inclusive
     [InlineData("10", 0)]
     public void An_inclusive_range_includes_both_ends(string input, long expected) =>
         Assert.Equal(expected, Classify(input, "0..=9 => 1, _ => 0,"));
 
     [Theory]
     [InlineData("8", 1)]
-    [InlineData("9", 0)]   // obere Grenze, exklusiv — der Unterschied zu '..='
+    [InlineData("9", 0)]   // the upper bound, exclusive: the difference from '..='
     public void An_exclusive_range_stops_before_its_end(string input, long expected) =>
         Assert.Equal(expected, Classify(input, "0..9 => 1, _ => 0,"));
 
     [Fact]
     public void A_range_rejects_values_below_it()
     {
-        // Der zweite Vergleich allein wuerde hier passen — nur zusammen ist der Test richtig.
+        // The second comparison alone would match here; only together is the test right.
         Assert.Equal(0, Run("fn main(): int { let n = 0 - 1; return match (n) { 0..=9 => 1, _ => 0, }; }"));
     }
 
     [Theory]
     [InlineData("5", 1)]
-    [InlineData("0", 0)]   // Muster passt, Guard nicht
+    [InlineData("0", 0)]   // the pattern matches, the guard does not
     public void A_guard_can_reject_a_matching_pattern(string input, long expected) =>
         Assert.Equal(expected, Run(
             $"fn main(): int {{ let n = {input}; return match (n) {{ x if x > 1 => 1, _ => 0, }}; }}"));
@@ -91,7 +91,7 @@ public class MatchTests
     [Fact]
     public void A_guard_sees_the_binding_of_its_own_arm()
     {
-        // Die Bindung muss VOR dem Guard stehen, sonst kennt 'x' niemand.
+        // The binding has to stand BEFORE the guard, or nobody knows 'x'.
         Assert.Equal(12, Run("fn main(): int { let n = 12; return match (n) { x if x > 10 => x, _ => 0, }; }"));
     }
 
@@ -116,7 +116,7 @@ public class MatchTests
     [Fact]
     public void The_first_matching_arm_wins()
     {
-        // Reihenfolge ist Semantik: beide Arme passen auf 5, genommen wird der erste.
+        // The order is semantics: both arms match 5, and the first is taken.
         Assert.Equal(1, Classify("5", "0..=9 => 1, 5 => 2, _ => 0,"));
     }
 
@@ -138,7 +138,7 @@ public class MatchTests
     [Fact]
     public void Enum_matching_still_works()
     {
-        // Die Gegenprobe zu P3b: der gemeinsame Pfad darf den Enum-Fall nicht beschaedigt haben.
+        // The counter-check: the shared path must not have damaged the enum case.
         Assert.Equal(2, Run("""
             enum Shape { Dot, Line(int) }
 

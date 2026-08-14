@@ -1,4 +1,4 @@
-// Beide Zweige returnen -> es darf KEIN Merge-Block entstehen.
+// Both branches return, so NO merge block may arise.
 fn sign(n: int): int {
     if (n < 0) {
         return -1;

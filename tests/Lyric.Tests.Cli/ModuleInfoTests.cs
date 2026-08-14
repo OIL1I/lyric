@@ -6,8 +6,8 @@ namespace Lyric.Tests.Cli;
 /// <summary>
 /// <c>lyrvm info</c> and <c>disasm --function</c>.
 ///
-/// <para>Contains the regression test for the start index fault this command uncovered
-/// hat — siehe <see cref="Entry_point_index_lives_in_the_combined_index_space"/>.</para>
+/// <para>Contains the regression test for the start index fault this command uncovered — see
+/// <see cref="Entry_point_index_lives_in_the_combined_index_space"/>.</para>
 /// </summary>
 public sealed class ModuleInfoTests
 {

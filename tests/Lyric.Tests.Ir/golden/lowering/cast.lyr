@@ -2,7 +2,7 @@ fn widen(x: int32): int64 {
     return x as int64;
 }
 
-// Identitaets-Cast: das Lowering elidiert ihn, es entsteht kein 'convert'.
+// An identity cast: the lowering elides it and no 'convert' arises.
 fn same(x: int): int {
     return x as int;
 }

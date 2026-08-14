@@ -85,7 +85,7 @@ public class VmTests
         return (result, output.ToString());
     }
 
-    // ------------------------------------------------------------------ 1) Gate-Programm
+    // ------------------------------------------------------------------ 1) the gate program
 
     /// <summary>Objects over the whole pipeline, including reference semantics across a function
     /// boundary and a class as a field type.</summary>
@@ -392,7 +392,7 @@ public class VmTests
     [Theory]
     [InlineData("let xs = [3, 7, 1]; return xs[1];", 7)]
     [InlineData("let xs = [3, 7, 1]; return xs.length;", 3)]
-    [InlineData("let xs = [0] * 4; return xs.length;", 4)]        // Default-Array
+    [InlineData("let xs = [0] * 4; return xs.length;", 4)]        // an array from a default
     [InlineData("let n = 5; let xs = [0] * n; return xs.length;", 5)]  // length at runtime
     [InlineData("let xs = [0] * 0; return xs.length;", 0)]        // an empty array is valid
     [InlineData("let xs = [1, 2] + [3]; return xs[2];", 3)]
@@ -515,7 +515,7 @@ public class VmTests
     [Theory]
     [InlineData("return Shape.Circle(5).area();", 25)]                       // tuple variant
     [InlineData("let s: Shape = Shape.Rect { w = 3, h = 4 }; return s.area();", 12)] // struct variant
-    [InlineData("return Shape.Empty.area();", 0)]                            // Unit-Variante
+    [InlineData("return Shape.Empty.area();", 0)]                            // a unit variant
     public void Enum_variants_dispatch_through_match(string body, long expected) =>
         Assert.Equal(expected, Run(ShapeEnum + $"fn wrap(): int {{ {body} }}\nfn main(): int {{ return wrap(); }}").AsI64);
 
@@ -619,7 +619,7 @@ public class VmTests
         Assert.Equal(VmDiagnostics.NoEntryPoint, ex.Code);
     }
 
-    // ------------------------------------------------------------------ 6) Start-Sektion
+    // ------------------------------------------------------------------ 6) the Start section
 
     [Fact]
     public void Start_section_survives_the_round_trip()

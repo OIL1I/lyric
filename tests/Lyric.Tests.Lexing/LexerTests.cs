@@ -103,7 +103,7 @@ public class LexerTests
         Assert.Equal(3, eof.Span.End);
     }
 
-    // ─── Line-Comments ─────────────────────────────────────────────────────
+    // ─── line comments ─────────────────────────────────────────────────────
 
     [Fact]
     public void Line_comment_only_yields_EOF()
@@ -411,8 +411,8 @@ public class LexerTests
 
     [Theory]
     [InlineData("fnx")]      // a keyword as a prefix
-    [InlineData("fn_")]      // Underscore-Suffix
-    [InlineData("fn1")]      // Digit-Suffix
+    [InlineData("fn_")]      // an underscore suffix
+    [InlineData("fn1")]      // a digit suffix
     [InlineData("_fn")]      // an underscore prefix
     [InlineData("FN")]       // Case-sensitive
     [InlineData("Fn")]
@@ -473,7 +473,7 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
-    // ─── Doc-Comments (Slice 2) ────────────────────────────────────────────
+    // ─── doc comments ──────────────────────────────────────────────────────
 
     [Fact]
     public void DocComment_simple_emits_token()
@@ -1077,7 +1077,7 @@ public class LexerTests
     [InlineData("\"\\xab\"",     6)]
     public void String_with_valid_hex_escape(string input, int expectedEnd)
     {
-        // Regression Bug 3: Loop-Count-Bug in ConsumeHexEscape.
+        // Regression: the loop count in ConsumeHexEscape.
         var (tokens, diag) = Tokenize(input);
         Assert.Equal(2, tokens.Count);
         Assert.Equal(TokenKind.StringLiteral, tokens[0].TokenKind);
@@ -1827,7 +1827,7 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
-    // ─── Operators: Single-Char (Slice 6) ──────────────────────────────────
+    // ─── operators: single character ───────────────────────────────────────
 
     [Theory]
     [InlineData("(", TokenKind.LParen)]
@@ -1864,7 +1864,7 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
-    // ─── Operators: Two-Char ────────────────────────────────────────────────
+    // ─── operators: two characters ──────────────────────────────────────────
 
     [Theory]
     [InlineData("::", TokenKind.ColonColon)]
@@ -1901,7 +1901,7 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
-    // ─── Operators: Three-Char ──────────────────────────────────────────────
+    // ─── operators: three characters ────────────────────────────────────────
 
     [Theory]
     [InlineData("..=", TokenKind.DotDotEqual)]

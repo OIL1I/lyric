@@ -7,8 +7,8 @@ using Xunit;
 namespace Lyric.Tests.Resolver;
 
 /// <summary>
-/// Direkte Assertions gegen den Resolver-Kontrakt: Symbol-Struktur, Cross-Modul-Imports,
-/// Zyklen und Typ-Namen-Bindungen in der <see cref="BindingResult"/>.
+/// Direct assertions against the resolver contract: the symbol structure, cross-module imports, cycles
+/// and type name bindings in the <see cref="BindingResult"/>.
 /// </summary>
 public class ResolverTests
 {
@@ -64,7 +64,7 @@ public class ResolverTests
         Assert.Equal(Visibility.Module, ((FunctionSymbol)m.Members.LookupLocal("b")!).Visibility);
     }
 
-    // --- Typ-Namen-Bindung (BindingResult) ---
+    // --- type name binding through the BindingResult ---
 
     [Fact]
     public void Builtin_and_local_type_names_bind()
@@ -79,7 +79,7 @@ public class ResolverTests
         var xSym = Assert.IsType<TypeSymbol>(binding.Resolve(xType));
         Assert.Equal(TypeSymbolKind.Builtin, xSym.Kind);
         Assert.Equal("int", xSym.Name);
-        Assert.Same(s, binding.Resolve(yType)); // 'y: S' bindet an das S-Symbol
+        Assert.Same(s, binding.Resolve(yType)); // 'y: S' binds to the S symbol
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class ResolverTests
         Assert.IsType<ErrorSymbol>(binding.Resolve(t));
     }
 
-    // --- Imports (Cross-Modul + extern) ---
+    // --- imports: cross-module and external ---
 
     [Fact]
     public void Selective_import_binds_to_real_symbol_across_modules()
@@ -110,7 +110,7 @@ public class ResolverTests
     public void Namespace_import_of_external_module_is_opaque()
     {
         var (comp, _, _) = Resolve(("m", "import std.io; fn main(): int { return 0; }"));
-        Assert.IsType<ExternalSymbol>(comp.Modules[0].Members.LookupLocal("io")); // std.io nicht in Compilation
+        Assert.IsType<ExternalSymbol>(comp.Modules[0].Members.LookupLocal("io")); // std.io is not in the compilation
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class ResolverTests
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-RES0005");
     }
 
-    // --- Robustheit ---
+    // --- robustness ---
 
     [Theory]
     [InlineData("")]

@@ -1,4 +1,4 @@
-// Objekte: Allokation, Feldzugriff lesend und schreibend, compound assign auf ein Feld.
+// Objects: allocation, reading and writing a field, compound assignment to a field.
 class Counter {
     value: int,
     step: int

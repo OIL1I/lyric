@@ -8,12 +8,12 @@ using Xunit;
 namespace Lyric.Tests.Resolver;
 
 /// <summary>
-/// Golden-Tests für den Resolver. Jede Fixture (golden/&lt;name&gt;.lyr) ist ein einzelnes
-/// Modul, das geparst und aufgelöst wird; der Symbol-Dump (+ gerenderte Diagnostics)
-/// wird gegen den committeten Snapshot (golden/&lt;name&gt;.symbols) verglichen.
+/// Golden tests for the resolver. Every fixture (golden/&lt;name&gt;.lyr) is a single module that is
+/// parsed and resolved; the symbol dump, plus rendered diagnostics, is compared against the committed
+/// snapshot (golden/&lt;name&gt;.symbols).
 ///
-/// Snapshots wie beim Parser: einmal mit LYRIC_UPDATE_SNAPSHOTS=1 erzeugen, drüberlesen,
-/// committen. Die Fixtures parsen bewusst sauber, damit nur Resolver-Diagnostics erscheinen.
+/// Snapshots as for the parser: produce them once with LYRIC_UPDATE_SNAPSHOTS=1, read them over, commit.
+/// The fixtures parse cleanly on purpose, so only resolver diagnostics appear.
 /// </summary>
 public class GoldenTests
 {
@@ -46,8 +46,8 @@ public class GoldenTests
 
     [Theory]
     [InlineData("basic_module")]    // struct + Methode, pub fn, global let, type-Alias
-    [InlineData("imports")]         // 3 Import-Formen (extern, da Single-File)
-    [InlineData("enum_interface")]  // Enum-Varianten + Methoden, Interface-Member
+    [InlineData("imports")]         // three import forms, external because this is a single file
+    [InlineData("enum_interface")]  // enum variants and methods, interface members
     [InlineData("visibility")]      // pub vs. modul-privat
     [InlineData("duplicate_decl")]  // Duplikat (LYR-RES0001)
     [InlineData("unresolved_type")] // unbekannter Typ (LYR-RES0002)

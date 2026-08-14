@@ -4,8 +4,8 @@ using Lyric.Ir;
 namespace Lyric.Tests.Ir;
 
 /// <summary>
-/// Nicht-Golden-Tests des <see cref="IrPrinter"/>: Eigenschaften, die kein Snapshot
-/// abdeckt (Determinismus, Fehlerpfade, Standalone-Auflösung).
+/// Non-golden tests of the <see cref="IrPrinter"/>: properties no snapshot covers — determinism, error
+/// paths, standalone resolution.
 /// </summary>
 public class PrinterTests
 {
@@ -19,7 +19,7 @@ public class PrinterTests
     [Fact]
     public void Block_without_terminator_throws()
     {
-        var block = new IrBlock(new BlockId(0), new List<IrOp>()); // Terminator bleibt null
+        var block = new IrBlock(new BlockId(0), new List<IrOp>()); // the terminator stays null
         var func = new IrFunction("main.broken", new IrScalarType(IrScalar.Void), 0,
             new List<IrLocal>(), new List<IrTemp>(), new List<IrBlock> { block });
         var module = new IrModule(new List<IrFunction> { func });
@@ -30,8 +30,8 @@ public class PrinterTests
     [Fact]
     public void Standalone_function_dump_leaves_call_unresolved()
     {
-        // main.main ist f2 im Modul; standalone gedumpt fehlt der Kontext → Ziel bleibt der
-        // rohe Index f0 und der Dest-Typ des Calls ist '?'.
+        // main.main is f2 in the module; dumped standalone the context is missing, so the target stays the
+        // raw index f0 and the destination type of the call is '?'.
         var main = Fixtures.Build("two_functions_call").Functions[2];
         var dump = IrPrinter.Dump(main);
 

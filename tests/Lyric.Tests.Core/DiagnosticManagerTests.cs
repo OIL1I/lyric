@@ -8,7 +8,7 @@ public class DiagnosticEngineTests
 {
     private static StringWriter NewWriter()
     {
-        // Plattform-unabhängig: WriteLine emittiert "\n", nicht Environment.NewLine.
+        // Platform-independent: WriteLine emits "\n" rather than Environment.NewLine.
         return new StringWriter { NewLine = "\n" };
     }
 
@@ -87,7 +87,7 @@ public class DiagnosticEngineTests
             () => de.Report("CODE", Severity.Error, default, null!));
     }
 
-    // ─── Sortierung ────────────────────────────────────────────────────────
+    // ─── sorting ───────────────────────────────────────────────────────────
 
     [Fact]
     public void SortedSnapshot_orders_by_file_first()
@@ -155,7 +155,7 @@ public class DiagnosticEngineTests
     [Fact]
     public void SortedSnapshot_is_a_copy_not_a_view()
     {
-        // Mutation am Original wirkt sich nicht auf einen früheren Snapshot aus.
+        // A mutation of the original does not affect an earlier snapshot.
         var de = new DiagnosticEngine(new SourceManager());
         de.Report("A", Severity.Error, default, "first");
         var snap = de.SortedSnapshot();
@@ -163,7 +163,7 @@ public class DiagnosticEngineTests
         Assert.Single(snap);
     }
 
-    // ─── Text-Renderer ─────────────────────────────────────────────────────
+    // ─── the text renderer ─────────────────────────────────────────────────
 
     [Fact]
     public void RenderText_empty_engine_writes_nothing()
@@ -177,8 +177,8 @@ public class DiagnosticEngineTests
     [Fact]
     public void RenderText_no_file_diagnostic_ends_with_blank_line()
     {
-        // Erwartung: auch No-File-Diagnostics enden mit Leerzeile, konsistent zu File-Diagnostics.
-        // Aktueller Code macht das NICHT — der Test treibt den Fix.
+        // Expectation: diagnostics without a file end with a blank line too, consistently with those that
+        // have one.
         var de = new DiagnosticEngine(new SourceManager());
         de.Report("LYR-CLI0001", Severity.Error, default, "no input file");
         var sw = NewWriter();
@@ -189,7 +189,7 @@ public class DiagnosticEngineTests
     [Fact]
     public void RenderText_two_no_file_diagnostics_separated()
     {
-        // Erwartung: Leerzeile zwischen zwei No-File-Diagnostics.
+        // Expectation: a blank line between two diagnostics without a file.
         var de = new DiagnosticEngine(new SourceManager());
         de.Report("A", Severity.Error, default, "first");
         de.Report("B", Severity.Error, default, "second");
@@ -296,8 +296,7 @@ public class DiagnosticEngineTests
     [Fact]
     public void RenderJson_empty_engine_writes_tight_array()
     {
-        // Erwartung: kein Whitespace innerhalb des JSON. Aktueller Code hat ein
-        // " " nach "diagnostics": — Test treibt den Fix.
+        // Expectation: no whitespace inside the JSON.
         var de = new DiagnosticEngine(new SourceManager());
         var sw = NewWriter();
         de.RenderJson(sw);

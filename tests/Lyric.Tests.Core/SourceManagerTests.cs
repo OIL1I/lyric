@@ -382,7 +382,7 @@ public class SourceManagerTests
     [Fact]
     public void Locate_handles_multibyte_chars_as_single_code_unit()
     {
-        // "äöü" are all BMP code points, one UTF-16 code unit per character.
+        // The characters are all BMP code points, one UTF-16 code unit each.
         var sm = new SourceManager();
         var id = sm.AddVirtual("t", "äöü");
         Assert.Equal(new LinePosition(1, 1), sm.Locate(id, 0));

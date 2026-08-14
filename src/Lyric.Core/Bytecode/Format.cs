@@ -285,7 +285,6 @@ public enum Op : byte
     ///
     /// <para>An explicit instruction rather than an implicit copy inside <c>stloc</c>, whose
     /// meaning would otherwise depend on the type of its target slot.</para></summary>
-    /// the format unambiguous — the same decision as for <c>mkiface</c>.</para></summary>
     StructCopy = 0x72,
 
     // --- Exceptions (Format 2.3) -------------------------------------------------------------

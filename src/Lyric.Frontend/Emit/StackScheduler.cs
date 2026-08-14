@@ -37,7 +37,7 @@ internal sealed class FunctionLayout
 ///
 /// <para>The invariant: the stack is empty at every block boundary. Values crossing blocks travel
 /// through locals, which the lowering already guarantees structurally. Scheduling is therefore
-/// purely block-local, and the stack depth is statically checkable at load time.
+/// purely block-local, and the stack depth is statically checkable at load time.</para>
 ///
 /// <para>Without scheduling every temp would take a slot, and the disassembly would be full of
 /// redundant store/load pairs.</para>
@@ -169,7 +169,7 @@ internal static class StackScheduler
     /// <list type="bullet">
     /// <item>all operands lie as a SUFFIX of the stack in exactly this order: they are popped and no
     /// loads arise;</item>
-    /// <item>no operand is on the stack: all arrive through <c>ldloc</c> on top and are</item>
+    /// <item>no operand is on the stack: all arrive through <c>ldloc</c> on top and are
     /// consumed immediately, while anything below stays untouched;</item>
     /// <item>anything else (mixed, or on the stack in the wrong position): not emittable, because
     /// an <c>ldloc</c> above an operand already there would destroy the order. The affected temps
