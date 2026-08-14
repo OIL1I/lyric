@@ -1,0 +1,3878 @@
+{
+  "Modules": [
+    {
+      "Path": "std.collections",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Interface",
+          "Name": "Indexable",
+          "Signature": "pub interface Indexable<T>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "get",
+              "Signature": "fn get(index: int): T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 23
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "set",
+              "Signature": "mut fn set(index: int, value: T): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 24
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 22
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "List",
+          "Signature": "pub class List<T> :: [Indexable<T>, Iterable<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "data",
+              "Signature": "data: (?T)[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 41
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "count",
+              "Signature": "count: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 42
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "length",
+              "Signature": "pub fn length(): int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 44
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "iter",
+              "Signature": "pub fn iter(): Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 49
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "isEmpty",
+              "Signature": "pub fn isEmpty(): bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 55
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "capacity",
+              "Signature": "pub fn capacity(): int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 59
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "push",
+              "Signature": "pub mut fn push(value: T): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 75
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "pop",
+              "Signature": "pub mut fn pop(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 92
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "get",
+              "Signature": "pub fn get(index: int): T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 112
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "set",
+              "Signature": "pub mut fn set(index: int, value: T): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 120
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "clear",
+              "Signature": "pub mut fn clear(): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 127
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "toArray",
+              "Signature": "pub fn toArray(): T[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 140
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 40
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "emptyList",
+          "Signature": "pub fn emptyList<T>(): List<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 163
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "ListIterator",
+          "Signature": "pub class ListIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: List<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 171
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "index",
+              "Signature": "index: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 172
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 174
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 170
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "collect",
+          "Signature": "pub fn collect<T>(source: Iterator<T>): List<T>",
+          "Doc": "Collects an iterator into a `List<T>`.\n\nHere rather than in `std.iter`, because the dependency runs this way: `std.collections` imports\n`std.iter`, not the reverse. `std.iter.collectArray` is the variant without that dependency,\nand it is quadratic because a `T[]` copies on every append. This one doubles and is linear.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 189
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "Map",
+          "Signature": "pub class Map<K :: [Hashable<K>, Equatable<K>], V>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "keys",
+              "Signature": "keys: (?K)[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 213
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "values",
+              "Signature": "values: (?V)[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 214
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "states",
+              "Signature": "states: int[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 215
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "count",
+              "Signature": "count: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 216
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "used",
+              "Signature": "used: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 217
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "length",
+              "Signature": "pub fn length(): int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 219
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "isEmpty",
+              "Signature": "pub fn isEmpty(): bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 223
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "containsKey",
+              "Signature": "pub fn containsKey(key: K): bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 259
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "get",
+              "Signature": "pub fn get(key: K): ?V",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 263
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "set",
+              "Signature": "pub mut fn set(key: K, value: V): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 271
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "remove",
+              "Signature": "pub mut fn remove(key: K): ?V",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 311
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 212
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "emptyMap",
+          "Signature": "pub fn emptyMap<K :: [Hashable<K>, Equatable<K>], V>(): Map<K, V>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 354
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sortList",
+          "Signature": "pub fn sortList<T :: [Ordered<T>]>(xs: List<T>): void",
+          "Doc": "Sorts in place by the natural order of the type.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 384
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sortListBy",
+          "Signature": "pub fn sortListBy<T>(xs: List<T>, less: fn(T, T) -> bool): void",
+          "Doc": "Sorts in place with a comparison of your own.\n\n`less(a, b)` must return `true` when `a` comes STRICTLY before `b`. A `less` returning `true`\nfor equal elements destroys stability; a contradictory `less` makes the output arbitrary but\ncrashes nothing, because the algorithm only compares.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 393
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "Set",
+          "Signature": "pub class Set<T :: [Hashable<T>, Equatable<T>]>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "items",
+              "Signature": "items: (?T)[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 477
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "states",
+              "Signature": "states: int[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 478
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "count",
+              "Signature": "count: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 479
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "used",
+              "Signature": "used: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 480
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "length",
+              "Signature": "pub fn length(): int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 482
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "isEmpty",
+              "Signature": "pub fn isEmpty(): bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 486
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "contains",
+              "Signature": "pub fn contains(value: T): bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 517
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "add",
+              "Signature": "pub mut fn add(value: T): bool",
+              "Doc": "Adds and returns `true` when the value was NEW.\n\nThe return value saves a preceding `contains`, which would probe twice.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 524
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "remove",
+              "Signature": "pub mut fn remove(value: T): bool",
+              "Doc": "Removes and returns `true` when the value was present.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 559
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "iter",
+              "Signature": "pub fn iter(): Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 570
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 476
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "SetIterator",
+          "Signature": "pub class SetIterator<T :: [Hashable<T>, Equatable<T>]> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Set<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 600
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "index",
+              "Signature": "index: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 601
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 603
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 599
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "emptySet",
+          "Signature": "pub fn emptySet<T :: [Hashable<T>, Equatable<T>]>(): Set<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 615
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "union",
+          "Signature": "pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 622
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "intersect",
+          "Signature": "pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 629
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "difference",
+          "Signature": "pub fn difference<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 640
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isSubset",
+          "Signature": "pub fn isSubset<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 648
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "MapKeyIterator",
+          "Signature": "pub class MapKeyIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<K>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Map<K, V>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 667
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "index",
+              "Signature": "index: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 668
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?K",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 670
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 666
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "MapValueIterator",
+          "Signature": "pub class MapValueIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<V>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Map<K, V>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 683
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "index",
+              "Signature": "index: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 684
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?V",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/collections.lyr",
+                "Line": 686
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 682
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "keys",
+          "Signature": "pub fn keys<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<K>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 698
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "values",
+          "Signature": "pub fn values<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<V>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 702
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "listContains",
+          "Signature": "pub fn listContains<T :: [Equatable<T>]>(xs: List<T>, value: T): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 712
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "listIndexOf",
+          "Signature": "pub fn listIndexOf<T :: [Equatable<T>]>(xs: List<T>, value: T): ?int",
+          "Doc": "The position of the first occurrence, or `null` when there is none.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/collections.lyr",
+            "Line": 724
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.core",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Function",
+          "Name": "panic",
+          "Signature": "pub fn panic(message: string): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 13
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "coroutineEnded",
+          "Signature": "pub fn coroutineEnded(): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 17
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "assert",
+          "Signature": "pub fn assert(condition: bool, message: string): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 28
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "todo",
+          "Signature": "pub fn todo(message: string): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 35
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "unreachable",
+          "Signature": "pub fn unreachable(message: string): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 41
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "Exception",
+          "Signature": "pub class Exception :: [Throwable]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "text",
+              "Signature": "text: string",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 52
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "message",
+              "Signature": "pub fn message(): string",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 54
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 51
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Display",
+          "Signature": "pub interface Display",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "show",
+              "Signature": "fn show(): string",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 68
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 67
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Equatable",
+          "Signature": "pub interface Equatable<T>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "equals",
+              "Signature": "fn equals(other: T): bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 105
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 104
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Hashable",
+          "Signature": "pub interface Hashable<T>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "hash",
+              "Signature": "fn hash(): int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 111
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 110
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Ordered",
+          "Signature": "pub interface Ordered<T>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "compare",
+              "Signature": "fn compare(other: T): int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 117
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 116
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.fmt",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Function",
+          "Name": "formatInt",
+          "Signature": "pub fn formatInt(value: int, spec: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 20
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatUint",
+          "Signature": "pub fn formatUint(value: uint, spec: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 21
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatFloat",
+          "Signature": "pub fn formatFloat(value: float, spec: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 22
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatBool",
+          "Signature": "pub fn formatBool(value: bool, spec: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 23
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatChar",
+          "Signature": "pub fn formatChar(value: char, spec: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 24
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatString",
+          "Signature": "pub fn formatString(value: string, spec: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 28
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatRadix",
+          "Signature": "pub fn formatRadix(value: int, radix: int): string",
+          "Doc": "To a base from 2 to 36. Letters from `a` for digit values above 9.\n\nThe inverse of `std.string.parseIntRadix`. They live in different modules because parsing is\ntext processing and formatting is output, and `std.string` must not import `std.fmt`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 43
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatHex",
+          "Signature": "pub fn formatHex(value: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 77
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatBinary",
+          "Signature": "pub fn formatBinary(value: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 81
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatOctal",
+          "Signature": "pub fn formatOctal(value: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 85
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatHexPadded",
+          "Signature": "pub fn formatHexPadded(value: int, width: int): string",
+          "Doc": "Hexadecimal with a fixed number of digits and leading zeros: `formatHexPadded(255, 4)` is\n`\"00ff\"`, for addresses and colour values where the width carries meaning.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 91
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "padLeft",
+          "Signature": "pub fn padLeft(value: string, width: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 97
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "padRight",
+          "Signature": "pub fn padRight(value: string, width: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 101
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "center",
+          "Signature": "pub fn center(value: string, width: int): string",
+          "Doc": "Centres. On an odd remainder the extra character goes to the RIGHT.\nA decision rather than a matter of course, but without it the same input yields two different\nresults depending on the implementation.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 108
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "formatBytes",
+          "Signature": "pub fn formatBytes(bytes: int): string",
+          "Doc": "Bytes in readable form: `1536` becomes `\"1.5 KB\"`.\n\nBase 1024 with the prefixes without `i` (`KB` rather than `KiB`), the spelling operating\nsystems and tools actually use.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 123
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "table",
+          "Signature": "pub fn table(rows: string[][], separator: string): string",
+          "Doc": "Aligns columns. Each row is a `string[]`; short rows are padded with empty cells.\n\nNo borders and no header handling: what a table means is the caller's business. This does the\ntedious part — two passes over the data, to know the column widths before printing.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/fmt.lyr",
+            "Line": 147
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.io.console",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Function",
+          "Name": "print",
+          "Signature": "pub fn print(value: string)",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 24
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "println",
+          "Signature": "pub fn println(value: string)",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 25
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "eprintln",
+          "Signature": "pub fn eprintln(value: string)",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 26
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "write",
+          "Signature": "pub fn write<T :: [Display]>(value: T): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 33
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "writeln",
+          "Signature": "pub fn writeln<T :: [Display]>(value: T): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 37
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "readLine",
+          "Signature": "pub fn readLine(): ?string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 44
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "readAll",
+          "Signature": "pub fn readAll(): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 47
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "readChar",
+          "Signature": "pub fn readChar(): ?char",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 50
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isInteractive",
+          "Signature": "pub fn isInteractive(): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 53
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "flush",
+          "Signature": "pub fn flush(): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 56
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "eprint",
+          "Signature": "pub fn eprint(value: string)",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 58
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "prompt",
+          "Signature": "pub fn prompt(text: string): ?string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 67
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "LineIterator",
+          "Signature": "pub class LineIterator :: [Iterator<string>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "done",
+              "Signature": "done: bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/io/console.lyr",
+                "Line": 80
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?string",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/io/console.lyr",
+                "Line": 82
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 79
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "lines",
+          "Signature": "pub fn lines(): Iterator<string>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 94
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.io.file",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Function",
+          "Name": "readText",
+          "Signature": "pub fn readText(path: string): ?string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 17
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "writeText",
+          "Signature": "pub fn writeText(path: string, content: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 20
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "appendText",
+          "Signature": "pub fn appendText(path: string, content: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 23
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "exists",
+          "Signature": "pub fn exists(path: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 25
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "remove",
+          "Signature": "pub fn remove(path: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 28
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "readLines",
+          "Signature": "pub fn readLines(path: string): string[]",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 32
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "size",
+          "Signature": "pub fn size(path: string): ?int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 41
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isFile",
+          "Signature": "pub fn isFile(path: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 42
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isDirectory",
+          "Signature": "pub fn isDirectory(path: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 43
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "copy",
+          "Signature": "pub fn copy(from: string, to: string): bool",
+          "Doc": "Copies. `false` when the source is missing or the target is not writable.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 46
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "move",
+          "Signature": "pub fn move(from: string, to: string): bool",
+          "Doc": "Moves or renames; the same operation on every file system.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 49
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "createDir",
+          "Signature": "pub fn createDir(path: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 51
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "createDirAll",
+          "Signature": "pub fn createDirAll(path: string): bool",
+          "Doc": "Creates missing parent directories too. An existing directory counts as success.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 54
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "removeDir",
+          "Signature": "pub fn removeDir(path: string): bool",
+          "Doc": "Deletes an EMPTY directory. There is no recursive delete; a caller that needs one writes\nthe loop visibly.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 58
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "listDir",
+          "Signature": "pub fn listDir(path: string): string[]",
+          "Doc": "The entries of a directory: names rather than paths, sorted alphabetically.\n\nAn empty array for an unreadable directory rather than a `?string[]`, as in `readLines`. A\ncaller that needs the difference asks `isDirectory` first.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 64
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "tempDir",
+          "Signature": "pub fn tempDir(): string",
+          "Doc": "A path in the system's temporary directory. Does NOT create the file.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 67
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "joinPath",
+          "Signature": "pub fn joinPath(links: string, rechts: string): string",
+          "Doc": "Joins two path parts, with neither a doubled nor a missing separator.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 81
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fileName",
+          "Signature": "pub fn fileName(path: string): string",
+          "Doc": "The last component. `\"a/b/c.txt\"` becomes `\"c.txt\"`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 114
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "parentDir",
+          "Signature": "pub fn parentDir(path: string): string",
+          "Doc": "Everything before the last separator, or `\"\"` when there is none.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 120
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "extension",
+          "Signature": "pub fn extension(path: string): string",
+          "Doc": "The extension WITHOUT the dot. `\"\"` when there is none.\n\nA leading dot does not count: `\".gitignore\"` has no extension, that is its name. This rule\ndiffers between languages, so it is stated here.\njemanden herausfinden zu lassen.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 137
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "stem",
+          "Signature": "pub fn stem(path: string): string",
+          "Doc": "The name without its extension. `\"a/b/c.txt\"` becomes `\"c\"`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 153
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "withExtension",
+          "Signature": "pub fn withExtension(path: string, ext: string): string",
+          "Doc": "Replaces the extension. An empty extension removes it.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 163
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isAbsolute",
+          "Signature": "pub fn isAbsolute(path: string): bool",
+          "Doc": "Does the path start at the root? Recognises `/x` and `C:\\x`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 171
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.iter",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Interface",
+          "Name": "Iterator",
+          "Signature": "pub interface Iterator<T>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 18
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 16
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "RangeIterator",
+          "Signature": "pub class RangeIterator :: [Iterator<int>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "current",
+              "Signature": "current: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 24
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "end",
+              "Signature": "end: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 25
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 27
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 23
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "ArrayIterator",
+          "Signature": "pub class ArrayIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: T[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 40
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "index",
+              "Signature": "index: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 41
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 43
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 39
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "StringIterator",
+          "Signature": "pub class StringIterator :: [Iterator<char>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "chars",
+              "Signature": "chars: char[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 57
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "index",
+              "Signature": "index: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 58
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?char",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 60
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 56
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Iterable",
+          "Signature": "pub interface Iterable<T>",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "iter",
+              "Signature": "fn iter(): Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 83
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 82
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "MapIterator",
+          "Signature": "pub class MapIterator<T, U> :: [Iterator<U>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 99
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "f",
+              "Signature": "f: fn(T) -> U",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 100
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?U",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 102
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 98
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "map",
+          "Signature": "pub fn map<T, U>(source: Iterator<T>, f: fn(T) -> U): Iterator<U>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 112
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "FilterIterator",
+          "Signature": "pub class FilterIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 117
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "keep",
+              "Signature": "keep: fn(T) -> bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 118
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 120
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 116
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "filter",
+          "Signature": "pub fn filter<T>(source: Iterator<T>, keep: fn(T) -> bool): Iterator<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 133
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "TakeIterator",
+          "Signature": "pub class TakeIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 138
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "remaining",
+              "Signature": "remaining: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 139
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 141
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 137
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "take",
+          "Signature": "pub fn take<T>(source: Iterator<T>, count: int): Iterator<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 152
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "SkipIterator",
+          "Signature": "pub class SkipIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 157
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "pending",
+              "Signature": "pending: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 158
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 160
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 156
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "skip",
+          "Signature": "pub fn skip<T>(source: Iterator<T>, count: int): Iterator<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 172
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "TakeWhileIterator",
+          "Signature": "pub class TakeWhileIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 177
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "keep",
+              "Signature": "keep: fn(T) -> bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 178
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "done",
+              "Signature": "done: bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 179
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 181
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 176
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "takeWhile",
+          "Signature": "pub fn takeWhile<T>(source: Iterator<T>, keep: fn(T) -> bool): Iterator<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 201
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "EnumerateIterator",
+          "Signature": "pub class EnumerateIterator<T> :: [Iterator<(int, T)>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "source",
+              "Signature": "source: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 206
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "index",
+              "Signature": "index: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 207
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?(int, T)",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 209
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 205
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "enumerate",
+          "Signature": "pub fn enumerate<T>(source: Iterator<T>): Iterator<(int, T)>",
+          "Doc": "Numbers the elements: `a, b, c` becomes `(0, a), (1, b), (2, c)`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 221
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "ZipIterator",
+          "Signature": "pub class ZipIterator<A, B> :: [Iterator<(A, B)>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "left",
+              "Signature": "left: Iterator<A>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 226
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "right",
+              "Signature": "right: Iterator<B>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 227
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?(A, B)",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 229
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 225
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "zip",
+          "Signature": "pub fn zip<A, B>(left: Iterator<A>, right: Iterator<B>): Iterator<(A, B)>",
+          "Doc": "Walks both in step and ends with the shorter one.\n\nThe one surplus call on `left` is the price of both sides sharing the same interface; avoiding\nit would need a `peek` on `Iterator<T>` that exists nowhere else.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 246
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "ChainIterator",
+          "Signature": "pub class ChainIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "first",
+              "Signature": "first: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 251
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "second",
+              "Signature": "second: Iterator<T>",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 252
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "onFirst",
+              "Signature": "onFirst: bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 253
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/iter.lyr",
+                "Line": 255
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 250
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "chain",
+          "Signature": "pub fn chain<T>(first: Iterator<T>, second: Iterator<T>): Iterator<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 267
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fold",
+          "Signature": "pub fn fold<T, A>(source: Iterator<T>, seed: A, step: fn(A, T) -> A): A",
+          "Doc": "Folds from the left: `fold(1..4, 0, (acc, n) => acc + n)` is `((0+1)+2)+3`.\n\nThe most general terminator; `count`, `sum`, `any` and `all` are special cases of it. They\nexist separately because `fold` with a closure is too much ceremony for counting.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 284
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "count",
+          "Signature": "pub fn count<T>(source: Iterator<T>): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 295
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sum",
+          "Signature": "pub fn sum(source: Iterator<int>): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 307
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sumFloat",
+          "Signature": "pub fn sumFloat(source: Iterator<float>): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 317
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "any",
+          "Signature": "pub fn any<T>(source: Iterator<T>, test: fn(T) -> bool): bool",
+          "Doc": "Stops at the first match; the rest is never evaluated.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 328
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "all",
+          "Signature": "pub fn all<T>(source: Iterator<T>, test: fn(T) -> bool): bool",
+          "Doc": "Stops at the first counterexample. An empty iterator yields `true`, the only convention for\nwhich `all(a) && all(b) == all(chain(a, b))` holds.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 342
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "none",
+          "Signature": "pub fn none<T>(source: Iterator<T>, test: fn(T) -> bool): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 354
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "find",
+          "Signature": "pub fn find<T>(source: Iterator<T>, test: fn(T) -> bool): ?T",
+          "Doc": "The first element that matches, or `null`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 359
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "position",
+          "Signature": "pub fn position<T>(source: Iterator<T>, test: fn(T) -> bool): ?int",
+          "Doc": "The position of the first match. Separate from `find`, because a `(int, T)` tuple would cost\nthe common case where only one of the two is needed.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 373
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "collectArray",
+          "Signature": "pub fn collectArray<T>(source: Iterator<T>): T[]",
+          "Doc": "Everything into an array.\n\nQuadratic: a `T[]` has a fixed length, so every append copies. For large iterators use\n`std.collections.collect`, which gathers into a doubling `List<T>`. It stands here because\n`std.iter` must not import `std.collections`; the dependency runs the other way.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 392
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "minValue",
+          "Signature": "pub fn minValue<T :: [Ordered<T>]>(source: Iterator<T>): ?T",
+          "Doc": "The smallest element, or `null` for an empty source.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 403
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "maxValue",
+          "Signature": "pub fn maxValue<T :: [Ordered<T>]>(source: Iterator<T>): ?T",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/iter.lyr",
+            "Line": 418
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.math",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Binding",
+          "Name": "pi",
+          "Signature": "pub let pi: float = 3.141592653589793",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 13
+          }
+        },
+        {
+          "Kind": "Binding",
+          "Name": "e",
+          "Signature": "pub let e: float = 2.718281828459045",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 14
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sqrt",
+          "Signature": "pub fn sqrt(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 16
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "abs",
+          "Signature": "pub fn abs(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 17
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "floor",
+          "Signature": "pub fn floor(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 21
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "ceil",
+          "Signature": "pub fn ceil(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 22
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "round",
+          "Signature": "pub fn round(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 23
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "min",
+          "Signature": "pub fn min(a: float, b: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 25
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "max",
+          "Signature": "pub fn max(a: float, b: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 26
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "pow",
+          "Signature": "pub fn pow(base: float, exponent: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 27
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sin",
+          "Signature": "pub fn sin(radians: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 29
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "cos",
+          "Signature": "pub fn cos(radians: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 30
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "tan",
+          "Signature": "pub fn tan(radians: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 31
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "log",
+          "Signature": "pub fn log(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 34
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "asin",
+          "Signature": "pub fn asin(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 42
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "acos",
+          "Signature": "pub fn acos(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 43
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "atan",
+          "Signature": "pub fn atan(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 44
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "atan2",
+          "Signature": "pub fn atan2(y: float, x: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 45
+          }
+        },
+        {
+          "Kind": "Binding",
+          "Name": "tau",
+          "Signature": "pub let tau: float = 6.283185307179586",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 49
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "absInt",
+          "Signature": "pub fn absInt(value: int): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 56
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "minInt",
+          "Signature": "pub fn minInt(a: int, b: int): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 60
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "maxInt",
+          "Signature": "pub fn maxInt(a: int, b: int): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 64
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "clampInt",
+          "Signature": "pub fn clampInt(value: int, lo: int, hi: int): int",
+          "Doc": "Clamps to `[lo, hi]`. A `lo > hi` yields `lo`; the bounds are the caller's business.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 69
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "signInt",
+          "Signature": "pub fn signInt(value: int): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 76
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "gcd",
+          "Signature": "pub fn gcd(a: int, b: int): int",
+          "Doc": "Greatest common divisor, Euclidean. Always non-negative.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 84
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "lcm",
+          "Signature": "pub fn lcm(a: int, b: int): int",
+          "Doc": "Least common multiple. `lcm(0, n)` is 0.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 96
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "powInt",
+          "Signature": "pub fn powInt(base: int, exponent: int): ?int",
+          "Doc": "Integer power by repeated squaring.\n\nA negative exponent yields `null`: the result would be a fraction.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 108
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "divFloor",
+          "Signature": "pub fn divFloor(a: int, b: int): int",
+          "Doc": "Division rounding towards negative infinity rather than towards zero.\n\n`/` and `%` follow the sign of the dividend, so `-7 / 2` is -3.\nComputing on a grid (tiles, time windows) needs -4. Both forms stand side by side so the\nchoice is visible.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 131
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "modFloor",
+          "Signature": "pub fn modFloor(a: int, b: int): int",
+          "Doc": "The remainder matching `divFloor`, always carrying the sign of `b`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 141
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "clamp",
+          "Signature": "pub fn clamp(value: float, lo: float, hi: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 151
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sign",
+          "Signature": "pub fn sign(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 158
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "trunc",
+          "Signature": "pub fn trunc(value: float): float",
+          "Doc": "Truncates towards zero: `trunc(-2.7)` is `-2.0`, while `floor(-2.7)` would be `-3.0`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 166
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isNaN",
+          "Signature": "pub fn isNaN(value: float): bool",
+          "Doc": "`NaN` is the only value unequal to itself (IEEE 754), so this needs no native edge and no bit\naccess.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 172
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isInfinite",
+          "Signature": "pub fn isInfinite(value: float): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 176
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isFinite",
+          "Signature": "pub fn isFinite(value: float): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 184
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "exp",
+          "Signature": "pub fn exp(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 188
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "log2",
+          "Signature": "pub fn log2(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 194
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "log10",
+          "Signature": "pub fn log10(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 195
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "logBase",
+          "Signature": "pub fn logBase(value: float, base: float): float",
+          "Doc": "Logarithmus zu beliebiger Basis.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 198
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "cbrt",
+          "Signature": "pub fn cbrt(value: float): float",
+          "Doc": "The cube root, negative values included.\n\n`pow(x, 1/3)` alone yields NaN for negative `x`: a fractional power is undefined there. The\ncube root is not, and the sign simply moves out.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 206
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "hypot",
+          "Signature": "pub fn hypot(a: float, b: float): float",
+          "Doc": "The length of the hypotenuse.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 214
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sinh",
+          "Signature": "pub fn sinh(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 218
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "cosh",
+          "Signature": "pub fn cosh(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 222
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "tanh",
+          "Signature": "pub fn tanh(value: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 226
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "toRadians",
+          "Signature": "pub fn toRadians(degrees: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 230
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "toDegrees",
+          "Signature": "pub fn toDegrees(radians: float): float",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 234
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "Random",
+          "Signature": "pub class Random",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "state",
+              "Signature": "state: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/math.lyr",
+                "Line": 251
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextInt",
+              "Signature": "pub mut fn nextInt(): int",
+              "Doc": "The next raw value. It may have either sign.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/math.lyr",
+                "Line": 254
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextIntRange",
+              "Signature": "pub mut fn nextIntRange(lo: int, hi: int): int",
+              "Doc": "Uniformly distributed in `[lo, hi)`. An empty range yields `lo`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/math.lyr",
+                "Line": 264
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextFloat",
+              "Signature": "pub mut fn nextFloat(): float",
+              "Doc": "Uniformly distributed in `[0, 1)`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/math.lyr",
+                "Line": 273
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextBool",
+              "Signature": "pub mut fn nextBool(): bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/math.lyr",
+                "Line": 279
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 250
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "newRandom",
+          "Signature": "pub fn newRandom(seed: int): Random",
+          "Doc": "A generator with an explicit seed.\n\nA seed of 0 is a fixed point for xorshift — the sequence would stay 0 forever — so it is\nreplaced silently rather than panicking on a plausible input.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/math.lyr",
+            "Line": 288
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.option",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Function",
+          "Name": "map",
+          "Signature": "pub fn map<T, U>(o: ?T, f: fn(T) -> U): ?U",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 28
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "andThen",
+          "Signature": "pub fn andThen<T, U>(o: ?T, f: fn(T) -> ?U): ?U",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 39
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "filter",
+          "Signature": "pub fn filter<T>(o: ?T, pred: fn(T) -> bool): ?T",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 47
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "zip",
+          "Signature": "pub fn zip<T, U>(a: ?T, b: ?U): ?(T, U)",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 59
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "contains",
+          "Signature": "pub fn contains<T :: [Equatable<T>]>(o: ?T, value: T): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 70
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "toArray",
+          "Signature": "pub fn toArray<T>(o: ?T): T[]",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 80
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "OptionIterator",
+          "Signature": "pub class OptionIterator<T> :: [Iterator<T>]",
+          "Doc": null,
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "value",
+              "Signature": "value: ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/option.lyr",
+                "Line": 92
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "done",
+              "Signature": "done: bool",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/option.lyr",
+                "Line": 93
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "next",
+              "Signature": "pub mut fn next(): ?T",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/option.lyr",
+                "Line": 95
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 91
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "iter",
+          "Signature": "pub fn iter<T>(o: ?T): OptionIterator<T>",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 106
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "expect",
+          "Signature": "pub fn expect<T>(o: ?T, message: string): T",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/option.lyr",
+            "Line": 117
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.os",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Function",
+          "Name": "platform",
+          "Signature": "pub fn platform(): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 9
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "env",
+          "Signature": "pub fn env(name: string): ?string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 13
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "currentDir",
+          "Signature": "pub fn currentDir(): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 16
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "exit",
+          "Signature": "pub fn exit(code: int): void",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 21
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "args",
+          "Signature": "pub fn args(): string[]",
+          "Doc": "The command-line arguments, also outside `main`.\n\n`main(args)` receives them, but a function deeper in the program does not; here they are\navailable without threading them through.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 29
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "setEnv",
+          "Signature": "pub fn setEnv(name: string, value: string): bool",
+          "Doc": "Sets an environment variable for this process. Child processes inherit it; the system does\nnot.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 33
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "hostName",
+          "Signature": "pub fn hostName(): ?string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 35
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "userName",
+          "Signature": "pub fn userName(): ?string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 36
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "homeDir",
+          "Signature": "pub fn homeDir(): ?string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 37
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "cpuCount",
+          "Signature": "pub fn cpuCount(): int",
+          "Doc": "How many cores the machine has, for programs that split their work. The VM itself is\nsingle-threaded.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 41
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "nowMillis",
+          "Signature": "pub fn nowMillis(): int",
+          "Doc": "Milliseconds since 1970-01-01 UTC.\n\nA number rather than a date type: dates, time zones and calendars are their own module. The\nnumber is the same on every platform.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 47
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "nowNanos",
+          "Signature": "pub fn nowNanos(): int",
+          "Doc": "Nanoseconds from a monotonic clock. Not comparable with `nowMillis`; the origin is arbitrary.\nA system clock can jump during a measurement, a monotonic one cannot.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 51
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "sleep",
+          "Signature": "pub fn sleep(millis: int): void",
+          "Doc": "Suspends the process. The VM is single-threaded, so nothing runs alongside.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 54
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "envOr",
+          "Signature": "pub fn envOr(name: string, fallback: string): string",
+          "Doc": "An environment variable with a default.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/os.lyr",
+            "Line": 59
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.string",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Function",
+          "Name": "concat",
+          "Signature": "pub fn concat(a: string, b: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 14
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fromInt",
+          "Signature": "pub fn fromInt(value: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 16
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fromUint",
+          "Signature": "pub fn fromUint(value: uint): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 20
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fromFloat",
+          "Signature": "pub fn fromFloat(value: float): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 21
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fromBool",
+          "Signature": "pub fn fromBool(value: bool): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 22
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fromChar",
+          "Signature": "pub fn fromChar(value: char): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 23
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "repeat",
+          "Signature": "pub fn repeat(value: string, count: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 27
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "length",
+          "Signature": "pub fn length(value: string): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 37
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "charAt",
+          "Signature": "pub fn charAt(value: string, index: int): char",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 38
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "substring",
+          "Signature": "pub fn substring(value: string, start: int, count: int): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 39
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "indexOf",
+          "Signature": "pub fn indexOf(value: string, needle: string): int",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 43
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "contains",
+          "Signature": "pub fn contains(value: string, needle: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 44
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "startsWith",
+          "Signature": "pub fn startsWith(value: string, prefix: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 45
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "endsWith",
+          "Signature": "pub fn endsWith(value: string, suffix: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 46
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "trim",
+          "Signature": "pub fn trim(value: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 48
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "toUpper",
+          "Signature": "pub fn toUpper(value: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 51
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "toLower",
+          "Signature": "pub fn toLower(value: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 52
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "split",
+          "Signature": "pub fn split(value: string, separator: string): string[]",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 55
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "toChars",
+          "Signature": "pub fn toChars(value: string): char[]",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 58
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isDigit",
+          "Signature": "pub fn isDigit(c: char): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 77
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isAlpha",
+          "Signature": "pub fn isAlpha(c: char): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 82
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isAlphanumeric",
+          "Signature": "pub fn isAlphanumeric(c: char): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 86
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isWhitespace",
+          "Signature": "pub fn isWhitespace(c: char): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 90
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isUpper",
+          "Signature": "pub fn isUpper(c: char): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 94
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isLower",
+          "Signature": "pub fn isLower(c: char): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 98
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "charToDigit",
+          "Signature": "pub fn charToDigit(c: char): ?int",
+          "Doc": "The numeric value of a digit, or `null` when it is not one.\n\n`?int` rather than `-1`: a failure the caller has to handle belongs in the type.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 105
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "digitToChar",
+          "Signature": "pub fn digitToChar(value: int): ?char",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 112
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isEmpty",
+          "Signature": "pub fn isEmpty(value: string): bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 121
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "isBlank",
+          "Signature": "pub fn isBlank(value: string): bool",
+          "Doc": "Empty or whitespace only.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 126
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "indexOfFrom",
+          "Signature": "pub fn indexOfFrom(value: string, needle: string, start: int): int",
+          "Doc": "Searches from a position. `-1` when nothing is found, as in `indexOf`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 141
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "lastIndexOf",
+          "Signature": "pub fn lastIndexOf(value: string, needle: string): int",
+          "Doc": "The LAST occurrence.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 159
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "count",
+          "Signature": "pub fn count(value: string, needle: string): int",
+          "Doc": "How often `needle` occurs, WITHOUT overlap.\n\nOverlapping occurrences are not counted: `count(\"aaa\", \"aa\")` is 1, not 2. This matches\n`replace`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 180
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "join",
+          "Signature": "pub fn join(parts: string[], separator: string): string",
+          "Doc": "Joins the parts with a separator: the inverse of `split`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 197
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "splitLines",
+          "Signature": "pub fn splitLines(value: string): string[]",
+          "Doc": "Splits at line breaks. Both `\\r\\n` and `\\n` count.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 212
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "splitFirst",
+          "Signature": "pub fn splitFirst(value: string, separator: string): string[]",
+          "Doc": "Splits at the FIRST occurrence; the rest stays whole, for `key=value=more`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 218
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "replace",
+          "Signature": "pub fn replace(value: string, needle: string, ersatz: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 229
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "replaceFirst",
+          "Signature": "pub fn replaceFirst(value: string, needle: string, ersatz: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 251
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "trimStart",
+          "Signature": "pub fn trimStart(value: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 264
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "trimEnd",
+          "Signature": "pub fn trimEnd(value: string): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 273
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "padStart",
+          "Signature": "pub fn padStart(value: string, width: int, fill: char): string",
+          "Doc": "Pads at the front until `width` is reached. A longer string is left unchanged; truncating\nwould lose data in a function that only formats.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 283
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "padEnd",
+          "Signature": "pub fn padEnd(value: string, width: int, fill: char): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 291
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "parseInt",
+          "Signature": "pub fn parseInt(value: string): ?int",
+          "Doc": "`\"-42\"` becomes `-42`, anything else `null`.\n\nNo overflow protection: a number beyond `int64` wraps rather than yielding `null`. Detecting\nit would need a division per digit.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 308
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "parseIntRadix",
+          "Signature": "pub fn parseIntRadix(value: string, radix: int): ?int",
+          "Doc": "From a base of 2 to 36. Letters continue from `a`/`A`.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 341
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "parseBool",
+          "Signature": "pub fn parseBool(value: string): ?bool",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 384
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "parseFloat",
+          "Signature": "pub fn parseFloat(value: string): ?float",
+          "Doc": "`\"3.5\"`, `\"-0.25\"` and `\"42\"` become floating point; everything else is `null`.\n\nWithout exponent notation (`1e9`), which would need a state machine of its own.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 397
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "fromChars",
+          "Signature": "pub fn fromChars(chars: char[]): string",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 453
+          }
+        },
+        {
+          "Kind": "Class",
+          "Name": "StringBuilder",
+          "Signature": "pub class StringBuilder",
+          "Doc": "Builds a string piece by piece.\n\n`s = s + part` in a loop is quadratic: every step copies the whole string so far. The builder\ncollects the parts and joins them once.\n\nThe backing is a doubling `string[]`, written by hand because this module must not import\n`std.collections`.",
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "parts",
+              "Signature": "parts: string[]",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/string.lyr",
+                "Line": 471
+              }
+            },
+            {
+              "Kind": "Field",
+              "Name": "count",
+              "Signature": "count: int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/string.lyr",
+                "Line": 472
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "length",
+              "Signature": "pub fn length(): int",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/string.lyr",
+                "Line": 474
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "append",
+              "Signature": "pub mut fn append(value: string): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/string.lyr",
+                "Line": 478
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "appendLine",
+              "Signature": "pub mut fn appendLine(value: string): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/string.lyr",
+                "Line": 492
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "appendChar",
+              "Signature": "pub mut fn appendChar(value: char): void",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/string.lyr",
+                "Line": 497
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "build",
+              "Signature": "pub fn build(): string",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/string.lyr",
+                "Line": 501
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 470
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "newStringBuilder",
+          "Signature": "pub fn newStringBuilder(): StringBuilder",
+          "Doc": null,
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 512
+          }
+        }
+      ]
+    }
+  ]
+}

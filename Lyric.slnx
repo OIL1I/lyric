@@ -20,6 +20,10 @@
     <Project Path="tests/Lyric.Tests.Vm/Lyric.Tests.Vm.csproj" />
     <Project Path="tests/Lyric.Tests.Cli/Lyric.Tests.Cli.csproj" />
     <Project Path="tests/Lyric.Tests.Embedding/Lyric.Tests.Embedding.csproj" />
+    <Project Path="tests/Lyric.Tests.DocGen/Lyric.Tests.DocGen.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/DocGen/DocGen.csproj" />
   </Folder>
   <Folder Name="/examples/">
     <Project Path="examples/embedded-host/EmbeddedHost.csproj" />

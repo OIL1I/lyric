@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>docgen</AssemblyName>
+    <RootNamespace>Lyric.DocGen</RootNamespace>
+    <Description>The documentation generator: Lyric source to a static site.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The frontend, for its lexer, parser and AST. Not the runtime: the generator reads source and
+      executes nothing. It is a tool and stays out of build/publish.proj.
+    -->
+    <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lyric.Frontend\Lyric.Frontend.csproj" />
+  </ItemGroup>
+
+</Project>
