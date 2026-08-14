@@ -1,9 +1,8 @@
-// optionals.lyr — Komplexität: einfach
-// Zeigt: ?T, null, ??, !, Flow-Narrowing.
+// optionals.lyr — complexity: simple
+// Shows: ?T, null, ??, ! and flow narrowing.
 //
-// Gate-Programm für M7/P2b. `?T` bedeutet „vielleicht ein Wert" — und die Sprache lässt dich nicht
-// vergessen, den Fall zu behandeln: an einen `int` kommst du nur über `??`, `!` oder eine
-// Null-Prüfung, die den Typ einengt.
+// `?T` means "maybe a value", and the case cannot be forgotten: an `int` is reachable only through
+// `??`, `!` or a null check that narrows the type.
 
 import std.io.console { println };
 
@@ -12,7 +11,7 @@ class Account {
     balance: int
 }
 
-// Kein Treffer ist ein normaler Ausgang, kein Fehler — deshalb `?Account` und nicht `throws`.
+// No hit is a normal outcome rather than an error, hence `?Account` and not `throws`.
 fn findAccount(accounts: Account[], owner: string): ?Account {
     var i = 0;
     while (i < accounts.length) {
@@ -27,8 +26,8 @@ fn findAccount(accounts: Account[], owner: string): ?Account {
 fn balanceOf(accounts: Account[], owner: string): int {
     let found = findAccount(accounts, owner);
 
-    // Flow-Narrowing (§7): im then-Zweig hat `found` den Typ `Account`, nicht `?Account`.
-    // Der Zugriff auf `.balance` braucht deshalb kein `!`.
+    // Flow narrowing: in the then branch `found` has the type `Account` rather than `?Account`, so
+    // the access to `.balance` needs no `!`.
     if (found != null) {
         return found.balance;
     }
@@ -44,7 +43,7 @@ fn main(): int {
     let mara = balanceOf(accounts, "Mara");
     let niemand = balanceOf(accounts, "Kim");
 
-    // `??` wertet seine rechte Seite nur aus, wenn links nichts steht.
+    // `??` evaluates its right-hand side only when the left holds nothing.
     let fallback = findAccount(accounts, "Kim") ?? accounts[0];
 
     println(f"Mara: {mara}, unbekannt: {niemand}, Ersatz: {fallback.owner}");

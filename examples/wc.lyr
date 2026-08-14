@@ -1,36 +1,31 @@
-// wc.lyr — das M8-Gate: Zeilen, Wörter und Zeichen einer Datei zählen.
+// wc.lyr — counts the lines, words and characters of a file.
 //
-//     lyric run examples/wc.lyr -- datei.txt [datei2.txt ...]
+//     lyric run examples/wc.lyr -- file.txt [file2.txt ...]
 //
-// Es ist als Gate gewählt, weil es die Stdlib **quer** belastet statt in die Tiefe: Dateien
-// lesen (S7, `fileAccess`), Zeilen und Wörter zerlegen (S2), zählen in einer Liste (S5),
-// formatiert ausgeben (S3), und der Einstieg mit Argumenten (§11). Fällt eines davon aus, läuft
-// es nicht — genau das soll ein Gate messen.
+// It uses the standard library ACROSS rather than in depth: reading files (`fileAccess`), splitting
+// lines and words, counting in a list, formatted output, and the entry point with arguments.
 //
-// Was es **nicht** kann: `-l`/`-w`/`-c`-Flags und Lesen von stdin. Beides ist Ergonomie, keine
-// Sprach- oder Bibliotheksfrage; das echte `wc` hat dafür 200 Zeilen Argument-Parsing.
+// It has no `-l`/`-w`/`-c` flags and does not read stdin.
 //
-// **Eine bewusste Abweichung von POSIX**: `wc -l` zaehlt *Zeilenumbrueche*, nicht Zeilen — eine
-// Datei mit Text, aber ohne abschliessenden Umbruch, hat fuer POSIX null Zeilen. Hier hat sie
-// eine. Fuer ein Beispielprogramm ist die intuitive Zaehlung die bessere; wer echte
-// wc-Kompatibilitaet braucht, zaehlt Umbrueche und nennt es auch so.
+// A deliberate deviation from POSIX: `wc -l` counts LINE BREAKS rather than lines, so a file with
+// text but without a trailing break has zero lines for POSIX. Here it has one.
 
 import std.io.file { readText, exists };
 import std.io.console { println, eprintln };
 import std.string { length, split, trim };
 import std.collections { List, emptyList };
 
-// Die drei Zahlen einer Datei. Ein `struct`, weil es ein Wert ist: zwei Zählungen mit denselben
-// Zahlen sind dasselbe Ergebnis, und niemand mutiert es nachträglich (§3.2).
+// The three numbers of a file. A `struct`, because it is a value: two counts with the same numbers
+// are the same result, and nobody mutates it afterwards.
 struct Counts {
     lines: int,
     words: int,
     chars: int,
 }
 
-// Wörter sind durch Weißraum getrennt, und mehrere Trenner hintereinander zählen als einer —
-// sonst hätte "a  b" drei Wörter. `split` liefert die leeren Stücke mit; sie werden hier
-// verworfen, statt `split` eine Option zu geben, die nur dieser Aufrufer braucht.
+// Words are separated by whitespace, and several separators in a row count as one; otherwise
+// "a  b" would have three words. `split` yields the empty pieces along with the rest, and they are
+// discarded here.
 fn countWords(line: string): int {
     var n = 0;
     for (part in split(line, " ")) {
@@ -42,9 +37,9 @@ fn countWords(line: string): int {
 }
 
 fn count(content: string): Counts {
-    // Über die Zeilen laufen, statt `readLines` zu nehmen: die Zeichen sollen die **Datei**
-    // zählen, samt Zeilenumbrüchen. `readLines` wirft sie weg, und dann wäre `chars` kleiner als
-    // die Datei groß ist — genau der Unterschied, den `wc -c` und `wc -m` ausmachen.
+    // Walking the lines rather than taking `readLines`: the characters have to count the FILE,
+    // including the line breaks. `readLines` throws them away, and `chars` would then be smaller
+    // than the file is.
     let lines = split(content, "\n");
 
     var lineCount = 0;
@@ -54,8 +49,8 @@ fn count(content: string): Counts {
         wordCount = wordCount + countWords(line);
     }
 
-    // Eine Datei, die mit einem Umbruch endet, hat danach keine leere letzte Zeile. `split`
-    // liefert sie trotzdem — dieselbe Regel wie in `std.io.file.readLines`.
+    // A file ending in a break has no empty last line after it. `split` yields one anyway, the same
+    // rule as in `std.io.file.readLines`.
     lineCount = lines.length;
     if (lines.length > 0 && length(lines[lines.length - 1]) == 0) {
         lineCount = lineCount - 1;
@@ -65,8 +60,8 @@ fn count(content: string): Counts {
 }
 
 fn report(name: string, c: Counts): void {
-    // Rechtsbündig auf acht Stellen, wie es `wc` tut — dafür ist die Breiten-Form der
-    // Format-Spec da (§2.2).
+    // Right-aligned to eight places, as `wc` does it; that is what the width form of the format
+    // spec is for.
     println(f"{c.lines:-8} {c.words:-8} {c.chars:-8} {name}");
 }
 
@@ -92,8 +87,7 @@ fn main(args: string[]): int {
         report(path, c);
     }
 
-    // Eine Summenzeile nur, wenn es etwas zu summieren gibt — bei einer Datei wäre sie eine
-    // Wiederholung.
+    // A total line only when there is something to total; with one file it would be a repetition.
     if (results.length() > 1) {
         var lines = 0;
         var words = 0;
@@ -106,8 +100,7 @@ fn main(args: string[]): int {
         report("total", Counts { lines = lines, words = words, chars = chars });
     }
 
-    // Wie das echte `wc`: eine nicht lesbare Datei ist ein Fehler, aber kein Grund, die anderen
-    // nicht zu zählen.
+    // Like the real `wc`: an unreadable file is an error, but no reason not to count the others.
     if (missing > 0) {
         return 1;
     }

@@ -1,6 +1,5 @@
-// fizzbuzz.lyr — Komplexität: einfach
-// Zeigt: for-in mit inklusivem Range, if/else-if-Ketten, Modulo,
-// String-Interpolation.
+// fizzbuzz.lyr — complexity: simple
+// Shows: for-in over an inclusive range, if/else-if chains, modulo and string interpolation.
 
 import std.io.console { println };
 

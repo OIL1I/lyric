@@ -1,14 +1,12 @@
-// Gate-Programm fuer M7/P7 — Coroutinen.
+// Coroutines.
 //
-// Der Kern: eine Coroutine PAUSIERT und laeuft spaeter dort weiter, wo sie aufgehoert hat. Ihre
-// lokalen Variablen ueberleben das 'yield' — genau das unterscheidet sie von einer Funktion, die
-// bei jedem Aufruf von vorn beginnt.
+// A coroutine PAUSES and later continues where it left off. Its local variables survive the
+// 'yield', which is what separates it from a function that starts from the beginning on every call.
 //
-// Bewusst OHNE 'for-in': das gehoert zu P8. Das fruehere Gate 'fibonacci.lyr' benutzt es und
-// haette P7 erst fertig werden lassen, wenn P8 es ist — dieselbe Falle wie bei 'inventory.lyr'.
+// Deliberately without 'for-in', so it needs nothing but the coroutine itself.
 import std.io.console;
 
-// Endlos: der Aufrufer entscheidet, wie viele Werte er abholt.
+// Endless: the caller decides how many values it collects.
 fn counter(): Coroutine<int> {
     var n = 0;
     while (true) {
@@ -17,7 +15,7 @@ fn counter(): Coroutine<int> {
     }
 }
 
-// Endlich: laeuft der Rumpf durch, ist die Coroutine fertig.
+// Finite: once the body runs through, the coroutine is done.
 fn three(): Coroutine<int> {
     yield 10;
     yield 20;
@@ -28,7 +26,7 @@ fn main(): int {
     let c = counter();
     var sum = 0;
 
-    // 0 + 1 + 2 + 3 + 4 = 10. Ohne erhaltenen Zustand kaeme fuenfmal die 0.
+    // 0 + 1 + 2 + 3 + 4 = 10. Without preserved state it would be 0 five times.
     var i = 0;
     while (i < 5) {
         sum = sum + resume c;

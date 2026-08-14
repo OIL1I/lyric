@@ -1,16 +1,15 @@
-// Tupel (Sprache.md §4): mehrere Werte in einem, ohne dafuer einen Typ zu deklarieren.
+// Tuples: several values in one, without declaring a type for it.
 //
-// Der einzige Weg an die Elemente ist Destructuring — einen Zugriff wie 't.0' gibt es
-// absichtlich nicht. Ein Tupel ist eine Mehrfachrueckgabe, und die will man sofort
-// auseinandernehmen; zwei Wege zur selben Sache waeren zwei Mechanismen.
+// The only way to the elements is destructuring; an access like 't.0' does not exist. A tuple is a
+// multiple return, and that is taken apart immediately.
 import std.io.console;
 
-// Der Fall, fuer den es Tupel gibt: zwei Werte zurueckgeben, ohne einen Typ dafuer zu erfinden.
+// The case tuples exist for: returning two values without inventing a type for them.
 fn divmod(a: int, b: int): (int, int) {
     return (a / b, a % b);
 }
 
-// Verschachtelt geht auch — das Muster folgt der Form des Wertes.
+// Nesting works too: the pattern follows the shape of the value.
 fn corners(): ((int, int), (int, int)) {
     return ((0, 0), (10, 5));
 }
@@ -19,14 +18,14 @@ fn main(): int {
     let (q, r) = divmod(17, 5);
     console.println(f"17 / 5 = {q} Rest {r}");
 
-    // '_' bindet nichts: das Feld wird gar nicht erst gelesen.
+    // '_' binds nothing: the field is not even read.
     let (_, rest) = divmod(9, 4);
     console.println(f"nur der Rest: {rest}");
 
     let ((x0, y0), (x1, y1)) = corners();
     console.println(f"von ({x0},{y0}) bis ({x1},{y1})");
 
-    // Ein 'match' zerlegt genauso — dasselbe Muster, derselbe Mechanismus.
+    // A 'match' decomposes the same way: the same pattern, the same mechanism.
     let point = (3, 4);
     let sum = match (point) { (a, b) => a + b };
     console.println(f"3 + 4 = {sum}");

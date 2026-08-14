@@ -1,14 +1,14 @@
-// inventory.lyr — Komplexität: fortgeschritten (M4-Vollausbau)
-// Zeigt: Interface mit Default-Methode, `::`-Konformanz, extend-Block auf einem
-// eigenen Typ, Closures mit Capture als Funktionsparameter, generische Funktion mit
-// Constraint, Pattern-Match auf einem Enum mit Payload, Nullable-Rückgabe.
+// inventory.lyr — complexity: advanced
+// Shows: an interface with a default method, `::` conformance, an extend block on an own type,
+// closures with capture as a function parameter, a generic function with a constraint, a pattern
+// match on an enum with a payload, and a nullable return.
 
 import std.io.console { println };
 
-// Ein Interface mit einer abstrakten und einer Default-Methode.
+// An interface with one abstract and one default method.
 interface Priced {
-    fn price(): int;                       // abstrakt
-    fn isFree(): bool {                    // Default: nutzt die abstrakte Methode
+    fn price(): int;                       // abstract
+    fn isFree(): bool {                    // default: uses the abstract method
         return this.price() == 0;
     }
 }
@@ -33,14 +33,14 @@ struct Item :: [Priced] {
     }
 }
 
-// extend fügt dem eigenen Typ eine Methode hinzu — inhärent, keine Aktivierung nötig.
+// extend adds a method to an own type: inherent, with no activation needed.
 extend Item {
     fn label(): string {
         return f"{this.name} ({this.price()} gold)";
     }
 }
 
-// Generische Summe über einen Constraint: jedes Priced-Element trägt bei.
+// A generic sum over a constraint: every Priced element contributes.
 fn totalPrice<T :: [Priced]>(items: T[]): int {
     var sum = 0;
     for (it in items) {
@@ -49,7 +49,7 @@ fn totalPrice<T :: [Priced]>(items: T[]): int {
     return sum;
 }
 
-// Nimmt eine Closure als Filter (impliziter Capture des Schwellwerts beim Aufrufer).
+// Takes a closure as a filter; the threshold is captured implicitly at the caller.
 fn firstMatching(items: Item[], keep: fn(Item) -> bool): ?Item {
     for (it in items) {
         if (keep(it)) {

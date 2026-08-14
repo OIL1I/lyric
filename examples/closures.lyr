@@ -1,23 +1,23 @@
-// Gate-Programm fuer M7/P6 — Closures.
+// Closures.
 //
-// Der Kern ist ADR-018: eine Closure faengt die VARIABLE, nicht ihren Wert. 'counter' gibt eine
-// Funktion zurueck, die ihr 'n' weiterzaehlt, obwohl der erzeugende Aufruf laengst zurueck ist —
-// und zwei Closures ueber demselben 'n' sehen dieselbe.
+// A closure captures the VARIABLE, not its value. 'counter' returns a function that keeps counting
+// its 'n' up although the creating call has long returned, and two closures over the same 'n' see
+// the same one.
 import std.io.console;
 
-// Ein gefangenes 'let' wird kopiert: es aendert sich nie, also ist der Unterschied nicht
-// beobachtbar, und die Kopie spart die Zelle.
+// A captured 'let' is copied: it never changes, so the difference is not observable and the copy
+// saves the cell.
 fn scaler(factor: int): fn(int) -> int {
     return (x: int) => x * factor;
 }
 
-// Ein gefangenes 'var' wird geteilt. Es lebt in einer Zelle auf dem Heap, nicht im Frame.
+// A captured 'var' is shared. It lives in a cell on the heap rather than in the frame.
 fn counter(): fn() -> int {
     var n = 0;
     return (): int => { n += 1; return n; };
 }
 
-// Eine Closure als Parameter — der Fall, fuer den es Funktionstypen ueberhaupt gibt.
+// A closure as a parameter: the case function types exist for.
 fn applyTwice(f: fn(int) -> int, v: int): int {
     return f(f(v));
 }
@@ -33,7 +33,7 @@ fn main(): int {
 
     console.println(f"applyTwice: {applyTwice(triple, 2)}");
 
-    // Zwei Closures, eine Variable.
+    // Two closures, one variable.
     var total = 0;
     let add = (x: int) => { total = total + x; };
     let read = (): int => total;
@@ -41,8 +41,7 @@ fn main(): int {
     add(30);
     console.println(f"geteiltes total: {read()}");
 
-    // 21 + 4 + 18 + 40 = 83. Die 4 ist der Punkt: 'next()' zaehlt hier WEITER, es liefert nicht
-    // noch einmal die 3 von oben. Genau das unterscheidet „faengt die Variable" von „faengt den
-    // Wert" (ADR-018) — bei by-value stuende hier eine 1.
+    // 21 + 4 + 18 + 40 = 83. The 4 is the point: 'next()' CONTINUES counting here rather than
+    // yielding the 3 from above again. By value it would be a 1.
     return triple(7) + next() + applyTwice(triple, 2) + read();
 }

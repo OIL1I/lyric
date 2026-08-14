@@ -1,26 +1,19 @@
-// Die Lyric-Extension für VS Code.
+// The Lyric extension for VS Code.
 //
-// Sie tut genau zwei Dinge: Syntax-Highlighting (deklarativ über package.json und die
-// TextMate-Grammatik — dafür ist kein Code nötig) und ein Run-Command. Der Code hier ist
-// ausschließlich für das zweite da.
+// It does two things: syntax highlighting, declared through package.json and the TextMate grammar
+// and needing no code, and a run command. The code here exists for the second one only.
 //
-// **Was sie bewusst nicht tut**: Diagnosen im Editor, Completion, Go-to-Definition. Das braucht
-// einen Sprachserver, der den Compiler inkrementell fährt und Ergebnisse zwischen Tastendrücken
-// hält — ein eigenes Projekt, das in der v1.X-Tabelle steht. Eine halbe Lösung wäre schlechter
-// als keine: ein Editor, der Fehler manchmal zeigt und manchmal nicht, ist schlimmer als einer,
-// der sie nie zeigt.
+// It carries no editor diagnostics, no completion and no go-to-definition; those need a language
+// server that runs the compiler incrementally and keeps results between keystrokes.
 
 const vscode = require("vscode");
 
-/** Das Terminal, in dem gelaufen wird — eines, nicht eines pro Aufruf. */
+/** The terminal that runs are sent to: one, not one per invocation. */
 let terminal = null;
 
 /**
- * Ein Terminal, das wiederverwendet wird, solange es lebt.
- *
- * Ohne die Wiederverwendung sammelt VS Code bei jedem Ctrl+F5 ein weiteres an, und nach zehn
- * Läufen sucht man seine Ausgabe in einer Liste. `exitStatus` erkennt ein Terminal, das der
- * Nutzer geschlossen hat.
+ * A terminal that is reused for as long as it lives; without the reuse VS Code collects another one
+ * on every Ctrl+F5. `exitStatus` detects a terminal the user has closed.
  */
 function lyricTerminal() {
     if (terminal === null || terminal.exitStatus !== undefined) {
@@ -29,25 +22,23 @@ function lyricTerminal() {
     return terminal;
 }
 
-/** Quotet einen Pfad fürs Terminal. Leerzeichen sind der Normalfall, nicht die Ausnahme. */
+/** Quotes a path for the terminal. Spaces are the normal case, not the exception. */
 function quote(path) {
     return `"${path}"`;
 }
 
 /**
- * Was vor den Befehl gehört, damit die Shell ihn als Befehl liest und nicht als Text.
+ * What has to precede the command so the shell reads it as a command rather than as text.
  *
- * **PowerShell braucht `&`.** Dort ist `"lyric" run x` ein String-Literal, das ausgegeben und
- * nicht ausgeführt wird — der Lauf passierte einfach nicht. Das trifft schon den Default
- * `executable: "lyric"`, also jeden, der die Extension unverändert benutzt.
+ * PowerShell needs `&`: there `"lyric" run x` is a string literal that gets printed instead of
+ * executed. That already hits the default `executable: "lyric"`.
  *
- * **Das Quoting deshalb wegzulassen wäre der falsche Ausweg**: dann läuft `C:\Program
- * Files\lyric\lyric.exe` nicht mehr, und zwar mit einer Fehlermeldung über `C:\Program`. Ein
- * Pfad mit Leerzeichen ist unter Windows der Normalfall.
+ * Dropping the quoting instead is not an option: `C:\Program Files\lyric\lyric.exe` would then fail
+ * on `C:\Program`.
  *
- * `vscode.env.shell` ist die Default-Shell, und `createTerminal` ohne `shellPath` nimmt genau
- * die — beide sehen dasselbe. Für cmd.exe und jede POSIX-Shell ist ein vorangestelltes `&`
- * falsch, deshalb die Fallunterscheidung statt „immer `&`".
+ * `vscode.env.shell` is the default shell, and `createTerminal` without `shellPath` takes exactly
+ * that one, so both see the same. For cmd.exe and every POSIX shell a leading `&` is wrong, hence
+ * the case distinction rather than always emitting it.
  */
 function callPrefix() {
     const shell = (vscode.env.shell || "").toLowerCase();
@@ -62,9 +53,8 @@ function activate(context) {
             return;
         }
 
-        // Ungespeicherte Änderungen zuerst schreiben: der Compiler liest die Datei von der
-        // Platte, nicht aus dem Editor-Puffer. Ohne das läuft die vorige Fassung, und der
-        // Nutzer sucht den Fehler in seinem Programm statt in seinem Editor.
+        // Unsaved changes are written first: the compiler reads the file from disk, not from the
+        // editor buffer. Without this the previous version runs.
         if (editor.document.isDirty) {
             const saved = await editor.document.save();
             if (!saved) {
@@ -77,8 +67,7 @@ function activate(context) {
             .getConfiguration("lyric")
             .get("executable", "lyric");
 
-        // Der DRIVER, nicht lyrc oder lyrvm: er ist das eine Kommando, das übersetzt und
-        // ausführt (ADR-019). Wer die Tools einzeln will, ruft sie im Terminal selbst.
+        // The DRIVER, not lyrc or lyrvm: it is the one command that compiles and runs.
         const shell = lyricTerminal();
         shell.show(true);
         const file = quote(editor.document.fileName);
@@ -89,8 +78,8 @@ function activate(context) {
 }
 
 function deactivate() {
-    // Das Terminal gehört uns, also räumen wir es weg. VS Code würde es sonst als Waise
-    // stehenlassen, wenn die Extension neu geladen wird.
+    // The terminal is ours, so it is disposed here; VS Code would otherwise leave it orphaned when
+    // the extension reloads.
     if (terminal !== null) {
         terminal.dispose();
         terminal = null;

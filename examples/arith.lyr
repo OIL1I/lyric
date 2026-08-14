@@ -1,10 +1,8 @@
-// arith.lyr — Komplexität: einfach
-// Das M5-Gate-Programm: bewusst OHNE Stdlib, damit es allein aus M5-Mitteln zu Bytecode
-// compiliert. `console.println` bräuchte eine Import-Tabelle mit Signaturen, und die
-// Signaturquelle für Stdlib-Symbole entsteht erst mit M8.
+// arith.lyr — complexity: simple
+// Deliberately WITHOUT the standard library, so it compiles to bytecode from the core alone.
 //
-// Zeigt, was P4 lowert: skalare Ausdrücke, Locals, modulinterne Calls, Kontrollfluss.
-// Beobachtbar über `lyric lower examples/arith.lyr`; ausführen kann es erst M6.
+// Shows what the lowering produces for scalar expressions, locals, module-internal calls and
+// control flow. Observable through `lyric lower examples/arith.lyr`.
 
 fn add(a: int, b: int): int {
     return a + b;
@@ -17,7 +15,7 @@ fn abs(n: int): int {
     return n;
 }
 
-// Klassisches Beispiel für die Schleifen-Lowering: Back-Edge plus Akkumulator.
+// The classic shape of a lowered loop: a back edge plus an accumulator.
 fn sumTo(n: int): int {
     var total = 0;
     var i = 1;
@@ -39,8 +37,8 @@ fn gcd(a: int, b: int): int {
     return x;
 }
 
-// if als AUSDRUCK (§6.2) — der Wert fließt über ein synthetisches Local, weil ein
-// Temp nur einmal definiert werden darf.
+// if as an EXPRESSION: the value travels through a synthetic local, because a temp may be
+// defined only once.
 fn max(a: int, b: int): int {
     return if (a >= b) a else b;
 }

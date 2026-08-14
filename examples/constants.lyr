@@ -1,17 +1,15 @@
-// Gate-Programm fuer M7/P5c — Konstanten als globale Slots.
+// Constants as global slots.
 //
-// Der Kern: ein Modul-'let' und ein 'static let' sind DERSELBE Mechanismus. Beide werden vor dem
-// Programmstart einmal von einer synthetischen '<globals>'-Funktion gefuellt; der Unterschied ist
-// nur, wo der Name sichtbar ist. Deshalb darf ein Initialisierer auch alles, was ein Rumpf darf —
-// rechnen, rufen, Objekte anlegen.
+// A module 'let' and a 'static let' are the SAME mechanism. Both are filled once before the program
+// starts by a synthetic '<globals>' function; the only difference is where the name is visible. An
+// initializer may therefore do everything a body may do: compute, call, allocate objects.
 import std.io.console;
 
 let VERSION = "1.0";
 let BANNER = "lyric " + VERSION;
 
-// Reihenfolge ist Deklarationsreihenfolge: BASE liest LEVELS, weil LEVELS darueber steht.
-// Andersherum waere es LYR-SEM0057, und zwar zu Recht — dort stuende ein Wert, den niemand
-// geschrieben hat.
+// The order is the declaration order: BASE reads LEVELS because LEVELS stands above it. The other
+// way round is LYR-SEM0057, since it would read a value nobody has written.
 let LEVELS = 4;
 let BASE = LEVELS * 10;
 
@@ -19,9 +17,8 @@ pub struct Vector2 {
     x: int,
     y: int,
 
-    // Eine typgebundene Konstante, die ein Objekt ist. Genau dieser Fall entscheidet, warum die
-    // Globals-Sektion eine Init-FUNKTION referenziert und keine Werte enthaelt: 'Vector2 { … }'
-    // ist ein Ausdruck, kein Literal.
+    // A type-bound constant that is an object. This case is why the globals section references an
+    // init FUNCTION rather than holding values: 'Vector2 { … }' is an expression, not a literal.
     static let ORIGIN: Vector2 = Vector2 { x = 0, y = 0 };
 
     fn sum(): int {
@@ -40,8 +37,8 @@ pub class Enemy {
     }
 }
 
-// Aus einem Rumpf ist jede Konstante lesbar, egal wo sie steht — hier laeuft die Init-Phase
-// laengst nicht mehr. TAIL steht erst ganz unten.
+// From a body every constant is readable wherever it stands, because the init phase is long over.
+// TAIL is declared at the very bottom.
 fn describe(): string {
     return BANNER + TAIL;
 }

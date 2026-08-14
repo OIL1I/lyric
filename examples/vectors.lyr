@@ -1,7 +1,7 @@
-// Gate-Programm fuer M7/P4 — Structs mit Wert-Semantik.
+// Structs with value semantics.
 //
-// Der Kern ist, was NICHT passiert: 'b = a' kopiert, also aendert 'b.x = 99' niemals 'a.x'.
-// Genau darin unterscheidet sich ein struct von einer class, und sonst in nichts.
+// The point is what does NOT happen: 'b = a' copies, so 'b.x = 99' never changes 'a.x'. That is the
+// whole difference between a struct and a class.
 import std.io.console;
 
 pub struct Vector2 {
@@ -20,21 +20,21 @@ pub struct Vector2 {
         return this.x + this.y;
     }
 
-    // Mutiert den Empfaenger — und weil der Empfaenger eine Kopie ist, sieht der Aufrufer
-    // davon nichts, wenn er den Wert vorher weitergegeben hat.
+    // Mutates the receiver; because the receiver is a copy, the caller sees nothing of it once the
+    // value has been passed on.
     mut fn scale(factor: int) {
         this.x *= factor;
         this.y *= factor;
     }
 }
 
-// Ein struct als Feld eines anderen struct: die Kopie muss bis hier durchgreifen.
+// A struct as a field of another struct: the copy has to reach through to here.
 pub struct Segment {
     from: Vector2,
     to: Vector2,
 }
 
-// Der Parameter ist eine Kopie. Was hier passiert, bleibt hier.
+// The parameter is a copy. What happens here stays here.
 fn shrink(v: Vector2): int {
     v.scale(0);
     return v.sum();
@@ -43,22 +43,22 @@ fn shrink(v: Vector2): int {
 fn main(): int {
     let a = Vector2 { x = 3, y = 4 };
 
-    // 1) Zuweisung kopiert.
+    // 1) assignment copies.
     var b = a;
     b.x = 99;
     console.println(f"a.x={a.x} b.x={b.x}");
 
-    // 2) Der Parameter kopiert — 'a' ueberlebt unveraendert.
+    // 2) the parameter copies, so 'a' survives unchanged.
     let shrunk = shrink(a);
     console.println(f"shrunk={shrunk} a.sum={a.sum()}");
 
-    // 3) Ein struct im struct kopiert mit.
+    // 3) a struct inside a struct copies along.
     let line = Segment { from = a, to = Vector2.zero() };
     var moved = line;
     moved.from.x = 42;
     console.println(f"line.from.x={line.from.x} moved.from.x={moved.from.x}");
 
-    // 4) Rechnen ohne Nebenwirkung.
+    // 4) computing without a side effect.
     let c = a.plus(Vector2 { x = 1, y = 1 });
 
     return a.sum() + b.x + c.sum();

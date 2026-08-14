@@ -1,16 +1,15 @@
-// Gate-Programm fuer M7/P3 — Interfaces und vtable-Dispatch.
+// Interfaces and vtable dispatch.
 //
-// Der Kern ist 'hit': sie kennt nur 'Damageable' und weiss nicht, ob ein Player oder eine Wall
-// vor ihr steht. Welche 'takeDamage' laeuft, entscheidet erst die Laufzeit — das ist der einzige
-// dynamische Dispatch der Sprache.
+// 'hit' knows only 'Damageable' and not whether a Player or a Wall stands in front of it. Which
+// 'takeDamage' runs is decided at run time; this is the only dynamic dispatch in the language.
 import std.io.console;
 
 pub interface Damageable {
     mut fn takeDamage(amount: int);
     fn getHp(): int;
 
-    // Default-Methode: wer sie nicht ueberschreibt, erbt sie. Das 'this.getHp()' darin ist selbst
-    // ein virtueller Aufruf — in einer Default-Methode ist 'this' der Interface-Typ.
+    // A default method: whoever does not override it inherits it. The 'this.getHp()' inside is
+    // itself a virtual call, because in a default method 'this' has the interface type.
     fn isAlive(): bool {
         return this.getHp() > 0;
     }
@@ -40,7 +39,7 @@ pub class Wall :: [Damageable] {
         return Wall { hp = hp };
     }
 
-    // Eine Wall steckt die Haelfte weg.
+    // A Wall absorbs half of it.
     mut fn takeDamage(amount: int) {
         this.hp -= amount / 2;
         if (this.hp < 0) { this.hp = 0; }
@@ -50,13 +49,13 @@ pub class Wall :: [Damageable] {
         return this.hp;
     }
 
-    // Ueberschreibt den Default: eine Wall gilt erst unter 10 hp als zerstoert.
+    // Overrides the default: a Wall counts as destroyed only below 10 hp.
     fn isAlive(): bool {
         return this.hp > 10;
     }
 }
 
-// Kennt nur den Vertrag, nie die Klasse.
+// Knows the contract only, never the class.
 fn hit(target: Damageable, amount: int): int {
     target.takeDamage(amount);
     return target.getHp();
@@ -71,13 +70,13 @@ fn main(): int {
     let player = Player.new(100);
     let wall = Wall.new(100);
 
-    // Derselbe Aufruf, zwei Implementierungen: 100-40 = 60 und 100-20 = 80.
+    // The same call, two implementations: 100-40 = 60 and 100-20 = 80.
     let playerHp = hit(player, 40);
     let wallHp = hit(wall, 40);
 
     console.println(f"player: {playerHp}, wall: {wallHp}");
 
-    // Default-Methode gegen Ueberschreibung: ein Player mit 5 hp lebt, eine Wall mit 5 nicht.
+    // The default method against the override: a Player with 5 hp lives, a Wall with 5 does not.
     let weak = Player.new(5);
     let rubble = Wall.new(5);
     console.println(f"weak player: {describe(weak)}, rubble: {describe(rubble)}");

@@ -7,9 +7,9 @@ body:
     attributes:
       value: |
         Thanks for proposing a feature. Lyric has tight scope discipline
-        (see [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md)). Please fill
-        in all required fields honestly — vague ideas get parked in
-        `docs/IDEAS.md` without action.
+        (see [CONTRIBUTING.md](https://github.com/OIL1I/lyric/blob/main/CONTRIBUTING.md)). Please fill
+        in all required fields honestly — vague ideas get parked without
+        action.
 
   - type: textarea
     id: problem
@@ -80,7 +80,7 @@ body:
       options:
         - "Before v1.0 (requires justification why this is a blocker, not a nice-to-have)"
         - "Post-v1.0 (the default for almost every new feature)"
-        - "Unclear / experimental (will sit in IDEAS.md indefinitely)"
+        - "Unclear / experimental (will sit as an idea indefinitely)"
     validations:
       required: true
 

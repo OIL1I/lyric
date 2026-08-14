@@ -1,6 +1,6 @@
-// bank.lyr — Komplexität: fortgeschritten
-// Zeigt: class als Reference-Typ, Throwable-Typ, `throws` in der Signatur,
-// throw/try/catch mit typed catch, `new`-Fabrik-Konvention, defer beim Scope-Exit.
+// bank.lyr — complexity: advanced
+// Shows: class as a reference type, a throwable type, `throws` in the signature, throw/try/catch
+// with a typed catch, the `new` factory convention, and defer on scope exit.
 
 import std.io.console { println, eprintln };
 
@@ -17,7 +17,7 @@ pub class Account {
     owner: string,
     balance: int = 0,
 
-    // Fabrik-Methode (keine Sprach-Magie, nur Konvention).
+    // A factory method: no language magic, only a convention.
     static fn new(owner: string, opening: int): Account {
         return Account { owner = owner, balance = opening };
     }
@@ -42,7 +42,7 @@ fn main(): int {
 
     try {
         acc.withdraw(30);    // ok  -> 120
-        acc.withdraw(200);   // wirft InsufficientFunds
+        acc.withdraw(200);   // throws InsufficientFunds
     } catch (e: InsufficientFunds) {
         eprintln(f"Fehler: {e.message()}");
     }

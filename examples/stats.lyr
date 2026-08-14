@@ -1,10 +1,10 @@
-// stats.lyr — Komplexität: einfach–mittel
-// Zeigt: freie Funktionen, variadische `params`, Arrays (.length, Indexing),
-// Nullable-Rückgabe mit `??`, `as`-Konvertierung, Format-Spec.
+// stats.lyr — complexity: simple to medium
+// Shows: free functions, variadic `params`, arrays (.length, indexing), a nullable return with
+// `??`, an `as` conversion, and a format spec.
 
 import std.io.console { println };
 
-// `params` sammelt beliebig viele Argumente in ein int[].
+// `params` collects any number of arguments into an int[].
 fn sum(params nums: int[]): int {
     var total = 0;
     for (n in nums) {
@@ -13,7 +13,7 @@ fn sum(params nums: int[]): int {
     return total;
 }
 
-// Leeres Array hat kein Maximum -> ?int.
+// An empty array has no maximum, hence ?int.
 fn max(xs: int[]): ?int {
     if (xs.length == 0) {
         return null;

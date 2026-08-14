@@ -1,8 +1,6 @@
-// enums.lyr — Komplexität: mittel
-// Zeigt: enum mit Unit-, Tuple- und Struct-Varianten, Methoden, `match` als Ausdruck und Statement.
-//
-// Gate-Programm für M7/P3b. `shapes.lyr` ist dasselbe Thema in voller Ausbaustufe — es braucht
-// zusätzlich `for-in` (P8) und `std.math` (M8).
+// enums.lyr — complexity: medium
+// Shows: an enum with unit, tuple and struct variants, methods, and `match` as an expression and as
+// a statement. `shapes.lyr` is the same subject fully built out, with `for-in` and `std.math`.
 
 import std.io.console { println };
 
@@ -11,8 +9,8 @@ pub enum Shape {
     Rect { w: int, h: int },
     Empty;
 
-    // Jede Variante hat ihr eigenes Layout; welches vorliegt, entscheidet das Tag. `match` liest
-    // es und engt danach ein — der Feldzugriff ist dann ein gewöhnlicher Feldzugriff.
+    // Every variant has its own layout, and the tag decides which one is present. `match` reads the
+    // tag and narrows afterwards, so the field access is an ordinary field access.
     fn area(): int {
         return match (this) {
             Circle(r) => r * r * 3,

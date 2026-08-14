@@ -16,10 +16,8 @@ until v1.0 ships.
 
 Until v1.0 is released, the file `POST-V1-ROADMAP.md` **does not exist**.
 
-Ideas for post-v1 features go in [`docs/IDEAS.md`](docs/IDEAS.md), which is
-explicitly an unstructured pile, **not** a plan. When an idea recurs three
-times or is investigated seriously, it becomes a GitHub issue with the
-`idea` label — still not a plan, just a structured discussion.
+Ideas for post-v1 features go into GitHub issues with the `idea` label —
+still not a plan, just a structured discussion.
 
 Reason: Oil grew a 2761-line post-v1 roadmap that absorbed all design
 energy and prevented v1.0 from ever shipping. We will not repeat that.
@@ -45,8 +43,8 @@ requires a written ADR plus 30 days of consideration.
 
 A milestone is not done until:
 
-1. All exit criteria in [`docs/ROADMAP.md`](docs/ROADMAP.md) are met.
-2. A git tag exists (`m0-complete`, `m1-complete`, ...).
+1. Its exit criteria, as recorded in [`STATUS.md`](STATUS.md), are met.
+2. A git tag exists.
 3. Someone could clone the repo, follow the README, and *do something* with
    it — even if that something is small (e.g. tokenize a file).
 
@@ -57,7 +55,7 @@ artifact.
 
 ## How to add a language feature before v1.0
 
-Don't, unless it's already in [`docs/Sprache.md`](docs/Sprache.md).
+Don't, unless it's already in [`docs/Grammar.md`](docs/Grammar.md).
 
 If you really must add something not currently in v1:
 
@@ -67,13 +65,12 @@ If you really must add something not currently in v1:
    mandatory even for the maintainer. If after 7 days you still consider
    it essential, proceed.
 3. The PR must include:
-   - A change to `docs/Sprache.md` reflecting the new feature.
-   - A change to `docs/Doku.md` with a user-facing explanation and example.
-   - An ADR in `docs/ROADMAP.md` if the change touches design decisions.
+   - A change to `docs/Grammar.md` reflecting the new feature.
+   - A change to `docs/guide/` with a user-facing explanation and example.
    - Tests covering the new behavior.
 
 If the change would push v1.0 by more than 4 weeks, it is rejected by
-default and goes to `docs/IDEAS.md` for post-v1.
+default and goes to an `idea` issue for post-v1.
 
 ---
 
@@ -91,12 +88,12 @@ Bugs do not need the 7-day wait. The standard flow:
 
 On the first Sunday of each month, do a **scope check**:
 
-1. Read `docs/ROADMAP.md` §Meilensteine.
-2. Compare the current milestone's actual elapsed time with the estimate.
+1. Read the current milestone and its estimate in [`STATUS.md`](STATUS.md).
+2. Compare the actual elapsed time with the estimate.
 3. If you are >50% over the estimate: honestly evaluate which features can
    be cut.
-4. If you are >100% over: re-cut the milestone, document the change as an
-   ADR.
+4. If you are >100% over: re-cut the milestone and record the change in
+   `STATUS.md`.
 
 This is the **only** legitimate place for plan adjustment. Plan changes
 made on impulse (e.g. "I just thought of something better") are forbidden.
@@ -108,12 +105,12 @@ made on impulse (e.g. "I just thought of something better") are forbidden.
 | Topic | Convention |
 |---|---|
 | Naming (C# code) | Standard .NET: `PascalCase` types/methods, `_camelCase` private fields, `camelCase` parameters |
-| Naming (Lyric stdlib code in `.lyr`) | `PascalCase` types, `camelCase` everything else (see `docs/Sprache.md` §1.3a) |
+| Naming (Lyric stdlib code in `.lyr`) | `PascalCase` types, `camelCase` everything else (see `docs/Grammar.md`) |
 | Indentation | 4 spaces, no tabs |
 | Line length | Soft 100, hard 120 |
 | Trailing commas | Allowed in multi-line lists/blocks |
 | `var` (C#) | Prefer when type is obvious from RHS; use explicit type otherwise |
-| Comments | Explain *why*, not *what*. The code says what. |
+| Comments | English, describing the technique and the logic. No justifications, no project history, no milestone or decision references. |
 
 No formatter is enforced in v1 (a `lyric fmt` tool may come post-v1).
 Follow these rules manually.
@@ -127,12 +124,16 @@ Each subsystem has its own test project:
 - `tests/Lyric.Tests.Core/` — `SourceManager`, `DiagnosticEngine`, `Span`
 - `tests/Lyric.Tests.Lexing/` — tokenizer
 - `tests/Lyric.Tests.Parsing/` — AST construction
-- `tests/Lyric.Tests.Sema/` — type checking, resolution
+- `tests/Lyric.Tests.Resolver/` — name resolution
+- `tests/Lyric.Tests.Sema/` — type checking
+- `tests/Lyric.Tests.Ir/` — AST to IR lowering
+- `tests/Lyric.Tests.Bytecode/` — the `.lyrbc` format, writer and reader
 - `tests/Lyric.Tests.Vm/` — bytecode execution
-- `tests/Lyric.Tests.E2E/` — compile and run whole programs
+- `tests/Lyric.Tests.Embedding/` — the host API
+- `tests/Lyric.Tests.Cli/` — the binaries end to end, plus the examples
 
-Tests use xUnit. Golden tests (where applicable) compare against snapshot
-files in `tests/<project>/snapshots/`.
+Tests use xUnit. Golden tests compare against snapshot files in
+`tests/<project>/golden/`; set `LYRIC_UPDATE_SNAPSHOTS=1` to rewrite them.
 
 Before committing: `dotnet test` must pass.
 
@@ -154,36 +155,32 @@ Examples:
 lexer: handle nested block comments
 sema: detect non-exhaustive match with missing variants
 docs: clarify defer ordering with multiple defers
-M5: bytecode opcode design for arithmetic
 ```
 
-Tag the milestone area when commits are part of a milestone push.
+The area is the subsystem the change lands in.
 
 ---
 
 ## Releases
 
-Tags follow `vMAJOR.MINOR.PATCH` semver. Pre-1.0 releases are
-`v0.X.0` with `X` corresponding loosely to milestone:
+Tags follow `vMAJOR.MINOR.PATCH` semver, with all three components written
+out from v1.0 on. Every release has an **annotated tag**; its message is the
+release note: what the version delivers, and what it cannot do yet.
 
-- `v0.1.0` after M5 (bytecode lowering)
-- `v0.5.0` after M7 (VM with exceptions, coroutines, closures)
-- `v0.9.0` after M9 (REPL + tooling)
-- `v1.0.0` after M10 (embedding API)
+Two channels, both described in the [README](README.md#releases):
 
-Every release has an **annotated tag**. Its message is the release note: what the
-milestone delivered, and what the state cannot do yet.
+- **stable** — pushing an annotated `vX.Y.Z` tag runs `.github/workflows/release.yml`,
+  which verifies on Linux and Windows, packages `win-x64`, `linux-x64` and
+  `osx-arm64`, and publishes the archives as a GitHub release.
+- **nightly** — `.github/workflows/nightly.yml` builds `main` once a day and
+  replaces the `nightly` prerelease. No compatibility promise.
 
 **No `CHANGELOG.md` before `v1.0.0`.** A changelog answers "what changed for me
 since last time", and that question presupposes something to be compatible with.
-Pre-1.0 there is no such promise — neither for the `.lyrbc` format (ADR-013
-allows breaking major bumps) nor for the language itself, which is still being
-made internally consistent. A changelog written under those conditions would
-record churn, not change. The annotated tag carries the release note instead.
+Pre-1.0 there is no such promise, neither for the `.lyrbc` format nor for the
+language itself. The annotated tag carries the release note instead.
 
 From `v1.0.0` on: tag, GitHub release page, and a `CHANGELOG.md` entry.
-
-*(Decided in the scope check of 2026-08-02.)*
 
 ---
 

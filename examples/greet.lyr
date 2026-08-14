@@ -1,11 +1,10 @@
-// Zeigt die zweite Einstiegsform aus Sprache.md §11: 'fn main(args: string[])'.
+// The second entry form: 'fn main(args: string[])'.
 //
-// Alles nach dem ersten '--' gehoert dem Programm (Bytecode.md §9):
+// Everything after the first '--' belongs to the program:
 //
-//     lyric run examples/greet.lyr -- Welt Lyric
+//     lyric run examples/greet.lyr -- World Lyric
 //
-// Ein parameterloses 'main' ignoriert uebergebene Argumente — das ist kein Fehler, sondern
-// dieselbe Freiheit, die jede Shell hat.
+// A parameterless 'main' ignores passed arguments rather than failing.
 import std.io.console;
 
 fn main(args: string[]): int {

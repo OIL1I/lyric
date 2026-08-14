@@ -12,11 +12,7 @@ Syntax highlighting and a run command for [Lyric](https://github.com/OIL1I/lyric
 ## What it does not do
 
 No diagnostics, no completion, no go-to-definition. Those need a language server that runs the
-compiler incrementally and keeps results between keystrokes — a separate project, tracked in the
-v1.X table of [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
-
-A half-finished version would be worse than none: an editor that shows errors *sometimes* is
-worse than one that never does, because you stop trusting it either way.
+compiler incrementally and keeps results between keystrokes — a separate project.
 
 ## Setup
 
@@ -29,7 +25,7 @@ The extension calls `lyric` from your `PATH`. If the toolchain lives elsewhere, 
 ```
 
 It calls the **driver**, not `lyrc` or `lyrvm` — the driver is the one command that compiles and
-runs in a single step (ADR-019).
+runs in a single step.
 
 ## Installing during development
 

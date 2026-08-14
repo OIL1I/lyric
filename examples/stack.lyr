@@ -1,6 +1,6 @@
-// stack.lyr — Komplexität: mittel–fortgeschritten
-// Zeigt: generische class + generisches interface, Interface-Konformität via `::`,
-// mut-Methoden, Nullable-Rückgabe, Komposition über std.collections.List, while-Schleife.
+// stack.lyr — complexity: medium to advanced
+// Shows: a generic class and a generic interface, interface conformance via `::`, mut methods, a
+// nullable return, composition over std.collections.List, and a while loop.
 
 import std.io.console { println };
 import std.collections { List, emptyList };
@@ -10,9 +10,8 @@ pub interface Container<T> {
     fn count(): int;
 }
 
-// Ein Stack ist eine Liste mit weniger Möglichkeiten — und genau das ist der Punkt. Er erbt
-// nichts, er BESITZT eine Liste (Lyric kennt keine Vererbung, ADR-005) und gibt nach außen nur
-// weiter, was ein Stack können darf: oben drauf, oben runter, oben gucken.
+// A stack is a list with fewer possibilities. It inherits nothing — the language has no
+// inheritance — but OWNS a list and exposes only what a stack may do: push, pop, peek.
 pub class Stack<T> :: [Container<T>] {
     items: List<T>,
 

@@ -63,7 +63,7 @@
         "lyric.executable": {
           "type": "string",
           "default": "lyric",
-          "markdownDescription": "Path to the `lyric` driver. Leave it as `lyric` if the toolchain is on your `PATH`; otherwise point at the published binary.\n\nThe extension calls the **driver**, not `lyrc` or `lyrvm` — the driver is the one command that compiles and runs in one step (ADR-019)."
+          "markdownDescription": "Path to the `lyric` driver. Leave it as `lyric` if the toolchain is on your `PATH`; otherwise point at the published binary.\n\nThe extension calls the **driver**, not `lyrc` or `lyrvm` — the driver is the one command that compiles and runs in one step."
         }
       }
     }

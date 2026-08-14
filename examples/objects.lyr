@@ -1,8 +1,6 @@
-// objects.lyr — Komplexität: einfach
-// Zeigt: class als Reference-Typ, Feldzugriff, Methoden, `static`-Fabrik.
-//
-// Gate-Programm für M7/P1 und P1b. Bewusst ohne Interfaces und Exceptions — die kommen in
-// späteren Slices. `bank.lyr` ist dasselbe Thema in voller Ausbaustufe.
+// objects.lyr — complexity: simple
+// Shows: class as a reference type, field access, methods and a `static` factory. Without
+// interfaces and exceptions; `bank.lyr` is the same subject fully built out.
 
 import std.io.console { println };
 
@@ -10,12 +8,12 @@ class Counter {
     value: int,
     step: int,
 
-    // Fabrik: kein Empfänger, deshalb `static` (ADR-014). Der Name `new` ist nur Konvention.
+    // A factory: no receiver, hence `static`. The name `new` is only a convention.
     static fn new(step: int): Counter {
         return Counter { value = 0, step = step };
     }
 
-    // Instanzmethode: `this` ist der Empfänger und wird als Parameter 0 übergeben.
+    // An instance method: `this` is the receiver and is passed as parameter 0.
     fn advance() {
         this.value += this.step;
     }
@@ -25,7 +23,7 @@ class Counter {
     }
 }
 
-// Das Argument ist die Referenz, nicht eine Kopie: die Mutation ist beim Aufrufer sichtbar.
+// The argument is the reference rather than a copy, so the mutation is visible at the caller.
 fn bump(c: Counter) {
     c.advance();
 }
@@ -45,7 +43,7 @@ fn main(): int {
     bump(c);
     bump(c);
 
-    // Zwei Namen, ein Objekt (Sprache.md §3.3).
+    // Two names, one object.
     let alias = c;
     alias.value += 1;
 

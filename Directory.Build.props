@@ -1,27 +1,19 @@
 <Project>
 
-  <!--
-    Was fuer jedes Projekt gilt. Vorher stand dieser Block vierzehnmal wortgleich in den einzelnen
-    .csproj, und beim Anlegen des fuenfzehnten Projekts wurde er wieder abgeschrieben — dieselbe
-    Duplikation, die CONTRIBUTING.md im Code verbietet, nur im Build.
-  -->
+  <!-- What applies to every project in the repository. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
 
-    <!--
-      Reproduzierbare Builds. ADR-013 verlangt byte-identische .lyrbc-Ausgabe fuer dieselbe Eingabe;
-      dass auch die Binaries, die sie erzeugen, reproduzierbar sind, ist die logische Fortsetzung.
-    -->
+    <!-- Reproducible builds: the same input produces byte-identical binaries. -->
     <Deterministic>true</Deterministic>
 
     <!--
-      Keine Locale im Spiel. Der Compiler formatiert Zahlen in Diagnosen und in den Phasenzeiten
-      des ausfuehrlichen Modus; auf einem deutschen System kam dort schon einmal ein Dezimalkomma
-      heraus. CultureInfo.InvariantCulture an den Aufrufstellen bleibt richtig — dies hier ist der
-      Guertel dazu.
+      No locale in play. The compiler formats numbers in diagnostics and in the phase timings of
+      the verbose mode; on a German system that produced a decimal comma. CultureInfo.InvariantCulture
+      at the call sites stays correct; this is the belt around it.
     -->
     <InvariantGlobalization>true</InvariantGlobalization>
 
@@ -31,20 +23,18 @@
     <Copyright>Olivier</Copyright>
 
     <!--
-      Dieselbe Zahl wie Lyric.Core.ToolchainVersion.Value — sie steht hier ein zweites Mal, weil
-      MSBuild keine C#-Konstante lesen kann und die Datei-Eigenschaften der Binaries sie brauchen.
-      Zwei Wahrheiten sind eine zu viel, deshalb vergleicht Lyric.Tests.Core sie gegen das
-      erzeugte AssemblyInformationalVersion-Attribut: die Doppelung bleibt, aber sie kann nicht
-      mehr unbemerkt auseinanderlaufen.
+      The same number as Lyric.Core.ToolchainVersion.Value. It stands here a second time because
+      MSBuild cannot read a C# constant and the file properties of the binaries need it.
+      Lyric.Tests.Core compares the two against the generated AssemblyInformationalVersion
+      attribute, so they cannot drift apart unnoticed.
     -->
     <Version>0.9.0</Version>
   </PropertyGroup>
 
   <!--
-    Debug-Symbole gehoeren in den Debug-Build und in nichts sonst. 'embedded' statt einer .pdb
-    daneben: waehrend der Entwicklung will man Stacktraces mit Zeilennummern, aber keine zweite
-    Datei je Assembly. Im Release faellt beides weg — was ausgeliefert wird, soll nur das
-    Programm sein.
+    Debug symbols belong in the Debug build and nowhere else. 'embedded' rather than a .pdb next to
+    the assembly: stack traces carry line numbers without a second file per assembly. In Release
+    both are dropped.
   -->
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
     <DebugType>embedded</DebugType>
