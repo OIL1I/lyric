@@ -4,15 +4,14 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>lyrvm</AssemblyName>
     <RootNamespace>Lyric.Cli.Runtime</RootNamespace>
-    <Description>Die mitgelieferte Runtime und Referenz-Implementierung des Runner-Vertrags.</Description>
+    <Description>The bundled runtime and reference implementation of the runner contract.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
-      Die mitgelieferte Runtime (ADR-017) und zugleich die Referenz-Implementierung des
-      Runner-Vertrags aus docs/Bytecode.md. Zwei Referenzen, und das ist der Punkt: kein Lexer,
-      kein Parser, kein Resolver, keine Sema, keine IR, kein Bytecode-Writer.
-      tests/Lyric.Tests.Cli prueft maschinell, dass lyrfe.dll hier nie neben der exe landet.
+      Two references, and that is the point: no lexer, no parser, no resolver, no sema, no IR, no
+      bytecode writer. tests/Lyric.Tests.Cli checks mechanically that lyrfe.dll never lands next to
+      the exe.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
     <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />

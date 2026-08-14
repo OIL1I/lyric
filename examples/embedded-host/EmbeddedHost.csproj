@@ -1,16 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Der Beispiel-Host aus M10 — ein Konsument der Bibliothek, kein Teil von ihr.
+    The example host: a consumer of the library, not part of it.
 
-    Er steht trotzdem in Lyric.slnx, und das war eine Korrektur: hier stand erst "NICHT in der
-    Solution, gebaut wird er vom Test". Das ging beim direkten Aufruf und scheiterte KALT —
-    'dotnet test' auf der Solution baut die Projekte der Solution, und eine ProjectReference von
-    aussen mit ReferenceOutputAssembly=false zieht ihn dabei nicht mit. Vier gruene Tests lokal,
-    vier rote in CI.
-
-    Dieselbe Fehlerklasse wie 'build/publish.proj', das in keinem Clone lag: etwas funktioniert
-    auf dem Rechner, auf dem es entstanden ist, und der kanonische Pfad kennt es nicht.
+    It stands in Lyric.slnx all the same. 'dotnet test' on the solution builds the projects of the
+    solution, and a ProjectReference from outside with ReferenceOutputAssembly=false does not drag
+    it along — without the entry the tests pass locally and fail on a cold checkout.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -23,9 +18,9 @@
   </ItemGroup>
 
   <!--
-    Die Stdlib liegt als QUELLTEXT neben dem Host — ein '.lyrbc' traegt seine Importe symbolisch
-    (ADR-012), aufgeloest werden sie beim Uebersetzen. Ein Host, der Skripte uebersetzt, braucht
-    sie deshalb genauso wie 'lyric' und 'lyrc'.
+    The stdlib lies next to the host as SOURCE: a '.lyrbc' carries its imports symbolically and
+    they are resolved while compiling. A host that compiles scripts therefore needs it just as
+    'lyric' and 'lyrc' do.
   -->
   <ItemGroup>
     <Content Include="..\..\stdlib\**\*.lyr"

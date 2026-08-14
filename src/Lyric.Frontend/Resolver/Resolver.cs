@@ -95,7 +95,6 @@ public sealed class Resolver
                 // A 'static let' is a type-bound constant, held as a GlobalSymbol because that is
                 // what it is: an immutable binding without an instance, scoped to the type rather
                 // than to the module.
-                // the same thing.
                 case StaticBindingDecl sb:
                     DeclareMember(scope, new GlobalSymbol(sb.Binding.Name, Vis(sb.IsPublic), sb), sb);
                     break;

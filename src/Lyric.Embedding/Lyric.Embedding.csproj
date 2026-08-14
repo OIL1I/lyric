@@ -3,29 +3,26 @@
   <PropertyGroup>
     <AssemblyName>lyrembed</AssemblyName>
     <RootNamespace>Lyric.Embedding</RootNamespace>
-    <Description>Die Embedding-API: ein .NET-Host laedt Lyric-Skripte und entscheidet, was sie duerfen.</Description>
+    <Description>The embedding API: a .NET host loads Lyric scripts and decides what they may do.</Description>
 
     <!--
-      Wie bei den Binaries (Directory.Build.targets), nur dass die dortige Regel an
-      OutputType == 'Exe' haengt: diese Assembly wird als PROJEKT ausgeliefert und erzeugt deshalb
-      selbst eine .deps.json. Fuer eine Bibliothek ist sie zur Laufzeit ohnehin bedeutungslos —
-      der konsumierende Host erzeugt seine eigene —, und die README sagt zu, dass im
-      Auslieferungsverzeichnis keine liegt.
+      As for the binaries in Directory.Build.targets, whose rule hangs on OutputType == 'Exe': this
+      assembly ships as a PROJECT and therefore produces a .deps.json of its own. For a library it
+      is meaningless at run time — the consuming host produces its own — and the README promises
+      that none lies in the shipping directory.
     -->
     <GenerateDependencyFile Condition="'$(Configuration)' == 'Release'">false</GenerateDependencyFile>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
-      BEIDE Bibliotheken — und das ist Absicht, nicht Nachlaessigkeit. Eine Embedding-API
-      uebersetzt (lyrfe) UND fuehrt aus (lyrrt); ohne beides gaebe es kein 'Compile' neben 'Run'.
-      Dasselbe Paar wie bei 'lyrrepl', und aus demselben Grund (ADR-021).
+      BOTH libraries, deliberately. An embedding API compiles (lyrfe) AND executes (lyrrt); without
+      both there would be no 'Compile' beside 'Run'. The same pair as 'lyrrepl'.
 
-      Das widerspricht ADR-017 nicht: die Kante trennt die BIBLIOTHEKEN, sie verbietet nicht,
-      beide zu benutzen. Was sie verbietet, ist eine Kante von lyrrt nach lyrfe — und genau
-      deshalb steht diese Klasse hier und nicht in Lyric.Vm, wie ROADMAP.md §Zentrale Komponenten
-      es bis 2026-08-11 behauptet hat. Dort haette sie den Architektur-Test umgebracht, der
-      festhaelt, dass 'lyrvm.exe' weder lyrfe.dll noch stdlib/ ausliefert.
+      That does not soften the separation: the edge separates the LIBRARIES, it does not forbid
+      using both. What it forbids is an edge from lyrrt to lyrfe — which is why this class stands
+      here and not in Lyric.Vm, where it would break the architecture test holding that 'lyrvm.exe'
+      ships neither lyrfe.dll nor stdlib/.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
     <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />

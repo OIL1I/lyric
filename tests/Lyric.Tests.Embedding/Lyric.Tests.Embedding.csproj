@@ -1,17 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <!--
-      Nur die Embedding-Assembly, nicht Frontend und Runtime einzeln. Die Frage dieses Projekts
-      ist, was ein FREMDER Host sieht — und der bekommt lyrembed. Waeren lyrfe und lyrrt direkt
-      referenziert, koennte ein Test versehentlich an der Oberflaeche vorbeigreifen und gruen
-      bleiben, obwohl die Oberflaeche selbst die Frage nicht beantwortet.
+      The embedding assembly only, not the frontend and the runtime separately. The question of
+      this project is what a FOREIGN host sees, and that is lyrembed. With lyrfe and lyrrt
+      referenced directly, a test could reach past the surface and stay green although the surface
+      itself does not answer the question.
     -->
     <ProjectReference Include="..\..\src\Lyric.Embedding\Lyric.Embedding.csproj" />
 
     <!--
-      Der Beispiel-Host wird GEBAUT, aber nicht referenziert: der Gate-Test faehrt ihn als
-      Prozess. Dieselbe Entscheidung wie bei Lyric.Tests.Cli und aus demselben Grund — die Frage
-      ist, was ein fremder Konsument sieht, und in-process waere das nicht ehrlich beantwortet.
+      The example host is BUILT but not referenced: the gate test runs it as a process, the same
+      decision as in Lyric.Tests.Cli. The question is what a foreign consumer sees, and in-process
+      would not answer that honestly.
     -->
     <ProjectReference Include="..\..\examples\embedded-host\EmbeddedHost.csproj"
                       ReferenceOutputAssembly="false" Private="false" />

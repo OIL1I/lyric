@@ -3,25 +3,24 @@
   <PropertyGroup>
     <AssemblyName>lyrcore</AssemblyName>
     <RootNamespace>Lyric.Core</RootNamespace>
-    <Description>Diagnostik, Quelltextverwaltung und die Leseseite des .lyrbc-Formats.</Description>
+    <Description>Diagnostics, source management and the reading side of the .lyrbc format.</Description>
   </PropertyGroup>
 
   <!--
-    Was BEIDE Seiten brauchen: Diagnosen, SourceManager, Exit-Codes, CLI-Optionen — und die
-    Leseseite des Bytecode-Formats (Format, BytecodeModule, Reader, CodeDecoder, Disassembler,
-    ModuleInfo) unter Bytecode/.
+    What BOTH sides need: diagnostics, the SourceManager, exit codes, CLI options — and the reading
+    side of the bytecode format (Format, BytecodeModule, Reader, CodeDecoder, Disassembler,
+    ModuleInfo) under Bytecode/.
 
-    Warum das Format-LESEN hier liegt und nicht bei der VM (ADR-017): weil es der gemeinsame
-    Vertrag ist und keine Runtime-Eigenschaft. 'lyrvm info' liest ein Modul, ohne es auszufuehren;
-    'lyric disasm' auch; und die Schreibseite braucht dieselben Op- und Tag-Konstanten. Laege es
-    bei der VM, zoege 'lyrc' den Interpreter mit — die Gegenrichtung von ADR-017, und die faellt
-    genauso auf.
+    Reading the format lives here rather than with the VM because it is the shared contract and not
+    a runtime property. 'lyrvm info' reads a module without executing it, 'lyric disasm' too, and
+    the writing side needs the same op and tag constants. With the VM, 'lyrc' would drag the
+    interpreter along.
 
-    Die Namespaces bleiben getrennt ('Lyric.Core', 'Lyric.Bytecode'): eine Assembly ist eine
-    Auslieferungseinheit, ein Namespace ist ein Begriff. docs/Bytecode.md beschreibt einen Begriff.
+    The namespaces stay apart ('Lyric.Core', 'Lyric.Bytecode'): an assembly is a shipping unit, a
+    namespace is a concept.
 
-    Diese Assembly haengt an NICHTS. Kommt hier je eine Kante nach Lyric.Frontend oder Lyric.Vm
-    dazu, kippt der Split; tests/Lyric.Tests.Cli haelt das maschinell fest.
+    This assembly depends on NOTHING. An edge from here to Lyric.Frontend or Lyric.Vm breaks the
+    split; tests/Lyric.Tests.Cli checks that mechanically.
   -->
 
 </Project>

@@ -4,13 +4,13 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>lyrc</AssemblyName>
     <RootNamespace>Lyric.Cli.Compiler</RootNamespace>
-    <Description>Der Lyric-Compiler: Quelltext zu .lyrbc.</Description>
+    <Description>The Lyric compiler: source to .lyrbc.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
-      Der Compiler (ADR-017). Zwei Referenzen, und keine davon ist die Runtime: 'lyrc' fuehrt
-      nichts aus. tests/Lyric.Tests.Cli prueft, dass lyrrt.dll hier nie auftaucht.
+      Two references, and neither is the runtime: 'lyrc' executes nothing.
+      tests/Lyric.Tests.Cli checks that lyrrt.dll never appears here.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
     <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />

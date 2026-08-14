@@ -1,6 +1,6 @@
 <Project>
 
-  <!-- Erbt die Wurzel-Props und ergaenzt, was fuer JEDES Test-Projekt gilt. -->
+  <!-- Inherits the root props and adds what applies to EVERY test project. -->
   <Import Project="..\Directory.Build.props" />
 
   <PropertyGroup>
@@ -8,16 +8,16 @@
     <IsTestProject>true</IsTestProject>
 
     <!--
-      Tests laufen im Release-Build der CI genauso wie lokal im Debug, und ein Stacktrace ohne
-      Zeilennummer ist bei einem fehlgeschlagenen Test die halbe Information. Deshalb behalten
-      Test-Assemblies ihre eingebetteten Symbole auch im Release — sie werden nie ausgeliefert.
+      Tests run in the Release build of the CI as well as locally in Debug, and a stack trace
+      without a line number is half the information on a failing test. Test assemblies therefore
+      keep their embedded symbols in Release too; they are never shipped.
     -->
     <DebugType>embedded</DebugType>
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Standen vorher neunmal wortgleich in den einzelnen Test-.csproj. -->
+    <!-- Shared by every test project. -->
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />

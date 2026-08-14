@@ -4,24 +4,23 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>lyric</AssemblyName>
     <RootNamespace>Lyric.Cli</RootNamespace>
-    <Description>Der Einstiegspunkt der Werkzeug-Suite: waehlt Werkzeuge und reicht durch.</Description>
+    <Description>The entry point of the tool suite: selects tools and passes through.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
-      EINE Referenz, und das ist die Aussage von ADR-019: dieser Treiber compiliert nichts und
-      fuehrt nichts aus, er startet Werkzeuge. Kein lyrfe, kein lyrrt — er braucht nur die
-      Exit-Codes und die Diagnose-Codes, damit ein Fehler von IHM sich nicht als Fehler eines
-      Werkzeugs tarnt.
+      ONE reference. This driver compiles nothing and executes nothing, it starts tools. No lyrfe,
+      no lyrrt — it needs the exit codes and the diagnostic codes only, so an error of ITS own does
+      not look like an error of a tool.
 
-      Kommt hier je eine Kante nach lyrfe oder lyrrt dazu, ist der Treiber wieder ein zweiter
-      Compiler; tests/Lyric.Tests.Cli haelt das maschinell fest.
+      An edge from here to lyrfe or lyrrt would make the driver a second compiler;
+      tests/Lyric.Tests.Cli checks that mechanically.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
 
     <!--
-      Die Werkzeuge werden GEBAUT, aber nicht referenziert und nicht hierher kopiert: sie liegen
-      im selben Ausgabeverzeichnis, weil der Treiber sie dort sucht.
+      The tools are BUILT but neither referenced nor copied from here: they lie in the same output
+      directory, because that is where the driver looks for them.
     -->
     <ProjectReference Include="..\Lyrc\Lyrc.csproj" ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\Lyrvm\Lyrvm.csproj" ReferenceOutputAssembly="false" Private="false" />
@@ -29,13 +28,12 @@
   </ItemGroup>
 
   <!--
-    Die Werkzeuge vollstaendig neben den Treiber legen — nicht nur ihren Apphost. Ein
-    framework-abhaengiges 'lyrc.exe' ist ein Launcher, der 'lyrc.dll' daneben erwartet; ohne sie
-    startet es mit „The application to execute does not exist".
+    Puts the tools next to the driver COMPLETELY, not only their apphost. A framework-dependent
+    'lyrc.exe' is a launcher expecting 'lyrc.dll' beside it; without it, it starts with "The
+    application to execute does not exist".
 
-    Damit sieht das Ausgabeverzeichnis waehrend der Entwicklung genauso aus wie das
-    Publish-Verzeichnis. Das ist der Punkt: der Treiber sucht seine Werkzeuge neben sich, und
-    „neben sich" muss in beiden Faellen dasselbe heissen.
+    The output directory during development then looks like the publish directory. The driver looks
+    for its tools beside itself, and "beside itself" has to mean the same in both cases.
   -->
   <Target Name="CopyToolsNextToDriver" AfterTargets="Build">
     <MSBuild Projects="..\Lyrc\Lyrc.csproj;..\Lyrvm\Lyrvm.csproj;..\Lyrrepl\Lyrrepl.csproj"
@@ -45,7 +43,7 @@
     </MSBuild>
 
     <ItemGroup>
-      <!-- Samt stdlib: sie gehoert neben den Compiler, und „neben" ist hier ein Verzeichnis. -->
+      <!-- The stdlib included: it belongs next to the compiler, and "next to" is a directory here. -->
       <ToolFile Include="%(ToolAssembly.RootDir)%(ToolAssembly.Directory)**\*.*" />
     </ItemGroup>
 

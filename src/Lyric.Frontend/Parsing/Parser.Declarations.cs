@@ -226,8 +226,8 @@ public sealed partial class Parser
             : new StructDecl(isPublic, name, generics, interfaces, members, span);
     }
 
-    // struct or class body: FieldDecl | FunctionDecl. A field needs a ',', a block-bodied
-    // a method does not.
+    // struct or class body: FieldDecl | FunctionDecl. A field needs a ',', a block-bodied method
+    // does not.
     private Decl[] ParseTypeMembers()
     {
         var members = new List<Decl>();

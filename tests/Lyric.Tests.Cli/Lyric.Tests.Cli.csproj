@@ -2,12 +2,12 @@
 
   <ItemGroup>
     <!--
-      Die drei Binaries werden gebaut, aber NICHT hierher kopiert und nicht als Assembly
-      referenziert. Diese Tests fahren die Toolchain als Prozesse - genau so, wie ein Nutzer sie
-      benutzt. Waeren die Assemblies verlinkt, pruefte der Architektur-Test das falsche
-      Verzeichnis: die Frage ist, was neben 'lyrvm.exe' liegt, wenn man es ausliefert.
+      The three binaries are built but NOT copied here and not referenced as assemblies. These
+      tests drive the toolchain as processes, the way a user does. With the assemblies linked, the
+      architecture test would check the wrong directory: the question is what lies next to
+      'lyrvm.exe' when it ships.
     -->
-    <!-- Fuer die Diagnose- und Exit-Code-Konstanten: die Tests pruefen Codes, nicht Texte. -->
+    <!-- For the diagnostic and exit code constants: the tests check codes, not texts. -->
     <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
 
     <ProjectReference Include="..\..\src\Lyrc\Lyrc.csproj"

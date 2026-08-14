@@ -3,15 +3,15 @@
   <PropertyGroup>
     <AssemblyName>lyrrt</AssemblyName>
     <RootNamespace>Lyric.Vm</RootNamespace>
-    <Description>Die mitgelieferte Referenz-Runtime: Interpreter, Werte, Dispatch, Host-API.</Description>
+    <Description>The bundled reference runtime: interpreter, values, dispatch, host API.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <!--
-      Genau eine Kante — und das ist der Punkt (ADR-017). Die Runtime kennt das Format nur ueber
-      die Leseseite in lyrcore; sie kennt weder Lexer noch Parser noch Sema noch IR noch den
-      Bytecode-Writer. Kommt hier je eine Kante nach Lyric.Frontend dazu, ist ADR-013 ("jemand
-      schreibt eine zweite Runtime allein aus der Spec") nur noch eine Behauptung.
+      Exactly one edge. The runtime knows the format only through the reading side in lyrcore; it
+      knows neither lexer nor parser nor sema nor IR nor the bytecode writer. An edge from here to
+      Lyric.Frontend would make "a second runtime is writable from the specification alone" a claim
+      rather than a fact.
     -->
     <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
   </ItemGroup>

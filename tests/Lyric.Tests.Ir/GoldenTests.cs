@@ -46,10 +46,10 @@ public class GoldenTests
     }
 
     [Theory]
-    [InlineData("single_block")]       // load + binop + ret, Grundlayout
+    [InlineData("single_block")]       // load + binop + ret, the base layout
     [InlineData("comparison")]         // the destination type bool differs from the operand type i64
     [InlineData("diamond")]            // condbr, br and store over 4 blocks
-    [InlineData("void_store")]         // void: nacktes ret + dest-loses store
+    [InlineData("void_store")]         // void: a bare ret plus a store without a dest
     [InlineData("convert")]            // a convert with From and To visible
     [InlineData("two_functions_call")] // CallContext: name and return type, a value call and a void call
     [InlineData("loop")]               // a back edge: br back to an earlier block
