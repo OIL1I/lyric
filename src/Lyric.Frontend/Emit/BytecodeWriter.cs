@@ -140,22 +140,8 @@ public static class BytecodeWriter
             });
 
 
-        // The global slots together with their init function.
-        // Globals is 10 and therefore comes last; section ids ascend strictly.
-        if (module.Globals.Count > 0)
-            WriteSection(writer, SectionId.Globals, s =>
-            {
-                s.ULeb(module.Globals.Count);
-                foreach (var global in module.Globals) WriteType(s, global.Type);
-
-                // 0 means no initializer; otherwise the index in the shared space, incremented.
-                s.ULeb(module.GlobalInit is { } init
-                    ? (ulong)(module.Imports.Count + init.Value + 1)
-                    : 0UL);
-            });
-
-        // The protected regions, last of all: section ids ascend strictly, and Handlers (9) comes after
-        // Impls (8).
+        // The protected regions. Handlers is 9: after Impls (8) and before Globals (10), because
+        // section ids ascend strictly.
         var handlers = module.Functions
             .SelectMany((fn, index) => fn.Handlers.Select(h => (Function: index, Handler: h)))
             .ToList();
@@ -177,6 +163,20 @@ public static class BytecodeWriter
                     s.ULeb(h.Handler.Value);
                     s.ULeb(h.Slot is { } slot ? (ulong)(slot.Value + 1) : 0UL);
                 }
+            });
+
+        // The global slots together with their init function. Globals is 10 and therefore comes
+        // last of all.
+        if (module.Globals.Count > 0)
+            WriteSection(writer, SectionId.Globals, s =>
+            {
+                s.ULeb(module.Globals.Count);
+                foreach (var global in module.Globals) WriteType(s, global.Type);
+
+                // 0 means no initializer; otherwise the index in the shared space, incremented.
+                s.ULeb(module.GlobalInit is { } init
+                    ? (ulong)(module.Imports.Count + init.Value + 1)
+                    : 0UL);
             });
 
         return writer.ToArray();

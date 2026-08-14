@@ -249,6 +249,88 @@ public class BytecodeTests
         Assert.Contains($"{Format.VersionMajor}.{Format.VersionMinor}", spec, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The section ids in file order, read straight off the byte stream: magic, the two version
+    /// numbers, then a sequence of id, <c>uleb128</c> length and payload.
+    ///
+    /// <para>Deliberately not through <see cref="BytecodeReader"/>. The rule under test is one a
+    /// second runtime derives from the specification alone, and a reader sharing the writer's idea
+    /// of the order would only confirm itself.</para>
+    /// </summary>
+    private static List<byte> SectionIds(byte[] bytes)
+    {
+        var ids = new List<byte>();
+        var at = Format.Magic.Length + sizeof(ushort) + sizeof(ushort);
+
+        while (at < bytes.Length)
+        {
+            ids.Add(bytes[at++]);
+
+            var length = 0;
+            var shift = 0;
+            while (true)
+            {
+                var group = bytes[at++];
+                length |= (group & 0x7F) << shift;
+                if ((group & 0x80) == 0) break;
+                shift += 7;
+            }
+
+            at += length;
+        }
+
+        return ids;
+    }
+
+    [Theory]
+    [MemberData(nameof(Fixtures))]
+    public void Section_ids_ascend_strictly(string name)
+    {
+        // Ascending AND at most once, which is what lets a reader work in a single pass. Sorting
+        // and deduplicating states both in one comparison.
+        var ids = SectionIds(BytecodeWriter.Write(Fixture(name)));
+        Assert.Equal(ids.Order().Distinct(), ids);
+    }
+
+    [Fact]
+    public void A_module_with_globals_and_handlers_writes_both_in_order()
+    {
+        // The two highest ids are the two sections the writer emits last, each on a condition of its
+        // own: a global binding and a protected region. A module carrying only one of them says
+        // nothing about their relative order, and no fixture above carries both.
+        var bytes = BytecodeWriter.Write(LowerSource("""
+            let LIMIT = 100;
+
+            pub class TooMuch :: [Throwable] {
+                asked: int,
+
+                fn message(): string { return "too much"; }
+            }
+
+            fn take(amount: int) throws TooMuch {
+                if (amount > LIMIT) { throw TooMuch { asked = amount }; }
+            }
+
+            fn main(): int {
+                try { take(200); } catch (e: TooMuch) { return e.asked; }
+                return LIMIT;
+            }
+            """));
+
+        var ids = SectionIds(bytes);
+
+        // Without these two the test would stay green while measuring nothing: a module that grew
+        // neither section satisfies the ordering trivially.
+        Assert.Contains((byte)SectionId.Handlers, ids);
+        Assert.Contains((byte)SectionId.Globals, ids);
+        Assert.Equal(ids.Order().Distinct(), ids);
+
+        // The reader is what rejects a misordered file, so it has the last word here.
+        var de = new DiagnosticEngine(new SourceManager());
+        Assert.NotNull(BytecodeReader.Read(bytes, de));
+        Assert.Empty(de.Diagnostics);
+    }
+
     // ------------------------------------------------------------------ 5) the gate program
 
     [Fact]
