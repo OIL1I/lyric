@@ -10,6 +10,20 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.0.1 — unreleased
+
+### Fixed
+
+- **A module with both a module-level `let` and a `try`/`catch` compiled to a file that would not
+  load.** The compiler wrote the Globals section (id 10) ahead of the Handlers section (id 9), and
+  section ids must ascend strictly, so `lyric run` and `lyrvm verify` rejected the compiler's own
+  output with `LYR-BC0005`. `lyric check` and `lyric build` reported success beforehand, which is
+  what made it look like a runtime problem rather than an emitter one.
+
+  Only a module carrying both sections was affected; either one on its own was written correctly and
+  is unchanged. No `.lyrbc` file that used to be valid changes — the format and its specification
+  were already right and the writer was not, so the bytecode format stays **3.0**.
+
 ## v1.0.0 — 2026-08-14
 
 The first release with a compatibility promise. Everything below describes the state it ships, not
