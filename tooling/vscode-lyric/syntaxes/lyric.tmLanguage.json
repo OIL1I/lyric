@@ -6,12 +6,13 @@
 
   "_comment": [
     "Die Keywords stammen aus src/Lyric.Frontend/Lexing/Lexer.cs, die Literal-Formen aus",
-    "docs/Sprache.md §1.2-1.5 — nicht aus dem Gedaechtnis. Ein Test in tests/Lyric.Tests.Cli",
+    "docs/Grammar.md §1.2-1.5 — nicht aus dem Gedaechtnis. Ein Test in tests/Lyric.Tests.Cli",
     "vergleicht die Keyword-Liste hier mit der des Lexers; driftet eine, faellt er.",
     "",
     "Was hier NICHT versucht wird: semantische Faerbung. Ob ein Bezeichner ein Typ oder eine",
     "Variable ist, weiss nur die Sema — eine TextMate-Grammatik raet es an der Grossschreibung,",
-    "und das ist eine Konvention, keine Regel. Wer es genau haben will, braucht den LSP (v1.2)."
+    "und das ist eine Konvention, keine Regel. Genau wird es erst mit semantischen Tokens aus",
+    "lyrls; der Server liefert bisher nur Diagnosen."
   ],
 
   "patterns": [

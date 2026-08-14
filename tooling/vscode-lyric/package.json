@@ -1,8 +1,8 @@
 {
   "name": "vscode-lyric",
   "displayName": "Lyric",
-  "description": "Syntax highlighting and a run command for the Lyric language.",
-  "version": "1.0.0",
+  "description": "Language support for Lyric: diagnostics, syntax highlighting and a run command.",
+  "version": "1.1.0",
   "publisher": "lyric",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/OIL1I/lyric" },
@@ -64,8 +64,22 @@
           "type": "string",
           "default": "lyric",
           "markdownDescription": "Path to the `lyric` driver. Leave it as `lyric` if the toolchain is on your `PATH`; otherwise point at the published binary.\n\nThe extension calls the **driver**, not `lyrc` or `lyrvm` — the driver is the one command that compiles and runs in one step."
+        },
+        "lyric.languageServer": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to `lyrls`, the language server that produces the diagnostics.\n\nLeft empty it is looked for beside `#lyric.executable#` when that is a full path, and on your `PATH` otherwise — so in the usual case configuring the driver configures both."
+        },
+        "lyric.diagnostics.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the language server and show diagnostics while you type. Turning it off leaves highlighting and the run command in place."
         }
       }
     }
+  },
+
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }

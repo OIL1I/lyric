@@ -2,10 +2,15 @@
 
   <ItemGroup>
     <!--
-      The three binaries are built but NOT copied here and not referenced as assemblies. These
+      The binaries are built but NOT copied here and not referenced as assemblies. These
       tests drive the toolchain as processes, the way a user does. With the assemblies linked, the
       architecture test would check the wrong directory: the question is what lies next to
       'lyrvm.exe' when it ships.
+
+      Every binary an architecture test INSPECTS has to stand here, or its output directory exists
+      only when someone happened to build it by hand. That failure is configuration-dependent:
+      green in Debug after a local build, red in a clean Release run, which is the harder one to
+      explain. 'Lyrrepl' comes along through the driver, which references it the same way.
     -->
     <!-- For the diagnostic and exit code constants: the tests check codes, not texts. -->
     <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
@@ -13,6 +18,8 @@
     <ProjectReference Include="..\..\src\Lyrc\Lyrc.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\..\src\Lyrvm\Lyrvm.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\src\Lyrls\Lyrls.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\..\src\Lyric.Cli\Lyric.Cli.csproj"
                       ReferenceOutputAssembly="false" Private="false" />

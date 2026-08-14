@@ -137,7 +137,32 @@ public sealed class ArchitectureTests
         // next to lyrvm, either the content rule is wired wrongly or the runtime does more than it should.
         Assert.True(Directory.Exists(Path.Combine(Toolchain.OutputDirectory("Lyrc"), "stdlib")));
         Assert.True(Directory.Exists(Path.Combine(Toolchain.OutputDirectory("Lyric.Cli"), "stdlib")));
+
+        // The language server compiles, so it needs the source too. Without it every import in
+        // every open file resolves to an opaque external symbol and the editor shows a clean
+        // document that the compiler rejects.
+        Assert.True(Directory.Exists(Path.Combine(Toolchain.OutputDirectory("Lyrls"), "stdlib")));
+
         Assert.False(Directory.Exists(Path.Combine(Toolchain.OutputDirectory("Lyrvm"), "stdlib")));
+    }
+
+    [Fact]
+    public void The_language_server_ships_the_front_end_and_no_runtime()
+    {
+        // The same two edges 'lyrc' has, for the same reason: a server answers questions about
+        // source and executes nothing. 'lyrls.dll' is the process, 'lyrlsp.dll' the protocol and
+        // the analysis.
+        AssertShips("Lyrls", Shared, Frontend, "lyrls.dll", "lyrlsp.dll");
+    }
+
+    [Fact]
+    public void The_language_server_is_not_a_tool_of_the_driver()
+    {
+        // The driver starts short-lived tools and waits for them. A language server outlives the
+        // editor's own startup and owns stdio for its whole lifetime, so the editor launches it
+        // directly and 'lyric' knows nothing about it. Stated as a test because the natural next
+        // step for someone adding a binary is to register it in Tool.All.
+        Assert.DoesNotContain("lyrls.dll", LyricAssemblies("Lyric.Cli"));
     }
 
     /// <summary>Both sides are sorted: whichever order the file system yields is no statement about the
