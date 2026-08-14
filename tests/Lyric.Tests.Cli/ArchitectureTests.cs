@@ -178,8 +178,11 @@ public sealed class ArchitectureTests
     {
         var readme = File.ReadAllText(Path.Combine(Toolchain.RepositoryRoot, "README.md"));
 
-        // The block under "### Shipping", between the result promise and the sentence after it.
-        var block = Regex.Match(readme, @"What ends up there, and nothing else:\s*```(.*?)```",
+        // The fenced block after the shipping promise. The wording says what the TOOLCHAIN
+        // contributes rather than what the directory holds: with a runtime identifier a
+        // self-contained publish puts the whole .NET runtime beside it, and "nothing else" would
+        // then be false.
+        var block = Regex.Match(readme, @"What the toolchain itself contributes, and nothing else:\s*```(.*?)```",
             RegexOptions.Singleline);
         Assert.True(block.Success, "README no longer prints what a publish produces");
 

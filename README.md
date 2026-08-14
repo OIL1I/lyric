@@ -81,9 +81,8 @@ Publish the toolchain into one directory:
 dotnet msbuild build/publish.proj
 ```
 
-The output lands in `artifacts/publish/` and is framework-dependent; it requires a .NET 10 runtime
-on the target machine. Pass `-p:PublishRoot=<dir>` to publish elsewhere. The target directory is
-wiped first. What ends up there, and nothing else:
+The output lands in `artifacts/publish/`. Pass `-p:PublishRoot=<dir>` to publish elsewhere; the
+target directory is wiped first. What the toolchain itself contributes, and nothing else:
 
 ```
 lyric.exe  lyrc.exe               driver and compiler
@@ -97,6 +96,16 @@ stdlib/                            standard library, as .lyr source
 ```
 
 `lyrvm.exe` ships neither `lyrfe.dll` nor `stdlib/`: a runtime consumes bytecode, not source.
+
+Without a runtime identifier this is a portable build of about 1.6 MB that needs a .NET 10 runtime
+on the target machine — the quick form for local work. Naming one produces a build **for** that
+platform which brings its own runtime, about 79 MB, and runs straight out of the archive:
+
+```bash
+dotnet msbuild build/publish.proj -p:Rid=linux-x64
+```
+
+That is what a release ships, one archive per platform.
 
 ## Binaries
 
@@ -194,8 +203,8 @@ CI runs on `main`, on `feature/**` and `fix/**`, and on every pull request again
 Two channels:
 
 - **Stable** — created by pushing an annotated tag `vX.Y.Z`. The release workflow verifies on
-  Linux and Windows, packages `win-x64`, `linux-x64` and `osx-arm64`, and publishes the archives
-  as a GitHub release.
+  Linux and Windows, packages a self-contained build for `win-x64`, `linux-x64` and `osx-arm64`,
+  and publishes the archives as a GitHub release. Each one runs without a .NET install.
 - **Nightly** — built from `main` once a day and published as the `nightly` prerelease. The
   `nightly` tag moves to the commit that was built. No compatibility promise.
 

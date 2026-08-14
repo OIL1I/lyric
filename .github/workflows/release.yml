@@ -56,8 +56,13 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # The identifier is what makes the archive hold what its name says. Without it every
+      # platform got the same portable build and the name was a label, not a fact.
       - name: Publish toolchain
-        run: dotnet msbuild build/publish.proj -p:PublishRoot=${{ github.workspace }}/out
+        run: >
+          dotnet msbuild build/publish.proj
+          -p:PublishRoot=${{ github.workspace }}/out
+          -p:Rid=${{ matrix.rid }}
 
       - name: Archive
         shell: bash

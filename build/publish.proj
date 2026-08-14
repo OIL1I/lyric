@@ -9,6 +9,7 @@
 
         dotnet msbuild build/publish.proj
         dotnet msbuild build/publish.proj -p:PublishRoot=D:\somewhere
+        dotnet msbuild build/publish.proj -p:Rid=linux-x64        (a shipping build)
 
     An MSBuild project rather than a publish.ps1: a script would be a second build language beside
     the one that already runs, and it would have to know the configuration (Release, framework,
@@ -24,6 +25,23 @@
     <PublishRoot Condition="'$(PublishRoot)' == ''">$(MSBuildThisFileDirectory)..\artifacts\publish</PublishRoot>
     <PublishRoot>$([System.IO.Path]::GetFullPath('$(PublishRoot)'))</PublishRoot>
     <Configuration Condition="'$(Configuration)' == ''">Release</Configuration>
+
+    <!--
+      A runtime identifier turns the output into a build FOR one platform. Without one the result is
+      portable and needs a .NET runtime on the target machine; with one plus SelfContained it brings
+      its own and runs straight out of the archive.
+
+      Empty by default, so a local run stays the small, quick framework-dependent build a developer
+      wants. A release passes it, and the archive then really holds what its name says — the release
+      matrix used to label three archives with platforms the publish never heard of.
+    -->
+    <Rid Condition="'$(Rid)' == ''"></Rid>
+    <SelfContained Condition="'$(SelfContained)' == '' and '$(Rid)' != ''">true</SelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+
+    <!-- Handed to every project below. With no Rid this is just the configuration, as before. -->
+    <PublishProperties>Configuration=$(Configuration)</PublishProperties>
+    <PublishProperties Condition="'$(Rid)' != ''">$(PublishProperties);RuntimeIdentifier=$(Rid);SelfContained=$(SelfContained)</PublishProperties>
   </PropertyGroup>
 
   <ItemGroup>
@@ -55,14 +73,14 @@
     <MSBuild Projects="@(Binary)"
              Targets="Restore"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration)" />
+             Properties="$(PublishProperties)" />
   </Target>
 
   <Target Name="Publish" DependsOnTargets="Clean;Restore">
     <MSBuild Projects="@(Binary)"
              Targets="Publish"
              BuildInParallel="false"
-             Properties="Configuration=$(Configuration);PublishDir=$(PublishRoot)\" />
+             Properties="$(PublishProperties);PublishDir=$(PublishRoot)\" />
 
     <ItemGroup>
       <Published Include="$(PublishRoot)\**\*" />

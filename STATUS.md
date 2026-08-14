@@ -251,9 +251,16 @@ through point by point.
 
 **Artifact:**
 
-- **Binaries for Windows/Linux/macOS** via `dotnet publish -r …`. `publish.proj` ships
-  **framework-dependent** today and without a RID matrix — it needs a .NET 10 runtime on the target
-  machine.
+- ~~**Binaries for Windows/Linux/macOS**~~ **done** (2026-08-14). `publish.proj` takes a `Rid` and
+  then publishes self-contained; without one it stays the small portable build for local work
+  (1.6 MB against 79 MB, 628 KB against 35 MB packed).
+  - **The release workflow had labelled three archives with platforms the publish never heard of**:
+    the matrix varied `win-x64`/`linux-x64`/`osx-arm64` while the command passed no identifier, so
+    all three held the same portable build and the name was a label rather than a fact. Both
+    workflows now pass `-p:Rid=`.
+  - `ArchitectureTests.Everything_the_readme_ships_is_actually_published` caught the README edit
+    that came with it — with a runtime identifier the directory also holds the .NET runtime, so
+    "what ends up there, and nothing else" became "what the toolchain itself contributes".
 - **Documentation site** (static HTML out of the docs). There is none.
 
 **The two crashes are fixed** (2026-08-11). What remains under `## Still open` are limits **with a
@@ -383,7 +390,7 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 ## Last relevant commit
 
-`sema: the expected type reaches an argument, and a generic struct init reads it`
+`build: a release publishes self-contained, one archive per platform`
 
 ---
 
