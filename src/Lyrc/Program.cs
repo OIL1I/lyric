@@ -126,6 +126,7 @@ public static class Program
     {
         StdlibRoot = Flag(args, "--stdlib"),
         Progress = terminal,
+        SourceMap = !Present(args, "--no-source-map"),
     };
 
     /// <summary>Every command here takes exactly one required file; the check lives in one
@@ -144,6 +145,15 @@ public static class Program
         for (var i = 2; i < args.Length - 1; i++)
             if (args[i] == name) return args[i + 1];
         return null;
+    }
+
+    /// <summary>A switch that carries no value. Same window as <see cref="Flag"/>: the command and
+    /// the file stand before it.</summary>
+    private static bool Present(string[] args, string name)
+    {
+        for (var i = 2; i < args.Length; i++)
+            if (args[i] == name) return true;
+        return false;
     }
 
     private static int Version(TerminalOutput terminal)
@@ -169,6 +179,7 @@ public static class Program
         Console.Out.WriteLine();
         Console.Out.WriteLine("Options:");
         Console.Out.WriteLine("  --stdlib <dir>           Where the stdlib lives (beats $LYRIC_STDLIB)");
+        Console.Out.WriteLine("  --no-source-map          Omit line numbers; a panic names the function");
         Console.Out.WriteLine("  --json                   Diagnostics as JSON on stderr");
         Console.Out.WriteLine("  --quiet, -q              Suppress success messages");
         Console.Out.WriteLine("  --verbose                Print a per-phase timing breakdown");

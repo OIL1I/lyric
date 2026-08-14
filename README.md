@@ -12,7 +12,7 @@ The compiler, the bytecode VM and the standard library work end to end; every co
 [`docs/Grammar.md`](docs/Grammar.md) compiles and runs. From v1.0 the language and the `.lyrbc`
 format carry the promise the versioning describes: a minor may add, a major may break.
 
-Current version: **1.0.1**, bytecode format **3.0**.
+Current version: **1.0.1**, bytecode format **3.1**.
 
 ## Targets
 

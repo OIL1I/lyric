@@ -38,6 +38,18 @@ public sealed class ScriptSource
     public string? ModuleName { get; }
 
     /// <summary>
+    /// The directory a source map's paths are made relative to: the entry file's own directory, or
+    /// the working directory for source held in memory.
+    ///
+    /// <para>It lives here because this is where the path lives. A file outside it — the standard
+    /// library sits beside the toolchain — keeps its bare name rather than a chain of <c>..</c>
+    /// segments describing the machine that built the module.</para>
+    /// </summary>
+    public string BaseDirectory => _path is null
+        ? Directory.GetCurrentDirectory()
+        : Path.GetDirectoryName(Path.GetFullPath(_path)) ?? Directory.GetCurrentDirectory();
+
+    /// <summary>
     /// A file on disk.
     /// </summary>
     /// <param name="moduleName">What the module should be called. <c>null</c> leaves it to the
