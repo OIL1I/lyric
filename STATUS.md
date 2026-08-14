@@ -1,398 +1,366 @@
-# Lyric — Aktueller Stand
+# Lyric — Current State
 
-> Diese Datei ist die **einzige** im Projekt, die sich häufig ändert. Sie wird
-> nach jedem abgeschlossenen Slice geupdatet. Claude liest sie zu
-> Session-Beginn, um zu wissen, wo wir stehen.
+> This file is the **only** one in the project that changes often. It is updated
+> after every finished slice. Claude reads it at the start of a session to know
+> where we stand.
 >
-> Halte den Inhalt knapp. Was schon committet ist, kann hier weg —
-> `git log --oneline` ist die Historie, nicht diese Datei.
+> Keep the content short. Anything already committed can go —
+> `git log --oneline` is the history, not this file.
 
 ---
 
-## Aktueller Meilenstein
+## Current milestone
 
-**M0–M10 sind abgeschlossen und getaggt** (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
-**v1.0 ist noch nicht erreicht** — was fehlt, steht unter `## Was v1.0 noch fehlt`.
+**M0–M10 are finished and tagged** (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+**v1.0 is not reached** — what is missing stands under `## What v1.0 still needs`.
 
-2675 Tests grün **in Debug und Release**, Bytecode-Format **3.0**, **vier** Binaries plus
-`lyrembed.dll`, Version **0.9.0**.
+2675 tests green **in Debug and Release**, bytecode format **3.0**, **four** binaries plus
+`lyrembed.dll`, version **0.9.0**.
 
-**Was der Stand kann**: die ganze Sprache aus `Sprache.md` übersetzt und läuft; eine
-Standardbibliothek, die sich weitgehend selbst trägt (`Map`, `Set`, Merge Sort, sämtliche
-Iterator-Adapter und der String-Hash sind in Lyric geschrieben); vier Werkzeuge samt REPL; eine
-VS-Code-Extension; und eine Embedding-API, mit der ein C#-Host Skripte lädt, sandboxt, Funktionen
-daraus ruft und eigene Funktionen und Typen hineinreicht.
+**What this state can do**: the whole language of the grammar compiles and runs; a standard library
+that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
+written in Lyric); four tools including the REPL; a VS Code extension; and an embedding API with
+which a C# host loads scripts, sandboxes them, calls functions out of them and hands its own
+functions and types in.
 
-> **Die Datei war bis 2026-08-07 auf 1088 Zeilen gewachsen** und widersprach sich an drei Stellen
-> selbst. Sie ist auf ihre eigene Pflegeregel zurückgeschnitten: letzte Slices, offene Punkte,
-> Design-Kontext. Alles andere steht in `git log`.
+> **The file had grown to 1088 lines by 2026-08-07** and contradicted itself in three places. It has
+> been cut back to its own maintenance rule: recent slices, open points, design context. Everything
+> else stands in `git log`.
 
-## Zuletzt fertig geworden
+## Recently finished
 
-- [x] **Generische Enums** (2026-08-12). 2711 Tests grün, Debug und Release.
-  - `enum Opt<T>` war im Lowering **gar nicht vorhanden**: `TypeTable.InternEnum` warf, sobald so
-    ein Enum auch nur als Parametertyp auftauchte. Jetzt gehen `Opt<int>.Some(5)`, `.None`,
-    `Ev<int>.Hit { at = 4 }`, `match` mit Payload-Bindung und Guard, das rekursive
-    `Tree<T>`, ein generisches Enum in einer generischen Funktion und als Feld.
-  - **Es war kein fehlendes Feature, sondern fehlende Verdrahtung.** Die Substitution war da und
-    routete Enums bereits richtig; `InternVariant` hätte `Some(T)` schon immer zu `Some(int)`
-    gelowert. Was fehlte, waren vier Stellen, die die Instanz wegwarfen — allen voran
-    `TypeFacts.SymbolOf`, das bei einer `GenericInstance` die Definition liefert und die
-    Typargumente verliert.
-  - **Meine Schätzung war um den Faktor drei zu hoch.** Ich hatte „zwei bis drei Sessions"
-    gesagt, bevor ich `Intern` gelesen hatte. Es war eine. Der Fehler lag darin, die Größe aus
-    dem Symptom zu schätzen statt aus dem Code.
-  - **Die tragende Zusicherung**: `Opt<int>` und `Opt<string>` bekommen eigene Varianten-Layouts.
-    Teilten sie sich einen Eintrag, läge ein `i64` in einem String-Slot — in Debug ein
-    Verifier-Fund, in Release eine stille falsche Antwort. Genau die Asymmetrie, die die
-    Konformanz-Lücke vom 2026-08-11 so teuer gemacht hat.
-  - Der schärfste Fallstrick war die Rekursion: die Id muss in der Instanz-Registry stehen,
-    *bevor* die Varianten interniert werden — sonst fordert `Node(Tree<T>, …)` genau die Instanz
-    an, die gerade entsteht. `InternLayout` machte es vor.
-  - **Dabei eine ältere Unstimmigkeit beseitigt**: die Struct-Form las den erwarteten Typ seit
-    jeher (`let e: Ev<int> = Ev.Hit { … }`), die Tuple-Form nicht (`Opt.Some(7)` war ein Fehler).
-    Eine Frage, zwei Antworten, je nach Form der Variante. Beide laufen jetzt durch dieselbe
-    Auflösung.
-  - Bleibt: in einer **Argumentposition** reicht der Kontext nicht hin (`nimm(Opt.Some(5))`) —
-    der erwartete Typ wird dorthin nicht durchgereicht. Als Test festgehalten, nicht als Vermutung.
+- [x] **Generic enums** (2026-08-12). 2711 tests green, Debug and Release.
+  - `enum Opt<T>` was **not present at all** in the lowering: `TypeTable.InternEnum` threw as soon as
+    such an enum appeared even as a parameter type. Now `Opt<int>.Some(5)`, `.None`,
+    `Ev<int>.Hit { at = 4 }`, `match` with payload binding and a guard, the recursive `Tree<T>`, a
+    generic enum inside a generic function and as a field all work.
+  - **It was not a missing feature but missing wiring.** The substitution was there and already
+    routed enums correctly; `InternVariant` would always have lowered `Some(T)` to `Some(int)`. What
+    was missing were four places that threw the instance away, above all `TypeFacts.SymbolOf`, which
+    returns the definition for a `GenericInstance` and loses the type arguments.
+  - **My estimate was too high by a factor of three.** I had said "two to three sessions" before I
+    had read `Intern`. It was one. The mistake was estimating the size from the symptom rather than
+    from the code.
+  - **The load-bearing guarantee**: `Opt<int>` and `Opt<string>` get their own variant layouts. If
+    they shared an entry, an `i64` would lie in a string slot — in Debug a verifier finding, in
+    Release a silently wrong answer. Exactly the asymmetry that made the conformance gap of
+    2026-08-11 so expensive.
+  - The sharpest trap was the recursion: the id has to stand in the instance registry *before* the
+    variants are interned, or `Node(Tree<T>, …)` requests precisely the instance that is being
+    created. `InternLayout` showed how.
+  - **An older inconsistency was removed along the way**: the struct form had always read the
+    expected type (`let e: Ev<int> = Ev.Hit { … }`), the tuple form had not (`Opt.Some(7)` was an
+    error). One question, two answers, depending on the shape of the variant. Both now run through
+    the same resolution.
+  - Remaining: in an **argument position** the context does not reach (`take(Opt.Some(5))`) — the
+    expected type is not passed through to there. Recorded as a test rather than as a guess.
 
-- [x] **`Pair<int>.of(3)` geht** (2026-08-12) — eine statische Fabrik auf einem generischen Typ.
-  - Der Parser las `Pair` als Bezeichner und `<` als Vergleich; danach stolperte er über den
-    Punkt. **Die Erkennung kostet keine Mehrdeutigkeit**: das `<` gilt als Typargument-Liste, wenn
-    es balanciert schließt und ein `.` folgt — ein Punkt hinter einer Vergleichskette ist ohnehin
-    kein gültiger Ausdruck. Dieselbe Regel wie §6.1 sie seit 2026-08-07 für `f<int>()` zieht;
-    Rusts `::<>` wäre ein zweiter Mechanismus für dasselbe Konzept.
-  - **Die Sema war die eigentliche Lücke.** `MemberOfType` lieferte den Typ des Members
-    unsubstituiert — daher kam „cannot assign 'int' to 'T'", eine Meldung über die Folge. Jetzt
-    trägt `NonValueType` die aufgelöste Instanz, und ohne Argumente gibt es `LYR-SEM0063`, das die
-    Ursache nennt: §6.2 verlangt sie ausdrücklich, `Pair.of(3)` inferiert nicht.
-  - Im Lowering gefunden: `InstanceTable.RequestMethod` hängte auch einer **statischen** Methode
-    ein `this` an (ADR-014). Der Verifier sah „passes 1 arg(s), expected 2".
-  - **`std.collections` trug den Beleg als Kommentar** — `emptyList` ist eine freie Funktion,
-    „weil eine statische Methode auf einer generischen Instanz nicht ausdrückbar ist". Der Satz
-    stimmt nicht mehr und steht jetzt richtig da; die Funktion bleibt, weil der Umbau jeden
-    Aufrufer kostet und nichts bringt.
-  - **`Opt<int>.Some(5)` ist damit NICHT erledigt** und war nie derselbe Posten: das Lowering
-    kennt generische Enums überhaupt nicht (`TypeTable.InternEnum` wirft `LYR-IR0001`, schon wenn
-    eins nur als Parametertyp vorkommt). Gemessen, nicht vermutet — siehe `## Noch offen`.
-  - 24 neue Tests, davon 9 Parser-Gegenproben (`a < b > c.d` bleibt ein Vergleich) und eine, die
-    `lyrc ast` absichert: der `AstDumper` wirft bei jedem Knoten, den er nicht kennt.
+- [x] **`Pair<int>.of(3)` works** (2026-08-12) — a static factory on a generic type.
+  - The parser read `Pair` as an identifier and `<` as a comparison, then stumbled over the dot.
+    **The detection costs no ambiguity**: the `<` counts as a type argument list when it closes
+    balanced and a `.` follows — a dot after a comparison chain is not a valid expression anyway.
+    The same rule the grammar has drawn for `f<int>()` since 2026-08-07; Rust's `::<>` would be a
+    second mechanism for the same concept.
+  - **The sema was the actual gap.** `MemberOfType` returned the member type unsubstituted, which
+    produced "cannot assign 'int' to 'T'", a message about the consequence. Now `NonValueType`
+    carries the resolved instance, and without arguments there is `LYR-SEM0063`, which names the
+    cause: the arguments are required, and `Pair.of(3)` does not infer.
+  - Found in the lowering: `InstanceTable.RequestMethod` also appended a `this` to a **static**
+    method. The verifier saw "passes 1 arg(s), expected 2".
+  - **`std.collections` carried the evidence as a comment** — `emptyList` is a free function
+    "because a static method on a generic instance is not expressible". That sentence is no longer
+    true and now stands correctly; the function stays, because the rework costs every caller and
+    gains nothing.
+  - **`Opt<int>.Some(5)` is therefore NOT done** and was never the same item: the lowering does not
+    know generic enums at all (`TypeTable.InternEnum` throws `LYR-IR0001` as soon as one occurs even
+    as a parameter type). Measured, not assumed — see `## Still open`.
+  - 24 new tests, of which 9 are parser counter-checks (`a < b > c.d` stays a comparison) and one
+    secures `lyrc ast`: the `AstDumper` throws on every node it does not know.
 
-- [x] **`List<T>.clear()` und `.toArray()`** (2026-08-12, vom Maintainer angelegt).
-  - `toArray` ist der interessantere Teil: Rückgabe `T[]`, Backing `(?T)[]`, und **zwischen beiden
-    gibt es keine Umdeutung**. `!` packt einen einzelnen Wert aus, nicht ein Array elementweise —
-    `?T[]` ist ein *Array von Optionals* und kein optionales Array. Die erste Fassung versuchte
-    `return result!;` und war `LYR-SEM0005`.
-  - Gebaut wird jetzt von Anfang an als `T[]`. Die leere Liste hat kein erstes Element, aus dem
-    sich eins bauen ließe, und wird vorher abgefangen (`return [];`, seit M8b/S8).
-  - Sieben Tests, darunter: die Länge ist `count` und nicht `capacity` (derselbe Fehler, den `get`
-    schon einmal gemacht hat), die Kopie ist eine Kopie, und `clear` gibt das Backing wirklich
-    frei statt es hinter `count` stehen zu lassen.
+- [x] **`List<T>.clear()` and `.toArray()`** (2026-08-12, written by the maintainer).
+  - `toArray` is the more interesting part: the return is `T[]`, the backing is `(?T)[]`, and
+    **there is no reinterpretation between them**. `!` unwraps a single value, not an array element
+    by element — `?T[]` is an *array of optionals* and not an optional array. The first version tried
+    `return result!;` and was `LYR-SEM0005`.
+  - It is now built as `T[]` from the start. The empty list has no first element to build one from
+    and is caught beforehand (`return [];`).
+  - Seven tests, among them: the length is `count` and not `capacity` (the same mistake `get` once
+    made), the copy is a copy, and `clear` really releases the backing rather than leaving it
+    standing behind `count`.
 
-- [x] **`b?.get()` geht** (2026-08-12). 2661 Tests grün, Debug und Release.
-  - Die Sema machte aus `?.get` ein `?fn() -> int` und meldete dann `LYR-SEM0013: not callable` —
-    eine Auskunft über einen Zwischentyp, den niemand hingeschrieben hat. Jetzt packt `CheckCall`
-    den Empfänger aus, wenn der Callee ein `?.`-Glied ist, und legt das Optional um das
-    *Ergebnis*. Der Ausweg (`if (b != null) { b.get() }`) war dreimal so lang.
-  - **Der Aufruf läuft durch dieselbe Auflösung wie jeder andere.** Alle fünf Dispatch-Wege
-    tragen ihn ohne eine Zeile Zusatzcode: konkrete Klasse, generische Instanz, Interface
-    (dynamisch), Constraint-Typparameter und primitiver Empfänger mit Extension. Ein zweiter Pfad
-    hätte jeden davon ein weiteres Mal beantworten müssen — die Sorte Zweitkopie, die in diesem
-    Projekt neunmal auseinandergelaufen ist.
-  - **Der erste Anlauf war genau diese Zweitkopie**, nur getarnt: ein Sonderfall im
-    Callee-`switch`, der den ausgepackten Empfänger anhängte. Er stand **vor** der Generics- und
-    der Interface-Erkennung und verdeckte sie — `b?.get()` auf einem `Box<int>` wurde zu
-    *„external or bodiless"*, eine Diagnose auf die falsche Ursache. Aufgefallen nur, weil ich
-    danach gefragt habe statt es anzunehmen.
-  - Jetzt hängen die zwei Abweichungen **am AST-Knoten**: der ausgepackte Empfänger am Ziel, der
-    Rückgabetyp am Aufruf. Die Fallunterscheidung fragt den Empfängertyp über eine Stelle, die
-    in der Kette auspackt. Als Parameter hätte es vier weitere Signaturen gekostet, die keine
-    davon interessiert.
-  - **Dabei fiel eine ältere Unstimmigkeit auf**: `b?.w` auf ein Feld `w: ?int` ergab `??int`,
-    und der Fehler kam eine Ebene zu spät als „cannot assign '?int' to 'int'". Optionals
-    verschachteln nicht (§4) — beide Stellen kollabieren jetzt, Sema *und* Lowering. Wieder
-    **eine Frage, zwei Stellen**; diesmal beide beim ersten Anlauf gefunden, weil der
-    Verifier-Befund (`call dest t61 is i64 but Box.leer returns ?i64`) direkt darauf zeigte.
-  - Ein leerer Empfänger wertet **die Argumente nicht aus**. Der Test misst das mit einem
-    Seiteneffekt; ohne ihn bliebe er grün, wenn sie vor der Prüfung berechnet würden.
-  - **Wo es aufhört, sagt es das** (`LYR-SEM0062`): hält das Glied einen Funktions-*Wert*
-    (`f: fn() -> int`), gibt es zwei Fragen und ein `?` — ob der Empfänger da ist und ob das Feld
-    belegt ist. Wer dort auspackte, beantwortete die zweite stillschweigend mit ja; bei
-    `f: ?fn() -> int` ist das ein Aufruf auf null. Die Meldung nennt den Ausweg, und ein Test
-    prüft, dass der Ausweg compiliert — sonst wäre sie ein Hinweis ins Leere.
-  - §7 in `Sprache.md` und das Nullable-Kapitel der `Doku.md` sagen die Aufruf-Form jetzt an.
+- [x] **`b?.get()` works** (2026-08-12). 2661 tests green, Debug and Release.
+  - The sema turned `?.get` into a `?fn() -> int` and then reported `LYR-SEM0013: not callable`, a
+    statement about an intermediate type nobody wrote down. Now `CheckCall` unwraps the receiver when
+    the callee is a `?.` member and puts the optional around the *result*. The workaround
+    (`if (b != null) { b.get() }`) was three times as long.
+  - **The call runs through the same resolution as every other one.** All five dispatch routes carry
+    it without a line of extra code: a concrete class, a generic instance, an interface (dynamic), a
+    constrained type parameter, and a primitive receiver with an extension. A second path would have
+    had to answer each of them once more.
+  - **The first attempt was exactly that second copy**, only disguised: a special case in the callee
+    `switch` that appended the unwrapped receiver. It stood **before** the generics and interface
+    detection and hid them — `b?.get()` on a `Box<int>` became *"external or bodiless"*, a diagnostic
+    about the wrong cause.
+  - The two deviations now hang **on the AST node**: the unwrapped receiver on the target, the return
+    type on the call. The case distinction asks the receiver type through a place that unwraps along
+    the chain. As parameters it would have cost four more signatures that none of them care about.
+  - **An older inconsistency surfaced along the way**: `b?.w` on a field `w: ?int` produced `??int`,
+    and the error came one level too late as "cannot assign '?int' to 'int'". Optionals do not nest —
+    both places now collapse, sema *and* lowering. Again **one question, two places**; this time both
+    found on the first attempt, because the verifier finding (`call dest t61 is i64 but Box.leer
+    returns ?i64`) pointed straight at it.
+  - An empty receiver **does not evaluate the arguments**. The test measures that with a side effect;
+    without it, it would stay green if they were computed before the check.
+  - **Where it stops, it says so** (`LYR-SEM0062`): if the member holds a function *value*
+    (`f: fn() -> int`), there are two questions and one `?` — whether the receiver is there and
+    whether the field is filled. Unwrapping there answers the second one silently with yes; with
+    `f: ?fn() -> int` that is a call on null. The message names the way out, and a test checks that
+    the way out compiles.
+  - The grammar and the nullable chapter of the guide now state the call form.
 
-- [x] **`s = Small { n = 5 };` geht** (2026-08-11). 2675 Tests grün.
-  - §6.2 erlaubt den Ausdruck „in jeder Wert-Position", und die rechte Seite einer Zuweisung ist
-    eine. `ParseExprStmt` schaltete die Mehrdeutigkeits-Sperre aber für die **ganze** Anweisung
-    ab — sie gilt dem *Anfang*, weil dort ein Block stehen könnte. Hinter einem `=` kann keiner
-    stehen.
-  - **Die Meldung war das eigentliche Ärgernis**: `'Small' is a type, not a value — did you mean
-    'Small { . }'?` schlug genau das vor, was dort schon stand. Bekannt seit P3, und am
-    2026-08-07 ist der Maintainer beim Schreiben einer Messprobe erneut hineingelaufen, ohne ihn
-    wiederzuerkennen.
-  - **Die Gegenprobe ist die wichtigere Hälfte**: am Statement-Anfang bleibt es gesperrt, ein
-    Block bleibt ein Block, und `c = a < b` bleibt ein Vergleich. Ein Fix, der die Sperre ganz
-    entfernte, kostete keine Diagnose, sondern eine falsche Deutung.
-  - **`Opt<int>.Some(5)` ist *nicht* dieselbe Ursache** — gemessen, nicht vermutet. Ich hatte
-    beide als einen Posten geschätzt; der Fix hier hat dort nichts bewegt. Der Aufwand steht
-    korrigiert unter `## Noch offen`.
+- [x] **`s = Small { n = 5 };` works** (2026-08-11). 2675 tests green.
+  - The grammar allows the expression "in every value position", and the right-hand side of an
+    assignment is one. `ParseExprStmt` switched the ambiguity guard off for the **whole** statement —
+    it applies to the *beginning*, because a block could stand there. After an `=` no block can.
+  - **The message was the real annoyance**: `'Small' is a type, not a value — did you mean
+    'Small { . }'?` suggested exactly what already stood there. Known for a long time, and on
+    2026-08-07 the maintainer ran into it again while writing a measurement without recognising it.
+  - **The counter-check is the more important half**: at the start of a statement it stays blocked, a
+    block stays a block, and `c = a < b` stays a comparison. A fix that removed the guard entirely
+    cost no diagnostic but a wrong reading.
+  - **`Opt<int>.Some(5)` is *not* the same cause** — measured, not assumed. I had estimated both as
+    one item; the fix here moved nothing there. The corrected effort stands under `## Still open`.
 
-- [x] **Zwei Diagnosen, die auf die falsche Ursache zeigten** (2026-08-11). 2668 Tests grün.
-  - **Ein Attribut an einem Parameter** wurde als Parametername gelesen; danach fehlte der Rumpf,
-    und der Compiler sprach von *nativen Deklarationen* — zu jemandem, der `@noCapture` schreiben
-    wollte. Jetzt dieselbe Meldung wie an einer Deklaration (`LYR-PAR0038`, §10), und der Rumpf
-    bleibt erhalten: ein Test prüft, dass es bei **einer** Meldung bleibt.
-  - **`interface B :: [A]`** lief in eine Meldung über Parameter-Klammern. Jetzt `LYR-PAR0039`,
-    und sie nennt den Ausweg, weil es einen gibt: `std.core` löst dasselbe mit zwei Constraints
-    nebeneinander (ADR-024). Die Konformanzliste wird gelesen und verworfen — **eine Diagnose je
-    Ursache**, sonst stolperte der Parser gleich noch einmal über `[A]`.
-  - Beides kostet keine Ausdrucksstärke: beide Formen bleiben abgelehnt. Es kostete Zeit — eine
-    Diagnose, die auf die falsche Stelle zeigt, ist teurer als gar keine, weil man dort sucht.
-  - Die Gegenprobe steht daneben: `class K :: [A]` bleibt gültig. Ohne sie wäre die halbe Stdlib
-    ein Syntaxfehler, und der Test wäre trotzdem grün.
+- [x] **Two diagnostics that pointed at the wrong cause** (2026-08-11). 2668 tests green.
+  - **An attribute on a parameter** was read as a parameter name; afterwards the body was missing and
+    the compiler spoke of *native declarations* to someone who wanted to write `@noCapture`. Now the
+    same message as on a declaration (`LYR-PAR0038`), and the body is kept: a test checks that it
+    stays at **one** message.
+  - **`interface B :: [A]`** ran into a message about parameter parentheses. Now `LYR-PAR0039`, and
+    it names the way out, because there is one: `std.core` solves the same with two constraints side
+    by side. The conformance list is read and discarded — **one diagnostic per cause**, or the parser
+    would stumble over `[A]` a second time.
+  - Neither costs expressiveness: both forms stay rejected. It cost time — a diagnostic pointing at
+    the wrong place is more expensive than none, because that is where you search.
+  - The counter-check stands beside it: `class K :: [A]` stays valid. Without it half the standard
+    library would be a syntax error and the test would still be green.
 
-- [x] **Die Konformanz prüft ihre Typargumente** (2026-08-11). 2656 Tests grün.
-  - **Der ernsteste Befund dieser Arbeit, und er stand als Lässlichkeit in dieser Datei.** Bis
-    heute verglich die Konformanz nur das Interface-*Symbol*: `class Ones :: [Src<int>]` erfüllte
-    ein `<T :: [Src<string>]>`, und der Rumpf legte einen `i64` in einen `string`-Slot.
-  - **In Debug fing es der Verifier. In Release — also in dem, was ausgeliefert wird — lief es
-    durch** und lieferte eine stille falsche Antwort; der Bytecode-Loader fing es ebenfalls nicht.
-    Kein fehlendes Feature, sondern ein Typprüfer, der ein Programm annimmt, dessen Typen nicht
-    halten. Dass .NET den Schaden eindämmt (leerer String statt Speicherfehler), ist Glück der
-    Wertdarstellung.
-  - **Dieselbe Lücke saß an zwei Stellen**: beim Constraint *und* bei der Zuweisung an einen
-    Interface-Typ — beide liefen über denselben Vergleich. Zum neunten Mal in diesem Projekt
-    dasselbe Muster.
-  - Die volle Substitutionsabbildung wird durchgereicht statt eines Parameters nach dem anderen:
-    ein Constraint darf die übrigen Typ-Parameter nennen (`<K, V :: [Map<K, V>]>`), und
-    `Eq<T>` ist erst mit `T := int` die Frage, die wirklich gestellt wird.
-  - **Zehn Tests, beide Richtungen.** `Map<K :: [Hashable<K>, Equatable<K>]>` und `Iterator<T>`
-    sind die schwersten Nutzer generischer Constraints in der Stdlib und blieben unberührt — ohne
-    die Gegenproben wäre ein Fix, der zu viel ablehnt, nicht von einem richtigen zu unterscheiden.
+- [x] **Conformance checks its type arguments** (2026-08-11). 2656 tests green.
+  - **The most serious finding of this work, and it stood in this file as a triviality.** Until then
+    conformance compared only the interface *symbol*: `class Ones :: [Src<int>]` satisfied a
+    `<T :: [Src<string>]>`, and the body put an `i64` into a `string` slot.
+  - **Debug caught it in the verifier. Release — what actually ships — ran through** and gave a
+    silently wrong answer; the bytecode loader did not catch it either. Not a missing feature but a
+    type checker accepting a program whose types do not hold. That .NET contains the damage (an empty
+    string rather than a memory fault) is luck of the value representation.
+  - **The same gap sat in two places**: at the constraint *and* at the assignment to an interface
+    type, both running through the same comparison. The ninth time for that pattern in this project.
+  - The full substitution map is passed through rather than one parameter after another: a constraint
+    may name the remaining type parameters (`<K, V :: [Map<K, V>]>`), and `Eq<T>` is only with
+    `T := int` the question that is really asked.
+  - **Ten tests, both directions.** `Map<K :: [Hashable<K>, Equatable<K>]>` and `Iterator<T>` are the
+    heaviest users of generic constraints in the standard library and stayed untouched — without the
+    counter-checks a fix that rejects too much would be indistinguishable from a correct one.
 
-- [x] **Die zwei Abstürze aus der v1.0-Liste** (2026-08-11). 2646 Tests grün.
-  - **`do { return … } while (…)`** war ein Compiler-Absturz: Rumpf, Bedingung und Ausgang wurden
-    alle drei vorab angelegt, und terminierte der Rumpf, blieben zwei Blöcke ohne Prädecessoren —
-    was der Verifier ablehnt, weil es keinen `SimplifyCfg`-Pass gibt. Sie entstehen jetzt
-    **bedarfsgesteuert**.
-  - **Die Falle war die Bedingung, unter der man das entscheidet.** STATUS beschrieb den Fall
-    lange als „der Rumpf terminiert" — daran lässt er sich nicht festmachen:
-    `do { if (c) { break; } return 2; }` fällt **nicht** durch und erreicht den Ausgang trotzdem.
-    *Ist der Block erreichbar* und *fällt der Rumpf durch* sind zwei Fragen; nur die erste zählt.
-    Ein Test steht genau dafür da, und ein zu einfacher Fix wäre mit dem ersten grün und mit ihm
-    rot.
-  - **Dieselbe Lösung zum dritten Mal**: der Merge-Block von `match` (Inventur-Sweep) und der von
-    `try` (M8/S4) waren derselbe Fehler. Die Lehre stand schon 2026-08-07 in dieser Datei — *ein
-    Merge-Block gehört grundsätzlich bedarfsgesteuert*. `do-while` war der dritte Fall, und
-    niemand hatte ihn daraufhin angesehen.
-  - **Der zweite „Absturz" war keiner mehr.** `DeclaredTypes.Lower` liefert längst eine Diagnose
-    mit Position — auf dem Import-Pfad wie auf dem Host-Methoden-Pfad, beides nachgemessen. Der
-    STATUS-Eintrag war veraltet; ich hatte ihn im letzten Bericht ungeprüft als blockierend geführt.
+- [x] **The two crashes from the v1.0 list** (2026-08-11). 2646 tests green.
+  - **`do { return … } while (…)`** was a compiler crash: the body, the condition and the exit were
+    all three created up front, and if the body terminated, two blocks were left without
+    predecessors — which the verifier rejects, because there is no `SimplifyCfg` pass. They are now
+    created **on demand**.
+  - **The trap was the condition under which that is decided.** STATUS described the case for a long
+    time as "the body terminates", which it cannot be pinned to:
+    `do { if (c) { break; } return 2; }` does **not** fall through and reaches the exit anyway.
+    *Is the block reachable* and *does the body fall through* are two questions; only the first
+    counts. A test stands exactly for that, and a fix that is too simple is green with the first one
+    and red with it.
+  - **The same solution for the third time**: the merge block of `match` and the one of `try` were
+    the same mistake. The lesson already stood in this file on 2026-08-07 — *a merge block belongs on
+    demand as a matter of principle*. `do-while` was the third case, and nobody had looked at it.
+  - **The second "crash" was none any more.** `DeclaredTypes.Lower` has long returned a diagnostic
+    with a position, on the import path as on the host method path, both measured. The STATUS entry
+    was stale; I had carried it unchecked as blocking in the last report.
 
-## Messungen
+## Measurements
 
-Zahlen statt Meinungen. Erhoben 2026-08-07, Release, 100 000 Iterationen, bereinigt um eine
-Skalar-Schleife derselben Länge.
+Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
+loop of the same length.
 
-| Was | Bytes/Operation |
+| What | Bytes per operation |
 |---|---|
-| Struct-Bau **+** Methodenaufruf (`Vec2.add`) | **352 B** |
-| nur Aufruf (`fn step(a: float): float`) | **176 B** |
-| nur Struct-Bau | **112 B** |
-| Skalar-Basislinie | 9 064 B *insgesamt* |
+| Struct construction **plus** method call (`Vec2.add`) | **352 B** |
+| call only (`fn step(a: float): float`) | **176 B** |
+| struct construction only | **112 B** |
+| scalar baseline | 9 064 B *in total* |
 
-**Die VM ist im Kern allokationsfrei** — eine Schleife mit Fließkomma-Arithmetik allokiert über
-100 000 Durchläufe nichts Nennenswertes. Alles darüber sind Aufrufe und Objekte.
+**The VM is allocation-free at its core** — a loop with floating-point arithmetic allocates nothing
+worth mentioning over 100 000 passes. Everything above that is calls and objects.
 
-**Die Hälfte der Bytes hat mit Structs nichts zu tun**: `Frame.For` allokiert pro Aufruf drei
-Objekte (Frame, Slots, Stack). Damit ist die Reihenfolge für eine spätere Optimierung festgelegt —
-**Frame-Pooling, dann Inlining, dann Scalar Replacement**, nicht umgekehrt: der in `add` gebaute
-Wert **escaped** (er wird zurückgegeben), also findet Escape-Analyse ohne vorheriges Inlining
-nichts. Die Ideen stehen in `docs/IDEAS.md`; **gebaut wird davon in v1 nichts.**
+**Half the bytes have nothing to do with structs**: `Frame.For` allocates three objects per call
+(frame, slots, stack). That fixes the order for a later optimization — **frame pooling, then
+inlining, then scalar replacement**, not the other way round: the value built in `add` **escapes**
+(it is returned), so escape analysis without prior inlining finds nothing. **None of it is built in
+v1.**
 
-Im Frame-Budget: 1000 Entities × 10 Vec-Operationen × 60 fps ≈ 211 MB/s, grob eine
-Gen0-Sammlung pro Frame. Gen0 ist kurz — **kein Grund, Vektor-Mathematik hinter Natives zu
-verlegen.** Das war die offene Frage aus P4; sie ist beantwortet.
+Within the frame budget: 1000 entities × 10 vector operations × 60 fps ≈ 211 MB/s, roughly one gen0
+collection per frame. Gen0 is short — **no reason to move vector mathematics behind natives.**
 
-Weiter gemessen: `for-in` über einen Range kostet **1,28×** gegenüber einer `while`-Schleife (nicht
-mehr, wie der P8-Eintrag befürchten ließ). Der Verifier ist **~50 %** der Lowering-Zeit in Debug,
-nicht ~90 % — die alte Behauptung stammte aus M5 und hatte nie eine Quelle. Ein Release-Profil
-steht weiter aus.
+Measured further: `for-in` over a range costs **1.28×** against a `while` loop. The verifier is
+**~50 %** of the lowering time in Debug, not ~90 % — the old claim never had a source. A Release
+profile is still outstanding.
 
-## Woran wir gerade arbeiten
+## What we are working on
 
-**M8b ist inhaltlich durch.** `Set<T>`, `std.string`, `std.math`, `std.fmt`, `std.io.file`,
-`std.os` und zuletzt `std.option` stehen (S1–S9); `std.error` und `std.coroutine` sind mit
-Begründung gestrichen statt geliefert.
+**M10 is finished**, inventory included. **v1.0 is not** — what is missing stands below under
+`## What v1.0 still needs`: a `CHANGELOG.md`, platform-specific binaries, a documentation site, and
+the decision which of the open language gaps block v1.
 
-**M10 läuft.** E1–E3 stehen: `LangVm`, Capabilities, `Call<T>`, Marshalling, `RegisterFunction`.
-Ein Host kann heute ein Skript laden, sandboxen, Funktionen daraus rufen und eigene hineinreichen.
+**The open question to answer before E4**: the lifetime and identity of a host object across the
+boundary — does the host keep it alive or the VM? That is the one place in M10 where I have no
+answer yet, and it belongs asked before E4 starts.
 
-**M10 ist abgeschlossen**, Inventur inklusive. **v1.0 ist es nicht** — was fehlt, steht unten
-unter `## Was v1.0 noch fehlt`: vier Meilenstein-Tags, ein `CHANGELOG.md`, plattformspezifische
-Binaries, eine Doku-Site, und die Entscheidung, welche der offenen Sprachlücken v1 blockieren.
+**The reachability analysis is in place** — pulled forward, because `std.string` made the effect
+painfully visible for the first time: two tests holding that "a hello world carries no string
+machinery" became false. Writing them green would have meant giving up a promise rather than
+redeeming it.
 
-**Die offene Frage, die vor E4 zu beantworten ist**: Lebenszeit und Identität eines Host-Objekts
-über die Grenze — hält der Host es am Leben oder die VM? Das ist die einzige Stelle in M10, an der
-ich noch keine Antwort habe, und sie gehört gestellt, bevor E4 anfängt.
+**The `v0.9.0` tag is set** (annotated, its message is the release note — CONTRIBUTING §Releases, no
+`CHANGELOG.md` before v1.0), together with `m9-complete`. Both point at the **first state on which
+all three CI jobs are green** — not at "M9: polish" of 2026-08-07, where `dotnet test` was red in
+Release and the shipping build did not build. Putting a tag there would be the "done by intent
+alone" that Rule 3 forbids.
 
-**Die Erreichbarkeitsanalyse ist da** — vorgezogen, weil `std.string` den Effekt zum ersten Mal
-schmerzhaft sichtbar gemacht hat: zwei Tests, die „ein Hello-World trägt keine String-Maschinerie"
-festhielten, wurden falsch. Sie grün zu schreiben hätte geheißen, eine Zusage aufzugeben statt sie
-einzulösen.
+They briefly stood one commit earlier and were moved: there the tests were green but the publish job
+was red. **A tag is the one thing that cannot be quietly corrected afterwards** — which is why moving
+it was right and would not have been a week later.
 
-**Danach M10**, die Embedding-API: `Lyric.Embedding.LangVm` mit
-`RegisterFunction`/`RegisterType`, die bidirektionale Marshalling-Schicht zwischen Lyric-Werten
-und .NET-Objekten, `Reload` fuer Hot-Reload, und ein Beispiel-Host in C#.
+## What v1.0 still needs
 
-Die Capabilities aus M8/S6 sind dafuer die halbe Miete: der Host konfiguriert beim Erzeugen der
-VM, was ein Skript anfassen darf, und die Durchsetzung liegt bereits beim Laden. `std.dotnet`
-gehoert in denselben Slice — es ist Interop und teilt sich die Marshalling-Schicht.
+**M0–M10 are finished in substance.** The release is not, and the list is short enough to work
+through point by point.
 
-**Der `v0.9.0`-Tag ist gesetzt** (annotiert, die Message ist die Release-Notiz — CONTRIBUTING
-§Releases, kein `CHANGELOG.md` vor v1.0), dazu `m9-complete`. Beide zeigen auf den **ersten Stand,
-auf dem alle drei CI-Jobs grün sind** — nicht auf „M9: Politur" vom 2026-08-07, wo `dotnet test`
-in Release rot war und die Auslieferung nicht baute. Einen Tag dorthin zu setzen wäre das „done by
-intent alone", das Rule 3 verbietet.
+**Process (CONTRIBUTING):**
 
-Sie standen kurzzeitig einen Commit früher und sind verschoben worden: dort waren die Tests grün,
-der Publish-Job aber rot. **Ein Tag ist das Einzige, was sich nicht stillschweigend nachbessern
-lässt** — deshalb war das Verschieben richtig und wäre es eine Woche später nicht mehr gewesen.
+- ~~milestone tags~~ **done** (2026-08-11): `m5-complete`, `m7-complete`, `m8-complete`,
+  `m10-complete` and `v0.5.0` have been added. They point at the **historical** completion commits
+  rather than at HEAD — a tag marks when a milestone was finished, and hanging it at the end made the
+  history unusable. (`m9-complete` is the justified exception: it was moved deliberately, because M9
+  was *not* finished in substance at that point.) Rule 3 is thereby satisfied for M0–M10.
+- **`CHANGELOG.md`** — §Releases: *"From `v1.0.0` on: tag, GitHub release page, and a `CHANGELOG.md`
+  entry."* Before v1.0 there deliberately was none; from v1.0 there is one.
+- **GitHub release page** for the `v1.0.0` tag.
 
-**Weiterhin ungetaggt: `m5-complete`, `m7-complete`, `m8-complete` und `v0.5.0`.** Rule 3 verlangt
-sie, die Meilensteine sind fertig, die Tags fehlen — bewusst offen gelassen, weil sie auf die
-damaligen Commits gehören und das eine eigene Entscheidung ist.
+**Artifact:**
 
-## Was v1.0 noch fehlt
+- **Binaries for Windows/Linux/macOS** via `dotnet publish -r …`. `publish.proj` ships
+  **framework-dependent** today and without a RID matrix — it needs a .NET 10 runtime on the target
+  machine.
+- **Documentation site** (static HTML out of the docs). There is none.
 
-**M0–M10 sind inhaltlich fertig.** Das Release ist es nicht, und die Liste ist kurz genug, um sie
-Punkt für Punkt abzuarbeiten — nach der Regel, an der M9 gescheitert ist.
+**The two crashes are fixed** (2026-08-11). What remains under `## Still open` are limits **with a
+diagnostic** (`Opt<int>.Some(5)`, `@noCapture`, interface inheritance) — they cost expressiveness,
+not a crash. **Whether they block v1 is a decision and not a measurement.**
 
-**Prozess (CONTRIBUTING):**
+## Still open
 
-- ~~Meilenstein-Tags~~ **erledigt** (2026-08-11): `m5-complete`, `m7-complete`, `m8-complete`,
-  `m10-complete` und `v0.5.0` sind nachgezogen. Sie zeigen auf die **historischen**
-  Abschluss-Commits, nicht auf HEAD — ein Tag markiert, wann ein Meilenstein fertig war, und ihn
-  ans Ende zu hängen machte die Historie unbrauchbar. (`m9-complete` ist die begründete Ausnahme:
-  er wurde bewusst verschoben, weil M9 zu dem Zeitpunkt inhaltlich *nicht* fertig war.) Rule 3 ist
-  damit für M0–M10 erfüllt.
-- **`CHANGELOG.md`** — §Releases: *„From `v1.0.0` on: tag, GitHub release page, and a
-  `CHANGELOG.md` entry."* Vor v1.0 gab es bewusst keinen; ab v1.0 gibt es ihn.
-- **GitHub-Release-Seite** zum `v1.0.0`-Tag.
+**From the M10 plan, found while measuring:**
 
-**Artefakt (ROADMAP §v1.0):**
+- **The member separator is written for block bodies.** A bodiless method in a class needs `int;,` —
+  a semicolon *and* a comma in a row. It works, but it is a spelling nobody guesses.
 
-- **Binaries für Windows/Linux/macOS** via `dotnet publish -r …`. `publish.proj` liefert heute
-  **framework-abhängig** und ohne RID-Matrix — es braucht eine .NET-10-Laufzeit auf der Zielmaschine.
-- **Doku-Site** (statisches HTML aus den Docs). Es gibt keine.
+**Language gaps to close before v1:**
 
-**Die zwei Abstürze sind behoben** (2026-08-11). Was unter `## Noch offen` bleibt, sind Grenzen
-**mit Diagnose** (`Opt<int>.Some(5)`, `@noCapture`, Interface-Vererbung) — sie kosten Ausdrucksstärke, keinen Absturz. **Ob sie v1 blockieren, ist
-eine Entscheidung und keine Messung.**
+- **The expected type does not reach an argument position.** `let o: Opt<int> = Opt.Some(7)` works,
+  `take(Opt.Some(7))` does not — there the type arguments have to stand. Affects every construction
+  that draws its instance from the context, not only enums.
+- **`lyric check` runs only up to the sema** (`SourceCompiler.cs:132`). A program with a lowering
+  limit reports `ok` and dies on `run`. Noticed on 2026-08-12 while measuring the enum gap, and it
+  made the measurement look harmless at first.
+- **A `type` alias carries at two places only.** As a parameter type and as a local annotation it
+  works; as a **return type** and as a **field type** it is `LYR-IR0001` ("a type alias is not
+  supported by this compiler version yet"). Found on 2026-08-12 while writing the user guide — the
+  example the documentation wanted to show did not compile. The sema resolves the alias, the lowering
+  does not.
+- **`static fn` in an enum body does not parse** — `LYR-PAR0008` ("expected ')' after parameters")
+  plus two follow-up messages, all three about something other than the cause. Noticed on 2026-08-12
+  while measuring the enum gap. ~1 h.
+- **A block lambda does not deliver its return type to the inference**: `(n: int) => n` binds `U`,
+  `(n: int) => { return n; }` does not. *Not a gap but a documented limit* — `LYR-SEM0046` says so
+  and suggests the annotation, and that works. It stands here because I wrongly reported it as a bug
+  on 2026-08-08.
 
-## Noch offen
+- **`?T[] ?? []`** and **`size`** are done.
 
-**Aus dem M10-Plan, beim Messen gefunden:**
+- **There is no interface inheritance** (`interface A :: [B]` is `LYR-PAR0039` with a message that
+  names the way out). Noticed while building the constraint rules, which presupposed it. Whether v1
+  needs it is open — `Hashable` would need it only to imply `Equatable`. No program is unwritable
+  without it: `std.core` requires both side by side.
+- **`string < string` and `==` on user types are rejected** (`LYR-SEM0003` / `LYR-SEM0055`).
+  Deliberate and temporary: operator overloading is the first topic after v1.0, and the diagnostic
+  points at it. Until then an ordinary method.
 
-- **Der Member-Trenner aus §3.2 ist für Block-Rümpfe geschrieben.** Eine bodylose Methode in einer
-  Klasse braucht `int;,` — Semikolon *und* Komma hintereinander. Es geht, aber es ist eine
-  Schreibweise, die niemand errät.
+**Tooling and format:**
 
-**Sprachlücken, vor v1 zu schließen:**
+- **The source map section** (id 6) is reserved and described but is not written — panics therefore
+  show the function, not the line.
+- **Section byte sizes are missing from `lyrvm info`**: the reader discards them after parsing.
+  Retrofitting them would mean extending the model with provenance data — a decision of its own.
+- **Measure the verifier share in a Release profile** — the Debug numbers are riddled with JIT
+  warm-up and serve only as an order of magnitude.
 
-- **Der erwartete Typ erreicht keine Argumentposition.** `let o: Opt<int> = Opt.Some(7)` geht,
-  `nimm(Opt.Some(7))` nicht — dort müssen die Typargumente dastehen. Betrifft jede Konstruktion,
-  die ihre Instanz aus dem Kontext zieht, nicht nur Enums.
-- **`lyric check` läuft nur bis zur Sema** (`SourceCompiler.cs:132`). Ein Programm mit einer
-  Lowering-Grenze meldet `ok` und stirbt bei `run`. Am 2026-08-12 beim Messen der Enum-Lücke
-  aufgefallen, und es hat die Messung zuerst harmlos aussehen lassen.
-- **Ein `type`-Alias trägt nur an zwei Stellen.** Als Parametertyp und als lokale Annotation geht
-  er; als **Rückgabetyp** und als **Feldtyp** ist er `LYR-IR0001` („a type alias is not supported
-  by this compiler version yet"). Am 2026-08-12 beim Schreiben des User-Guides gefunden — das
-  Beispiel, das die Doku zeigen wollte, übersetzte nicht. Die Sema löst den Alias auf, das
-  Lowering nicht.
-- **`static fn` in einem Enum-Rumpf parst nicht** — `LYR-PAR0008` („expected ')' after
-  parameters") plus zwei Folgemeldungen, alle drei über etwas anderes als die Ursache. Am
-  2026-08-12 beim Messen der Enum-Lücke aufgefallen. ~1 h.
-- **Ein Block-Lambda liefert seinen Rückgabetyp nicht an die Inferenz**: `(n: int) => n` bindet
-  `U`, `(n: int) => { return n; }` nicht. *Keine Lücke, sondern eine dokumentierte Grenze* —
-  `LYR-SEM0046` sagt es und schlägt die Annotation vor, und die funktioniert. Steht hier, weil ich
-  sie am 2026-08-08 fälschlich als Bug gemeldet habe.
+## Design decisions (context)
 
-- **`?T[] ?? []`** und **`size`** sind erledigt (M8b/S8).
+- AST = immutable records; symbols = mutable classes; binding and types through side tables
+  (Roslyn style).
+- Builtins as the root scope; two-pass declaration; structured flow analysis (no CFG).
+- Type system rules in `docs/Grammar.md`; **`ErrorType` means exclusively "already reported here"** —
+  not "unknown". Checked mechanically.
+- Generics: monomorphization. The only option that fits this VM — C# reifies and needs a JIT, Java
+  erases and pays with boxing; both presuppose that the runtime knows types, and a Lyric value
+  carries no type tag.
+- **A value carries no type tag.** Every opcode carries its tag in the instruction stream, and the
+  dispatch stays static. From that follows the fat-pointer pattern shared by interfaces, closures and
+  coroutines: a reference plus a word in `LyrValue`.
+- **IR**: the type fields on the instructions are copies for the printer, the temp table is the
+  authority — that the two agree is the core job of the verifier.
+- **Total functions over today's type universe throw in the `default`** rather than returning a
+  substitute value (`IrType.Equal`, `IrNames.*`, `TypeLowering.Lower`, `IrPrinter.TypeStr`,
+  `IrBinKind.FromAst`). The throw names the place to follow up when extending. The exception is
+  `IrVerifier.Show` — there a throw would hide the finding. *(A `default` that silently does nothing
+  has already desynchronised the instruction stream once: `CodeDecoder.SkipType`.)*
+- **`IrShape` is the single source for operands, dest and successors**, **`IrNames` the single one
+  for scalar names and mnemonics.** Two copies of those switch blocks would be silently wrong code.
+- **Lowering**: statements return "does the control flow fall through?"; values crossing block
+  boundaries travel through (possibly synthetic) locals, never through temps — **which is exactly why
+  this IR needs no phi**. Block density and `Entry == bb0` are structurally guaranteed in the
+  `BlockBuilder` rather than checked.
+- **Two error classes in the lowering**: valid Lyric the backend state cannot do → `LYR-IR0001` with
+  a position; an internal inconsistency → `InternalCompilationException`. **Deliberately exactly one
+  IR code** — codes are stable identifiers, the gaps are temporary. `LYR-IR0002..0010` stay free.
+  Likewise: a retired number (`LYR-CLI0007`) is **never** issued again.
+- **Line endings are a test contract, not a taste**: `.gitattributes` forces `eol=lf` in the working
+  tree as well, because the goldens compare span offsets. **Do not remove it** — without it 14 golden
+  tests fail in every fresh clone and the `windows-latest` job breaks.
+- **Working mode** (scope check 2026-08-02, still in force): Claude plans *and* implements, the
+  maintainer reviews — a deliberate deviation from `CLAUDE.md` §Collaboration, where the plan comes
+  from Claude and the code from the user. What to watch is whether the understanding of the code
+  keeps up with its size. **No `CHANGELOG.md` before `v1.0.0`**; the annotated tag message is the
+  release note.
+- **At the end of every milestone the delivery list is to be ticked off point by point, not the exit
+  criterion alone.** M5 and M6 each silently failed to deliver part of their items; the gap disguised
+  itself as a clean diagnostic. For the same reason **six** gates were re-cut in M7, because they
+  required language features of later slices.
 
-- **Interface-Vererbung gibt es nicht** (`interface A :: [B]` ist `LYR-PAR0039` mit einer
-  Meldung, die den Ausweg nennt). Aufgefallen beim Bau von ADR-024, das sie voraussetzte. Ob v1
-  sie braucht, ist offen — `Hashable` bräuchte sie nur, um `Equatable` zu implizieren. Kein
-  Programm ist ohne sie unschreibbar: `std.core` verlangt beides nebeneinander.
-- **`string < string` und `==` auf Nutzertypen sind abgelehnt** (`LYR-SEM0003` / `LYR-SEM0055`).
-  Bewusst und vorübergehend: Operator-Overloading ist das erste Thema nach v1.0 (v1.4), und die
-  Diagnose zeigt darauf. Bis dahin eine gewöhnliche Methode.
+## Last relevant commit
 
-**Werkzeug und Format:**
-
-- **Source-Map-Sektion** (Id 6) ist reserviert und beschrieben, wird aber nicht geschrieben —
-  Panics zeigen deshalb die Funktion, nicht die Zeile.
-- **Sektions-Byte-Größen fehlen in `lyrvm info`**: der Reader verwirft sie nach dem Parsen. Sie
-  nachzurüsten hieße, das Modell um Herkunftsdaten zu erweitern — eigene Entscheidung.
-- **Verifier-Anteil im Release-Profil messen** — die Debug-Zahlen sind von JIT-Aufwärmen
-  durchsetzt und taugen nur als Größenordnung.
-
-## Design-Entscheidungen (Kontext)
-
-- AST = immutable Records; Symbole = mutable Klassen; Binding/Typen via Seiten-Tabellen (Roslyn-Stil).
-- Builtins als Wurzel-Scope; 2-Pass-Deklarieren; strukturierte Flow-Analyse (kein CFG).
-- Typsystem-Regeln in `Sprache.md §6.5`; **`ErrorType` heißt ausschließlich „hier wurde bereits
-  gemeldet"** — nicht „unbekannt". Maschinell geprüft.
-- Generics: Monomorphisierung. Die einzige Option, die zu dieser VM passt — C# reifiziert und
-  braucht einen JIT, Java erased und bezahlt mit Boxing; beides setzt voraus, dass die Runtime
-  Typen kennt, und ein Lyric-Wert trägt kein Typ-Tag (ADR-013).
-- **Ein Wert trägt kein Typ-Tag.** Jeder Opcode trägt sein Tag im Instruktionsstrom, der Dispatch
-  bleibt statisch. Daraus folgt das Fat-Pointer-Muster, das Interfaces (P3), Closures (P6) und
-  Coroutinen (P7) teilen: Referenz plus Wort in `LyrValue`.
-- **IR**: Type-Felder auf den Instruktionen sind Kopien für den Printer, die Temp-Tabelle ist die
-  Autorität — dass beide übereinstimmen, ist der Kern-Job des Verifiers.
-- **Totale Funktionen über das heutige Typ-Universum werfen im `default`**, statt einen Ersatzwert
-  zu liefern (`IrType.Equal`, `IrNames.*`, `TypeLowering.Lower`, `IrPrinter.TypeStr`,
-  `IrBinKind.FromAst`). Der Wurf nennt die Stelle, die beim Erweitern nachzuziehen ist. Ausnahme
-  ist `IrVerifier.Show` — dort würde ein Wurf den Befund verdecken. *(Ein `default`, der still
-  nichts tut, hat schon einmal den Instruktionsstrom desynchronisiert: `CodeDecoder.SkipType`.)*
-- **`IrShape` ist die einzige Quelle für Operanden/Dest/Successors**, **`IrNames` die einzige für
-  Skalar-Namen und Mnemonics.** Zwei Kopien dieser switch-Blöcke wären still falscher Code.
-- **Lowering**: Statements liefern „fällt der Kontrollfluss durch?"; Werte über Blockgrenzen laufen
-  durch (ggf. synthetische) Locals, nie durch Temps — **genau deshalb braucht diese IR kein Phi**.
-  Blockdichte und `Entry == bb0` sind im `BlockBuilder` strukturell garantiert statt geprüft.
-- **Zwei Fehlerklassen im Lowering**: gültiges Lyric, das der Backend-Stand nicht kann → `LYR-IR0001`
-  mit Position; interne Inkonsistenz → `InternalCompilationException`. **Bewusst genau ein IR-Code**
-  — Codes sind stabile Bezeichner, die Lücken vorübergehend. `LYR-IR0002..0010` bleiben frei.
-  Ebenso gilt: eine entfallene Nummer (`LYR-CLI0007`) wird **nie** neu vergeben.
-- **Zeilenenden sind Test-Vertrag, nicht Geschmack**: `.gitattributes` erzwingt `eol=lf` auch im
-  Arbeitsbaum, weil die Goldens Span-Offsets vergleichen. **Nicht entfernen** — ohne sie fallen 14
-  Golden-Tests in jedem frischen Clone und der `windows-latest`-Job bricht.
-- **Arbeitsmodus** (Scope-Check 2026-08-02, gilt weiter): Claude plant *und* implementiert, der
-  Maintainer reviewt — bewusste Abweichung von `CLAUDE.md` §Collaboration, wo
-  Plan-von-Claude/Code-vom-User steht. Zu beobachten ist, ob das Verständnis des Codes mit seinem
-  Umfang mithält. **Kein `CHANGELOG.md` vor `v1.0.0`**; die annotierte Tag-Message ist die
-  Release-Notiz.
-- **Am Ende jedes Meilensteins ist die Lieferposten-Liste Punkt für Punkt abzuhaken, nicht das
-  Exit-Kriterium allein.** M5 und M6 haben je einen Teil ihrer Posten stillschweigend nicht
-  geliefert; die Lücke tarnte sich als saubere Diagnose. Aus demselben Grund wurden in M7 **sechs**
-  Gates neu zugeschnitten, weil sie Sprachmittel späterer Slices verlangten.
-
-## Letzter relevanter Commit
-
-`parser: Struct-Init rechts vom '=' — die Sperre gilt dem Anfang`
+`repo: English comments and current references in the build, tooling and examples`
 
 ---
 
-## Wie diese Datei zu pflegen ist
+## How to maintain this file
 
-- Nach jedem Slice: `## Zuletzt fertig geworden` ergänzen, `## Woran wir gerade
-  arbeiten` updaten.
-- **Höchstens vier Einträge unter `## Zuletzt fertig geworden`.** Der fünfte
-  fliegt raus — er steht in `git log`. Diese Regel gab es schon, sie wurde
-  1088 Zeilen lang ignoriert.
-- Bei Meilenstein-Wechsel: oben den neuen Meilenstein eintragen.
-- Erledigte Punkte aus `## Noch offen` **löschen**, nicht durchstreichen.
-- **Niemals** hier neue Features planen. Das ist `ROADMAP.md`-Territorium.
+- After every slice: extend `## Recently finished`, update `## What we are working on`.
+- **At most four entries under `## Recently finished`.** The fifth goes — it stands in `git log`.
+  This rule existed already; it was ignored for 1088 lines.
+- On a milestone change: enter the new milestone at the top.
+- Finished points under `## Still open` are to be **deleted**, not struck through.
+- **Never** plan new features here.
