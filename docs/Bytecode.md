@@ -1,4 +1,4 @@
-# Lyric `.lyrbc` Bytecode Format 3.0
+# Lyric `.lyrbc` Bytecode Format 3.1
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.
@@ -6,9 +6,13 @@ or a second runtime can be written from this document alone.
 Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.
 
-Format version **3.0** covers: scalars, locals, module-internal and native calls, structured
+Format version **3.1** covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
-value semantics, exceptions, global constants, closures and host objects.
+value semantics, exceptions, global constants, closures, host objects, and source positions.
+
+**3.1 against 3.0**: the SourceMap section (id 6) has a payload. It is skippable, so a 3.0 reader
+loads a 3.1 module and a 3.1 reader loads a 3.0 module; the only difference is whether a panic can
+name a line.
 
 ---
 
@@ -65,7 +69,7 @@ minor version may only add skippable sections.
 | 3 | Types | no | layouts of composite types |
 | 4 | Imports | no | host and native functions |
 | 5 | Functions | no | defined functions with their code |
-| 6 | SourceMap | no | strippable: PC to file and line |
+| 6 | SourceMap | no | strippable: byte offset to file and line |
 | 7 | Start | no | entry point: `uleb128` function index |
 | 8 | Impls | no | interface implementations (vtables) |
 | 9 | Handlers | no | protected regions per function |
@@ -190,6 +194,53 @@ entries          count × {
 - `blockOffsets[i]` is the byte offset of block `i` in `code`. Every offset must fall on an
   instruction boundary.
 - Block 0 is the entry block. Execution begins at `blockOffsets[0]`.
+
+### SourceMap (Id 6)
+
+Byte offset to source position, one table per function.
+
+```
+fileCount        uleb128
+files            fileCount × uleb128   index into the string pool
+functionCount    uleb128               must equal the count in Functions (Id 5)
+functions        functionCount × {
+                   rowCount   uleb128
+                   rows       rowCount × {
+                     offsetDelta  uleb128   bytes since the previous row of this function
+                     fileIndex    uleb128   index into the file table above
+                     line         uleb128   1-based; 0 means no line is known
+                   }
+                 }
+```
+
+**Strippable.** No other section refers to this one, so removing it leaves a valid module. A module
+without it is valid too; the only consequence is that a panic names a function instead of a line.
+
+The offsets are byte offsets into that function's `code`, the same coordinate `blockOffsets` uses.
+The first row of a function carries its offset outright; every later row carries the difference to
+the one before. The offsets therefore ascend, and only the first row may have a delta of `0`.
+
+A row states the position from its own offset up to the next row's. **To resolve an offset, take the
+last row whose offset is less than or equal to it**; before the first row there is no position.
+
+**A row is written only where the position changes.** A loop body is dozens of instructions across a
+handful of lines, and a row per instruction would make this the largest section in the file.
+
+A function may carry `rowCount` `0`. Its code then has no position at all, which is what a runtime
+reports for it.
+
+**Why byte offsets and not instruction indices.** An instruction index is not a notion of this
+format: it presupposes that a runtime decodes the code into an array before running it. A runtime
+that walks the bytes directly would have to count instructions to answer a question the format can
+answer in its own coordinates.
+
+**The row carries no column.** A minor version may only add skippable sections, so the shape of this
+one is fixed until a major: a column cannot be added here later, and adding it beside this section
+would be a second mechanism for the same thing.
+
+A reader must reject: a `functionCount` that differs from the Functions section, a file index outside
+the file table, a string index outside the pool, an offset beyond that function's `codeLength`, and a
+delta of `0` on any row but the first.
 
 ### Start (Id 7)
 
@@ -635,12 +686,13 @@ fn main.add -> i64 {
 }
 ```
 
-A minimal module containing only that function, 46 bytes:
+A minimal module containing only that function, 46 bytes. The compiler writes a SourceMap by
+default; this is the stripped form, which is why section 6 is absent:
 
 ```
 4C 59 52 42                  magic "LYRB"
 03 00                        version.major = 3
-00 00                        version.minor = 0
+01 00                        version.minor = 1
 
 01                           § section 1 — Capabilities
 01                             byteLength = 1

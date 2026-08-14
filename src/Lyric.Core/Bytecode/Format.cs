@@ -12,7 +12,7 @@ public static class Format
     /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
     /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
-    public const ushort VersionMinor = 0;
+    public const ushort VersionMinor = 1;
 }
 
 /// <summary>
@@ -38,7 +38,8 @@ public enum SectionId : byte
 
     Functions = 5,
 
-    /// <summary>Optional and strippable: PC to file and line.</summary>
+    /// <summary>Optional and strippable: byte offset into a function's code to file and line. One
+    /// row per position CHANGE, not per instruction, and no other section refers to it.</summary>
     SourceMap = 6,
 
     /// <summary>Entry point: the <c>uleb128</c> index of the function a runtime calls. Absent for
