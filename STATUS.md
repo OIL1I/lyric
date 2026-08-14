@@ -271,15 +271,22 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 **Language gaps to close before v1:**
 
-- **The expected type does not reach an argument position.** Remeasured 2026-08-14, and the earlier
-  entry was wrong in both directions: the **return position does reach** —
-  `fn g(): O<int> { return O.S(1); }` compiles — while an argument position does not.
-  `f(O.S(1))` is `LYR-SEM0063`, `f(O.S { v = 1 })` is `LYR-SEM0026`, `f(O.N)` is `LYR-SEM0063`.
-  The way out works: `f(O<int>.S(1))`.
-- **A generic struct initializer draws its instance from NO context.** A gap of its own rather than a
-  shade of the one above, found 2026-08-14: `let p: P<int> = P { v = 1 }` is `LYR-SEM0001`
-  (*cannot assign 'P&lt;&gt;' to 'P&lt;int&gt;'*) even WITH the annotation that carries the enum
-  case. Only `P<int> { v = 1 }` works.
+- ~~**The expected type does not reach an argument position**~~ **done** (2026-08-14). Two causes,
+  not one, and each needed its own fix.
+  - **An argument had no expected type at all.** Phase A of `CheckCall` typed every non-lambda
+    argument without context, while phase C had been giving lambdas exactly that context all along.
+    It now passes the declared parameter type — but only when that type is CONCRETE: in
+    `fn f<T>(o: Opt<T>)` the parameter still holds `T`, and offering `Opt<T>` would answer with
+    itself the question the inference is there to settle from that very argument.
+  - **A generic struct initializer read no context anywhere**, not even an annotation, while the
+    enum struct variant beside it always had — `let p: P<int> = P { v = 1 }` was *cannot assign
+    'P<>' to 'P<int>'*. It now takes the instance from the expectation when the DEFINITION matches.
+    Written arguments still beat the context, and there is still no inference from the field VALUES:
+    `P { v = 1 }` with no context stays an error rather than a guess from the `1`.
+  - Two tests in `GenericEnumTests` held the old limit and were turned around rather than deleted:
+    the question they measure is the same and the answer changed. Green in **Debug and Release** —
+    an expectation that built the wrong instance is a verifier finding in Debug and a silently wrong
+    answer in Release.
 - ~~**`lyric check` runs only up to the sema**~~ **done** (2026-08-14). It runs the lowering and the
   verifier and stops before the bytes, so `check` and `build` answer the same question. 82 places in
   the lowering can report a limit and none was reachable from `check`.
@@ -376,7 +383,7 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 ## Last relevant commit
 
-`sema, ir: a type alias resolves everywhere, and a cyclic one is a diagnostic`
+`sema: the expected type reaches an argument, and a generic struct init reads it`
 
 ---
 
