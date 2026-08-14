@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrls</AssemblyName>
+    <RootNamespace>Lyric.Cli.LanguageServer</RootNamespace>
+    <Description>The Lyric language server: diagnostics for an editor over stdio.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      One edge. Everything the server does is in lyrlsp, which brings the shared contract and the
+      front end with it; this project is the process around it and nothing more.
+
+      Deliberately NOT a tool of the driver: 'lyric' starts short-lived tools and waits for them,
+      while a language server outlives the editor's own startup and owns stdio for its whole
+      lifetime. The editor launches this binary directly.
+    -->
+    <ProjectReference Include="..\Lyric.Lsp\Lyric.Lsp.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -71,6 +71,27 @@ public sealed class ScriptSource
         return new ScriptSource(moduleName, moduleName, null, text);
     }
 
+    /// <summary>
+    /// A file whose CONTENT comes from memory while its IDENTITY comes from the path.
+    ///
+    /// <para>The case of an editor: the file exists on disk, but the authoritative text is the
+    /// unsaved buffer. <see cref="FromDisk"/> would read the stale bytes and
+    /// <see cref="FromText"/> would lose the path, and with it the only thing that tells two
+    /// buffers of the same name apart.</para>
+    ///
+    /// <para><paramref name="displayName"/> is the whole path rather than the file name: it is
+    /// what a diagnostic is matched against to decide whether it belongs to this file, and two
+    /// open files can share a name.</para>
+    /// </summary>
+    /// <param name="moduleName">As in <see cref="FromDisk"/>: <c>null</c> leaves the name to the
+    /// module header, and to <c>main</c> when there is none.</param>
+    public static ScriptSource FromBuffer(string displayName, string text, string? moduleName = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        ArgumentNullException.ThrowIfNull(text);
+        return new ScriptSource(displayName, moduleName, null, text);
+    }
+
     /// <summary>Places the source in the <see cref="SourceManager"/>. <c>null</c> when the file
     /// could not be read; the diagnostic is then in <paramref name="diagnostics"/>.</summary>
     internal FileId? Open(SourceManager sources, DiagnosticEngine diagnostics)

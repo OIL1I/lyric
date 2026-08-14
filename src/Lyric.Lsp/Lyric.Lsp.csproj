@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>lyrlsp</AssemblyName>
+    <RootNamespace>Lyric.Lsp</RootNamespace>
+    <Description>The language server: the front end answering an editor over JSON-RPC.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The same two edges 'lyrc' has, and for the same reason: a language server compiles and
+      executes nothing. It answers questions about source, so it needs everything up to the sema
+      and no interpreter.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -4,9 +4,11 @@
     <Project Path="src/Lyric.Frontend/Lyric.Frontend.csproj" />
     <Project Path="src/Lyric.Vm/Lyric.Vm.csproj" />
     <Project Path="src/Lyric.Embedding/Lyric.Embedding.csproj" />
+    <Project Path="src/Lyric.Lsp/Lyric.Lsp.csproj" />
     <Project Path="src/Lyrc/Lyrc.csproj" />
     <Project Path="src/Lyrvm/Lyrvm.csproj" />
     <Project Path="src/Lyrrepl/Lyrrepl.csproj" />
+    <Project Path="src/Lyrls/Lyrls.csproj" />
     <Project Path="src/Lyric.Cli/Lyric.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
@@ -20,6 +22,7 @@
     <Project Path="tests/Lyric.Tests.Vm/Lyric.Tests.Vm.csproj" />
     <Project Path="tests/Lyric.Tests.Cli/Lyric.Tests.Cli.csproj" />
     <Project Path="tests/Lyric.Tests.Embedding/Lyric.Tests.Embedding.csproj" />
+    <Project Path="tests/Lyric.Tests.Lsp/Lyric.Tests.Lsp.csproj" />
     <Project Path="tests/Lyric.Tests.DocGen/Lyric.Tests.DocGen.csproj" />
   </Folder>
   <Folder Name="/tools/">

@@ -5,7 +5,7 @@
 <Project DefaultTargets="Publish">
 
   <!--
-    The shipping layout: four binaries, four libraries and the standard library in ONE directory.
+    The shipping layout: five binaries, five libraries and the standard library in ONE directory.
 
         dotnet msbuild build/publish.proj
         dotnet msbuild build/publish.proj -p:PublishRoot=D:\somewhere
@@ -47,13 +47,20 @@
 
   <ItemGroup>
     <!--
-      The order does not matter, but the builds must NOT run in parallel: four publishes into the
+      The order does not matter, but the builds must NOT run in parallel: five publishes into the
       same directory that share lyrcore.dll would overwrite the file under each other's hands.
     -->
     <Binary Include="..\src\Lyric.Cli\Lyric.Cli.csproj" />
     <Binary Include="..\src\Lyrc\Lyrc.csproj" />
     <Binary Include="..\src\Lyrvm\Lyrvm.csproj" />
     <Binary Include="..\src\Lyrrepl\Lyrrepl.csproj" />
+
+    <!--
+      The language server. Not a tool of the driver — an editor starts it directly and it owns its
+      stdio for the whole session — but it ships in the same directory, which is what lets the
+      editor extension find it beside the driver it was already told about.
+    -->
+    <Binary Include="..\src\Lyrls\Lyrls.csproj" />
 
     <!--
       Not an executable but the library a HOST builds against. It belongs here because no binary
