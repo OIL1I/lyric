@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Values and types — Lyric v1.0.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<span class="version">v1.0.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/" class="here">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+</ul>
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.0</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>Values and types</h1>
+<nav class="contents">
+<ul>
+<li><a href="#primitive-types">Primitive types</a></li>
+<li><a href="#conversion">Conversion</a></li>
+<li><a href="#strings">Strings</a></li>
+<li><a href="#arrays">Arrays</a></li>
+<li><a href="#tuples">Tuples</a></li>
+</ul>
+</nav>
+<p>Every binding has a type. <code>let</code> binds a name once, <code>var</code> allows reassignment.</p>
+<pre><code class="language-lyr">fn main(): int {
+    let name = &quot;Ada&quot;;        // string, inferred
+    let count: int = 3;      // explicit
+    var total = 0;           // reassignable
+
+    total = total + count;
+    return total;
+}
+</code></pre>
+<p><code>let</code> binds the <em>name</em>, not the contents. A list behind a <code>let</code> can still be modified; the name
+just cannot be pointed at something else.</p>
+<h2 id="primitive-types">Primitive types</h2>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Width</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>int</code></td>
+<td>64 bit, signed</td>
+<td>alias for <code>int64</code></td>
+</tr>
+<tr>
+<td><code>uint</code></td>
+<td>64 bit, unsigned</td>
+<td>alias for <code>uint64</code></td>
+</tr>
+<tr>
+<td><code>float</code></td>
+<td>64 bit</td>
+<td>alias for <code>float64</code></td>
+</tr>
+<tr>
+<td><code>int8</code> … <code>int64</code></td>
+<td>sized</td>
+<td></td>
+</tr>
+<tr>
+<td><code>uint8</code> … <code>uint64</code></td>
+<td>sized</td>
+<td></td>
+</tr>
+<tr>
+<td><code>float32</code>, <code>float64</code></td>
+<td>sized</td>
+<td></td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td></td>
+<td><code>true</code>, <code>false</code></td>
+</tr>
+<tr>
+<td><code>char</code></td>
+<td>one Unicode code point</td>
+<td><code>'a'</code>, <code>'\u{1F600}'</code></td>
+</tr>
+<tr>
+<td><code>string</code></td>
+<td>immutable UTF-8</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Numeric literals take a suffix when the default is not wanted: <code>7i32</code>, <code>9u8</code>, <code>1.5f32</code>.</p>
+<h2 id="conversion">Conversion</h2>
+<p>There is no implicit numeric conversion. <code>as</code> converts between numeric types and nothing else:</p>
+<pre><code class="language-lyr">fn main(): int {
+    let small: int32 = 7i32;
+    let wide: int = small as int;
+    let back = wide as int32;
+    return back as int;
+}
+</code></pre>
+<h2 id="strings">Strings</h2>
+<p>Strings are immutable. <code>+</code> concatenates, <code>*</code> repeats.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    let greeting = &quot;Hello, &quot; + &quot;world&quot;;
+    let line = &quot;-&quot; * 20;
+
+    println(greeting);
+    println(line);
+    return 0;
+}
+</code></pre>
+<p>An <code>f</code>-string interpolates expressions. A format specifier follows a colon:</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    let pi = 3.14159;
+    println(f&quot;pi is roughly {pi:N2}&quot;);
+    println(f&quot;{1 + 1} and {&quot;nested&quot; + &quot;!&quot;}&quot;);
+    return 0;
+}
+</code></pre>
+<p>Write <code>{{</code> and <code>}}</code> for a literal brace.</p>
+<h2 id="arrays">Arrays</h2>
+<p><code>T[]</code> is a fixed-length array. Its length is part of the value, not of the type.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    let numbers = [3, 7, 1];
+    let zeros = [0] * 5;
+    let both = numbers + zeros;
+
+    println(f&quot;{numbers[0]} of {numbers.length}&quot;);
+    return both.length;
+}
+</code></pre>
+<p>Arrays do not grow. <code>std.collections</code> has <code>List&lt;T&gt;</code> for that.</p>
+<h2 id="tuples">Tuples</h2>
+<p>A tuple groups values of different types. It has no field names; you take it apart by binding.</p>
+<pre><code class="language-lyr">fn divide(a: int, b: int): (int, int) {
+    return (a / b, a % b);
+}
+
+fn main(): int {
+    let (quotient, remainder) = divide(17, 5);
+    return quotient + remainder;
+}
+</code></pre>
+<nav class="neighbours">
+<a class="prev" href="../../guide/getting-started/">Getting started</a>
+<a class="next" href="../../guide/functions/">Functions</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

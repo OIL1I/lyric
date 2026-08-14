@@ -1,5 +1,9 @@
 [
   {
+    "version": "v1.0.1",
+    "stable": true
+  },
+  {
     "version": "v1.0.0",
     "stable": true
   }

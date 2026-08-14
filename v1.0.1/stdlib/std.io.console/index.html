@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.io.console — Lyric v1.0.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<span class="version">v1.0.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+</ul>
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.0</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/" class="here">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.io.console</h1>
+<nav class="contents">
+<ul>
+<li><a href="#function-print">print</a></li>
+<li><a href="#function-println">println</a></li>
+<li><a href="#function-eprintln">eprintln</a></li>
+<li><a href="#function-write">write</a></li>
+<li><a href="#function-writeln">writeln</a></li>
+<li><a href="#function-readline">readLine</a></li>
+<li><a href="#function-readall">readAll</a></li>
+<li><a href="#function-readchar">readChar</a></li>
+<li><a href="#function-isinteractive">isInteractive</a></li>
+<li><a href="#function-flush">flush</a></li>
+<li><a href="#function-eprint">eprint</a></li>
+<li><a href="#function-prompt">prompt</a></li>
+<li><a href="#class-lineiterator">LineIterator</a></li>
+<li><a href="#function-lines">lines</a></li>
+</ul>
+</nav>
+<section class="item" id="function-print">
+<h2><a href="#function-print">print</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn print(value: string)</code></pre>
+<p class="source">stdlib/std/io/console.lyr:24</p>
+</section>
+<section class="item" id="function-println">
+<h2><a href="#function-println">println</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn println(value: string)</code></pre>
+<p class="source">stdlib/std/io/console.lyr:25</p>
+</section>
+<section class="item" id="function-eprintln">
+<h2><a href="#function-eprintln">eprintln</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn eprintln(value: string)</code></pre>
+<p class="source">stdlib/std/io/console.lyr:26</p>
+</section>
+<section class="item" id="function-write">
+<h2><a href="#function-write">write</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn write&lt;T :: [Display]&gt;(value: T): void</code></pre>
+<p class="source">stdlib/std/io/console.lyr:33</p>
+</section>
+<section class="item" id="function-writeln">
+<h2><a href="#function-writeln">writeln</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn writeln&lt;T :: [Display]&gt;(value: T): void</code></pre>
+<p class="source">stdlib/std/io/console.lyr:37</p>
+</section>
+<section class="item" id="function-readline">
+<h2><a href="#function-readline">readLine</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn readLine(): ?string</code></pre>
+<p class="source">stdlib/std/io/console.lyr:44</p>
+</section>
+<section class="item" id="function-readall">
+<h2><a href="#function-readall">readAll</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn readAll(): string</code></pre>
+<p class="source">stdlib/std/io/console.lyr:47</p>
+</section>
+<section class="item" id="function-readchar">
+<h2><a href="#function-readchar">readChar</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn readChar(): ?char</code></pre>
+<p class="source">stdlib/std/io/console.lyr:50</p>
+</section>
+<section class="item" id="function-isinteractive">
+<h2><a href="#function-isinteractive">isInteractive</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isInteractive(): bool</code></pre>
+<p class="source">stdlib/std/io/console.lyr:53</p>
+</section>
+<section class="item" id="function-flush">
+<h2><a href="#function-flush">flush</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn flush(): void</code></pre>
+<p class="source">stdlib/std/io/console.lyr:56</p>
+</section>
+<section class="item" id="function-eprint">
+<h2><a href="#function-eprint">eprint</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn eprint(value: string)</code></pre>
+<p class="source">stdlib/std/io/console.lyr:58</p>
+</section>
+<section class="item" id="function-prompt">
+<h2><a href="#function-prompt">prompt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn prompt(text: string): ?string</code></pre>
+<p class="source">stdlib/std/io/console.lyr:67</p>
+</section>
+<section class="item" id="class-lineiterator">
+<h2><a href="#class-lineiterator">LineIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class LineIterator :: [Iterator&lt;string&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">done: bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?string</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/io/console.lyr:79</p>
+</section>
+<section class="item" id="function-lines">
+<h2><a href="#function-lines">lines</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn lines(): Iterator&lt;string&gt;</code></pre>
+<p class="source">stdlib/std/io/console.lyr:94</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.fmt/">std.fmt</a>
+<a class="next" href="../../stdlib/std.io.file/">std.io.file</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

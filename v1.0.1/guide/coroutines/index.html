@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Coroutines — Lyric v1.0.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<span class="version">v1.0.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/" class="here">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+</ul>
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.0</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>Coroutines</h1>
+<p>A function whose body contains <code>yield</code> is a coroutine. Its return type is <code>Coroutine&lt;T&gt;</code>, where
+<code>T</code> is what it yields. Calling it does not run the body; it produces a coroutine value.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn counter(): Coroutine&lt;int&gt; {
+    var n = 0;
+    while (true) {
+        yield n;
+        n += 1;
+    }
+}
+
+fn main(): int {
+    let c = counter();
+
+    var sum = 0;
+    var i = 0;
+    while (i &lt; 5) {
+        sum = sum + resume c;
+        i += 1;
+    }
+
+    println(f&quot;sum: {sum}&quot;);
+    return sum;
+}
+</code></pre>
+<p><code>resume</code> runs the coroutine until its next <code>yield</code> and produces that value. The state between two
+<code>yield</code>s — locals and the position in the loop — survives. Without that, the loop above would read
+<code>0</code> five times.</p>
+<p>A coroutine may also be finite. When its body runs to the end, it is exhausted:</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn three(): Coroutine&lt;int&gt; {
+    yield 10;
+    yield 20;
+    yield 30;
+}
+
+fn main(): int {
+    let t = three();
+    let a = resume t;
+    let b = resume t;
+
+    println(f&quot;{a}, {b}&quot;);
+    return a + b;
+}
+</code></pre>
+<p><code>resume</code> on an exhausted coroutine is a panic. A caller either knows how many values there are, or
+uses an infinite coroutine and stops itself.</p>
+<p>Send values (<code>resume c, v</code>) do not exist.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/errors/">Errors</a>
+<a class="next" href="../../guide/modules/">Modules</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
