@@ -210,9 +210,10 @@ profile is still outstanding.
 
 ## What we are working on
 
-**M10 is finished**, inventory included. **v1.0 is not** — what is missing stands below under
-`## What v1.0 still needs`: a `CHANGELOG.md`, platform-specific binaries, a documentation site, and
-the decision which of the open language gaps block v1.
+**M10 is finished**, inventory included. **v1.0 is not**, but the list is short now — what remains
+stands below under `## What v1.0 still needs`. The language gaps are closed, the binaries ship
+per platform, the documentation site is generated and the changelog exists. What is left needs a
+hand on the GitHub settings: switching Pages on, and tagging.
 
 **The open question to answer before E4**: the lifetime and identity of a host object across the
 boundary — does the host keep it alive or the VM? That is the one place in M10 where I have no
@@ -245,9 +246,15 @@ through point by point.
   rather than at HEAD — a tag marks when a milestone was finished, and hanging it at the end made the
   history unusable. (`m9-complete` is the justified exception: it was moved deliberately, because M9
   was *not* finished in substance at that point.) Rule 3 is thereby satisfied for M0–M10.
-- **`CHANGELOG.md`** — §Releases: *"From `v1.0.0` on: tag, GitHub release page, and a `CHANGELOG.md`
-  entry."* Before v1.0 there deliberately was none; from v1.0 there is one.
-- **GitHub release page** for the `v1.0.0` tag.
+- ~~**`CHANGELOG.md`**~~ **done** (2026-08-14). It starts at v1.0.0 and holds one unreleased entry
+  describing what that release ships and what it deliberately does not; the pre-1.0 tags keep their
+  notes and appear in no entry. `CONTRIBUTING.md` §Releases says the same thing now — it still read
+  "no `CHANGELOG.md` before `v1.0.0`" while the file existed.
+- **GitHub release page** for the `v1.0.0` tag. Produced by `release.yml` on the tag push; it needs
+  the tag, which is a decision rather than a task.
+- **GitHub Pages** has to be switched to the `gh-pages` branch once, and the first deploy triggered.
+  `docs.yml` was rehearsed against a local remote over three deploys but has never run against
+  GitHub.
 
 **Artifact:**
 
@@ -381,8 +388,8 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 - **Working mode** (scope check 2026-08-02, still in force): Claude plans *and* implements, the
   maintainer reviews — a deliberate deviation from `CLAUDE.md` §Collaboration, where the plan comes
   from Claude and the code from the user. What to watch is whether the understanding of the code
-  keeps up with its size. **No `CHANGELOG.md` before `v1.0.0`**; the annotated tag message is the
-  release note.
+  keeps up with its size. The changelog starts at `v1.0.0`; before it the annotated tag message is
+  the release note.
 - **At the end of every milestone the delivery list is to be ticked off point by point, not the exit
   criterion alone.** M5 and M6 each silently failed to deliver part of their items; the gap disguised
   itself as a clean diagnostic. For the same reason **six** gates were re-cut in M7, because they
@@ -390,7 +397,7 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 ## Last relevant commit
 
-`build: a release publishes self-contained, one archive per platform`
+`docs: the changelog starts at v1.0.0`
 
 ---
 

@@ -175,12 +175,16 @@ Two channels, both described in the [README](README.md#releases):
 - **nightly** — `.github/workflows/nightly.yml` builds `main` once a day and
   replaces the `nightly` prerelease. No compatibility promise.
 
-**No `CHANGELOG.md` before `v1.0.0`.** A changelog answers "what changed for me
+**The changelog starts at `v1.0.0`.** A changelog answers "what changed for me
 since last time", and that question presupposes something to be compatible with.
-Pre-1.0 there is no such promise, neither for the `.lyrbc` format nor for the
-language itself. The annotated tag carries the release note instead.
+Pre-1.0 there was no such promise, neither for the `.lyrbc` format nor for the
+language itself, so those releases carry their notes in their annotated tags and
+appear in no entry.
 
-From `v1.0.0` on: tag, GitHub release page, and a `CHANGELOG.md` entry.
+From `v1.0.0` on, every release has three things: the tag, a GitHub release page,
+and an entry in [`CHANGELOG.md`](CHANGELOG.md). An entry lists what changed for
+someone USING the toolchain — the language, the standard library, the bytecode
+format, the command line, the embedding API. Compiler internals stay in `git log`.
 
 ---
 

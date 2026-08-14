@@ -162,6 +162,7 @@ lyric/
 | [`docs/Grammar.md`](docs/Grammar.md) | Formal grammar |
 | [`docs/Bytecode.md`](docs/Bytecode.md) | Formal `.lyrbc` format specification |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution rules and process |
+| [`CHANGELOG.md`](CHANGELOG.md) | What changed per release, from v1.0.0 on |
 
 Every Lyric snippet in the guide is compiled by the test suite.
 
