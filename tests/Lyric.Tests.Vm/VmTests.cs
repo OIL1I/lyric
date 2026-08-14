@@ -48,10 +48,96 @@ public class VmTests
     /// <summary>Shorthand: the body is wrapped in a `main`.</summary>
     private static long Eval(string body) => Run($"fn main(): int {{ {body} }}").AsI64;
 
+    [Fact]
+    public void A_backtrace_names_the_line_that_panicked_and_the_line_that_called()
+    {
+        // Two frames, two different questions of the same arithmetic: the innermost frame wants the
+        // instruction that FAULTED, every frame below it the 'call' it is waiting on. Both sit at
+        // Ip - 1, because the loop reads with Ip++.
+        var panic = PanicWithSourceMap("""
+            fn divide(a: int, b: int): int {
+                return a / b;
+            }
+
+            fn main(): int {
+                let n = 0;
+                return divide(10, n);
+            }
+            """);
+
+        Assert.Equal(["main.divide (test.lyr:2)", "main.main (test.lyr:7)"], panic.CallStack);
+    }
+
+    [Fact]
+    public void The_faulting_instruction_is_the_one_before_the_pointer()
+    {
+        // The test above cannot see the difference: there the faulting 'div' is followed by the
+        // 'retval' of the SAME return statement, so Ip and Ip - 1 land on one line and a wrong
+        // implementation stays green.
+        //
+        // Here the expression is pulled onto its own line. The 'div' is the last instruction line 4
+        // produces; the 'retval' after it belongs to the return statement and carries line 3. The
+        // two answers are now distinguishable, and only Ip - 1 gives the arithmetic that failed.
+        var panic = PanicWithSourceMap("""
+            fn main(): int {
+                let n = 0;
+                return
+                    10 / n;
+            }
+            """);
+
+        Assert.Equal(["main.main (test.lyr:4)"], panic.CallStack);
+    }
+
+    [Fact]
+    public void Without_a_source_map_a_backtrace_is_names_only()
+    {
+        // The same program through the ordinary path: a stripped module still produces a backtrace,
+        // just without positions. That is the whole cost of stripping.
+        var panic = RunExpectingPanic("""
+            fn divide(a: int, b: int): int {
+                return a / b;
+            }
+
+            fn main(): int {
+                let n = 0;
+                return divide(10, n);
+            }
+            """);
+
+        Assert.Equal(["main.divide", "main.main"], panic.CallStack);
+    }
+
     /// <summary>A programming error at runtime is a <c>panic</c>: not catchable, with a backtrace. No
     /// separate VM error path beside it.</summary>
     private static LyricPanic RunExpectingPanic(string source) =>
         Assert.Throws<LyricPanic>(() => Run(source));
+
+    /// <summary>Like <see cref="RunExpectingPanic"/>, but the module carries a source map, so the
+    /// backtrace can name lines.</summary>
+    private static LyricPanic PanicWithSourceMap(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de);
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+
+        var writer = new StringWriter();
+        de.RenderText(writer);
+        Assert.False(de.HasErrors, "source did not compile:\n" + writer.ToString());
+
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+        Assert.NotNull(ir);
+
+        var module = BytecodeReader.ReadOrThrow(
+            BytecodeWriter.Write(ir!, new SourceMapContext(sm, Directory.GetCurrentDirectory())));
+
+        return Assert.Throws<LyricPanic>(() =>
+            Interpreter.Run(module, NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)));
+    }
 
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));

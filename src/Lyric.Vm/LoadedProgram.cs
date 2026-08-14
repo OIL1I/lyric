@@ -50,7 +50,7 @@ public sealed class LoadedProgram
         var prepared = new Interpreter.Prepared[module.Functions.Count];
         for (var i = 0; i < prepared.Length; i++)
             prepared[i] = Interpreter.Prepared.From(module.Functions[i],
-                module.Handlers.Where(h => h.Function == i).ToArray());
+                module.Handlers.Where(h => h.Function == i).ToArray(), i);
 
         // Bound at load time: a missing native rejects the module before an instruction runs.
         var bound = (natives ?? new NativeRegistry()).Bind(module);
@@ -121,5 +121,5 @@ public sealed class LoadedProgram
 
     private LyrValue Execute(int index, LyrValue[]? arguments = null) =>
         Interpreter.Execute(_prepared, index, _module.Strings, _module.Types, _dispatch,
-            _natives, _globals, arguments);
+            _natives, _globals, arguments, _module.SourceMap);
 }

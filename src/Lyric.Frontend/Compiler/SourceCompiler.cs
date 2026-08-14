@@ -162,7 +162,9 @@ public static class SourceCompiler
             return new CompileResult(sources, diagnostics, ir, null, model);
 
         report?.BeginPhase(Phase.Emit, FunctionCount(ir));
-        var bytes = BytecodeWriter.Write(ir);
+        var bytes = BytecodeWriter.Write(ir, options.SourceMap
+            ? new SourceMapContext(sources, source.BaseDirectory)
+            : null);
         report?.EndPhase();
 
         return new CompileResult(sources, diagnostics, ir, bytes, model);
@@ -240,6 +242,15 @@ public sealed record CompilerOptions
     /// on disk rather than the other way round: the host decides what its script sees.</para>
     /// </summary>
     public IReadOnlyDictionary<string, string>? NativeModules { get; init; }
+
+    /// <summary>
+    /// Whether the SourceMap section is written. On by default: a panic that names a line is worth
+    /// the bytes, and the moment it is needed is the moment nobody planned for it.
+    ///
+    /// <para>Turning it off produces exactly the file a build produced before the section existed,
+    /// which is what makes stripping a decision with no other consequence.</para>
+    /// </summary>
+    public bool SourceMap { get; init; } = true;
 }
 
 /// <summary>

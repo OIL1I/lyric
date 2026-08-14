@@ -25,9 +25,12 @@ public class BytecodeTests
 {
     // ------------------------------------------------------------------ helpers
 
-    private static IrModule LowerSource(string source)
+    private static IrModule LowerSource(string source) => LowerSource(source, out _);
+
+    private static IrModule LowerSource(string source, out SourceManager sources)
     {
         var sm = new SourceManager();
+        sources = sm;
         var id = sm.AddVirtual("test.lyr", source);
         var de = new DiagnosticEngine(sm);
         var comp = new Compilation(sm, de);
@@ -187,6 +190,42 @@ public class BytecodeTests
     }
 
     [Fact]
+    public void Skips_a_section_with_an_unknown_id()
+    {
+        // The forward compatibility a new minor version rests on: "a new minor version may only add
+        // skippable sections". Nothing had ever WRITTEN an unknown section, so nothing had ever
+        // skipped one, and the reader rejected the payload it was supposed to step over.
+        var bytes = ValidBytes();
+
+        // Id 11 ascends past every id the writer emits, so appending keeps the file well formed.
+        var extended = bytes.Concat(new byte[] { 11, 2, 0xAA, 0xBB }).ToArray();
+
+        var de = new DiagnosticEngine(new SourceManager());
+        var module = BytecodeReader.Read(extended, de);
+
+        Assert.NotNull(module);
+        Assert.Empty(de.Diagnostics);
+
+        // The skipped bytes changed nothing about what was read.
+        Assert.Equal(BytecodeReader.ReadOrThrow(bytes).Functions.Count, module!.Functions.Count);
+    }
+
+    [Fact]
+    public void Tolerates_an_unknown_minor_version()
+    {
+        // The other half of the same promise: the major decides whether a file is readable, the
+        // minor only says which skippable sections it may contain.
+        var bytes = ValidBytes();
+        bytes[6] = 0xFF; // the minor version, little-endian behind the major
+        bytes[7] = 0x00;
+
+        var de = new DiagnosticEngine(new SourceManager());
+
+        Assert.NotNull(BytecodeReader.Read(bytes, de));
+        Assert.Empty(de.Diagnostics);
+    }
+
+    [Fact]
     public void Rejects_a_truncated_file()
     {
         var bytes = ValidBytes();
@@ -290,6 +329,92 @@ public class BytecodeTests
         // and deduplicating states both in one comparison.
         var ids = SectionIds(BytecodeWriter.Write(Fixture(name)));
         Assert.Equal(ids.Order().Distinct(), ids);
+    }
+
+    // ------------------------------------------------------------------ 5) the source map
+
+    private const string TwoLineProgram = """
+        fn f(): int {
+            let a = 1;
+            let b = 2;
+            return a + b;
+        }
+        """;
+
+    [Fact]
+    public void Without_sources_the_output_is_unchanged()
+    {
+        // The section is strippable, and this is what that has to mean: a build without it produces
+        // exactly the bytes it produced before the section existed. If the two ever differ, "strip
+        // it" stops being a decision a user can make without changing anything else.
+        var withMap = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var sources),
+            new SourceMapContext(sources, Directory.GetCurrentDirectory()));
+        var without = BytecodeWriter.Write(LowerSource(TwoLineProgram));
+
+        Assert.NotEqual(withMap, without);
+        Assert.DoesNotContain((byte)SectionId.SourceMap, SectionIds(without));
+        Assert.Contains((byte)SectionId.SourceMap, SectionIds(withMap));
+    }
+
+    [Fact]
+    public void A_module_with_a_source_map_still_loads_and_stays_in_order()
+    {
+        // Two statements on two lines, so the map holds more than one row and the section is not
+        // trivially empty.
+        var bytes = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var sources),
+            new SourceMapContext(sources, Directory.GetCurrentDirectory()));
+
+        var ids = SectionIds(bytes);
+        Assert.Contains((byte)SectionId.SourceMap, ids);
+        Assert.Equal(ids.Order().Distinct(), ids);
+
+        // The reader does not parse section 6 yet. That it loads anyway is the point: the section
+        // is skippable, which is what lets an older runtime read a newer module.
+        var de = new DiagnosticEngine(new SourceManager());
+        Assert.NotNull(BytecodeReader.Read(bytes, de));
+        Assert.Empty(de.Diagnostics);
+    }
+
+    [Fact]
+    public void The_source_map_names_the_lines_the_code_came_from()
+    {
+        // The first test of the CONTENT rather than the shape. A builder that consistently records
+        // the line before is green on every other test in this section.
+        var bytes = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var sources),
+            new SourceMapContext(sources, Directory.GetCurrentDirectory()));
+
+        var map = BytecodeReader.ReadOrThrow(bytes).SourceMap;
+        Assert.NotNull(map);
+
+        var rows = Assert.Single(map!.Functions);
+
+        // Four lines carry code: 'let a' on 2, 'let b' on 3, 'return a + b' on 4. Line 1 is the
+        // signature and produces none.
+        Assert.Equal([2, 3, 4], rows.Select(r => r.Line).Distinct());
+
+        // Every row lies inside the code and they ascend, which is what Locate bisects over.
+        Assert.Equal(rows.OrderBy(r => r.Offset), rows);
+
+        // Resolving the first row's own offset gives its line back.
+        var position = map.Locate(0, rows[0].Offset);
+        Assert.NotNull(position);
+        Assert.Equal(2, position!.Value.Line);
+
+        // A file compiled from a virtual name keeps it; nothing absolute reaches the pool.
+        Assert.Equal("test.lyr", Assert.Single(map.Files));
+    }
+
+    [Fact]
+    public void The_source_map_is_deterministic()
+    {
+        // Same input, same bytes — the promise of section 1. The trap would be a file table in hash
+        // order, the same one the string pool avoids by interning in first-use order.
+        var first = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var a),
+            new SourceMapContext(a, Directory.GetCurrentDirectory()));
+        var second = BytecodeWriter.Write(LowerSource(TwoLineProgram, out var b),
+            new SourceMapContext(b, Directory.GetCurrentDirectory()));
+
+        Assert.Equal(first, second);
     }
 
     [Fact]

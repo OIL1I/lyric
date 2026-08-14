@@ -44,7 +44,7 @@ public static class Interpreter
     internal static LyrValue Execute(Prepared[] prepared, int startIndex,
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
         DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals,
-        LyrValue[]? entryArguments = null)
+        LyrValue[]? entryArguments = null, BytecodeSourceMap? sourceMap = null)
     {
         var frames = new Stack<Frame>();
         var frame = Frame.For(prepared[startIndex]);
@@ -62,10 +62,33 @@ public static class Interpreter
         {
             // The backtrace is attached here rather than at the throw site: the loop holds the
             // frame stack, an arithmetic operation does not.
-            var stack = new List<string> { frame.Fn.Source.Name };
-            stack.AddRange(frames.Select(f => f.Fn.Source.Name));
+            var stack = new List<string> { Describe(frame, sourceMap) };
+            stack.AddRange(frames.Select(f => Describe(f, sourceMap)));
             throw panic.WithCallStack(stack);
         }
+    }
+
+    /// <summary>
+    /// A frame as it appears in a backtrace: the function name, and its position when the module
+    /// carries a source map.
+    ///
+    /// <para>THE INSTRUCTION POINTER HAS ALREADY MOVED ON. The loop reads with <c>Ip++</c>, so the
+    /// instruction that matters sits at <c>Ip - 1</c>. That is the faulting one in the innermost
+    /// frame and the <c>call</c> in every frame below it — which is the call site, and therefore
+    /// the right answer for both.</para>
+    /// </summary>
+    private static string Describe(Frame frame, BytecodeSourceMap? map)
+    {
+        var name = frame.Fn.Source.Name;
+        if (map is null) return name;
+
+        // A panic before the first instruction of a frame — a stack overflow is raised while the
+        // frame is being pushed — has nothing to point at.
+        var index = frame.Ip - 1;
+        if (index < 0 || index >= frame.Fn.Instructions.Length) return name;
+
+        var at = map.Locate(frame.Fn.Index, frame.Fn.Instructions[index].Offset);
+        return at is null ? name : $"{name} ({at})";
     }
 
     private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
@@ -804,6 +827,10 @@ public static class Interpreter
         public required BytecodeInstruction[] Instructions { get; init; }
         public required int[] BlockStart { get; init; }
 
+        /// <summary>This function's index in the module. The source map is keyed by it, and a
+        /// <see cref="BytecodeFunction"/> does not know where it sits.</summary>
+        public required int Index { get; init; }
+
         /// <summary>The protected regions of this function, innermost first.</summary>
         public BytecodeHandler[] Handlers { get; init; } = [];
 
@@ -814,7 +841,7 @@ public static class Interpreter
         /// </summary>
         public int[] BlockOfInstruction { get; init; } = [];
 
-        public static Prepared From(BytecodeFunction function, BytecodeHandler[] handlers)
+        public static Prepared From(BytecodeFunction function, BytecodeHandler[] handlers, int index)
         {
             var instructions = CodeDecoder.Decode(function.Code).ToArray();
             var indexByOffset = new Dictionary<int, int>(instructions.Length);
@@ -835,7 +862,7 @@ public static class Interpreter
             return new Prepared
             {
                 Source = function, Instructions = instructions, BlockStart = blockStart,
-                Handlers = handlers, BlockOfInstruction = blockOf,
+                Handlers = handlers, BlockOfInstruction = blockOf, Index = index,
             };
         }
     }
