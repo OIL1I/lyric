@@ -2,7 +2,7 @@
   "name": "vscode-lyric",
   "displayName": "Lyric",
   "description": "Syntax highlighting and a run command for the Lyric language.",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "publisher": "lyric",
   "license": "MIT",
   "repository": { "type": "git", "url": "https://github.com/OIL1I/lyric" },

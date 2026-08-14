@@ -10,10 +10,13 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## v1.0.0 — unreleased
+## v1.0.0 — 2026-08-14
 
 The first release with a compatibility promise. Everything below describes the state it ships, not
 a change against v0.9.0: there is no earlier entry to compare against.
+
+From here on the `.lyrbc` format and the language carry the promise the versioning describes: a
+minor may add, a major may break.
 
 ### Language
 

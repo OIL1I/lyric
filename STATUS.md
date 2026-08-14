@@ -12,10 +12,11 @@
 ## Current milestone
 
 **M0–M10 are finished and tagged** (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
-**v1.0 is not reached** — what is missing stands under `## What v1.0 still needs`.
+**Everything in the repository says 1.0.0.** What is left is not a task but two decisions with a
+hand on GitHub — see `## What v1.0 still needs`.
 
-2675 tests green **in Debug and Release**, bytecode format **3.0**, **four** binaries plus
-`lyrembed.dll`, version **0.9.0**.
+3014 tests green **in Debug and Release**, bytecode format **3.0**, **four** binaries plus
+`lyrembed.dll`, version **1.0.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -236,8 +237,16 @@ it was right and would not have been a week later.
 
 ## What v1.0 still needs
 
-**M0–M10 are finished in substance.** The release is not, and the list is short enough to work
-through point by point.
+**Everything in the repository is done.** The version is 1.0.0 in all five places that carry it, the
+changelog has its entry, the archives are self-contained per platform, the documentation site
+generates. What remains cannot be done from here: it needs the tag pushed and Pages switched on.
+
+To release, in this order:
+
+1. `git tag -a v1.0.0 -m "…"` and push it. That runs `release.yml` (verify, three archives, the
+   GitHub release page) and `docs.yml` (a frozen `/v1.0.0/`).
+2. Switch GitHub Pages to the `gh-pages` branch, root folder. `docs.yml` creates the branch on its
+   first run, so trigger it once by hand (`workflow_dispatch`) before or after the tag.
 
 **Process (CONTRIBUTING):**
 
@@ -250,8 +259,12 @@ through point by point.
   describing what that release ships and what it deliberately does not; the pre-1.0 tags keep their
   notes and appear in no entry. `CONTRIBUTING.md` §Releases says the same thing now — it still read
   "no `CHANGELOG.md` before `v1.0.0`" while the file existed.
-- **GitHub release page** for the `v1.0.0` tag. Produced by `release.yml` on the tag push; it needs
-  the tag, which is a decision rather than a task.
+- **The `v1.0.0` tag itself.** Not a task: a tag is the one thing that cannot be quietly corrected
+  afterwards, so pushing it is the maintainer's call. `release.yml` produces the release page from
+  it.
+- **The tag messages of `v0.5.0` and `v0.9.0` are still German.** They are the release notes of
+  those versions, and retagging them would rewrite published history for a cosmetic reason. Left as
+  they are, deliberately.
 - **GitHub Pages** has to be switched to the `gh-pages` branch once, and the first deploy triggered.
   `docs.yml` was rehearsed against a local remote over three deploys but has never run against
   GitHub.
@@ -397,7 +410,7 @@ not a crash. **Whether they block v1 is a decision and not a measurement.**
 
 ## Last relevant commit
 
-`docs: the changelog starts at v1.0.0`
+`release: everything in the repository says 1.0.0`
 
 ---
 

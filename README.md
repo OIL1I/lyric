@@ -8,11 +8,11 @@ Source files use `.lyr`, compiled modules use `.lyrbc`.
 
 ## Status
 
-Pre-1.0. The compiler, the bytecode VM and the standard library work end to end; every construct
-in [`docs/Grammar.md`](docs/Grammar.md) compiles and runs. The bytecode format carries no
-compatibility promise before v1.0 and may change with a major bump.
+The compiler, the bytecode VM and the standard library work end to end; every construct in
+[`docs/Grammar.md`](docs/Grammar.md) compiles and runs. From v1.0 the language and the `.lyrbc`
+format carry the promise the versioning describes: a minor may add, a major may break.
 
-Current version: **0.9.0**.
+Current version: **1.0.0**, bytecode format **3.0**.
 
 ## Targets
 
@@ -120,7 +120,7 @@ That is what a release ships, one archive per platform.
 
 ```
 $ lyric repl
-Lyric 0.9.0 — :help for commands, :quit to leave
+Lyric 1.0.0 — :help for commands, :quit to leave
 lyr> let x = 5
 lyr> x * 2
 10
