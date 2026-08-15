@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lyric .lyrbc Bytecode Format 3.0 — Lyric nightly</title>
+<title>Lyric .lyrbc Bytecode Format 3.1 — Lyric nightly</title>
 <link rel="stylesheet" href="../site.css" />
 </head>
 <body>
@@ -34,7 +34,7 @@
 <h2>Reference</h2>
 <ul>
 <li><a href="../grammar/">Lyric Grammar</a></li>
-<li><a href="../bytecode/" class="here">Lyric .lyrbc Bytecode Format 3.0</a></li>
+<li><a href="../bytecode/" class="here">Lyric .lyrbc Bytecode Format 3.1</a></li>
 </ul>
 <h2>Standard library</h2>
 <ul>
@@ -51,7 +51,7 @@
 </ul>
 </nav>
 <main>
-<h1>Lyric .lyrbc Bytecode Format 3.0</h1>
+<h1>Lyric .lyrbc Bytecode Format 3.1</h1>
 <nav class="contents">
 <ul>
 <li><a href="#encoding">1. Encoding</a></li>
@@ -68,9 +68,12 @@
 or a second runtime can be written from this document alone.</p>
 <p>Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.</p>
-<p>Format version <strong>3.0</strong> covers: scalars, locals, module-internal and native calls, structured
+<p>Format version <strong>3.1</strong> covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
-value semantics, exceptions, global constants, closures and host objects.</p>
+value semantics, exceptions, global constants, closures, host objects, and source positions.</p>
+<p><strong>3.1 against 3.0</strong>: the SourceMap section (id 6) has a payload. It is skippable, so a 3.0 reader
+loads a 3.1 module and a 3.1 reader loads a 3.0 module; the only difference is whether a panic can
+name a line.</p>
 <hr />
 <h2 id="encoding">1. Encoding</h2>
 <table>
@@ -172,7 +175,7 @@ minor version may only add skippable sections.</p>
 <td>6</td>
 <td>SourceMap</td>
 <td>no</td>
-<td>strippable: PC to file and line</td>
+<td>strippable: byte offset to file and line</td>
 </tr>
 <tr>
 <td>7</td>
@@ -313,6 +316,42 @@ from it and omit runtime overflow checks.</li>
 instruction boundary.</li>
 <li>Block 0 is the entry block. Execution begins at <code>blockOffsets[0]</code>.</li>
 </ul>
+<h3 id="sourcemap-id-6">SourceMap (Id 6)</h3>
+<p>Byte offset to source position, one table per function.</p>
+<pre><code>fileCount        uleb128
+files            fileCount × uleb128   index into the string pool
+functionCount    uleb128               must equal the count in Functions (Id 5)
+functions        functionCount × {
+                   rowCount   uleb128
+                   rows       rowCount × {
+                     offsetDelta  uleb128   bytes since the previous row of this function
+                     fileIndex    uleb128   index into the file table above
+                     line         uleb128   1-based; 0 means no line is known
+                   }
+                 }
+</code></pre>
+<p><strong>Strippable.</strong> No other section refers to this one, so removing it leaves a valid module. A module
+without it is valid too; the only consequence is that a panic names a function instead of a line.</p>
+<p>The offsets are byte offsets into that function's <code>code</code>, the same coordinate <code>blockOffsets</code> uses.
+The first row of a function carries its offset outright; every later row carries the difference to
+the one before. The offsets therefore ascend, and only the first row may have a delta of <code>0</code>.</p>
+<p>A row states the position from its own offset up to the next row's. <strong>To resolve an offset, take the
+last row whose offset is less than or equal to it</strong>; before the first row there is no position.</p>
+<p><strong>A row is written only where the position changes.</strong> A loop body is dozens of instructions across a
+handful of lines, and a row per instruction would make this the largest section in the file.</p>
+<p>A function may carry <code>rowCount</code> <code>0</code>. Its code then has no position at all, which is what a runtime
+reports for it.</p>
+<p><strong>Why byte offsets and not instruction indices.</strong> An instruction index is not a notion of this
+format: it presupposes that a runtime decodes the code into an array before running it. A runtime
+that walks the bytes directly would have to count instructions to answer a question the format can
+answer in its own coordinates.</p>
+<p><strong>The row carries no column.</strong> A minor version may only add skippable sections, so the shape of this
+one is fixed until a major: a column cannot be added here later, and adding it beside this section
+would be a second mechanism for the same thing.</p>
+<p>A reader must reject: a <code>functionCount</code> that differs from the Functions section, a file index outside
+the file table, a string index outside the pool, an offset that does not lie inside that function's
+<code>code</code> — a row marks where an instruction begins, so <code>offset == codeLength</code> is already outside — and
+a delta of <code>0</code> on any row but the first.</p>
 <h3 id="start-id-7">Start (Id 7)</h3>
 <pre><code>functionIndex    uleb128   into the shared index space: imports first, then functions
 </code></pre>
@@ -1214,10 +1253,11 @@ type. Field access at runtime is then an unchecked array access.</p>
     retval
 }
 </code></pre>
-<p>A minimal module containing only that function, 46 bytes:</p>
+<p>A minimal module containing only that function, 46 bytes. The compiler writes a SourceMap by
+default; this is the stripped form, which is why section 6 is absent:</p>
 <pre><code>4C 59 52 42                  magic &quot;LYRB&quot;
 03 00                        version.major = 3
-00 00                        version.minor = 0
+01 00                        version.minor = 1
 
 01                           § section 1 — Capabilities
 01                             byteLength = 1
