@@ -14,10 +14,11 @@
 **v1.0.0 and v1.0.1 are released** — both annotated tags are on the remote, both with a release page
 and three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
-**M11, the language server, is the current milestone. Slices 1 and 2 are done**: an editor shows the
-compiler's diagnostics while you type, and answers what a name under the cursor is.
+**M11, the language server, is the current milestone. Slices 1 to 3 are done**: an editor shows the
+compiler's diagnostics while you type, says what a name under the cursor is, and jumps to where it
+was declared.
 
-3222 tests green **in Debug and Release**, bytecode format **3.1**, **five** binaries plus
+3237 tests green **in Debug and Release**, bytecode format **3.1**, **five** binaries plus
 `lyrembed.dll`, version **1.0.1**.
 
 **v1.1.0 is unreleased and waiting for a tag**: the format is at 3.1 and `CHANGELOG.md` holds its
@@ -35,7 +36,7 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
-- [x] **Source maps — a panic names the line** (2026-08-15). 3222 tests green, Debug and Release.
+- [x] **Source maps — a panic names the line** (2026-08-15). Merged as PR #4.
   - Section 6 had been reserved and described since format 3.0 and never written. It now maps a byte
     offset in a function's code to a file and a line, **one row per position CHANGE** — a loop body
     is dozens of instructions across a handful of lines. Format **3.1**, `--no-source-map` leaves it
@@ -59,6 +60,29 @@ functions out of them and hands its own functions and types in.
   - The row carries **no column**, and a minor may only add skippable sections, so that is fixed
     until a major. Deliberate: no consumer today, and a column beside this section later would be a
     second mechanism for the same thing.
+
+- [x] **M11 slice 3 — go to definition** (2026-08-14). Merged as PR #3.
+  **Merged into `main` as PR #3** together with slices 1 and 2, after CI was green on Linux and
+  Windows — the platform-dependent halves of the URI tests had only ever run here.
+  - **It needed nothing from the front end.** `Symbol.Declaration` holds the node and every node
+    carries a span, so the feature is a lookup on top of the search slice 2 built. The estimate held
+    for once, and the reason is worth keeping: the two things slice 2 had to add were the expensive
+    half of both slices.
+  - **A target in another file is the ordinary case**, not an edge one — every call into the
+    standard library lands there — and it needed no second mechanism, because `StdlibLoader` reads
+    those files from disk with their real paths. The URI is built from the path, except when the
+    target is the requested document, where the client's own spelling goes back: it asked about that
+    string, and a rebuilt one is a different string for the same file.
+  - **The jump lands on the START of a declaration**, not on its name. A struct with twenty members
+    is a twenty-line span and selecting all of it is noise. The AST records no span for a name
+    alone, and searching the text for it would be a second, weaker way of knowing where it is. A
+    name span per declaration node would fix it properly; not built.
+  - **A symbol without a declaration stops the search** rather than falling outwards. `int` is
+    declared in no file, and offering the enclosing binding would send the reader somewhere they
+    did not ask about.
+  - Span-to-range moved into `SpanMapper`, which three features now share, in three named forms
+    rather than one with a flag: diagnostics widen an empty span because a zero-width squiggle is
+    invisible, hover takes it as it stands, a jump collapses it to its start.
 
 - [x] **M11 slice 2 — hover** (2026-08-14). 3212 tests green, Debug and Release.
   - The cursor gets the binding form and type of a local, a parameter's type, a function's
@@ -120,32 +144,6 @@ functions out of them and hands its own functions and types in.
     fix is one `ReferenceOutputAssembly="false"` line, and the rule now stands in the project file:
     every binary an architecture test INSPECTS has to be referenced there.
 
-- [x] **Generic enums** (2026-08-12). 2711 tests green, Debug and Release.
-  - `enum Opt<T>` was **not present at all** in the lowering: `TypeTable.InternEnum` threw as soon as
-    such an enum appeared even as a parameter type. Now `Opt<int>.Some(5)`, `.None`,
-    `Ev<int>.Hit { at = 4 }`, `match` with payload binding and a guard, the recursive `Tree<T>`, a
-    generic enum inside a generic function and as a field all work.
-  - **It was not a missing feature but missing wiring.** The substitution was there and already
-    routed enums correctly; `InternVariant` would always have lowered `Some(T)` to `Some(int)`. What
-    was missing were four places that threw the instance away, above all `TypeFacts.SymbolOf`, which
-    returns the definition for a `GenericInstance` and loses the type arguments.
-  - **My estimate was too high by a factor of three.** I had said "two to three sessions" before I
-    had read `Intern`. It was one. The mistake was estimating the size from the symptom rather than
-    from the code.
-  - **The load-bearing guarantee**: `Opt<int>` and `Opt<string>` get their own variant layouts. If
-    they shared an entry, an `i64` would lie in a string slot — in Debug a verifier finding, in
-    Release a silently wrong answer. Exactly the asymmetry that made the conformance gap of
-    2026-08-11 so expensive.
-  - The sharpest trap was the recursion: the id has to stand in the instance registry *before* the
-    variants are interned, or `Node(Tree<T>, …)` requests precisely the instance that is being
-    created. `InternLayout` showed how.
-  - **An older inconsistency was removed along the way**: the struct form had always read the
-    expected type (`let e: Ev<int> = Ev.Hit { … }`), the tuple form had not (`Opt.Some(7)` was an
-    error). One question, two answers, depending on the shape of the variant. Both now run through
-    the same resolution.
-  - Remaining: in an **argument position** the context does not reach (`take(Opt.Some(5))`) — the
-    expected type is not passed through to there. Recorded as a test rather than as a guess.
-
 ## Measurements
 
 Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
@@ -190,22 +188,22 @@ have bought an incremental compiler nobody needs.
 
 ## What we are working on
 
-**M11, the language server.** Slices 1 and 2 ship diagnostics and hover. The remaining slices are
-go-to-definition, document symbols with find-references, and completion. None of them is built.
+**M11, the language server.** Slices 1 to 3 ship diagnostics, hover and go-to-definition. What
+remains is document symbols with find-references, and completion. Neither is built.
 
-**Go-to-definition should now be small.** The two things slice 2 had to build are exactly what it
-needs: `AstChildren` answers which node covers an offset, and `Symbol.Declaration` holds the node to
-jump to. What is left is turning that node's span into a location and deciding what to do when the
-declaration lies in another file — the standard library is in the same `SourceManager`, so the
-target exists, but its URI has to be built rather than echoed.
+**Document symbols is the cheap one.** It is a walk over the entry module's declarations, and
+`AstChildren` already provides the walk; nothing has to be resolved. It needs a name span to be
+useful, which is the same gap the jump has — see below.
 
-**Find-references is still the expensive one.** Neither `BindingResult` nor the reference table of
-`TypeResult` can be enumerated, so there is no way to ask "who else points at this symbol" without a
-reverse index. That is an addition to the FRONT END, not to the server.
+**Find-references is the expensive one, and the reason has not moved.** Neither `BindingResult` nor
+the reference table of `TypeResult` can be enumerated, so "who else points at this symbol" cannot be
+asked without a reverse index. That is an addition to the FRONT END, not to the server.
 
-**Two limits hover left behind**, both recorded with tests rather than as intentions: a generic call
-shows the declared signature because the substitution is private to the type checker, and there is
-no documentation to show at all — `///` is a token kind that reaches no AST node.
+**Three limits recorded with tests rather than as intentions**: a generic call shows the declared
+signature because the substitution is private to the type checker; there is no documentation to show
+at all, because `///` is a token kind that reaches no AST node; and a jump lands on the START of a
+declaration, because no node records a span for its NAME. The third is the one worth fixing — a name
+span per declaration would improve the jump and document symbols at once.
 
 **The open question to answer before E4**: the lifetime and identity of a host object across the
 boundary — does the host keep it alive or the VM? That is the one place in M10 where I have no
@@ -300,7 +298,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`cli: build writes a source map, --no-source-map leaves it out`
+`Merge pull request #4 from OIL1I/feature/source-map`
 
 ---
 

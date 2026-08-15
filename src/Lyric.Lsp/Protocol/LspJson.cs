@@ -31,6 +31,7 @@ namespace Lyric.Lsp.Protocol;
 [JsonSerializable(typeof(DidCloseTextDocumentParams))]
 [JsonSerializable(typeof(TextDocumentPositionParams))]
 [JsonSerializable(typeof(Hover))]
+[JsonSerializable(typeof(Location))]
 public sealed partial class LspJson : JsonSerializerContext
 {
     /// <summary>
