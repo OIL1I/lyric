@@ -10,7 +10,7 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## v1.1.0 — unreleased
+## v1.1.0 — 2026-08-15
 
 Bytecode format **3.1**. A minor of the format may only add skippable sections, so a 1.0 runtime
 reads a module built by this release and a 1.1 runtime reads one built by 1.0 — with one caveat
@@ -101,6 +101,19 @@ below.
   **This is the caveat above**: a 1.0.1 runtime cannot read a module carrying a SourceMap, even
   though the format says it must. Building with `--no-source-map` produces a module those runtimes
   accept.
+
+### Not in this release
+
+- **The command line does not know native roots.** `HostOptions.NativeRoots` reaches the compiler
+  through the embedding API alone, so `lyric check` and the language server report an unknown module
+  for an import a host resolves at runtime. Scripts written against an SDK run correctly and look
+  wrong in an editor.
+- **The language server does not know multi-file programs.** It compiles the buffer it was given, so
+  editing `util.lyr` does not refresh the diagnostics of the `app.lyr` that imports it. Reopening or
+  editing the importing file does.
+
+Both need a place where a project says what it consists of, and putting that on the command line
+would make a third place where the layout is written down.
 
 ## v1.0.1 — 2026-08-14
 
