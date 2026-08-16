@@ -29,12 +29,28 @@ public static class StdlibLoader
     }
 
     /// <summary>
-    /// Builds the loader. A module path becomes a file path: <c>std.io.console</c> →
-    /// <c>&lt;root&gt;/std/io/console.lyr</c> — the same derivation as for user code, in the other
-    /// direction.
+    /// Builds the loader for the standard library. A module path becomes a file path:
+    /// <c>std.io.console</c> → <c>&lt;root&gt;/std/io/console.lyr</c> — the same derivation as for
+    /// user code, in the other direction.
     /// </summary>
     public static Func<string[], (Module Ast, bool IsNative)?> ForRoot(
         string root, SourceManager sourceManager, DiagnosticEngine diagnostics) =>
+        Build(root, sourceManager, diagnostics, native: true);
+
+    /// <summary>
+    /// Builds the loader for a program's OWN modules, rooted at the directory of its entry file.
+    ///
+    /// <para>The only difference to <see cref="ForRoot"/> is that these modules are NOT native: a
+    /// function without a body is an error here rather than an import declaration.
+    /// <c>Compilation.IsNative</c> follows the ORIGIN of a module and not its content, and this is
+    /// the origin that decides.</para>
+    /// </summary>
+    public static Func<string[], (Module Ast, bool IsNative)?> ForProject(
+        string root, SourceManager sourceManager, DiagnosticEngine diagnostics) =>
+        Build(root, sourceManager, diagnostics, native: false);
+
+    private static Func<string[], (Module Ast, bool IsNative)?> Build(
+        string root, SourceManager sourceManager, DiagnosticEngine diagnostics, bool native) =>
         path =>
         {
             var file = Path.Combine(root, Path.Combine(path)) + ".lyr";
@@ -52,6 +68,6 @@ public static class StdlibLoader
                 return null;
             }
 
-            return (new Parser(sourceManager, id, diagnostics).ParseModule(), true);
+            return (new Parser(sourceManager, id, diagnostics).ParseModule(), native);
         };
 }

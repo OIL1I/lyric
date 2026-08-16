@@ -68,12 +68,19 @@ public sealed class Compilation
         return false;
     }
 
-    /// <summary>Registers a module. The path comes from the header, otherwise from
-    /// <paramref name="name"/>, otherwise "main".</summary>
+    /// <summary>
+    /// Registers a module. A <paramref name="name"/> given by the caller wins; otherwise the header
+    /// decides, and without one the module is "main".
+    ///
+    /// <para>The caller wins because it knows something the file does not: a loaded module was found
+    /// at a path, and a host that supplies a name needs that name to call back in. When the header
+    /// disagrees with a path it was loaded from, the mismatch is reported before this is
+    /// reached — here the name is simply the authority.</para>
+    /// </summary>
     public ModuleSymbol AddModule(Module ast, string? name = null, bool isNative = false)
     {
-        var path = ast.Header is not null ? ast.Header.Segments
-                 : name is not null ? name.Split('.')
+        var path = name is not null ? name.Split('.')
+                 : ast.Header is not null ? ast.Header.Segments
                  : ["main"];
         var members = new SymbolTable(_builtins); // the parent is the builtins, so 'int' and friends resolve through the lookup chain
         var symbol = new ModuleSymbol(path, members, ast);
@@ -120,7 +127,18 @@ public sealed class Compilation
                 if (FindModule(import.Path) is not null) continue;
                 if (ModuleLoader(import.Path) is not { } loaded) continue;
 
-                AddModule(loaded.Ast, string.Join('.', import.Path), loaded.IsNative);
+                var name = string.Join('.', import.Path);
+
+                // A file found at a path must agree that it lives there. Without the check the
+                // module registers under the name its header claims, the import that pulled it in
+                // still finds nothing, and the message says "cannot find" about a file that was
+                // just read — and a second importer loads it a second time.
+                if (loaded.Ast.Header is { } header && !header.Segments.SequenceEqual(import.Path))
+                    _de.Report("LYR-RES0006", Severity.Error, header.Span,
+                        $"this file was loaded as '{name}' but declares module "
+                        + $"'{string.Join('.', header.Segments)}'");
+
+                AddModule(loaded.Ast, name, loaded.IsNative);
             }
         }
     }

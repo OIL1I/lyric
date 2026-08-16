@@ -124,6 +124,10 @@ public static class Toolchain
     /// <summary>A scratch path that cleans itself up.</summary>
     public static TemporaryFile Temp(string extension) => new(extension);
 
+    /// <summary>A scratch DIRECTORY that cleans itself up. What a multi-file program needs: its
+    /// module root is a directory, not a file.</summary>
+    public static TemporaryDirectory TempDirectory() => new();
+
     private static string BinaryPath(string project, string binary)
     {
         var name = OperatingSystem.IsWindows() ? $"{binary}.exe" : binary;
@@ -156,6 +160,30 @@ public sealed class TemporaryFile(string extension) : IDisposable
 
     public void Dispose()
     {
-        try { File.Delete(Path); } catch (IOException) { /* nicht der Rede wert */ }
+        try { File.Delete(Path); } catch (IOException) { /* not worth mentioning */ }
+    }
+}
+
+/// <summary>A temporary directory that disappears with everything in it.</summary>
+public sealed class TemporaryDirectory : IDisposable
+{
+    public string Path { get; } = System.IO.Path.Combine(
+        System.IO.Path.GetTempPath(), $"lyric-test-{Guid.NewGuid():N}");
+
+    public TemporaryDirectory() => Directory.CreateDirectory(Path);
+
+    /// <summary>Writes a module into the directory and returns its full path, creating the
+    /// sub-directories a dotted module path needs.</summary>
+    public string Write(string relativePath, string text)
+    {
+        var file = System.IO.Path.Combine(Path, relativePath);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, text);
+        return file;
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(Path, recursive: true); } catch (IOException) { /* as above */ }
     }
 }

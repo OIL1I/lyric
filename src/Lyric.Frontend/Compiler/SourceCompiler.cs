@@ -80,8 +80,19 @@ public static class SourceCompiler
         // subtracts its own duration from the resolve time.
         var loaderTime = TimeSpan.Zero;
         var loaded = new List<string>();
-        var stdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
+
+        var fromStdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
             sources, diagnostics);
+        var fromProject = StdlibLoader.ForProject(source.BaseDirectory, sources, diagnostics);
+
+        // Two roots, one delegate: 'std' comes from the standard library, everything else from the
+        // program's own directory.
+        //
+        // The split is by module path rather than by trying one root and then the other. A
+        // precedence rule would let a file at '<program>/std/io/console.lyr' shadow the standard
+        // library silently, and silently is the part that makes it a trap.
+        var stdlib = (string[] modulePath) =>
+            modulePath is ["std", ..] ? fromStdlib(modulePath) : fromProject(modulePath);
 
         // Supplied modules first, then disk. Chained rather than a second loader mechanism:
         // 'Compilation' knows exactly one delegate.

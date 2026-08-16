@@ -18,6 +18,19 @@ below.
 
 ### Added
 
+- **A program may consist of several files.** A module path becomes a file path under the directory
+  of the entry file: `import shapes.circle` reads `shapes/circle.lyr` beside it. Until now only the
+  standard library could be imported, so every program was one file.
+
+  Three rules come with it. A file must agree with the path it was loaded from, or the header is an
+  error — previously such a file registered under the name its header claimed and the import that
+  pulled it in reported *cannot find module* about a file it had just read. `std` resolves against
+  the standard library alone, so nothing beside your program can take its place. And only standard
+  library modules declare functions without a body; in your own modules a missing body is a compiler
+  error rather than a failure at load time.
+
+  Everything still compiles into one `.lyrbc`. There is no separate compilation step per file.
+
 - **A panic names the line it happened on**, not just the function:
 
   ```
