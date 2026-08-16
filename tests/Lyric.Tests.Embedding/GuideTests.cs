@@ -32,7 +32,20 @@ public class GuideTests
 
     private static LangVm ConfiguredVm()
     {
-        var vm = new LangVm(new HostOptions { StdlibRoot = Path.Combine(RepoRoot(), "stdlib") });
+        var vm = new LangVm(new HostOptions
+        {
+            StdlibRoot = Path.Combine(RepoRoot(), "stdlib"),
+
+            // The chapter describes an SDK in a native root. It exists here for the same reason the
+            // host functions below do: the snippets compile against the VM the chapter describes,
+            // so a documented shape that does not work is a red test rather than a wrong page.
+            NativeRoots = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["engine"] = Path.Combine(RepoRoot(), "tests", "Lyric.Tests.Embedding", "guide-sdk"),
+            },
+        });
+
+        vm.RegisterNative("engine.input.keyDown", (long key) => key == 32);
 
         vm.RegisterType<Player>("Player", t => t
             .Getter("name", (Player p) => p.Name)

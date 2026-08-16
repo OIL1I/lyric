@@ -68,6 +68,53 @@ fn main(): int {
 
 There is no implicit namespace: without the import the names are unknown.
 
+## An SDK of your own
+
+`RegisterFunction` generates the declaration from the delegate, which is right for a handful of
+functions. For an engine with a hundred of them the signature ends up in two places: in the C# call
+and in whatever documents the API.
+
+A **native root** is a directory whose modules may declare functions without a body. The declarations
+are ordinary `.lyr` files you ship and version:
+
+```text
+// sdk/engine/input.lyr
+module engine.input;
+
+pub fn keyDown(key: int): bool;
+
+pub fn anyKey(): bool { return keyDown(32) || keyDown(27); }
+```
+
+```csharp
+var vm = new LangVm(new HostOptions
+{
+    NativeRoots = new Dictionary<string, string> { ["engine"] = "sdk" },
+});
+
+vm.RegisterNative("engine.input.keyDown", (long key) => input.IsDown(key));
+```
+
+```lyr
+import engine.input { anyKey };
+
+fn main(): int { return if (anyKey()) 1 else 0; }
+```
+
+Three things follow from how it is keyed:
+
+- **The root decides, not the file.** The same file outside a native root is a missing body and an
+  error. Whether a module may reach into the host follows where it came from, so naming a file well
+  enough is not a way in.
+- **The segment belongs to the root.** `engine` is taken out of the program's own directory, so which
+  file answers an import is never a question of precedence.
+- **A declaration needs an implementation under the same qualified name.** `RegisterNative` writes no
+  declaration — that is the file's job — and a declaration nobody implements fails when the script is
+  instantiated, not at the call site.
+
+A module in a native root may hold ordinary Lyric code beside its declarations; `anyKey` above is
+compiled like any other function.
+
 ## Registering types
 
 `RegisterType` exposes a C# class to scripts. Scripts receive such an object and pass it on; they

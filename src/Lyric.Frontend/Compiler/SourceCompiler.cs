@@ -85,14 +85,29 @@ public static class SourceCompiler
             sources, diagnostics);
         var fromProject = StdlibLoader.ForProject(source.BaseDirectory, sources, diagnostics);
 
-        // Two roots, one delegate: 'std' comes from the standard library, everything else from the
-        // program's own directory.
+        // Roots the host declares native, keyed by the segment they own. An SDK ships its
+        // declarations as .lyr files and says which prefix they live under.
+        var nativeRoots = options.NativeRoots?.ToDictionary(
+            entry => entry.Key,
+            entry => StdlibLoader.ForRoot(entry.Value, sources, diagnostics),
+            StringComparer.Ordinal);
+
+        // Several roots, one delegate: 'std' comes from the standard library, a segment the host
+        // claimed from its own root, everything else from the program's directory.
         //
         // The split is by module path rather than by trying one root and then the other. A
         // precedence rule would let a file at '<program>/std/io/console.lyr' shadow the standard
         // library silently, and silently is the part that makes it a trap.
         var stdlib = (string[] modulePath) =>
-            modulePath is ["std", ..] ? fromStdlib(modulePath) : fromProject(modulePath);
+        {
+            if (modulePath is ["std", ..]) return fromStdlib(modulePath);
+
+            if (nativeRoots is not null && modulePath.Length > 0
+                && nativeRoots.TryGetValue(modulePath[0], out var native))
+                return native(modulePath);
+
+            return fromProject(modulePath);
+        };
 
         // Supplied modules first, then disk. Chained rather than a second loader mechanism:
         // 'Compilation' knows exactly one delegate.
@@ -253,6 +268,21 @@ public sealed record CompilerOptions
     /// on disk rather than the other way round: the host decides what its script sees.</para>
     /// </summary>
     public IReadOnlyDictionary<string, string>? NativeModules { get; init; }
+
+    /// <summary>
+    /// Directories whose modules may declare functions WITHOUT A BODY, keyed by the module path
+    /// segment they own: <c>["engine"] = "…/sdk"</c> makes <c>engine.input</c> read
+    /// <c>…/sdk/engine/input.lyr</c> and treats what it finds as native declarations.
+    ///
+    /// <para>For an SDK that ships its surface as <c>.lyr</c> files rather than as generated
+    /// strings. The host still supplies the implementations, under the same qualified names.</para>
+    ///
+    /// <para>A ROOT is declared native, never a file: <c>Compilation.IsNative</c> follows the origin
+    /// of a module and not its content, or naming a file well enough would be a way into the host.
+    /// The segment a root owns is taken out of the program's own directory, which is what makes the
+    /// answer unambiguous instead of a matter of precedence.</para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? NativeRoots { get; init; }
 
     /// <summary>
     /// Whether the SourceMap section is written. On by default: a panic that names a line is worth
