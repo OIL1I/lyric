@@ -180,7 +180,7 @@ public static class Disassembler
         return defined < module.Functions.Count ? module.Functions[defined].Name : $"f{N(index)}";
     }
 
-    private static string Mnemonic(Op opcode) => opcode switch
+    internal static string Mnemonic(Op opcode) => opcode switch
     {
         Op.Add => "add", Op.Sub => "sub", Op.Mul => "mul", Op.Div => "div", Op.Rem => "rem",
         Op.Shl => "shl", Op.Shr => "shr",

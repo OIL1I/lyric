@@ -43,6 +43,33 @@ below.
 
 ### Fixed
 
+- **`s += "x"` on a string silently produced the empty string.** `+` on a `string` is a call to
+  `std.string.concat` and on an array an `arrcat` instruction, but the compound forms emitted a bare
+  `add` with the operand type next to it. Nothing rejected that in a release build, and the runtime
+  read the two strings as integers, so the variable ended up empty and the program kept running:
+
+  ```lyr
+  var line = "";
+  line += "0F ";     // line was "" afterwards, not "0F "
+  ```
+
+  Affected were a local, a captured variable and a coroutine local. On an **array** the same
+  instruction produced a value with no reference, and the next access to it ended the process with a
+  host exception instead of a panic. A field (`obj.s += "x"`) and an array element
+  (`xs[0] += "x"`) were reported as `LYR-IR0001` rather than miscompiled, and now work as well.
+
+  `s = s + "x"` was correct throughout and is unchanged. **Existing `.lyrbc` files are unaffected**:
+  the format and its specification were right, the compiler was not.
+
+  `s *= 3` and `xs *= 2` stay rejected — a separate rule in the type checker demands that the right
+  operand be assignable to the left, which does not hold for repetition. `s = s * 3` works.
+
+- **A runtime accepted an arithmetic opcode with a type it cannot compute on.** §5 of the format says
+  `add` through `rem` require a numeric type; the reader checked indices only and never the type tag,
+  so a module carrying `add string` passed `lyrvm verify` and ran. That is why the bug above could
+  reach an output at all — the IR verifier that does catch it runs in debug builds only. Such a
+  module is now rejected at load time with `LYR-BC0005`.
+
 - **A reader rejected a section id it did not know**, with `LYR-BC0003`, instead of skipping it. That
   is the mechanism the format's forward compatibility rests on, and it had never run, because nothing
   had ever written an unknown section.

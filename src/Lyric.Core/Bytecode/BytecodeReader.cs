@@ -523,6 +523,8 @@ public static class BytecodeReader
 
         foreach (var instruction in instructions)
         {
+            ValidateArithmeticTag(function, instruction);
+
             switch (instruction.Opcode)
             {
                 case Op.LoadLocal or Op.StoreLocal when instruction.Immediate >= (ulong)function.SlotTypes.Count:
@@ -620,6 +622,57 @@ public static class BytecodeReader
             }
         }
     }
+
+    /// <summary>
+    /// The type tag an arithmetic, bitwise or comparison opcode carries, against §5 of the format.
+    ///
+    /// <para>The rules were normative and enforced nowhere. That mattered, because the IR verifier —
+    /// which does check them — only runs in a Debug build, so a lowering that emitted <c>add string</c>
+    /// produced a module every release tool called valid and the interpreter evaluated as an integer
+    /// addition of two references. This is the check that makes the reader the safety net the release
+    /// pipeline assumes it is.</para>
+    /// </summary>
+    private static void ValidateArithmeticTag(BytecodeFunction function,
+        BytecodeInstruction instruction)
+    {
+        if (instruction.Type is not { } tag) return;
+
+        var ok = instruction.Opcode switch
+        {
+            Op.Add or Op.Sub or Op.Mul or Op.Div or Op.Rem or Op.Neg => IsNumeric(tag),
+            Op.Shl or Op.Shr or Op.BitAnd or Op.BitOr or Op.BitXor or Op.BitNot => IsInteger(tag),
+            Op.Lt or Op.Le or Op.Gt or Op.Ge => IsNumeric(tag),
+            // eq/ne additionally hold for the types with a defined identity.
+            Op.Eq or Op.Ne => IsNumeric(tag) || tag is TypeTag.Bool or TypeTag.Char or TypeTag.String,
+            // 'conv' is numeric on both ends, and the two ends have to differ.
+            Op.Convert => IsNumeric(tag) && IsNumeric(instruction.ToType!.Value)
+                          && tag != instruction.ToType.Value,
+            _ => true,
+        };
+
+        if (!ok)
+            throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                $"function '{function.Name}' at {instruction.Offset}: " +
+                $"{Disassembler.Mnemonic(instruction.Opcode)} carries type tag 0x{(byte)tag:X2}, " +
+                "which the operation does not accept");
+    }
+
+    /// <summary>
+    /// <c>char</c> counts as an integer here, exactly as <c>IrVerifier.IsInteger</c> counts it.
+    ///
+    /// <para>The two have to answer the same question the same way, or the reader rejects what the
+    /// compiler emits: <c>std.string.digitToChar</c> converts <c>i64</c> to <c>char</c>, and the code
+    /// point arithmetic in <c>std.string</c> adds on <c>char</c> directly. §5 of the format describes
+    /// the operand types as "numeric" and lists <c>char</c> away from the integers in §3, which reads
+    /// as a narrower rule than the one in force. Following the document instead of the verifier would
+    /// have made the standard library unloadable, so this mirrors the verifier — the divergence is
+    /// real and belongs settled in the specification, not in a bug fix.</para>
+    /// </summary>
+    private static bool IsInteger(TypeTag tag) =>
+        tag is >= TypeTag.I8 and <= TypeTag.U64 or TypeTag.Char;
+
+    private static bool IsNumeric(TypeTag tag) =>
+        IsInteger(tag) || tag is TypeTag.F32 or TypeTag.F64;
 
     /// <summary>The vtable rows, checked at load time so <c>callvirt</c> is an unchecked array
     /// access afterwards.</summary>

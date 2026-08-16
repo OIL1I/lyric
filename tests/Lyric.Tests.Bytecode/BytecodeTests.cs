@@ -262,6 +262,53 @@ public class BytecodeTests
         }
     }
 
+    [Theory]
+    // §5: "'add' through 'rem' require a numeric type". The rule was normative and enforced nowhere,
+    // and that is what turned a lowering bug into silently wrong output: a release build runs no IR
+    // verifier, so 'add string' passed 'lyrvm verify' and the interpreter added the two references
+    // as integers. The tag is patched in a module the compiler itself produced, because a
+    // hand-assembled one would prove nothing about the shape the writer emits.
+    [InlineData("fn f(): int { return 1 + 1; }", Op.Add, TypeTag.String)]
+    [InlineData("fn f(): int { return 1 + 1; }", Op.Add, TypeTag.Bool)]
+    // '<' is numeric too; '==' is not, so 'eq string' must stay accepted (checked below).
+    [InlineData("fn f(): bool { return 1 < 2; }", Op.Lt, TypeTag.String)]
+    // The shift and bitwise family is stricter still: integers only, no floats.
+    [InlineData("fn f(): int { return 1 << 2; }", Op.Shl, TypeTag.F64)]
+    public void Rejects_an_arithmetic_opcode_with_a_type_it_does_not_accept(
+        string source, Op opcode, TypeTag tag) =>
+        AssertRejected(WithPatchedTag(source, opcode, tag), BytecodeDiagnostics.UnknownEncoding);
+
+    [Fact]
+    public void Accepts_equality_on_the_non_numeric_types_that_have_it() =>
+        // The counter-check to the theory above. 'eq' and 'ne' hold for bool, char and string as
+        // well, and a check that rejected those would break every string comparison in the stdlib.
+        Assert.NotNull(BytecodeReader.ReadOrThrow(
+            BytecodeWriter.Write(LowerSource("fn f(): bool { return \"a\" == \"b\"; }"))));
+
+    /// <summary>Compiles the source and overwrites the type tag of the first
+    /// <paramref name="opcode"/> in the last function's code.</summary>
+    private static byte[] WithPatchedTag(string source, Op opcode, TypeTag tag)
+    {
+        var bytes = BytecodeWriter.Write(LowerSource(source));
+        var code = BytecodeReader.ReadOrThrow(bytes).Functions[^1].Code;
+
+        // The tag sits one byte behind the opcode, and the code block appears verbatim in the file.
+        var instruction = CodeDecoder.Decode(code).First(i => i.Opcode == opcode);
+        var start = IndexOf(bytes, code);
+        Assert.True(start >= 0, "the function's code was not found in the file");
+
+        bytes[start + instruction.Offset + 1] = (byte)tag;
+        return bytes;
+    }
+
+    private static int IndexOf(byte[] haystack, byte[] needle)
+    {
+        for (var i = 0; i + needle.Length <= haystack.Length; i++)
+            if (haystack.AsSpan(i, needle.Length).SequenceEqual(needle))
+                return i;
+        return -1;
+    }
+
     // ------------------------------------------------------------------ 4) conformance to the spec
 
     [Fact]
