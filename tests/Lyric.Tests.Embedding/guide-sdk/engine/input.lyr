@@ -1,0 +1,7 @@
+// The SDK the embedding chapter describes. It exists so the snippets that import it compile
+// against a real native root rather than against a description of one.
+module engine.input;
+
+pub fn keyDown(key: int): bool;
+
+pub fn anyKey(): bool { return keyDown(32) || keyDown(27); }

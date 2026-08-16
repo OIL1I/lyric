@@ -24,6 +24,10 @@ public sealed class LangVm
     private readonly HostOptions _options;
     private readonly NativeRegistry _natives;
     private readonly Dictionary<string, HostFunction> _hostFunctions = new(StringComparer.Ordinal);
+
+    /// <summary>Qualified names registered through <see cref="RegisterNative"/>. Only the names: the
+    /// declarations belong to the files a native root ships, not to this class.</summary>
+    private readonly HashSet<string> _natived = new(StringComparer.Ordinal);
     private readonly Dictionary<Type, string> _hostTypes = [];
     private readonly Dictionary<string, List<HostFunction>> _hostMethods =
         new(StringComparer.Ordinal);
@@ -115,6 +119,51 @@ public sealed class LangVm
         // With the full types: a host type is distinguished by name, and a tag comparison would
         // treat two of them as the same.
         _natives.RegisterWithTypes($"{HostModule}.{name}",
+            function.ParameterTypes, function.ReturnType, function.Bridge);
+    }
+
+    /// <summary>
+    /// The implementation of a function a native root DECLARES, under the same qualified name.
+    ///
+    /// <para>The counterpart of <see cref="HostOptions.NativeRoots"/>: there the SDK ships
+    /// <c>engine/input.lyr</c> with <c>pub fn keyDown(key: int): bool;</c>, here the host supplies
+    /// what it does, as <c>engine.input.keyDown</c>. The compiler binds natives by qualified name,
+    /// so the two spellings have to be the same one.</para>
+    ///
+    /// <para>Unlike <see cref="RegisterFunction"/> this generates no declaration. The declaration is
+    /// the file; a second one here would be the same signature written twice, which is the thing a
+    /// native root exists to avoid.</para>
+    /// </summary>
+    /// <exception cref="ArgumentException">The name is not qualified, names the generated
+    /// <c>host</c> module, or is already registered.</exception>
+    public void RegisterNative(string qualifiedName, Delegate implementation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(qualifiedName);
+
+        var separator = qualifiedName.LastIndexOf('.');
+        if (separator <= 0 || separator == qualifiedName.Length - 1)
+            throw new ArgumentException(
+                $"'{qualifiedName}' is not qualified: a native declared in a root is named "
+                + "'<module>.<function>', which is the spelling the compiler looks it up by",
+                nameof(qualifiedName));
+
+        // 'host' is generated from RegisterFunction. Writing into it from here would make two
+        // mechanisms responsible for one module, and the generated source would not mention it.
+        if (qualifiedName.StartsWith(HostModule + ".", StringComparison.Ordinal))
+            throw new ArgumentException(
+                $"'{HostModule}' is the module RegisterFunction generates; use that one, or declare "
+                + "this function in a native root under its own module path", nameof(qualifiedName));
+
+        // The bare name, so the signature is derived exactly as for any other host function; the
+        // module path is not part of what a delegate looks like.
+        var function = HostFunction.From(qualifiedName[(separator + 1)..], implementation, _hostTypes);
+
+        // No silent overwrite, the same rule as for RegisterFunction.
+        if (!_natived.Add(qualifiedName))
+            throw new ArgumentException(
+                $"a native named '{qualifiedName}' is already registered", nameof(qualifiedName));
+
+        _natives.RegisterWithTypes(qualifiedName,
             function.ParameterTypes, function.ReturnType, function.Bridge);
     }
 
@@ -250,6 +299,7 @@ public sealed class LangVm
         var result = SourceCompiler.Compile(source, new CompilerOptions
         {
             StdlibRoot = _options.StdlibRoot,
+            NativeRoots = _options.NativeRoots,
             NativeModules = HostModuleSource is { } host
                 ? new Dictionary<string, string>(StringComparer.Ordinal) { [HostModule] = host }
                 : null,

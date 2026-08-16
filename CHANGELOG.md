@@ -18,6 +18,17 @@ below.
 
 ### Added
 
+- **A host may ship its API as `.lyr` files instead of generating it.** `HostOptions.NativeRoots`
+  names directories whose modules may declare functions without a body, keyed by the module path
+  segment they own, and `LangVm.RegisterNative` supplies the implementations under the same qualified
+  names. Until now every host function went through `RegisterFunction`, which derives the declaration
+  from the delegate — right for a handful, and for an SDK it means the same signature lives in the
+  C# call and in whatever documents the API.
+
+  Whether a module may declare a native follows the ROOT it came from, never its content, so naming
+  a file well enough is not a way into the host. A module in such a root may hold ordinary Lyric code
+  beside its declarations.
+
 - **A program may consist of several files.** A module path becomes a file path under the directory
   of the entry file: `import shapes.circle` reads `shapes/circle.lyr` beside it. Until now only the
   standard library could be imported, so every program was one file.
