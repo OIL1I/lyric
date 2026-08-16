@@ -158,8 +158,9 @@ GlobalBinding   = BindingStmt .                   (* 'let' only *)
 TypeAlias       = 'type' IDENTIFIER '=' TypeExpr ';' .
 ```
 
-The module header is optional in a file compiled as an entry point; the module name then comes
-from the file name.
+The module header is optional. In an entry file the name then comes from the file name; in a file
+reached through an `import`, the name is the imported path, and a header that disagrees with it is
+an error.
 
 ---
 
