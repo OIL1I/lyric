@@ -41,10 +41,14 @@ public static class ModuleLowerer
     /// 30 ms, without it 2.8 ms. The check is therefore 90% of the total time, most of it in the
     /// availability data flow, which allocates hash sets per block and iterates to a fixed point.</para>
     ///
-    /// <para>The risk stays manageable, because the bytecode reader validates completely at load time
-    /// anyway (<c>LYR-BC####</c>). A lowering bug in the release compiler therefore does not show as
-    /// silently wrong code but at load time at the latest, only with a worse message than a verifier
-    /// finding.</para>
+    /// <para>The risk is bounded by what the bytecode reader validates at load time
+    /// (<c>LYR-BC####</c>), and only by that. This paragraph used to claim the reader checks
+    /// EVERYTHING, so a lowering bug in a release build could never reach a user as silently wrong
+    /// code. It did: the reader checked indices but never the type tag of an arithmetic opcode, so a
+    /// compound assignment that emitted <c>add string</c> passed every release tool and evaluated to
+    /// the empty string. The reader now checks the tags too. The general rule stands nonetheless —
+    /// what the reader does not check, a release build does not catch, so a new invariant belongs in
+    /// BOTH places or in the reader alone.</para>
     ///
     /// <para>The condition itself lives in <see cref="Pipeline.VerifiesIr"/>: it also decides which
     /// phases <c>--verbose</c> lists, and the tooling tests ask that question too.</para>

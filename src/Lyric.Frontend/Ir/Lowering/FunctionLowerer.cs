@@ -1664,19 +1664,33 @@ internal sealed class FunctionLowerer
         var kind = IrBinKindExtensions.FromAst(expr.Operator);
         var lhs = LowerExpr(expr.Left);
         var rhs = LowerExpr(expr.Right);
-        var type = TypeOfExpr(expr);
+        return EmitBinary(kind, TypeOfExpr(expr), lhs, rhs, expr.Span);
+    }
 
+    /// <summary>
+    /// Applies a binary operator to two lowered operands of <paramref name="type"/>.
+    ///
+    /// <para>THE ONLY PLACE THAT DECIDES WHAT AN OPERATOR BECOMES. <c>a + b</c> and <c>a += b</c> are the
+    /// same operator on the same types and have to reach the same instruction; when the compound paths
+    /// emitted their own <c>BinOp</c>, <c>s += "x"</c> produced <c>add string</c>, which no release build
+    /// rejects and the VM evaluates as an integer addition of two references.</para>
+    ///
+    /// <para><paramref name="type"/> is the type of the RESULT, which for a comparison is <c>bool</c>
+    /// while the operands are not — hence the comparison guard on the string branch.</para>
+    /// </summary>
+    private TempId EmitBinary(IrBinKind kind, IrType type, TempId lhs, TempId rhs, Span span)
+    {
         // xs + ys and xs * n are built-in language semantics but NO BinOp: the add opcode would otherwise
         // stay polymorphic and would have to dispatch on the type at runtime — the same reasoning as for
         // string + string, only with an instruction of its own instead of a call.
-        if (type is IrArrayType result)
+        if (type is IrArrayType array)
         {
             var built = _slots.NewTemp(type);
             _b.Emit(kind switch
             {
-                IrBinKind.Add => new ArrayConcat(built, lhs, rhs, result.Element, expr.Span),
-                IrBinKind.Mul => new ArrayRepeat(built, lhs, rhs, result.Element, expr.Span),
-                _ => throw NotSupported($"'{IrNames.Bin(kind)}' on arrays", expr.Span),
+                IrBinKind.Add => new ArrayConcat(built, lhs, rhs, array.Element, span),
+                IrBinKind.Mul => new ArrayRepeat(built, lhs, rhs, array.Element, span),
+                _ => throw NotSupported($"'{IrNames.Bin(kind)}' on arrays", span),
             });
             return built;
         }
@@ -1687,13 +1701,13 @@ internal sealed class FunctionLowerer
         if (!kind.IsComparison() && type is IrScalarType { Kind: IrScalar.String })
             return kind switch
             {
-                IrBinKind.Add => CallHelper("std.string.concat", expr.Span, lhs, rhs),
-                IrBinKind.Mul => CallHelper("std.string.repeat", expr.Span, lhs, rhs),
-                _ => throw NotSupported($"'{IrNames.Bin(kind)}' on strings", expr.Span),
+                IrBinKind.Add => CallHelper("std.string.concat", span, lhs, rhs),
+                IrBinKind.Mul => CallHelper("std.string.repeat", span, lhs, rhs),
+                _ => throw NotSupported($"'{IrNames.Bin(kind)}' on strings", span),
             };
 
         var dest = _slots.NewTemp(type);
-        _b.Emit(new BinOp(dest, kind, type, lhs, rhs, expr.Span));
+        _b.Emit(new BinOp(dest, kind, type, lhs, rhs, span));
         return dest;
     }
 
@@ -1792,9 +1806,8 @@ internal sealed class FunctionLowerer
         var current = LoadValue(slot, expr.Target.Span);
 
         var operand = LowerExpr(expr.Value);
-        var result = _slots.NewTemp(type);
-        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), type,
-            current, operand, expr.Span));
+        var result = EmitBinary(IrBinKindExtensions.FromAst(expr.Operator.Value), type,
+            current, operand, expr.Span);
         StoreValue(slot, result, expr.Span);
         return result;
     }
@@ -1937,9 +1950,8 @@ internal sealed class FunctionLowerer
 
         var current = LoadStateField(field, expr.Target.Span);
         var operand = LowerExpr(expr.Value);
-        var result = _slots.NewTemp(type);
-        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), type,
-            current, operand, expr.Span));
+        var result = EmitBinary(IrBinKindExtensions.FromAst(expr.Operator.Value), type,
+            current, operand, expr.Span);
         StoreStateField(field, result, expr.Span);
         return result;
     }
@@ -1964,9 +1976,8 @@ internal sealed class FunctionLowerer
         _b.Emit(new LoadField(current, cell, cellType, new FieldId(0), type, expr.Target.Span));
 
         var operand = LowerExpr(expr.Value);
-        var result = _slots.NewTemp(type);
-        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), type,
-            current, operand, expr.Span));
+        var result = EmitBinary(IrBinKindExtensions.FromAst(expr.Operator.Value), type,
+            current, operand, expr.Span);
         _b.Emit(new StoreField(cell, cellType, new FieldId(0), result, expr.Span));
         return result;
     }
@@ -1993,16 +2004,12 @@ internal sealed class FunctionLowerer
         if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr or BinaryOp.Coalesce)
             throw NotSupported("short-circuit or coalescing assignment", expr.Span);
 
-        if (fieldType is IrScalarType { Kind: IrScalar.String })
-            throw NotSupported("string concatenation/repetition (lowers to a call)", expr.Span);
-
         var current = _slots.NewTemp(fieldType);
         _b.Emit(new LoadField(current, obj, type, field, fieldType, member.Span));
 
         var operand = LowerExpr(expr.Value);
-        var result = _slots.NewTemp(fieldType);
-        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), fieldType,
-            current, operand, expr.Span));
+        var result = EmitBinary(IrBinKindExtensions.FromAst(expr.Operator.Value), fieldType,
+            current, operand, expr.Span);
         _b.Emit(new StoreField(obj, type, field, result, expr.Span));
         return result;
     }
@@ -2059,16 +2066,12 @@ internal sealed class FunctionLowerer
         if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr or BinaryOp.Coalesce)
             throw NotSupported("short-circuit or coalescing assignment", expr.Span);
 
-        if (element is IrScalarType { Kind: IrScalar.String } or IrArrayType)
-            throw NotSupported("compound assignment on strings or arrays (lowers to a call)", expr.Span);
-
         var current = _slots.NewTemp(element);
         _b.Emit(new LoadElem(current, array, index, element, indexed.Span));
 
         var operand = LowerExpr(expr.Value);
-        var result = _slots.NewTemp(element);
-        _b.Emit(new BinOp(result, IrBinKindExtensions.FromAst(expr.Operator.Value), element,
-            current, operand, expr.Span));
+        var result = EmitBinary(IrBinKindExtensions.FromAst(expr.Operator.Value), element,
+            current, operand, expr.Span);
         _b.Emit(new StoreElem(array, index, result, expr.Span));
         return result;
     }
