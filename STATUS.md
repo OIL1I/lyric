@@ -41,6 +41,28 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.4.0 slice 3 — completion for names in scope** (2026-08-17). 3684 tests green, Debug and
+  Release. Not merged.
+  - **No new front-end table.** The sema builds its scope chains while checking and drops them, so
+    there is none to ask at a position — but the shape of a scope is the shape of the tree, and the
+    symbol behind each declaration is already in the reference table. Slice 4 of v1.3.0 called those
+    entries *declarations hiding in the reference table* and had to filter them out; here they are
+    exactly the answer.
+  - **The context rule is the load-bearing part.** Being inside a member expression is not enough:
+    in `foo.bar` the cursor on `foo` is inside one too, and what belongs there are the names in
+    scope. Member context is the marker sitting PAST the target, which is where the dot is.
+  - Before this slice that case answered **null by accident** — the marker corrupts the receiver's
+    name, so it resolved to nothing and the member list came back empty. A test now says which
+    context each side of the dot is.
+  - Shadowing falls out of the walk order: inner to outer, first name wins, which is what a scope
+    chain does. A binding is visible from the END of its statement, so `let x = x;` does not offer
+    `x` to itself.
+  - **The honest cost, stated where it is paid**: the scoping rules are now known in two places, the
+    sema while it checks and this walk. Keeping the sema's chains alive would be the better answer
+    as soon as there is a second consumer. Today there is one.
+  - `NodeFinder.DeclaredSymbol` moved out of `ReferenceProvider`, which is where both callers now
+    read it rather than each keeping a copy.
+
 - [x] **v1.4.0 slice 2 — completion for members after `.`** (2026-08-17). 3664 tests green, Debug
   and Release. Not merged.
   - The text at the cursor does not parse, so the question is asked of a program that does: a
@@ -88,20 +110,6 @@ functions out of them and hands its own functions and types in.
     versus use has no consumer. The lowering matches on symbol kind, the server compares
     `symbol.Declaration` against the node, and both work. Work without a complainant, through the
     most delicate code in the project.
-
-- [x] **v1.3.1 — a diagnostic names what is wrong, not where to read about it** (2026-08-17). 3626
-  tests green. Released; PR #23.
-  - Eight messages cited a document. Five named `Sprache.md`, which has been `docs/Grammar.md` for
-    some time, and the section numbers were wrong as well — §10 and §11 of a document with seven.
-    Someone following either was sent nowhere twice.
-  - **The citations are gone rather than repaired.** A citation ages in two ways at once, the file
-    name and the section number, and both had already happened. Where the reference carried
-    information (`§11 allows none or one 'string[]'`) the message now says it outright.
-  - **The rule has a test**, because a rule nobody checks is a preference. It scans the string
-    LITERALS of `src/` for `§` or a `.md` name; comments and XML documentation are free to cite,
-    and they do. Verified by putting an offender back and watching it go red — a mechanical test
-    that has never failed is a test nobody has seen work.
-  - No code and no behaviour changed: same diagnostic codes, same spans, different wording.
 
 ## Measurements
 
@@ -155,9 +163,9 @@ find references (#21). Additive throughout: no language change, no format change
 | Slice | What | State |
 |---|---|---|
 | 1 | A member access asks the type, not the table | PR #24 |
-| 2 | Completion: members after `.` | **done, unmerged** |
-| 3 | Completion: names in scope | next |
-| 4 | Documentation for the three undocumented stdlib files | |
+| 2 | Completion: members after `.` | PR #25 |
+| 3 | Completion: names in scope | **done, unmerged** |
+| 4 | Documentation for the three undocumented stdlib files | next, and the last |
 
 **The mechanism is a completion MARKER, not an error-tolerant parser.** A request inserts a synthetic
 identifier at the cursor and compiles through `CompilerOptions.SourceOverlay`, which has existed
@@ -288,7 +296,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #24 from OIL1I/feature/member-receiver` (`f4b7990`)
+`Merge pull request #25 from OIL1I/feature/completion-members` (`974b9e1`)
 
 ---
 
