@@ -55,6 +55,16 @@ public sealed class AnalysisService : IDisposable
         new(DocumentUri.PathComparer);
 
     /// <summary>
+    /// What was last said about a project file, by the directory the search started in.
+    ///
+    /// <para>The project file is read on every analysis — it is one small file and the compile
+    /// beside it costs milliseconds — but SAYING something about it belongs to a change. Logging a
+    /// warning per keystroke would bury the one line that matters under the same line.</para>
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string> _projectNotices =
+        new(DocumentUri.PathComparer);
+
+    /// <summary>
     /// The last analysis that produced a model, per document path.
     ///
     /// <para>Kept because a question about the program has to be answerable while the program does
@@ -141,11 +151,68 @@ public sealed class AnalysisService : IDisposable
         }
     }
 
+    /// <summary>
+    /// The <c>lyric.json</c> above this document, or <c>null</c> when there is none or it cannot be
+    /// understood.
+    ///
+    /// <para>A BROKEN FILE DOES NOT STOP THE ANALYSIS. Falling back to the plain rules gives
+    /// resolution that may be wrong, and the log says why; publishing nothing would leave the
+    /// editor showing the diagnostics of some earlier state with no hint that anything happened.
+    /// For a tool someone is looking at, wrong-and-explained beats silent.</para>
+    ///
+    /// <para>Not published as a diagnostic on this document: the fault is in another file, and
+    /// pointing at the wrong place is how a reader loses an afternoon. The log is where a message
+    /// about a file the client did not ask about belongs.</para>
+    /// </summary>
+    private async Task<ProjectFile?> ProjectForAsync(OpenDocument document)
+    {
+        var directory = Path.GetDirectoryName(document.Path);
+        if (directory is null) return null;
+
+        try
+        {
+            var project = ProjectFile.Discover(directory);
+
+            var notice = project is null || project.Warnings.Count == 0
+                ? string.Empty
+                : $"{Path.Combine(project.Directory, ProjectFile.FileName)}: "
+                  + string.Join("; ", project.Warnings);
+
+            await NoticeAsync(directory, notice, MessageType.Warning).ConfigureAwait(false);
+            return project;
+        }
+        catch (ProjectFileException broken)
+        {
+            await NoticeAsync(directory, $"{broken.Path}: {broken.Message}", MessageType.Error)
+                .ConfigureAwait(false);
+            return null;
+        }
+    }
+
+    /// <summary>Says something about a project file only when it differs from what was last said
+    /// about it.</summary>
+    private async Task NoticeAsync(string directory, string message, MessageType type)
+    {
+        if (_projectNotices.TryGetValue(directory, out var previous)
+            && string.Equals(previous, message, StringComparison.Ordinal))
+            return;
+
+        _projectNotices[directory] = message;
+        if (message.Length > 0) await SafeLogAsync(message, type).ConfigureAwait(false);
+    }
+
     /// <summary>Compiles one version and publishes its diagnostics, without the debounce. The
     /// analysis a test drives directly.</summary>
     public async Task AnalyzeAsync(OpenDocument document, CancellationToken cancellationToken)
     {
-        var options = new CompilerOptions { StdlibRoot = _stdlibRoot };
+        var project = await ProjectForAsync(document).ConfigureAwait(false);
+
+        var options = new CompilerOptions
+        {
+            StdlibRoot = _stdlibRoot,
+            SourceRoot = project?.SourceRoot,
+            NativeRoots = project?.NativeRoots,
+        };
 
         // Off the caller's thread: the compile is synchronous and CPU-bound, and the caller is
         // either the read loop or a test.
@@ -224,11 +291,11 @@ public sealed class AnalysisService : IDisposable
         _lastGood.TryGetValue(path, out var snapshot) ? snapshot : null;
 
     /// <summary>Logging must not itself throw on a connection that is already going down.</summary>
-    private async Task SafeLogAsync(string message)
+    private async Task SafeLogAsync(string message, MessageType type = MessageType.Error)
     {
         try
         {
-            await _log(message, MessageType.Error, CancellationToken.None).ConfigureAwait(false);
+            await _log(message, type, CancellationToken.None).ConfigureAwait(false);
         }
         catch
         {

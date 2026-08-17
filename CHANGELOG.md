@@ -37,8 +37,21 @@ bytecode format, the command line and the embedding API. Compiler internals are 
   rather than a new requirement. A key nobody knows is a warning rather than an error, so a file
   written for a later version still loads.
 
-  It is read and never executed, which is what will let an editor learn a project's layout without
+  It is read and never executed, which is what lets an editor learn a project's layout without
   running anything from it.
+
+- **The language server reads `lyric.json`.** An import of a host SDK no longer shows as an unknown
+  module in an editor while the same script runs correctly in the host — the second half of what
+  v1.1.0 listed as not in it.
+
+  A broken project file does not stop the analysis. The editor keeps getting diagnostics, resolved
+  by the plain rules, and the reason goes to the client's log; publishing nothing would leave an
+  earlier state on screen with no hint that anything happened. The message names the project file
+  rather than appearing as an error inside the file being edited, and it is said once per change
+  rather than once per keystroke.
+
+  **Still not there**: editing a module does not refresh the diagnostics of the file that imports
+  it. The server analyses one buffer at a time.
 
 ## v1.1.0 — 2026-08-15
 
