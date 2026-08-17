@@ -40,6 +40,35 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.5.0 slice 3 — arithmetic through interfaces, and a hole it dug up first** (2026-08-18).
+  3732 tests green, Debug and Release. Not merged.
+  - **The slice began as a bug fix.** Planning the compound forms exposed that a compound assignment
+    never checked its OPERATOR: `p += p` on a struct passed the sema — the only rule was
+    right-assignable-to-left, which any value of the target's own type satisfies — and the lowering
+    emitted an integer `add` over two references. The `s += "x"` bug of v1.1.0, one type over,
+    invisible in Release where the verifier does not run. `s &= s` and `f <<= f` passed the same
+    way. Measured first, then fixed with failing tests, own commit.
+  - **The fix types a compound as the binary it carries**: a synthesized `target op value` runs
+    through `CheckBinary` — the same rules as the written form, not a second copy. `??=`, `&&=` and
+    `||=` keep the old path; their meaning is not "apply the operator to both sides".
+  - **The fix delivered `s *= 3` and `xs *= 2`.** Their rejection was an accident of the
+    assignability rule, pinned by a v1.1.0 test whose own comment predicted this moment: *"the
+    moment the sema rule is corrected this test goes red and says so."* It did; it now runs the
+    repetition and checks the output. The lowering had been ready since every compound was routed
+    through `EmitBinary`.
+  - Then the slice itself: `+ - * /` desugar through `Add<T>`, `Sub<T>`, `Mul<T>`, `Div<T>` — four
+    new `std.core` interfaces, one method each, homogeneous. The built-in numerics and `string`
+    (`Add` only) conform via `extend`, so a generic `total<T :: [Add<T>]>` serves an `int`, a
+    `string` and a `Vec2` in one program. `%` stays numeric-only, deliberately.
+  - `Vec2` is the test receiver on purpose: the type of the project's own measurements, whose
+    method-call cost is exactly what the operator now costs.
+  - **A compound through an interface is a diagnostic, not support**: the compound lowering
+    evaluates the target's address once and cannot yet route through a call — a silent second
+    evaluation of the receiver would be the wrong surprise. The message says `write it out:
+    'a = a + b'`, and a test holds it.
+  - Doc ratchet 110 → 118 of 354; the snapshot gained documentation only, no signature and no name
+    moved.
+
 - [x] **v1.5.0 slice 2 — the four orderings read the sign of `compare`** (2026-08-18). 3720 tests
   green, Debug and Release. Not merged.
   - `<`, `<=`, `>` and `>=` work on every type conforming to `Ordered<T>` — **including `string`,
@@ -89,26 +118,6 @@ functions out of them and hands its own functions and types in.
   - Without a standard library there is no `Equatable` to desugar through; the compile degrades into
     the ordinary diagnostic rather than a crash. Pinned by a test that checks without a module
     loader.
-
-- [x] **v1.4.0 slice 4 — the standard library says what it does** (2026-08-17). 3684 tests green.
-  Merged as PR #27, and it completed v1.4.0.
-  - `std/io/console.lyr`, `std/core.lyr` and `std/option.lyr` had **33 `pub` declarations and not one
-    line of documentation** between them, so `println` — the most used function in the language —
-    hovered empty. It no longer does.
-  - **The explanations largely existed and reached nothing.** All three files carried good `//`
-    comments; a `//` is not a doc comment, so hover, completion and the generated reference saw
-    none of it. The work was mostly deciding which half is which: **what a caller needs became
-    `///`, what a maintainer needs stayed `//`.** The reachability note in `console.lyr` and the
-    reason `float` has no `Hashable` are not answers to "what does this do".
-  - Interface members are documented too — `show`, `equals`, `hash`, `compare`. They are what
-    completion offers on a constrained type, and a list of four bare names says nothing.
-  - **The repository already held a test for this debt**, and it was better than the one I would have
-    written: `DocCoverageTests` is a RATCHET on the documented share, and a second test named the
-    three bare modules outright. Documented items went **70 → 110 of 346**; the floor is raised and
-    the module list is now empty, kept as an assertion rather than deleted so a new module without a
-    line shows up at once.
-  - The generated reference changed in documentation and line numbers only — **no signature and no
-    name moved**, checked against the snapshot diff rather than assumed.
 
 ## Measurements
 
@@ -167,9 +176,9 @@ and REJECTED — constraints plus generics are this language's overloading, and 
 | Slice | What | State |
 |---|---|---|
 | 1 | `==`/`!=` via `Equatable<T>` | PR #31 |
-| 2 | `<` `<=` `>` `>=` via `Ordered<T>` — closed `string < string` | **done, unmerged** |
-| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | next |
-| 4 | `as` to user types via an `Into`-style interface, explicit only | |
+| 2 | `<` `<=` `>` `>=` via `Ordered<T>` — closed `string < string` | PR #32 |
+| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | **done, unmerged** |
+| 4 | `as` to user types via an `Into`-style interface, explicit only | next, and the last |
 
 Heterogeneous arithmetic (`Vec2 * float`) needs a two-parameter interface and a coherence rule for
 multiple conformances to the same generic interface; deliberately not in v1.5.0.
@@ -288,7 +297,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #31 from OIL1I/feature/operator-equality` (`f2b6428`)
+`Merge pull request #32 from OIL1I/feature/operator-ordering` (`904054a`)
 
 ---
 
