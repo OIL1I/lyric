@@ -17,7 +17,11 @@ public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
     /// and keeps state between entries.</summary>
     public static readonly Tool Repl = new("lyrrepl", "--repl", "LYRIC_REPL");
 
-    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl];
+    /// <summary>The build runner: executes a <c>build.lyr</c> and compiles what it declares. Holds
+    /// both libraries for the same reason the REPL does.</summary>
+    public static readonly Tool Builder = new("lyrbuild", "--builder", "LYRIC_BUILD");
+
+    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl, Builder];
 
     /// <summary>Where the tool lives: <c>--flag &lt;path&gt;</c> beats the environment variable,
     /// which beats the executable next to this one.</summary>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrbuild</AssemblyName>
+    <RootNamespace>Lyric.Cli.Build</RootNamespace>
+    <Description>Runs a build.lyr and compiles what it declares.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The second binary with BOTH sides, for the same reason as lyrrepl: a build script is a Lyric
+      program that has to RUN, and what it declares has to be COMPILED afterwards. Two subprocesses
+      cannot do it, because the artifacts it collects live in the objects it was handed.
+
+      The edge separates the LIBRARIES, it does not forbid using both. The architecture test in
+      tests/Lyric.Tests.Cli holds the separation for lyrc and lyrvm and the exceptions for lyrrepl
+      and this.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />
+    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
+    <ProjectReference Include="..\Lyric.Embedding\Lyric.Embedding.csproj" />
+  </ItemGroup>
+
+</Project>

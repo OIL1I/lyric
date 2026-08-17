@@ -29,7 +29,8 @@ public static class Program
             "--version" or "-v" => Version(selection),
             "--help" or "-h" => Help(),
             "run" => Run(args, selection),
-            "build" or "check" => Forward(Tool.Compiler, selection, args),
+            "build" => Build(args, selection),
+            "check" => Forward(Tool.Compiler, selection, args),
             "disasm" => Forward(Tool.Runtime, selection, args),
 
             "repl" => Forward(Tool.Repl, selection, args),
@@ -91,6 +92,27 @@ public static class Program
         string[] tail = programArguments.Length == 0 ? [] : ["--", .. programArguments];
         return Tool.Run(selection.PathOf(Tool.Runtime),
             ["run", module, .. options, .. tail], Console.Error);
+    }
+
+    /// <summary>
+    /// <c>build</c> with a source file is the compiler; without one, or with a directory, it is the
+    /// build script that lies there.
+    ///
+    /// <para>Decided on the argument rather than on a flag, because the two are different
+    /// questions: "compile this file" and "build this project". A path that does not exist stays
+    /// with the compiler, whose diagnostic names the file it could not read.</para>
+    /// </summary>
+    private static int Build(string[] args, ToolSelection selection)
+    {
+        var positional = args.Skip(1).FirstOrDefault(a => !a.StartsWith('-'));
+
+        if (positional is not null && !Directory.Exists(positional))
+            return Forward(Tool.Compiler, selection, args);
+
+        // Without the verb: it is the driver's word for which tool to start, not an argument the
+        // tool itself takes.
+        if (Missing(selection, Tool.Builder) is { } error) return error;
+        return Tool.Run(selection.PathOf(Tool.Builder), args[1..], Console.Error);
     }
 
     /// <summary>Passes a command through to a tool unchanged, including every option the driver

@@ -30,6 +30,36 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ### Added
 
+- **A project may be built by a script, `build.lyr`.** `lyric build` without a file argument runs it
+  and compiles what it declares:
+
+  ```lyr
+  import std.build { addExecutable };
+
+  pub fn build() {
+      let app = addExecutable("src/main.lyr", "out/app.lyrbc");
+      app.sourceMap(false);
+
+      addExecutable("tools/mktex.lyr", "out/mktex.lyrbc");
+  }
+  ```
+
+  Every artifact is compiled whole, from its entry file; there is no link step and nothing is shared
+  between two of them but the source on disk. `lyric build` **with** a file still means "compile this
+  file" and is unchanged.
+
+  Nothing is compiled while the script runs — it collects, and the compiles happen once `build` has
+  returned. That is why an option set on the following line still applies, and why a source file the
+  script generates is finished before anything reads it.
+
+  It is a Lyric program with the whole standard library and every capability, so it may write files
+  and start processes. Relative paths in it resolve against the directory holding `build.lyr`, not
+  against the directory the build was started from. **`lyric build` in a repository you did not write
+  runs code you did not write**, as `make` and `cmake` do.
+
+  New binary `lyrbuild`, the second after `lyrrepl` that holds both the front end and the runtime: a
+  build script has to run, and what it collects has to be compiled afterwards.
+
 - **A project may say where its modules are, in a `lyric.json`.**
 
   ```json

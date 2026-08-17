@@ -51,6 +51,10 @@ public static class Toolchain
 
     public static string LyrlsPath => BinaryPath("Lyrls", "lyrls");
 
+    public static string LyrbuildPath => BinaryPath("Lyrbuild", "lyrbuild");
+
+    public static ToolResult Lyrbuild(params string[] args) => Run(LyrbuildPath, args);
+
     /// <summary>
     /// Runs a tool and writes something to its stdin, for the REPL, which cannot be checked otherwise.
     ///

@@ -1,6 +1,34 @@
 {
   "Modules": [
     {
+      "Path": "std.build",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Class",
+          "Name": "Artifact",
+          "Signature": "pub class Artifact",
+          "Doc": "One thing a build produces: a `.lyrbc` compiled from an entry file.\n\nReturned by `addExecutable`, and configured after the fact — the compile itself happens once\n`build` has returned, so an option set on the next line still applies.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/build.lyr",
+            "Line": 7
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "addExecutable",
+          "Signature": "pub fn addExecutable(entry: string, output: string): Artifact",
+          "Doc": "Declares a program to compile: `entry` is its main file, `output` the `.lyrbc` to write.\n\nBoth are relative to the directory holding `build.lyr`. The module root and the native roots\ncome from `lyric.json`; this does not repeat them.\n\nNothing is compiled while `build` runs. The artifacts are collected and built afterwards, so\nwork the script does in between — writing a generated source file, for instance — is finished\nbefore any of them is read.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/build.lyr",
+            "Line": 22
+          }
+        }
+      ]
+    },
+    {
       "Path": "std.collections",
       "Doc": null,
       "Items": [

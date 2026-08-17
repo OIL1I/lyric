@@ -39,6 +39,14 @@ public static class CliDiagnostics
     /// empty output, which would read as an empty function.</summary>
     public const string UnknownFunction = "LYR-CLI0009";
 
+    /// <summary>No <c>build.lyr</c> in the directory a build was pointed at.</summary>
+    public const string NoBuildScript = "LYR-CLI0011";
+
+    /// <summary>The build script ran and did not finish its job: it panicked, has no <c>build</c>
+    /// function, or declared nothing to compile. Distinct from a script that does not compile,
+    /// which reports its own diagnostics with real spans.</summary>
+    public const string BuildScriptFailed = "LYR-CLI0012";
+
     /// <summary>A <c>lyric.json</c> was found and could not be understood. Not finding one is
     /// normal and silent; finding a broken one stops the build, because carrying on would compile
     /// against a module root the file was trying to change.</summary>

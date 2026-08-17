@@ -18,10 +18,10 @@ namespace Lyric.Tests.DocGen;
 public class DocCoverageTests
 {
     /// <summary>
-    /// The documented items counted on 2026-08-14, out of 344 on the public surface. The target is
+    /// The documented items counted on 2026-08-15, out of 346 on the public surface. The target is
     /// all of them; <c>std.core</c>, <c>std.option</c> and <c>std.io.console</c> carry none.
     /// </summary>
-    private const int Floor = 68;
+    private const int Floor = 70;
 
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
