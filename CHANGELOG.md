@@ -10,6 +10,32 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.3.1 — 2026-08-17
+
+### Fixed
+
+- **Eight diagnostics pointed at a document that does not exist.** Five named `Sprache.md`, which has
+  been [`docs/Grammar.md`](docs/Grammar.md) for some time, and the sections they cited were wrong as
+  well — §10 and §11 of a document that has seven. Following either reference led nowhere twice:
+
+  ```
+  attributes are not part of v1 (Sprache.md §10); '@test' and 'lyric test' arrive after v1.0
+  ```
+
+  ```
+  attributes are not part of v1; '@test' and 'lyric test' arrive later
+  ```
+
+  Rather than repair the citations, they are gone. **A diagnostic names what is wrong, not where to
+  read about it** — a citation ages in two ways at once, and both had already happened here. Where a
+  reference carried information (`§11 allows none or one 'string[]'`), the message now says it
+  outright.
+
+  The affected codes are `LYR-PAR0038`, `LYR-PAR0039`, `LYR-SEM0053`, the lowering's *main* check,
+  the bytecode reader's global check and two entry-point findings of the IR verifier. **No code
+  changed and no behaviour changed** — only the wording, so a program that compiled still compiles
+  and one that did not still fails, with the same code on the same span.
+
 ## v1.3.0 — 2026-08-17
 
 Everything in this release is the language server. The language, the standard library, the command

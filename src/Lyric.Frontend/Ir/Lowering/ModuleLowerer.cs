@@ -131,7 +131,7 @@ public static class ModuleLowerer
                 }
 
                 de.Report(LoweringDiagnostics.NotSupported, Severity.Error, function.Span,
-                    "'main' takes either no parameters or exactly one 'string[]' (Sprache.md §11)");
+                    "'main' takes either no parameters or exactly one 'string[]'");
                 failed = true;
             }
 

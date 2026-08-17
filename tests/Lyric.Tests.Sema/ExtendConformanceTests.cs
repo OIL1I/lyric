@@ -8,7 +8,7 @@ using Xunit;
 namespace Lyric.Tests.Sema;
 
 /// <summary>
-/// Interfaces + Extend — M4-Slice 4b (Sprache.md §3.5/§3.6, D10). Signatur-genaue
+/// Interfaces + Extend — M4-Slice 4b (docs/Grammar.md §3.5/§3.6). Signatur-genaue
 /// Conformance (SEM0020 for a missing one, SEM0042 for a signature mismatch), default method lookup
 /// (an override wins, SEM0043 for ambiguity), the extend merge through the registry (user types and
 /// builtins, import-bound visibility, SEM0044 for a duplicate), the orphan rule (SEM0041) and

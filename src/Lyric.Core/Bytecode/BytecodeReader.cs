@@ -768,7 +768,7 @@ public static class BytecodeReader
         foreach (var global in module.Globals)
             if (global.Tag == TypeTag.Void)
                 throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
-                    "a global has type void; void is not a value (§3)");
+                    "a global has type void; void is not a value");
 
         var callable = module.Imports.Count + module.Functions.Count;
         if (module.GlobalInit is { } init && (init < 0 || init >= callable))

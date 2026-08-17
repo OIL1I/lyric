@@ -868,8 +868,7 @@ public sealed class TypeChecker
             // unnoticed".
             case AtIdentifierExpr at:
                 return Report(at.Span, "LYR-SEM0053",
-                    $"'{at.Name}' is an attribute, and attributes are not part of v1 " +
-                    "(Sprache.md §10)");
+                    $"'{at.Name}' is an attribute, and attributes are not part of v1");
 
             default: return LyrType.Error;
         }
