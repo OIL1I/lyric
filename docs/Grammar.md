@@ -196,8 +196,8 @@ StaticBinding   = [ 'pub' ] 'static' BindingStmt .
 Field           = IDENTIFIER ':' TypeExpr [ '=' Expr ] .
 ```
 
-Members are separated by `,`. A member that ends in a block (`}`) may omit it; a member that ends
-in `;` requires it.
+Members are separated by `,`. Only a field requires it: a member that closes itself — a block body
+ending in `}`, a bodiless method or a `static let` ending in `;` — may omit it.
 
 ### 3.3 Classes
 

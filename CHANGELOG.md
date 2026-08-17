@@ -12,6 +12,22 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ## v1.2.0 — unreleased
 
+### Changed
+
+- **Only a field needs the `,` that separates members of a struct or class.** A bodiless method used
+  to need a semicolon *and* a comma in a row:
+
+  ```lyr
+  class Builder {
+      fn addExecutable(entry: string, output: string): Artifact;,   // no longer
+      fn addTest(entry: string): Artifact;
+  }
+  ```
+
+  The rule is strictly more permissive, so every file that was valid stays valid — the comma is still
+  accepted where it is now optional. Two fields still need one, or `a: int b: int` would read as a
+  single field of a type nobody wrote.
+
 ### Added
 
 - **A project may say where its modules are, in a `lyric.json`.**
