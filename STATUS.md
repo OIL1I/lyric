@@ -40,6 +40,34 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.5.0 slice 1 — `==` is `equals`, written as mathematics** (2026-08-17). 3704 tests green,
+  Debug and Release. Not merged.
+  - `==` and `!=` work on every type conforming to `Equatable<T>`. **No new syntax, no new opcode,
+    no format change**: the checker builds the call `a.equals(b)` from synthetic nodes, checks it
+    through the ordinary member path, and stores it in `TypeResult`; the lowering emits the stored
+    call instead of a `BinOp`, and `!=` negates the result.
+  - **The synthetic-call route is what made it a day instead of a week.** The member path already
+    settles every receiver shape — plain struct, enum, conformance via `extend`, generic instance,
+    constrained type parameter — and the desugar inherits all of them. All five have end-to-end
+    tests, and the constraint case monomorphizes: the same generic function serves a struct and an
+    `int`, the `int` through the stdlib's own `extend`.
+  - **Conformance is required, not the method alone** — the pinned design decision. A type with an
+    `equals` nobody declared as `Equatable` stays rejected; otherwise any method of that name would
+    silently become an operator. Nominal, as rustc's `PartialEq`, not structural.
+  - The synthetic nodes reuse the REAL operand nodes, which is what makes each operand lower exactly
+    once — held by a test that counts closure calls. They hang in no tree, so syntax walks never
+    meet them; their span is the operator expression, so everything reported or mapped lands on what
+    the user wrote.
+  - The precedent was already in the lowering: `+` on `string` is a call to `std.string.concat`.
+    This generalizes "operator becomes call" from two hard-wired stdlib helpers to the interface
+    the type declares.
+  - `LYR-SEM0059` keeps its code and now names the fix: *declare the type with
+    `:: [Equatable<Point>]`*. Optionals keep their own rule and their own message — `?T` compares
+    against `null`, the backend has no optional equality, and the desugar does not unwrap.
+  - Without a standard library there is no `Equatable` to desugar through; the compile degrades into
+    the ordinary diagnostic rather than a crash. Pinned by a test that checks without a module
+    loader.
+
 - [x] **v1.4.0 slice 4 — the standard library says what it does** (2026-08-17). 3684 tests green.
   Merged as PR #27, and it completed v1.4.0.
   - `std/io/console.lyr`, `std/core.lyr` and `std/option.lyr` had **33 `pub` declarations and not one
@@ -81,31 +109,6 @@ functions out of them and hands its own functions and types in.
     as soon as there is a second consumer. Today there is one.
   - `NodeFinder.DeclaredSymbol` moved out of `ReferenceProvider`, which is where both callers now
     read it rather than each keeping a copy.
-
-- [x] **v1.4.0 slice 2 — completion for members after `.`** (2026-08-17). 3664 tests green. Merged
-  as PR #25.
-  - The text at the cursor does not parse, so the question is asked of a program that does: a
-    synthetic identifier is inserted at the cursor and the buffer compiled again. `foo.` becomes
-    `foo.__lyric_completion__`, a member access whose member does not exist — and **the member name
-    is never read**, only the receiver, which resolves either way.
-  - **Measured: median 12.7 ms per request**, min 9.0, max 18.3, for a whole compile with the
-    standard library. Against a keystroke the user made deliberately that is affordable, and it is
-    what buys not rebuilding the one component 438 tests hang on.
-  - Which members a type has is asked of a new `MemberFacts` in the front end, not assembled in the
-    server. A list put together from the public surface would miss **extensions and interface
-    defaults**, and on a `string` it would be empty — every string method of this standard library
-    is an extension. **A completion list that omits a callable method teaches the reader it does not
-    exist.**
-  - **The enumeration and the lookup are separate code and can drift.** A test holds them together
-    from one side: every member offered for a type with all four sources is written into a real
-    program, and none may come back as `LYR-SEM0012`.
-  - The other side is not symmetric, and that is a finding rather than a decision: **a STATIC
-    extension is callable through an INSTANCE today.** The lookup's instance path falls through to
-    the extension without checking, while the type path rejects a non-static one explicitly.
-    Completion does not offer it. Pinned by a test that records which way round it currently is.
-  - Slice 1 is what made the receiver readable: `TypeOf(mem.Target)` is a `NonValueType` for a name
-    and the value's type otherwise, so static and instance sides fall out of the same answer the
-    type checker uses.
 
 ## Measurements
 
@@ -156,8 +159,22 @@ dot (#25), completion for names in scope (#26), and the standard library documen
 With it **M11 is closed**, and v1.3.0 before it shipped name spans, hover documentation, document
 symbols and find-references.
 
-**Nothing is planned after it.** The open points below are the material; none has been cut into a
-release. The next scope check is **2026-09-06**, and that is the place to decide.
+**v1.5.0 — operators on your types**, decided 2026-08-17. Everything desugars through `std.core`
+interfaces; no new syntax, no new opcode, the format stays 3.1. Method overloading was considered
+and REJECTED — constraints plus generics are this language's overloading, and the stdlib says so in
+`console.lyr`; interface inheritance stays out; implicit conversions stay out for good.
+
+| Slice | What | State |
+|---|---|---|
+| 1 | `==`/`!=` via `Equatable<T>` | **done, unmerged** |
+| 2 | `<` `<=` `>` `>=` via `Ordered<T>` — closes `string < string` | next |
+| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | |
+| 4 | `as` to user types via an `Into`-style interface, explicit only | |
+
+Heterogeneous arithmetic (`Vec2 * float`) needs a two-parameter interface and a coherence rule for
+multiple conformances to the same generic interface; deliberately not in v1.5.0.
+
+The next scope check is **2026-09-06**.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
@@ -274,7 +291,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #27 from OIL1I/docs/stdlib-documentation` (`aabe0d0`)
+`Merge pull request #30 from OIL1I/fix/ci-setup-dotnet-rest` (`ed5fb8d`)
 
 ---
 
