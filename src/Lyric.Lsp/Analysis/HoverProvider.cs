@@ -16,9 +16,9 @@ public sealed record HoverResult(string Markdown, Span Span);
 /// diagnostics use. A second renderer would be a second answer to "what is this type called", and
 /// the two would drift the first time a type gained a form.</para>
 ///
-/// <para>There is deliberately NO documentation in the result. <c>///</c> is a token kind that
-/// reaches no AST node, so there is nothing to read; composing a summary from the signature would
-/// be the server writing documentation rather than showing it.</para>
+/// <para>Documentation is shown as it was written, below the signature and separated from it. It is
+/// never composed: a summary derived from a signature would be the server writing documentation
+/// rather than showing it, and it would read like a fact about the program.</para>
 /// </summary>
 public static class HoverProvider
 {
@@ -47,11 +47,34 @@ public static class HoverProvider
         if (type is not null && !IsShowable(type)) type = null;
 
         if (symbol is not null && Signature(model, symbol, type) is { } signature)
-            return Code(signature);
+            return Code(signature) + Documentation(model, symbol);
 
         // No symbol, but a type: an operator, a literal, an index expression. Worth showing — "what
         // is this subexpression" is what hover is asked most often.
         return type is null ? null : Code(TypeFacts.Display(type));
+    }
+
+    /// <summary>
+    /// The doc block of the declaration a symbol came from, as a section below the signature.
+    ///
+    /// <para>Empty when there is none, so a program without documentation gets exactly the answer it
+    /// got before this existed.</para>
+    ///
+    /// <para>The text goes through unchanged. It is already markdown as far as this server is
+    /// concerned — <c>///</c> and one space are stripped by the lexer and nothing else is
+    /// interpreted, because a tag vocabulary would be a documentation language, and there is none in
+    /// the grammar.</para>
+    /// </summary>
+    private static string Documentation(SemanticModel model, Symbol symbol)
+    {
+        // An imported name stands for what it imports, and the documentation was written there.
+        // The same redirection the jump makes, for the same reason.
+        if (symbol is ImportBindingSymbol import) return Documentation(model, import.Target);
+
+        if (symbol.Declaration is not { } declaration) return "";
+        if (model.Documentation.Of(declaration) is not { } text) return "";
+
+        return $"\n\n---\n\n{text}";
     }
 
     /// <summary>

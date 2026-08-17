@@ -1,5 +1,6 @@
 using Lyric.AST;
 using Lyric.Core;
+using Lyric.Resolver;
 
 namespace Lyric.Parsing;
 
@@ -33,7 +34,7 @@ public static class StdlibLoader
     /// <c>std.io.console</c> → <c>&lt;root&gt;/std/io/console.lyr</c> — the same derivation as for
     /// user code, in the other direction.
     /// </summary>
-    public static Func<string[], (Module Ast, bool IsNative)?> ForRoot(
+    public static Func<string[], LoadedModule?> ForRoot(
         string root, SourceManager sourceManager, DiagnosticEngine diagnostics,
         IReadOnlyDictionary<string, string>? overlay = null) =>
         Build(root, sourceManager, diagnostics, native: true, overlay);
@@ -46,12 +47,12 @@ public static class StdlibLoader
     /// <c>Compilation.IsNative</c> follows the ORIGIN of a module and not its content, and this is
     /// the origin that decides.</para>
     /// </summary>
-    public static Func<string[], (Module Ast, bool IsNative)?> ForProject(
+    public static Func<string[], LoadedModule?> ForProject(
         string root, SourceManager sourceManager, DiagnosticEngine diagnostics,
         IReadOnlyDictionary<string, string>? overlay = null) =>
         Build(root, sourceManager, diagnostics, native: false, overlay);
 
-    private static Func<string[], (Module Ast, bool IsNative)?> Build(
+    private static Func<string[], LoadedModule?> Build(
         string root, SourceManager sourceManager, DiagnosticEngine diagnostics, bool native,
         IReadOnlyDictionary<string, string>? overlay) =>
         path =>
@@ -83,6 +84,7 @@ public static class StdlibLoader
                 }
             }
 
-            return (new Parser(sourceManager, id, diagnostics).ParseModule(), native);
+            var parsed = ParsedModule.Parse(sourceManager, id, diagnostics);
+            return new LoadedModule(parsed.Ast, native, parsed.Documentation);
         };
 }

@@ -4,6 +4,16 @@ using Lyric.Core;
 namespace Lyric.Resolver;
 
 /// <summary>
+/// What a <see cref="Compilation.ModuleLoader"/> produces for one module path.
+///
+/// <para>A named record rather than a tuple: the third member is documentation and the second is a
+/// flag, and at that width a positional tuple stops being readable at the call site. Declared here,
+/// where the consumer is, so the loader's implementation can live beside the parser without the
+/// resolver depending on it.</para>
+/// </summary>
+public sealed record LoadedModule(Module Ast, bool IsNative, DocumentationTable Documentation);
+
+/// <summary>
 /// Holds the parsed modules of a translation unit and drives resolution.
 ///
 /// Single-file first: usually one module, but several are possible, and then their imports resolve
@@ -37,7 +47,16 @@ public sealed class Compilation
     /// <para>A delegate rather than a fixed dependency, so <c>Lyric.Resolver</c> need not
     /// reference <c>Lyric.Parsing</c>. The implementation lives where the parser lives.</para>
     /// </summary>
-    public Func<string[], (AST.Module Ast, bool IsNative)?>? ModuleLoader { get; set; }
+    public Func<string[], LoadedModule?>? ModuleLoader { get; set; }
+
+    /// <summary>
+    /// The documentation of every module in this compilation, gathered as they are added.
+    ///
+    /// <para>Here rather than beside the syntax because a doc block is written per file and asked
+    /// for per program: hovering a standard library call has to reach a table the entry module knows
+    /// nothing about.</para>
+    /// </summary>
+    public DocumentationTable Documentation { get; } = new();
 
     /// <summary>
     /// Does the module come from the standard library? Only there is a bodyless function an import
@@ -77,7 +96,11 @@ public sealed class Compilation
     /// disagrees with a path it was loaded from, the mismatch is reported before this is
     /// reached — here the name is simply the authority.</para>
     /// </summary>
-    public ModuleSymbol AddModule(Module ast, string? name = null, bool isNative = false)
+    /// <param name="documentation">What was written above the declarations of this module.
+    /// <c>null</c> means none was kept — a caller that parsed without holding on to it, and a
+    /// program that then has no documentation to show rather than the wrong one.</param>
+    public ModuleSymbol AddModule(Module ast, string? name = null, bool isNative = false,
+        DocumentationTable? documentation = null)
     {
         var path = name is not null ? name.Split('.')
                  : ast.Header is not null ? ast.Header.Segments
@@ -87,6 +110,7 @@ public sealed class Compilation
         _modules.Add(symbol);
         _asts[symbol] = ast;
         if (isNative) _native.Add(symbol);
+        if (documentation is not null) Documentation.Absorb(documentation);
         return symbol;
     }
 
@@ -116,7 +140,8 @@ public sealed class Compilation
         {
             if (FindModule(path) is not null) continue;
             if (ModuleLoader(path) is not { } wellKnown) continue; // without a stdlib path this does not apply
-            AddModule(wellKnown.Ast, string.Join('.', path), wellKnown.IsNative);
+            AddModule(wellKnown.Ast, string.Join('.', path), wellKnown.IsNative,
+                wellKnown.Documentation);
         }
 
         for (var i = 0; i < _modules.Count; i++)
@@ -138,7 +163,7 @@ public sealed class Compilation
                         $"this file was loaded as '{name}' but declares module "
                         + $"'{string.Join('.', header.Segments)}'");
 
-                AddModule(loaded.Ast, name, loaded.IsNative);
+                AddModule(loaded.Ast, name, loaded.IsNative, loaded.Documentation);
             }
         }
     }

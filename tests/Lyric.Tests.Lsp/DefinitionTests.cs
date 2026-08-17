@@ -118,6 +118,14 @@ public sealed class DefinitionTests
     }
 
     [Fact]
+    public void A_global_jumps_to_its_name_and_not_to_the_pub()
+    {
+        // The symbol declares from the GlobalBindingDecl, which opens at 'pub'. Reaching the name
+        // means reaching through the binding it wraps.
+        JumpsToMarker("pub let ^answer = 42;\nfn main(): int {\n    return ans$wer;\n}\n");
+    }
+
+    [Fact]
     public void An_enum_variant_jumps_to_its_name()
     {
         JumpsToMarker(
