@@ -40,6 +40,28 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.5.0 slice 2 — the four orderings read the sign of `compare`** (2026-08-18). 3720 tests
+  green, Debug and Release. Not merged.
+  - `<`, `<=`, `>` and `>=` work on every type conforming to `Ordered<T>` — **including `string`,
+    whose rejection had stood since v1.0** with a diagnostic that promised exactly this. It conforms
+    through the stdlib's own `extend string :: [Ordered<string>]`, the same route any type takes; no
+    string rule exists.
+  - One method, four operators: the desugar calls `compare` ONCE and compares the sign of the
+    answer against zero — with the same comparison instruction `int < int` emits, since a
+    comparison `BinOp` carries `bool` and the operand types live in the temp table.
+  - **The `Negate` flag left the desugar table.** What to make of the call's result follows from
+    the operator on the node itself; a stored flag beside it was a second copy of the operator, and
+    slice 2 would have needed a third state. The table now holds only the call.
+  - **No existing test had pinned the `string < string` rejection.** The whole suite stayed green
+    through the change — the gap was recorded in STATUS and in the diagnostic text, but nothing
+    measured it. Worth remembering: the limits this project records with tests survived; this one,
+    recorded as prose, turned out to be held by nothing.
+  - `bool` still does not order, and now for a visible reason: the stdlib gives it `Equatable` and
+    `Hashable`, deliberately no `Ordered` — the operator follows the conformance, so it follows the
+    decision. Pinned by a test where none existed.
+  - Same nominal rule as equality, same counter-tests: a `compare` method without the conformance
+    stays rejected, mixed types stay rejected, an unconstrained `T` names `Ordered<T>` as the fix.
+
 - [x] **v1.5.0 slice 1 — `==` is `equals`, written as mathematics** (2026-08-17). 3704 tests green,
   Debug and Release. Not merged.
   - `==` and `!=` work on every type conforming to `Equatable<T>`. **No new syntax, no new opcode,
@@ -87,28 +109,6 @@ functions out of them and hands its own functions and types in.
     line shows up at once.
   - The generated reference changed in documentation and line numbers only — **no signature and no
     name moved**, checked against the snapshot diff rather than assumed.
-
-- [x] **v1.4.0 slice 3 — completion for names in scope** (2026-08-17). 3684 tests green. Merged as
-  PR #26.
-  - **No new front-end table.** The sema builds its scope chains while checking and drops them, so
-    there is none to ask at a position — but the shape of a scope is the shape of the tree, and the
-    symbol behind each declaration is already in the reference table. Slice 4 of v1.3.0 called those
-    entries *declarations hiding in the reference table* and had to filter them out; here they are
-    exactly the answer.
-  - **The context rule is the load-bearing part.** Being inside a member expression is not enough:
-    in `foo.bar` the cursor on `foo` is inside one too, and what belongs there are the names in
-    scope. Member context is the marker sitting PAST the target, which is where the dot is.
-  - Before this slice that case answered **null by accident** — the marker corrupts the receiver's
-    name, so it resolved to nothing and the member list came back empty. A test now says which
-    context each side of the dot is.
-  - Shadowing falls out of the walk order: inner to outer, first name wins, which is what a scope
-    chain does. A binding is visible from the END of its statement, so `let x = x;` does not offer
-    `x` to itself.
-  - **The honest cost, stated where it is paid**: the scoping rules are now known in two places, the
-    sema while it checks and this walk. Keeping the sema's chains alive would be the better answer
-    as soon as there is a second consumer. Today there is one.
-  - `NodeFinder.DeclaredSymbol` moved out of `ReferenceProvider`, which is where both callers now
-    read it rather than each keeping a copy.
 
 ## Measurements
 
@@ -166,9 +166,9 @@ and REJECTED — constraints plus generics are this language's overloading, and 
 
 | Slice | What | State |
 |---|---|---|
-| 1 | `==`/`!=` via `Equatable<T>` | **done, unmerged** |
-| 2 | `<` `<=` `>` `>=` via `Ordered<T>` — closes `string < string` | next |
-| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | |
+| 1 | `==`/`!=` via `Equatable<T>` | PR #31 |
+| 2 | `<` `<=` `>` `>=` via `Ordered<T>` — closed `string < string` | **done, unmerged** |
+| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | next |
 | 4 | `as` to user types via an `Into`-style interface, explicit only | |
 
 Heterogeneous arithmetic (`Vec2 * float`) needs a two-parameter interface and a coherence rule for
@@ -201,9 +201,6 @@ is the thing to check.
   names the way out). Noticed while building the constraint rules, which presupposed it. Whether it
   is worth having is open — `Hashable` would need it only to imply `Equatable`. No program is
   unwritable without it: `std.core` requires both side by side.
-- **`string < string` and `==` on user types are rejected** (`LYR-SEM0003` / `LYR-SEM0055`).
-  Deliberate and temporary: operator overloading is the first topic after v1.0, and the diagnostic
-  points at it. Until then an ordinary method.
 
 **Tooling and format:**
 
@@ -291,7 +288,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #30 from OIL1I/fix/ci-setup-dotnet-rest` (`ed5fb8d`)
+`Merge pull request #31 from OIL1I/feature/operator-equality` (`f2b6428`)
 
 ---
 
