@@ -11,18 +11,22 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.4.0 are released** — annotated tags on the remote, each with a release page and
+**v1.0.0 through v1.5.0 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
 **M12, the project system, is what v1.2.0 shipped**: `lyric.json` says what a project is, `build.lyr`
 says what to build, `lyric new` writes one, and the tools read all of it.
 
+**v1.5.0 shipped operators**: `==`, the orderings, arithmetic and `as` all resolve through the
+interface a type declares — no operator syntax, no new opcode. Method overloading was considered and
+rejected; the constraint mechanism is this language's overloading.
+
 **M11, the language server, is CLOSED.** Diagnostics while you type, what a name under the cursor is,
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3684 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
-`lyrembed.dll`, version **1.4.0**.
+3744 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
+`lyrembed.dll`, version **1.5.0**.
 
 **All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
 language server reads the project file, and editing a module refreshes the file that imports it.
@@ -40,8 +44,8 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
-- [x] **v1.5.0 slice 4 — a cast is a conversion the type declared** (2026-08-18). 3744 tests green,
-  Debug and Release. Not merged. **This completes v1.5.0.**
+- [x] **v1.5.0 slice 4 — a cast is a conversion the type declared** (2026-08-18). 3744 tests green.
+  Merged as PR #34, and it completed v1.5.0.
   - `x as T` beyond the numerics desugars through `Into<T>` from `std.core`: `x.into()`, checked and
     stored exactly as the operators are. The numeric branch stands first and is not overridable —
     `1 as float` never desugars, whatever conformances exist.
@@ -159,22 +163,13 @@ dot (#25), completion for names in scope (#26), and the standard library documen
 With it **M11 is closed**, and v1.3.0 before it shipped name spans, hover documentation, document
 symbols and find-references.
 
-**v1.5.0 — operators on your types**, decided 2026-08-17. Everything desugars through `std.core`
-interfaces; no new syntax, no new opcode, the format stays 3.1. Method overloading was considered
-and REJECTED — constraints plus generics are this language's overloading, and the stdlib says so in
-`console.lyr`; interface inheritance stays out; implicit conversions stay out for good.
+**v1.5.0 is released** — equality (#31), ordering (#32), arithmetic plus the compound-assign fix
+(#33) and conversion (#34). One mechanism throughout: the interface the type declares.
 
-| Slice | What | State |
-|---|---|---|
-| 1 | `==`/`!=` via `Equatable<T>` | PR #31 |
-| 2 | `<` `<=` `>` `>=` via `Ordered<T>` — closed `string < string` | PR #32 |
-| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | PR #33 |
-| 4 | `as` to user types via `Into<T>`, explicit only | **done, unmerged** |
-
-Heterogeneous arithmetic (`Vec2 * float`) needs a two-parameter interface and a coherence rule for
-multiple conformances to the same generic interface; deliberately not in v1.5.0.
-
-The next scope check is **2026-09-06**.
+**Nothing is planned after it.** The open points below are the material — heterogeneous arithmetic
+and its coherence question, compound assignment through the interfaces, the static-extension
+asymmetry, project-wide references. The next scope check is **2026-09-06**, and that is the place to
+decide.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
@@ -288,7 +283,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #33 from OIL1I/feature/operator-arithmetic` (`d8e3f1e`)
+`Merge pull request #34 from OIL1I/feature/operator-into` (`e24aca5`)
 
 ---
 
