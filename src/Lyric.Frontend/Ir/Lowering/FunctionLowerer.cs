@@ -1676,7 +1676,8 @@ internal sealed class FunctionLowerer
 
             switch (expr.Operator)
             {
-                case BinaryOp.Eq:
+                // Equality and arithmetic ARE their calls; nothing follows.
+                case BinaryOp.Eq or BinaryOp.Add or BinaryOp.Sub or BinaryOp.Mul or BinaryOp.Div:
                     return value;
 
                 case BinaryOp.Ne:
