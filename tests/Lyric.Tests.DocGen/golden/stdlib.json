@@ -803,68 +803,68 @@
     },
     {
       "Path": "std.core",
-      "Doc": null,
+      "Doc": "What the language itself needs: aborting with a reason, the ready-made `Throwable`, and the\ninterfaces the built-in types satisfy.\n\n`panic` and `coroutineEnded` are bound by the compiler, so nothing has to import this module to\nreach them.",
       "Items": [
         {
           "Kind": "Function",
           "Name": "panic",
           "Signature": "pub fn panic(message: string): void",
-          "Doc": null,
+          "Doc": "Ends the program with `message` and a backtrace.\n\nNot catchable. Its return type is `never`, so the flow analysis treats everything after a call as\nunreachable — which is why `expect` can return a non-optional after panicking.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 13
+            "Line": 22
           }
         },
         {
           "Kind": "Function",
           "Name": "coroutineEnded",
           "Signature": "pub fn coroutineEnded(): void",
-          "Doc": null,
+          "Doc": "Panics because a coroutine was resumed after its body had run to the end.\n\nCalled from a dispatcher nobody wrote, which is why nobody could have written the import either.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 17
+            "Line": 29
           }
         },
         {
           "Kind": "Function",
           "Name": "assert",
           "Signature": "pub fn assert(condition: bool, message: string): void",
-          "Doc": null,
+          "Doc": "Panics with `message` when `condition` is false, for invariants the compiler does not check.\n\n`void` rather than `never`: it does not replace a `return`, and a function ending in `assert` is\nstill `LYR-SEM0017`.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 28
+            "Line": 43
           }
         },
         {
           "Kind": "Function",
           "Name": "todo",
           "Signature": "pub fn todo(message: string): void",
-          "Doc": null,
+          "Doc": "Marks a place that is still missing. Unlike a comment it reports itself when reached, with\n`not implemented:` before the message.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 35
+            "Line": 51
           }
         },
         {
           "Kind": "Function",
           "Name": "unreachable",
           "Signature": "pub fn unreachable(message: string): void",
-          "Doc": null,
+          "Doc": "Marks a branch that must never be taken, with `unreachable:` before the message.\n\n`todo` means *still to come*; this means *must never happen*. Reaching it says that an assumption\nstated somewhere else is wrong.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 41
+            "Line": 59
           }
         },
         {
           "Kind": "Class",
           "Name": "Exception",
           "Signature": "pub class Exception :: [Throwable]",
-          "Doc": null,
+          "Doc": "The ready-made `Throwable` for throwing a message: `throw Exception { text = \"…\" };`.",
           "Members": [
             {
               "Kind": "Field",
@@ -874,116 +874,116 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 52
+                "Line": 72
               }
             },
             {
               "Kind": "Method",
               "Name": "message",
               "Signature": "pub fn message(): string",
-              "Doc": null,
+              "Doc": "The text this exception was built with.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 54
+                "Line": 75
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 51
+            "Line": 71
           }
         },
         {
           "Kind": "Interface",
           "Name": "Display",
           "Signature": "pub interface Display",
-          "Doc": null,
+          "Doc": "What can be rendered as text — the anchor for `write`, `writeln` and `std.fmt`.\n\nEvery built-in scalar satisfies it through an `extend`, and a user type through `::`. A value\nheld THROUGH the interface (`let d: Display = 5;`) stays rejected: an interface value is a fat\npointer and needs a reference, which a scalar has none of.",
           "Members": [
             {
               "Kind": "Method",
               "Name": "show",
               "Signature": "fn show(): string",
-              "Doc": null,
+              "Doc": "This value as text.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 68
+                "Line": 95
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 67
+            "Line": 93
           }
         },
         {
           "Kind": "Interface",
           "Name": "Equatable",
           "Signature": "pub interface Equatable<T>",
-          "Doc": null,
+          "Doc": "Values of this type can be compared for equality.\n\nGeneric rather than `fn equals(other: Equatable)`, so both sides carry the concrete type: an\ninterface as a parameter type would need an interface VALUE, and a scalar cannot be one — there\nwould be no `Map<int, V>`.",
           "Members": [
             {
               "Kind": "Method",
               "Name": "equals",
               "Signature": "fn equals(other: T): bool",
-              "Doc": null,
+              "Doc": "Whether the two are equal.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 105
+                "Line": 138
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 104
+            "Line": 136
           }
         },
         {
           "Kind": "Interface",
           "Name": "Hashable",
           "Signature": "pub interface Hashable<T>",
-          "Doc": null,
+          "Doc": "Values of this type can be hashed, which is what a `Map` key and a `Set` element need.\n\n**Equal values must produce equal hashes.** No compiler checks it and every hash table depends on\nit. The reverse does not hold — two different values may collide.\n\nIt does not imply `Equatable`; there is no interface inheritance. A caller needing both requires\nboth: `K :: [Hashable<K>, Equatable<K>]`.",
           "Members": [
             {
               "Kind": "Method",
               "Name": "hash",
               "Signature": "fn hash(): int",
-              "Doc": null,
+              "Doc": "The hash of this value.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 111
+                "Line": 150
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 110
+            "Line": 148
           }
         },
         {
           "Kind": "Interface",
           "Name": "Ordered",
           "Signature": "pub interface Ordered<T>",
-          "Doc": null,
+          "Doc": "Values of this type have an order — what sorting and range queries need.\n\nOne comparison instead of four methods: `<`, `<=`, `>` and `>=` all derive from it.",
           "Members": [
             {
               "Kind": "Method",
               "Name": "compare",
               "Signature": "fn compare(other: T): int",
-              "Doc": null,
+              "Doc": "Negative when this comes first, zero when the two are equal, positive when `other` comes\nfirst — as `strcmp`.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 117
+                "Line": 159
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 116
+            "Line": 156
           }
         }
       ]
@@ -1172,46 +1172,13 @@
     },
     {
       "Path": "std.io.console",
-      "Doc": null,
+      "Doc": "Reading from and writing to the console.\n\nOutput needs no capability — it is always available. `write` and `writeln` take any type that\nsatisfies `Display`; `print` and `println` take the `string` the host boundary is defined in.",
       "Items": [
         {
           "Kind": "Function",
           "Name": "print",
           "Signature": "pub fn print(value: string)",
-          "Doc": null,
-          "Members": [],
-          "Source": {
-            "File": "stdlib/std/io/console.lyr",
-            "Line": 24
-          }
-        },
-        {
-          "Kind": "Function",
-          "Name": "println",
-          "Signature": "pub fn println(value: string)",
-          "Doc": null,
-          "Members": [],
-          "Source": {
-            "File": "stdlib/std/io/console.lyr",
-            "Line": 25
-          }
-        },
-        {
-          "Kind": "Function",
-          "Name": "eprintln",
-          "Signature": "pub fn eprintln(value: string)",
-          "Doc": null,
-          "Members": [],
-          "Source": {
-            "File": "stdlib/std/io/console.lyr",
-            "Line": 26
-          }
-        },
-        {
-          "Kind": "Function",
-          "Name": "write",
-          "Signature": "pub fn write<T :: [Display]>(value: T): void",
-          "Doc": null,
+          "Doc": "Writes to standard output without a line break.\n\nNothing is flushed. A prompt written with `print` sits in the buffer until `flush`, which is why\n`prompt` exists.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
@@ -1220,97 +1187,130 @@
         },
         {
           "Kind": "Function",
-          "Name": "writeln",
-          "Signature": "pub fn writeln<T :: [Display]>(value: T): void",
-          "Doc": null,
+          "Name": "println",
+          "Signature": "pub fn println(value: string)",
+          "Doc": "Writes to standard output, followed by a line break.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 37
+            "Line": 36
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "eprintln",
+          "Signature": "pub fn eprintln(value: string)",
+          "Doc": "Writes to standard ERROR, followed by a line break.\n\nDiagnostics belong here rather than in standard output, so a program used in a pipe does not put\nthem into the data.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 42
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "write",
+          "Signature": "pub fn write<T :: [Display]>(value: T): void",
+          "Doc": "Writes any displayable value without a line break: `write(42)`, `write(true)`, `write(\"hi\")`.\n\nThere is no overloading; the `Display` constraint does the same job and extends to every type\nthat satisfies it rather than to a fixed list. Monomorphization turns the call into a direct one\nper used type, so the generality costs nothing at runtime.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 49
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "writeln",
+          "Signature": "pub fn writeln<T :: [Display]>(value: T): void",
+          "Doc": "Writes any displayable value, followed by a line break.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/console.lyr",
+            "Line": 54
           }
         },
         {
           "Kind": "Function",
           "Name": "readLine",
           "Signature": "pub fn readLine(): ?string",
-          "Doc": null,
+          "Doc": "Reads one line from standard input, without its line break.\n\n`null` at end of input. Optional rather than an empty string, because EOF is a state and not a\nline: a program reading until `null` stops, one reading until `\"\"` never does.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 44
+            "Line": 64
           }
         },
         {
           "Kind": "Function",
           "Name": "readAll",
           "Signature": "pub fn readAll(): string",
-          "Doc": null,
+          "Doc": "Reads everything up to end of input, for filters that need the whole text.\n\nThe input is held in memory in full. `lines` is the way through a stream larger than that.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 47
+            "Line": 69
           }
         },
         {
           "Kind": "Function",
           "Name": "readChar",
           "Signature": "pub fn readChar(): ?char",
-          "Doc": null,
+          "Doc": "Reads a single code point, or `null` at end of input.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 50
+            "Line": 72
           }
         },
         {
           "Kind": "Function",
           "Name": "isInteractive",
           "Signature": "pub fn isInteractive(): bool",
-          "Doc": null,
+          "Doc": "Whether standard input and output are a terminal rather than a pipe.\n\nA program writing into a pipe should not put a prompt into the stream, and this is how it knows.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 53
+            "Line": 77
           }
         },
         {
           "Kind": "Function",
           "Name": "flush",
           "Signature": "pub fn flush(): void",
-          "Doc": null,
+          "Doc": "Pushes buffered output to the console.\n\nNeeded as soon as something is written without a line break and has to be visible before the\nprogram continues — a prompt being the usual case.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 56
+            "Line": 83
           }
         },
         {
           "Kind": "Function",
           "Name": "eprint",
           "Signature": "pub fn eprint(value: string)",
-          "Doc": null,
+          "Doc": "Writes to standard error without a line break.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 58
+            "Line": 86
           }
         },
         {
           "Kind": "Function",
           "Name": "prompt",
           "Signature": "pub fn prompt(text: string): ?string",
-          "Doc": null,
+          "Doc": "Writes `text`, flushes it, and reads one line.\n\nThe flush is the point: without it the question would sit in the buffer while the program waits\nfor an answer nobody knows is expected. `null` at end of input, as `readLine`.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 67
+            "Line": 97
           }
         },
         {
           "Kind": "Class",
           "Name": "LineIterator",
           "Signature": "pub class LineIterator :: [Iterator<string>]",
-          "Doc": null,
+          "Doc": "The iterator `lines` hands out. Yields each line of standard input until it ends.",
           "Members": [
             {
               "Kind": "Field",
@@ -1320,35 +1320,35 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/io/console.lyr",
-                "Line": 80
+                "Line": 105
               }
             },
             {
               "Kind": "Method",
               "Name": "next",
               "Signature": "pub mut fn next(): ?string",
-              "Doc": null,
+              "Doc": "The next line, or `null` once the input has ended. Ends for good after the first `null`.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/io/console.lyr",
-                "Line": 82
+                "Line": 108
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 79
+            "Line": 104
           }
         },
         {
           "Kind": "Function",
           "Name": "lines",
           "Signature": "pub fn lines(): Iterator<string>",
-          "Doc": null,
+          "Doc": "The lines of standard input, as an iterator — the idiomatic shape of a filter:\n\n    for (line in console.lines()) { … }\n\nAn iterator rather than a `string[]`: the input can be larger than memory, and a program that\nonly counts should not have to collect it first.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 94
+            "Line": 126
           }
         }
       ]
@@ -2993,79 +2993,79 @@
     },
     {
       "Path": "std.option",
-      "Doc": null,
+      "Doc": "Computing with `?T` without testing first.\n\nThere is no `Option<T>` here — `?T` is it, and these are functions over the built-in type.\nAbsent on purpose, because the language already has them: `unwrap` is `o!`, `unwrapOr` is\n`o ?? fallback`, and `isSome`/`isNone` are `o != null`/`o == null`, which is what flow narrowing\nkeys on. A function would cut that off: after `if (isSome(o))`, `o` would still be a `?T`.",
       "Items": [
         {
           "Kind": "Function",
           "Name": "map",
           "Signature": "pub fn map<T, U>(o: ?T, f: fn(T) -> U): ?U",
-          "Doc": null,
+          "Doc": "Applies `f` to the value when there is one, and answers `null` when there is not.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 28
+            "Line": 34
           }
         },
         {
           "Kind": "Function",
           "Name": "andThen",
           "Signature": "pub fn andThen<T, U>(o: ?T, f: fn(T) -> ?U): ?U",
-          "Doc": null,
+          "Doc": "As `map`, but `f` may itself come back empty.\n\nThis takes the place of `flatten`: a `map` whose `f` returned `?U` would produce a `??U`, which\nis not a type. Here `f` already returns `?U` and the result is that same `?U`.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 39
+            "Line": 45
           }
         },
         {
           "Kind": "Function",
           "Name": "filter",
           "Signature": "pub fn filter<T>(o: ?T, pred: fn(T) -> bool): ?T",
-          "Doc": null,
+          "Doc": "Keeps the value only when `pred` accepts it, and answers `null` otherwise.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 47
+            "Line": 53
           }
         },
         {
           "Kind": "Function",
           "Name": "zip",
           "Signature": "pub fn zip<T, U>(a: ?T, b: ?U): ?(T, U)",
-          "Doc": null,
+          "Doc": "Both present yields a tuple, otherwise `null`.\n\nThe result is taken apart with `let (a, b) = …`.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 59
+            "Line": 66
           }
         },
         {
           "Kind": "Function",
           "Name": "contains",
           "Signature": "pub fn contains<T :: [Equatable<T>]>(o: ?T, value: T): bool",
-          "Doc": null,
+          "Doc": "Whether a value is present and equals `value`.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 70
+            "Line": 77
           }
         },
         {
           "Kind": "Function",
           "Name": "toArray",
           "Signature": "pub fn toArray<T>(o: ?T): T[]",
-          "Doc": null,
+          "Doc": "Zero or one element — the bridge to anything that takes an array.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 80
+            "Line": 87
           }
         },
         {
           "Kind": "Class",
           "Name": "OptionIterator",
           "Signature": "pub class OptionIterator<T> :: [Iterator<T>]",
-          "Doc": null,
+          "Doc": "The iterator `iter` hands out: yields the value once, if there is one.",
           "Members": [
             {
               "Kind": "Field",
@@ -3075,7 +3075,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/option.lyr",
-                "Line": 92
+                "Line": 96
               }
             },
             {
@@ -3086,46 +3086,46 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/option.lyr",
-                "Line": 93
+                "Line": 97
               }
             },
             {
               "Kind": "Method",
               "Name": "next",
               "Signature": "pub mut fn next(): ?T",
-              "Doc": null,
+              "Doc": "The value on the first call, `null` on every one after it.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/option.lyr",
-                "Line": 95
+                "Line": 100
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 91
+            "Line": 95
           }
         },
         {
           "Kind": "Function",
           "Name": "iter",
           "Signature": "pub fn iter<T>(o: ?T): OptionIterator<T>",
-          "Doc": null,
+          "Doc": "An iterator over zero or one value.\n\nEvery adapter in `std.iter` then works on an optional, without `std.iter` knowing anything about\n`?T`.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 106
+            "Line": 115
           }
         },
         {
           "Kind": "Function",
           "Name": "expect",
           "Signature": "pub fn expect<T>(o: ?T, message: string): T",
-          "Doc": null,
+          "Doc": "The value, or a panic carrying `message`.\n\nAs `o!`, but with a message of your own: `LYR-VM0007` reports that a value was missing, never\nwhich one.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/option.lyr",
-            "Line": 117
+            "Line": 125
           }
         }
       ]

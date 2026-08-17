@@ -41,6 +41,26 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.4.0 slice 4 — the standard library says what it does** (2026-08-17). 3684 tests green,
+  Debug and Release. Not merged. **This completes v1.4.0.**
+  - `std/io/console.lyr`, `std/core.lyr` and `std/option.lyr` had **33 `pub` declarations and not one
+    line of documentation** between them, so `println` — the most used function in the language —
+    hovered empty. It no longer does.
+  - **The explanations largely existed and reached nothing.** All three files carried good `//`
+    comments; a `//` is not a doc comment, so hover, completion and the generated reference saw
+    none of it. The work was mostly deciding which half is which: **what a caller needs became
+    `///`, what a maintainer needs stayed `//`.** The reachability note in `console.lyr` and the
+    reason `float` has no `Hashable` are not answers to "what does this do".
+  - Interface members are documented too — `show`, `equals`, `hash`, `compare`. They are what
+    completion offers on a constrained type, and a list of four bare names says nothing.
+  - **The repository already held a test for this debt**, and it was better than the one I would have
+    written: `DocCoverageTests` is a RATCHET on the documented share, and a second test named the
+    three bare modules outright. Documented items went **70 → 110 of 346**; the floor is raised and
+    the module list is now empty, kept as an assertion rather than deleted so a new module without a
+    line shows up at once.
+  - The generated reference changed in documentation and line numbers only — **no signature and no
+    name moved**, checked against the snapshot diff rather than assumed.
+
 - [x] **v1.4.0 slice 3 — completion for names in scope** (2026-08-17). 3684 tests green, Debug and
   Release. Not merged.
   - **No new front-end table.** The sema builds its scope chains while checking and drops them, so
@@ -87,29 +107,6 @@ functions out of them and hands its own functions and types in.
   - Slice 1 is what made the receiver readable: `TypeOf(mem.Target)` is a `NonValueType` for a name
     and the value's type otherwise, so static and instance sides fall out of the same answer the
     type checker uses.
-
-- [x] **v1.4.0 slice 1 — a member access asks the type, not the table** (2026-08-17). 3636 tests
-  green, Debug and Release. Not merged.
-  - **The plan was wrong and the code said so.** I had planned to split `_refs` into two tables,
-    declarations from uses, at roughly forty sites across the lowering and the flow analysis. It was
-    not needed: `CheckTarget` already returns a `NonValueType(Symbol, Kind, Instance)` for a type or
-    module name, and `CheckMember` then asked the reference table THE SAME QUESTION a line later.
-  - Its own docstring wrote the redundancy out — *"CheckMember continues through the symbol anyway,
-    not through the type"*. Two answers to one question, and the second was the wrong one: the table
-    knows that `Point { … }` mentions `Point`, not that it BUILDS one.
-  - The switch now runs over the receiver's TYPE. **~30 lines instead of forty sites**, and the
-    delicate code was never touched.
-  - With nothing left inferring a receiver's kind from the table, `BindRef(si, ts)` is safe —
-    the change that broke two tests and a guide chapter when it was tried alone. **Both limits v1.3.0
-    shipped are closed**: a struct initializer is a reference to its type, and the jump on it lands
-    on the type instead of answering nothing.
-  - The edge that had to survive: an unresolvable import as a receiver reported once, not twice. It
-    falls through to `InstanceMemberOf`, which has no case for an error type and reports nothing, and
-    the existing `IsError` check returns. Pinned by a test.
-  - **Not done, and now with a reason rather than an intention**: splitting `_refs` by declaration
-    versus use has no consumer. The lowering matches on symbol kind, the server compares
-    `symbol.Declaration` against the node, and both work. Work without a complainant, through the
-    most delicate code in the project.
 
 ## Measurements
 
@@ -164,8 +161,8 @@ find references (#21). Additive throughout: no language change, no format change
 |---|---|---|
 | 1 | A member access asks the type, not the table | PR #24 |
 | 2 | Completion: members after `.` | PR #25 |
-| 3 | Completion: names in scope | **done, unmerged** |
-| 4 | Documentation for the three undocumented stdlib files | next, and the last |
+| 3 | Completion: names in scope | PR #26 |
+| 4 | Documentation for the three undocumented stdlib files | **done, unmerged** |
 
 **The mechanism is a completion MARKER, not an error-tolerant parser.** A request inserts a synthetic
 identifier at the cursor and compiles through `CompilerOptions.SourceOverlay`, which has existed
@@ -175,9 +172,8 @@ One compile per request at 7–16 ms, against a parser rebuild that 438 parsing 
 Rejected: answering from the LAST GOOD model. Its spans point into the text from before the
 keystroke, and a `FileId` is an index into one `SourceManager` — see §Design decisions.
 
-**Slice 4 is writing, not compiler work**: `std/io/console.lyr`, `std/core.lyr` and `std/option.lyr`
-hold **33 `pub` declarations and no documentation at all**, so `println` hovers empty. v1.3.0 built
-the feature that shows it.
+**All four slices are done**, the last one unmerged. What is left before the release: the version
+numbers, the changelog entry, the tag. Nothing in the code.
 
 The next scope check is **2026-09-06**.
 
@@ -296,7 +292,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #25 from OIL1I/feature/completion-members` (`974b9e1`)
+`Merge pull request #26 from OIL1I/feature/completion-scope` (`88ef0b2`)
 
 ---
 
