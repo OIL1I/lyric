@@ -56,6 +56,8 @@
 <h1>Building a project</h1>
 <nav class="contents">
 <ul>
+<li><a href="#starting-one">Starting one</a></li>
+<li><a href="#building-one">Building one</a></li>
 <li><a href="#the-script">The script</a></li>
 <li><a href="#nothing-is-compiled-while-the-script-runs">Nothing is compiled while the script runs</a></li>
 <li><a href="#it-is-a-program-not-a-list">It is a program, not a list</a></li>
@@ -63,7 +65,26 @@
 <li><a href="#when-something-goes-wrong">When something goes wrong</a></li>
 </ul>
 </nav>
-<p>For one file there is nothing to set up:</p>
+<h2 id="starting-one">Starting one</h2>
+<pre><code class="language-bash">lyric new myapp          # a program
+lyric new mylib --lib    # a module someone imports
+</code></pre>
+<p>An app arrives ready to build:</p>
+<pre><code>myapp/
+├── lyric.json      where the modules live
+├── build.lyr       what to build
+├── .gitignore
+└── src/main.lyr
+</code></pre>
+<pre><code class="language-bash">cd myapp &amp;&amp; lyric build &amp;&amp; lyric run out/myapp.lyrbc
+</code></pre>
+<p>A library has no <code>build.lyr</code>, because there is nothing to build: it is source another project points
+its <code>sourceRoot</code> at and imports. Its module file is named after it, so <code>import mylib</code> finds
+<code>src/mylib.lyr</code>.</p>
+<p>The name becomes a module name, so it has to be one: letters, digits and <code>_</code>, not starting with a
+digit. <code>lyric new</code> refuses to write into a directory that already holds something.</p>
+<h2 id="building-one">Building one</h2>
+<p>For a single file there is nothing to set up:</p>
 <pre><code class="language-bash">lyric build app.lyr -o app.lyrbc
 </code></pre>
 <p>A project with more than one program, or one that generates part of its own source, puts a
