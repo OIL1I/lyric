@@ -146,11 +146,15 @@ public sealed class CompletionTests
     // ------------------------------------------------------------------ counter-checks
 
     [Fact]
-    public void A_position_that_is_not_a_member_access_offers_nothing()
+    public void A_position_that_is_not_a_member_access_offers_the_scope()
     {
-        // Names in scope are slice 3. Answering here with every name would be a different feature
-        // wearing this one's trigger.
-        Assert.Null(Complete("fn main(): int {\n    let x = 1;\n    return $x;\n}\n"));
+        // It used to answer with nothing, because names in scope were a slice away. The two contexts
+        // are told apart by where the marker sits relative to the dot — see
+        // ScopeCompletionTests.In_the_receiver_the_scope_is_offered_and_not_the_members.
+        var items = Complete("fn main(): int {\n    let x = 1;\n    return $x;\n}\n");
+
+        Assert.NotNull(items);
+        Assert.Contains(items, i => i.Label == "x");
     }
 
     [Fact]

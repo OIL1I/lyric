@@ -88,7 +88,7 @@ public static class ReferenceProvider
         for (var i = path.Count - 1; i >= 0; i--)
             if (path[i] is INamedDecl named && named.NameSpan.File == file
                 && offset >= named.NameSpan.Start && offset <= named.NameSpan.End
-                && DeclaredSymbol(model, path[i]) is { } symbol)
+                && NodeFinder.DeclaredSymbol(model, path[i]) is { } symbol)
                 return symbol;
 
         return null;
@@ -99,34 +99,4 @@ public static class ReferenceProvider
     private static Symbol Target(Symbol symbol) =>
         symbol is ImportBindingSymbol import ? Target(import.Target) : symbol;
 
-    /// <summary>The symbol a declaration node introduced, found by walking the module scopes. Only
-    /// reached when the forward tables have no answer, which is why the cost of the walk does not
-    /// matter.</summary>
-    private static Symbol? DeclaredSymbol(SemanticModel model, Node declaration)
-    {
-        foreach (var module in model.Compilation.Modules)
-            if (Find(module.Members, declaration) is { } symbol)
-                return symbol;
-
-        return null;
-    }
-
-    private static Symbol? Find(SymbolTable scope, Node declaration)
-    {
-        foreach (var symbol in scope.Symbols)
-        {
-            if (ReferenceEquals(symbol.Declaration, declaration)) return symbol;
-
-            var nested = symbol switch
-            {
-                TypeSymbol type => type.Members,
-                ModuleSymbol module => module.Members,
-                _ => null,
-            };
-
-            if (nested is not null && Find(nested, declaration) is { } inner) return inner;
-        }
-
-        return null;
-    }
 }
