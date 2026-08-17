@@ -40,6 +40,25 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.5.0 slice 4 — a cast is a conversion the type declared** (2026-08-18). 3744 tests green,
+  Debug and Release. Not merged. **This completes v1.5.0.**
+  - `x as T` beyond the numerics desugars through `Into<T>` from `std.core`: `x.into()`, checked and
+    stored exactly as the operators are. The numeric branch stands first and is not overridable —
+    `1 as float` never desugars, whatever conformances exist.
+  - **Three boundaries, each deliberate and each tested.** Explicit only — an implicit conversion is
+    a second, invisible mechanism beside the visible one. ONE target per type — `into` is a member
+    name, a type has one member of a name, and the second conformance is a duplicate-member
+    diagnostic, measured rather than asserted in prose. And total only — `Into` returns `T`, not
+    `?T`; a conversion that can fail is a named function returning an optional.
+  - **The orphan rule guards conversions too, and it corrected the plan.** `extend int ::
+    [Into<Cents>]` is `LYR-SEM0041` — the rule looks at the extended type and the interface, not at
+    the interface's type ARGUMENTS, so a local `Cents` does not rescue it. A conversion OUT of a
+    builtin therefore has no home, and the planned "primitive source through a user extend" was
+    wrong. Pinned as a limit with an address instead.
+  - Conversions chain — `(a as B) as C` — and the cast agrees with the written `into()` in the same
+    program. The operand lowers once; same seam, same guarantees.
+  - Doc ratchet 118 → 120 of 356.
+
 - [x] **v1.5.0 slice 3 — arithmetic through interfaces, and a hole it dug up first** (2026-08-18).
   3732 tests green, Debug and Release. Not merged.
   - **The slice began as a bug fix.** Planning the compound forms exposed that a compound assignment
@@ -90,34 +109,6 @@ functions out of them and hands its own functions and types in.
     decision. Pinned by a test where none existed.
   - Same nominal rule as equality, same counter-tests: a `compare` method without the conformance
     stays rejected, mixed types stay rejected, an unconstrained `T` names `Ordered<T>` as the fix.
-
-- [x] **v1.5.0 slice 1 — `==` is `equals`, written as mathematics** (2026-08-17). 3704 tests green,
-  Debug and Release. Not merged.
-  - `==` and `!=` work on every type conforming to `Equatable<T>`. **No new syntax, no new opcode,
-    no format change**: the checker builds the call `a.equals(b)` from synthetic nodes, checks it
-    through the ordinary member path, and stores it in `TypeResult`; the lowering emits the stored
-    call instead of a `BinOp`, and `!=` negates the result.
-  - **The synthetic-call route is what made it a day instead of a week.** The member path already
-    settles every receiver shape — plain struct, enum, conformance via `extend`, generic instance,
-    constrained type parameter — and the desugar inherits all of them. All five have end-to-end
-    tests, and the constraint case monomorphizes: the same generic function serves a struct and an
-    `int`, the `int` through the stdlib's own `extend`.
-  - **Conformance is required, not the method alone** — the pinned design decision. A type with an
-    `equals` nobody declared as `Equatable` stays rejected; otherwise any method of that name would
-    silently become an operator. Nominal, as rustc's `PartialEq`, not structural.
-  - The synthetic nodes reuse the REAL operand nodes, which is what makes each operand lower exactly
-    once — held by a test that counts closure calls. They hang in no tree, so syntax walks never
-    meet them; their span is the operator expression, so everything reported or mapped lands on what
-    the user wrote.
-  - The precedent was already in the lowering: `+` on `string` is a call to `std.string.concat`.
-    This generalizes "operator becomes call" from two hard-wired stdlib helpers to the interface
-    the type declares.
-  - `LYR-SEM0059` keeps its code and now names the fix: *declare the type with
-    `:: [Equatable<Point>]`*. Optionals keep their own rule and their own message — `?T` compares
-    against `null`, the backend has no optional equality, and the desugar does not unwrap.
-  - Without a standard library there is no `Equatable` to desugar through; the compile degrades into
-    the ordinary diagnostic rather than a crash. Pinned by a test that checks without a module
-    loader.
 
 ## Measurements
 
@@ -177,8 +168,8 @@ and REJECTED — constraints plus generics are this language's overloading, and 
 |---|---|---|
 | 1 | `==`/`!=` via `Equatable<T>` | PR #31 |
 | 2 | `<` `<=` `>` `>=` via `Ordered<T>` — closed `string < string` | PR #32 |
-| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | **done, unmerged** |
-| 4 | `as` to user types via an `Into`-style interface, explicit only | next, and the last |
+| 3 | `+ - * /` via new `std.core` interfaces, homogeneous (`T op T -> T`) | PR #33 |
+| 4 | `as` to user types via `Into<T>`, explicit only | **done, unmerged** |
 
 Heterogeneous arithmetic (`Vec2 * float`) needs a two-parameter interface and a coherence rule for
 multiple conformances to the same generic interface; deliberately not in v1.5.0.
@@ -297,7 +288,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #32 from OIL1I/feature/operator-ordering` (`904054a`)
+`Merge pull request #33 from OIL1I/feature/operator-arithmetic` (`d8e3f1e`)
 
 ---
 

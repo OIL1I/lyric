@@ -1077,6 +1077,29 @@
             "File": "stdlib/std/core.lyr",
             "Line": 308
           }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Into",
+          "Signature": "pub interface Into<T>",
+          "Doc": "A value of this type converts to `T`: `x as T` is `x.into()`.\n\nONE target per type: the method is named `into`, and a type has one member of a name — a second\nconversion is an ordinary named method. Total conversions only; a conversion that can fail\nbelongs in a named function returning an optional.\n\nThe numeric casts keep their opcodes: `1 as float` never goes through here.",
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "into",
+              "Signature": "fn into(): T",
+              "Doc": "This value as a `T`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 381
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 379
+          }
         }
       ]
     },

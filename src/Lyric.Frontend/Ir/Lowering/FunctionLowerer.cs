@@ -3229,6 +3229,12 @@ internal sealed class FunctionLowerer
 
     private TempId LowerCast(CastExpr expr)
     {
+        // A non-numeric cast IS the conversion call the sema stored — same seam as the operators.
+        // The operand is the call's receiver and lowers exactly once, in there.
+        if (_types.OperatorCallOf(expr) is { } conversion)
+            return LowerCall(conversion)
+                   ?? throw Bug("conversion method returned no value");
+
         var from = TypeOfExpr(expr.Operand);
         var to = TypeOfExpr(expr);
         var operand = LowerExpr(expr.Operand);
