@@ -30,6 +30,23 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ### Added
 
+- **`lyric new` writes a project that builds.**
+
+  ```bash
+  lyric new myapp          # lyric.json, build.lyr, .gitignore, src/main.lyr
+  lyric new mylib --lib    # lyric.json, src/mylib.lyr — nothing to build
+  ```
+
+  Two shapes and two flags rather than a template system: with two variants a discovery mechanism is
+  more machinery than content. The name becomes a module name, so it has to be one, and an existing
+  directory that holds something is refused rather than merged into.
+
+  The templates are embedded in the binary, so nothing can go missing beside it — and they are real
+  `.lyr` files in the repository, which the test suite compiles. `__name__` is a valid Lyric
+  identifier, so a template is compilable Lyric rather than text with holes in it.
+
+  It is the one command the driver runs itself: it writes files and compiles nothing.
+
 - **A project may be built by a script, `build.lyr`.** `lyric build` without a file argument runs it
   and compiles what it declares:
 

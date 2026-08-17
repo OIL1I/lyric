@@ -1,0 +1,7 @@
+import std.build { addExecutable };
+
+/// What `lyric build` runs. Every artifact is compiled whole from its entry file; nothing is
+/// compiled while this function runs, so an option set on the next line still applies.
+pub fn build() {
+    addExecutable("src/main.lyr", "out/__name__.lyrbc");
+}

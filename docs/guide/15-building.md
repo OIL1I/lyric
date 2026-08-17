@@ -1,6 +1,36 @@
 # Building a project
 
-For one file there is nothing to set up:
+## Starting one
+
+```bash
+lyric new myapp          # a program
+lyric new mylib --lib    # a module someone imports
+```
+
+An app arrives ready to build:
+
+```
+myapp/
+├── lyric.json      where the modules live
+├── build.lyr       what to build
+├── .gitignore
+└── src/main.lyr
+```
+
+```bash
+cd myapp && lyric build && lyric run out/myapp.lyrbc
+```
+
+A library has no `build.lyr`, because there is nothing to build: it is source another project points
+its `sourceRoot` at and imports. Its module file is named after it, so `import mylib` finds
+`src/mylib.lyr`.
+
+The name becomes a module name, so it has to be one: letters, digits and `_`, not starting with a
+digit. `lyric new` refuses to write into a directory that already holds something.
+
+## Building one
+
+For a single file there is nothing to set up:
 
 ```bash
 lyric build app.lyr -o app.lyrbc

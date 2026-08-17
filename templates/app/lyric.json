@@ -1,0 +1,4 @@
+{
+  // Where our own modules live. 'import shapes.circle' reads src/shapes/circle.lyr.
+  "sourceRoot": "src"
+}

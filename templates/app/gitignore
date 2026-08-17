@@ -1,0 +1,3 @@
+# Written as '.gitignore' into a new project. It is stored without the dot so it does not take
+# effect HERE, in the repository that ships it.
+out/
