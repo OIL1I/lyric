@@ -118,6 +118,18 @@ public sealed class DefinitionTests
     }
 
     [Fact]
+    public void A_struct_initializer_has_no_target()
+    {
+        // Measured rather than intended. A StructInitExpr is bound to no symbol, so nothing knows
+        // that 'Point { … }' names a type. Recording it looks like a one-line fix and is not:
+        // TypeChecker reads the same table to decide whether a receiver is a TYPE, and an entry
+        // there turns 'Pair<int> { a = 6 }.a' into a static member access.
+        Assert.Null(TargetAt(
+            "struct Point { x: int, }\nfn main(): int {\n    let p = Poi$nt { x = 1 };\n"
+            + "    return p.x;\n}\n", out _));
+    }
+
+    [Fact]
     public void A_global_jumps_to_its_name_and_not_to_the_pub()
     {
         // The symbol declares from the GlobalBindingDecl, which opens at 'pub'. Reaching the name

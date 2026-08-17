@@ -40,6 +40,11 @@ public static class DefinitionProvider
             var symbol = model.Types.RefOf(path[i]) ?? model.Binding.Resolve(path[i]);
             if (symbol is null) continue;
 
+            // Reached from inside rather than from its name: the cursor is on something this
+            // declaration contains, not on the declaration. Answering with it would send the reader
+            // somewhere they did not point at, which is worse than the null below.
+            if (!NodeFinder.Answers(path[i], symbol, file, offset)) return null;
+
             if (Declaration(symbol) is { } target) return target;
 
             // A symbol was found and it has no declaration to jump to. Stopping here rather than

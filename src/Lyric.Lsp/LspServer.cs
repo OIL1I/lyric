@@ -184,6 +184,10 @@ public sealed class LspServer : IDisposable
                 await SendDocumentSymbolsAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.References when _state == State.Running:
+                await SendReferencesAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -460,6 +464,57 @@ public sealed class LspServer : IDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answers every place a name occurs, or answers with null.
+    ///
+    /// <para>The list covers the program reachable FROM THIS BUFFER, which is what the server
+    /// compiles. A file of the same project that imports this one is not in that compilation and its
+    /// uses are therefore not found — complete for a call into the standard library, incomplete for
+    /// "who uses my function" across a project.</para>
+    /// </summary>
+    private async Task SendReferencesAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.ReferenceParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document, a position and a context", cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot
+            || ReferenceProvider.At(snapshot.Model, snapshot.File,
+                TextOffsets.ToOffset(snapshot.Text, parameters.Position),
+                parameters.Context.IncludeDeclaration) is not { } sites)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var locations = new List<Location>(sites.Count);
+        foreach (var site in sites)
+        {
+            var sitePath = snapshot.Sources.GetPath(site.File);
+
+            // The client's own spelling for the file it asked about, a built URI for the rest — the
+            // same rule the jump follows, and for the same reason.
+            locations.Add(new Location
+            {
+                Uri = DocumentUri.PathComparer.Equals(sitePath, path)
+                    ? parameters.TextDocument.Uri
+                    : DocumentUri.FromFilePath(sitePath),
+                Range = SpanMapper.ToRange(snapshot.Sources, site.Span),
+            });
+        }
+
+        await SendResultAsync(id, locations, LspJson.Default.ListLocation, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private InitializeResult BuildInitializeResult() => new()
     {
         Capabilities = new ServerCapabilities
@@ -473,6 +528,7 @@ public sealed class LspServer : IDisposable
             HoverProvider = true,
             DefinitionProvider = true,
             DocumentSymbolProvider = true,
+            ReferencesProvider = true,
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };

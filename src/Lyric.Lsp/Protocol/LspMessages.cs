@@ -102,6 +102,22 @@ public sealed record ServerCapabilities
     public required bool DefinitionProvider { get; init; }
 
     public required bool DocumentSymbolProvider { get; init; }
+
+    public required bool ReferencesProvider { get; init; }
+}
+
+/// <summary>Whether the declaration itself counts as one of the places a name occurs. The client
+/// decides; the two questions are different and an editor asks both.</summary>
+public sealed record ReferenceContext
+{
+    public required bool IncludeDeclaration { get; init; }
+}
+
+public sealed record ReferenceParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+    public required Position Position { get; init; }
+    public required ReferenceContext Context { get; init; }
 }
 
 /// <summary>
@@ -331,6 +347,7 @@ public static class LspMethods
     public const string Hover = "textDocument/hover";
     public const string Definition = "textDocument/definition";
     public const string DocumentSymbol = "textDocument/documentSymbol";
+    public const string References = "textDocument/references";
 
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";
