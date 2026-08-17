@@ -129,6 +129,20 @@ public class MemberReceiverTests
     }
 
     [Fact]
+    public void A_static_extension_reached_through_an_instance_is_accepted()
+    {
+        // Measured, not endorsed. The instance path falls through to the extension lookup without
+        // checking 'static', while the type path rejects a non-static extension explicitly — so
+        // 'p.make()' compiles and 'Point.instanceMethod()' does not. The asymmetry is recorded under
+        // Still open; this test says which way round it currently is, so a decision to change it
+        // arrives here first.
+        AssertClean(
+            "struct Point { x: int, }\n"
+            + "extend Point {\n    static fn make(): int { return 7; }\n}\n"
+            + "fn main(): int {\n    let p = Point { x = 1 };\n    return p.make();\n}\n");
+    }
+
+    [Fact]
     public void A_member_that_does_not_exist_is_still_reported()
     {
         AssertReports(

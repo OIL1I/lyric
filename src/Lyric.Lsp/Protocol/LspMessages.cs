@@ -104,6 +104,57 @@ public sealed record ServerCapabilities
     public required bool DocumentSymbolProvider { get; init; }
 
     public required bool ReferencesProvider { get; init; }
+
+    public required CompletionOptions CompletionProvider { get; init; }
+}
+
+/// <summary>What makes the editor ask for completions without being told to.</summary>
+public sealed record CompletionOptions
+{
+    /// <summary>Typing one of these opens the list. Only <c>.</c>: everything else this server can
+    /// answer is reached by typing a name, which the client asks about on its own.</summary>
+    public required IReadOnlyList<string> TriggerCharacters { get; init; }
+}
+
+/// <summary>
+/// The icon an editor puts beside a completion. A closed enum of the protocol, as
+/// <see cref="SymbolKind"/> is, and mapped with the same judgement.
+/// </summary>
+public enum CompletionItemKind
+{
+    Method = 2,
+    Function = 3,
+    Field = 5,
+    Variable = 6,
+    Class = 7,
+    Interface = 8,
+    Module = 9,
+    Enum = 13,
+    Constant = 21,
+    Struct = 22,
+    EnumMember = 20,
+}
+
+public sealed record CompletionItem
+{
+    public required string Label { get; init; }
+
+    public required CompletionItemKind Kind { get; init; }
+
+    /// <summary>The one-line hint beside the label. The declaring type or module, so two members of
+    /// the same name are told apart before the documentation is opened.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Detail { get; init; }
+
+    /// <summary>What was written above the declaration, if anything.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MarkupContent? Documentation { get; init; }
+}
+
+public sealed record CompletionParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+    public required Position Position { get; init; }
 }
 
 /// <summary>Whether the declaration itself counts as one of the places a name occurs. The client
@@ -348,6 +399,7 @@ public static class LspMethods
     public const string Definition = "textDocument/definition";
     public const string DocumentSymbol = "textDocument/documentSymbol";
     public const string References = "textDocument/references";
+    public const string Completion = "textDocument/completion";
 
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";
