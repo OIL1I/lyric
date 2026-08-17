@@ -11,23 +11,27 @@
 
 ## Current milestone
 
-**v1.0.0 and v1.0.1 are released** — both annotated tags are on the remote, both with a release page
+**v1.0.0, v1.0.1 and v1.1.0 are released** — annotated tags on the remote, each with a release page
 and three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
-**M11, the language server, is the current milestone. Slices 1 to 3 are done**: an editor shows the
-compiler's diagnostics while you type, says what a name under the cursor is, and jumps to where it
-was declared.
+**M11, the language server, is done in the sense v1.1.0 left it**: diagnostics while you type, what a
+name under the cursor is, where it was declared — and since the project system, a program followed
+across its files.
 
-3237 tests green **in Debug and Release**, bytecode format **3.1**, **five** binaries plus
-`lyrembed.dll`, version **1.0.1**.
+**M12, the project system, is what v1.2.0 ships**: `lyric.json` says what a project is, `build.lyr`
+says what to build, `lyric new` writes one, and the tools read all of it.
 
-**v1.1.0 is unreleased and waiting for a tag**: the format is at 3.1 and `CHANGELOG.md` holds its
-entry, while `ToolchainVersion` still says 1.0.1 — it is raised at the tag, not before.
+3313 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
+`lyrembed.dll`, version **1.2.0**.
+
+**All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
+language server reads the project file, and editing a module refreshes the file that imports it.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
-written in Lyric); five tools including the REPL and the language server; a VS Code extension with
-live diagnostics; and an embedding API with which a C# host loads scripts, sandboxes them, calls
+written in Lyric); six tools including the REPL, the language server and the build runner; a VS Code
+extension with live diagnostics; a project that scaffolds, declares its own layout and builds itself
+with a Lyric script; and an embedding API with which a C# host loads scripts, sandboxes them, calls
 functions out of them and hands its own functions and types in.
 
 > **The file had grown to 1088 lines by 2026-08-07** and contradicted itself in three places. It has
