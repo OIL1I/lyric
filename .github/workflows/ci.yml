@@ -1,3 +1,13 @@
+# The .NET version comes from global.json and the SDK preinstalled on the runner, not from
+# actions/setup-dotnet.
+#
+# Every job that used the action downloaded its archive from codeload and then a 240 MB SDK. On
+# 2026-08-17 that download returned 429 and 503 eight times across the workflows, three of them
+# during a release, each time failing in "Set up job" before anything was built. Nothing in this
+# repository could retry its way out of it.
+#
+# global.json states the version, so a runner without a matching SDK fails with a message that says
+# so rather than with a target-framework error further along.
 name: CI
 
 on:
@@ -21,11 +31,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Restore
         run: dotnet restore
@@ -53,11 +58,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Publish all four binaries into one directory
         run: dotnet msbuild build/publish.proj
