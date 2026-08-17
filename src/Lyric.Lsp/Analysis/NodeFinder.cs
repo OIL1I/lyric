@@ -1,5 +1,6 @@
 using Lyric.AST;
 using Lyric.Core;
+using Lyric.Resolver;
 
 namespace Lyric.Lsp.Analysis;
 
@@ -19,6 +20,23 @@ namespace Lyric.Lsp.Analysis;
 /// </summary>
 public static class NodeFinder
 {
+    /// <summary>
+    /// Is the symbol found at <paramref name="node"/> an answer about the cursor, or about the
+    /// declaration the cursor merely stands inside?
+    ///
+    /// <para>The sema binds a declaration to its OWN symbol for the definite-assignment analysis, so
+    /// a walk outwards from an unbound node runs into it: the cursor on <c>Point</c> in
+    /// <c>let p = Point { … }</c> reaches the <c>BindingStmt</c> and would answer <c>p</c>. Such a
+    /// node counts only when the cursor is on its NAME.</para>
+    /// </summary>
+    public static bool Answers(Node node, Symbol symbol, FileId file, int offset)
+    {
+        if (!ReferenceEquals(symbol.Declaration, node)) return true;
+
+        var name = node is INamedDecl named ? named.NameSpan : node.Span;
+        return name.File == file && offset >= name.Start && offset <= name.End;
+    }
+
     /// <summary>
     /// The chain from the module down to the innermost node covering <paramref name="offset"/>,
     /// outermost first. Empty when the offset lies outside the module.

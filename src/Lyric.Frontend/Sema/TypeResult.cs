@@ -32,6 +32,17 @@ public sealed class TypeResult
     public void BindRef(Node node, Symbol symbol) => _refs[node] = symbol;
     public Symbol? RefOf(Node node) => _refs.TryGetValue(node, out var s) ? s : null;
 
+    /// <summary>
+    /// Every node bound to a symbol, uses and declarations alike.
+    ///
+    /// <para>Declarations are in here because the definite-assignment analysis needs them: a
+    /// <c>BindingStmt</c>, a <c>Param</c>, a <c>ForInStmt</c> and the pattern bindings are each
+    /// bound to the symbol they THEMSELVES declare. A consumer asking for uses separates the two by
+    /// <c>ReferenceEquals(symbol.Declaration, node)</c> — no flag is needed, the symbol already
+    /// knows where it was declared.</para>
+    /// </summary>
+    public IEnumerable<KeyValuePair<Node, Symbol>> AllReferences => _refs;
+
     /// <summary>The type of a module <c>let</c> or <c>static let</c>. Separate from
     /// <see cref="TypeOf"/>, because a global is not an expression: its type hangs on the symbol,
     /// not on a use site.</summary>
