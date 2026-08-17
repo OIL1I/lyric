@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Optionals — Lyric v1.4.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<span class="version">v1.4.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/" class="here">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+</ul>
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.1</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>Optionals</h1>
+<nav class="contents">
+<ul>
+<li><a href="#narrowing">Narrowing</a></li>
+<li><a href="#operators">Operators</a></li>
+<li><a href="#the-library-side">The library side</a></li>
+</ul>
+</nav>
+<p><code>?T</code> is a value that may be absent. It is the only way to express &quot;no value&quot;; there is no null
+reference for an ordinary type.</p>
+<pre><code class="language-lyr">fn find(names: string[], wanted: string): ?string {
+    for (n in names) {
+        if (n == wanted) { return n; }
+    }
+    return null;
+}
+
+fn main(): int {
+    let hit = find([&quot;Ada&quot;, &quot;Grace&quot;], &quot;Ada&quot;);
+    return if (hit != null) 1 else 0;
+}
+</code></pre>
+<p>Optionals do not nest: <code>??T</code> does not exist. Wrapping an optional again leaves it at one level.</p>
+<h2 id="narrowing">Narrowing</h2>
+<p>A comparison against <code>null</code> narrows the value in the branch that follows:</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    let name: ?string = &quot;Ada&quot;;
+
+    if (name != null) {
+        println(name);      // 'name' is a string here, not a ?string
+    }
+    return 0;
+}
+</code></pre>
+<p>Narrowing applies inside <code>while</code> and to the right of <code>&amp;&amp;</code>. It ends at a reassignment.</p>
+<h2 id="operators">Operators</h2>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>a ?? b</code></td>
+<td><code>a</code> if present, otherwise <code>b</code></td>
+</tr>
+<tr>
+<td><code>a ??= b</code></td>
+<td>assign <code>b</code> only when <code>a</code> is absent</td>
+</tr>
+<tr>
+<td><code>x?.member</code></td>
+<td>member access that yields <code>null</code> when <code>x</code> is absent</td>
+</tr>
+<tr>
+<td><code>x?.method()</code></td>
+<td>call that does not happen when <code>x</code> is absent</td>
+</tr>
+<tr>
+<td><code>x!</code></td>
+<td>unwrap; panics when absent</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-lyr">class Profile {
+    nickname: ?string,
+    fn display(): string { return &quot;profile&quot;; }
+}
+
+fn main(): int {
+    let p: ?Profile = Profile { nickname = null };
+
+    let shown = p?.display() ?? &quot;nobody&quot;;
+    let nick = p?.nickname ?? &quot;anonymous&quot;;
+
+    var fallback: ?string = null;
+    fallback ??= &quot;default&quot;;
+
+    return if (shown == &quot;nobody&quot;) 0 else 1;
+}
+</code></pre>
+<p>The right-hand side of <code>??</code> and the member behind <code>?.</code> are evaluated only when needed. With <code>?.</code>
+the arguments of the call are not evaluated either when the receiver is absent.</p>
+<p><code>?.</code> works on a method, not on a field that holds a function value; read such a field into a
+variable first.</p>
+<h2 id="the-library-side">The library side</h2>
+<p><code>std.option</code> operates on optionals without unwrapping them:</p>
+<pre><code class="language-lyr">import std.option { map, andThen, filter, expect };
+
+fn main(): int {
+    let value: ?int = 5;
+
+    let doubled = map(value, (n: int) =&gt; n * 2);
+    let large = filter(doubled, (n: int) =&gt; n &gt; 5);
+
+    return large ?? 0;
+}
+</code></pre>
+<nav class="neighbours">
+<a class="prev" href="../../guide/generics/">Generics</a>
+<a class="next" href="../../guide/errors/">Errors</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
