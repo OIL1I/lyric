@@ -87,7 +87,17 @@ public sealed class TypeChecker
         // divergence. The place where `never` originates has to know both.
         _stdPanic = comp.FindModule(["std", "core"])?.Members
             .LookupLocal("panic") as FunctionSymbol;
+
+        // 'Equatable<T>' is what '==' desugars through on a user type — the same pattern as
+        // 'Iterator' for 'for-in': the compiler knows the built-in scalars, and everything else
+        // binds to an interface from the stdlib.
+        _equatable = comp.FindModule(["std", "core"])?.Members
+            .LookupLocal("Equatable") as TypeSymbol;
     }
+
+    /// <summary>What <c>==</c> on a user type resolves through. Null without a standard library,
+    /// and user-type equality is then a diagnostic rather than a crash.</summary>
+    private readonly TypeSymbol? _equatable;
 
     /// <summary>The native declaration from <c>std.core</c>. See the constructor.</summary>
     private readonly FunctionSymbol? _stdPanic;
@@ -1027,7 +1037,7 @@ public sealed class TypeChecker
                 if (!LyrType.Equal(l, r) && UnifyNumeric(b.Left, l, b.Right, r) is null
                     && l is not NullType && r is not NullType)
                     BadBinary(b, l, r);
-                else CheckEquatable(b, l, r);
+                else CheckEquatable(b, l, r, scope);
                 return LyrType.Bool;
             case BinaryOp.LogicalAnd or BinaryOp.LogicalOr:
                 if (!TypeFacts.IsBool(l) || !TypeFacts.IsBool(r)) BadBinary(b, l, r);
@@ -1038,30 +1048,92 @@ public sealed class TypeChecker
     }
 
     /// <summary>
-    /// What <c>==</c> and <c>!=</c> may compare: scalars and <c>null</c>.
+    /// What <c>==</c> and <c>!=</c> may compare: scalars, <c>null</c>, and every type that conforms
+    /// to <c>Equatable</c>.
     /// </summary>
     /// <remarks>
-    /// <para>The rule lives here as well as in the IR verifier. Without it the sema lets <c>a == b</c>
-    /// on a <c>struct</c> or a <c>class</c> through and the verifier rejects it afterwards, as a
-    /// compiler crash rather than a diagnostic.</para>
+    /// <para>On a conforming type the operator IS the interface method. The checker builds the call
+    /// <c>a.equals(b)</c> from synthetic nodes, checks it through the ordinary member path — which
+    /// settles extensions, generic instances and constraint dispatch exactly as a written call
+    /// would — and records it for the lowering. No second dispatch mechanism: written as an
+    /// operator, resolved as the method.</para>
     ///
-    /// <para>The message says "not yet", not "never": a user type is meant to become comparable
-    /// through operator overloading. Until then an ordinary method does it, and the diagnostic points
-    /// there.</para>
+    /// <para>CONFORMANCE is required, not the method alone. A type with an <c>equals</c> nobody
+    /// declared as <c>Equatable</c> stays rejected — otherwise any method of that name would
+    /// silently become an operator, and the diagnostic could not name the contract.</para>
+    ///
+    /// <para>For everything else the rule lives here as well as in the IR verifier. Without it the
+    /// sema lets <c>a == b</c> through and the verifier rejects it afterwards, as a compiler crash
+    /// rather than a diagnostic.</para>
     /// </remarks>
-    private void CheckEquatable(BinaryExpr b, LyrType l, LyrType r)
+    private void CheckEquatable(BinaryExpr b, LyrType l, LyrType r, SymbolTable scope)
     {
         if (l is NullType || r is NullType) return;
+        if (l is PrimitiveType or ErrorType) return;
 
-        // NO unwrapping of '?T': comparing two optionals is not implemented in the backend, where the
-        // verifier reports "equality comparison on type ?i64". The common case '?T == null' is
+        var op = b.Operator is BinaryOp.Eq ? "==" : "!=";
+
+        // NO unwrapping of '?T': comparing two optionals is not implemented in the backend, where
+        // the verifier reports "equality comparison on type ?i64". The common case '?T == null' is
         // already handled above, and flow narrowing covers it too.
-        if (l is PrimitiveType or ErrorType or NullType) return;
+        if (l is Optional)
+        {
+            _de.Report("LYR-SEM0059", Severity.Error, b.Span,
+                $"'{op}' is not defined for '{TypeFacts.Display(l)}' — an optional compares "
+                + "against 'null'; narrow it first, then compare the value");
+            return;
+        }
+
+        if (CanConform(l))
+        {
+            if (_equatable is { } equatable
+                && Satisfies(l, equatable, new GenericInstance(equatable, [l])))
+            {
+                // A failed check inside the call has reported already; no second message.
+                DesugarToMethodCall(b, "equals", b.Operator is BinaryOp.Ne, scope);
+                return;
+            }
+
+            _de.Report("LYR-SEM0059", Severity.Error, b.Span,
+                $"'{op}' is not defined for '{TypeFacts.Display(l)}' — equality comes from "
+                + $"'Equatable': declare the type with ':: [Equatable<{TypeFacts.Display(l)}>]' "
+                + $"and a 'fn equals(other: {TypeFacts.Display(l)}): bool'");
+            return;
+        }
 
         _de.Report("LYR-SEM0059", Severity.Error, b.Span,
-            $"'{(b.Operator is BinaryOp.Eq ? "==" : "!=")}' is not defined for " +
-            $"'{TypeFacts.Display(l)}' — only scalars compare directly in v1; " +
-            "give the type a method (operator overloading comes after v1.0)");
+            $"'{op}' is not defined for '{TypeFacts.Display(l)}'");
+    }
+
+    /// <summary>Can this type conform to an interface at all? Only what can carry a conformance
+    /// list — directly or through an <c>extend</c> block.</summary>
+    private static bool CanConform(LyrType t) => t switch
+    {
+        NamedRef { Symbol.Kind: TypeSymbolKind.Struct or TypeSymbolKind.Class or TypeSymbolKind.Enum }
+            => true,
+        GenericInstance { Definition.Kind: TypeSymbolKind.Struct or TypeSymbolKind.Class or TypeSymbolKind.Enum }
+            => true,
+        TypeParamType => true,
+        _ => false,
+    };
+
+    /// <summary>
+    /// Builds <c>left.method(right)</c>, checks it, and records it as what the operator means.
+    ///
+    /// <para>The synthetic nodes carry the operator expression's span, so anything reported or
+    /// mapped from them lands on what the user wrote. They reuse the REAL operand nodes, which is
+    /// what makes the lowering evaluate each operand exactly once. The operands were clean — poison
+    /// returned before the operator was examined — so their second pass through the checker
+    /// reproduces the same table entries.</para>
+    /// </summary>
+    private void DesugarToMethodCall(BinaryExpr b, string method, bool negate, SymbolTable scope)
+    {
+        var member = new MemberExpr(b.Left, method, IsOptional: false, b.Span);
+        var call = new CallExpr(member, [b.Right], b.Span);
+
+        if (CheckExpr(call, scope).IsError) return;
+
+        _result.DesugarOperator(b, call, negate);
     }
 
     private LyrType CheckAdd(BinaryExpr b, LyrType l, LyrType r)
