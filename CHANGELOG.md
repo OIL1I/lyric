@@ -10,6 +10,67 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.3.0 — 2026-08-17
+
+Everything in this release is the language server. The language, the standard library, the command
+line and the `.lyrbc` format are untouched; the format stays **3.1**.
+
+### Added
+
+- **Hover shows the documentation you wrote.** A `///` block above a declaration appears under its
+  signature, for declarations in the file you are editing and in every module it reads:
+
+  ```
+  fn cpuCount() -> int
+
+  How many cores the machine has, for programs that split their work. The VM itself is
+  single-threaded.
+  ```
+
+  The text goes through unchanged — there is no doc-comment vocabulary in the grammar, so nothing is
+  interpreted, and nothing is composed from the signature. A declaration without a block is shown
+  exactly as before.
+
+- **An editor can show the outline of a file** (`textDocument/documentSymbol`). Types carry their
+  fields, methods, variants and static constants as children; imports, parameters and locals are
+  left out, because an outline says what a file offers.
+
+  It reads the syntax and resolves nothing, which is why **a file with type errors still has an
+  outline** — the moment you most want one.
+
+  Only the nested form is produced. An editor that does not announce
+  `hierarchicalDocumentSymbolSupport` gets no outline rather than the deprecated flat one.
+
+- **Find all references** (`textDocument/references`), with or without the declaration itself. The
+  answer covers the program reachable from the file you are in, so a call into the standard library
+  is found in the module that declares it.
+
+### Changed
+
+- **Go to definition selects the NAME of a declaration**, not the start of it. Previously the cursor
+  landed on the first character of the whole declaration — on `for` for a loop variable, on `catch`
+  for a catch binding. An editor that announces `linkSupport` now also receives the full extent of
+  the declaration beside the name, so a peek window shows the declaration and puts the cursor on its
+  name.
+
+### Fixed
+
+- **Go to definition on a struct initializer no longer jumps somewhere else.** In
+  `let p = Point { x = 1 };`, asking about `Point` used to land on `p` — the enclosing binding, which
+  is not what the cursor was on. It now answers with nothing. What it *cannot* yet do is answer with
+  `Point`; see below.
+
+### Not in this release
+
+- **A struct initializer is not a reference to its type.** `Point { … }` is bound to no symbol, so
+  neither find-references nor go-to-definition sees it. An annotation (`let p: Point`) is found.
+- **A field reference marks the whole member access**: asking for references to `x` marks `p.x`, not
+  the `x` in it. Use sites carry no span for their name alone.
+- **References stop at the compilation.** The server compiles the file you are in; another file of
+  your project that imports it is not part of that compile, and its uses are therefore not listed.
+- **No completion.** It is the first question asked at a position where the text does not parse,
+  which is a compiler topic rather than another editor feature.
+
 ## v1.2.0 — 2026-08-17
 
 ### Changed
