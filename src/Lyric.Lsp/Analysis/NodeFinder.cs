@@ -1,4 +1,5 @@
 using Lyric.AST;
+using Lyric.Compiler;
 using Lyric.Core;
 using Lyric.Resolver;
 
@@ -20,6 +21,41 @@ namespace Lyric.Lsp.Analysis;
 /// </summary>
 public static class NodeFinder
 {
+    /// <summary>
+    /// The symbol a declaration node introduced, found by walking the module scopes.
+    ///
+    /// <para>For the declarations the sema does NOT bind to themselves: a function, a type and a
+    /// field are in no forward table, because nothing refers to them by pointing at their
+    /// declaration. The module's own symbol tables are the only place that relation exists.</para>
+    /// </summary>
+    public static Symbol? DeclaredSymbol(SemanticModel model, Node declaration)
+    {
+        foreach (var module in model.Compilation.Modules)
+            if (InScope(module.Members, declaration) is { } symbol)
+                return symbol;
+
+        return null;
+    }
+
+    private static Symbol? InScope(SymbolTable scope, Node declaration)
+    {
+        foreach (var symbol in scope.Symbols)
+        {
+            if (ReferenceEquals(symbol.Declaration, declaration)) return symbol;
+
+            var nested = symbol switch
+            {
+                TypeSymbol type => type.Members,
+                ModuleSymbol module => module.Members,
+                _ => null,
+            };
+
+            if (nested is not null && InScope(nested, declaration) is { } inner) return inner;
+        }
+
+        return null;
+    }
+
     /// <summary>
     /// Is the symbol found at <paramref name="node"/> an answer about the cursor, or about the
     /// declaration the cursor merely stands inside?

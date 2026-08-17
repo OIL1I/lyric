@@ -54,11 +54,15 @@ public static class CompletionProvider
         var file = DiagnosticMapper.FindFile(result.Sources, path);
         if (!file.IsValid) return null;
 
-        // The marker's own position: the member name now starts where the cursor was.
-        if (MemberAt(model, file, offset) is not { } member) return null;
+        var nodes = NodeFinder.PathAt(model.Entry, file, offset);
+        var from = EnclosingModule(model, file);
+
+        // After a dot, or not. Everything else is a name in scope, which is a different question
+        // with a different source.
+        if (MemberContext(nodes, offset) is not { } member)
+            return ScopeCompletion.At(model, nodes, offset, from);
 
         var receiver = model.Types.TypeOf(member.Target);
-        var from = EnclosingModule(model, file);
 
         return receiver switch
         {
@@ -73,14 +77,19 @@ public static class CompletionProvider
         };
     }
 
-    /// <summary>The member access the marker landed in, found by walking down to the marker's
-    /// position and taking the nearest enclosing member expression.</summary>
-    private static MemberExpr? MemberAt(SemanticModel model, FileId file, int offset)
+    /// <summary>
+    /// The member access whose MEMBER NAME the marker landed in, if that is where it landed.
+    ///
+    /// <para>Being inside a member expression is not enough. In <c>foo.bar</c> the cursor on
+    /// <c>foo</c> is inside one too, and what belongs there are the names in scope — the receiver is
+    /// what is being typed, not what is being reached through. The member part is everything past
+    /// the target, which is where the dot is.</para>
+    /// </summary>
+    private static MemberExpr? MemberContext(IReadOnlyList<Node> nodes, int offset)
     {
-        var path = NodeFinder.PathAt(model.Entry, file, offset);
-        for (var i = path.Count - 1; i >= 0; i--)
-            if (path[i] is MemberExpr member)
-                return member;
+        for (var i = nodes.Count - 1; i >= 0; i--)
+            if (nodes[i] is MemberExpr member)
+                return offset > member.Target.Span.End ? member : null;
 
         return null;
     }
