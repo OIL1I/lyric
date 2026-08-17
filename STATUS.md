@@ -41,8 +41,31 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.4.0 slice 1 — a member access asks the type, not the table** (2026-08-17). 3636 tests
+  green, Debug and Release. Not merged.
+  - **The plan was wrong and the code said so.** I had planned to split `_refs` into two tables,
+    declarations from uses, at roughly forty sites across the lowering and the flow analysis. It was
+    not needed: `CheckTarget` already returns a `NonValueType(Symbol, Kind, Instance)` for a type or
+    module name, and `CheckMember` then asked the reference table THE SAME QUESTION a line later.
+  - Its own docstring wrote the redundancy out — *"CheckMember continues through the symbol anyway,
+    not through the type"*. Two answers to one question, and the second was the wrong one: the table
+    knows that `Point { … }` mentions `Point`, not that it BUILDS one.
+  - The switch now runs over the receiver's TYPE. **~30 lines instead of forty sites**, and the
+    delicate code was never touched.
+  - With nothing left inferring a receiver's kind from the table, `BindRef(si, ts)` is safe —
+    the change that broke two tests and a guide chapter when it was tried alone. **Both limits v1.3.0
+    shipped are closed**: a struct initializer is a reference to its type, and the jump on it lands
+    on the type instead of answering nothing.
+  - The edge that had to survive: an unresolvable import as a receiver reported once, not twice. It
+    falls through to `InstanceMemberOf`, which has no case for an error type and reports nothing, and
+    the existing `IsError` check returns. Pinned by a test.
+  - **Not done, and now with a reason rather than an intention**: splitting `_refs` by declaration
+    versus use has no consumer. The lowering matches on symbol kind, the server compares
+    `symbol.Declaration` against the node, and both work. Work without a complainant, through the
+    most delicate code in the project.
+
 - [x] **v1.3.1 — a diagnostic names what is wrong, not where to read about it** (2026-08-17). 3626
-  tests green, Debug and Release. Not merged.
+  tests green. Released; PR #23.
   - Eight messages cited a document. Five named `Sprache.md`, which has been `docs/Grammar.md` for
     some time, and the section numbers were wrong as well — §10 and §11 of a document with seven.
     Someone following either was sent nowhere twice.
@@ -87,34 +110,6 @@ functions out of them and hands its own functions and types in.
   - Two limits measured rather than intended: a field use marks the whole member access (`p.x`,
     because a use site has no name span), and the answer covers the program reachable **from this
     buffer** — a project file that imports the current one is not in that compilation.
-
-- [x] **v1.3.0 slice 2 — an editor can show what a file declares** (2026-08-17). 3454 tests
-  green. Merged as PR #20.
-  - `textDocument/documentSymbol`, nested: types carry their fields, methods, variants and static
-    constants as children. Both ranges come from slice 1 — the declaration's span is what the editor
-    reveals, the name span what the cursor lands on — and the protocol's containment rule holds by
-    construction rather than by a check.
-  - **Nothing is resolved.** Not only cheap: an outline is read WHILE the file is broken, and one
-    that empties on a type error goes dark exactly when it is wanted. A test compiles a program with
-    a type error and still expects the full outline; it is green only as long as no binding or type
-    table is consulted.
-  - **Rejected: building it from `Compilation.Modules[i].Members`.** That table *is* the list of what
-    a module offers, and it is the wrong source twice — it has no source order, so the outline would
-    stand in hash order, and it exists only after resolution, which gives up the property above.
-  - **Only the nested form.** The protocol's flat alternative is deprecated, has no children and
-    needs a container name per entry; two answer shapes with different semantics is not the same as
-    one with a flag. A client that does not announce `hierarchicalDocumentSymbolSupport` gets
-    **null**. That is a claim about editors, not about the code: no current one is in that position.
-  - **Three of the ten `SymbolKind` mappings are a choice, not a translation** — the enum is closed
-    and was written for other languages. A type alias is `Class`, an `extend` block is `Namespace`,
-    and a function is `Method` only inside a type body. Each carries the reason beside it.
-  - **The method-versus-function distinction comes from the WALK.** The first attempt read it off
-    the declaration and was wrong: a body of `;` is a native at the top level and an abstract member
-    inside an interface. Only the caller knows which list it is descending. A test pins the bodiless
-    top-level case.
-  - `detail` stays empty, and the field is absent from the type rather than present and null.
-    Filling it needs a printer for `TypeNode`, and a second one beside `TypeFacts.Display` would be
-    a second answer to what a type is called.
 
 ## Measurements
 
@@ -163,12 +158,28 @@ have bought an incremental compiler nobody needs.
 **v1.3.0 is released** — name spans (#18), hover documentation (#19), document symbols (#20) and
 find references (#21). Additive throughout: no language change, no format change, no new binary.
 
-**Next is v1.4.0: completion**, the last delivery point of M11. Nothing has been designed for it yet.
+**v1.4.0 — completion**, the last delivery point of M11, decided 2026-08-17.
 
-It is the first question asked at a position where the text does **not** parse — error tolerance, or
-a "what is admissible here" mechanism. A front-end topic of its own size rather than a fifth
-provider, which is why v1.3.0 was split off instead of the delivery list being re-cut. The next scope
-check is **2026-09-06**.
+| Slice | What | State |
+|---|---|---|
+| 1 | A member access asks the type, not the table | **done, unmerged** |
+| 2 | Completion: members after `.` | next |
+| 3 | Completion: names in scope | |
+| 4 | Documentation for the three undocumented stdlib files | |
+
+**The mechanism is a completion MARKER, not an error-tolerant parser.** A request inserts a synthetic
+identifier at the cursor and compiles through `CompilerOptions.SourceOverlay`, which has existed
+since v1.2.0: `foo.` becomes `foo.__marker__`, which parses, and the sema resolves the receiver.
+One compile per request at 7–16 ms, against a parser rebuild that 438 parsing tests hang on.
+
+Rejected: answering from the LAST GOOD model. Its spans point into the text from before the
+keystroke, and a `FileId` is an index into one `SourceManager` — see §Design decisions.
+
+**Slice 4 is writing, not compiler work**: `std/io/console.lyr`, `std/core.lyr` and `std/option.lyr`
+hold **33 `pub` declarations and no documentation at all**, so `println` hovers empty. v1.3.0 built
+the feature that shows it.
+
+The next scope check is **2026-09-06**.
 
 **One limit stays after v1.3.0**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
@@ -218,15 +229,13 @@ is the thing to check.
     and a host calling an unexported function through the embedding API would then find it missing.
   - It is the point at which a binary library would carry half a standard library with it, so it
     belongs answered before that is ever a goal.
-- **`TypeResult._refs` answers two questions with one table.** It is read as "what does this node
-  refer to" by the language server, as "is this receiver a TYPE" by the member-access path of the
-  type checker (`TypeChecker.cs:1770`), and as "which declaration is this" by the definite-assignment
-  analysis. Adding an entry is therefore not additive: recording a struct initializer's type there
-  turned `Pair<int> { a = 6 }.a` into a static member access and stopped a guide chapter compiling.
-  - Consequence today: **nothing knows that `Point { … }` names a type**, so it is found by neither
-    find-references nor go-to-definition. Measured by a test in each.
-  - Splitting the receiver-kind question out of the table would fix it. That is a change in the type
-    checker, not in the server, and it belongs decided before anything else wants to add to `_refs`.
+- **`TypeResult._refs` still holds declarations beside uses**, because the definite-assignment
+  analysis binds a `BindingStmt`, a `Param`, a `ForInStmt` and the pattern bindings to the symbol
+  they themselves declare. Splitting the two apart has **no consumer**: the lowering matches on
+  symbol kind, the server compares `symbol.Declaration` against the node. Recorded so the next reader
+  of that table knows what is in it, not as work waiting to be done.
+  - *The receiver-kind question is out of it since v1.4.0 slice 1*, which is what made the table safe
+    to add to.
 - **Section byte sizes are missing from `lyrvm info`**: the reader discards them after parsing.
   Retrofitting them would mean extending the model with provenance data — a decision of its own.
 - **Measure the verifier share in a Release profile** — the Debug numbers are riddled with JIT
@@ -282,7 +291,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #22 from OIL1I/release/v1.3.0` (`7bf1c75`)
+`Merge pull request #23 from OIL1I/fix/diagnostic-references` (`19be491`)
 
 ---
 
