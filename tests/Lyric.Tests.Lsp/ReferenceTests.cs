@@ -74,15 +74,18 @@ public sealed class ReferenceTests
     }
 
     [Fact]
-    public void A_type_is_found_where_the_resolver_bound_it()
+    public void A_type_is_found_in_an_annotation_AND_in_an_initializer()
     {
-        // The annotation, which the resolver binds. An initializer of the same type is NOT found —
-        // see A_struct_initializer_is_not_found_and_why below.
+        // The test that needs both tables: the annotation is bound by the resolver, the initializer
+        // by the sema. Either alone gives half of this list.
+        //
+        // The second site is the WHOLE initializer, because a StructInitExpr carries no span for the
+        // type name it opens with — the same limit as a member access.
         var sites = Sites(
             "struct Po$int { x: int, }\n"
             + "fn main(): int {\n    let p: Point = Point { x = 1 };\n    return p.x;\n}\n");
 
-        Assert.Equal(["Point"], sites);
+        Assert.Equal(["Point", "Point { x = 1 }"], sites);
     }
 
     [Fact]
@@ -95,7 +98,9 @@ public sealed class ReferenceTests
             + "fn take(xs: Item[]): int { return 0; }\n"
             + "fn main(): int {\n    let one: Item = Item { v = 1 };\n    return take([one]);\n}\n");
 
-        Assert.Equal(["Item", "Item"], sites);
+        // The element type of the parameter and the annotation, both from the resolver, plus the
+        // initializer from the sema.
+        Assert.Equal(["Item", "Item", "Item { v = 1 }"], sites);
     }
 
     [Fact]
@@ -236,19 +241,12 @@ public sealed class ReferenceTests
     // ------------------------------------------------------------------ the recorded limit
 
     [Fact]
-    public void A_struct_initializer_is_not_found_and_why()
+    public void A_struct_initializer_is_a_reference_to_its_type()
     {
-        // 'Point { … }' names its type and is bound to no symbol, so it is invisible here.
-        //
-        // Recording it looks like a one-line addition in CheckStructInit and is not: TypeChecker
-        // reads the SAME table at the member-access path to decide whether a receiver is a type.
-        // An entry there turns 'Pair<int> { a = 6 }.a' into a static member access and rejects it —
-        // measured, by two failing tests and a guide chapter that stopped compiling. Separating
-        // "what does this refer to" from "what kind of receiver is this" is its own change.
-        // NULL rather than an empty list, and the difference is the point: the cursor is on nothing
-        // the compiler bound. Walking outwards from here reaches the enclosing 'let p = …', which is
-        // bound to 'p' for the definite-assignment analysis — answering with THAT was the behaviour
-        // before this slice, and it is a wrong answer rather than a missing one.
+        // The cursor stands inside 'Point { x = 1 }' and the answer is about Point, not about the
+        // enclosing 'let p = …'. Both halves of that were wrong before: the initializer was bound to
+        // nothing, and the walk outwards then reached the binding, which is bound to 'p' for the
+        // definite-assignment analysis.
         const string program = "struct Point { x: int, }\nfn main(): int {\n"
             + "    let p = Point { x = 1 };\n    return p.x;\n}\n";
 
@@ -259,7 +257,15 @@ public sealed class ReferenceTests
         var file = DiagnosticMapper.FindFile(result.Sources, path);
         var offset = program.IndexOf("Point { x = 1 }", StringComparison.Ordinal) + 2;
 
-        Assert.Null(ReferenceProvider.At(result.Model, file, offset, includeDeclaration: false));
+        var sites = ReferenceProvider.At(result.Model, file, offset, includeDeclaration: true);
+
+        Assert.NotNull(sites);
+        var texts = sites
+            .OrderBy(s => s.Span.Start)
+            .Select(s => result.Sources.GetText(s.File).Substring(s.Span.Start, s.Span.Length))
+            .ToArray();
+
+        Assert.Equal(["Point", "Point { x = 1 }"], texts);
     }
 
     [Fact]

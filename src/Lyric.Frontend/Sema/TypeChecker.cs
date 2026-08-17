@@ -1437,13 +1437,23 @@ public sealed class TypeChecker
     {
         // CheckTarget rather than CheckExpr: a type or module name is allowed here.
         var targetType = CheckTarget(mem.Target, scope);
-        switch (TargetSymbol(mem.Target))
+
+        // Whether the receiver NAMES something or produces a value is what CheckTarget has just
+        // decided: a NonValueType is a name, everything else is a value. Asking the reference table
+        // instead is a second answer to that question and the weaker one — the table knows that
+        // 'Point { … }' mentions Point, not that it BUILDS one, and would dispatch the member as if
+        // the type itself stood there.
+        //
+        // An unresolvable import gives an error type and falls through: InstanceMemberOf has no case
+        // for it and the IsError check below returns without a second diagnostic.
+        switch (targetType)
         {
-            case TypeSymbol ts:
+            case NonValueType { Symbol: TypeSymbol ts } named:
                 return BindMember(mem, MemberOfType(ts, mem.Member, mem.Span,
-                    (targetType as NonValueType)?.Instance ?? ExpectedInstance(expected, ts)));
-            case ModuleSymbol mod: return BindMember(mem, MemberOfModule(mod, mem.Member, mem.Span));
-            case ExternalSymbol: return LyrType.Error;
+                    named.Instance ?? ExpectedInstance(expected, ts)));
+
+            case NonValueType { Symbol: ModuleSymbol mod }:
+                return BindMember(mem, MemberOfModule(mod, mem.Member, mem.Span));
         }
 
         var baseType = mem.IsOptional && targetType is Optional opt ? opt.Inner : targetType;
@@ -1764,6 +1774,13 @@ public sealed class TypeChecker
         return r.type;
     }
 
+    /// <summary>
+    /// The symbol a callee expression was bound to, through an import binding to what it imports.
+    ///
+    /// <para>A question about the table and nothing else. It does NOT answer what kind of thing the
+    /// expression is — <c>CheckMember</c> reads that off the type, because the table cannot tell a
+    /// type NAME from an expression that builds a value of that type.</para>
+    /// </summary>
     private Symbol? TargetSymbol(Expr target)
     {
         var sym = _result.RefOf(target);
@@ -1963,6 +1980,12 @@ public sealed class TypeChecker
             foreach (var f in si.Fields) CheckExpr(f.Value, scope);
             return LyrType.Error;
         }
+
+        // The initializer names its type, and until now that name was resolved and dropped — the
+        // enum variant case records its symbol, this one did not, so nothing knew that
+        // 'Point { … }' refers to Point. Safe to record only now that no consumer reads this table
+        // to decide what KIND of receiver an expression is.
+        _result.BindRef(si, ts);
 
         // A HOST type cannot be constructed. It has no layout this module knows: the host creates it
         // and the script passes it on. Without this diagnostic it is a compiler crash — the lowering
