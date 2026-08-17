@@ -14,6 +14,7 @@ The standard library is written in Lyric and ships as source alongside the toolc
 | `std.io.console` | `print`, `println`, `readLine` |
 | `std.io.file` | reading and writing files — requires `fileAccess` |
 | `std.os` | environment, process, exit — requires `osAccess` |
+| `std.build` | `addExecutable` — only a `build.lyr` run by `lyric build` can use it |
 
 ## Collections
 

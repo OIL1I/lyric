@@ -1,0 +1,22 @@
+module std.build;
+
+/// One thing a build produces: a `.lyrbc` compiled from an entry file.
+///
+/// Returned by `addExecutable`, and configured after the fact — the compile itself happens once
+/// `build` has returned, so an option set on the next line still applies.
+pub class Artifact {
+    /// Whether the module carries a source map. On by default, as for `lyric build`.
+    ///
+    /// Without one a panic names the function it happened in rather than the line.
+    fn sourceMap(on: bool): void;
+}
+
+/// Declares a program to compile: `entry` is its main file, `output` the `.lyrbc` to write.
+///
+/// Both are relative to the directory holding `build.lyr`. The module root and the native roots
+/// come from `lyric.json`; this does not repeat them.
+///
+/// Nothing is compiled while `build` runs. The artifacts are collected and built afterwards, so
+/// work the script does in between — writing a generated source file, for instance — is finished
+/// before any of them is read.
+pub fn addExecutable(entry: string, output: string): Artifact;

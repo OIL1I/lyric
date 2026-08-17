@@ -75,7 +75,8 @@ public sealed class ArchitectureTests
         Assert.Contains("lyric.dll", shipped);   // itself
         Assert.Contains("lyrc.dll", shipped);    // the tools lie next to it,
         Assert.Contains("lyrvm.dll", shipped);   // because it looks for them there
-        Assert.Contains("lyrrepl.dll", shipped); // seit ADR-021 auch die REPL
+        Assert.Contains("lyrrepl.dll", shipped);  // the REPL
+        Assert.Contains("lyrbuild.dll", shipped); // and the build runner
     }
 
     [Fact]
@@ -86,26 +87,29 @@ public sealed class ArchitectureTests
         // Tool.All; when it grows, this test fails until the copy target in Lyric.Cli.csproj follows.
         var shipped = LyricAssemblies("Lyric.Cli");
 
-        foreach (var tool in new[] { "lyrc.dll", "lyrvm.dll", "lyrrepl.dll" })
+        foreach (var tool in new[] { "lyrc.dll", "lyrvm.dll", "lyrrepl.dll", "lyrbuild.dll" })
             Assert.Contains(tool, shipped);
     }
 
-    [Fact]
-    public void The_repl_is_the_one_tool_that_needs_both_sides()
+    [Theory]
+    [InlineData("Lyrrepl", "lyrrepl.dll")]
+    [InlineData("Lyrbuild", "lyrbuild.dll")]
+    public void The_tools_that_need_both_sides_are_these_two(string project, string assembly)
     {
-        // The exception, stated explicitly rather than left as a gap: a REPL compiles AND executes, and
-        // the state has to live in between — 'lyric run' solves that with two subprocesses, which does
-        // not work interactively.
+        // The exceptions, stated explicitly rather than left as a gap. A REPL compiles AND executes and
+        // the state has to live in between; a build runner runs a script and then compiles what the
+        // script collected, which lives in the objects it was handed. 'lyric run' solves neither with
+        // two subprocesses.
         //
-        // That it has both libraries does not contradict the boundary: the edge separates the LIBRARIES,
-        // it does not forbid using both. That they can be combined without softening the cut is the proof
-        // that the cut lies cleanly, and the separation for lyrc and lyrvm holds unchanged.
-        var shipped = LyricAssemblies("Lyrrepl");
+        // That they have both libraries does not contradict the boundary: the edge separates the
+        // LIBRARIES, it does not forbid using both. That they can be combined without softening the cut
+        // is the proof that the cut lies cleanly, and the separation for lyrc and lyrvm holds unchanged.
+        var shipped = LyricAssemblies(project);
 
         Assert.Contains(Shared, shipped);
         Assert.Contains(Frontend, shipped);
         Assert.Contains(Runtime, shipped);
-        Assert.Contains("lyrrepl.dll", shipped);
+        Assert.Contains(assembly, shipped);
     }
 
     [Fact]

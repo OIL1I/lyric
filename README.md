@@ -87,6 +87,7 @@ target directory is wiped first. What the toolchain itself contributes, and noth
 ```
 lyric.exe  lyrc.exe               driver and compiler
 lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
+lyrbuild.exe                       build runner, for a build.lyr
 lyrls.exe                          language server, for editors
 lyrcore.dll                        diagnostics and the bytecode reader
 lyrfe.dll                          lexer through emitter
@@ -117,6 +118,7 @@ That is what a release ships, one archive per platform.
 | `lyrc` | Compiler: `build`, `check`, and the `lower`/`parse`/`tokenize` dumps |
 | `lyrvm` | Runtime: `run`, `disasm`, `verify` on `.lyrbc` |
 | `lyrrepl` | Interactive prompt |
+| `lyrbuild` | Runs a `build.lyr` and compiles what it declares |
 | `lyrls` | Language server: diagnostics and hover over stdio, started by an editor |
 
 `lyrembed.dll` is the host library: compile and run Lyric from C#.
@@ -148,6 +150,7 @@ lyric/
 │   ├── Lyrc/             → lyrc.exe
 │   ├── Lyrvm/            → lyrvm.exe
 │   ├── Lyrrepl/          → lyrrepl.exe
+│   ├── Lyrbuild/         → lyrbuild.exe
 │   ├── Lyrls/            → lyrls.exe
 │   └── Lyric.Cli/        → lyric.exe
 ├── stdlib/               standard library, written in Lyric
