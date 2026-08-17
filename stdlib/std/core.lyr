@@ -4,16 +4,28 @@
 // the VM with a backtrace. The compiler binds the call without anyone importing 'std.core', the
 // same model as the f-string helpers in 'std.string'.
 
+/// What the language itself needs: aborting with a reason, the ready-made `Throwable`, and the
+/// interfaces the built-in types satisfy.
+///
+/// `panic` and `coroutineEnded` are bound by the compiler, so nothing has to import this module to
+/// reach them.
 module std.core;
 
 // For the Display extensions below. 'std.string' does not import 'std.core', so there is no cycle,
 // and even one would terminate because the loader registers before descending.
 import std.string { fromInt, fromFloat, fromBool, fromChar, length, charAt };
 
+/// Ends the program with `message` and a backtrace.
+///
+/// Not catchable. Its return type is `never`, so the flow analysis treats everything after a call as
+/// unreachable — which is why `expect` can return a non-optional after panicking.
 pub fn panic(message: string): void;
 
 // A 'resume' on a coroutine whose body has run to the end. Bound by the compiler like 'panic':
 // the call sits in a dispatcher nobody wrote, so nobody could have written the import either.
+/// Panics because a coroutine was resumed after its body had run to the end.
+///
+/// Called from a dispatcher nobody wrote, which is why nobody could have written the import either.
 pub fn coroutineEnded(): void;
 
 // ------------------------------------------------------------------------ aborting with a reason
@@ -24,20 +36,26 @@ pub fn coroutineEnded(): void;
 // They are `void`, and the flow analysis draws nothing from `panic`'s `never` return type here, so
 // `fn f(): int { todo("x"); }` is `LYR-SEM0017`: they do not replace a `return`.
 
-// Panics with `message` when `condition` is false, for invariants the compiler does not check.
+/// Panics with `message` when `condition` is false, for invariants the compiler does not check.
+///
+/// `void` rather than `never`: it does not replace a `return`, and a function ending in `assert` is
+/// still `LYR-SEM0017`.
 pub fn assert(condition: bool, message: string): void {
     if (!condition) {
         panic(message);
     }
 }
 
-// A place that is still missing. Unlike a comment, it reports itself when executed.
+/// Marks a place that is still missing. Unlike a comment it reports itself when reached, with
+/// `not implemented:` before the message.
 pub fn todo(message: string): void {
     panic("not implemented: " + message);
 }
 
-// A branch the author considers unreachable. `todo` means "still to come", `unreachable` means
-// "must never happen"; if it does, an assumption stated elsewhere is wrong.
+/// Marks a branch that must never be taken, with `unreachable:` before the message.
+///
+/// `todo` means *still to come*; this means *must never happen*. Reaching it says that an assumption
+/// stated somewhere else is wrong.
 pub fn unreachable(message: string): void {
     panic("unreachable: " + message);
 }
@@ -48,9 +66,12 @@ pub fn unreachable(message: string): void {
 //
 // The field is `text` and not `message`, because `Throwable` requires a METHOD `message()` and the
 // two cannot share a name.
+
+/// The ready-made `Throwable` for throwing a message: `throw Exception { text = "…" };`.
 pub class Exception :: [Throwable] {
     text: string,
 
+    /// The text this exception was built with.
     pub fn message(): string {
         return this.text;
     }
@@ -64,7 +85,13 @@ pub class Exception :: [Throwable] {
 //
 // A value held through the interface ('let d: Display = 5;') stays rejected: a fat pointer needs a
 // reference, and a scalar has none.
+/// What can be rendered as text — the anchor for `write`, `writeln` and `std.fmt`.
+///
+/// Every built-in scalar satisfies it through an `extend`, and a user type through `::`. A value
+/// held THROUGH the interface (`let d: Display = 5;`) stays rejected: an interface value is a fat
+/// pointer and needs a reference, which a scalar has none of.
 pub interface Display {
+    /// This value as text.
     fn show(): string;
 }
 
@@ -101,19 +128,34 @@ extend string :: [Display] {
 // `Hashable` does not inherit from `Equatable`: there is no interface inheritance. A caller that
 // needs both requires both: `K :: [Hashable<K>, Equatable<K>]`.
 
+/// Values of this type can be compared for equality.
+///
+/// Generic rather than `fn equals(other: Equatable)`, so both sides carry the concrete type: an
+/// interface as a parameter type would need an interface VALUE, and a scalar cannot be one — there
+/// would be no `Map<int, V>`.
 pub interface Equatable<T> {
+    /// Whether the two are equal.
     fn equals(other: T): bool;
 }
 
-// The invariant no compiler checks and every hash table needs: equal values must produce equal
-// hashes. The reverse does not hold; two different values may collide.
+/// Values of this type can be hashed, which is what a `Map` key and a `Set` element need.
+///
+/// **Equal values must produce equal hashes.** No compiler checks it and every hash table depends on
+/// it. The reverse does not hold — two different values may collide.
+///
+/// It does not imply `Equatable`; there is no interface inheritance. A caller needing both requires
+/// both: `K :: [Hashable<K>, Equatable<K>]`.
 pub interface Hashable<T> {
+    /// The hash of this value.
     fn hash(): int;
 }
 
-// Negative, zero, positive, as `strcmp`. One comparison instead of four methods: `<`, `<=`, `>`
-// and `>=` all derive from it.
+/// Values of this type have an order — what sorting and range queries need.
+///
+/// One comparison instead of four methods: `<`, `<=`, `>` and `>=` all derive from it.
 pub interface Ordered<T> {
+    /// Negative when this comes first, zero when the two are equal, positive when `other` comes
+    /// first — as `strcmp`.
     fn compare(other: T): int;
 }
 

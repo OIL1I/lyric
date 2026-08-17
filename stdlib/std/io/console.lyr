@@ -6,6 +6,10 @@
 //
 // No capability is required: console output is always available.
 
+/// Reading from and writing to the console.
+///
+/// Output needs no capability — it is always available. `write` and `writeln` take any type that
+/// satisfies `Display`; `print` and `println` take the `string` the host boundary is defined in.
 module std.io.console;
 
 import std.core { Display };
@@ -21,40 +25,64 @@ import std.iter { Iterator };
 //
 // A hello-world therefore carries `RangeIterator.next` and `StringIterator.next` with it. That is
 // a missing reachability analysis in the lowering, and it can be added without a format change.
+
+/// Writes to standard output without a line break.
+///
+/// Nothing is flushed. A prompt written with `print` sits in the buffer until `flush`, which is why
+/// `prompt` exists.
 pub fn print(value: string);
+
+/// Writes to standard output, followed by a line break.
 pub fn println(value: string);
+
+/// Writes to standard ERROR, followed by a line break.
+///
+/// Diagnostics belong here rather than in standard output, so a program used in a pipe does not put
+/// them into the data.
 pub fn eprintln(value: string);
 
-// `write(42)`, `write(true)`, `write("hi")`. There is no overloading; a constraint does the same
-// job and extends to every type that satisfies `Display` rather than to a fixed list.
-//
-// Monomorphization turns this into a direct call per used type, so the generality costs nothing at
-// runtime.
+/// Writes any displayable value without a line break: `write(42)`, `write(true)`, `write("hi")`.
+///
+/// There is no overloading; the `Display` constraint does the same job and extends to every type
+/// that satisfies it rather than to a fixed list. Monomorphization turns the call into a direct one
+/// per used type, so the generality costs nothing at runtime.
 pub fn write<T :: [Display]>(value: T): void {
     print(value.show());
 }
 
+/// Writes any displayable value, followed by a line break.
 pub fn writeln<T :: [Display]>(value: T): void {
     println(value.show());
 }
 
 // ------------------------------------------------------------------------------ input
-//
-// `?string`, because EOF is a state rather than an error: the input has ended.
+
+/// Reads one line from standard input, without its line break.
+///
+/// `null` at end of input. Optional rather than an empty string, because EOF is a state and not a
+/// line: a program reading until `null` stops, one reading until `""` never does.
 pub fn readLine(): ?string;
 
-// Everything up to EOF, for filters that need the whole text.
+/// Reads everything up to end of input, for filters that need the whole text.
+///
+/// The input is held in memory in full. `lines` is the way through a stream larger than that.
 pub fn readAll(): string;
 
-// A single code point.
+/// Reads a single code point, or `null` at end of input.
 pub fn readChar(): ?char;
 
-// Terminal or pipe: a program writing into a pipe should not put a prompt into the stream.
+/// Whether standard input and output are a terminal rather than a pipe.
+///
+/// A program writing into a pipe should not put a prompt into the stream, and this is how it knows.
 pub fn isInteractive(): bool;
 
-// Needed as soon as a prompt is written without a line break.
+/// Pushes buffered output to the console.
+///
+/// Needed as soon as something is written without a line break and has to be visible before the
+/// program continues — a prompt being the usual case.
 pub fn flush(): void;
 
+/// Writes to standard error without a line break.
 pub fn eprint(value: string);
 
 // From here on: written in Lyric, not native.
@@ -62,23 +90,21 @@ pub fn eprint(value: string);
 // Both could be written in the host and would be shorter there. Every native is a signature the
 // bytecode contract has to carry, so what the language can express stays on this side.
 
-// Writes the question, flushes, reads the answer. Without the flush the question would sit in
-// the buffer while the program waits.
+/// Writes `text`, flushes it, and reads one line.
+///
+/// The flush is the point: without it the question would sit in the buffer while the program waits
+/// for an answer nobody knows is expected. `null` at end of input, as `readLine`.
 pub fn prompt(text: string): ?string {
     print(text);
     flush();
     return readLine();
 }
 
-// The idiomatic shape of a filter:
-//
-//     for (line in console.lines()) { ... }
-//
-// An iterator rather than a `string[]`: the input can be larger than memory, and a program that
-// only counts should not have to collect it first.
+/// The iterator `lines` hands out. Yields each line of standard input until it ends.
 pub class LineIterator :: [Iterator<string>] {
     done: bool = false,
 
+    /// The next line, or `null` once the input has ended. Ends for good after the first `null`.
     pub mut fn next(): ?string {
         if (this.done) {
             return null;
@@ -91,6 +117,12 @@ pub class LineIterator :: [Iterator<string>] {
     }
 }
 
+/// The lines of standard input, as an iterator — the idiomatic shape of a filter:
+///
+///     for (line in console.lines()) { … }
+///
+/// An iterator rather than a `string[]`: the input can be larger than memory, and a program that
+/// only counts should not have to collect it first.
 pub fn lines(): Iterator<string> {
     return LineIterator { };
 }

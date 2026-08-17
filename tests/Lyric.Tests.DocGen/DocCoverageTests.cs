@@ -18,10 +18,10 @@ namespace Lyric.Tests.DocGen;
 public class DocCoverageTests
 {
     /// <summary>
-    /// The documented items counted on 2026-08-15, out of 346 on the public surface. The target is
-    /// all of them; <c>std.core</c>, <c>std.option</c> and <c>std.io.console</c> carry none.
+    /// The documented items counted on 2026-08-17, out of 346 on the public surface. The target is
+    /// all of them.
     /// </summary>
-    private const int Floor = 70;
+    private const int Floor = 110;
 
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
@@ -55,9 +55,15 @@ public class DocCoverageTests
             $"Raise DocCoverageTests.Floor to {documented}.");
     }
 
-    /// <summary>Which modules carry nothing at all — the list a writer works through.</summary>
+    /// <summary>
+    /// Which modules carry nothing at all.
+    ///
+    /// <para>The list a writer worked through, and it is now empty. It stays as an assertion rather
+    /// than being deleted: a module added without a single line would show up here, which is the
+    /// cheapest moment to notice.</para>
+    /// </summary>
     [Fact]
-    public void The_modules_without_any_documentation_are_the_known_ones()
+    public void No_module_is_left_without_any_documentation()
     {
         var model = StdlibExtractor.Extract(Path.Combine(RepoRoot(), "stdlib"), RepoRoot());
         var bare = model.Modules
@@ -66,6 +72,6 @@ public class DocCoverageTests
             .OrderBy(p => p, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["std.core", "std.io.console", "std.option"], bare);
+        Assert.Equal([], bare);
     }
 }
