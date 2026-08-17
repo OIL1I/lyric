@@ -10,6 +10,68 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.5.0 — 2026-08-18
+
+Operators on your types. Everything resolves through the one mechanism this language has for
+polymorphism — the interface a type declares — so there is no operator declaration syntax, no new
+opcode, and the `.lyrbc` format stays **3.1**.
+
+### Added
+
+- **`==` and `!=` on every type conforming to `Equatable<T>`.** The operator *is* the method:
+  `a == b` calls `a.equals(b)`, and `a != b` negates it.
+
+  ```lyr
+  struct Point :: [Equatable<Point>] {
+      x: int,
+      fn equals(other: Point): bool { return this.x == other.x; }
+  }
+
+  let same = a == b;
+  ```
+
+  Conformance is required, not the method alone: a type with an `equals` nobody declared as
+  `Equatable` stays rejected, so no method becomes an operator by accident of its name.
+
+- **`<`, `<=`, `>` and `>=` on every type conforming to `Ordered<T>`** — one `compare` method,
+  negative/zero/positive, and all four operators read its sign. **`string < string` works**, through
+  the conformance the standard library has carried since v1.0; its rejection had promised exactly
+  this change.
+
+- **`+`, `-`, `*` and `/` on types conforming to `Add<T>`, `Sub<T>`, `Mul<T>` and `Div<T>`** — four
+  new `std.core` interfaces, one method each, homogeneous: `T op T` gives `T`. The built-in numerics
+  conform, `string` to `Add` alone, so a generic function constrained on `Add<T>` serves an `int`, a
+  `string` and your vector type in one program.
+
+- **`as` beyond the numerics converts through `Into<T>`.** `x as T` is `x.into()` where the
+  operand's type declares the conformance. Explicit only, one target per type, total conversions
+  only — a conversion that can fail belongs in a named function returning an optional. The numeric
+  casts keep their opcodes and are not overridable.
+
+- **`s *= 3` and `xs *= 2` work.** The repetition overloads of `*` had no compound form — an
+  accident of how compounds were checked, recorded as a limit. The compound check rework below
+  delivered them.
+
+### Fixed
+
+- **A compound assignment never checked its operator.** `p += p` on a struct passed the compiler and
+  produced an integer addition of two references at runtime — the `s += "x"` class of bug fixed in
+  v1.1.0, one type over. `s &= s` and `f <<= f` passed the same way. A compound is now typed as the
+  binary it carries: whatever `a = a + b` says, `a += b` says too.
+
+### Not in this release
+
+- **Heterogeneous operands** (`Vec2 * float`): needs a two-parameter interface and a rule for
+  multiple conformances to one generic interface.
+- **Compound assignment through the operator interfaces** (`v += w` on a `Vec2`): the compound
+  lowering evaluates the target's address once and cannot yet route through a call. The diagnostic
+  says to write `v = v + w`.
+- **`%` on user types**, and unary `-`: no interface exists for either, deliberately.
+- **A conversion out of a builtin** (`extend int :: [Into<Cents>]`): the orphan rule stops it, and
+  the rule does not look into type arguments. A named function takes its place.
+- **Method overloading**, considered and rejected: constraints plus generics are this language's
+  overloading, and the standard library says so itself.
+
 ## v1.4.0 — 2026-08-17
 
 Completion, and a standard library that says what it does. The language, the command line, the
