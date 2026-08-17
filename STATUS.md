@@ -41,8 +41,36 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.3.0 slice 2 — an editor can show what a file declares** (2026-08-17). 3454 tests green,
+  Debug and Release. Not merged.
+  - `textDocument/documentSymbol`, nested: types carry their fields, methods, variants and static
+    constants as children. Both ranges come from slice 1 — the declaration's span is what the editor
+    reveals, the name span what the cursor lands on — and the protocol's containment rule holds by
+    construction rather than by a check.
+  - **Nothing is resolved.** Not only cheap: an outline is read WHILE the file is broken, and one
+    that empties on a type error goes dark exactly when it is wanted. A test compiles a program with
+    a type error and still expects the full outline; it is green only as long as no binding or type
+    table is consulted.
+  - **Rejected: building it from `Compilation.Modules[i].Members`.** That table *is* the list of what
+    a module offers, and it is the wrong source twice — it has no source order, so the outline would
+    stand in hash order, and it exists only after resolution, which gives up the property above.
+  - **Only the nested form.** The protocol's flat alternative is deprecated, has no children and
+    needs a container name per entry; two answer shapes with different semantics is not the same as
+    one with a flag. A client that does not announce `hierarchicalDocumentSymbolSupport` gets
+    **null**. That is a claim about editors, not about the code: no current one is in that position.
+  - **Three of the ten `SymbolKind` mappings are a choice, not a translation** — the enum is closed
+    and was written for other languages. A type alias is `Class`, an `extend` block is `Namespace`,
+    and a function is `Method` only inside a type body. Each carries the reason beside it.
+  - **The method-versus-function distinction comes from the WALK.** The first attempt read it off
+    the declaration and was wrong: a body of `;` is a native at the top level and an abstract member
+    inside an interface. Only the caller knows which list it is descending. A test pins the bodiless
+    top-level case.
+  - `detail` stays empty, and the field is absent from the type rather than present and null.
+    Filling it needs a printer for `TypeNode`, and a second one beside `TypeFacts.Display` would be
+    a second answer to what a type is called.
+
 - [x] **v1.3.0 slice 3 — documentation reaches the model, and hover shows it** (2026-08-17). 3426
-  tests green, Debug and Release. Not merged.
+  tests green. Merged as PR #19.
   - The blocks were collected, looked up and consumed by `tools/DocGen` already; the table just died
     with the `Parser` instance that built it. Hover shows it under the signature, for the file being
     edited **and** every module it reads.
@@ -117,23 +145,6 @@ functions out of them and hands its own functions and types in.
   - **The fourth test is the counter-check**: a module nobody imports starts no cascade. Without it
     the other three would pass on a server that re-analyses every open document on every keystroke.
 
-- [x] **`lyric new` writes a project that builds** (2026-08-17). Merged as PR #15.
-  - Two shapes and two flags, as `zig init` and `cargo new` have them, rather than a template
-    system: **with two variants a discovery mechanism is more machinery than content.**
-  - **The templates are embedded in the binary** so nothing can go missing beside it the way a
-    stdlib directory can — and they stay real files in the repository, which is what lets the test
-    suite COMPILE them. `__name__` is a valid Lyric identifier, so a template is compilable Lyric
-    rather than text with holes in it, and a template that stopped building is a red test instead of
-    a first impression.
-  - `gitignore` is stored without its dot so it does not take effect in the repository that ships it.
-  - **The one command the driver runs itself**: it compiles nothing and executes nothing, so it needs
-    no library and breaks no contract the driver's project file states.
-  - **Found while writing the tests**: `Toolchain` starts every tool in the repository root, so a
-    scaffolding test that set the TEST process's directory wrote four projects into the repository.
-    `RunIn` gives the child its own working directory, which is the thing that actually decides
-    where `new` writes.
-
-
 ## Measurements
 
 Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
@@ -184,15 +195,12 @@ have bought an incremental compiler nobody needs.
 | Slice | What | Touches | State |
 |---|---|---|---|
 | 1 | A name span per declaration node | AST and parser | **done**, PR #18 |
-| 3 | Doc comments reach the `SemanticModel`, hover shows them | one front-end seam, server | **done, unmerged** |
-| 2 | `textDocument/documentSymbol` | server only | next |
-| 4 | `textDocument/references` and the reverse index under it | **front end** | |
+| 3 | Doc comments reach the `SemanticModel`, hover shows them | one front-end seam, server | **done**, PR #19 |
+| 2 | `textDocument/documentSymbol` | server only | **done, unmerged** |
+| 4 | `textDocument/references` and the reverse index under it | **front end** | next, and the only one left |
 
 Slice 3 was pulled ahead of slice 2 on 2026-08-17: the two do not depend on each other, both sit on
 the name span slice 1 delivered, and hover is used far more often than a symbol outline.
-
-**Slice 2 is the cheap one.** A walk over the entry module's declarations; `AstChildren` already
-provides the walk and nothing has to be resolved.
 
 **Slice 4 is the expensive one, and the reason has not moved.** Neither `BindingResult` nor the
 reference table of `TypeResult` can be enumerated, so "who else points at this symbol" cannot be
@@ -307,7 +315,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #18 from OIL1I/feature/name-spans` (`41f9392`)
+`Merge pull request #19 from OIL1I/feature/hover-docs` (`969579d`)
 
 ---
 
