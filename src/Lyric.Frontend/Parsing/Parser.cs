@@ -637,7 +637,8 @@ public sealed partial class Parser
                 TypeNode? type = null;
                 if (_buffer.Match(TokenKind.Colon)) type = ParseType();
                 var pspan = type is null ? nameTok.Span : Span.Union(nameTok.Span, type.Span);
-                parameters.Add(new LambdaParam(_sm.Slice(nameTok.Span).ToString(), type, pspan));
+                parameters.Add(new LambdaParam(_sm.Slice(nameTok.Span).ToString(), type, pspan)
+                    { NameSpan = nameTok.Span });
                 if (!_buffer.Match(TokenKind.Comma)) break;
                 if (_buffer.Check(TokenKind.RParen)) break; // trailing comma
             }

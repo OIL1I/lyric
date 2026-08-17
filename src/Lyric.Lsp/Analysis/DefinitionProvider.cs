@@ -1,12 +1,19 @@
+using Lyric.AST;
 using Lyric.Compiler;
 using Lyric.Core;
 using Lyric.Resolver;
 
 namespace Lyric.Lsp.Analysis;
 
-/// <summary>Where a name was declared: the file it stands in and the span of its declaration.
+/// <summary>
+/// Where a name was declared: the file it stands in, the span of the whole declaration, and the
+/// span of the name inside it.
+///
+/// <para>Both spans, because the two answer different questions and the protocol asks for both:
+/// what the jump reveals is the declaration, what it selects is the name.
+/// <paramref name="NameSpan"/> lies within <paramref name="Span"/>.</para>
 /// </summary>
-public sealed record DefinitionTarget(FileId File, Span Span);
+public sealed record DefinitionTarget(FileId File, Span Span, Span NameSpan);
 
 /// <summary>
 /// The declaration a name refers to.
@@ -56,8 +63,13 @@ public static class DefinitionProvider
         // definition — the diagnostic on the same span says so already.
         ExternalSymbol or ErrorSymbol => null,
 
+        // A node that declares a name knows where the name stands. One that does not is its own
+        // best answer: the span it covers is all there is to point at.
+        { Declaration: INamedDecl named } when named.Span.File.IsValid =>
+            new DefinitionTarget(named.Span.File, named.Span, named.NameSpan),
+
         { Declaration: { } node } when node.Span.File.IsValid =>
-            new DefinitionTarget(node.Span.File, node.Span),
+            new DefinitionTarget(node.Span.File, node.Span, node.Span),
 
         _ => null,
     };

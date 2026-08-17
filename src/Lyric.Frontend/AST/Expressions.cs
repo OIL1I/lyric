@@ -62,7 +62,10 @@ public sealed record InterpHole(Expr Expr, string? FormatSpec, Span Span) : Inte
 
 // --- lambdas ---
 public sealed record LambdaExpr(LambdaParam[] Parameters, TypeNode? ReturnType, Node Body, Span Span) : Expr(Span); // Body is an Expr or a Block
-public sealed record LambdaParam(string Name, TypeNode? Type, Span Span) : Node(Span);
+public sealed record LambdaParam(string Name, TypeNode? Type, Span Span) : Node(Span), INamedDecl
+{
+    public required Span NameSpan { get; init; }
+}
 
 // --- control flow as an expression ---
 // IfExpr branches are EXPRESSIONS rather than blocks, so a value is guaranteed. For statement blocks

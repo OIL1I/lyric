@@ -60,6 +60,10 @@ public sealed class LspServer : IDisposable
     private State _state = State.Starting;
     private bool _exitRequested;
 
+    /// <summary>Whether the client reads <see cref="LocationLink"/>. Read once from
+    /// <c>initialize</c>, because a client's capabilities do not change while it runs.</summary>
+    private bool _definitionLinkSupport;
+
     public LspServer(Stream input, Stream output, LspServerOptions? options = null)
     {
         _options = options ?? new LspServerOptions();
@@ -144,6 +148,14 @@ public sealed class LspServer : IDisposable
         {
             case LspMethods.Initialize when _state == State.Starting:
                 _state = State.Running;
+
+                // Unreadable parameters are not an error here: everything this server takes from
+                // them has a default, and refusing to initialize over an unknown capability would
+                // be a server that only talks to the clients it was tested against.
+                _definitionLinkSupport = LspJson.ReadParams(
+                    message.Params, LspJson.Default.InitializeParams)
+                    ?.Capabilities?.TextDocument?.Definition?.LinkSupport ?? false;
+
                 await SendResultAsync(id, BuildInitializeResult(),
                     LspJson.Default.InitializeResult, cancellationToken).ConfigureAwait(false);
                 return;
@@ -372,16 +384,31 @@ public sealed class LspServer : IDisposable
             ? parameters.TextDocument.Uri
             : DocumentUri.FromFilePath(targetPath);
 
-        var location = new Location
-        {
-            Uri = uri,
+        // Ranged against the snapshot's own source manager, which is where the span's offsets are
+        // valid — the same reason hover gives.
+        var name = SpanMapper.ToRange(snapshot.Sources, target.NameSpan);
 
-            // The START of the declaration rather than the whole of it. A struct with twenty
-            // members is a twenty-line span, and selecting all of it on a jump is noise; the AST
-            // records no span for the NAME alone, and finding it by searching the text would be a
-            // second, weaker way of knowing where it is.
-            Range = SpanMapper.ToStart(snapshot.Sources, target.Span),
-        };
+        if (_definitionLinkSupport)
+        {
+            LocationLink[] link =
+            [
+                new()
+                {
+                    TargetUri = uri,
+                    TargetRange = SpanMapper.ToRange(snapshot.Sources, target.Span),
+                    TargetSelectionRange = name,
+                },
+            ];
+
+            await SendResultAsync(id, link, LspJson.Default.LocationLinkArray, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        // The NAME rather than the whole declaration. A struct with twenty members is a twenty-line
+        // span, and selecting all of it on a jump is noise; a client without link support has one
+        // range for both questions, and the useful one is where the cursor should land.
+        var location = new Location { Uri = uri, Range = name };
 
         await SendResultAsync(id, location, LspJson.Default.Location, cancellationToken)
             .ConfigureAwait(false);

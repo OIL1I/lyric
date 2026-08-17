@@ -109,6 +109,56 @@ public sealed record Location
     public required Range Range { get; init; }
 }
 
+/// <summary>
+/// The richer answer to the same question: what the jump reveals and what it selects, kept apart.
+///
+/// <para>A client that announces <c>linkSupport</c> gets this instead of a
+/// <see cref="Location"/>. The gain is <see cref="TargetRange"/>: a peek widget shows the whole
+/// declaration and puts the cursor on the name, where a plain location has to choose one of the
+/// two.</para>
+/// </summary>
+public sealed record LocationLink
+{
+    /// <summary>The span the cursor came from. Left out — a client uses it to widen its own
+    /// highlight, and the compiler's node under the cursor is not always the whole name.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Range? OriginSelectionRange { get; init; }
+
+    public required string TargetUri { get; init; }
+
+    /// <summary>Everything the declaration covers, its body included.</summary>
+    public required Range TargetRange { get; init; }
+
+    /// <summary>The name inside it. Must be enclosed by <see cref="TargetRange"/>.</summary>
+    public required Range TargetSelectionRange { get; init; }
+}
+
+/// <summary>What the client announces it can handle. Only the parts this server acts on.</summary>
+public sealed record ClientCapabilities
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TextDocumentClientCapabilities? TextDocument { get; init; }
+}
+
+public sealed record TextDocumentClientCapabilities
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DefinitionClientCapabilities? Definition { get; init; }
+}
+
+public sealed record DefinitionClientCapabilities
+{
+    /// <summary>Whether the client understands <see cref="LocationLink"/>. Absent means no: a
+    /// client that never says so is one that would receive an object it cannot read.</summary>
+    public bool LinkSupport { get; init; }
+}
+
+public sealed record InitializeParams
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ClientCapabilities? Capabilities { get; init; }
+}
+
 public sealed record TextDocumentPositionParams
 {
     public required TextDocumentIdentifier TextDocument { get; init; }

@@ -143,7 +143,7 @@ public sealed partial class Parser
     {
         var isMut = _buffer.Match(TokenKind.Mut);
         _buffer.Expect(TokenKind.Fn, "LYR-PAR0032", $"expected 'fn', got {_buffer.Current.TokenKind}");
-        var name = ExpectName("LYR-PAR0026", "function name");
+        var name = ExpectNamed("LYR-PAR0026", "function name");
         var generics = _buffer.Check(TokenKind.Less) ? ParseGenericParams() : [];
 
         _buffer.Expect(TokenKind.LParen, "LYR-PAR0019", "expected '(' after function name");
@@ -174,8 +174,8 @@ public sealed partial class Parser
             end = _buffer.Expect(TokenKind.Semicolon, "LYR-PAR0016", "expected '{' or ';' to end function").Span;
         }
 
-        return new FunctionDecl(isPublic, isMut, isStatic, name, generics, parameters, returnType, throws, body,
-            Span.Union(start, end));
+        return new FunctionDecl(isPublic, isMut, isStatic, name.Name, generics, parameters, returnType, throws, body,
+            Span.Union(start, end)) { NameSpan = name.Span };
     }
 
     private Param[] ParseParamList()
@@ -200,11 +200,12 @@ public sealed partial class Parser
             }
 
             var isParams = _buffer.Match(TokenKind.Params);
-            var name = ExpectName("LYR-PAR0026", "parameter name");
+            var name = ExpectNamed("LYR-PAR0026", "parameter name");
             _buffer.Expect(TokenKind.Colon, "LYR-PAR0031", "expected ':' after parameter name");
             var type = ParseType();
             Expr? def = _buffer.Match(TokenKind.Equal) ? ParseExpr(0) : null;
-            parameters.Add(new Param(isParams, name, type, def, Span.Union(start, def?.Span ?? type.Span)));
+            parameters.Add(new Param(isParams, name.Name, type, def, Span.Union(start, def?.Span ?? type.Span))
+                { NameSpan = name.Span });
         } while (_buffer.Match(TokenKind.Comma));
         return parameters.ToArray();
     }
@@ -214,7 +215,7 @@ public sealed partial class Parser
     private Decl ParseStructOrClass(bool isPublic, Span start, bool isClass)
     {
         _buffer.Advance(); // 'struct' / 'class'
-        var name = ExpectName("LYR-PAR0026", isClass ? "class name" : "struct name");
+        var name = ExpectNamed("LYR-PAR0026", isClass ? "class name" : "struct name");
         var generics = _buffer.Check(TokenKind.Less) ? ParseGenericParams() : [];
         var interfaces = _buffer.Check(TokenKind.ColonColon) ? ParseInterfaceList() : [];
         _buffer.Expect(TokenKind.LBrace, "LYR-PAR0017", "expected '{' to open type body");
@@ -222,8 +223,8 @@ public sealed partial class Parser
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close type body");
         var span = Span.Union(start, close.Span);
         return isClass
-            ? new ClassDecl(isPublic, name, generics, interfaces, members, span)
-            : new StructDecl(isPublic, name, generics, interfaces, members, span);
+            ? new ClassDecl(isPublic, name.Name, generics, interfaces, members, span) { NameSpan = name.Span }
+            : new StructDecl(isPublic, name.Name, generics, interfaces, members, span) { NameSpan = name.Span };
     }
 
     // struct or class body: FieldDecl | FunctionDecl. A field needs a ',', a block-bodied method
@@ -284,11 +285,12 @@ public sealed partial class Parser
     private FieldDecl ParseField()
     {
         var start = _buffer.Current.Span;
-        var name = ExpectName("LYR-PAR0026", "field name");
+        var name = ExpectNamed("LYR-PAR0026", "field name");
         _buffer.Expect(TokenKind.Colon, "LYR-PAR0031", "expected ':' after field name");
         var type = ParseType();
         Expr? def = _buffer.Match(TokenKind.Equal) ? ParseExpr(0) : null;
-        return new FieldDecl(name, type, def, Span.Union(start, def?.Span ?? type.Span));
+        return new FieldDecl(name.Name, type, def, Span.Union(start, def?.Span ?? type.Span))
+            { NameSpan = name.Span };
     }
 
     // --- Enums (§3.4) ---
@@ -296,7 +298,7 @@ public sealed partial class Parser
     private Decl ParseEnum(bool isPublic, Span start)
     {
         _buffer.Advance(); // 'enum'
-        var name = ExpectName("LYR-PAR0026", "enum name");
+        var name = ExpectNamed("LYR-PAR0026", "enum name");
         var generics = _buffer.Check(TokenKind.Less) ? ParseGenericParams() : [];
         var interfaces = _buffer.Check(TokenKind.ColonColon) ? ParseInterfaceList() : [];
         _buffer.Expect(TokenKind.LBrace, "LYR-PAR0017", "expected '{' to open enum body");
@@ -315,8 +317,8 @@ public sealed partial class Parser
             ParseMethodSequence(methods, allowStatic: true);
 
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close enum body");
-        return new EnumDecl(isPublic, name, generics, interfaces, variants.ToArray(), methods.ToArray(),
-            Span.Union(start, close.Span));
+        return new EnumDecl(isPublic, name.Name, generics, interfaces, variants.ToArray(), methods.ToArray(),
+            Span.Union(start, close.Span)) { NameSpan = name.Span };
     }
 
     private EnumVariant ParseEnumVariant()
@@ -332,7 +334,8 @@ public sealed partial class Parser
             if (!_buffer.Check(TokenKind.RParen))
                 do { fields.Add(ParseType()); } while (_buffer.Match(TokenKind.Comma));
             var close = _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' to close tuple variant");
-            return new EnumVariant(name, fields.ToArray(), null, Span.Union(nameTok.Span, close.Span));
+            return new EnumVariant(name, fields.ToArray(), null, Span.Union(nameTok.Span, close.Span))
+                { NameSpan = nameTok.Span };
         }
 
         if (_buffer.Check(TokenKind.LBrace)) // struct variant
@@ -345,10 +348,11 @@ public sealed partial class Parser
                 if (!_buffer.Match(TokenKind.Comma)) break;
             }
             var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close struct variant");
-            return new EnumVariant(name, null, fields.ToArray(), Span.Union(nameTok.Span, close.Span));
+            return new EnumVariant(name, null, fields.ToArray(), Span.Union(nameTok.Span, close.Span))
+                { NameSpan = nameTok.Span };
         }
 
-        return new EnumVariant(name, null, null, nameTok.Span); // Unit
+        return new EnumVariant(name, null, null, nameTok.Span) { NameSpan = nameTok.Span }; // Unit
     }
 
     // --- Interfaces (§3.5) ---
@@ -356,7 +360,7 @@ public sealed partial class Parser
     private Decl ParseInterface(bool isPublic, Span start)
     {
         _buffer.Advance(); // 'interface'
-        var name = ExpectName("LYR-PAR0026", "interface name");
+        var name = ExpectNamed("LYR-PAR0026", "interface name");
         var generics = _buffer.Check(TokenKind.Less) ? ParseGenericParams() : [];
 
         // 'interface B :: [A]' — there is no interface inheritance. Without this case the parser
@@ -377,7 +381,8 @@ public sealed partial class Parser
         var members = new List<FunctionDecl>();
         ParseMethodSequence(members, allowStatic: false);
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close interface body");
-        return new InterfaceDecl(isPublic, name, generics, members.ToArray(), Span.Union(start, close.Span));
+        return new InterfaceDecl(isPublic, name.Name, generics, members.ToArray(), Span.Union(start, close.Span))
+            { NameSpan = name.Span };
     }
 
     // --- Extend (§3.6) ---
@@ -489,17 +494,21 @@ public sealed partial class Parser
         _de.Report("LYR-PAR0020", Severity.Error, parsed.Span,
             $"{what} needs a single name — destructuring is only allowed on local bindings");
 
-        return new BindingStmt(false, "<error>", null, null, parsed.Span);
+        // The name is missing rather than wrong, so its span is the empty one at the start of what
+        // stood there: inside the statement, which is what the containment rule asks for.
+        return new BindingStmt(false, "<error>", null, null, parsed.Span)
+            { NameSpan = parsed.Span with { End = parsed.Span.Start } };
     }
 
     private Decl ParseTypeAlias(bool isPublic, Span start)
     {
         _buffer.Advance(); // contextual 'type'
-        var name = ExpectName("LYR-PAR0026", "type alias name");
+        var name = ExpectNamed("LYR-PAR0026", "type alias name");
         _buffer.Expect(TokenKind.Equal, "LYR-PAR0028", "expected '=' in type alias");
         var aliased = ParseType();
         var semi = ExpectSemicolon();
-        return new TypeAliasDecl(isPublic, name, aliased, Span.Union(start, semi.Span));
+        return new TypeAliasDecl(isPublic, name.Name, aliased, Span.Union(start, semi.Span))
+            { NameSpan = name.Span };
     }
 
     // --- generics ---
@@ -523,7 +532,7 @@ public sealed partial class Parser
                 constraints = cs.ToArray();
             }
             parameters.Add(new GenericParam(_sm.Slice(nameTok.Span).ToString(), constraints,
-                Span.Union(nameTok.Span, end)));
+                Span.Union(nameTok.Span, end)) { NameSpan = nameTok.Span });
         } while (_buffer.Match(TokenKind.Comma));
         // A generic parameter list always closes with a plain '>', never a '>>'.
         _buffer.Expect(TokenKind.Greater, "LYR-PAR0009", "expected '>' to close type parameters");
@@ -550,10 +559,20 @@ public sealed partial class Parser
         return segments.ToArray();
     }
 
-    private string ExpectName(string code, string what)
+    private string ExpectName(string code, string what) => ExpectNamed(code, what).Name;
+
+    /// <summary>
+    /// The name and the span it stands at.
+    ///
+    /// <para>On failure <see cref="TokenBuffer.Expect"/> returns the offending token without
+    /// consuming it, so the span is the position where the name was expected — inside the
+    /// declaration being parsed, which keeps the containment every <see cref="INamedDecl"/>
+    /// promises.</para>
+    /// </summary>
+    private (string Name, Span Span) ExpectNamed(string code, string what)
     {
         var tok = _buffer.Expect(TokenKind.Identifier, code, $"expected {what}, got {_buffer.Current.TokenKind}");
-        return _sm.Slice(tok.Span).ToString();
+        return (_sm.Slice(tok.Span).ToString(), tok.Span);
     }
 
     /// <summary>A contextual keyword: an identifier with exactly this text (for example 'throws' or

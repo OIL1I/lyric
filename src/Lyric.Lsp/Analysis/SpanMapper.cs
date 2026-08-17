@@ -16,9 +16,9 @@ namespace Lyric.Lsp.Analysis;
 /// code units and the server announces <c>utf-16</c> as its position encoding, so the two agree by
 /// construction rather than by luck.</para>
 ///
-/// <para>Three forms, because the three consumers want different things from the same span — see
-/// each method. A single one with a flag would put the choice at the call site as a boolean, where
-/// the reason for it is invisible.</para>
+/// <para>Two forms, because the consumers want different things from the same span — see each
+/// method. A single one with a flag would put the choice at the call site as a boolean, where the
+/// reason for it is invisible.</para>
 /// </summary>
 public static class SpanMapper
 {
@@ -41,18 +41,6 @@ public static class SpanMapper
         var (start, end) = Clamp(sources, span);
         if (start == end && end < sources.GetText(span.File).Length) end++;
         return Between(sources, span.File, start, end);
-    }
-
-    /// <summary>
-    /// The start of the span, with no extent.
-    ///
-    /// <para>For a jump. The target of a definition is a whole declaration, and selecting thirty
-    /// lines of it is noise — what the reader wants is the cursor at its beginning.</para>
-    /// </summary>
-    public static Range ToStart(SourceManager sources, Span span)
-    {
-        var (start, _) = Clamp(sources, span);
-        return Between(sources, span.File, start, start);
     }
 
     /// <summary>
