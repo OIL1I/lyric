@@ -165,6 +165,26 @@ public sealed class NameSpanTests
     }
 
     [Fact]
+    public void A_global_names_itself_through_the_binding_it_wraps()
+    {
+        // A GlobalBindingDecl has no name of its own; it wraps a BindingStmt that does. A symbol
+        // declares from the WRAPPER, so both spans have to be reachable from there.
+        var (at, decl) = Single<GlobalBindingDecl>("/// The answer.\npub let answer = 42;\n");
+
+        Assert.Equal("answer", at);
+
+        // The declaration opens at 'pub', four characters before the name.
+        Assert.True(decl.NameSpan.Start > decl.Span.Start);
+    }
+
+    [Fact]
+    public void A_static_constant_names_itself_through_the_binding_it_wraps()
+    {
+        var (at, _) = Single<StaticBindingDecl>("struct P {\n    static let origin = 0;\n}\n");
+        Assert.Equal("origin", at);
+    }
+
+    [Fact]
     public void A_loop_variable_names_itself_and_not_the_loop()
     {
         var (at, decl) = Single<ForInStmt>(
@@ -256,6 +276,11 @@ public sealed class NameSpanTests
     ///
     /// <para>Reflection rather than a maintained list of implementors: a list would be the second
     /// description of the same set and would drift from the first.</para>
+    ///
+    /// <para>What it does NOT reach: a node that declares a name through a node it WRAPS, and so
+    /// has no <c>Name</c> of its own to be found by. <c>GlobalBindingDecl</c> was exactly that and
+    /// went unnoticed here; a hover test caught it. The question "which nodes can a symbol declare
+    /// from" is not answerable from the assembly, so this asks the half that is.</para>
     /// </summary>
     [Theory]
     [MemberData(nameof(NodeTypesWithAName))]

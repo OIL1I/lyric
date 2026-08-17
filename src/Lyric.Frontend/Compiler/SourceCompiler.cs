@@ -72,7 +72,8 @@ public static class SourceCompiler
         report?.EndPhase();
 
         report?.BeginPhase(Phase.Parse, source.DisplayName);
-        var entry = new Parser(sources, id, diagnostics).ParseModule();
+        var parsedEntry = ParsedModule.Parse(sources, id, diagnostics);
+        var entry = parsedEntry.Ast;
         report?.EndPhase();
 
         // The module loader times itself: Compilation.Resolve loads the imported modules
@@ -122,7 +123,8 @@ public static class SourceCompiler
                 if (!provided.TryGetValue(name, out var text)) return fromDisk(modulePath);
 
                 var id = sources.AddVirtual(name, text);
-                return (new Parser(sources, id, diagnostics).ParseModule(), true);
+                var parsed = ParsedModule.Parse(sources, id, diagnostics);
+                return new LoadedModule(parsed.Ast, IsNative: true, parsed.Documentation);
             };
         }
 
@@ -142,7 +144,7 @@ public static class SourceCompiler
                 return result;
             },
         };
-        compilation.AddModule(entry, source.ModuleName);
+        compilation.AddModule(entry, source.ModuleName, documentation: parsedEntry.Documentation);
 
         report?.BeginPhase(Phase.Load);
         var resolveStarted = Stopwatch.GetTimestamp();
@@ -243,7 +245,16 @@ public sealed record SemanticModel(
     Compilation Compilation,
     Module Entry,
     BindingResult Binding,
-    TypeResult Types);
+    TypeResult Types)
+{
+    /// <summary>
+    /// What was written above each declaration, across every module that was read.
+    ///
+    /// <para>Forwarded rather than stored: the compilation gathers it as modules arrive, and a copy
+    /// here would be a second table to keep in step with the first.</para>
+    /// </summary>
+    public DocumentationTable Documentation => Compilation.Documentation;
+}
 
 public sealed record CompilerOptions
 {

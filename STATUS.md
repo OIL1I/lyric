@@ -41,8 +41,40 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.3.0 slice 3 — documentation reaches the model, and hover shows it** (2026-08-17). 3426
+  tests green, Debug and Release. Not merged.
+  - The blocks were collected, looked up and consumed by `tools/DocGen` already; the table just died
+    with the `Parser` instance that built it. Hover shows it under the signature, for the file being
+    edited **and** every module it reads.
+  - **Keyed by node identity**, like every other side table here. The parser collects by source
+    OFFSET, the only key available while there are no nodes yet — and an offset counts within one
+    file, so two modules both have one at 42. A compilation-wide table keyed that way answers with
+    another module's documentation. A test puts two documented declarations at the same offset.
+  - **The loader boundary carries it**, rather than a sink threaded through construction.
+    `LoadedModule` replaces the `(Ast, IsNative)` tuple, so a loader that produces no documentation
+    does not compile. The exception is `AddModule`, where the parameter is optional: ~90 call sites
+    are tests with nothing to pass. **That one place is covered by a test rather than the compiler**,
+    and it is worth saying rather than claiming the seam is total.
+  - `ParsedModule.Parse` is the single place that parses AND binds blocks to nodes, because the
+    translation from offset to identity has to happen while the parser is in hand. Its walk uses
+    `INamedDecl` as the predicate — **slice 1 already answered which nodes can carry a name, and
+    that is the same set that can carry a block.**
+  - **This slice found a hole in slice 1.** `GlobalBindingDecl` and `StaticBindingDecl` declare their
+    name through the `BindingStmt` they WRAP, so they have no `Name` of their own and the
+    assembly-driven test could not see them — while a symbol declares from the wrapper. Both
+    implement `INamedDecl` now, which also makes the jump to a global land on its name instead of on
+    `pub`. The limit is recorded in that test's docstring: *which nodes a symbol can declare from* is
+    not a question the assembly can answer.
+  - The text goes through **unchanged**. There is no doc-comment vocabulary in the grammar, so there
+    is nothing to interpret, and composing a summary from a signature would be the server writing
+    documentation rather than showing it.
+  - A declaration without a block is answered **byte for byte** as before — pinned with `Assert.Equal`
+    on the whole string, not a `DoesNotContain`. That is what makes the slice additive.
+  - Noticed on the way: **`std/io/console.lyr` carries no doc comment at all.** The 166 `///` lines
+    of the standard library sit in eight other files, so `println` still hovers without prose.
+
 - [x] **v1.3.0 slice 1 — a declaration records where its name stands** (2026-08-17). 3405 tests
-  green, Debug and Release. Not merged.
+  green. Merged as PR #18.
   - `INamedDecl` over thirteen nodes, and a jump now SELECTS the name instead of pointing at the
     start of the declaration. The severe cases were never the structs: a `ForInStmt` and a
     `CatchClause` span their bodies, so the jump used to select the whole loop.
@@ -101,46 +133,6 @@ functions out of them and hands its own functions and types in.
     `RunIn` gives the child its own working directory, which is the thing that actually decides
     where `new` writes.
 
-- [x] **A project may be built by a script, `build.lyr`** (2026-08-17). Merged as PR #14.
-  - `lyric build` without a file argument runs it and compiles what it declares; **with** a file it
-    still means "compile this file", so nothing that worked before changes.
-  - **Nothing is compiled while the script runs.** It collects, and the compiles happen once `build`
-    has returned — which is why an option set on the following line still applies, and why a source
-    file the script generates is finished before anything reads it.
-  - Every artifact is a whole-program compile of its own. **No link step**, and nothing is shared
-    between two of them but the source on disk.
-  - `lyrbuild` is a binary of its own, the second after `lyrrepl` holding both front end and runtime:
-    a build script has to RUN and what it collects has to be COMPILED, and two subprocesses cannot do
-    that because the artifacts live in the objects the script was handed. The architecture test now
-    states two exceptions rather than one.
-  - **The test that decides the shape** is the script that WRITES a source file and then declares it.
-    Without it a build script would be a manifest with parentheses, and those values belong in
-    `lyric.json`.
-
-- [x] **A project may say where its modules are, `lyric.json`** (2026-08-17). PRs #11, #12, #13.
-  - Two optional keys. `sourceRoot` replaces the entry file's directory as the module root;
-    `nativeRoots` maps a module path segment to a directory whose modules may declare functions
-    without a body. Searched for upwards, so it is found from anywhere in the project.
-  - **JSON with comments and trailing commas allowed.** The usual objection to JSON as a project
-    format is exactly those two, and TOML would have been **the first external dependency in a
-    shipped binary** — the toolchain has none today and an architecture test guards what the archive
-    holds.
-  - **`SourceCompiler` does NOT discover the file.** A script being compiled must not be able to
-    widen what the compiler looks at by placing a file beside itself, so the decision belongs to the
-    caller: the CLI reads it, the embedding API is untouched.
-  - **The load-bearing test is that a project WITHOUT the file behaves exactly as before** — an
-    addition that changes the old case is a break wearing a new name.
-  - The language server reads it too (#12). **A broken project file does not stop the analysis**: the
-    fallback resolves by the plain rules and says so in the client's log, because publishing nothing
-    leaves an earlier state on screen with no hint that anything happened. The message names the
-    project file rather than appearing inside the file being edited, and is said once per change
-    rather than once per keystroke.
-  - Its second test gives the first its meaning: without the project file the same import is unknown.
-  - **A bodiless method no longer needs a semicolon and a comma in a row** (#13). The condition asked
-    for a BLOCK body, so a member closing itself with `;` fell through to the branch demanding the
-    separator — while the comment beside it already said the rule exists for fields alone. Reachable
-    because the first stdlib class of host objects declares its surface as bodiless methods and
-    `stdlib/` is rendered into the generated reference.
 
 ## Measurements
 
@@ -191,19 +183,16 @@ have bought an incremental compiler nobody needs.
 
 | Slice | What | Touches | State |
 |---|---|---|---|
-| 1 | A name span per declaration node | AST and parser | **done, unmerged** |
+| 1 | A name span per declaration node | AST and parser | **done**, PR #18 |
+| 3 | Doc comments reach the `SemanticModel`, hover shows them | one front-end seam, server | **done, unmerged** |
 | 2 | `textDocument/documentSymbol` | server only | next |
-| 3 | Doc comments reach the `SemanticModel`, hover shows them | one front-end seam, server | |
 | 4 | `textDocument/references` and the reverse index under it | **front end** | |
+
+Slice 3 was pulled ahead of slice 2 on 2026-08-17: the two do not depend on each other, both sit on
+the name span slice 1 delivered, and hover is used far more often than a symbol outline.
 
 **Slice 2 is the cheap one.** A walk over the entry module's declarations; `AstChildren` already
 provides the walk and nothing has to be resolved.
-
-**Slice 3 is cheaper than this file used to claim.** The old wording said `///` "reaches no AST
-node", which is true and understates it: `TokenBuffer` already collects doc comments in a side table,
-`Parser.DocOf` looks one up by `Span.Start`, and `tools/DocGen` consumes it. The table dies with the
-`Parser` instance because the pipeline drops it — **the same shape slice 2 of M11 resolved for
-bindings and types.** It is plumbing into `SemanticModel`, not a new mechanism.
 
 **Slice 4 is the expensive one, and the reason has not moved.** Neither `BindingResult` nor the
 reference table of `TypeResult` can be enumerated, so "who else points at this symbol" cannot be
@@ -318,7 +307,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #17 from OIL1I/release/v1.2.0` (`194ca62`)
+`Merge pull request #18 from OIL1I/feature/name-spans` (`41f9392`)
 
 ---
 

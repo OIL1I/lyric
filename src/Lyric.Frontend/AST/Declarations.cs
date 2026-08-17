@@ -40,7 +40,14 @@ public sealed record FunctionDecl(
 
 /// <summary>A <c>static let</c> constant in the body of a struct or class, reachable as
 /// <c>Type.NAME</c>; syntactically the same binding as a module <c>let</c>.</summary>
-public sealed record StaticBindingDecl(bool IsPublic, BindingStmt Binding, Span Span) : Decl(Span);
+/// <remarks>The name is the wrapped binding's. A symbol declares from THIS node rather than from the
+/// binding inside it, so the two spans have to be reachable from here as well.</remarks>
+public sealed record StaticBindingDecl(bool IsPublic, BindingStmt Binding, Span Span) : Decl(Span), INamedDecl
+{
+    public string Name => Binding.Name;
+
+    public Span NameSpan => Binding.NameSpan;
+}
 
 public sealed record FieldDecl(string Name, TypeNode Type, Expr? Default, Span Span) : Decl(Span), INamedDecl
 {
@@ -76,7 +83,13 @@ public sealed record InterfaceDecl(bool IsPublic, string Name, GenericParam[] Ge
 public sealed record ExtendDecl(bool IsPublic, TypeNode Target, TypeNode[] Interfaces, FunctionDecl[] Methods, Span Span) : Decl(Span);
 
 // --- global bindings and type aliases ---
-public sealed record GlobalBindingDecl(bool IsPublic, BindingStmt Binding, Span Span) : Decl(Span); // 'let' only, per the grammar
+/// <inheritdoc cref="StaticBindingDecl"/>
+public sealed record GlobalBindingDecl(bool IsPublic, BindingStmt Binding, Span Span) : Decl(Span), INamedDecl // 'let' only, per the grammar
+{
+    public string Name => Binding.Name;
+
+    public Span NameSpan => Binding.NameSpan;
+}
 
 public sealed record TypeAliasDecl(bool IsPublic, string Name, TypeNode Aliased, Span Span) : Decl(Span), INamedDecl
 {
