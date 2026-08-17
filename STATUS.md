@@ -244,6 +244,18 @@ is the thing to check.
   promises does not hold for the one release before it. `--no-source-map` produces a module those
   runtimes accept. Nothing can be done on their side; it is recorded so the next format addition is
   not mistaken for the same bug.
+- **A module without `main` keeps the whole well-known standard library.** Measured 2026-08-15: a
+  library module exporting one `int` function compiles to **7886 bytes and ~54 functions** from
+  `std.string`, `std.core`, `std.iter`, `std.fmt` and `std.collections`, none of which it uses. The
+  same file with a `main` that uses `println` is **315 bytes and one function**.
+  - Not a bug in what the reachability analysis does — it trims from the ENTRY POINT, and a library
+    has none, so nothing is unreachable. `WellKnownModules` loads those five unconditionally because
+    the f-string lowering calls into them.
+  - The roots for a library would sensibly be its `pub` declarations. **Whether that is the right
+    rule is a decision, not a measurement**: it would make a library's surface decide its contents,
+    and a host calling an unexported function through the embedding API would then find it missing.
+  - It is the point at which a binary library would carry half a standard library with it, so it
+    belongs answered before that is ever a goal.
 - **Section byte sizes are missing from `lyrvm info`**: the reader discards them after parsing.
   Retrofitting them would mean extending the model with provenance data — a decision of its own.
 - **Measure the verifier share in a Release profile** — the Debug numbers are riddled with JIT
