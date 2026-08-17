@@ -1661,6 +1661,21 @@ internal sealed class FunctionLowerer
         if (TryLowerNullTest(expr) is { } nullTest)
             return nullTest;
 
+        // An operator on an Equatable type IS a method call, built and checked by the sema. Lowering
+        // the stored call routes through the ordinary dispatch, so every receiver shape — plain,
+        // generic instance, extension, constraint — behaves exactly as the written call would. The
+        // operands are the REAL operand nodes, lowered once, here.
+        if (_types.OperatorCallOf(expr) is { } desugared)
+        {
+            var value = LowerCall(desugared.Call)
+                        ?? throw Bug($"operator method for '{expr.Operator}' returned no value");
+            if (!desugared.Negate) return value;
+
+            var negated = _slots.NewTemp(BoolType);
+            _b.Emit(new UnOp(negated, IrUnKind.Not, BoolType, value, expr.Span));
+            return negated;
+        }
+
         var kind = IrBinKindExtensions.FromAst(expr.Operator);
         var lhs = LowerExpr(expr.Left);
         var rhs = LowerExpr(expr.Right);

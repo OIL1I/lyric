@@ -81,6 +81,30 @@ public sealed class TypeResult
     public void MarkBoxed(Symbol symbol) => _boxed.Add(symbol);
 
     /// <summary>
+    /// The method call an operator expression stands for.
+    ///
+    /// <para><c>==</c> on an <c>Equatable</c> type IS <c>a.equals(b)</c>: the checker builds that
+    /// call from synthetic nodes, checks it through the ordinary member path, and stores it here.
+    /// The lowering emits the stored call instead of a <c>BinOp</c> — deriving the method a second
+    /// time there would be a second answer to which function an operator means.</para>
+    ///
+    /// <para><c>Negate</c> carries <c>!=</c>: there is no <c>notEquals</c> to call, the call's
+    /// result is negated.</para>
+    ///
+    /// <para>The synthetic nodes hang in no tree, so syntax walks never meet them; they reuse the
+    /// REAL operand nodes as receiver and argument, which is what makes the stored call lower the
+    /// operands exactly once.</para>
+    /// </summary>
+    private readonly Dictionary<Node, (CallExpr Call, bool Negate)> _operatorCalls =
+        new(ReferenceEqualityComparer.Instance);
+
+    public void DesugarOperator(Node op, CallExpr call, bool negate) =>
+        _operatorCalls[op] = (call, negate);
+
+    public (CallExpr Call, bool Negate)? OperatorCallOf(Node op) =>
+        _operatorCalls.TryGetValue(op, out var d) ? d : null;
+
+    /// <summary>
     /// The type arguments of a call site, inferred or written.
     ///
     /// <para>The sema derives them anyway to check the call; without storing them here the lowering
