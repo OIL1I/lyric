@@ -11,7 +11,7 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.2.0 are released** — annotated tags on the remote, each with a release page and
+**v1.0.0 through v1.3.0 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
 **M12, the project system, is what v1.2.0 shipped**: `lyric.json` says what a project is, `build.lyr`
@@ -19,11 +19,11 @@ says what to build, `lyric new` writes one, and the tools read all of it.
 
 **M11, the language server, has one delivery point left: completion.** It ships diagnostics while you
 type, what a name under the cursor is, where it was declared, a program followed across its files,
-documentation on hover, the outline of a file, and every place a name occurs. **v1.3.0 is complete
-and unreleased**; completion is v1.4.0 and closes the milestone — see `## What we are working on`.
+documentation on hover, the outline of a file, and every place a name occurs. **v1.3.0 shipped all
+of that**; completion is v1.4.0 and closes the milestone.
 
-3313 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
-`lyrembed.dll`, version **1.2.0**.
+3478 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
+`lyrembed.dll`, version **1.3.0**.
 
 **All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
 language server reads the project file, and editing a module refreshes the file that imports it.
@@ -41,8 +41,8 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
-- [x] **v1.3.0 slice 4 — find all references** (2026-08-17). 3478 tests green, Debug and Release.
-  Not merged. **This completes v1.3.0.**
+- [x] **v1.3.0 slice 4 — find all references** (2026-08-17). 3478 tests green. Merged as
+  PR #21, and it completed v1.3.0.
   - `textDocument/references`, with `includeDeclaration`. The front end gained **two enumerations
     and nothing else**: `BindingResult.All` and `TypeResult.AllReferences`. The reverse index is
     built per REQUEST and kept nowhere.
@@ -178,27 +178,15 @@ have bought an incremental compiler nobody needs.
 
 ## What we are working on
 
-**v1.3.0 — the editor understands your program. All four slices are done**, the last one unmerged.
-Additive throughout: no language change, no format change, no new binary.
+**v1.3.0 is released** — name spans (#18), hover documentation (#19), document symbols (#20) and
+find references (#21). Additive throughout: no language change, no format change, no new binary.
 
-| Slice | What | State |
-|---|---|---|
-| 1 | A name span per declaration node | PR #18 |
-| 3 | Doc comments reach the `SemanticModel`, hover shows them | PR #19 |
-| 2 | `textDocument/documentSymbol` | PR #20 |
-| 4 | `textDocument/references` | **done, unmerged** |
+**Next is v1.4.0: completion**, the last delivery point of M11. Nothing has been designed for it yet.
 
-Slice 3 was pulled ahead of slice 2: the two do not depend on each other, both sit on the name span
-slice 1 delivered, and hover is used far more often than a symbol outline.
-
-**What is left before the release**: the version numbers, the changelog entry, the tag. Nothing in
-the code.
-
-**Completion is deliberately not in v1.3.0.** It is the first question asked at a position where the
-text does NOT parse — error tolerance, or a "what is admissible here" mechanism. That is a front-end
-topic of its own size, not a fifth provider, and binding it to four small slices makes the date
-unpredictable. It is v1.4.0, and M11 closes there. The release is split rather than the delivery
-list: re-cutting a list is only legitimate in the scope check, and the next one is **2026-09-06**.
+It is the first question asked at a position where the text does **not** parse — error tolerance, or
+a "what is admissible here" mechanism. A front-end topic of its own size rather than a fifth
+provider, which is why v1.3.0 was split off instead of the delivery list being re-cut. The next scope
+check is **2026-09-06**.
 
 **One limit stays after v1.3.0**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
@@ -312,7 +300,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #20 from OIL1I/feature/document-symbols` (`e013db4`)
+`Merge pull request #21 from OIL1I/feature/find-references` (`e642c20`)
 
 ---
 
