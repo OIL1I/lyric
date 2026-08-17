@@ -1,3 +1,5 @@
+# The .NET version comes from global.json and the SDK preinstalled on the runner, not from
+# actions/setup-dotnet — see the comment in ci.yml for what that action cost on 2026-08-17.
 name: Docs
 
 # Publishes one version of the documentation site.
@@ -37,11 +39,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Restore
         run: dotnet restore
@@ -88,11 +85,6 @@ jobs:
             git rm -rf --cached . >/dev/null 2>&1 || true
             find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
           fi
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
 
       # A tag names its own version and is a release; everything else is the nightly.
       - name: Decide what is being published

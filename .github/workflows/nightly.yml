@@ -1,3 +1,5 @@
+# The .NET version comes from global.json and the SDK preinstalled on the runner, not from
+# actions/setup-dotnet — see the comment in ci.yml for what that action cost on 2026-08-17.
 name: Nightly
 
 # Dev channel. Builds the current main once a day and replaces the 'nightly' prerelease.
@@ -23,11 +25,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
-
       - name: Restore
         run: dotnet restore
 
@@ -52,11 +49,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
 
       # The identifier is what makes the archive hold what its name says. Without it every
       # platform got the same portable build and the name was a label, not a fact.
