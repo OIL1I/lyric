@@ -103,6 +103,21 @@ bytecode format, the command line and the embedding API. Compiler internals are 
   It is read and never executed, which is what lets an editor learn a project's layout without
   running anything from it.
 
+- **The language server follows a program across its files.** Editing a module now refreshes the
+  diagnostics of every open file that imports it, and a dependency is read from the editor's buffer
+  rather than from its last save. Both halves are needed: an overlay nobody re-reads shows nothing,
+  and a cascade over stale text refreshes to the same answer.
+
+  What a file depends on is taken from the compilation itself, not from the imports in its text —
+  the resolver already followed them, transitively and through the project's roots, and a second
+  answer to that question would be the one that is wrong.
+
+  The cascade goes one level. Two modules may import each other, which is a diagnostic rather than a
+  crash, so a transitive one would not terminate.
+
+  `CompilerOptions.SourceOverlay` is the seam, and it is not editor-specific: it says "compile as if
+  these files held this text", which a host embedding the compiler can use for the same reason.
+
 - **The language server reads `lyric.json`.** An import of a host SDK no longer shows as an unknown
   module in an editor while the same script runs correctly in the host — the second half of what
   v1.1.0 listed as not in it.

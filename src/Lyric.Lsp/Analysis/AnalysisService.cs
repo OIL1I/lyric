@@ -65,6 +65,16 @@ public sealed class AnalysisService : IDisposable
         new(DocumentUri.PathComparer);
 
     /// <summary>
+    /// Which files the last analysis of a document READ, by document path.
+    ///
+    /// <para>Taken from the compilation itself rather than from the imports in the text: the
+    /// resolver already followed them, transitively and through the project file's roots, and a
+    /// second answer to "what does this depend on" would be the one that is wrong.</para>
+    /// </summary>
+    private readonly ConcurrentDictionary<string, HashSet<string>> _dependencies =
+        new(DocumentUri.PathComparer);
+
+    /// <summary>
     /// The last analysis that produced a model, per document path.
     ///
     /// <para>Kept because a question about the program has to be answerable while the program does
@@ -129,6 +139,7 @@ public sealed class AnalysisService : IDisposable
             if (!_documents.IsCurrent(document)) return;
 
             await AnalyzeAsync(document, token).ConfigureAwait(false);
+            await AnalyzeDependentsAsync(document, token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -189,6 +200,47 @@ public sealed class AnalysisService : IDisposable
         }
     }
 
+    /// <summary>
+    /// Re-analyses every open document whose last compilation read this one.
+    ///
+    /// <para>ONE LEVEL ONLY: a cascaded run does not cascade again. Two modules may import each
+    /// other — that is a diagnostic rather than a crash, so both still compile — and a transitive
+    /// cascade over such a pair would not terminate. One level is also all that is needed: a change
+    /// reaches every open file that reads the changed one, and a file that reads THAT one was
+    /// itself re-read in the process.</para>
+    /// </summary>
+    private async Task AnalyzeDependentsAsync(OpenDocument changed, CancellationToken token)
+    {
+        string full;
+        try { full = Path.GetFullPath(changed.Path); }
+        catch (ArgumentException) { return; }
+
+        foreach (var other in _documents.All)
+        {
+            if (DocumentUri.PathComparer.Equals(other.Path, changed.Path)) continue;
+            if (!_dependencies.TryGetValue(other.Path, out var reads)) continue;
+            if (!reads.Contains(full)) continue;
+
+            token.ThrowIfCancellationRequested();
+            await AnalyzeAsync(other, token).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Every file a compilation put in its source manager, as absolute paths. A virtual
+    /// name that is not a path is dropped rather than guessed at.</summary>
+    private static HashSet<string> FilesRead(Core.SourceManager sources)
+    {
+        var files = new HashSet<string>(DocumentUri.PathComparer);
+
+        for (var i = 1; i <= sources.FileCount; i++)
+        {
+            try { files.Add(Path.GetFullPath(sources.GetPath(new Core.FileId(i)))); }
+            catch (ArgumentException) { /* not a path; it can match no document */ }
+        }
+
+        return files;
+    }
+
     /// <summary>Says something about a project file only when it differs from what was last said
     /// about it.</summary>
     private async Task NoticeAsync(string directory, string message, MessageType type)
@@ -212,6 +264,11 @@ public sealed class AnalysisService : IDisposable
             StdlibRoot = _stdlibRoot,
             SourceRoot = project?.SourceRoot,
             NativeRoots = project?.NativeRoots,
+
+            // Everything the editor holds, not only this buffer. Without it a program is checked
+            // against its own unsaved text and against the last SAVE of every module it imports,
+            // and the two disagree for as long as an edit is unsaved.
+            SourceOverlay = _documents.Overlay(),
         };
 
         // Off the caller's thread: the compile is synchronous and CPU-bound, and the caller is
@@ -222,6 +279,10 @@ public sealed class AnalysisService : IDisposable
             cancellationToken).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Recorded even when the result is discarded below: what this document reads does not
+        // depend on whether its diagnostics are still wanted.
+        _dependencies[document.Path] = FilesRead(result.Sources);
 
         // Asked AFTER the compile as well as before it. The compile takes long enough for the file
         // to have changed while it ran, and that is precisely when publishing does damage.

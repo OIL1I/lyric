@@ -82,15 +82,15 @@ public static class SourceCompiler
         var loaded = new List<string>();
 
         var fromStdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
-            sources, diagnostics);
+            sources, diagnostics, options.SourceOverlay);
         var fromProject = StdlibLoader.ForProject(
-            options.SourceRoot ?? source.BaseDirectory, sources, diagnostics);
+            options.SourceRoot ?? source.BaseDirectory, sources, diagnostics, options.SourceOverlay);
 
         // Roots the host declares native, keyed by the segment they own. An SDK ships its
         // declarations as .lyr files and says which prefix they live under.
         var nativeRoots = options.NativeRoots?.ToDictionary(
             entry => entry.Key,
-            entry => StdlibLoader.ForRoot(entry.Value, sources, diagnostics),
+            entry => StdlibLoader.ForRoot(entry.Value, sources, diagnostics, options.SourceOverlay),
             StringComparer.Ordinal);
 
         // Several roots, one delegate: 'std' comes from the standard library, a segment the host
@@ -294,6 +294,19 @@ public sealed record CompilerOptions
     /// at by placing a file beside itself, so the decision belongs to the caller.</para>
     /// </summary>
     public string? SourceRoot { get; init; }
+
+    /// <summary>
+    /// Text to use instead of what lies on disk, by absolute file path. A module found at one of
+    /// these paths is read from here, and one that exists only here is found all the same.
+    ///
+    /// <para>An editor holds the authoritative text of every file it has open, saved or not. Without
+    /// this, a program is compiled against its own buffer and against the SAVED version of every
+    /// module it imports, and the two disagree for as long as an edit is unsaved.</para>
+    ///
+    /// <para>Supply it with a comparer that matches the platform's idea of path equality; it is
+    /// looked up with <see cref="Path.GetFullPath(string)"/> applied to the candidate.</para>
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? SourceOverlay { get; init; }
 
     /// <summary>
     /// Whether the SourceMap section is written. On by default: a panic that names a line is worth
