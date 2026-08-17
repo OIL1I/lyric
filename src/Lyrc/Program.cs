@@ -28,18 +28,29 @@ public static class Program
 
         if (args.Length == 0) { PrintHelp(); return ExitCodes.Success; }
 
-        return args[0] switch
+        try
         {
-            "--version" or "-v" => Version(terminal),
-            "--help" or "-h" => Help(),
-            "build" => WithFile(args, "build", terminal, Build),
-            "check" => WithFile(args, "check", terminal, Check),
-            "lower" => WithFile(args, "lower", terminal, Lower),
-            "parse" => WithFile(args, "parse", terminal, Parse),
-            "tokenize" => WithFile(args, "tokenize", terminal, Tokenize),
-            _ => CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
-                $"unknown command: {args[0]} — try 'lyrc --help'", ExitCodes.Usage),
-        };
+            return args[0] switch
+            {
+                "--version" or "-v" => Version(terminal),
+                "--help" or "-h" => Help(),
+                "build" => WithFile(args, "build", terminal, Build),
+                "check" => WithFile(args, "check", terminal, Check),
+                "lower" => WithFile(args, "lower", terminal, Lower),
+                "parse" => WithFile(args, "parse", terminal, Parse),
+                "tokenize" => WithFile(args, "tokenize", terminal, Tokenize),
+                _ => CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
+                    $"unknown command: {args[0]} — try 'lyrc --help'", ExitCodes.Usage),
+            };
+        }
+        catch (ProjectFileException broken)
+        {
+            // Caught here rather than where it is read: 'Options' builds a value and has nowhere to
+            // put a diagnostic, and threading a result type through five commands would put the
+            // handling in five places for a failure that ends all of them the same way.
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.BadProjectFile,
+                $"{broken.Path}: {broken.Message}", ExitCodes.Failure);
+        }
     }
 
     /// <summary>Compiles to <c>.lyrbc</c>. Without <c>-o</c> the output lands next to the
@@ -49,7 +60,7 @@ public static class Program
         var output = Flag(args, "-o") ?? Flag(args, "--output")
             ?? Path.ChangeExtension(path, ".lyrbc");
 
-        var result = SourceCompiler.Compile(path, Options(args, terminal));
+        var result = SourceCompiler.Compile(path, Options(path, args, terminal));
         terminal.Render(result.Diagnostics);
         if (!result.Ok || result.Bytes is null) return ExitCodes.Failure;
 
@@ -70,7 +81,7 @@ public static class Program
     /// <summary>Everything a build does except writing the file.</summary>
     private static int Check(string path, string[] args, TerminalOutput terminal)
     {
-        var result = SourceCompiler.Check(path, Options(args, terminal));
+        var result = SourceCompiler.Check(path, Options(path, args, terminal));
         terminal.Render(result.Diagnostics);
         if (!result.Ok) return ExitCodes.Failure;
 
@@ -82,7 +93,7 @@ public static class Program
     /// </summary>
     private static int Lower(string path, string[] args, TerminalOutput terminal)
     {
-        var result = SourceCompiler.Lower(path, Options(args, terminal));
+        var result = SourceCompiler.Lower(path, Options(path, args, terminal));
         terminal.Render(result.Diagnostics);
         if (!result.Ok || result.Ir is null) return ExitCodes.Failure;
 
@@ -120,14 +131,32 @@ public static class Program
         return diagnostics.HasErrors ? ExitCodes.Failure : ExitCodes.Success;
     }
 
-    /// <summary>What the compiler needs besides the file. <c>--stdlib</c> beats
-    /// <c>LYRIC_STDLIB</c>.</summary>
-    private static CompilerOptions Options(string[] args, TerminalOutput terminal) => new()
+    /// <summary>
+    /// What the compiler needs besides the file. <c>--stdlib</c> beats <c>LYRIC_STDLIB</c>.
+    ///
+    /// <para>A <c>lyric.json</c> above the source supplies the module root and the native roots.
+    /// Without one nothing changes: the entry file's directory is the root, as it was before the
+    /// file existed.</para>
+    /// </summary>
+    private static CompilerOptions Options(string path, string[] args, TerminalOutput terminal)
     {
-        StdlibRoot = Flag(args, "--stdlib"),
-        Progress = terminal,
-        SourceMap = !Present(args, "--no-source-map"),
-    };
+        var project = ProjectFile.Discover(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".");
+
+        // A key nobody knows is tolerated, so a file written for a later version still loads — the
+        // same rule the bytecode reader follows for a section it does not know. The warning is what
+        // keeps a typo from being silent.
+        foreach (var warning in project?.Warnings ?? [])
+            Console.Error.WriteLine($"warning: {Path.Combine(project!.Directory, ProjectFile.FileName)}: {warning}");
+
+        return new CompilerOptions
+        {
+            StdlibRoot = Flag(args, "--stdlib"),
+            Progress = terminal,
+            SourceMap = !Present(args, "--no-source-map"),
+            SourceRoot = project?.SourceRoot,
+            NativeRoots = project?.NativeRoots,
+        };
+    }
 
     /// <summary>Every command here takes exactly one required file; the check lives in one
     /// place.</summary>

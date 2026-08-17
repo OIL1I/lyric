@@ -10,6 +10,36 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.2.0 — unreleased
+
+### Added
+
+- **A project may say where its modules are, in a `lyric.json`.**
+
+  ```json
+  {
+    // where our own modules live
+    "sourceRoot": "src",
+    "nativeRoots": { "engine": "sdk" },
+  }
+  ```
+
+  `sourceRoot` replaces "the directory of the entry file" as the module root, and `nativeRoots` maps
+  a module path segment to a directory whose modules may declare functions without a body. The file
+  is searched for upwards from the file being compiled, and comments and trailing commas are allowed
+  in it.
+
+  **This closes the gap v1.1.0 shipped with**: `lyric check` and `lyric build` now see the native
+  roots a host declares, so a script written against an SDK no longer compiles in the host and fails
+  on the command line.
+
+  Both keys are optional and **without the file nothing changes** — that is what makes it an addition
+  rather than a new requirement. A key nobody knows is a warning rather than an error, so a file
+  written for a later version still loads.
+
+  It is read and never executed, which is what will let an editor learn a project's layout without
+  running anything from it.
+
 ## v1.1.0 — 2026-08-15
 
 Bytecode format **3.1**. A minor of the format may only add skippable sections, so a 1.0 runtime

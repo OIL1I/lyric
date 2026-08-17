@@ -83,7 +83,8 @@ public static class SourceCompiler
 
         var fromStdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
             sources, diagnostics);
-        var fromProject = StdlibLoader.ForProject(source.BaseDirectory, sources, diagnostics);
+        var fromProject = StdlibLoader.ForProject(
+            options.SourceRoot ?? source.BaseDirectory, sources, diagnostics);
 
         // Roots the host declares native, keyed by the segment they own. An SDK ships its
         // declarations as .lyr files and says which prefix they live under.
@@ -283,6 +284,16 @@ public sealed record CompilerOptions
     /// answer unambiguous instead of a matter of precedence.</para>
     /// </summary>
     public IReadOnlyDictionary<string, string>? NativeRoots { get; init; }
+
+    /// <summary>
+    /// Where the program's own modules are looked up. <c>null</c> means the directory of the entry
+    /// file, which is what a program without a project file gets.
+    ///
+    /// <para>Filled from <see cref="ProjectFile"/> by the tools that read one. Deliberately not
+    /// discovered here: a script being compiled must not be able to widen what the compiler looks
+    /// at by placing a file beside itself, so the decision belongs to the caller.</para>
+    /// </summary>
+    public string? SourceRoot { get; init; }
 
     /// <summary>
     /// Whether the SourceMap section is written. On by default: a panic that names a line is worth

@@ -39,6 +39,11 @@ public static class CliDiagnostics
     /// empty output, which would read as an empty function.</summary>
     public const string UnknownFunction = "LYR-CLI0009";
 
+    /// <summary>A <c>lyric.json</c> was found and could not be understood. Not finding one is
+    /// normal and silent; finding a broken one stops the build, because carrying on would compile
+    /// against a module root the file was trying to change.</summary>
+    public const string BadProjectFile = "LYR-CLI0010";
+
     /// <summary>Reports a CLI diagnostic and renders it immediately. It has no source span, so
     /// there is nothing to collect or order.</summary>
     public static int Fail(TextWriter error, string code, string message, int exitCode)

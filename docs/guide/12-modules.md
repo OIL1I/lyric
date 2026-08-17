@@ -73,6 +73,45 @@ Three rules follow from where a module is found:
 
 Everything ends up in one `.lyrbc`. There is no separate compilation step per file and no link step.
 
+## Saying where the modules are
+
+The rules above need no configuration, and for a program in one directory that is the whole story.
+A project with a `src/` directory says so in a `lyric.json` beside it:
+
+```json
+{
+  // where our own modules live
+  "sourceRoot": "src",
+
+  /* an SDK whose modules may declare functions without a body */
+  "nativeRoots": { "engine": "sdk" },
+}
+```
+
+```
+lyric.json
+src/main.lyr          <- import shapes.area
+src/shapes/area.lyr
+sdk/engine/input.lyr  <- import engine.input
+```
+
+The file is searched for upwards from the file being compiled, so it is found from anywhere in the
+project. Comments and trailing commas are allowed; it is meant to be edited by hand.
+
+- **`sourceRoot`** replaces "the directory of the entry file" as the module root.
+- **`nativeRoots`** maps a module path segment to a directory whose modules may declare functions
+  without a body. That segment then belongs to the root, and is no longer looked for under
+  `sourceRoot`.
+
+Both are optional, and **without the file nothing changes**: the entry file's directory is the root
+and no module of your own may declare a native.
+
+A key nobody knows is a warning rather than an error, so a file written for a later version still
+loads — but the warning is there, because a typo that does nothing is worse than one that complains.
+
+`lyric.json` is read and never executed. That is what lets an editor learn the layout of a project
+without running anything from it.
+
 ## Module constants
 
 A module-level `let` is a constant. It is initialized once before `main` runs, in declaration
