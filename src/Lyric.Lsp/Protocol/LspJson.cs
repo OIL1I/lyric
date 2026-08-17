@@ -36,6 +36,8 @@ namespace Lyric.Lsp.Protocol;
 [JsonSerializable(typeof(InitializeParams))]
 [JsonSerializable(typeof(DocumentSymbolParams))]
 [JsonSerializable(typeof(ReferenceParams))]
+[JsonSerializable(typeof(CompletionParams))]
+[JsonSerializable(typeof(IReadOnlyList<CompletionItem>))]
 [JsonSerializable(typeof(List<Location>))]
 [JsonSerializable(typeof(IReadOnlyList<DocumentSymbol>))]
 public sealed partial class LspJson : JsonSerializerContext

@@ -188,6 +188,10 @@ public sealed class LspServer : IDisposable
                 await SendReferencesAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.Completion when _state == State.Running:
+                await SendCompletionAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -515,6 +519,46 @@ public sealed class LspServer : IDisposable
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answers what can follow a <c>.</c>, or answers with null.
+    ///
+    /// <para>Off the CURRENT buffer rather than off the last analysis: the request came from a
+    /// keystroke, and the model that keystroke invalidated is the one that would answer about the
+    /// text before it.</para>
+    /// </summary>
+    private async Task SendCompletionAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.CompletionParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document and a position", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _documents.ByPath(path) is not { } document)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var offset = TextOffsets.ToOffset(document.Text, parameters.Position);
+        var items = await _analysis.CompleteAsync(document, offset, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (items is null)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await SendResultAsync(id, items, LspJson.Default.IReadOnlyListCompletionItem,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private InitializeResult BuildInitializeResult() => new()
     {
         Capabilities = new ServerCapabilities
@@ -529,6 +573,7 @@ public sealed class LspServer : IDisposable
             DefinitionProvider = true,
             DocumentSymbolProvider = true,
             ReferencesProvider = true,
+            CompletionProvider = new CompletionOptions { TriggerCharacters = ["."] },
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };

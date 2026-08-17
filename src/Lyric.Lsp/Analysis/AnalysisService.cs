@@ -253,13 +253,19 @@ public sealed class AnalysisService : IDisposable
         if (message.Length > 0) await SafeLogAsync(message, type).ConfigureAwait(false);
     }
 
-    /// <summary>Compiles one version and publishes its diagnostics, without the debounce. The
-    /// analysis a test drives directly.</summary>
-    public async Task AnalyzeAsync(OpenDocument document, CancellationToken cancellationToken)
+    /// <summary>
+    /// How this document is compiled: where the standard library is, what its project file says, and
+    /// the text of everything else the editor holds.
+    ///
+    /// <para>One place, because the analysis and the completion have to compile the same program.
+    /// Two option sets that differ in the project root would answer two different questions about
+    /// one file, and only one of them would be on screen.</para>
+    /// </summary>
+    private async Task<CompilerOptions> OptionsForAsync(OpenDocument document)
     {
         var project = await ProjectForAsync(document).ConfigureAwait(false);
 
-        var options = new CompilerOptions
+        return new CompilerOptions
         {
             StdlibRoot = _stdlibRoot,
             SourceRoot = project?.SourceRoot,
@@ -270,6 +276,30 @@ public sealed class AnalysisService : IDisposable
             // and the two disagree for as long as an edit is unsaved.
             SourceOverlay = _documents.Overlay(),
         };
+    }
+
+    /// <summary>
+    /// The completions at an offset in a document's CURRENT text.
+    ///
+    /// <para>Not from the last good analysis: that model was built from the text before the
+    /// keystroke that triggered this, and its spans are indices into that text. A compile of its own
+    /// is what makes the answer about what the user is looking at.</para>
+    /// </summary>
+    public async Task<IReadOnlyList<CompletionItem>?> CompleteAsync(
+        OpenDocument document, int offset, CancellationToken cancellationToken)
+    {
+        var options = await OptionsForAsync(document).ConfigureAwait(false);
+
+        return await Task.Run(
+            () => CompletionProvider.At(document.Path, document.Text, offset, options),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Compiles one version and publishes its diagnostics, without the debounce. The
+    /// analysis a test drives directly.</summary>
+    public async Task AnalyzeAsync(OpenDocument document, CancellationToken cancellationToken)
+    {
+        var options = await OptionsForAsync(document).ConfigureAwait(false);
 
         // Off the caller's thread: the compile is synchronous and CPU-bound, and the caller is
         // either the read loop or a test.
