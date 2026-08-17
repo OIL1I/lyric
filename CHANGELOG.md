@@ -10,6 +10,59 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.4.0 — 2026-08-17
+
+Completion, and a standard library that says what it does. The language, the command line, the
+embedding API and the `.lyrbc` format are untouched; the format stays **3.1**.
+
+### Added
+
+- **Completion.** After a `.` the members of what stands before it; anywhere else the names in
+  scope.
+
+  ```lyr
+  let p = Point { x = 1 };
+  p.          // x, y, and every method, extension and interface default the type has
+  ```
+
+  The member list is the one the compiler would accept, not an approximation of it: extension methods
+  and interface default methods are in it, which matters because **every string method of this
+  standard library is an extension** — a list without them would be empty on a `string`.
+
+  In scope: locals, parameters, type parameters, what the module declares and imports, and the
+  builtins. Inner names shadow outer ones, a binding is not offered inside its own initializer, and a
+  loop variable is not offered in the loop head.
+
+  Each item carries its kind and, when the declaration has one, the `///` block above it.
+
+  It works while the file does not parse, which is the state it is asked in. The trigger character
+  is `.`; everything else is the editor asking on its own.
+
+- **The standard library documents itself where it did not.** `std.io.console`, `std.core` and
+  `std.option` held 33 public declarations and no documentation at all, so hovering `println` showed
+  a signature and nothing else. All three are written now, interface members included.
+
+### Fixed
+
+- **A struct initializer is a reference to its type.** Asking for the definition of `Point` in
+  `let p = Point { x = 1 };` used to answer nothing, and find-references did not list it. Both do
+  now, and hovering it reports the type.
+
+  v1.3.0 listed this under *Not in this release* because recording it made the type checker read
+  `Pair<int> { a = 6 }.a` as a static member access. The receiver question is answered from the
+  expression's type now rather than from that table, so the two no longer collide.
+
+### Not in this release
+
+- **Completion does not offer keywords.** `if`, `return` and the rest are not symbols; an editor gets
+  them from the grammar it highlights with.
+- **Completion after `import` does not offer module paths.** That is a different source — the file
+  system — and not the scope.
+- **A field reference still marks the whole member access**: asking for references to `x` marks
+  `p.x`. Use sites carry no span for their name alone.
+- **References and completion stop at the compilation.** The server compiles the file you are in, so
+  another file of your project that imports it is not searched.
+
 ## v1.3.1 — 2026-08-17
 
 ### Fixed

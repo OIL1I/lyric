@@ -11,19 +11,18 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.3.1 are released** — annotated tags on the remote, each with a release page and
+**v1.0.0 through v1.4.0 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
 **M12, the project system, is what v1.2.0 shipped**: `lyric.json` says what a project is, `build.lyr`
 says what to build, `lyric new` writes one, and the tools read all of it.
 
-**M11, the language server, has one delivery point left: completion.** It ships diagnostics while you
-type, what a name under the cursor is, where it was declared, a program followed across its files,
-documentation on hover, the outline of a file, and every place a name occurs. **v1.3.0 shipped all
-of that**; completion is v1.4.0 and closes the milestone.
+**M11, the language server, is CLOSED.** Diagnostics while you type, what a name under the cursor is,
+where it was declared, a program followed across its files, documentation on hover, the outline of a
+file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3626 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
-`lyrembed.dll`, version **1.3.1**.
+3684 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
+`lyrembed.dll`, version **1.4.0**.
 
 **All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
 language server reads the project file, and editing a module refreshes the file that imports it.
@@ -41,8 +40,8 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
-- [x] **v1.4.0 slice 4 — the standard library says what it does** (2026-08-17). 3684 tests green,
-  Debug and Release. Not merged. **This completes v1.4.0.**
+- [x] **v1.4.0 slice 4 — the standard library says what it does** (2026-08-17). 3684 tests green.
+  Merged as PR #27, and it completed v1.4.0.
   - `std/io/console.lyr`, `std/core.lyr` and `std/option.lyr` had **33 `pub` declarations and not one
     line of documentation** between them, so `println` — the most used function in the language —
     hovered empty. It no longer does.
@@ -61,8 +60,8 @@ functions out of them and hands its own functions and types in.
   - The generated reference changed in documentation and line numbers only — **no signature and no
     name moved**, checked against the snapshot diff rather than assumed.
 
-- [x] **v1.4.0 slice 3 — completion for names in scope** (2026-08-17). 3684 tests green, Debug and
-  Release. Not merged.
+- [x] **v1.4.0 slice 3 — completion for names in scope** (2026-08-17). 3684 tests green. Merged as
+  PR #26.
   - **No new front-end table.** The sema builds its scope chains while checking and drops them, so
     there is none to ask at a position — but the shape of a scope is the shape of the tree, and the
     symbol behind each declaration is already in the reference table. Slice 4 of v1.3.0 called those
@@ -83,8 +82,8 @@ functions out of them and hands its own functions and types in.
   - `NodeFinder.DeclaredSymbol` moved out of `ReferenceProvider`, which is where both callers now
     read it rather than each keeping a copy.
 
-- [x] **v1.4.0 slice 2 — completion for members after `.`** (2026-08-17). 3664 tests green, Debug
-  and Release. Not merged.
+- [x] **v1.4.0 slice 2 — completion for members after `.`** (2026-08-17). 3664 tests green. Merged
+  as PR #25.
   - The text at the cursor does not parse, so the question is asked of a program that does: a
     synthetic identifier is inserted at the cursor and the buffer compiled again. `foo.` becomes
     `foo.__lyric_completion__`, a member access whose member does not exist — and **the member name
@@ -152,32 +151,15 @@ have bought an incremental compiler nobody needs.
 
 ## What we are working on
 
-**v1.3.0 is released** — name spans (#18), hover documentation (#19), document symbols (#20) and
-find references (#21). Additive throughout: no language change, no format change, no new binary.
+**v1.4.0 is released** — the receiver question out of the reference table (#24), completion after a
+dot (#25), completion for names in scope (#26), and the standard library documenting itself (#27).
+With it **M11 is closed**, and v1.3.0 before it shipped name spans, hover documentation, document
+symbols and find-references.
 
-**v1.4.0 — completion**, the last delivery point of M11, decided 2026-08-17.
+**Nothing is planned after it.** The open points below are the material; none has been cut into a
+release. The next scope check is **2026-09-06**, and that is the place to decide.
 
-| Slice | What | State |
-|---|---|---|
-| 1 | A member access asks the type, not the table | PR #24 |
-| 2 | Completion: members after `.` | PR #25 |
-| 3 | Completion: names in scope | PR #26 |
-| 4 | Documentation for the three undocumented stdlib files | **done, unmerged** |
-
-**The mechanism is a completion MARKER, not an error-tolerant parser.** A request inserts a synthetic
-identifier at the cursor and compiles through `CompilerOptions.SourceOverlay`, which has existed
-since v1.2.0: `foo.` becomes `foo.__marker__`, which parses, and the sema resolves the receiver.
-One compile per request at 7–16 ms, against a parser rebuild that 438 parsing tests hang on.
-
-Rejected: answering from the LAST GOOD model. Its spans point into the text from before the
-keystroke, and a `FileId` is an index into one `SourceManager` — see §Design decisions.
-
-**All four slices are done**, the last one unmerged. What is left before the release: the version
-numbers, the changelog entry, the tag. Nothing in the code.
-
-The next scope check is **2026-09-06**.
-
-**One limit stays after v1.3.0**: a generic call shows the DECLARED signature, because the
+**One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
 to what `T` became. Measured by a test rather than left as an intention.
 
@@ -292,7 +274,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #26 from OIL1I/feature/completion-scope` (`88ef0b2`)
+`Merge pull request #27 from OIL1I/docs/stdlib-documentation` (`aabe0d0`)
 
 ---
 
