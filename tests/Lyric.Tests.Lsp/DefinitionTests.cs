@@ -118,15 +118,14 @@ public sealed class DefinitionTests
     }
 
     [Fact]
-    public void A_struct_initializer_has_no_target()
+    public void A_struct_initializer_jumps_to_the_type_it_names()
     {
-        // Measured rather than intended. A StructInitExpr is bound to no symbol, so nothing knows
-        // that 'Point { … }' names a type. Recording it looks like a one-line fix and is not:
-        // TypeChecker reads the same table to decide whether a receiver is a TYPE, and an entry
-        // there turns 'Pair<int> { a = 6 }.a' into a static member access.
-        Assert.Null(TargetAt(
-            "struct Point { x: int, }\nfn main(): int {\n    let p = Poi$nt { x = 1 };\n"
-            + "    return p.x;\n}\n", out _));
+        // It used to answer with nothing, because recording the initializer's type would have made
+        // the type checker read 'Pair<int> { a = 6 }.a' as a static member access. The receiver
+        // question is read off the TYPE now, so the table is free to say what the name refers to.
+        JumpsToMarker(
+            "struct ^Point { x: int, }\nfn main(): int {\n    let p = Poi$nt { x = 1 };\n"
+            + "    return p.x;\n}\n");
     }
 
     [Fact]
