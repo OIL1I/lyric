@@ -9,7 +9,7 @@ using Lyric.Vm;
 namespace Lyric.Tests.Vm;
 
 /// <summary>
-/// Generische Enums: <c>enum Opt&lt;T&gt; { Some(T), None }</c> (Sprache.md §3.4, §12).
+/// Generische Enums: <c>enum Opt&lt;T&gt; { Some(T), None }</c> (docs/Grammar.md §3.4).
 ///
 /// <para><c>TypeTable.InternEnum</c> used to throw as soon as a generic enum appeared even as a
 /// PARAMETER type; no variant had to be constructed. The sema already carried the form almost

@@ -72,8 +72,7 @@ public sealed partial class Parser
             // that exists, just not yet.
             case TokenKind.AtIdentifier:
                 _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
-                    "attributes are not part of v1 (Sprache.md §10); '@test' and 'lyric test' " +
-                    "arrive after v1.0");
+                    "attributes are not part of v1; '@test' and 'lyric test' arrive later");
                 var skipped = SynchronizeTopLevel();
                 return new ErrorDecl(Span.Union(start, skipped));
 
@@ -194,8 +193,7 @@ public sealed partial class Parser
             while (_buffer.Check(TokenKind.AtIdentifier))
             {
                 _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
-                    "attributes are not part of v1 (Sprache.md §10); '@noCapture' and the others "
-                    + "arrive after v1.0");
+                    "attributes are not part of v1; '@noCapture' and the others arrive later");
                 _buffer.Advance();
             }
 
@@ -370,8 +368,8 @@ public sealed partial class Parser
         if (_buffer.Check(TokenKind.ColonColon))
         {
             _de.Report("LYR-PAR0039", Severity.Error, _buffer.Current.Span,
-                "an interface cannot extend another one — Lyric has no interface inheritance "
-                + "(Sprache.md §7). Require both where you need both: '<T :: [A, B]>'");
+                "an interface cannot extend another one — Lyric has no interface inheritance. "
+                + "Require both where you need both: '<T :: [A, B]>'");
             // The list is READ and discarded anyway, or the parser would stumble over '[A]' a
             // second time and report two errors for one cause.
             ParseInterfaceList();
@@ -473,7 +471,7 @@ public sealed partial class Parser
         }
     }
 
-    // --- Global binding & type alias (§2.3) ---
+    // --- Global binding & type alias (§2) ---
 
     private Decl ParseGlobalBinding(bool isPublic, Span start)
     {

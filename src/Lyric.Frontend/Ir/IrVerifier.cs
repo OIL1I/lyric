@@ -73,7 +73,7 @@ public static class IrVerifier
             else if (module.Functions[entry.Value] is { ParamCount: > 1 } tooMany)
             {
                 findings.Add($"entry function {tooMany.Name} takes {tooMany.ParamCount} " +
-                             "parameters; §11 allows none or one 'string[]'");
+                             "parameters; an entry point takes none or one 'string[]'");
             }
             else if (module.Functions[entry.Value] is { ParamCount: 1 } withArgs
                      && withArgs.Locals[0].Type is not IrArrayType
@@ -83,7 +83,7 @@ public static class IrVerifier
                 // would write a string[] into a slot expecting something different, which only shows
                 // at runtime as a wrongly read value.
                 findings.Add($"entry function {withArgs.Name} takes " +
-                             $"a parameter that is not 'string[]'; §11 allows only that");
+                             "a parameter that is not 'string[]', which is the only one allowed");
             }
         }
 
