@@ -100,6 +100,59 @@ public sealed record ServerCapabilities
     public required bool HoverProvider { get; init; }
 
     public required bool DefinitionProvider { get; init; }
+
+    public required bool DocumentSymbolProvider { get; init; }
+}
+
+/// <summary>
+/// What kind of thing a symbol is, for the icon an editor puts beside it.
+///
+/// <para>A closed enum of the protocol, designed for other languages. Not every Lyric declaration
+/// has an entry that fits; where none does, <see cref="Analysis.DocumentSymbolProvider"/> names the
+/// one it chose and why.</para>
+/// </summary>
+public enum SymbolKind
+{
+    Namespace = 3,
+    Class = 5,
+    Method = 6,
+    Field = 8,
+    Enum = 10,
+    Interface = 11,
+    Function = 12,
+    Constant = 14,
+    EnumMember = 22,
+    Struct = 23,
+}
+
+/// <summary>
+/// One entry of a document's outline, with the entries declared inside it.
+///
+/// <para><see cref="SelectionRange"/> must be enclosed by <see cref="Range"/>: the first is what an
+/// editor reveals, the second what it puts the cursor on. The two come from a declaration's span and
+/// its name span, and that containment is a property the AST already guarantees.</para>
+/// </summary>
+public sealed record DocumentSymbol
+{
+    public required string Name { get; init; }
+
+    public required SymbolKind Kind { get; init; }
+
+    /// <summary>Everything the declaration covers, its body included.</summary>
+    public required Range Range { get; init; }
+
+    /// <summary>The name inside it.</summary>
+    public required Range SelectionRange { get; init; }
+
+    /// <summary>Omitted rather than sent empty: a client renders an expander for a present-but-empty
+    /// array, and a struct with no members would look like one whose members failed to load.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<DocumentSymbol>? Children { get; init; }
+}
+
+public sealed record DocumentSymbolParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
 }
 
 /// <summary>A place in a file. The answer to "where is this declared".</summary>
@@ -144,6 +197,17 @@ public sealed record TextDocumentClientCapabilities
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DefinitionClientCapabilities? Definition { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DocumentSymbolClientCapabilities? DocumentSymbol { get; init; }
+}
+
+public sealed record DocumentSymbolClientCapabilities
+{
+    /// <summary>Whether the client reads the nested form. Absent means no, and this server then
+    /// answers with nothing rather than with the flat form — see
+    /// <see cref="Analysis.DocumentSymbolProvider"/>.</summary>
+    public bool HierarchicalDocumentSymbolSupport { get; init; }
 }
 
 public sealed record DefinitionClientCapabilities
@@ -266,6 +330,7 @@ public static class LspMethods
     public const string DidSave = "textDocument/didSave";
     public const string Hover = "textDocument/hover";
     public const string Definition = "textDocument/definition";
+    public const string DocumentSymbol = "textDocument/documentSymbol";
 
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";

@@ -64,6 +64,10 @@ public sealed class LspServer : IDisposable
     /// <c>initialize</c>, because a client's capabilities do not change while it runs.</summary>
     private bool _definitionLinkSupport;
 
+    /// <summary>Whether the client reads nested document symbols. The flat alternative is not
+    /// produced, so a client without this gets no outline rather than a wrong one.</summary>
+    private bool _hierarchicalSymbols;
+
     public LspServer(Stream input, Stream output, LspServerOptions? options = null)
     {
         _options = options ?? new LspServerOptions();
@@ -152,9 +156,12 @@ public sealed class LspServer : IDisposable
                 // Unreadable parameters are not an error here: everything this server takes from
                 // them has a default, and refusing to initialize over an unknown capability would
                 // be a server that only talks to the clients it was tested against.
-                _definitionLinkSupport = LspJson.ReadParams(
-                    message.Params, LspJson.Default.InitializeParams)
-                    ?.Capabilities?.TextDocument?.Definition?.LinkSupport ?? false;
+                var client = LspJson.ReadParams(message.Params, LspJson.Default.InitializeParams)
+                    ?.Capabilities?.TextDocument;
+
+                _definitionLinkSupport = client?.Definition?.LinkSupport ?? false;
+                _hierarchicalSymbols =
+                    client?.DocumentSymbol?.HierarchicalDocumentSymbolSupport ?? false;
 
                 await SendResultAsync(id, BuildInitializeResult(),
                     LspJson.Default.InitializeResult, cancellationToken).ConfigureAwait(false);
@@ -171,6 +178,10 @@ public sealed class LspServer : IDisposable
 
             case LspMethods.Definition when _state == State.Running:
                 await SendDefinitionAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case LspMethods.DocumentSymbol when _state == State.Running:
+                await SendDocumentSymbolsAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
             case LspMethods.Shutdown when _state == State.Running:
@@ -414,6 +425,41 @@ public sealed class LspServer : IDisposable
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answers what the document declares, or answers with null.
+    ///
+    /// <para>Null for a client that does not read the nested form: the flat alternative is
+    /// deprecated and carries no children, and sending it would be a second answer shape rather than
+    /// the same one with a flag.</para>
+    /// </summary>
+    private async Task SendDocumentSymbolsAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.DocumentSymbolParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!_hierarchicalSymbols
+            || !DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // Ranged against the snapshot's own source manager, where the spans are valid — the same
+        // reason hover and the jump give.
+        var symbols = DocumentSymbolProvider.Of(snapshot.Sources, snapshot.Model.Entry);
+
+        await SendResultAsync(id, symbols, LspJson.Default.IReadOnlyListDocumentSymbol,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private InitializeResult BuildInitializeResult() => new()
     {
         Capabilities = new ServerCapabilities
@@ -426,6 +472,7 @@ public sealed class LspServer : IDisposable
 
             HoverProvider = true,
             DefinitionProvider = true,
+            DocumentSymbolProvider = true,
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };
