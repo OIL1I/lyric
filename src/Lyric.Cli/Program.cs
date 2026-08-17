@@ -29,6 +29,7 @@ public static class Program
             "--version" or "-v" => Version(selection),
             "--help" or "-h" => Help(),
             "run" => Run(args, selection),
+            "new" => NewProject.Run(args),
             "build" => Build(args, selection),
             "check" => Forward(Tool.Compiler, selection, args),
             "disasm" => Forward(Tool.Runtime, selection, args),
@@ -155,8 +156,10 @@ public static class Program
             Usage: lyric <command> <file> [options] [-- <program args>]
 
             Commands:
+              new <name> [--lib]       Write a new project, an app or a library
               run <file>               Compile and execute (.lyr or .lyrbc)
               build <file> [-o <out>]  Compile .lyr to .lyrbc
+              build [<dir>]            Run the build.lyr there and compile what it declares
               check <file>             Compile without writing a file
               disasm <file.lyrbc>      Print a readable disassembly
               repl                     Start a REPL session

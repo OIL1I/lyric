@@ -1,0 +1,4 @@
+{
+  // Where the modules live. Someone importing this library points their own sourceRoot here.
+  "sourceRoot": "src"
+}

@@ -1,0 +1,8 @@
+module __name__;
+
+/// The one thing this library does so far.
+///
+/// `pub` is what makes it visible to an importer; everything without it stays inside the module.
+pub fn greeting(): string {
+    return "Hello, Lyric!";
+}

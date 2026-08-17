@@ -99,15 +99,26 @@ public static class Toolchain
     public static ToolResult Run(string executable, params string[] args) =>
         Run(executable, null, args);
 
+    /// <summary>
+    /// Runs a tool in a working directory of its own.
+    ///
+    /// <para><c>lyric new</c> writes relative to where it was CALLED, and every other call here runs
+    /// in the repository root. Setting the test process's own directory would not reach the child,
+    /// and would scaffold into the repository instead.</para>
+    /// </summary>
+    public static ToolResult RunIn(string workingDirectory, string executable, params string[] args) =>
+        Run(executable, null, args, workingDirectory);
+
     private static ToolResult Run(string executable,
-        IReadOnlyDictionary<string, string?>? environment, string[] args)
+        IReadOnlyDictionary<string, string?>? environment, string[] args,
+        string? workingDirectory = null)
     {
         var info = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            WorkingDirectory = RepositoryRoot,
+            WorkingDirectory = workingDirectory ?? RepositoryRoot,
         };
         foreach (var argument in args) info.ArgumentList.Add(argument);
         if (environment is not null)

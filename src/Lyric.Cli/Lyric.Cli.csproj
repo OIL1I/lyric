@@ -7,6 +7,21 @@
     <Description>The entry point of the tool suite: selects tools and passes through.</Description>
   </PropertyGroup>
 
+  <!--
+    The project templates, embedded rather than shipped as a directory: they cannot go missing at
+    runtime, and they stay real files in the repository, so the test suite compiles them. A template
+    that does not build is then a red test rather than something the first user finds.
+
+    RecursiveDir separates with a backslash on Windows and a slash elsewhere; the reader normalises
+    both, so the same resource name is asked for on either.
+  -->
+  <ItemGroup>
+    <TemplateFile Include="$(MSBuildThisFileDirectory)..\..\templates\**\*" />
+    <EmbeddedResource Include="@(TemplateFile)">
+      <LogicalName>templates/%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <ItemGroup>
     <!--
       ONE reference. This driver compiles nothing and executes nothing, it starts tools. No lyrfe,
