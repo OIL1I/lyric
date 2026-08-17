@@ -161,3 +161,37 @@ turns each use into a direct call — the operator costs no more than the method
 
 Optionals stay outside this rule: a `?T` compares against `null`, and the value inside compares
 after narrowing.
+
+Ordering works the same way, through `Ordered` and its single `compare` method — negative, zero or
+positive, as `strcmp`. All four comparison operators derive from it:
+
+```lyr
+import std.core { Ordered };
+import std.io.console { println };
+
+struct Version :: [Ordered<Version>] {
+    major: int,
+    minor: int,
+    fn compare(other: Version): int {
+        if (this.major != other.major) {
+            return if (this.major < other.major) -1 else 1;
+        }
+        if (this.minor != other.minor) {
+            return if (this.minor < other.minor) -1 else 1;
+        }
+        return 0;
+    }
+}
+
+fn main(): int {
+    let old = Version { major = 1, minor = 4 };
+    let new = Version { major = 1, minor = 5 };
+    if (old < new) {
+        println("upgrade available");
+    }
+    return 0;
+}
+```
+
+`string` conforms to `Ordered<string>` in the standard library, so `"apple" < "banana"` works out of
+the box — lexicographic over code points, the same order `compare` defines.

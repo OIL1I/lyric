@@ -88,21 +88,21 @@ public sealed class TypeResult
     /// The lowering emits the stored call instead of a <c>BinOp</c> — deriving the method a second
     /// time there would be a second answer to which function an operator means.</para>
     ///
-    /// <para><c>Negate</c> carries <c>!=</c>: there is no <c>notEquals</c> to call, the call's
-    /// result is negated.</para>
+    /// <para>Only the call is stored; what to make of its result follows from the operator on the
+    /// node itself. <c>!=</c> negates <c>equals</c>, and the four orderings compare what
+    /// <c>compare</c> answered against zero — a stored flag beside the node's own operator would be
+    /// a second copy of it.</para>
     ///
     /// <para>The synthetic nodes hang in no tree, so syntax walks never meet them; they reuse the
     /// REAL operand nodes as receiver and argument, which is what makes the stored call lower the
     /// operands exactly once.</para>
     /// </summary>
-    private readonly Dictionary<Node, (CallExpr Call, bool Negate)> _operatorCalls =
+    private readonly Dictionary<Node, CallExpr> _operatorCalls =
         new(ReferenceEqualityComparer.Instance);
 
-    public void DesugarOperator(Node op, CallExpr call, bool negate) =>
-        _operatorCalls[op] = (call, negate);
+    public void DesugarOperator(Node op, CallExpr call) => _operatorCalls[op] = call;
 
-    public (CallExpr Call, bool Negate)? OperatorCallOf(Node op) =>
-        _operatorCalls.TryGetValue(op, out var d) ? d : null;
+    public CallExpr? OperatorCallOf(Node op) => _operatorCalls.GetValueOrDefault(op);
 
     /// <summary>
     /// The type arguments of a call site, inferred or written.

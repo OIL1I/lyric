@@ -1661,19 +1661,35 @@ internal sealed class FunctionLowerer
         if (TryLowerNullTest(expr) is { } nullTest)
             return nullTest;
 
-        // An operator on an Equatable type IS a method call, built and checked by the sema. Lowering
+        // An operator on a conforming type IS a method call, built and checked by the sema. Lowering
         // the stored call routes through the ordinary dispatch, so every receiver shape — plain,
         // generic instance, extension, constraint — behaves exactly as the written call would. The
         // operands are the REAL operand nodes, lowered once, here.
+        //
+        // What to make of the result follows from the operator on this node: '==' is the call
+        // itself, '!=' negates it, and the four orderings read the SIGN of what 'compare' answered —
+        // against zero, with the same comparison instruction an 'int < int' emits.
         if (_types.OperatorCallOf(expr) is { } desugared)
         {
-            var value = LowerCall(desugared.Call)
+            var value = LowerCall(desugared)
                         ?? throw Bug($"operator method for '{expr.Operator}' returned no value");
-            if (!desugared.Negate) return value;
 
-            var negated = _slots.NewTemp(BoolType);
-            _b.Emit(new UnOp(negated, IrUnKind.Not, BoolType, value, expr.Span));
-            return negated;
+            switch (expr.Operator)
+            {
+                case BinaryOp.Eq:
+                    return value;
+
+                case BinaryOp.Ne:
+                    var negated = _slots.NewTemp(BoolType);
+                    _b.Emit(new UnOp(negated, IrUnKind.Not, BoolType, value, expr.Span));
+                    return negated;
+
+                default:
+                    var zero = EmitConst(new IntConst(0),
+                        new IrScalarType(IrScalar.I64), expr.Span);
+                    return EmitBinary(IrBinKindExtensions.FromAst(expr.Operator),
+                        TypeOfExpr(expr), value, zero, expr.Span);
+            }
         }
 
         var kind = IrBinKindExtensions.FromAst(expr.Operator);
