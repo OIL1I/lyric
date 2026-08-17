@@ -30,6 +30,7 @@
 <li><a href="../../guide/modules/">Modules</a></li>
 <li><a href="../../guide/standard-library/">The standard library</a></li>
 <li><a href="../../guide/embedding/" class="here">Embedding</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
 </ul>
 <h2>Reference</h2>
 <ul>
@@ -38,6 +39,7 @@
 </ul>
 <h2>Standard library</h2>
 <ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
 <li><a href="../../stdlib/std.collections/">std.collections</a></li>
 <li><a href="../../stdlib/std.core/">std.core</a></li>
 <li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
@@ -57,6 +59,7 @@
 <li><a href="#compiling-and-running">Compiling and running</a></li>
 <li><a href="#reloading">Reloading</a></li>
 <li><a href="#registering-functions">Registering functions</a></li>
+<li><a href="#an-sdk-of-your-own">An SDK of your own</a></li>
 <li><a href="#registering-types">Registering types</a></li>
 <li><a href="#errors">Errors</a></li>
 </ul>
@@ -106,6 +109,43 @@ fn main(): int {
 }
 </code></pre>
 <p>There is no implicit namespace: without the import the names are unknown.</p>
+<h2 id="an-sdk-of-your-own">An SDK of your own</h2>
+<p><code>RegisterFunction</code> generates the declaration from the delegate, which is right for a handful of
+functions. For an engine with a hundred of them the signature ends up in two places: in the C# call
+and in whatever documents the API.</p>
+<p>A <strong>native root</strong> is a directory whose modules may declare functions without a body. The declarations
+are ordinary <code>.lyr</code> files you ship and version:</p>
+<pre><code class="language-text">// sdk/engine/input.lyr
+module engine.input;
+
+pub fn keyDown(key: int): bool;
+
+pub fn anyKey(): bool { return keyDown(32) || keyDown(27); }
+</code></pre>
+<pre><code class="language-csharp">var vm = new LangVm(new HostOptions
+{
+    NativeRoots = new Dictionary&lt;string, string&gt; { [&quot;engine&quot;] = &quot;sdk&quot; },
+});
+
+vm.RegisterNative(&quot;engine.input.keyDown&quot;, (long key) =&gt; input.IsDown(key));
+</code></pre>
+<pre><code class="language-lyr">import engine.input { anyKey };
+
+fn main(): int { return if (anyKey()) 1 else 0; }
+</code></pre>
+<p>Three things follow from how it is keyed:</p>
+<ul>
+<li><strong>The root decides, not the file.</strong> The same file outside a native root is a missing body and an
+error. Whether a module may reach into the host follows where it came from, so naming a file well
+enough is not a way in.</li>
+<li><strong>The segment belongs to the root.</strong> <code>engine</code> is taken out of the program's own directory, so which
+file answers an import is never a question of precedence.</li>
+<li><strong>A declaration needs an implementation under the same qualified name.</strong> <code>RegisterNative</code> writes no
+declaration — that is the file's job — and a declaration nobody implements fails when the script is
+instantiated, not at the call site.</li>
+</ul>
+<p>A module in a native root may hold ordinary Lyric code beside its declarations; <code>anyKey</code> above is
+compiled like any other function.</p>
 <h2 id="registering-types">Registering types</h2>
 <p><code>RegisterType</code> exposes a C# class to scripts. Scripts receive such an object and pass it on; they
 cannot construct one and cannot read its fields.</p>
@@ -161,6 +201,7 @@ value can reach it. There is no release or revocation protocol.</p>
 them.</p>
 <nav class="neighbours">
 <a class="prev" href="../../guide/standard-library/">The standard library</a>
+<a class="next" href="../../guide/building/">Building a project</a>
 </nav>
 </main>
 </div>

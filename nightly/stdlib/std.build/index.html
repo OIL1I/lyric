@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Getting started — Lyric nightly</title>
+<title>std.build — Lyric nightly</title>
 <link rel="stylesheet" href="../../site.css" />
 </head>
 <body>
@@ -16,7 +16,7 @@
 <nav class="sidebar">
 <h2>Guide</h2>
 <ul>
-<li><a href="../../guide/getting-started/" class="here">Getting started</a></li>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
 <li><a href="../../guide/values-and-types/">Values and types</a></li>
 <li><a href="../../guide/functions/">Functions</a></li>
 <li><a href="../../guide/control-flow/">Control flow</a></li>
@@ -39,7 +39,7 @@
 </ul>
 <h2>Standard library</h2>
 <ul>
-<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.build/" class="here">std.build</a></li>
 <li><a href="../../stdlib/std.collections/">std.collections</a></li>
 <li><a href="../../stdlib/std.core/">std.core</a></li>
 <li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
@@ -53,72 +53,34 @@
 </ul>
 </nav>
 <main>
-<h1>Getting started</h1>
+<h1>std.build</h1>
 <nav class="contents">
 <ul>
-<li><a href="#the-tools">The tools</a></li>
-<li><a href="#arguments">Arguments</a></li>
+<li><a href="#class-artifact">Artifact</a></li>
+<li><a href="#function-addexecutable">addExecutable</a></li>
 </ul>
 </nav>
-<p>A Lyric program is a file with the extension <code>.lyr</code>. Execution begins at <code>main</code>.</p>
-<pre><code class="language-lyr">import std.io.console { println };
-
-fn main(): int {
-    println(&quot;Hello, Lyric!&quot;);
-    return 0;
-}
-</code></pre>
-<p>Run it:</p>
-<pre><code class="language-bash">lyric run hello.lyr
-</code></pre>
-<p>The return value of <code>main</code> becomes the process exit code, masked with <code>&amp; 0xFF</code>.</p>
-<h2 id="the-tools">The tools</h2>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>Purpose</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>lyric run &lt;file&gt;</code></td>
-<td>compile and execute</td>
-</tr>
-<tr>
-<td><code>lyric check &lt;file&gt;</code></td>
-<td>compile without writing a file</td>
-</tr>
-<tr>
-<td><code>lyric build &lt;file&gt; -o &lt;out&gt;</code></td>
-<td>compile to <code>.lyrbc</code></td>
-</tr>
-<tr>
-<td><code>lyric disasm &lt;file&gt;</code></td>
-<td>print the bytecode</td>
-</tr>
-<tr>
-<td><code>lyric repl</code></td>
-<td>interactive prompt</td>
-</tr>
-</tbody>
-</table>
-<p><code>lyric check</code> stops after semantic analysis. A program it accepts can still be rejected by the
-code generator for a construct that is not lowered yet; <code>lyric run</code> is the full pipeline.</p>
-<h2 id="arguments">Arguments</h2>
-<p>To receive command-line arguments, declare <code>main</code> with one parameter of type <code>string[]</code>:</p>
-<pre><code class="language-lyr">import std.io.console { println };
-
-fn main(args: string[]): int {
-    println(f&quot;got {args.length} argument(s)&quot;);
-    return 0;
-}
-</code></pre>
-<p>Everything after <code>--</code> on the command line belongs to the program:</p>
-<pre><code class="language-bash">lyric run wc.lyr -- README.md
-</code></pre>
+<section class="item" id="class-artifact">
+<h2><a href="#class-artifact">Artifact</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class Artifact</code></pre>
+<p>One thing a build produces: a <code>.lyrbc</code> compiled from an entry file.</p>
+<p>Returned by <code>addExecutable</code>, and configured after the fact — the compile itself happens once
+<code>build</code> has returned, so an option set on the next line still applies.</p>
+<p class="source">stdlib/std/build.lyr:7</p>
+</section>
+<section class="item" id="function-addexecutable">
+<h2><a href="#function-addexecutable">addExecutable</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn addExecutable(entry: string, output: string): Artifact</code></pre>
+<p>Declares a program to compile: <code>entry</code> is its main file, <code>output</code> the <code>.lyrbc</code> to write.</p>
+<p>Both are relative to the directory holding <code>build.lyr</code>. The module root and the native roots
+come from <code>lyric.json</code>; this does not repeat them.</p>
+<p>Nothing is compiled while <code>build</code> runs. The artifacts are collected and built afterwards, so
+work the script does in between — writing a generated source file, for instance — is finished
+before any of them is read.</p>
+<p class="source">stdlib/std/build.lyr:22</p>
+</section>
 <nav class="neighbours">
-<a class="next" href="../../guide/values-and-types/">Values and types</a>
+<a class="next" href="../../stdlib/std.collections/">std.collections</a>
 </nav>
 </main>
 </div>
