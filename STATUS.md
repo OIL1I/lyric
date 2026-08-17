@@ -215,13 +215,6 @@ is the thing to check.
 
 ## Still open
 
-**From the M10 plan, found while measuring:**
-
-- **The member separator is written for block bodies.** A bodiless method in a class needs `int;,` —
-  a semicolon *and* a comma in a row. Remeasured 2026-08-14: **effectively unreachable**. A bodiless
-  method in a class is `LYR-SEM0051` outside the standard library, and no standard library class
-  declares one. A latent inconsistency of one line in `ParseTypeMembers`, not a gap anyone can hit.
-
 **Language gaps still open:**
 
 - **A block lambda does not deliver its return type to the inference**: `(n: int) => n` binds `U`,

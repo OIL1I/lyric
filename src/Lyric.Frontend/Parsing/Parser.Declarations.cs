@@ -240,10 +240,10 @@ public sealed partial class Parser
 
             if (_buffer.Check(TokenKind.RBrace)) break;
 
-            // The ',' separates members. After something already closed — a block body ends in
-            // '}', a 'static let' in ';' — it is optional; only fields need it, or `a: int b: int`
-            // would be a valid line.
-            if (member is FunctionDecl { Body: not null } or StaticBindingDecl)
+            // The ',' separates members, and only a FIELD needs it: without the rule `a: int b: int`
+            // would be a valid line. Everything else has already closed itself — a block body ends
+            // in '}', a bodiless method and a 'static let' end in ';'.
+            if (member is FunctionDecl or StaticBindingDecl)
                 _buffer.Match(TokenKind.Comma);
             else
                 _buffer.Expect(TokenKind.Comma, "LYR-PAR0029", "expected ',' between members");
