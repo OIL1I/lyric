@@ -76,4 +76,21 @@ public sealed class DocumentStore
         ByPath(document.Path) is { } current && current.Version == document.Version;
 
     public int Count => _documents.Count;
+
+    /// <summary>Every open buffer. A snapshot: the collection may change while it is read.</summary>
+    public IReadOnlyCollection<OpenDocument> All => _documents.Values.ToArray();
+
+    /// <summary>
+    /// The open buffers as the compiler wants them: absolute path to text.
+    ///
+    /// <para>What <see cref="CompilerOptions.SourceOverlay"/> takes, so a program is compiled
+    /// against the unsaved text of everything it imports rather than against the last save.</para>
+    /// </summary>
+    public Dictionary<string, string> Overlay()
+    {
+        var overlay = new Dictionary<string, string>(DocumentUri.PathComparer);
+        foreach (var document in _documents.Values)
+            overlay[Path.GetFullPath(document.Path)] = document.Text;
+        return overlay;
+    }
 }

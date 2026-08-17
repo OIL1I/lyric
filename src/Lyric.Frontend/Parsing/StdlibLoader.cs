@@ -34,8 +34,9 @@ public static class StdlibLoader
     /// user code, in the other direction.
     /// </summary>
     public static Func<string[], (Module Ast, bool IsNative)?> ForRoot(
-        string root, SourceManager sourceManager, DiagnosticEngine diagnostics) =>
-        Build(root, sourceManager, diagnostics, native: true);
+        string root, SourceManager sourceManager, DiagnosticEngine diagnostics,
+        IReadOnlyDictionary<string, string>? overlay = null) =>
+        Build(root, sourceManager, diagnostics, native: true, overlay);
 
     /// <summary>
     /// Builds the loader for a program's OWN modules, rooted at the directory of its entry file.
@@ -46,26 +47,40 @@ public static class StdlibLoader
     /// the origin that decides.</para>
     /// </summary>
     public static Func<string[], (Module Ast, bool IsNative)?> ForProject(
-        string root, SourceManager sourceManager, DiagnosticEngine diagnostics) =>
-        Build(root, sourceManager, diagnostics, native: false);
+        string root, SourceManager sourceManager, DiagnosticEngine diagnostics,
+        IReadOnlyDictionary<string, string>? overlay = null) =>
+        Build(root, sourceManager, diagnostics, native: false, overlay);
 
     private static Func<string[], (Module Ast, bool IsNative)?> Build(
-        string root, SourceManager sourceManager, DiagnosticEngine diagnostics, bool native) =>
+        string root, SourceManager sourceManager, DiagnosticEngine diagnostics, bool native,
+        IReadOnlyDictionary<string, string>? overlay) =>
         path =>
         {
             var file = Path.Combine(root, Path.Combine(path)) + ".lyr";
-            if (!File.Exists(file)) return null;
 
             FileId id;
-            try
+
+            // The overlay wins over the disk, and applies even when there is no file yet: an editor
+            // holds the authoritative text of everything it has open, including a module that has
+            // never been saved.
+            if (overlay is not null && overlay.TryGetValue(Path.GetFullPath(file), out var text))
             {
-                id = sourceManager.AddFromDisk(file);
+                id = sourceManager.AddVirtual(file, text);
             }
-            catch
+            else
             {
-                // Present but unreadable: treated as "not found", so it turns into the ordinary
-                // "unknown module" diagnostic instead of an exception out of the resolver.
-                return null;
+                if (!File.Exists(file)) return null;
+
+                try
+                {
+                    id = sourceManager.AddFromDisk(file);
+                }
+                catch
+                {
+                    // Present but unreadable: treated as "not found", so it turns into the ordinary
+                    // "unknown module" diagnostic instead of an exception out of the resolver.
+                    return null;
+                }
             }
 
             return (new Parser(sourceManager, id, diagnostics).ParseModule(), native);
