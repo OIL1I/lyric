@@ -111,29 +111,29 @@ public class CompoundAssignTests
             fn main(): int { var xs = [1, 2]; xs += [3]; println(fromInt(xs.length)); return 0; }
             """));
 
-    // ------------------------------------------------------------------ the limit next door
+    // ------------------------------------------------------------------ the limit next door, closed
 
-    [Theory]
-    [InlineData("var s = \"ab\"; s *= 3;", "string")]
-    [InlineData("var xs = [1, 2]; xs *= 2;", "int[]")]
-    public void Repetition_has_no_compound_form_yet(string body, string target)
+    [Fact]
+    public void Repetition_has_a_compound_form_now()
     {
-        // A DIFFERENT bug, in the type checker rather than in the lowering, and deliberately not
-        // fixed here: 'a op= b' is typed as if b had to be assignable to a, which holds for every
-        // arithmetic operator and not for the repetition overload, where the right operand is an
-        // 'int' by design. 's = s * 3' compiles and works; 's *= 3' does not.
-        //
-        // Pinned rather than left as a note, because the lowering can now do it — the moment the
-        // sema rule is corrected this test goes red and says so instead of leaving a path untested.
-        var sm = new SourceManager();
-        var id = sm.AddVirtual("test.lyr", $"fn main(): int {{ {body} return 0; }}");
-        var de = new DiagnosticEngine(sm);
-        var comp = new Compilation(sm, de);
-        comp.AddModule(new Parser(sm, id, de).ParseModule());
-        Semantics.Analyze(comp, comp.Resolve(), de);
-
-        var reported = Assert.Single(de.Diagnostics, d => d.Code == "LYR-SEM0001");
-        Assert.Contains($"to '{target}'", reported.Message, StringComparison.Ordinal);
+        // The predecessor of this test pinned the opposite and said of itself: "the moment the sema
+        // rule is corrected this test goes red and says so instead of leaving a path untested."
+        // That moment came with the operator-check fix — a compound is typed as the binary it
+        // carries, 's * 3' is a string, and the lowering had been able to do this since the
+        // v1.1.0 rework routed every compound through EmitBinary.
+        Assert.Equal("ababab\n4\n", Run("""
+            import std.io.console { println };
+            import std.string { fromInt };
+            fn main(): int {
+                var s = "ab";
+                s *= 3;
+                var xs = [1, 2];
+                xs *= 2;
+                println(s);
+                println(fromInt(xs.length));
+                return 0;
+            }
+            """));
     }
 
     // ------------------------------------------------------------------ the control

@@ -277,6 +277,93 @@ extend uint :: [Hashable<uint>] {
     fn hash(): int { return this as int; }
 }
 
+// ------------------------------------------------------------------------------- arithmetic
+//
+// The same pattern once more: one interface per operator, conformance of the built-ins through
+// `extend`, user types through `::`. `+` on a conforming type IS `add`, and monomorphization makes
+// the operator cost exactly what the method costs.
+//
+// Homogeneous by design: `T op T -> T`. A mixed form such as `Vec2 * float` needs a two-parameter
+// interface and an answer to multiple conformances of one generic interface; neither exists yet.
+
+/// Values of this type can be added: `a + b` is `a.add(b)`.
+pub interface Add<T> {
+    /// The sum of this value and `other`.
+    fn add(other: T): T;
+}
+
+/// Values of this type can be subtracted: `a - b` is `a.sub(b)`.
+pub interface Sub<T> {
+    /// This value minus `other`.
+    fn sub(other: T): T;
+}
+
+/// Values of this type can be multiplied: `a * b` is `a.mul(b)`.
+pub interface Mul<T> {
+    /// The product of this value and `other`.
+    fn mul(other: T): T;
+}
+
+/// Values of this type can be divided: `a / b` is `a.div(b)`.
+pub interface Div<T> {
+    /// This value divided by `other`. What a division by zero does is the type's own business;
+    /// the built-in numerics panic.
+    fn div(other: T): T;
+}
+
+extend int :: [Add<int>] {
+    fn add(other: int): int { return this + other; }
+}
+
+extend int :: [Sub<int>] {
+    fn sub(other: int): int { return this - other; }
+}
+
+extend int :: [Mul<int>] {
+    fn mul(other: int): int { return this * other; }
+}
+
+extend int :: [Div<int>] {
+    fn div(other: int): int { return this / other; }
+}
+
+extend uint :: [Add<uint>] {
+    fn add(other: uint): uint { return this + other; }
+}
+
+extend uint :: [Sub<uint>] {
+    fn sub(other: uint): uint { return this - other; }
+}
+
+extend uint :: [Mul<uint>] {
+    fn mul(other: uint): uint { return this * other; }
+}
+
+extend uint :: [Div<uint>] {
+    fn div(other: uint): uint { return this / other; }
+}
+
+extend float :: [Add<float>] {
+    fn add(other: float): float { return this + other; }
+}
+
+extend float :: [Sub<float>] {
+    fn sub(other: float): float { return this - other; }
+}
+
+extend float :: [Mul<float>] {
+    fn mul(other: float): float { return this * other; }
+}
+
+extend float :: [Div<float>] {
+    fn div(other: float): float { return this / other; }
+}
+
+// `Add` alone: a string concatenates and does nothing else arithmetic.
+extend string :: [Add<string>] {
+    fn add(other: string): string { return this + other; }
+}
+
 // No `Hashable` for `float`, deliberately.
 //
 // A hash table requires equal values to hash equally. Floating point breaks the premise rather

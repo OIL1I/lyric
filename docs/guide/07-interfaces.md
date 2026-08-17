@@ -195,3 +195,52 @@ fn main(): int {
 
 `string` conforms to `Ordered<string>` in the standard library, so `"apple" < "banana"` works out of
 the box — lexicographic over code points, the same order `compare` defines.
+
+Arithmetic follows the same rule, through one interface per operator: `Add`, `Sub`, `Mul` and `Div`
+from `std.core`, each with a single method of the same name. The operands are homogeneous — `T` with
+`T`, giving `T`:
+
+```lyr
+import std.core { Add, Sub };
+import std.io.console { println };
+import std.string { fromInt };
+
+struct Vec2 :: [Add<Vec2>, Sub<Vec2>] {
+    x: int,
+    y: int,
+    fn add(other: Vec2): Vec2 {
+        return Vec2 { x = this.x + other.x, y = this.y + other.y };
+    },
+    fn sub(other: Vec2): Vec2 {
+        return Vec2 { x = this.x - other.x, y = this.y - other.y };
+    }
+}
+
+fn main(): int {
+    let position = Vec2 { x = 10, y = 20 };
+    let velocity = Vec2 { x = 1, y = -2 };
+    let next = position + velocity;
+    println(fromInt(next.x));
+    println(fromInt(next.y));
+    return 0;
+}
+```
+
+The built-in numerics and `string` conform in `std.core`, so a generic function constrained on `Add`
+serves them and your types alike:
+
+```lyr
+import std.core { Add };
+
+fn total<T :: [Add<T>]>(a: T, b: T): T {
+    return a + b;
+}
+
+fn main(): int {
+    return total(40, 2) - 42;
+}
+```
+
+A mixed form such as `Vec2 * float` does not exist yet: the interfaces are homogeneous by design,
+and `%` stays numeric-only. Compound assignment (`v += w`) does not reach through the interfaces
+either — write `v = v + w`.

@@ -985,6 +985,98 @@
             "File": "stdlib/std/core.lyr",
             "Line": 156
           }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Add",
+          "Signature": "pub interface Add<T>",
+          "Doc": "Values of this type can be added: `a + b` is `a.add(b)`.",
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "add",
+              "Signature": "fn add(other: T): T",
+              "Doc": "The sum of this value and `other`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 292
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 290
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Sub",
+          "Signature": "pub interface Sub<T>",
+          "Doc": "Values of this type can be subtracted: `a - b` is `a.sub(b)`.",
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "sub",
+              "Signature": "fn sub(other: T): T",
+              "Doc": "This value minus `other`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 298
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 296
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Mul",
+          "Signature": "pub interface Mul<T>",
+          "Doc": "Values of this type can be multiplied: `a * b` is `a.mul(b)`.",
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "mul",
+              "Signature": "fn mul(other: T): T",
+              "Doc": "The product of this value and `other`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 304
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 302
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "Div",
+          "Signature": "pub interface Div<T>",
+          "Doc": "Values of this type can be divided: `a / b` is `a.div(b)`.",
+          "Members": [
+            {
+              "Kind": "Method",
+              "Name": "div",
+              "Signature": "fn div(other: T): T",
+              "Doc": "This value divided by `other`. What a division by zero does is the type's own business;\nthe built-in numerics panic.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 311
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 308
+          }
         }
       ]
     },

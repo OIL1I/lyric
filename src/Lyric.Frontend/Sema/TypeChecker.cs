@@ -94,7 +94,17 @@ public sealed class TypeChecker
         var core = comp.FindModule(["std", "core"])?.Members;
         _equatable = core?.LookupLocal("Equatable") as TypeSymbol;
         _ordered = core?.LookupLocal("Ordered") as TypeSymbol;
+        _add = core?.LookupLocal("Add") as TypeSymbol;
+        _sub = core?.LookupLocal("Sub") as TypeSymbol;
+        _mul = core?.LookupLocal("Mul") as TypeSymbol;
+        _div = core?.LookupLocal("Div") as TypeSymbol;
     }
+
+    /// <summary>The four arithmetic interfaces, under the same rules as <see cref="_equatable"/>.</summary>
+    private readonly TypeSymbol? _add;
+    private readonly TypeSymbol? _sub;
+    private readonly TypeSymbol? _mul;
+    private readonly TypeSymbol? _div;
 
     /// <summary>What <c>==</c> on a user type resolves through. Null without a standard library,
     /// and user-type equality is then a diagnostic rather than a crash.</summary>
@@ -1021,9 +1031,19 @@ public sealed class TypeChecker
 
         switch (b.Operator)
         {
-            case BinaryOp.Add: return CheckAdd(b, l, r);
-            case BinaryOp.Mul: return CheckMul(b, l, r);
-            case BinaryOp.Sub or BinaryOp.Div or BinaryOp.Rem:
+            case BinaryOp.Add: return CheckAdd(b, l, r, scope);
+            case BinaryOp.Mul: return CheckMul(b, l, r, scope);
+            case BinaryOp.Sub:
+                return UnifyNumeric(b.Left, l, b.Right, r)
+                       ?? DesugarArithmetic(b, l, r, scope, _sub, "sub", "-")
+                       ?? BadBinary(b, l, r);
+            case BinaryOp.Div:
+                return UnifyNumeric(b.Left, l, b.Right, r)
+                       ?? DesugarArithmetic(b, l, r, scope, _div, "div", "/")
+                       ?? BadBinary(b, l, r);
+            // '%' stays numeric-only: no interface exists for it, deliberately — a remainder on a
+            // user type answers no question anyone has asked yet.
+            case BinaryOp.Rem:
                 return UnifyNumeric(b.Left, l, b.Right, r) ?? BadBinary(b, l, r);
             case BinaryOp.Shl or BinaryOp.Shr or BinaryOp.BitAnd or BinaryOp.BitXor or BinaryOp.BitOr:
                 if (TypeFacts.IsInteger(l) && TypeFacts.IsInteger(r))
@@ -1130,14 +1150,16 @@ public sealed class TypeChecker
     /// returned before the operator was examined — so their second pass through the checker
     /// reproduces the same table entries.</para>
     /// </summary>
-    private void DesugarToMethodCall(BinaryExpr b, string method, SymbolTable scope)
+    private LyrType DesugarToMethodCall(BinaryExpr b, string method, SymbolTable scope)
     {
         var member = new MemberExpr(b.Left, method, IsOptional: false, b.Span);
         var call = new CallExpr(member, [b.Right], b.Span);
 
-        if (CheckExpr(call, scope).IsError) return;
+        var type = CheckExpr(call, scope);
+        if (type.IsError) return LyrType.Error;
 
         _result.DesugarOperator(b, call);
+        return type;
     }
 
     /// <summary>
@@ -1188,23 +1210,47 @@ public sealed class TypeChecker
         BadBinary(b, l, r);
     }
 
-    private LyrType CheckAdd(BinaryExpr b, LyrType l, LyrType r)
+    private LyrType CheckAdd(BinaryExpr b, LyrType l, LyrType r, SymbolTable scope)
     {
         if (UnifyNumeric(b.Left, l, b.Right, r) is { } n) return n;
         if (TypeFacts.IsString(l) && TypeFacts.IsString(r)) return LyrType.String;      // "a" + "b"
         if (l is ArrayOf la && r is ArrayOf ra && LyrType.Equal(la.Element, ra.Element)) // [..] + [..]
             return new ArrayOf(la.Element, null);
-        return BadBinary(b, l, r);
+        return DesugarArithmetic(b, l, r, scope, _add, "add", "+") ?? BadBinary(b, l, r);
     }
 
-    private LyrType CheckMul(BinaryExpr b, LyrType l, LyrType r)
+    private LyrType CheckMul(BinaryExpr b, LyrType l, LyrType r, SymbolTable scope)
     {
         if (UnifyNumeric(b.Left, l, b.Right, r) is { } n) return n;
         if (TypeFacts.IsString(l) && TypeFacts.IsInteger(r)) return LyrType.String;   // "x" * 3
         if (TypeFacts.IsString(r) && TypeFacts.IsInteger(l)) return LyrType.String;   // 3 * "x"
         if (l is ArrayOf la && TypeFacts.IsInteger(r)) return new ArrayOf(la.Element, null); // [0] * 5
         if (r is ArrayOf ra && TypeFacts.IsInteger(l)) return new ArrayOf(ra.Element, null);
-        return BadBinary(b, l, r);
+        return DesugarArithmetic(b, l, r, scope, _mul, "mul", "*") ?? BadBinary(b, l, r);
+    }
+
+    /// <summary>
+    /// Arithmetic on a conforming type: <c>a + b</c> IS <c>a.add(b)</c>, under the rules of
+    /// equality and ordering — conformance required, homogeneous operands, the call checked through
+    /// the ordinary member path.
+    /// </summary>
+    /// <returns><c>null</c> when this is not a case for an interface at all, so the caller falls to
+    /// its own rejection; a reported <see cref="ErrorType"/> when it is one and the conformance is
+    /// missing.</returns>
+    private LyrType? DesugarArithmetic(BinaryExpr b, LyrType l, LyrType r, SymbolTable scope,
+        TypeSymbol? iface, string method, string opText)
+    {
+        if (!LyrType.Equal(l, r) || !CanConform(l)) return null;
+
+        if (iface is not null && Satisfies(l, iface, new GenericInstance(iface, [l])))
+            return DesugarToMethodCall(b, method, scope);
+
+        var name = iface?.Name ?? method;
+        _de.Report("LYR-SEM0003", Severity.Error, b.Span,
+            $"'{opText}' is not defined for '{TypeFacts.Display(l)}' — it comes from '{name}': "
+            + $"declare the type with ':: [{name}<{TypeFacts.Display(l)}>]' and a "
+            + $"'fn {method}(other: {TypeFacts.Display(l)}): {TypeFacts.Display(l)}'");
+        return LyrType.Error;
     }
 
     /// <summary>
@@ -1255,12 +1301,60 @@ public sealed class TypeChecker
         // For identifier targets take the DECLARED type rather than the narrowed one, or 'x = null' on
         // a narrowed ?T would wrongly be an error.
         var targetType = targetSym is not null ? DeclaredType(targetSym) ?? _result.TypeOf(a.Target) : _result.TypeOf(a.Target);
-        var value = CheckExpr(a.Value, scope, targetType);
+
+        // A compound assignment is the operator it carries: whatever 'a = a + b' says, 'a += b'
+        // says too. Checked by synthesizing the binary and running it through CheckBinary — the
+        // SAME rules as the written form, not a second copy of them.
+        //
+        // Until this check, the only rule on a compound was that the right operand be assignable to
+        // the left, which holds for any value of the target's own type. 'p += p' on a struct passed
+        // the checker and the lowering emitted an integer add over two references — the 's += "x"'
+        // bug of v1.1.0, one type over, invisible in a release build where the verifier does not
+        // run.
+        //
+        // The short-circuit and coalesce forms keep the old path: their meaning is not "apply the
+        // operator to both sides" — '??=' assigns only when the target is null — and running the
+        // left side through CheckBinary would apply narrowing rules meant for expressions.
+        LyrType value;
+        if (a.Operator is { } op
+            and not (BinaryOp.LogicalAnd or BinaryOp.LogicalOr or BinaryOp.Coalesce))
+        {
+            var binary = new BinaryExpr(a.Target, op, a.Value, a.Span);
+            value = CheckBinary(binary, scope);
+
+            // The binary would desugar through an operator interface. The compound lowering
+            // evaluates the target's ADDRESS once and cannot yet route through a call, so this is
+            // a diagnostic rather than a silent double evaluation of the receiver.
+            if (_result.OperatorCallOf(binary) is not null)
+                _de.Report("LYR-SEM0003", Severity.Error, a.Span,
+                    $"compound assignment does not reach through an operator interface yet — "
+                    + $"write it out: 'a = a {OperatorText(op)} b'");
+        }
+        else
+        {
+            value = CheckExpr(a.Value, scope, targetType);
+        }
+
         // The lvalue and mutability check happens in SemaRules; only type compatibility here.
         CheckAssignable(a.Value, value, targetType, a.Span);
         if (targetSym is not null) _narrowed.Remove(targetSym); // a reassignment drops the narrowing
         return targetType;
     }
+
+    private static string OperatorText(BinaryOp op) => op switch
+    {
+        BinaryOp.Add => "+",
+        BinaryOp.Sub => "-",
+        BinaryOp.Mul => "*",
+        BinaryOp.Div => "/",
+        BinaryOp.Rem => "%",
+        BinaryOp.BitAnd => "&",
+        BinaryOp.BitOr => "|",
+        BinaryOp.BitXor => "^",
+        BinaryOp.Shl => "<<",
+        BinaryOp.Shr => ">>",
+        _ => op.ToString(),
+    };
 
     private static LyrType? DeclaredType(Symbol s) => s switch
     {
