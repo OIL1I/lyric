@@ -11,7 +11,7 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.3.0 are released** — annotated tags on the remote, each with a release page and
+**v1.0.0 through v1.3.1 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
 **M12, the project system, is what v1.2.0 shipped**: `lyric.json` says what a project is, `build.lyr`
@@ -22,8 +22,8 @@ type, what a name under the cursor is, where it was declared, a program followed
 documentation on hover, the outline of a file, and every place a name occurs. **v1.3.0 shipped all
 of that**; completion is v1.4.0 and closes the milestone.
 
-3478 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
-`lyrembed.dll`, version **1.3.0**.
+3626 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
+`lyrembed.dll`, version **1.3.1**.
 
 **All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
 language server reads the project file, and editing a module refreshes the file that imports it.
@@ -40,6 +40,20 @@ functions out of them and hands its own functions and types in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **v1.3.1 — a diagnostic names what is wrong, not where to read about it** (2026-08-17). 3626
+  tests green, Debug and Release. Not merged.
+  - Eight messages cited a document. Five named `Sprache.md`, which has been `docs/Grammar.md` for
+    some time, and the section numbers were wrong as well — §10 and §11 of a document with seven.
+    Someone following either was sent nowhere twice.
+  - **The citations are gone rather than repaired.** A citation ages in two ways at once, the file
+    name and the section number, and both had already happened. Where the reference carried
+    information (`§11 allows none or one 'string[]'`) the message now says it outright.
+  - **The rule has a test**, because a rule nobody checks is a preference. It scans the string
+    LITERALS of `src/` for `§` or a `.md` name; comments and XML documentation are free to cite,
+    and they do. Verified by putting an offender back and watching it go red — a mechanical test
+    that has never failed is a test nobody has seen work.
+  - No code and no behaviour changed: same diagnostic codes, same spans, different wording.
 
 - [x] **v1.3.0 slice 4 — find all references** (2026-08-17). 3478 tests green. Merged as
   PR #21, and it completed v1.3.0.
@@ -101,38 +115,6 @@ functions out of them and hands its own functions and types in.
   - `detail` stays empty, and the field is absent from the type rather than present and null.
     Filling it needs a printer for `TypeNode`, and a second one beside `TypeFacts.Display` would be
     a second answer to what a type is called.
-
-- [x] **v1.3.0 slice 3 — documentation reaches the model, and hover shows it** (2026-08-17). 3426
-  tests green. Merged as PR #19.
-  - The blocks were collected, looked up and consumed by `tools/DocGen` already; the table just died
-    with the `Parser` instance that built it. Hover shows it under the signature, for the file being
-    edited **and** every module it reads.
-  - **Keyed by node identity**, like every other side table here. The parser collects by source
-    OFFSET, the only key available while there are no nodes yet — and an offset counts within one
-    file, so two modules both have one at 42. A compilation-wide table keyed that way answers with
-    another module's documentation. A test puts two documented declarations at the same offset.
-  - **The loader boundary carries it**, rather than a sink threaded through construction.
-    `LoadedModule` replaces the `(Ast, IsNative)` tuple, so a loader that produces no documentation
-    does not compile. The exception is `AddModule`, where the parameter is optional: ~90 call sites
-    are tests with nothing to pass. **That one place is covered by a test rather than the compiler**,
-    and it is worth saying rather than claiming the seam is total.
-  - `ParsedModule.Parse` is the single place that parses AND binds blocks to nodes, because the
-    translation from offset to identity has to happen while the parser is in hand. Its walk uses
-    `INamedDecl` as the predicate — **slice 1 already answered which nodes can carry a name, and
-    that is the same set that can carry a block.**
-  - **This slice found a hole in slice 1.** `GlobalBindingDecl` and `StaticBindingDecl` declare their
-    name through the `BindingStmt` they WRAP, so they have no `Name` of their own and the
-    assembly-driven test could not see them — while a symbol declares from the wrapper. Both
-    implement `INamedDecl` now, which also makes the jump to a global land on its name instead of on
-    `pub`. The limit is recorded in that test's docstring: *which nodes a symbol can declare from* is
-    not a question the assembly can answer.
-  - The text goes through **unchanged**. There is no doc-comment vocabulary in the grammar, so there
-    is nothing to interpret, and composing a summary from a signature would be the server writing
-    documentation rather than showing it.
-  - A declaration without a block is answered **byte for byte** as before — pinned with `Assert.Equal`
-    on the whole string, not a `DoesNotContain`. That is what makes the slice additive.
-  - Noticed on the way: **`std/io/console.lyr` carries no doc comment at all.** The 166 `///` lines
-    of the standard library sit in eight other files, so `println` still hovers without prose.
 
 ## Measurements
 
@@ -300,7 +282,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #21 from OIL1I/feature/find-references` (`e642c20`)
+`Merge pull request #22 from OIL1I/release/v1.3.0` (`7bf1c75`)
 
 ---
 
