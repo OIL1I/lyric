@@ -1255,12 +1255,60 @@ public sealed class TypeChecker
         // For identifier targets take the DECLARED type rather than the narrowed one, or 'x = null' on
         // a narrowed ?T would wrongly be an error.
         var targetType = targetSym is not null ? DeclaredType(targetSym) ?? _result.TypeOf(a.Target) : _result.TypeOf(a.Target);
-        var value = CheckExpr(a.Value, scope, targetType);
+
+        // A compound assignment is the operator it carries: whatever 'a = a + b' says, 'a += b'
+        // says too. Checked by synthesizing the binary and running it through CheckBinary — the
+        // SAME rules as the written form, not a second copy of them.
+        //
+        // Until this check, the only rule on a compound was that the right operand be assignable to
+        // the left, which holds for any value of the target's own type. 'p += p' on a struct passed
+        // the checker and the lowering emitted an integer add over two references — the 's += "x"'
+        // bug of v1.1.0, one type over, invisible in a release build where the verifier does not
+        // run.
+        //
+        // The short-circuit and coalesce forms keep the old path: their meaning is not "apply the
+        // operator to both sides" — '??=' assigns only when the target is null — and running the
+        // left side through CheckBinary would apply narrowing rules meant for expressions.
+        LyrType value;
+        if (a.Operator is { } op
+            and not (BinaryOp.LogicalAnd or BinaryOp.LogicalOr or BinaryOp.Coalesce))
+        {
+            var binary = new BinaryExpr(a.Target, op, a.Value, a.Span);
+            value = CheckBinary(binary, scope);
+
+            // The binary would desugar through an operator interface. The compound lowering
+            // evaluates the target's ADDRESS once and cannot yet route through a call, so this is
+            // a diagnostic rather than a silent double evaluation of the receiver.
+            if (_result.OperatorCallOf(binary) is not null)
+                _de.Report("LYR-SEM0003", Severity.Error, a.Span,
+                    $"compound assignment does not reach through an operator interface yet — "
+                    + $"write it out: 'a = a {OperatorText(op)} b'");
+        }
+        else
+        {
+            value = CheckExpr(a.Value, scope, targetType);
+        }
+
         // The lvalue and mutability check happens in SemaRules; only type compatibility here.
         CheckAssignable(a.Value, value, targetType, a.Span);
         if (targetSym is not null) _narrowed.Remove(targetSym); // a reassignment drops the narrowing
         return targetType;
     }
+
+    private static string OperatorText(BinaryOp op) => op switch
+    {
+        BinaryOp.Add => "+",
+        BinaryOp.Sub => "-",
+        BinaryOp.Mul => "*",
+        BinaryOp.Div => "/",
+        BinaryOp.Rem => "%",
+        BinaryOp.BitAnd => "&",
+        BinaryOp.BitOr => "|",
+        BinaryOp.BitXor => "^",
+        BinaryOp.Shl => "<<",
+        BinaryOp.Shr => ">>",
+        _ => op.ToString(),
+    };
 
     private static LyrType? DeclaredType(Symbol s) => s switch
     {
