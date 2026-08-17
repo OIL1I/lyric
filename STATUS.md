@@ -11,15 +11,16 @@
 
 ## Current milestone
 
-**v1.0.0, v1.0.1 and v1.1.0 are released** — annotated tags on the remote, each with a release page
-and three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+**v1.0.0 through v1.2.0 are released** — annotated tags on the remote, each with a release page and
+three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
-**M11, the language server, is done in the sense v1.1.0 left it**: diagnostics while you type, what a
-name under the cursor is, where it was declared — and since the project system, a program followed
-across its files.
-
-**M12, the project system, is what v1.2.0 ships**: `lyric.json` says what a project is, `build.lyr`
+**M12, the project system, is what v1.2.0 shipped**: `lyric.json` says what a project is, `build.lyr`
 says what to build, `lyric new` writes one, and the tools read all of it.
+
+**M11, the language server, is NOT closed.** It ships diagnostics while you type, what a name under
+the cursor is, where it was declared, and a program followed across its files. Three delivery points
+are open: document symbols, find-references, completion. They are what v1.3.0 and v1.4.0 take —
+see `## What we are working on`.
 
 3313 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
 `lyrembed.dll`, version **1.2.0**.
@@ -40,113 +41,106 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
-- [x] **Source maps — a panic names the line** (2026-08-15). Merged as PR #4.
-  - Section 6 had been reserved and described since format 3.0 and never written. It now maps a byte
-    offset in a function's code to a file and a line, **one row per position CHANGE** — a loop body
-    is dozens of instructions across a handful of lines. Format **3.1**, `--no-source-map` leaves it
-    out, and without it the file is byte for byte what it was before the section existed.
-  - **Byte offsets, not instruction indices.** An index is not a notion of the format: it
-    presupposes a runtime that decodes into an array before it runs, and `docs/Bytecode.md` claims a
-    second runtime can be built from it alone.
-  - **Nothing in the front end had to grow a field.** Every IR instruction has carried a `Span` since
-    the lowering was built, every `BytecodeInstruction` its `.Offset`, and `Prepared.From` already
-    built an offset table. One field was missing — `Prepared.Index`, because a `BytecodeFunction`
-    does not know where it sits. The third time this project has found the data already there.
-  - **The blocker was older than the slice**: a reader could not SKIP a section it does not know.
-    `default: break` consumed nothing and the trailing-byte check three lines later rejected the
-    payload it was meant to step over. That is the mechanism the format's forward compatibility rests
-    on, and it had never run, because nothing had ever written an unknown section. Consequence for
-    users is under `## Still open`.
-  - **The obvious test measured nothing.** With `return a / b` the faulting `div` is followed by the
-    `retval` of the same statement, so `Ip` and `Ip - 1` give one line and a wrong implementation
-    stays green — measured by writing `Ip` and watching it pass. The test that holds pulls the
-    expression onto its own line, where the two answers differ by one.
-  - The row carries **no column**, and a minor may only add skippable sections, so that is fixed
-    until a major. Deliberate: no consumer today, and a column beside this section later would be a
-    second mechanism for the same thing.
+- [x] **v1.3.0 slice 1 — a declaration records where its name stands** (2026-08-17). 3405 tests
+  green, Debug and Release. Not merged.
+  - `INamedDecl` over thirteen nodes, and a jump now SELECTS the name instead of pointing at the
+    start of the declaration. The severe cases were never the structs: a `ForInStmt` and a
+    `CatchClause` span their bodies, so the jump used to select the whole loop.
+  - **The plural case did not exist.** `BindingPattern` and `FieldPattern` are nodes of their own
+    with their own spans, and `LocalSymbol.Declaration` points straight at them, so destructuring
+    and match bindings already selected the name exactly. Imports are out for a different reason:
+    `DefinitionProvider` redirects an `ImportBindingSymbol` to its target, so the import node is
+    never a jump target. Nothing needed a `string[]` beside a `Span[]`.
+  - **`NameSpan` is a `required init` property, not a positional parameter.** Every declaration
+    record ends in `Span Span`; a second one beside it is two same-typed neighbours that can be
+    swapped without anything going red. `required` makes omission a build error and the name at the
+    construction site makes the swap impossible.
+  - **The protocol had already modelled this.** `LocationLink` carries `targetRange` and
+    `targetSelectionRange` — the declaration and the name — which is exactly the pair now in hand.
+    A client announcing `linkSupport` gets both; one that does not gets the NAME, because with one
+    range the useful one is where the cursor lands. `SpanMapper.ToStart` is gone: its own docstring
+    said it existed because the target was a whole declaration, and that premise fell away.
+  - **The totality test found `LambdaParam`**, which I had not counted. It carries a name, the sema
+    binds it to a symbol, and it was missing from the twelve I planned for. The test asks the
+    ASSEMBLY which nodes carry a `Name` and demands each either records a name span or stands in a
+    short list of nodes that USE a name rather than declare one.
+  - The two invariants — the name lies inside the declaration, and the text at the name span IS the
+    name — are asserted over all **55** `.lyr` files the repository ships, not on fixtures alone.
+    The text comparison is the half that catches an off-by-one; containment alone would not, because
+    a wrong span inside the declaration is still inside it.
 
-- [x] **M11 slice 3 — go to definition** (2026-08-14). Merged as PR #3.
-  **Merged into `main` as PR #3** together with slices 1 and 2, after CI was green on Linux and
-  Windows — the platform-dependent halves of the URI tests had only ever run here.
-  - **It needed nothing from the front end.** `Symbol.Declaration` holds the node and every node
-    carries a span, so the feature is a lookup on top of the search slice 2 built. The estimate held
-    for once, and the reason is worth keeping: the two things slice 2 had to add were the expensive
-    half of both slices.
-  - **A target in another file is the ordinary case**, not an edge one — every call into the
-    standard library lands there — and it needed no second mechanism, because `StdlibLoader` reads
-    those files from disk with their real paths. The URI is built from the path, except when the
-    target is the requested document, where the client's own spelling goes back: it asked about that
-    string, and a rebuilt one is a different string for the same file.
-  - **The jump lands on the START of a declaration**, not on its name. A struct with twenty members
-    is a twenty-line span and selecting all of it is noise. The AST records no span for a name
-    alone, and searching the text for it would be a second, weaker way of knowing where it is. A
-    name span per declaration node would fix it properly; not built.
-  - **A symbol without a declaration stops the search** rather than falling outwards. `int` is
-    declared in no file, and offering the enclosing binding would send the reader somewhere they
-    did not ask about.
-  - Span-to-range moved into `SpanMapper`, which three features now share, in three named forms
-    rather than one with a flag: diagnostics widen an empty span because a zero-width squiggle is
-    invisible, hover takes it as it stands, a jump collapses it to its start.
+- [x] **The language server follows a program across its files** (2026-08-17). Merged as PR #16.
+  - Editing a module refreshes the diagnostics of every open file that imports it, and a dependency
+    is read from the editor's BUFFER rather than from its last save. **Both halves are needed and
+    are separated on purpose**: an overlay nobody re-reads shows nothing, a cascade over stale text
+    refreshes to the same answer. One test drives each.
+  - **What a file depends on comes from the compilation itself**, not from the imports in its text.
+    The resolver already followed them, transitively and through the project's roots, and a second
+    answer to that question would be the one that is wrong.
+  - **The cascade goes ONE level.** Two modules may import each other — a diagnostic rather than a
+    crash, so both still compile — and a transitive cascade over such a pair would not terminate.
+  - `CompilerOptions.SourceOverlay` is the seam, and it sits on the compiler rather than in the
+    server: "compile as if these files held this text" is not an editor-specific idea. It closes the
+    last of the three rough edges v1.1.0 shipped with.
+  - **The fourth test is the counter-check**: a module nobody imports starts no cascade. Without it
+    the other three would pass on a server that re-analyses every open document on every keystroke.
 
-- [x] **M11 slice 2 — hover** (2026-08-14). 3212 tests green, Debug and Release.
-  - The cursor gets the binding form and type of a local, a parameter's type, a function's
-    signature, what kind of type a type name names, and the plain type of a subexpression that
-    binds to no symbol at all. Rendered with `TypeFacts.Display`, the function the diagnostics use,
-    so hover and an error message never disagree about what a type is called.
-  - **`CompileResult` dropped everything the front end had learned.** It carried diagnostics and
-    bytes; the `Compilation`, the bindings and the types were built and thrown away. Everything a
-    tool can say ABOUT a program rather than about its output is in those three tables. They come
-    out as one `SemanticModel` rather than three fields — a binding table from one run beside a type
-    table from another is a fault nobody would find.
-  - **`AstChildren` is a switch, not reflection.** A reflective walk handles a new node without
-    being told, which reads as the better property until a node holds its children in a shape the
-    walk does not recognise: it is silently skipped. The throwing `default` makes an added node a
-    build-time question, and the test asks the ASSEMBLY which node types exist rather than trusting
-    a list that would drift.
-  - **That test found a node I did not know existed**: `GlobalInitStmt`, which the lowering
-    synthesises. It is not syntax, a case for it would mean the AST knows about the lowering, and
-    meeting one during a syntax walk means something leaked — so the walk refuses it, and a test
-    holds that too.
-  - **Type names inside a function body were resolved and dropped.** The resolver binds the ones it
-    walks — those in declarations — while an annotation on a local is reached only from the sema's
-    `ResolveType`, which computed the symbol and discarded it. It now writes into the SAME table,
-    so one question has one answer whoever asked it. Found by a test, not by reading.
-  - **A generic call shows the DECLARED signature**, type parameters included. `T` at a call site is
-    `int`, and showing that would be better — but the substitution lives in a private function of
-    the type checker, and a second one in the server would be a second answer to what `T` became.
-    Recorded as a limit with a test that measures it, rather than half-substituted.
-  - **The last analysis that produced a model is kept per document.** Mid-edit is the normal state
-    of a file someone is looking things up in; answering only from text that parses would go silent
-    exactly when it is wanted. Errors do not disqualify a model — a program with a type error still
-    has resolved names everywhere around it.
+- [x] **`lyric new` writes a project that builds** (2026-08-17). Merged as PR #15.
+  - Two shapes and two flags, as `zig init` and `cargo new` have them, rather than a template
+    system: **with two variants a discovery mechanism is more machinery than content.**
+  - **The templates are embedded in the binary** so nothing can go missing beside it the way a
+    stdlib directory can — and they stay real files in the repository, which is what lets the test
+    suite COMPILE them. `__name__` is a valid Lyric identifier, so a template is compilable Lyric
+    rather than text with holes in it, and a template that stopped building is a red test instead of
+    a first impression.
+  - `gitignore` is stored without its dot so it does not take effect in the repository that ships it.
+  - **The one command the driver runs itself**: it compiles nothing and executes nothing, so it needs
+    no library and breaks no contract the driver's project file states.
+  - **Found while writing the tests**: `Toolchain` starts every tool in the repository root, so a
+    scaffolding test that set the TEST process's directory wrote four projects into the repository.
+    `RunIn` gives the child its own working directory, which is the thing that actually decides
+    where `new` writes.
 
-- [x] **M11 slice 1 — diagnostics in the editor** (2026-08-14). 3102 tests green, Debug and Release.
-  - `lyrls` and `lyrlsp.dll` beside it: the base protocol, the lifecycle state machine, an overlay
-    of open buffers, and a bridge to `SourceCompiler.Check`. The server compiles the BUFFER, not the
-    file on disk. The VS Code extension carries a language client and with it a build step it did
-    not have — one npm dependency, pinned by a lock file.
-  - **The measurement corrected the design before it was built.** A full compile IN THIS PROCESS
-    costs 7 to 16 ms for a hundred lines, standard library included. The debounce was planned at
-    200 ms and is 50: at that price it, and not the compiler, was the dominant latency. It settles
-    the incremental question for now — a query graph would optimise a number with an order of
-    magnitude of slack.
-  - **`System.Uri` cannot read the URI an editor sends.** It leaves `%3A` encoded, so `LocalPath`
-    answers `/c:/Users/x.lyr` — not a path, and no file API rejects it loudly. `AbsoluteUri` does
-    not normalise the two spellings into one either, so it is useless as a key. A document's
-    identity is therefore its PATH, and the URI is echoed back verbatim rather than rebuilt.
-  - **The standard library is reparsed every time, deliberately.** Caching its ASTs looks free —
-    they are immutable — and is not: `Span` carries a `FileId`, and that is an index into ONE
-    `SourceManager`. A cached AST in a fresh manager points every span at whatever file holds that
-    index. Not a crash; a diagnostic in the wrong place.
-  - **The suite was green and the thing did not start.** A language client appends `--stdio` to a
-    server it launches as an executable, and the argument parser rejected it. There was a test that
-    unknown arguments are a usage error and NONE that the argument the client actually sends is
-    accepted — the process test invoked the server in a form that never occurs. The flag is named in
-    no file of this repository, which is exactly why it was invisible. Pinned now.
-  - **Release caught what Debug hid.** `Lyrls` existed locally only because it had been built by
-    hand; no test project pulled it in, so a clean Release run had no directory to inspect. The
-    fix is one `ReferenceOutputAssembly="false"` line, and the rule now stands in the project file:
-    every binary an architecture test INSPECTS has to be referenced there.
+- [x] **A project may be built by a script, `build.lyr`** (2026-08-17). Merged as PR #14.
+  - `lyric build` without a file argument runs it and compiles what it declares; **with** a file it
+    still means "compile this file", so nothing that worked before changes.
+  - **Nothing is compiled while the script runs.** It collects, and the compiles happen once `build`
+    has returned — which is why an option set on the following line still applies, and why a source
+    file the script generates is finished before anything reads it.
+  - Every artifact is a whole-program compile of its own. **No link step**, and nothing is shared
+    between two of them but the source on disk.
+  - `lyrbuild` is a binary of its own, the second after `lyrrepl` holding both front end and runtime:
+    a build script has to RUN and what it collects has to be COMPILED, and two subprocesses cannot do
+    that because the artifacts live in the objects the script was handed. The architecture test now
+    states two exceptions rather than one.
+  - **The test that decides the shape** is the script that WRITES a source file and then declares it.
+    Without it a build script would be a manifest with parentheses, and those values belong in
+    `lyric.json`.
+
+- [x] **A project may say where its modules are, `lyric.json`** (2026-08-17). PRs #11, #12, #13.
+  - Two optional keys. `sourceRoot` replaces the entry file's directory as the module root;
+    `nativeRoots` maps a module path segment to a directory whose modules may declare functions
+    without a body. Searched for upwards, so it is found from anywhere in the project.
+  - **JSON with comments and trailing commas allowed.** The usual objection to JSON as a project
+    format is exactly those two, and TOML would have been **the first external dependency in a
+    shipped binary** — the toolchain has none today and an architecture test guards what the archive
+    holds.
+  - **`SourceCompiler` does NOT discover the file.** A script being compiled must not be able to
+    widen what the compiler looks at by placing a file beside itself, so the decision belongs to the
+    caller: the CLI reads it, the embedding API is untouched.
+  - **The load-bearing test is that a project WITHOUT the file behaves exactly as before** — an
+    addition that changes the old case is a break wearing a new name.
+  - The language server reads it too (#12). **A broken project file does not stop the analysis**: the
+    fallback resolves by the plain rules and says so in the client's log, because publishing nothing
+    leaves an earlier state on screen with no hint that anything happened. The message names the
+    project file rather than appearing inside the file being edited, and is said once per change
+    rather than once per keystroke.
+  - Its second test gives the first its meaning: without the project file the same import is unknown.
+  - **A bodiless method no longer needs a semicolon and a comma in a row** (#13). The condition asked
+    for a BLOCK body, so a member closing itself with `;` fell through to the branch demanding the
+    separator — while the comment beside it already said the rule exists for fields alone. Reachable
+    because the first stdlib class of host objects declares its surface as bodiless methods and
+    `stdlib/` is rendered into the generated reference.
 
 ## Measurements
 
@@ -192,22 +186,38 @@ have bought an incremental compiler nobody needs.
 
 ## What we are working on
 
-**M11, the language server.** Slices 1 to 3 ship diagnostics, hover and go-to-definition. What
-remains is document symbols with find-references, and completion. Neither is built.
+**v1.3.0 — the editor understands your program.** Four of M11's open delivery points, decided
+2026-08-17. Additive throughout: no language change, no format change, no new binary.
 
-**Document symbols is the cheap one.** It is a walk over the entry module's declarations, and
-`AstChildren` already provides the walk; nothing has to be resolved. It needs a name span to be
-useful, which is the same gap the jump has — see below.
+| Slice | What | Touches | State |
+|---|---|---|---|
+| 1 | A name span per declaration node | AST and parser | **done, unmerged** |
+| 2 | `textDocument/documentSymbol` | server only | next |
+| 3 | Doc comments reach the `SemanticModel`, hover shows them | one front-end seam, server | |
+| 4 | `textDocument/references` and the reverse index under it | **front end** | |
 
-**Find-references is the expensive one, and the reason has not moved.** Neither `BindingResult` nor
-the reference table of `TypeResult` can be enumerated, so "who else points at this symbol" cannot be
+**Slice 2 is the cheap one.** A walk over the entry module's declarations; `AstChildren` already
+provides the walk and nothing has to be resolved.
+
+**Slice 3 is cheaper than this file used to claim.** The old wording said `///` "reaches no AST
+node", which is true and understates it: `TokenBuffer` already collects doc comments in a side table,
+`Parser.DocOf` looks one up by `Span.Start`, and `tools/DocGen` consumes it. The table dies with the
+`Parser` instance because the pipeline drops it — **the same shape slice 2 of M11 resolved for
+bindings and types.** It is plumbing into `SemanticModel`, not a new mechanism.
+
+**Slice 4 is the expensive one, and the reason has not moved.** Neither `BindingResult` nor the
+reference table of `TypeResult` can be enumerated, so "who else points at this symbol" cannot be
 asked without a reverse index. That is an addition to the FRONT END, not to the server.
 
-**Three limits recorded with tests rather than as intentions**: a generic call shows the declared
-signature because the substitution is private to the type checker; there is no documentation to show
-at all, because `///` is a token kind that reaches no AST node; and a jump lands on the START of a
-declaration, because no node records a span for its NAME. The third is the one worth fixing — a name
-span per declaration would improve the jump and document symbols at once.
+**Completion is deliberately not in v1.3.0.** It is the first question asked at a position where the
+text does NOT parse — error tolerance, or a "what is admissible here" mechanism. That is a front-end
+topic of its own size, not a fifth provider, and binding it to four small slices makes the date
+unpredictable. It is v1.4.0, and M11 closes there. The release is split rather than the delivery
+list: re-cutting a list is only legitimate in the scope check, and the next one is **2026-09-06**.
+
+**One limit stays after v1.3.0**: a generic call shows the DECLARED signature, because the
+substitution is private to the type checker and a second one in the server would be a second answer
+to what `T` became. Measured by a test rather than left as an intention.
 
 **The open question to answer before E4**: the lifetime and identity of a host object across the
 boundary — does the host keep it alive or the VM? That is the one place in M10 where I have no
@@ -297,9 +307,10 @@ is the thing to check.
   tests fail in every fresh clone and the `windows-latest` job breaks.
 - **Working mode** (scope check 2026-08-02, still in force): Claude plans *and* implements, the
   maintainer reviews — a deliberate deviation from `CLAUDE.md` §Collaboration, where the plan comes
-  from Claude and the code from the user. What to watch is whether the understanding of the code
-  keeps up with its size. The changelog starts at `v1.0.0`; before it the annotated tag message is
-  the release note.
+  from Claude and the code from the user. **`CLAUDE.md` names this entry as the one that overrides
+  it**, so the deviation lives in one place and is lifted by deleting this bullet. What to watch is
+  whether the understanding of the code keeps up with its size. The changelog starts at `v1.0.0`;
+  before it the annotated tag message is the release note.
 - **At the end of every milestone the delivery list is to be ticked off point by point, not the exit
   criterion alone.** M5 and M6 each silently failed to deliver part of their items; the gap disguised
   itself as a clean diagnostic. For the same reason **six** gates were re-cut in M7, because they
@@ -307,7 +318,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #4 from OIL1I/feature/source-map`
+`Merge pull request #17 from OIL1I/release/v1.2.0` (`194ca62`)
 
 ---
 

@@ -42,7 +42,7 @@ internal static class GlobalInitializer
 
         var decl = new FunctionDecl(
             IsPublic: false, IsMut: false, IsStatic: false, Name: Name, Generics: [],
-            Parameters: [], ReturnType: null, Throws: null, Body: body, Span: default);
+            Parameters: [], ReturnType: null, Throws: null, Body: body, Span: default) { NameSpan = default };
 
         return new FunctionLowerer(decl, Name, types, functions, imports, typeTable,
             ModuleLowerer.NoSubstitution, globals, lambdas, instances).Run();

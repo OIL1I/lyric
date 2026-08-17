@@ -103,12 +103,20 @@ internal sealed class ServerHarness : IAsyncDisposable
     }
 
     /// <summary>Runs the handshake and leaves the server ready to take documents.</summary>
-    public async Task InitializeAsync()
+    /// <param name="capabilities">The client capabilities, as the JSON object of the
+    /// <c>capabilities</c> member. The default announces none, which is what a client that only
+    /// understands the base protocol sends.</param>
+    public async Task InitializeAsync(string? capabilities = null)
     {
-        var id = await RequestAsync(LspMethods.Initialize, "{}");
+        var id = await RequestAsync(LspMethods.Initialize,
+            capabilities is null ? "{}" : $"{{\"capabilities\":{capabilities}}}");
         await ReceiveResponseAsync(id);
         await NotifyAsync(LspMethods.Initialized, "{}");
     }
+
+    /// <summary>The capabilities of a client that reads <c>LocationLink</c>.</summary>
+    public const string DefinitionLinkSupport =
+        """{"textDocument":{"definition":{"linkSupport":true}}}""";
 
     /// <summary>Closes the client's end of the stream, which is what an editor that crashed looks
     /// like from here.</summary>

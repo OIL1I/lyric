@@ -10,7 +10,10 @@ public abstract record Stmt(Span Span) : Node(Span);
 public sealed record Block(Stmt[] Statements, Span Span) : Stmt(Span);
 
 // let (immutable) / var (mutable); type and initializer each optional.
-public sealed record BindingStmt(bool IsMutable, string Name, TypeNode? Type, Expr? Initializer, Span Span) : Stmt(Span);
+public sealed record BindingStmt(bool IsMutable, string Name, TypeNode? Type, Expr? Initializer, Span Span) : Stmt(Span), INamedDecl
+{
+    public required Span NameSpan { get; init; }
+}
 
 /// <summary>
 /// <c>let (a, b) = pair;</c> — binds several names from a tuple.
@@ -29,7 +32,14 @@ public sealed record IfStmt(Expr Condition, Block Then, Stmt? Else, Span Span) :
 
 public sealed record WhileStmt(Expr Condition, Block Body, Span Span) : Stmt(Span);
 public sealed record DoWhileStmt(Block Body, Expr Condition, Span Span) : Stmt(Span);
-public sealed record ForInStmt(string Variable, Expr Iterable, Block Body, Span Span) : Stmt(Span);
+/// <remarks>The loop variable is a declaration of its own; <see cref="INamedDecl.Name"/> is
+/// implemented explicitly so the node keeps calling it what it is.</remarks>
+public sealed record ForInStmt(string Variable, Expr Iterable, Block Body, Span Span) : Stmt(Span), INamedDecl
+{
+    public required Span NameSpan { get; init; }
+
+    string INamedDecl.Name => Variable;
+}
 
 public sealed record BreakStmt(Span Span) : Stmt(Span);
 public sealed record ContinueStmt(Span Span) : Stmt(Span);
@@ -46,9 +56,23 @@ public sealed record ThrowStmt(Expr Value, Span Span) : Stmt(Span);
 public sealed record MatchStmt(Expr Scrutinee, MatchArm[] Arms, Span Span) : Stmt(Span);
 
 public sealed record TryStmt(Block Body, CatchClause[] Catches, Span Span) : Stmt(Span);
+
 // BindingName == null means '_', a catch-all without a binding
 // BindingType == null: catch-all with a binding (Throwable); otherwise a typed catch.
-public sealed record CatchClause(string? BindingName, TypeNode? BindingType, Block Body, Span Span) : Node(Span);
+/// <remarks>
+/// The grammar gives a catch binding exactly one token, <c>_</c> included, so
+/// <see cref="INamedDecl.NameSpan"/> covers it in either form and <see cref="INamedDecl.Name"/>
+/// reports the text that stands there.
+///
+/// <para>A <c>_</c> binds nothing and the sema creates no symbol for it, so no symbol's declaration
+/// ever points at a clause in that form.</para>
+/// </remarks>
+public sealed record CatchClause(string? BindingName, TypeNode? BindingType, Block Body, Span Span) : Node(Span), INamedDecl
+{
+    public required Span NameSpan { get; init; }
+
+    string INamedDecl.Name => BindingName ?? "_";
+}
 
 // Only calls and assignments are semantically valid; the parser accepts expressions generically here
 // and the sema restricts them.

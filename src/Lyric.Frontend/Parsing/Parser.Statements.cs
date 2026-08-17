@@ -78,7 +78,7 @@ public sealed partial class Parser
         Expr? init = _buffer.Match(TokenKind.Equal) ? ParseExpr(0) : null;
         var semi = ExpectSemicolon();
         return new BindingStmt(isMutable, _sm.Slice(nameTok.Span).ToString(), type, init,
-            Span.Union(kw.Span, semi.Span));
+            Span.Union(kw.Span, semi.Span)) { NameSpan = nameTok.Span };
     }
 
     /// <summary>
@@ -168,7 +168,8 @@ public sealed partial class Parser
         var iter = ParseExpr(0);
         _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' after for-loop header");
         var body = ParseBlock();
-        return new ForInStmt(_sm.Slice(varTok.Span).ToString(), iter, body, Span.Union(kw.Span, body.Span));
+        return new ForInStmt(_sm.Slice(varTok.Span).ToString(), iter, body, Span.Union(kw.Span, body.Span))
+            { NameSpan = varTok.Span };
     }
 
     private Stmt ParseBreak()
@@ -254,7 +255,7 @@ public sealed partial class Parser
         TypeNode? type = _buffer.Match(TokenKind.Colon) ? ParseType() : null;
         _buffer.Expect(TokenKind.RParen, "LYR-PAR0008", "expected ')' after catch binding");
         var body = ParseBlock();
-        return new CatchClause(name, type, body, Span.Union(kw.Span, body.Span));
+        return new CatchClause(name, type, body, Span.Union(kw.Span, body.Span)) { NameSpan = idTok.Span };
     }
 
     private Stmt ParseExprStmt()
