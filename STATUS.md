@@ -17,10 +17,10 @@ three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0
 **M12, the project system, is what v1.2.0 shipped**: `lyric.json` says what a project is, `build.lyr`
 says what to build, `lyric new` writes one, and the tools read all of it.
 
-**M11, the language server, is NOT closed.** It ships diagnostics while you type, what a name under
-the cursor is, where it was declared, and a program followed across its files. Three delivery points
-are open: document symbols, find-references, completion. They are what v1.3.0 and v1.4.0 take —
-see `## What we are working on`.
+**M11, the language server, has one delivery point left: completion.** It ships diagnostics while you
+type, what a name under the cursor is, where it was declared, a program followed across its files,
+documentation on hover, the outline of a file, and every place a name occurs. **v1.3.0 is complete
+and unreleased**; completion is v1.4.0 and closes the milestone — see `## What we are working on`.
 
 3313 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
 `lyrembed.dll`, version **1.2.0**.
@@ -41,8 +41,41 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
-- [x] **v1.3.0 slice 2 — an editor can show what a file declares** (2026-08-17). 3454 tests green,
-  Debug and Release. Not merged.
+- [x] **v1.3.0 slice 4 — find all references** (2026-08-17). 3478 tests green, Debug and Release.
+  Not merged. **This completes v1.3.0.**
+  - `textDocument/references`, with `includeDeclaration`. The front end gained **two enumerations
+    and nothing else**: `BindingResult.All` and `TypeResult.AllReferences`. The reverse index is
+    built per REQUEST and kept nowhere.
+  - **The measurement decided that.** A program pulling in eight standard library modules has 802
+    entries in the binding table and ~3000 typed expressions. Against a 7–16 ms compile that has
+    already run, a dictionary over a few thousand entries is noise — a cached index would be state
+    to invalidate in exchange for microseconds. I had planned for a cache and did not build one.
+  - **Both tables, because they answer for different nodes.** The resolver binds names in type
+    position, the sema binds expressions; `let p: Point` stands in one and an array annotation in
+    the other. Either alone gives a list that is half right.
+  - **The sema's table holds declarations as well as uses** — a `BindingStmt`, a `Param`, a
+    `ForInStmt` and the pattern bindings are bound to the symbol they THEMSELVES declare, for the
+    definite-assignment analysis. They are told apart by `ReferenceEquals(symbol.Declaration, node)`
+    — no new flag, and it is the same line `includeDeclaration` draws.
+  - **An imported name has two symbols**, and every use in the importing file binds to the FIRST.
+    Comparing against the target alone finds nothing; the comparison goes through the import
+    binding. Found by a test, not by reading.
+  - **A wrong answer that predates this slice, now fixed.** Standing on `Point` in
+    `let p = Point { … }` used to JUMP TO `p`: the initializer is bound to nothing, so the walk
+    outwards reached the enclosing binding. `NodeFinder.Answers` now requires the cursor to be on a
+    declaration's NAME before that declaration answers — which is what slice 1's name span is for.
+  - **Recording the struct initializer's type looked like a one-line fix and is not.** Adding
+    `BindRef(si, ts)` broke two tests and a guide chapter: `TypeChecker` reads the SAME table at the
+    member-access path to decide whether a receiver is a TYPE, so the entry turned
+    `Pair<int> { a = 6 }.a` into a static member access. Reverted. **`_refs` carries more meaning
+    than its name says**, and separating "what does this refer to" from "what kind of receiver is
+    this" is a change of its own.
+  - Two limits measured rather than intended: a field use marks the whole member access (`p.x`,
+    because a use site has no name span), and the answer covers the program reachable **from this
+    buffer** — a project file that imports the current one is not in that compilation.
+
+- [x] **v1.3.0 slice 2 — an editor can show what a file declares** (2026-08-17). 3454 tests
+  green. Merged as PR #20.
   - `textDocument/documentSymbol`, nested: types carry their fields, methods, variants and static
     constants as children. Both ranges come from slice 1 — the declaration's span is what the editor
     reveals, the name span what the cursor lands on — and the protocol's containment rule holds by
@@ -101,50 +134,6 @@ functions out of them and hands its own functions and types in.
   - Noticed on the way: **`std/io/console.lyr` carries no doc comment at all.** The 166 `///` lines
     of the standard library sit in eight other files, so `println` still hovers without prose.
 
-- [x] **v1.3.0 slice 1 — a declaration records where its name stands** (2026-08-17). 3405 tests
-  green. Merged as PR #18.
-  - `INamedDecl` over thirteen nodes, and a jump now SELECTS the name instead of pointing at the
-    start of the declaration. The severe cases were never the structs: a `ForInStmt` and a
-    `CatchClause` span their bodies, so the jump used to select the whole loop.
-  - **The plural case did not exist.** `BindingPattern` and `FieldPattern` are nodes of their own
-    with their own spans, and `LocalSymbol.Declaration` points straight at them, so destructuring
-    and match bindings already selected the name exactly. Imports are out for a different reason:
-    `DefinitionProvider` redirects an `ImportBindingSymbol` to its target, so the import node is
-    never a jump target. Nothing needed a `string[]` beside a `Span[]`.
-  - **`NameSpan` is a `required init` property, not a positional parameter.** Every declaration
-    record ends in `Span Span`; a second one beside it is two same-typed neighbours that can be
-    swapped without anything going red. `required` makes omission a build error and the name at the
-    construction site makes the swap impossible.
-  - **The protocol had already modelled this.** `LocationLink` carries `targetRange` and
-    `targetSelectionRange` — the declaration and the name — which is exactly the pair now in hand.
-    A client announcing `linkSupport` gets both; one that does not gets the NAME, because with one
-    range the useful one is where the cursor lands. `SpanMapper.ToStart` is gone: its own docstring
-    said it existed because the target was a whole declaration, and that premise fell away.
-  - **The totality test found `LambdaParam`**, which I had not counted. It carries a name, the sema
-    binds it to a symbol, and it was missing from the twelve I planned for. The test asks the
-    ASSEMBLY which nodes carry a `Name` and demands each either records a name span or stands in a
-    short list of nodes that USE a name rather than declare one.
-  - The two invariants — the name lies inside the declaration, and the text at the name span IS the
-    name — are asserted over all **55** `.lyr` files the repository ships, not on fixtures alone.
-    The text comparison is the half that catches an off-by-one; containment alone would not, because
-    a wrong span inside the declaration is still inside it.
-
-- [x] **The language server follows a program across its files** (2026-08-17). Merged as PR #16.
-  - Editing a module refreshes the diagnostics of every open file that imports it, and a dependency
-    is read from the editor's BUFFER rather than from its last save. **Both halves are needed and
-    are separated on purpose**: an overlay nobody re-reads shows nothing, a cascade over stale text
-    refreshes to the same answer. One test drives each.
-  - **What a file depends on comes from the compilation itself**, not from the imports in its text.
-    The resolver already followed them, transitively and through the project's roots, and a second
-    answer to that question would be the one that is wrong.
-  - **The cascade goes ONE level.** Two modules may import each other — a diagnostic rather than a
-    crash, so both still compile — and a transitive cascade over such a pair would not terminate.
-  - `CompilerOptions.SourceOverlay` is the seam, and it sits on the compiler rather than in the
-    server: "compile as if these files held this text" is not an editor-specific idea. It closes the
-    last of the three rough edges v1.1.0 shipped with.
-  - **The fourth test is the counter-check**: a module nobody imports starts no cascade. Without it
-    the other three would pass on a server that re-analyses every open document on every keystroke.
-
 ## Measurements
 
 Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
@@ -189,22 +178,21 @@ have bought an incremental compiler nobody needs.
 
 ## What we are working on
 
-**v1.3.0 — the editor understands your program.** Four of M11's open delivery points, decided
-2026-08-17. Additive throughout: no language change, no format change, no new binary.
+**v1.3.0 — the editor understands your program. All four slices are done**, the last one unmerged.
+Additive throughout: no language change, no format change, no new binary.
 
-| Slice | What | Touches | State |
-|---|---|---|---|
-| 1 | A name span per declaration node | AST and parser | **done**, PR #18 |
-| 3 | Doc comments reach the `SemanticModel`, hover shows them | one front-end seam, server | **done**, PR #19 |
-| 2 | `textDocument/documentSymbol` | server only | **done, unmerged** |
-| 4 | `textDocument/references` and the reverse index under it | **front end** | next, and the only one left |
+| Slice | What | State |
+|---|---|---|
+| 1 | A name span per declaration node | PR #18 |
+| 3 | Doc comments reach the `SemanticModel`, hover shows them | PR #19 |
+| 2 | `textDocument/documentSymbol` | PR #20 |
+| 4 | `textDocument/references` | **done, unmerged** |
 
-Slice 3 was pulled ahead of slice 2 on 2026-08-17: the two do not depend on each other, both sit on
-the name span slice 1 delivered, and hover is used far more often than a symbol outline.
+Slice 3 was pulled ahead of slice 2: the two do not depend on each other, both sit on the name span
+slice 1 delivered, and hover is used far more often than a symbol outline.
 
-**Slice 4 is the expensive one, and the reason has not moved.** Neither `BindingResult` nor the
-reference table of `TypeResult` can be enumerated, so "who else points at this symbol" cannot be
-asked without a reverse index. That is an addition to the FRONT END, not to the server.
+**What is left before the release**: the version numbers, the changelog entry, the tag. Nothing in
+the code.
 
 **Completion is deliberately not in v1.3.0.** It is the first question asked at a position where the
 text does NOT parse — error tolerance, or a "what is admissible here" mechanism. That is a front-end
@@ -260,6 +248,15 @@ is the thing to check.
     and a host calling an unexported function through the embedding API would then find it missing.
   - It is the point at which a binary library would carry half a standard library with it, so it
     belongs answered before that is ever a goal.
+- **`TypeResult._refs` answers two questions with one table.** It is read as "what does this node
+  refer to" by the language server, as "is this receiver a TYPE" by the member-access path of the
+  type checker (`TypeChecker.cs:1770`), and as "which declaration is this" by the definite-assignment
+  analysis. Adding an entry is therefore not additive: recording a struct initializer's type there
+  turned `Pair<int> { a = 6 }.a` into a static member access and stopped a guide chapter compiling.
+  - Consequence today: **nothing knows that `Point { … }` names a type**, so it is found by neither
+    find-references nor go-to-definition. Measured by a test in each.
+  - Splitting the receiver-kind question out of the table would fix it. That is a change in the type
+    checker, not in the server, and it belongs decided before anything else wants to add to `_refs`.
 - **Section byte sizes are missing from `lyrvm info`**: the reader discards them after parsing.
   Retrofitting them would mean extending the model with provenance data — a decision of its own.
 - **Measure the verifier share in a Release profile** — the Debug numbers are riddled with JIT
@@ -315,7 +312,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #19 from OIL1I/feature/hover-docs` (`969579d`)
+`Merge pull request #20 from OIL1I/feature/document-symbols` (`e013db4`)
 
 ---
 
