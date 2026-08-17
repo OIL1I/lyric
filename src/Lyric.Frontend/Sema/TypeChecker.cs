@@ -88,16 +88,20 @@ public sealed class TypeChecker
         _stdPanic = comp.FindModule(["std", "core"])?.Members
             .LookupLocal("panic") as FunctionSymbol;
 
-        // 'Equatable<T>' is what '==' desugars through on a user type — the same pattern as
-        // 'Iterator' for 'for-in': the compiler knows the built-in scalars, and everything else
-        // binds to an interface from the stdlib.
-        _equatable = comp.FindModule(["std", "core"])?.Members
-            .LookupLocal("Equatable") as TypeSymbol;
+        // 'Equatable<T>' is what '==' desugars through on a user type, 'Ordered<T>' what the four
+        // comparisons desugar through — the same pattern as 'Iterator' for 'for-in': the compiler
+        // knows the built-in scalars, and everything else binds to an interface from the stdlib.
+        var core = comp.FindModule(["std", "core"])?.Members;
+        _equatable = core?.LookupLocal("Equatable") as TypeSymbol;
+        _ordered = core?.LookupLocal("Ordered") as TypeSymbol;
     }
 
     /// <summary>What <c>==</c> on a user type resolves through. Null without a standard library,
     /// and user-type equality is then a diagnostic rather than a crash.</summary>
     private readonly TypeSymbol? _equatable;
+
+    /// <summary>What <c>&lt;</c> and its three siblings resolve through, under the same rules.</summary>
+    private readonly TypeSymbol? _ordered;
 
     /// <summary>The native declaration from <c>std.core</c>. See the constructor.</summary>
     private readonly FunctionSymbol? _stdPanic;
@@ -1026,12 +1030,12 @@ public sealed class TypeChecker
                     return UnifyNumeric(b.Left, l, b.Right, r) ?? BadBinary(b, l, r);
                 return BadBinary(b, l, r);
             case BinaryOp.Lt or BinaryOp.Le or BinaryOp.Gt or BinaryOp.Ge:
-                // Numeric only. A 'char' is numeric itself and needs no branch of its own.
-                // 'string < string' is rejected here: the spec says numeric, and sorting strings needs
-                // a 'compare' function.
+                // Numerics keep their opcodes; a 'char' is numeric itself and needs no branch of
+                // its own. Everything else orders through 'Ordered' — 'string < string' included,
+                // because the stdlib conforms string to Ordered<string>.
                 if (UnifyNumeric(b.Left, l, b.Right, r) is not null)
                     return LyrType.Bool;
-                BadBinary(b, l, r);
+                CheckOrdered(b, l, r, scope);
                 return LyrType.Bool;
             case BinaryOp.Eq or BinaryOp.Ne:
                 if (!LyrType.Equal(l, r) && UnifyNumeric(b.Left, l, b.Right, r) is null
@@ -1090,7 +1094,7 @@ public sealed class TypeChecker
                 && Satisfies(l, equatable, new GenericInstance(equatable, [l])))
             {
                 // A failed check inside the call has reported already; no second message.
-                DesugarToMethodCall(b, "equals", b.Operator is BinaryOp.Ne, scope);
+                DesugarToMethodCall(b, "equals", scope);
                 return;
             }
 
@@ -1126,14 +1130,62 @@ public sealed class TypeChecker
     /// returned before the operator was examined — so their second pass through the checker
     /// reproduces the same table entries.</para>
     /// </summary>
-    private void DesugarToMethodCall(BinaryExpr b, string method, bool negate, SymbolTable scope)
+    private void DesugarToMethodCall(BinaryExpr b, string method, SymbolTable scope)
     {
         var member = new MemberExpr(b.Left, method, IsOptional: false, b.Span);
         var call = new CallExpr(member, [b.Right], b.Span);
 
         if (CheckExpr(call, scope).IsError) return;
 
-        _result.DesugarOperator(b, call, negate);
+        _result.DesugarOperator(b, call);
+    }
+
+    /// <summary>
+    /// What <c>&lt;</c>, <c>&lt;=</c>, <c>&gt;</c> and <c>&gt;=</c> may compare beyond numerics:
+    /// every type that conforms to <c>Ordered</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>The desugar is <c>a.compare(b)</c>; which of the four operators stood there decides
+    /// how the lowering reads the sign of the answer. One method, four operators — the reason
+    /// <c>Ordered</c> has a single <c>compare</c> rather than four members.</para>
+    ///
+    /// <para><c>string</c> arrives here as a primitive and conforms through the stdlib's own
+    /// <c>extend string :: [Ordered&lt;string&gt;]</c> — the same route any type takes, which is
+    /// what finally admits <c>string &lt; string</c> without a rule of its own.</para>
+    /// </remarks>
+    private void CheckOrdered(BinaryExpr b, LyrType l, LyrType r, SymbolTable scope)
+    {
+        if (!LyrType.Equal(l, r))
+        {
+            BadBinary(b, l, r);
+            return;
+        }
+
+        if ((CanConform(l) || l is PrimitiveType)
+            && _ordered is { } ordered
+            && Satisfies(l, ordered, new GenericInstance(ordered, [l])))
+        {
+            DesugarToMethodCall(b, "compare", scope);
+            return;
+        }
+
+        if (CanConform(l))
+        {
+            var op = b.Operator switch
+            {
+                BinaryOp.Lt => "<",
+                BinaryOp.Le => "<=",
+                BinaryOp.Gt => ">",
+                _ => ">=",
+            };
+            _de.Report("LYR-SEM0003", Severity.Error, b.Span,
+                $"'{op}' is not defined for '{TypeFacts.Display(l)}' — ordering comes from "
+                + $"'Ordered': declare the type with ':: [Ordered<{TypeFacts.Display(l)}>]' and a "
+                + $"'fn compare(other: {TypeFacts.Display(l)}): int'");
+            return;
+        }
+
+        BadBinary(b, l, r);
     }
 
     private LyrType CheckAdd(BinaryExpr b, LyrType l, LyrType r)
