@@ -41,6 +41,31 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **v1.4.0 slice 2 — completion for members after `.`** (2026-08-17). 3664 tests green, Debug
+  and Release. Not merged.
+  - The text at the cursor does not parse, so the question is asked of a program that does: a
+    synthetic identifier is inserted at the cursor and the buffer compiled again. `foo.` becomes
+    `foo.__lyric_completion__`, a member access whose member does not exist — and **the member name
+    is never read**, only the receiver, which resolves either way.
+  - **Measured: median 12.7 ms per request**, min 9.0, max 18.3, for a whole compile with the
+    standard library. Against a keystroke the user made deliberately that is affordable, and it is
+    what buys not rebuilding the one component 438 tests hang on.
+  - Which members a type has is asked of a new `MemberFacts` in the front end, not assembled in the
+    server. A list put together from the public surface would miss **extensions and interface
+    defaults**, and on a `string` it would be empty — every string method of this standard library
+    is an extension. **A completion list that omits a callable method teaches the reader it does not
+    exist.**
+  - **The enumeration and the lookup are separate code and can drift.** A test holds them together
+    from one side: every member offered for a type with all four sources is written into a real
+    program, and none may come back as `LYR-SEM0012`.
+  - The other side is not symmetric, and that is a finding rather than a decision: **a STATIC
+    extension is callable through an INSTANCE today.** The lookup's instance path falls through to
+    the extension without checking, while the type path rejects a non-static one explicitly.
+    Completion does not offer it. Pinned by a test that records which way round it currently is.
+  - Slice 1 is what made the receiver readable: `TypeOf(mem.Target)` is a `NonValueType` for a name
+    and the value's type otherwise, so static and instance sides fall out of the same answer the
+    type checker uses.
+
 - [x] **v1.4.0 slice 1 — a member access asks the type, not the table** (2026-08-17). 3636 tests
   green, Debug and Release. Not merged.
   - **The plan was wrong and the code said so.** I had planned to split `_refs` into two tables,
@@ -77,39 +102,6 @@ functions out of them and hands its own functions and types in.
     and they do. Verified by putting an offender back and watching it go red — a mechanical test
     that has never failed is a test nobody has seen work.
   - No code and no behaviour changed: same diagnostic codes, same spans, different wording.
-
-- [x] **v1.3.0 slice 4 — find all references** (2026-08-17). 3478 tests green. Merged as
-  PR #21, and it completed v1.3.0.
-  - `textDocument/references`, with `includeDeclaration`. The front end gained **two enumerations
-    and nothing else**: `BindingResult.All` and `TypeResult.AllReferences`. The reverse index is
-    built per REQUEST and kept nowhere.
-  - **The measurement decided that.** A program pulling in eight standard library modules has 802
-    entries in the binding table and ~3000 typed expressions. Against a 7–16 ms compile that has
-    already run, a dictionary over a few thousand entries is noise — a cached index would be state
-    to invalidate in exchange for microseconds. I had planned for a cache and did not build one.
-  - **Both tables, because they answer for different nodes.** The resolver binds names in type
-    position, the sema binds expressions; `let p: Point` stands in one and an array annotation in
-    the other. Either alone gives a list that is half right.
-  - **The sema's table holds declarations as well as uses** — a `BindingStmt`, a `Param`, a
-    `ForInStmt` and the pattern bindings are bound to the symbol they THEMSELVES declare, for the
-    definite-assignment analysis. They are told apart by `ReferenceEquals(symbol.Declaration, node)`
-    — no new flag, and it is the same line `includeDeclaration` draws.
-  - **An imported name has two symbols**, and every use in the importing file binds to the FIRST.
-    Comparing against the target alone finds nothing; the comparison goes through the import
-    binding. Found by a test, not by reading.
-  - **A wrong answer that predates this slice, now fixed.** Standing on `Point` in
-    `let p = Point { … }` used to JUMP TO `p`: the initializer is bound to nothing, so the walk
-    outwards reached the enclosing binding. `NodeFinder.Answers` now requires the cursor to be on a
-    declaration's NAME before that declaration answers — which is what slice 1's name span is for.
-  - **Recording the struct initializer's type looked like a one-line fix and is not.** Adding
-    `BindRef(si, ts)` broke two tests and a guide chapter: `TypeChecker` reads the SAME table at the
-    member-access path to decide whether a receiver is a TYPE, so the entry turned
-    `Pair<int> { a = 6 }.a` into a static member access. Reverted. **`_refs` carries more meaning
-    than its name says**, and separating "what does this refer to" from "what kind of receiver is
-    this" is a change of its own.
-  - Two limits measured rather than intended: a field use marks the whole member access (`p.x`,
-    because a use site has no name span), and the answer covers the program reachable **from this
-    buffer** — a project file that imports the current one is not in that compilation.
 
 ## Measurements
 
@@ -162,9 +154,9 @@ find references (#21). Additive throughout: no language change, no format change
 
 | Slice | What | State |
 |---|---|---|
-| 1 | A member access asks the type, not the table | **done, unmerged** |
-| 2 | Completion: members after `.` | next |
-| 3 | Completion: names in scope | |
+| 1 | A member access asks the type, not the table | PR #24 |
+| 2 | Completion: members after `.` | **done, unmerged** |
+| 3 | Completion: names in scope | next |
 | 4 | Documentation for the three undocumented stdlib files | |
 
 **The mechanism is a completion MARKER, not an error-tolerant parser.** A request inserts a synthetic
@@ -229,6 +221,11 @@ is the thing to check.
     and a host calling an unexported function through the embedding API would then find it missing.
   - It is the point at which a binary library would carry half a standard library with it, so it
     belongs answered before that is ever a goal.
+- **A STATIC extension method is callable through an INSTANCE.** `p.make()` compiles when `make` is
+  a `static fn` in an `extend` block, because the lookup's instance path falls through to the
+  extension without checking — while the type path rejects a non-static extension explicitly with
+  `LYR-SEM0055`. The asymmetry reads as an oversight rather than a rule; completion does not offer
+  it. Measured by a test that records the current direction, so changing it starts there.
 - **`TypeResult._refs` still holds declarations beside uses**, because the definite-assignment
   analysis binds a `BindingStmt`, a `Param`, a `ForInStmt` and the pattern bindings to the symbol
   they themselves declare. Splitting the two apart has **no consumer**: the lowering matches on
@@ -291,7 +288,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #23 from OIL1I/fix/diagnostic-references` (`19be491`)
+`Merge pull request #24 from OIL1I/feature/member-receiver` (`f4b7990`)
 
 ---
 
