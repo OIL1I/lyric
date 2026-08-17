@@ -364,6 +364,23 @@ extend string :: [Add<string>] {
     fn add(other: string): string { return this + other; }
 }
 
+// ------------------------------------------------------------------------------ conversion
+//
+// Explicit only. An implicit conversion is a second, invisible mechanism beside the visible one,
+// and it makes inference and error messages answer for decisions nobody wrote down.
+
+/// A value of this type converts to `T`: `x as T` is `x.into()`.
+///
+/// ONE target per type: the method is named `into`, and a type has one member of a name — a second
+/// conversion is an ordinary named method. Total conversions only; a conversion that can fail
+/// belongs in a named function returning an optional.
+///
+/// The numeric casts keep their opcodes: `1 as float` never goes through here.
+pub interface Into<T> {
+    /// This value as a `T`.
+    fn into(): T;
+}
+
 // No `Hashable` for `float`, deliberately.
 //
 // A hash table requires equal values to hash equally. Floating point breaks the premise rather

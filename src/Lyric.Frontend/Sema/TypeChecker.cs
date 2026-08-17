@@ -98,7 +98,11 @@ public sealed class TypeChecker
         _sub = core?.LookupLocal("Sub") as TypeSymbol;
         _mul = core?.LookupLocal("Mul") as TypeSymbol;
         _div = core?.LookupLocal("Div") as TypeSymbol;
+        _into = core?.LookupLocal("Into") as TypeSymbol;
     }
+
+    /// <summary>What a non-numeric <c>as</c> converts through, under the same rules.</summary>
+    private readonly TypeSymbol? _into;
 
     /// <summary>The four arithmetic interfaces, under the same rules as <see cref="_equatable"/>.</summary>
     private readonly TypeSymbol? _add;
@@ -1373,13 +1377,40 @@ public sealed class TypeChecker
         return new RangeOf(elem ?? LyrType.Error);
     }
 
+    /// <summary>
+    /// <c>x as T</c>: numeric to numeric through an opcode, everything else through <c>Into</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>The numeric branch stands FIRST and is not overridable: <c>1 as float</c> never
+    /// desugars, whatever conformances exist. Beyond it, the cast is a conversion the operand's type
+    /// declared — <c>x as T</c> is <c>x.into()</c> where the type conforms to <c>Into&lt;T&gt;</c>,
+    /// checked and stored exactly as the operators are.</para>
+    ///
+    /// <para>Explicit only, by decision: an implicit conversion is a second, invisible mechanism
+    /// beside the visible one. And ONE target per type — <c>into</c> is a member name, and a type
+    /// has one member of a name; the second conversion is an ordinary named method.</para>
+    /// </remarks>
     private LyrType CheckCast(CastExpr c, SymbolTable scope)
     {
         var op = CheckExpr(c.Operand, scope);
         var target = ResolveType(c.Type, scope);
         if (op.IsError || target.IsError) return target;
         if (TypeFacts.IsNumeric(op) && TypeFacts.IsNumeric(target)) return target; // numeric to numeric only
-        _de.Report("LYR-SEM0006", Severity.Error, c.Span, $"cannot cast '{TypeFacts.Display(op)}' to '{TypeFacts.Display(target)}'");
+
+        if (_into is { } into && (CanConform(op) || op is PrimitiveType)
+            && Satisfies(op, into, new GenericInstance(into, [target])))
+        {
+            var member = new MemberExpr(c.Operand, "into", IsOptional: false, c.Span);
+            var call = new CallExpr(member, [], c.Span);
+
+            if (!CheckExpr(call, scope).IsError) _result.DesugarOperator(c, call);
+            return target;
+        }
+
+        _de.Report("LYR-SEM0006", Severity.Error, c.Span,
+            $"cannot cast '{TypeFacts.Display(op)}' to '{TypeFacts.Display(target)}' — a "
+            + $"conversion comes from 'Into': give '{TypeFacts.Display(op)}' the conformance "
+            + $":: [Into<{TypeFacts.Display(target)}>]' with a 'fn into(): {TypeFacts.Display(target)}'");
         return target;
     }
 

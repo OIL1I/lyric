@@ -244,3 +244,34 @@ fn main(): int {
 A mixed form such as `Vec2 * float` does not exist yet: the interfaces are homogeneous by design,
 and `%` stays numeric-only. Compound assignment (`v += w`) does not reach through the interfaces
 either — write `v = v + w`.
+
+The last operator is `as`. Beyond the numeric casts, which keep their built-in meaning, a cast is a
+conversion the operand's type declared through `Into`:
+
+```lyr
+import std.core { Into };
+import std.io.console { println };
+import std.string { fromInt };
+
+struct Fahrenheit { degrees: int, }
+
+struct Celsius :: [Into<Fahrenheit>] {
+    degrees: int,
+    fn into(): Fahrenheit {
+        return Fahrenheit { degrees = this.degrees * 9 / 5 + 32 };
+    }
+}
+
+fn main(): int {
+    let boiling = Celsius { degrees = 100 };
+    let f = boiling as Fahrenheit;
+    println(fromInt(f.degrees));
+    return 0;
+}
+```
+
+Three boundaries, each deliberate. Conversions are **explicit** — nothing converts on its own, and
+`1 as float` never goes through `Into`. A type has **one** conversion target, because `into` is a
+member name and a type has one member of a name; the second conversion is an ordinary named method.
+And a conversion that can **fail** does not belong here: `Into` returns `T`, not `?T` — parsing a
+string into a number is a named function returning an optional.
