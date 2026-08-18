@@ -34,6 +34,15 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
   as readonly. A name the compiler cannot resolve stays uncolored, which is the honest signal.
 - **Run** the active file with `Ctrl+F5`, the play button in the editor title bar, or the
   command palette (`Lyric: Run File`).
+- **Build** the project through the task system (`Terminal → Run Build Task`): a folder with a
+  `lyric.json` offers `lyric: build`, which runs the project's `build.lyr` and feeds the
+  compiler's diagnostics into the Problems panel through the `$lyric` problem matcher.
+- **Snippets** for the declaration forms — `fn`, `struct`, `enum`, `match` and friends — written
+  against the grammar, not against habit.
+- A **status item** in the language status area says whether the server is running, which version,
+  and — when a start failed — that clicking it retries. `Lyric: Restart Language Server` does the
+  same from the palette: the way out of a hung or freshly updated server that does not cost a
+  window reload.
 
 ## What it does not do
 
@@ -58,6 +67,17 @@ driver and the server is found beside it:
 
 The run command calls the **driver**, not `lyrc` or `lyrvm` — the driver is the one command that
 compiles and runs in a single step.
+
+## Installing from a release
+
+Every release from v1.8.0 on carries a `vscode-lyric-<version>.vsix` beside the toolchain
+archives. Install it with `Extensions: Install from VSIX…` in the command palette, or:
+
+```bash
+code --install-extension vscode-lyric-<version>.vsix
+```
+
+The extension is not on the Marketplace; the release asset is the distribution.
 
 ## Installing during development
 
