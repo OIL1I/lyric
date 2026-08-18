@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Enums and pattern matching — Lyric v1.8.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v1.8.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/" class="here">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+</ul>
+</nav>
+<main>
+<h1>Enums and pattern matching</h1>
+<nav class="contents">
+<ul>
+<li><a href="#constructing">Constructing</a></li>
+<li><a href="#matching">Matching</a></li>
+<li><a href="#generic-enums">Generic enums</a></li>
+</ul>
+</nav>
+<p>An enum lists alternatives. A variant may carry a payload, either positionally or by name.</p>
+<pre><code class="language-lyr">enum Shape {
+    Circle(float),
+    Rectangle(float, float),
+    Triangle { a: float, b: float, c: float },
+    Empty;
+
+    fn corners(): int {
+        return match (this) {
+            Circle(r)       =&gt; 0,
+            Rectangle(w, h) =&gt; 4,
+            Triangle { a, b, c } =&gt; 3,
+            Empty           =&gt; 0,
+        };
+    }
+}
+
+fn main(): int {
+    let s = Shape.Rectangle(3.0, 4.0);
+    return s.corners();
+}
+</code></pre>
+<p>The <code>;</code> separates the variants from the methods.</p>
+<h2 id="constructing">Constructing</h2>
+<pre><code class="language-lyr">enum Shape {
+    Circle(float),
+    Triangle { a: float, b: float, c: float },
+    Empty,
+}
+
+fn main(): int {
+    let a = Shape.Circle(2.0);
+    let b = Shape.Triangle { a = 3.0, b = 4.0, c = 5.0 };
+    let c = Shape.Empty;
+    return 0;
+}
+</code></pre>
+<h2 id="matching">Matching</h2>
+<p><code>match</code> is exhaustive: every variant must be covered, or the last arm must be <code>_</code>.</p>
+<pre><code class="language-lyr">enum Signal { Red, Yellow, Green, }
+
+fn wait(s: Signal): int {
+    return match (s) {
+        Red    =&gt; 60,
+        Yellow =&gt; 5,
+        Green  =&gt; 0,
+    };
+}
+
+fn main(): int { return wait(Signal.Yellow); }
+</code></pre>
+<p>Arms may bind payloads, test literals, cover ranges, combine alternatives with <code>|</code>, and carry a
+guard:</p>
+<pre><code class="language-lyr">fn classify(n: int): int {
+    return match (n) {
+        0          =&gt; 0,
+        1 | 2 | 3  =&gt; 1,
+        4..=9      =&gt; 2,
+        x if x &lt; 0 =&gt; -1,
+        _          =&gt; 3,
+    };
+}
+
+fn main(): int { return classify(7); }
+</code></pre>
+<p>An arm whose body is an expression ends with <code>,</code>. An arm whose body is a block may omit it, but a
+block arm must <code>return</code> or <code>throw</code> — it contributes no value.</p>
+<h2 id="generic-enums">Generic enums</h2>
+<p>The type arguments belong to the enum and precede the variant:</p>
+<pre><code class="language-lyr">enum Result&lt;T&gt; {
+    Ok(T),
+    Failed { reason: string },
+}
+
+fn main(): int {
+    let a = Result&lt;int&gt;.Ok(5);
+    let b = Result&lt;int&gt;.Failed { reason = &quot;empty&quot; };
+
+    let c: Result&lt;int&gt; = Result.Ok(7);      // taken from the annotation
+
+    return match (a) {
+        Ok(v) =&gt; v,
+        Failed { reason } =&gt; 0,
+    };
+}
+</code></pre>
+<p>Where the expected type is known, the arguments may be omitted. In an argument position they
+cannot; write them.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/structs-and-classes/">Structs and classes</a>
+<a class="next" href="../../guide/interfaces/">Interfaces</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
