@@ -16,10 +16,10 @@ three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0
 
 **M16 — the tooling milestone — is current** (decided 2026-08-18, at the post-v1 pace): the
 language server learns the project, the editors learn the server. Slices, in order: workspace
-compilation (**done**, PR #43) → rename + workspace symbols (**done**, PR follows #43) → semantic
-tokens → signature help + folding + inlay hints → the VS Code extension rounded off (restart
-command, status item, task provider, snippets, `.vsix` in the release) → a JetBrains thin plugin
-over the platform's LSP API, deliberately no PSI.
+compilation (**done**, PR #43) → rename + workspace symbols (**done**, PR #44) → semantic tokens
+(**done**, stacked on #44) → signature help + folding + inlay hints → the VS Code extension
+rounded off (restart command, status item, task provider, snippets, `.vsix` in the release) → a
+JetBrains thin plugin over the platform's LSP API, deliberately no PSI.
 
 **M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
 (frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
@@ -57,6 +57,22 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M16 slice 3 — semantic tokens** (2026-08-18, stacked on #44). 3899 tests green in Debug
+  and Release.
+  - Every NAME colored by what the compiler resolved it to, from the same two tables and the same
+    name spans the references and the rename use — one switch (`NameSpans`), three consumers.
+    Keywords, literals and comments stay with the TextMate grammar, which knows them lexically.
+  - Full-document only, no delta and no range form: the cost is one walk over one file, not a
+    number that buys bookkeeping. The legend: namespace, type, enum, interface, typeParameter,
+    parameter, variable, property, enumMember, function, method; modifiers declaration, static,
+    readonly (a `let`).
+  - An operator use colors nothing — the synthesized node's invalid span, doing for colors what
+    it does for rename edits (pinned: no token ever contains `+`). An unresolved name gets NO
+    token: uncolored is visibly "the compiler does not know".
+  - Import-clause names carry the target's color, through the same special case the rename walks.
+    Method vs function is the member-table line; the initializer field, `this.x` and `p.x` are
+    all the FIELD (pinned by decoded-token tests, not by raw deltas).
 
 - [x] **M16 slice 2 — rename and workspace symbols** (2026-08-18, stacked on #43). 3893 tests
   green in Debug and Release.
@@ -105,26 +121,6 @@ out of them and hands its own functions, types and value structs in.
   allocates nothing anymore — argument arrays pooled (40/88 → 0 B), `Vec2` in as fields (0 B),
   `Vec2` out through a hidden buffer that value semantics makes unobservable (0 B), layouts
   checked at load. Erato's A2, answered.
-
-- [x] **M14 — the interpreter stops allocating** (2026-08-18). Five slices in one day, 3855 tests
-  green in Debug and Release, branch `feature/m14-allocations`. No language change, no format
-  change.
-  - **Slice 0**: `tools/Bench`, the in-process harness — every later gate is a diff against its
-    baseline. Round-robin against JIT tiering, minima, scalar loop subtracted.
-  - **Slice 1**: frame pooling. Rent from a per-function free list, recycle on return and handled
-    unwind, arrays cleared so nothing stays alive. Coroutines need no exception: state machines,
-    no frame survives a yield. Call: 176 → 0 B.
-  - **Slice 2**: the inliner. Splice via renumbering — the phi-free IR makes it cheap. Not
-    inlined: handlers on either side, self calls, never-returning callees (the verifier caught
-    that one as an orphaned continuation), >24 ops. Backtrace trade documented in the changelog.
-  - **Slice 3**: scalar replacement. Local forwarding plus sole-ownership scalarization, classes
-    and structs alike; `structcopy` becomes a field-wise init except across struct-typed fields
-    (deep copy). `Vec2.add` + assignment: 352 B/271 ns → 0 B/8.4 ns. THE ORDER MATTERED: a
-    returned value escapes its function but not the caller it was inlined into.
-  - **Slice 4**: devirtualization. A `callvirt` whose receiver is one provable `mkiface` becomes
-    the direct call, then the pipeline runs once more. A default-method slot keeps the fat
-    pointer — `this` in a default method dispatches virtually; the verifier caught the wrong
-    receiver before any test did.
 
 ## Measurements
 
@@ -212,10 +208,11 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M16 slice 3 — semantic tokens — is next.** Full-document only, no delta and no range form until
-a measurement asks for them; the legend from the two tables the references already read (the
-resolver binds type positions, the sema binds expressions). Then: signature help + folding +
-inlay hints, the VS Code extension work, the JetBrains thin plugin.
+**M16 slice 4 — signature help, folding and inlay hints — is next.** Signature help off the
+enclosing call through `NodeFinder`, the label from the formatting hover already has, the
+declared-signature limit for generics unchanged. Folding is syntax alone, off the last-good
+snapshot. Inlay hints: the inferred type of a binding without an annotation; parameter-name hints
+deliberately not in this slice. Then: the VS Code extension work, the JetBrains thin plugin.
 
 **Not renameable, recorded**: a module (rename the file), an enum variant's payload field (no
 symbol exists for it), anything whose declaring module is native. Renaming across `build.lyr` is
@@ -337,7 +334,7 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`ast, sema, lsp: a rename edits exactly the name, everywhere it stands` (stacked on PR #43)
+`lsp: every name colored by what the compiler resolved it to` (stacked on PR #44)
 
 ---
 

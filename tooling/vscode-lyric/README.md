@@ -23,8 +23,11 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
   to the compile that follows immediately — its diagnostics are the conflict analysis.
 - **Completion** after `.` and for names in scope, an **outline** of the file's declarations, and
   **workspace symbols** (`Ctrl+T`): every declaration of the project, searched by name.
-- **Highlighting** for `.lyr` files — keywords, types, strings with interpolation, nested block
-  comments, all numeric literal forms.
+- **Highlighting** in two layers. The TextMate grammar colors what is lexical — keywords, strings
+  with interpolation, nested block comments, all numeric literal forms. On top, **semantic
+  tokens** from the server color every name by what the compiler resolved it to: a type in an
+  annotation, an initializer and an attribute alike; fields, methods, parameters, `let` bindings
+  as readonly. A name the compiler cannot resolve stays uncolored, which is the honest signal.
 - **Run** the active file with `Ctrl+F5`, the play button in the editor title bar, or the
   command palette (`Lyric: Run File`).
 

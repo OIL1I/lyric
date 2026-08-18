@@ -48,6 +48,8 @@ namespace Lyric.Lsp.Protocol;
 [JsonSerializable(typeof(WorkspaceEdit))]
 [JsonSerializable(typeof(WorkspaceSymbolParams))]
 [JsonSerializable(typeof(IReadOnlyList<SymbolInformation>))]
+[JsonSerializable(typeof(SemanticTokensParams))]
+[JsonSerializable(typeof(SemanticTokens))]
 public sealed partial class LspJson : JsonSerializerContext
 {
     /// <summary>

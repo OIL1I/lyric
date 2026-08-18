@@ -225,6 +225,10 @@ public sealed class LspServer : IDisposable
                 await SendWorkspaceSymbolsAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.SemanticTokensFull when _state == State.Running:
+                await SendSemanticTokensAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -757,6 +761,38 @@ public sealed class LspServer : IDisposable
             LspJson.Default.WorkspaceEdit, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answers what every name in the document is, or answers with null.
+    ///
+    /// <para>Off the last good analysis, like hover: colors one edit old are invisible, colors
+    /// that vanish while the file does not parse are a flicker on every keystroke.</para>
+    /// </summary>
+    private async Task SendSemanticTokensAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.SemanticTokensParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var data = SemanticTokensProvider.Of(
+            snapshot.Model, snapshot.Root, snapshot.File, snapshot.Sources);
+
+        await SendResultAsync(id, new SemanticTokens { Data = data },
+            LspJson.Default.SemanticTokens, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Answers the workspace symbol search over every live compilation.</summary>
     private async Task SendWorkspaceSymbolsAsync(
         JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
@@ -794,6 +830,15 @@ public sealed class LspServer : IDisposable
             CompletionProvider = new CompletionOptions { TriggerCharacters = ["."] },
             RenameProvider = new RenameOptions { PrepareProvider = true },
             WorkspaceSymbolProvider = true,
+            SemanticTokensProvider = new SemanticTokensOptions
+            {
+                Legend = new SemanticTokensLegend
+                {
+                    TokenTypes = SemanticTokensProvider.TokenTypes,
+                    TokenModifiers = SemanticTokensProvider.TokenModifiers,
+                },
+                Full = true,
+            },
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };
