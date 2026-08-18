@@ -66,6 +66,11 @@
 <li><a href="#interface-equatable">Equatable</a></li>
 <li><a href="#interface-hashable">Hashable</a></li>
 <li><a href="#interface-ordered">Ordered</a></li>
+<li><a href="#interface-add">Add</a></li>
+<li><a href="#interface-sub">Sub</a></li>
+<li><a href="#interface-mul">Mul</a></li>
+<li><a href="#interface-div">Div</a></li>
+<li><a href="#interface-into">Into</a></li>
 </ul>
 </nav>
 <p>What the language itself needs: aborting with a reason, the ready-made <code>Throwable</code>, and the
@@ -184,6 +189,71 @@ first — as <code>strcmp</code>.</p>
 </div>
 </div>
 <p class="source">stdlib/std/core.lyr:156</p>
+</section>
+<section class="item" id="interface-add">
+<h2><a href="#interface-add">Add</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Add&lt;T&gt;</code></pre>
+<p>Values of this type can be added: <code>a + b</code> is <code>a.add(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn add(other: T): T</code></pre>
+<p>The sum of this value and <code>other</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:290</p>
+</section>
+<section class="item" id="interface-sub">
+<h2><a href="#interface-sub">Sub</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Sub&lt;T&gt;</code></pre>
+<p>Values of this type can be subtracted: <code>a - b</code> is <code>a.sub(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn sub(other: T): T</code></pre>
+<p>This value minus <code>other</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:296</p>
+</section>
+<section class="item" id="interface-mul">
+<h2><a href="#interface-mul">Mul</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Mul&lt;T&gt;</code></pre>
+<p>Values of this type can be multiplied: <code>a * b</code> is <code>a.mul(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn mul(other: T): T</code></pre>
+<p>The product of this value and <code>other</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:302</p>
+</section>
+<section class="item" id="interface-div">
+<h2><a href="#interface-div">Div</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Div&lt;T&gt;</code></pre>
+<p>Values of this type can be divided: <code>a / b</code> is <code>a.div(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn div(other: T): T</code></pre>
+<p>This value divided by <code>other</code>. What a division by zero does is the type's own business;
+the built-in numerics panic.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:308</p>
+</section>
+<section class="item" id="interface-into">
+<h2><a href="#interface-into">Into</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Into&lt;T&gt;</code></pre>
+<p>A value of this type converts to <code>T</code>: <code>x as T</code> is <code>x.into()</code>.</p>
+<p>ONE target per type: the method is named <code>into</code>, and a type has one member of a name — a second
+conversion is an ordinary named method. Total conversions only; a conversion that can fail
+belongs in a named function returning an optional.</p>
+<p>The numeric casts keep their opcodes: <code>1 as float</code> never goes through here.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn into(): T</code></pre>
+<p>This value as a <code>T</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:379</p>
 </section>
 <nav class="neighbours">
 <a class="prev" href="../../stdlib/std.collections/">std.collections</a>
