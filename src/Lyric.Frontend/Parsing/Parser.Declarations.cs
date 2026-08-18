@@ -66,11 +66,15 @@ public sealed partial class Parser
             var at = _buffer.Advance();
             var path = new List<string> { _sm.Slice(at.Span)[1..].ToString() }; // strip the '@'
             var pathEnd = at.Span;
+
+            // The single-segment case: the name is the token minus its '@'.
+            var nameSpan = new Span(at.Span.File, at.Span.Start + 1, at.Span.End);
             while (_buffer.Match(TokenKind.Dot))
             {
                 var segment = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
                     $"expected attribute name, got {_buffer.Current.TokenKind}");
                 path.Add(_sm.Slice(segment.Span).ToString());
+                nameSpan = segment.Span;
                 pathEnd = segment.Span;
             }
 
@@ -87,7 +91,7 @@ public sealed partial class Parser
                         "expected '=' in attribute arguments (':' is only for types)");
                     var value = ParseSubExpr();
                     fields.Add(new StructInitField(_sm.Slice(nameTok.Span).ToString(), value,
-                        Span.Union(nameTok.Span, value.Span)));
+                        Span.Union(nameTok.Span, value.Span)) { NameSpan = nameTok.Span });
                     if (!_buffer.Match(TokenKind.Comma)) break;
                 }
                 end = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018",
@@ -95,7 +99,8 @@ public sealed partial class Parser
             }
 
             attributes.Add(new AttributeNode(path.ToArray(), fields.ToArray(),
-                Span.Union(at.Span, end)) { PathSpan = Span.Union(at.Span, pathEnd) });
+                Span.Union(at.Span, end))
+                { PathSpan = Span.Union(at.Span, pathEnd), NameSpan = nameSpan });
         }
         return attributes.ToArray();
     }
@@ -227,13 +232,17 @@ public sealed partial class Parser
     {
         var open = _buffer.Advance(); // '{'
         var names = new List<string>();
+        var spans = new List<Span>();
         while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
         {
-            names.Add(ExpectName("LYR-PAR0026", "import item"));
+            var (name, span) = ExpectNamed("LYR-PAR0026", "import item");
+            names.Add(name);
+            spans.Add(span);
             if (!_buffer.Match(TokenKind.Comma)) break;
         }
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close import list");
-        return new ImportSelective(names.ToArray(), Span.Union(open.Span, close.Span));
+        return new ImportSelective(names.ToArray(), Span.Union(open.Span, close.Span))
+            { NameSpans = spans.ToArray() };
     }
 
     private ImportClause ParseAliasImport()

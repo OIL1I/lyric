@@ -236,7 +236,7 @@ public sealed partial class Parser
                     var name = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0003",
                         $"expected member name after '.', got {_buffer.Current.TokenKind}");
                     operand = new MemberExpr(operand, _sm.Slice(name.Span).ToString(), false,
-                        Span.Union(operand.Span, name.Span));
+                        Span.Union(operand.Span, name.Span)) { MemberSpan = name.Span };
                     break;
                 }
                 case TokenKind.QuestionDot:
@@ -245,7 +245,7 @@ public sealed partial class Parser
                     var name = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0003",
                         $"expected member name after '?.', got {_buffer.Current.TokenKind}");
                     operand = new MemberExpr(operand, _sm.Slice(name.Span).ToString(), true,
-                        Span.Union(operand.Span, name.Span));
+                        Span.Union(operand.Span, name.Span)) { MemberSpan = name.Span };
                     break;
                 }
                 case TokenKind.LBracket:
@@ -506,14 +506,20 @@ public sealed partial class Parser
     {
         var first = _buffer.Advance(); // first IDENT
         var path = new List<string> { _sm.Slice(first.Span).ToString() };
+        var nameSpan = first.Span;
 
         // The lookahead guaranteed 'IDENT (. IDENT)* <', so the loop ends at the '<'.
         while (_buffer.Match(TokenKind.Dot))
-            path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
-                $"expected type name, got {_buffer.Current.TokenKind}").Span).ToString());
+        {
+            var segment = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                $"expected type name, got {_buffer.Current.TokenKind}");
+            path.Add(_sm.Slice(segment.Span).ToString());
+            nameSpan = segment.Span;
+        }
 
         var typeArgs = ParseTypeArguments(out var close);
-        return new TypePathExpr(path.ToArray(), typeArgs, Span.Union(first.Span, close));
+        return new TypePathExpr(path.ToArray(), typeArgs, Span.Union(first.Span, close))
+            { NameSpan = nameSpan };
     }
 
     // Skips a balanced type argument group starting at Peek(start)=='<' (depth over '<' and '>',
@@ -544,9 +550,14 @@ public sealed partial class Parser
     {
         var first = _buffer.Advance(); // first IDENT
         var path = new List<string> { _sm.Slice(first.Span).ToString() };
+        var nameSpan = first.Span;
         while (_buffer.Match(TokenKind.Dot))
-            path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
-                $"expected type name, got {_buffer.Current.TokenKind}").Span).ToString());
+        {
+            var segment = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                $"expected type name, got {_buffer.Current.TokenKind}");
+            path.Add(_sm.Slice(segment.Span).ToString());
+            nameSpan = segment.Span;
+        }
 
         TypeNode[] typeArgs = [];
         if (_buffer.Check(TokenKind.Less))
@@ -555,8 +566,12 @@ public sealed partial class Parser
 
             // 'Ev<int>.Hit { … }': the variant stands BEHIND the enum's arguments.
             while (_buffer.Match(TokenKind.Dot))
-                path.Add(_sm.Slice(_buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
-                    $"expected variant name, got {_buffer.Current.TokenKind}").Span).ToString());
+            {
+                var variant = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                    $"expected variant name, got {_buffer.Current.TokenKind}");
+                path.Add(_sm.Slice(variant.Span).ToString());
+                nameSpan = variant.Span;
+            }
         }
 
         _buffer.Advance(); // '{', guaranteed by IsStructInitAhead
@@ -568,11 +583,12 @@ public sealed partial class Parser
             _buffer.Expect(TokenKind.Equal, "LYR-PAR0037", "expected '=' in struct initializer (':' is only for types)");
             var value = ParseSubExpr();
             fields.Add(new StructInitField(_sm.Slice(nameTok.Span).ToString(), value,
-                Span.Union(nameTok.Span, value.Span)));
+                Span.Union(nameTok.Span, value.Span)) { NameSpan = nameTok.Span });
             if (!_buffer.Match(TokenKind.Comma)) break;
         }
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close struct initializer");
-        return new StructInitExpr(path.ToArray(), typeArgs, fields.ToArray(), Span.Union(first.Span, close.Span));
+        return new StructInitExpr(path.ToArray(), typeArgs, fields.ToArray(),
+            Span.Union(first.Span, close.Span)) { NameSpan = nameSpan };
     }
 
     // ---------------------------------------------------------------------
@@ -750,12 +766,14 @@ public sealed partial class Parser
                 _buffer.Advance();
                 var path = new List<string> { _sm.Slice(cur.Span).ToString() };
                 var end = cur.Span;
+                var nameSpan = cur.Span;
                 while (_buffer.Match(TokenKind.Dot))
                 {
                     var seg = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0011",
                         $"expected identifier in type path, got {_buffer.Current.TokenKind}");
                     path.Add(_sm.Slice(seg.Span).ToString());
                     end = seg.Span;
+                    nameSpan = seg.Span;
                 }
                 TypeNode[] args = [];
                 if (_buffer.Check(TokenKind.Less))
@@ -763,7 +781,8 @@ public sealed partial class Parser
                     args = ParseTypeArguments(out var closeSpan);
                     end = closeSpan;
                 }
-                return new NamedType(path.ToArray(), args, Span.Union(cur.Span, end));
+                return new NamedType(path.ToArray(), args, Span.Union(cur.Span, end))
+                    { NameSpan = nameSpan };
             }
             default:
                 _de.Report("LYR-PAR0011", Severity.Error, cur.Span, $"expected a type, got {cur.TokenKind}");

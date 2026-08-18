@@ -55,7 +55,12 @@ public static class ReferenceProvider
 
             // A node can stand in both tables; the answer is a set of places, not of lookups.
             if (!found.Add(node)) continue;
-            if (node.Span.File.IsValid) sites.Add(new ReferenceSite(node.Span.File, node.Span));
+
+            // The NAME where the form records it, the whole node where it does not: an occurrence
+            // list should underline 'add', not 'p.add' — and a synthesized use (an operator
+            // desugar) still counts as a place, shown as the expression that stands for it.
+            var span = NameSpans.Of(node) ?? node.Span;
+            if (span.File.IsValid) sites.Add(new ReferenceSite(span.File, span));
         }
 
         if (includeDeclaration && symbol.Declaration is { } declaration
@@ -70,21 +75,31 @@ public static class ReferenceProvider
         return sites;
     }
 
+    private static Symbol? SymbolAt(SemanticModel model, Module root, FileId file, int offset) =>
+        SymbolNodeAt(model, root, file, offset)?.Symbol;
+
     /// <summary>
-    /// The symbol the cursor is on, whether it stands on a use or on the declaration itself.
+    /// The symbol the cursor is on and the node it was found at, whether the cursor stands on a
+    /// use or on the declaration itself.
     ///
     /// <para>The forward tables answer for uses and for the declarations the sema binds, which
     /// leaves the ones it does not: a function, a type or a field is never bound to itself. Asking
     /// for the references of a function while standing on its name is the ordinary gesture, so the
     /// module's own symbol tables are the fallback.</para>
+    ///
+    /// <para>The NODE is handed out with the symbol because the rename needs it: the range an
+    /// editor selects before renaming is the name inside that node, not the node.</para>
     /// </summary>
-    private static Symbol? SymbolAt(SemanticModel model, Module root, FileId file, int offset)
+    internal static (Symbol Symbol, Node Node)? SymbolNodeAt(
+        SemanticModel model, Module root, FileId file, int offset)
     {
         var path = NodeFinder.PathAt(root, file, offset);
 
         for (var i = path.Count - 1; i >= 0; i--)
             if ((model.Types.RefOf(path[i]) ?? model.Binding.Resolve(path[i])) is { } symbol)
-                return NodeFinder.Answers(path[i], symbol, file, offset) ? Target(symbol) : null;
+                return NodeFinder.Answers(path[i], symbol, file, offset)
+                    ? (Target(symbol), path[i])
+                    : null;
 
         // Standing on a declaration the tables do not carry. Only the name counts: the cursor
         // anywhere inside a twenty-line struct would otherwise mean its name.
@@ -92,14 +107,14 @@ public static class ReferenceProvider
             if (path[i] is INamedDecl named && named.NameSpan.File == file
                 && offset >= named.NameSpan.Start && offset <= named.NameSpan.End
                 && NodeFinder.DeclaredSymbol(model, path[i]) is { } symbol)
-                return symbol;
+                return (symbol, path[i]);
 
         return null;
     }
 
     /// <summary>An imported name stands for what it imports, so the references asked for are the
     /// target's. The same redirection the jump and the hover make.</summary>
-    private static Symbol Target(Symbol symbol) =>
+    internal static Symbol Target(Symbol symbol) =>
         symbol is ImportBindingSymbol import ? Target(import.Target) : symbol;
 
 }

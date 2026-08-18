@@ -25,6 +25,10 @@ public sealed record AttributeNode(string[] Path, StructInitField[] Fields, Span
 {
     /// <summary>The span of the <c>@Name</c> path alone, without the argument block.</summary>
     public required Span PathSpan { get; init; }
+
+    /// <summary>The LAST path segment without the <c>@</c> — the name of the struct the attribute
+    /// refers to, which is what an editor renaming that struct has to edit.</summary>
+    public required Span NameSpan { get; init; }
 }
 
 public abstract record Decl(Span Span) : Node(Span);
@@ -32,7 +36,13 @@ public abstract record Decl(Span Span) : Node(Span);
 // --- imports ---
 public sealed record ImportDecl(string[] Path, ImportClause? Clause, Span Span) : Decl(Span);
 public abstract record ImportClause(Span Span) : Node(Span);
-public sealed record ImportSelective(string[] Names, Span Span) : ImportClause(Span); // import a.b { x, y }
+/// <remarks><c>import a.b { x, y }</c>. <see cref="NameSpans"/> is parallel to
+/// <see cref="Names"/>: the clause is the one place an imported name stands that no use-site table
+/// records, and an editor renaming the target has to edit exactly it.</remarks>
+public sealed record ImportSelective(string[] Names, Span Span) : ImportClause(Span)
+{
+    public required Span[] NameSpans { get; init; }
+}
 public sealed record ImportAlias(string Alias, Span Span) : ImportClause(Span);       // import a.b as C
 
 // --- generics ---

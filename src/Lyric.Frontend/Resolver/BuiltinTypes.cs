@@ -44,7 +44,8 @@ public static class BuiltinTypes
         // FileId. A consumer that offers to jump to a declaration checks for that already.
         var message = new FunctionDecl(
             IsPublic: true, IsMut: false, IsStatic: false, Name: "message", Generics: [], Parameters: [],
-            ReturnType: new NamedType(["string"], [], default), Throws: null, Body: null, Span: default)
+            ReturnType: new NamedType(["string"], [], default) { NameSpan = default },
+            Throws: null, Body: null, Span: default)
             { NameSpan = default };
         var decl = new InterfaceDecl(IsPublic: true, Name: "Throwable", Generics: [], Members: [message], Span: default)
             { NameSpan = default };
@@ -60,7 +61,8 @@ public static class BuiltinTypes
         var decl = new FunctionDecl(
             IsPublic: true, IsMut: false, IsStatic: false, Name: "panic", Generics: [],
             Parameters: [new Param(IsParams: false, Name: "message",
-                Type: new NamedType(["string"], [], default), Default: null, Span: default)
+                Type: new NamedType(["string"], [], default) { NameSpan = default },
+                Default: null, Span: default)
                 { NameSpan = default }],
             ReturnType: null, Throws: null, Body: null, Span: default) { NameSpan = default };
         return new FunctionSymbol("panic", Visibility.Public, isMut: false, decl);

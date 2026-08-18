@@ -16,10 +16,10 @@ three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0
 
 **M16 — the tooling milestone — is current** (decided 2026-08-18, at the post-v1 pace): the
 language server learns the project, the editors learn the server. Slices, in order: workspace
-compilation (**done**, PR #43) → rename + workspace symbols → semantic tokens → signature help +
-folding + inlay hints → the VS Code extension rounded off (restart command, status item, task
-provider, snippets, `.vsix` in the release) → a JetBrains thin plugin over the platform's LSP API,
-deliberately no PSI.
+compilation (**done**, PR #43) → rename + workspace symbols (**done**, PR follows #43) → semantic
+tokens → signature help + folding + inlay hints → the VS Code extension rounded off (restart
+command, status item, task provider, snippets, `.vsix` in the release) → a JetBrains thin plugin
+over the platform's LSP API, deliberately no PSI.
 
 **M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
 (frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
@@ -57,6 +57,27 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M16 slice 2 — rename and workspace symbols** (2026-08-18, stacked on #43). 3893 tests
+  green in Debug and Release.
+  - **The AST learned where names stand at USE sites**: `MemberExpr`, `NamedType`,
+    `StructInitExpr`, `TypePathExpr`, `StructInitField`, `AttributeNode` and the selective import
+    clause now record the span of the name alone, the same `INamedDecl.NameSpan` idea on the other
+    side. A node the sema synthesizes carries an INVALID span — an operator use writes no name, so
+    a rename edits nothing there and `a + b` survives renaming `add` (pinned by test).
+  - **Rename is the reference walk plus the import clauses**, which no table carries: `import util
+    { value }` declares a binding rather than using the target, and forgetting it breaks every
+    importer. End-to-end pinned: the returned WorkspaceEdit, APPLIED, recompiles clean with the
+    old name gone.
+  - **Refusals carry reasons** (surfaced via `-32803`): the standard library, a module, a built-in,
+    an unknown node form (refuse loudly rather than corrupt quietly), and outside a project any
+    rename that would leave the file. NO collision analysis, on purpose — the compile that follows
+    is the conflict analysis.
+  - **The sema now binds an initializer's fields** (`x = 1` in `Point { x = 1 }`) — found because
+    the rename test demanded completeness; references gained the same sites, and every reference
+    site narrowed from the node to the name (`p.x` → `x`), four pinned tests updated.
+  - `workspace/symbol`: the outline walk, flattened over every live compilation, stdlib excluded,
+    case-insensitive substring, capped at 512.
 
 - [x] **M16 slice 1 — the server compiles the project, not the buffer** (2026-08-18, PR #43). 3878
   tests green in Debug and Release, 11 new.
@@ -104,27 +125,6 @@ out of them and hands its own functions, types and value structs in.
     the direct call, then the pipeline runs once more. A default-method slot keeps the fat
     pointer — `this` in a default method dispatches virtually; the verifier caught the wrong
     receiver before any test did.
-
-- [x] **M13 — attributes: metadata a host can read** (2026-08-18). Four slices in one day, 3822
-  tests green in Debug and Release. Merged as PR #38, released as **v1.6.0**.
-  - An attribute is a STRUCT; where it may sit is the marker it declares (`OnModule`/`OnType`/
-    `OnFunction`, new in `std.core`) — conformance, not the name, the same nominal rule as the
-    operators. Targets: module header, top-level fn, struct/class/enum. Nothing the compiler reads:
-    the set stays open exactly because every attribute is inert.
-  - **Format 3.1 → 3.2**, two skippable sections. Attributes (11): complete rows — one value per
-    field in field order, unwritten fields carry their literal default, so no field index is stored
-    and no consumer resolves a default. Names (12): field names ONLY for types a row references.
-    **Measured against the pinned 1.5.0 lyrvm**: it verifies and runs a 3.2 module; an
-    attribute-free module differs in the two version bytes alone.
-  - **An attributed function is a reachability root** — the row is a promise to a caller the
-    analysis cannot see, same standing as the entry point. Rows follow the pruning renumbering,
-    pinned by NAME because an off-by-one keeps the numbers plausible.
-  - Host surface: `ModuleAttributes` on the RAW module — the module row is how a host decides
-    whether to load foreign bytes, so the query must not presuppose binding. An `AttributeUse` is a
-    call handle (index, not name, per frame). `FieldsOf` answers the component case. Attribute
-    names are unqualified, like every type name in the bytecode; the guide says an SDK owns them.
-  - The reserved expression form `@name(args)` left the grammar; `LYR-PAR0038` narrowed to
-    parameters and stopped promising the future. Doc ratchet 120 → 123 of 359.
 
 ## Measurements
 
@@ -212,13 +212,15 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M16 slice 2 — rename + workspace symbols — is next.** `prepareRename` refuses a target declared
-outside the project (renaming the standard library is an accident, not a rename); the rename
-returns a `WorkspaceEdit` over the reference sites of the project compilation, the new name is
-checked as an identifier against the lexer, and collisions are deliberately left to the recompile
-that follows — the compiler is the conflict analysis. `workspace/symbol` serves the project's
-declarations. Then, in order: semantic tokens, signature help + folding + inlay hints, the VS Code
-extension work, the JetBrains thin plugin.
+**M16 slice 3 — semantic tokens — is next.** Full-document only, no delta and no range form until
+a measurement asks for them; the legend from the two tables the references already read (the
+resolver binds type positions, the sema binds expressions). Then: signature help + folding +
+inlay hints, the VS Code extension work, the JetBrains thin plugin.
+
+**Not renameable, recorded**: a module (rename the file), an enum variant's payload field (no
+symbol exists for it), anything whose declaring module is native. Renaming across `build.lyr` is
+not covered — the build script sits outside the source root and compiles as its own unit; its
+diagnostics say so on the next compile.
 
 **Erato's A2 is answered in its useful direction** — the host declares the value types in its
 SDK, the script uses them, nothing allocates. What remains on the register's list for Lyric is
@@ -335,7 +337,7 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`compiler, lsp: the server compiles the project, not the buffer` (PR #43)
+`ast, sema, lsp: a rename edits exactly the name, everywhere it stands` (stacked on PR #43)
 
 ---
 
