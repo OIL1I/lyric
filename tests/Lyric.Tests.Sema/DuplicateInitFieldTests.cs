@@ -34,14 +34,14 @@ public class DuplicateInitFieldTests
     public void A_field_written_twice_in_a_struct_initializer_is_reported()
     {
         var de = Check("struct P { x: int }\nfn main(): int { let p = P { x = 1, x = 2 }; return p.x; }");
-        Assert.Contains("LYR-SEM0065", Codes(de));
+        Assert.Contains("LYR-SEM0070", Codes(de));
     }
 
     [Fact]
     public void A_field_written_twice_in_a_class_initializer_is_reported()
     {
         var de = Check("class C { x: int }\nfn main(): int { let c = C { x = 1, x = 2 }; return c.x; }");
-        Assert.Contains("LYR-SEM0065", Codes(de));
+        Assert.Contains("LYR-SEM0070", Codes(de));
     }
 
     [Fact]
@@ -49,14 +49,14 @@ public class DuplicateInitFieldTests
     {
         var de = Check("enum Shape { Tri { a: int, b: int }, Empty; }\n"
                        + "fn main(): int { let s = Shape.Tri { a = 1, a = 2, b = 3 }; return 0; }");
-        Assert.Contains("LYR-SEM0065", Codes(de));
+        Assert.Contains("LYR-SEM0070", Codes(de));
     }
 
     [Fact]
     public void The_message_names_the_field()
     {
         var de = Check("struct P { x: int }\nfn main(): int { let p = P { x = 1, x = 2 }; return p.x; }");
-        var dup = Assert.Single(de.Diagnostics, d => d.Code == "LYR-SEM0065");
+        var dup = Assert.Single(de.Diagnostics, d => d.Code == "LYR-SEM0070");
         Assert.Contains("x", dup.Message);
     }
 
@@ -65,7 +65,7 @@ public class DuplicateInitFieldTests
     {
         // The first write is fine; each repeat is its own diagnostic at its own span.
         var de = Check("struct P { x: int }\nfn main(): int { let p = P { x = 1, x = 2, x = 3 }; return p.x; }");
-        Assert.Equal(2, Codes(de).Count(c => c == "LYR-SEM0065"));
+        Assert.Equal(2, Codes(de).Count(c => c == "LYR-SEM0070"));
     }
 
     // ------------------------------------------------------------------ counter-checks

@@ -2468,7 +2468,7 @@ public sealed class TypeChecker
         foreach (var field in si.Fields)
         {
             if (!seen.Add(field.Name))
-                _de.Report("LYR-SEM0065", Severity.Error, field.Span,
+                _de.Report("LYR-SEM0070", Severity.Error, field.Span,
                     $"duplicate field '{field.Name}' in initializer for '{ts.Name}'");
             if (ts.Members.LookupLocal(field.Name) is FieldSymbol fs)
             {
@@ -2615,7 +2615,7 @@ public sealed class TypeChecker
         foreach (var field in si.Fields)
         {
             if (!seen.Add(field.Name))
-                _de.Report("LYR-SEM0065", Severity.Error, field.Span,
+                _de.Report("LYR-SEM0070", Severity.Error, field.Span,
                     $"duplicate field '{field.Name}' in initializer for variant '{ev.Name}'");
             if (Array.Find(decls, d => d.Name == field.Name) is { } fd)
             {

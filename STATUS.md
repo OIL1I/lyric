@@ -29,7 +29,7 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3822 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
+3830 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
 `lyrembed.dll`, version **1.6.0**.
 
 **All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
@@ -187,12 +187,6 @@ is the thing to check.
 ## Still open
 
 **Language gaps still open:**
-
-- **A duplicate field in a struct initializer is a compiler CRASH**, not a diagnostic:
-  `P { x = 1, x = 2 }` passes the sema and dies in `LowerObjectInit` with an
-  `InternalCompilationException` — the wrong one of the two error classes for valid-looking input.
-  Found while building the attribute checks, which do their own duplicate check and are not
-  affected. Fix in flight in a separate session (test first, then the sema check).
 
 - **A block lambda does not deliver its return type to the inference**: `(n: int) => n` binds `U`,
   `(n: int) => { return n; }` does not. *Not a gap but a documented limit* — `LYR-SEM0046` says so

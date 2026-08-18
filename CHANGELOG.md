@@ -62,6 +62,14 @@ bytecode format goes **3.1 → 3.2**; both new sections are skippable, so a 1.5.
 - **The tools show them.** `lyric disasm` prints each row with its field names, `lyrvm info`
   counts them, and hovering `@System` in an editor answers with the struct.
 
+### Fixed
+
+- **A duplicate field in a struct initializer crashed the compiler.** `P { x = 1, x = 2 }` passed
+  the type checker and died in the lowering with an internal exception instead of an error
+  message. It is a diagnostic now (`LYR-SEM0070`), reported at each repeated field, in struct and
+  class initializers and in enum struct-variant initializers alike. Found while building the
+  attribute checks, which validate their arguments the same way.
+
 ### Changed
 
 - **`@name` at declaration position is no longer "attributes arrive later".** It parses; what the
