@@ -17,9 +17,9 @@ three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0
 **M16 — the tooling milestone — is current** (decided 2026-08-18, at the post-v1 pace): the
 language server learns the project, the editors learn the server. Slices, in order: workspace
 compilation (**done**, PR #43) → rename + workspace symbols (**done**, PR #44) → semantic tokens
-(**done**, stacked on #44) → signature help + folding + inlay hints → the VS Code extension
-rounded off (restart command, status item, task provider, snippets, `.vsix` in the release) → a
-JetBrains thin plugin over the platform's LSP API, deliberately no PSI.
+(**done**, PR #45) → signature help + folding + inlay hints (**done**, stacked on #45) → the VS
+Code extension rounded off (restart command, status item, task provider, snippets, `.vsix` in the
+release) → a JetBrains thin plugin over the platform's LSP API, deliberately no PSI.
 
 **M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
 (frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
@@ -58,7 +58,25 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
-- [x] **M16 slice 3 — semantic tokens** (2026-08-18, stacked on #44). 3899 tests green in Debug
+- [x] **M16 slice 4 — signature help, folding, inlay hints** (2026-08-18, stacked on #45). 3912
+  tests green in Debug and Release, 13 new.
+  - **Signature help off the CURRENT buffer** (the completion argument: the model the keystroke
+    invalidated is the one that would answer about the text before it). The label is the
+    declaration AS WRITTEN, sliced from the declaration's own source — parameter names and types
+    verbatim, each parameter a substring of the whole, which is what the client's highlight
+    matches. The active parameter follows the argument spans; a callee that is a function VALUE
+    shows the FnType's shape with no invented parameter names. `activeSignature` is always 0 — no
+    overloading, by Rule 2.
+  - **Folding** is syntax off the last-good tree (regions must not snap open on a type error):
+    declarations, blocks, matches; the closing line stays visible; one range per start line, so
+    `fn f() {` — declaration AND body — renders one fold control, not two.
+  - **Inlay hints for bindings only**: the inferred type of an unannotated `let`/`var` and of
+    every loop variable, from the symbol the definite-assignment analysis already binds. A written
+    annotation silences the hint; an `ErrorType` shows nothing — the squiggle owns that spot.
+    Parameter-name hints are a different feature with a different noise budget, deliberately not
+    half-built here.
+
+- [x] **M16 slice 3 — semantic tokens** (2026-08-18, PR #45). 3899 tests green in Debug
   and Release.
   - Every NAME colored by what the compiler resolved it to, from the same two tables and the same
     name spans the references and the rename use — one switch (`NameSpans`), three consumers.
@@ -115,12 +133,6 @@ out of them and hands its own functions, types and value structs in.
     mid-session can leave stale squiggles on the old root's files; two files claiming one module
     name both compile, imports bind to the first — a duplicate-module diagnostic is a decision for
     later, not an accident.
-
-- [x] **M15 — the boundary learns values** (2026-08-18). Four slices, same day as M14, stacked on
-  its branch; details under *What we are working on*. The one measured sentence: a native call
-  allocates nothing anymore — argument arrays pooled (40/88 → 0 B), `Vec2` in as fields (0 B),
-  `Vec2` out through a hidden buffer that value semantics makes unobservable (0 B), layouts
-  checked at load. Erato's A2, answered.
 
 ## Measurements
 
@@ -208,11 +220,12 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M16 slice 4 — signature help, folding and inlay hints — is next.** Signature help off the
-enclosing call through `NodeFinder`, the label from the formatting hover already has, the
-declared-signature limit for generics unchanged. Folding is syntax alone, off the last-good
-snapshot. Inlay hints: the inferred type of a binding without an annotation; parameter-name hints
-deliberately not in this slice. Then: the VS Code extension work, the JetBrains thin plugin.
+**M16 slice 5 — the VS Code extension rounded off — is next.** A restart command over the
+existing restart chain; a language status item, so a server that failed to start stops being
+invisible; a task provider for `lyrbuild` with a problem matcher (precondition to verify first:
+the CLI diagnostic format is stable and regex-able); snippets written against `docs/Grammar.md`;
+`vsce package` in the release workflow, so the `.vsix` hangs on the release as an installable
+artifact — a Marketplace account is a separate decision. Then: the JetBrains thin plugin.
 
 **Not renameable, recorded**: a module (rename the file), an enum variant's payload field (no
 symbol exists for it), anything whose declaring module is native. Renaming across `build.lyr` is
@@ -334,7 +347,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`lsp: every name colored by what the compiler resolved it to` (stacked on PR #44)
+`lsp: the call under the cursor, the fold behind the brace, the type nobody wrote` (stacked on
+PR #45)
 
 ---
 

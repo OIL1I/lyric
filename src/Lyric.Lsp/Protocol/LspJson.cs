@@ -50,6 +50,11 @@ namespace Lyric.Lsp.Protocol;
 [JsonSerializable(typeof(IReadOnlyList<SymbolInformation>))]
 [JsonSerializable(typeof(SemanticTokensParams))]
 [JsonSerializable(typeof(SemanticTokens))]
+[JsonSerializable(typeof(SignatureHelp))]
+[JsonSerializable(typeof(FoldingRangeParams))]
+[JsonSerializable(typeof(IReadOnlyList<FoldingRange>))]
+[JsonSerializable(typeof(InlayHintParams))]
+[JsonSerializable(typeof(IReadOnlyList<InlayHint>))]
 public sealed partial class LspJson : JsonSerializerContext
 {
     /// <summary>

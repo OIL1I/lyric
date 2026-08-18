@@ -405,6 +405,21 @@ public sealed class AnalysisService : IDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The signature at an offset in a document's CURRENT text — compiled fresh, like completion
+    /// and for the same reason: the request came from typing <c>(</c> or <c>,</c>, and the last
+    /// good model predates exactly that keystroke.
+    /// </summary>
+    public async Task<SignatureHelp?> SignatureHelpAsync(
+        OpenDocument document, int offset, CancellationToken cancellationToken)
+    {
+        var options = await OptionsForAsync(document).ConfigureAwait(false);
+
+        return await Task.Run(
+            () => SignatureHelpProvider.At(document.Path, document.Text, offset, options),
+            cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Compiles the unit this document belongs to and publishes its diagnostics, without
     /// the debounce. The analysis a test drives directly.</summary>
     public async Task AnalyzeAsync(OpenDocument document, CancellationToken cancellationToken)
