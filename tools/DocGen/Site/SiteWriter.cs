@@ -34,7 +34,7 @@ public static class SiteWriter
             Write(Path.Combine(directory, "index.html"), Template.Page(site, page));
         }
 
-        Write(Path.Combine(versionRoot, "index.html"), Template.VersionLanding(site));
+        Write(Path.Combine(versionRoot, "index.html"), Template.Welcome(site));
 
         foreach (var asset in new[] { "site.css", "site.js" })
             File.Copy(Path.Combine(assets, asset), Path.Combine(versionRoot, asset), overwrite: true);

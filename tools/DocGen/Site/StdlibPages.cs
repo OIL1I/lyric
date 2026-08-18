@@ -15,7 +15,8 @@ namespace Lyric.DocGen.Site;
 public static class StdlibPages
 {
     public static SiteSection Build(DocModel model, LinkResolver links) =>
-        new("Standard library", model.Modules.Select(m => Page(m, links)).ToArray());
+        new("Standard library", SiteArea.Documentation,
+            model.Modules.Select(m => Page(m, links)).ToArray());
 
     private static SitePage Page(DocModule module, LinkResolver links)
     {

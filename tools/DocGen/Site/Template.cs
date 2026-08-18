@@ -29,11 +29,7 @@ public static class Template
         sb.Append($"<link rel=\"stylesheet\" href=\"{root}site.css\" />\n");
         sb.Append("</head>\n<body>\n");
 
-        sb.Append("<header class=\"top\">\n");
-        sb.Append($"<a class=\"brand\" href=\"{root}\">Lyric</a>\n");
-        sb.Append($"<span class=\"version\">{E(site.Version)}</span>\n");
-        sb.Append($"<nav class=\"switcher\" data-versions=\"{root}../versions.json\"></nav>\n");
-        sb.Append("</header>\n");
+        sb.Append(Header(site, root, AreaOf(site, page)));
 
         sb.Append("<div class=\"layout\">\n");
         sb.Append(Sidebar(site, page, root));
@@ -50,13 +46,81 @@ public static class Template
         return sb.ToString();
     }
 
-    /// <summary>The page that the version root opens: a redirect, so <c>/v1.0.0/</c> is a usable
-    /// address on its own.</summary>
-    public static string VersionLanding(SiteContent site)
+    /// <summary>
+    /// The welcome page at the version root: the place where a visitor chooses between LEARNING
+    /// (the guide) and LOOKING SOMETHING UP (the documentation), with what changed last underneath.
+    ///
+    /// <para>No sidebar. The choice between the two areas is this page's content; a navigation
+    /// that already made it would ask the question and shout the answer.</para>
+    /// </summary>
+    public static string Welcome(SiteContent site)
     {
-        var first = site.Pages.First();
-        return Redirect(first.SitePath, $"Lyric {site.Version}");
+        var sb = new StringBuilder();
+        sb.Append("<!doctype html>\n<html lang=\"en\">\n<head>\n");
+        sb.Append("<meta charset=\"utf-8\" />\n");
+        sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n");
+        sb.Append($"<title>Lyric {E(site.Version)}</title>\n");
+        sb.Append("<link rel=\"stylesheet\" href=\"site.css\" />\n");
+        sb.Append("</head>\n<body>\n");
+
+        sb.Append(Header(site, root: "", area: null));
+
+        sb.Append("<main class=\"welcome\">\n");
+        sb.Append("<h1>Lyric</h1>\n");
+        sb.Append("<p class=\"lead\">A statically typed application language with a bytecode "
+                  + "VM — standalone, and embeddable in a host with a capability-based "
+                  + "sandbox.</p>\n");
+
+        sb.Append("<nav class=\"cards\">\n");
+        sb.Append($"<a class=\"card\" href=\"{E(site.EntryOf(SiteArea.Guide).SitePath)}\">\n");
+        sb.Append("<h2>Guide</h2>\n<p>Learn the language chapter by chapter — from the first "
+                  + "program to embedding, building and attributes.</p>\n</a>\n");
+        sb.Append($"<a class=\"card\" href=\"{E(site.EntryOf(SiteArea.Documentation).SitePath)}\">\n");
+        sb.Append("<h2>Documentation</h2>\n<p>The reference: the grammar, the bytecode format, "
+                  + "the standard library and the changelog.</p>\n</a>\n");
+        sb.Append("</nav>\n");
+
+        sb.Append("<section class=\"changes\">\n");
+        sb.Append($"<h2>What changed in {E(site.Changes.Title)}</h2>\n");
+        sb.Append(site.Changes.Html);
+        sb.Append("<p><a href=\"changelog/\">The full changelog →</a></p>\n");
+        sb.Append("</section>\n");
+
+        sb.Append("</main>\n");
+        sb.Append("<script src=\"site.js\"></script>\n");
+        sb.Append("</body>\n</html>\n");
+        return sb.ToString();
     }
+
+    /// <summary>The shared top bar. <paramref name="area"/> marks the half the reader is in;
+    /// the welcome page passes <c>null</c> and neither link is marked.</summary>
+    private static string Header(SiteContent site, string root, SiteArea? area)
+    {
+        var sb = new StringBuilder();
+        sb.Append("<header class=\"top\">\n");
+        sb.Append($"<a class=\"brand\" href=\"{root}\">Lyric</a>\n");
+        sb.Append("<nav class=\"areas\">\n");
+        sb.Append(AreaLink(site, root, SiteArea.Guide, "Guide", area));
+        sb.Append(AreaLink(site, root, SiteArea.Documentation, "Documentation", area));
+        sb.Append("</nav>\n");
+        sb.Append($"<span class=\"version\">{E(site.Version)}</span>\n");
+        sb.Append($"<nav class=\"switcher\" data-versions=\"{root}../versions.json\"></nav>\n");
+        sb.Append("</header>\n");
+        return sb.ToString();
+    }
+
+    private static string AreaLink(SiteContent site, string root, SiteArea target, string label,
+        SiteArea? current)
+    {
+        if (site.EntryOf(target) is not { } entry) return "";
+        // 'current' rather than the sidebar's 'here': one marks the area, the other the page,
+        // and a page test counting 'here' occurrences must keep finding exactly one.
+        var marked = current == target ? " class=\"current\"" : "";
+        return $"<a{marked} href=\"{root}{E(entry.SitePath)}\">{label}</a>\n";
+    }
+
+    private static SiteArea AreaOf(SiteContent site, SitePage page) =>
+        site.Sections.First(s => s.Pages.Contains(page)).Area;
 
     /// <summary>The site root: forwards to the version a visitor should see.</summary>
     public static string SiteLanding(VersionEntry landing) =>
@@ -68,10 +132,14 @@ public static class Template
         + $"<link rel=\"canonical\" href=\"{E(target)}\" />\n<title>{E(title)}</title>\n"
         + $"</head>\n<body>\n<p><a href=\"{E(target)}\">{E(title)}</a></p>\n</body>\n</html>\n";
 
+    /// <summary>Only the sections of the area the page is in: a reader inside the guide sees the
+    /// chapters, a reader inside the documentation sees reference, project and standard library —
+    /// the separation the welcome page establishes, kept while navigating.</summary>
     private static string Sidebar(SiteContent site, SitePage current, string root)
     {
+        var area = AreaOf(site, current);
         var sb = new StringBuilder("<nav class=\"sidebar\">\n");
-        foreach (var section in site.Sections)
+        foreach (var section in site.Sections.Where(s => s.Area == area))
         {
             sb.Append($"<h2>{E(section.Title)}</h2>\n<ul>\n");
             foreach (var page in section.Pages)
