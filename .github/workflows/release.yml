@@ -102,9 +102,42 @@ jobs:
           path: dist/*
           retention-days: 7
 
+  jetbrains:
+    name: Package (jetbrains)
+    needs: verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Package plugin
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cd tooling/jetbrains-lyric
+          ./gradlew buildPlugin
+          mkdir -p ../../dist
+          cp build/distributions/*.zip "../../dist/jetbrains-lyric-${version}.zip"
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-jetbrains
+          path: dist/*
+          retention-days: 7
+
   publish:
     name: Publish release
-    needs: [package, extension]
+    needs: [package, extension, jetbrains]
     runs-on: ubuntu-latest
 
     steps:
