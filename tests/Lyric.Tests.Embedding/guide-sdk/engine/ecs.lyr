@@ -1,0 +1,11 @@
+// The SDK shape the embedding and attributes chapters describe: an engine ships its attribute
+// vocabulary the way it ships its native declarations.
+module engine.ecs;
+
+import std.core { OnType, OnFunction };
+
+/// Marks a struct as a component the engine stores.
+pub struct Component :: [OnType] { }
+
+/// Marks a function the engine calls each frame, in ascending `order`.
+pub struct System :: [OnFunction] { order: int = 0 }

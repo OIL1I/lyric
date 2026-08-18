@@ -20,10 +20,33 @@ public class SiteTests
     // ------------------------------------------------------------------ content
 
     [Fact]
-    public void The_site_has_the_three_sections_in_reading_order()
+    public void The_site_has_the_four_sections_in_reading_order()
     {
-        Assert.Equal(["Guide", "Reference", "Standard library"],
-            Build().Sections.Select(s => s.Title));
+        var site = Build();
+        Assert.Equal(["Guide", "Reference", "Project", "Standard library"],
+            site.Sections.Select(s => s.Title));
+
+        // The areas carry the separation: the guide stands alone, everything else is
+        // documentation. The welcome page and the sidebar both derive from this.
+        Assert.Equal([SiteArea.Guide, SiteArea.Documentation, SiteArea.Documentation,
+            SiteArea.Documentation], site.Sections.Select(s => s.Area));
+    }
+
+    [Fact]
+    public void The_recent_changes_of_a_release_are_its_changelog_entry()
+    {
+        var changes = Build("v1.6.0").Changes;
+        Assert.StartsWith("v1.6.0", changes.Title);
+        Assert.Contains("Attributes", changes.Html);
+    }
+
+    /// <summary>A nightly has no entry of its own; the welcome page then shows the newest one,
+    /// because "what changed last" is still the question it answers.</summary>
+    [Fact]
+    public void The_recent_changes_of_a_nightly_are_the_newest_entry()
+    {
+        var changes = Build("nightly").Changes;
+        Assert.StartsWith("v", changes.Title);
     }
 
     [Fact]
@@ -32,7 +55,8 @@ public class SiteTests
         var guide = Build().Sections[0];
         Assert.Equal("guide/getting-started/", guide.Pages[0].SitePath);
         Assert.Equal("guide/building/", guide.Pages[^1].SitePath);
-        Assert.Equal(15, guide.Pages.Length);
+        Assert.Equal(16, guide.Pages.Length);
+        Assert.Equal("guide/attributes/", guide.Pages[14].SitePath);
     }
 
     [Fact]
@@ -55,7 +79,7 @@ public class SiteTests
     [Fact]
     public void Every_standard_library_module_has_a_page()
     {
-        var stdlib = Build().Sections[2];
+        var stdlib = Build().Sections[3];
         Assert.Equal(11, stdlib.Pages.Length);
         Assert.All(stdlib.Pages, p => Assert.StartsWith("stdlib/std.", p.SitePath));
     }
@@ -63,7 +87,7 @@ public class SiteTests
     [Fact]
     public void A_module_page_shows_a_signature_per_item()
     {
-        var math = Build().Sections[2].Pages.Single(p => p.Title == "std.math");
+        var math = Build().Sections[3].Pages.Single(p => p.Title == "std.math");
         Assert.Contains("pub fn sqrt(value: float): float", math.Html);
         Assert.Contains("class=\"signature\"", math.Html);
         Assert.Contains("stdlib/std/math.lyr", math.Html);
@@ -73,7 +97,7 @@ public class SiteTests
     public void Item_anchors_are_unique_within_a_module()
     {
         // The kind is part of the anchor, so a class and a function of the same name do not collide.
-        foreach (var page in Build().Sections[2].Pages)
+        foreach (var page in Build().Sections[3].Pages)
         {
             var anchors = page.Headings.Where(h => h.Anchor.Length > 0).Select(h => h.Anchor).ToArray();
             Assert.Equal(anchors.Length, anchors.Distinct().Count());
@@ -97,6 +121,8 @@ public class SiteTests
         var stdlib = Directory.CreateDirectory(Path.Combine(root.FullName, "stdlib"));
 
         File.WriteAllText(Path.Combine(guide.FullName, "01-intro.md"), "# Intro\n\n" + guideBody);
+        File.WriteAllText(Path.Combine(root.FullName, "CHANGELOG.md"),
+            "# Changelog\n\n## v1.0.0 — 2026-01-01\n\nchanged things\n");
         File.WriteAllText(Path.Combine(root.FullName, "docs", "Grammar.md"), "# Grammar\n\ntext\n");
         File.WriteAllText(Path.Combine(root.FullName, "docs", "Bytecode.md"), "# Bytecode\n\ntext\n");
         File.WriteAllText(Path.Combine(stdlib.FullName, "m.lyr"), "module std.m;\npub fn f(): void { }\n");

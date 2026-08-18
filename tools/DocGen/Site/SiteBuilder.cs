@@ -18,8 +18,17 @@ public static class SiteBuilder
         var links = new LinkResolver(version);
         var broken = new List<string>();
 
-        var guide = Section("Guide", GuideSources(repoRoot), repoRoot, links, broken);
-        var reference = Section("Reference", ["docs/Grammar.md", "docs/Bytecode.md"], repoRoot, links, broken);
+        var guide = Section("Guide", SiteArea.Guide, GuideSources(repoRoot), repoRoot, links, broken);
+        var reference = Section("Reference", SiteArea.Documentation,
+            ["docs/Grammar.md", "docs/Bytecode.md"], repoRoot, links, broken);
+
+        // The changelog renders with the repository fallback: its entries legitimately point at
+        // files the site does not hold (README.md), and those belong on GitHub rather than in the
+        // broken list.
+        var changelogLinks = new LinkResolver(version, repositoryFallback: true);
+        var changelogText = Changelog.ReadAll(repoRoot);
+        var changelogPage = Render(changelogText, Changelog.Source, repoRoot, changelogLinks, broken);
+        var project = new SiteSection("Project", SiteArea.Documentation, [changelogPage]);
 
         if (broken.Count > 0)
             throw new InvalidOperationException(
@@ -29,7 +38,12 @@ public static class SiteBuilder
         var model = StdlibExtractor.Extract(Path.Combine(repoRoot, "stdlib"), repoRoot);
         var stdlib = StdlibPages.Build(model, links);
 
-        return new SiteContent(version, [guide, reference, stdlib]);
+        var entry = Changelog.EntryFor(changelogText, version)
+            ?? throw new InvalidOperationException("the changelog holds no entry to show");
+        var changes = new RecentChanges(entry.Title,
+            MarkdownRenderer.Render(entry.Markdown, Changelog.Source, changelogLinks).Html);
+
+        return new SiteContent(version, [guide, reference, project, stdlib], changes);
     }
 
     /// <summary>The guide chapters in the order of their numeric prefix, not in directory order.</summary>
@@ -41,23 +55,28 @@ public static class SiteBuilder
             .ThenBy(s => s, StringComparer.Ordinal)
             .ToArray();
 
-    private static SiteSection Section(string title, string[] sources, string repoRoot,
-        LinkResolver links, List<string> broken)
+    private static SiteSection Section(string title, SiteArea area, string[] sources,
+        string repoRoot, LinkResolver links, List<string> broken)
     {
         var pages = new List<SitePage>();
         foreach (var source in sources)
         {
             var path = Path.Combine([repoRoot, .. source.Split('/')]);
-            var rendered = MarkdownRenderer.Render(File.ReadAllText(path), source, links, dropTitle: true);
-
-            broken.AddRange(rendered.BrokenLinks.Select(l => $"{source}: {l}"));
-
-            var sitePath = SitePaths.OfSource(source)
-                ?? throw new InvalidOperationException($"{source} has no place on the site");
-
-            pages.Add(new SitePage(sitePath, Title(rendered, source), rendered.Html, rendered.Headings));
+            pages.Add(Render(File.ReadAllText(path), source, repoRoot, links, broken));
         }
-        return new SiteSection(title, pages.ToArray());
+        return new SiteSection(title, area, pages.ToArray());
+    }
+
+    private static SitePage Render(string text, string source, string repoRoot,
+        LinkResolver links, List<string> broken)
+    {
+        var rendered = MarkdownRenderer.Render(text, source, links, dropTitle: true);
+        broken.AddRange(rendered.BrokenLinks.Select(l => $"{source}: {l}"));
+
+        var sitePath = SitePaths.OfSource(source)
+            ?? throw new InvalidOperationException($"{source} has no place on the site");
+
+        return new SitePage(sitePath, Title(rendered, source), rendered.Html, rendered.Headings);
     }
 
     /// <summary>

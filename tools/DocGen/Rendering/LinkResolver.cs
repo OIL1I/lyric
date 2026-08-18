@@ -11,8 +11,13 @@ namespace Lyric.DocGen.Rendering;
 /// a dead link becomes a failing test instead of a 404.</para>
 /// </summary>
 /// <param name="version">The version segment the links point into, for example <c>v1.0.0</c>.</param>
-public sealed class LinkResolver(string version)
+/// <param name="repositoryFallback">Send a repository file the site does not hold to the
+/// repository on GitHub instead of reporting it broken. ONLY the changelog renders with this: its
+/// entries legitimately point at files like <c>README.md</c>, while for the guide and the
+/// specifications an unresolvable link staying a failing test is the guard worth keeping.</param>
+public sealed class LinkResolver(string version, bool repositoryFallback = false)
 {
+    private const string Repository = "https://github.com/OIL1I/lyric/blob/main/";
     /// <summary>Left untouched: another host, a mail address, or a link that is already absolute.</summary>
     private static bool IsExternal(string href) =>
         href.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
@@ -34,8 +39,10 @@ public sealed class LinkResolver(string version)
         var (path, fragment) = Split(href);
         if (path.Length == 0) return null;
 
-        var site = SitePaths.OfSource(Normalize(DirectoryOf(fromSource), path));
-        return site is null ? null : SitePaths.Url(version, site) + fragment;
+        var normalized = Normalize(DirectoryOf(fromSource), path);
+        var site = SitePaths.OfSource(normalized);
+        if (site is not null) return SitePaths.Url(version, site) + fragment;
+        return repositoryFallback ? Repository + normalized + fragment : null;
     }
 
     /// <summary>
