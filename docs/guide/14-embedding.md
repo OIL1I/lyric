@@ -151,6 +151,59 @@ layout the script could index into, so every access is a method.
 The object travels; it is not copied. The .NET garbage collector keeps it alive as long as a Lyric
 value can reach it. There is no release or revocation protocol.
 
+## Attributes: what a script says about itself
+
+An attribute is a struct; where it may sit is the marker interface it declares — `OnModule`,
+`OnType` or `OnFunction`, all from `std.core`. An SDK declares the vocabulary, a script uses it,
+and the host reads the result:
+
+```lyr
+import std.core { OnModule, OnType, OnFunction };
+
+pub struct Plugin :: [OnModule] { name: string, api: int }
+pub struct Component :: [OnType] { }
+pub struct System :: [OnFunction] { order: int = 0 }
+
+@Component
+pub struct Health { value: int, max: int }
+
+@System { order = 10 }
+pub fn damageTick(dt: float): void { }
+```
+
+The arguments are literals, and a field the script does not write carries its default, so a row is
+always complete. An attribute **describes; it does nothing**: a runtime that ignores the rows runs
+the program unchanged, and no attribute in this vocabulary means anything to the compiler.
+
+On the host side the rows hang off the compiled module and off an instance, joined and ready to
+ask:
+
+```csharp
+var module = vm.Compile(source, "game");
+
+foreach (var plugin in module.Attributes.OnModule)
+    Console.WriteLine($"{plugin.Value("name")?.Text} wants API {plugin.Value("api")?.AsInt}");
+
+var instance = vm.Instantiate(module);
+foreach (var system in instance.Attributes.OnFunctions("System"))
+    instance.CallVoid(system, 0.016);   // the use carries the function index; nothing is
+                                        // resolved by name again
+```
+
+Three details carry the weight:
+
+- **`module.Attributes` works before `Instantiate`.** For foreign bytes — mods, downloaded
+  scripts — the module row is how a host decides whether to load at all.
+- **A hit is a handle.** `CallVoid(use, …)` calls by the index the row carries, so the per-frame
+  path stays the raw one. A typo in the script is now a compile error (`unknown type`), not a
+  function nobody finds.
+- **An attributed type reports its shape.** `module.Attributes.FieldsOf(use.Target)` yields the
+  field names and types of `Health` — the bytecode carries field names exactly for types an
+  attribute references, and for nothing else.
+
+Attribute names are unqualified: `System`, not `engine.ecs.System`. An SDK owns its attribute
+names the way it owns its native names.
+
 ## Errors
 
 A script that fails throws on the host side:

@@ -39,5 +39,15 @@ public sealed class ScriptModule
     /// an error.</summary>
     public bool HasEntryPoint => Loaded.Start is not null;
 
+    private ModuleAttributes? _attributes;
+
+    /// <summary>
+    /// What the module says about itself and its declarations — BEFORE it is instantiated.
+    ///
+    /// <para>That order matters for foreign bytes: a host reads the module's own rows
+    /// (<see cref="ModuleAttributes.OnModule"/>) and decides whether to instantiate at all.</para>
+    /// </summary>
+    public ModuleAttributes Attributes => _attributes ??= ModuleAttributes.Of(Loaded);
+
     internal BytecodeModule Loaded { get; }
 }

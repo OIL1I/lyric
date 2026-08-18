@@ -33,6 +33,17 @@ public sealed class LoadedProgram
     /// <summary>The module this instance came from, for name and signature lookups.</summary>
     public BytecodeModule Module => _module;
 
+    private ModuleAttributes? _attributes;
+
+    /// <summary>
+    /// The attribute rows, joined for asking: which functions carry <c>@System</c>, what does
+    /// <c>@Component struct Health</c> declare, what does the module say about itself.
+    ///
+    /// <para>The query runs once at load time on the host's side; a hit carries the function
+    /// INDEX, so the call path afterwards is the raw one — resolve once, no name per frame.</para>
+    /// </summary>
+    public ModuleAttributes Attributes => _attributes ??= ModuleAttributes.Of(_module);
+
     /// <summary>Loads, binds, initializes.</summary>
     /// <exception cref="LyricRuntimeException">A missing capability, or an import that cannot be
     /// bound.</exception>
