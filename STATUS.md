@@ -11,8 +11,10 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.7.0 are released** — annotated tags on the remote, each with a release page and
-three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+**v1.0.0 through v1.8.0 are released** — annotated tags on the remote, each with a release page.
+M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). From v1.8.0 a
+release carries the three toolchain archives plus two installables: the `.vsix` and the JetBrains
+plugin zip.
 
 **M16 — the tooling milestone — is CLOSED** (decided and built 2026-08-18, at the post-v1 pace):
 the language server learned the project, the editors learned the server. The delivery list,
@@ -29,10 +31,9 @@ ticked point by point as the milestone rule demands:
 - [x] task provider with problem matcher (PR #47)
 - [x] snippets (PR #47)
 - [x] `.vsix` in the release (PR #47)
-- [x] the JetBrains thin plugin (PR stacked on #47)
+- [x] the JetBrains thin plugin (PR #48)
 
-The PR stack #43 ← #44 ← #45 ← #46 ← #47 ← #48 merges in that order; the release that follows
-ships two new installables beside the toolchain archives.
+The PR stack #43 ← #44 ← #45 ← #46 ← #47 ← #48 is merged and shipped as **v1.8.0**.
 
 **M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
 (frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
@@ -53,8 +54,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3878 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
-`lyrembed.dll`, version **1.7.0**.
+3912 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
+`lyrembed.dll`, version **1.8.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -227,9 +228,8 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M16 is closed; merging the stack and tagging the release is the maintainer's call.** The next
-release ships the toolchain archives plus two installables: the `.vsix` and the JetBrains plugin
-zip. First manual run of the JetBrains checklist (plugin README) belongs to that release.
+**M16 is closed and released as v1.8.0.** What remains from it: the first manual run of the
+JetBrains checklist (plugin README) against the released zip, in a 2026.1+ IDE.
 
 The open points for the **2026-09-06 scope check** stand unchanged: heterogeneous arithmetic,
 compound assignment through the interfaces, the static-extension asymmetry, the first

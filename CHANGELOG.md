@@ -10,7 +10,46 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## v1.7.0 — 2026-08-18
+## v1.8.0 — 2026-08-18
+
+The editors catch up with the compiler. No language change and no format change: the language
+server compiles the PROJECT instead of the open buffer, answers everything an editor asks, and
+two installable clients ship beside the toolchain — the VS Code extension as a `.vsix`, and a
+new JetBrains plugin.
+
+### Changed
+
+- **The language server compiles the project, not the buffer.** Under a `lyric.json`, every
+  `.lyr` file beneath the source root is one compilation: find-references works in BOTH
+  directions (standing on a declaration finds the uses in files that import it), files nobody
+  has open get their errors into the Problems panel, a deleted file has its squiggles withdrawn,
+  and a change behind the editor — a branch switch, another tool — is picked up through file
+  watches. A file outside any project is compiled from itself, as before. Measured: a 14-file
+  project checks in the same time as a single file — the standard library dominates either way.
+
+- **Find references and semantic highlighting underline the name, not the expression** — `x`
+  instead of `p.x`, `Point` instead of `Point { x = 1 }`.
+
+### Added
+
+- **Rename** (`F2` / `Shift+F6`), project-wide: the declaration, every use, and the `import`
+  clauses that carry the name. What cannot be renamed says why — the standard library, a module,
+  a built-in. Whether the NEW name collides is left to the compile that follows immediately; its
+  diagnostics are the conflict analysis. Applied edits recompile clean, pinned by test.
+- **Workspace symbols**: every declaration of the project, searched by name.
+- **Semantic highlighting**: every name colored by what the compiler resolved it to — a type in
+  an annotation, an initializer and an attribute alike; `let` bindings as readonly. An
+  unresolved name stays uncolored, which is the honest signal.
+- **Signature help** while typing a call — the declaration as written, the active parameter
+  following the commas. **Folding** with the closing line kept visible. **Inlay hints** for the
+  inferred type of unannotated bindings and loop variables.
+- **The VS Code extension grew up**: a restart command, a status item that shows the server
+  state and version, a `lyric: build` task wired to the Problems panel, snippets — and the
+  extension ships as `vscode-lyric-<version>.vsix` on every release.
+- **A JetBrains plugin** (`jetbrains-lyric-<version>.zip`): the same server in CLion, IntelliJ
+  IDEA, Rider and the other commercial IDEs, 2026.1 or newer — diagnostics, completion,
+  navigation, rename, semantic highlighting, signature help, folding and inlay hints through
+  the platform's own LSP integration. Install from disk; neither client is on a marketplace.
 
 The interpreter stops allocating — and so does the native boundary. No language change and no
 format change: the same programs compile to faster, smaller modules, run with far fewer heap
