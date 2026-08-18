@@ -10,6 +10,79 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.6.0 — 2026-08-18
+
+Attributes. A program can say things about itself that a tool outside it can read — which
+functions a host should call, what a script-declared type looks like, what a module is. The
+bytecode format goes **3.1 → 3.2**; both new sections are skippable, so a 1.5.0 runtime loads a
+1.6.0 module and runs it unchanged.
+
+### Added
+
+- **Attributes, on a function, a type and the module header.** An attribute is a struct type;
+  where it may sit is the marker interface it declares — `OnModule`, `OnType` or `OnFunction`, all
+  new in `std.core`:
+
+  ```lyr
+  import std.core { OnType, OnFunction };
+
+  pub struct Component :: [OnType] { }
+  pub struct System :: [OnFunction] { order: int = 0 }
+
+  @Component
+  pub struct Health { value: int, max: int }
+
+  @System { order = 10 }
+  pub fn damageTick(dt: float): void { }
+  ```
+
+  Conformance decides, not the name — no struct becomes an attribute by accident, the same nominal
+  rule the operators follow. The arguments are the struct initializer restricted to literals; a
+  field the use does not write carries the field's literal default, and a field with neither is an
+  error at the use site, not a hole in the metadata.
+
+  **An attribute describes; it does nothing.** No attribute in this release is read by the
+  compiler, and a runtime that ignores them runs the program unchanged.
+
+- **Bytecode format 3.2.** Section 11 holds the rows — target, attribute type, one value per field
+  in field order, always complete. Section 12 holds field names, ONLY for types a row references:
+  everywhere else the rule stands that field names are not in the bytecode, but a host reading
+  `@Component struct Health` needs `value` and `max`, or it has learned a shape it cannot name.
+
+  An attributed function survives dead-code elimination: the row is a promise that the index is
+  valid, and the host is a caller the reachability analysis cannot see — the same standing as the
+  entry point.
+
+- **The embedding API reads the rows.** `ScriptModule.Attributes` answers **before**
+  `Instantiate` — for foreign bytes, the module row is how a host decides whether to load at all.
+  A hit is a call handle: `instance.CallVoid(use, …)` calls by the index the row carries, so a
+  typo in a script is a compile error instead of a function nobody finds. `FieldsOf` yields the
+  named, typed shape of an attributed type.
+
+- **The tools show them.** `lyric disasm` prints each row with its field names, `lyrvm info`
+  counts them, and hovering `@System` in an editor answers with the struct.
+
+### Changed
+
+- **`@name` at declaration position is no longer "attributes arrive later".** It parses; what the
+  name resolves to is the sema's question, so `@test` is now `unknown type 'test'` instead of
+  `LYR-PAR0038`. That code stays on parameters, where attributes remain rejected, with a message
+  that no longer promises the future. The reserved expression form `@name(args)` leaves the
+  grammar; `LYR-SEM0053` now says an attribute is not an expression.
+
+### Not in this release
+
+- **Attributes on parameters, fields and members** — top-level declarations and the module header
+  only.
+- **Attributes the compiler reads** (`@Deprecated`, `@MustUse`, `@Inline`): the moment one
+  attribute changes compilation, the attribute set becomes part of the language contract and the
+  stability promise. That is a separate decision, deliberately not smuggled in here.
+- **Runtime application**, Python-decorator style: there is no mechanism by which an attribute
+  wraps or replaces its target.
+- **Qualified attribute names**: names are the bytecode's type names and therefore unqualified.
+  An SDK owns its attribute names the way it owns its native names.
+- **Completion after `@`.**
+
 ## v1.5.0 — 2026-08-18
 
 Operators on your types. Everything resolves through the one mechanism this language has for

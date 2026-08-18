@@ -11,8 +11,12 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.5.0 are released** — annotated tags on the remote, each with a release page and
+**v1.0.0 through v1.6.0 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+
+**M13, attributes, is what v1.6.0 shipped**: a program says things about itself that a host can
+read. Format 3.2, and the 7-day rule was retired with it — it was pre-v1 scope discipline, and v1.0
+has shipped; from here the pace is our own.
 
 **M12, the project system, is what v1.2.0 shipped**: `lyric.json` says what a project is, `build.lyr`
 says what to build, `lyric new` writes one, and the tools read all of it.
@@ -25,8 +29,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3744 tests green **in Debug and Release**, bytecode format **3.1**, **six** binaries plus
-`lyrembed.dll`, version **1.5.0**.
+3822 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
+`lyrembed.dll`, version **1.6.0**.
 
 **All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
 language server reads the project file, and editing a module refreshes the file that imports it.
@@ -43,6 +47,27 @@ functions out of them and hands its own functions and types in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M13 — attributes: metadata a host can read** (2026-08-18). Four slices in one day, 3822
+  tests green in Debug and Release. Merged as PR #38, released as **v1.6.0**.
+  - An attribute is a STRUCT; where it may sit is the marker it declares (`OnModule`/`OnType`/
+    `OnFunction`, new in `std.core`) — conformance, not the name, the same nominal rule as the
+    operators. Targets: module header, top-level fn, struct/class/enum. Nothing the compiler reads:
+    the set stays open exactly because every attribute is inert.
+  - **Format 3.1 → 3.2**, two skippable sections. Attributes (11): complete rows — one value per
+    field in field order, unwritten fields carry their literal default, so no field index is stored
+    and no consumer resolves a default. Names (12): field names ONLY for types a row references.
+    **Measured against the pinned 1.5.0 lyrvm**: it verifies and runs a 3.2 module; an
+    attribute-free module differs in the two version bytes alone.
+  - **An attributed function is a reachability root** — the row is a promise to a caller the
+    analysis cannot see, same standing as the entry point. Rows follow the pruning renumbering,
+    pinned by NAME because an off-by-one keeps the numbers plausible.
+  - Host surface: `ModuleAttributes` on the RAW module — the module row is how a host decides
+    whether to load foreign bytes, so the query must not presuppose binding. An `AttributeUse` is a
+    call handle (index, not name, per frame). `FieldsOf` answers the component case. Attribute
+    names are unqualified, like every type name in the bytecode; the guide says an SDK owns them.
+  - The reserved expression form `@name(args)` left the grammar; `LYR-PAR0038` narrowed to
+    parameters and stopped promising the future. Doc ratchet 120 → 123 of 359.
 
 - [x] **v1.5.0 slice 4 — a cast is a conversion the type declared** (2026-08-18). 3744 tests green.
   Merged as PR #34, and it completed v1.5.0.
@@ -92,28 +117,6 @@ functions out of them and hands its own functions and types in.
   - Doc ratchet 110 → 118 of 354; the snapshot gained documentation only, no signature and no name
     moved.
 
-- [x] **v1.5.0 slice 2 — the four orderings read the sign of `compare`** (2026-08-18). 3720 tests
-  green, Debug and Release. Not merged.
-  - `<`, `<=`, `>` and `>=` work on every type conforming to `Ordered<T>` — **including `string`,
-    whose rejection had stood since v1.0** with a diagnostic that promised exactly this. It conforms
-    through the stdlib's own `extend string :: [Ordered<string>]`, the same route any type takes; no
-    string rule exists.
-  - One method, four operators: the desugar calls `compare` ONCE and compares the sign of the
-    answer against zero — with the same comparison instruction `int < int` emits, since a
-    comparison `BinOp` carries `bool` and the operand types live in the temp table.
-  - **The `Negate` flag left the desugar table.** What to make of the call's result follows from
-    the operator on the node itself; a stored flag beside it was a second copy of the operator, and
-    slice 2 would have needed a third state. The table now holds only the call.
-  - **No existing test had pinned the `string < string` rejection.** The whole suite stayed green
-    through the change — the gap was recorded in STATUS and in the diagnostic text, but nothing
-    measured it. Worth remembering: the limits this project records with tests survived; this one,
-    recorded as prose, turned out to be held by nothing.
-  - `bool` still does not order, and now for a visible reason: the stdlib gives it `Equatable` and
-    `Hashable`, deliberately no `Ordered` — the operator follows the conformance, so it follows the
-    decision. Pinned by a test where none existed.
-  - Same nominal rule as equality, same counter-tests: a `compare` method without the conformance
-    stays rejected, mixed types stay rejected, an unconstrained `T` names `Ordered<T>` as the fix.
-
 ## Measurements
 
 Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
@@ -158,18 +161,16 @@ have bought an incremental compiler nobody needs.
 
 ## What we are working on
 
-**v1.4.0 is released** — the receiver question out of the reference table (#24), completion after a
-dot (#25), completion for names in scope (#26), and the standard library documenting itself (#27).
-With it **M11 is closed**, and v1.3.0 before it shipped name spans, hover documentation, document
-symbols and find-references.
-
 **v1.5.0 is released** — equality (#31), ordering (#32), arithmetic plus the compound-assign fix
 (#33) and conversion (#34). One mechanism throughout: the interface the type declares.
 
+**v1.6.0 is released** — M13, attributes (#36, PR #38), all four slices in one day. Erato re-pins
+at its own pace: a 1.5.0 runtime loads 3.2 modules, so nothing forces the update.
+
 **Nothing is planned after it.** The open points below are the material — heterogeneous arithmetic
 and its coherence question, compound assignment through the interfaces, the static-extension
-asymmetry, project-wide references. The next scope check is **2026-09-06**, and that is the place to
-decide.
+asymmetry, project-wide references, and the first compiler-read attribute as a decision of its own.
+The next scope check is **2026-09-06**, and that is the place to decide.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
@@ -186,6 +187,12 @@ is the thing to check.
 ## Still open
 
 **Language gaps still open:**
+
+- **A duplicate field in a struct initializer is a compiler CRASH**, not a diagnostic:
+  `P { x = 1, x = 2 }` passes the sema and dies in `LowerObjectInit` with an
+  `InternalCompilationException` — the wrong one of the two error classes for valid-looking input.
+  Found while building the attribute checks, which do their own duplicate check and are not
+  affected. Fix in flight in a separate session (test first, then the sema check).
 
 - **A block lambda does not deliver its return type to the inference**: `(n: int) => n` binds `U`,
   `(n: int) => { return n; }` does not. *Not a gap but a documented limit* — `LYR-SEM0046` says so
@@ -283,7 +290,7 @@ is the thing to check.
 
 ## Last relevant commit
 
-`Merge pull request #34 from OIL1I/feature/operator-into` (`e24aca5`)
+`Merge pull request #38 from OIL1I/feature/attributes`
 
 ---
 
