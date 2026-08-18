@@ -119,15 +119,24 @@ functions out of them and hands its own functions and types in.
 
 ## Measurements
 
-Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
-loop of the same length.
+Numbers instead of opinions. Since 2026-08-18 they come from `tools/Bench` — in-process, Release,
+100 000 operations per case, minima over nine runs, a scalar loop of the same shape subtracted.
+`dotnet run -c Release --project tools/Bench` reproduces them. The M14 baseline:
 
-| What | Bytes per operation |
-|---|---|
-| Struct construction **plus** method call (`Vec2.add`) | **352 B** |
-| call only (`fn step(a: float): float`) | **176 B** |
-| struct construction only | **112 B** |
-| scalar baseline | 9 064 B *in total* |
+| Case | ns/op adj. | B/op adj. |
+|---|---:|---:|
+| call (`fn step(a: float): float`) | 49.9 | **176** |
+| struct construction only | 60.6 | 56 |
+| construction **plus** method call (`Vec2.add`) | 271.0 | **352** |
+| the same through `a + b` (`Add<Vec2>`) | 252.3 | 352 |
+| `for-in` over a range (against `while`) | 143.2 | **208** |
+| `for-in` over an array (against `while`) | 153.1 | 208 |
+| `Set.iter()`, the `callvirt` route (against `while`) | 420.9 | 229 |
+
+Two findings the plan did not have: **`next()` costs 208 B per element** — the call frame (176 B)
+plus a **32 B box for the `?int` a `Some` builds**, so slice 3 has to treat `mksome` exactly like
+`mkstruct` or the range loop keeps allocating. And the old 112 B for construction was a
+four-field shape; the two-field `Vec2` is 56 B.
 
 **The VM is allocation-free at its core** — a loop with floating-point arithmetic allocates nothing
 worth mentioning over 100 000 passes. Everything above that is calls and objects.
@@ -167,10 +176,32 @@ have bought an incremental compiler nobody needs.
 **v1.6.0 is released** — M13, attributes (#36, PR #38), all four slices in one day. Erato re-pins
 at its own pace: a 1.5.0 runtime loads 3.2 modules, so nothing forces the update.
 
-**Nothing is planned after it.** The open points below are the material — heterogeneous arithmetic
-and its coherence question, compound assignment through the interfaces, the static-extension
-asymmetry, project-wide references, and the first compiler-read attribute as a decision of its own.
-The next scope check is **2026-09-06**, and that is the place to decide.
+**M14 — the interpreter stops allocating — is the current milestone** (decided 2026-08-18, ahead
+of the scope check, as a deliberate reaction to the Erato findings in its
+`docs/lyric-anforderungen.md`). No language change: a `struct` already HAS value semantics, only
+the representation does not keep the promise — so the work is the measured order from the 2026-08-07
+numbers: frame pooling, then inlining, then scalar replacement. Slices:
+
+- **Slice 0** — a benchmark harness in the repo: the three microbenches plus for-in-range vs while
+  and Map/Set iteration, GC bytes and time, Release, in-process. Gates for the later slices.
+- **Slice 1** — frame pooling. `Frame.For` allocates three objects per call, half of all bytes.
+  Coroutine frames stay out of the pool; reference slots are cleared on return.
+- **Slice 2** — an IR-to-IR inlining pass: direct calls only, small non-recursive callees without
+  try/defer, splice via local/temp renumbering, returns through a join local. Inlined instructions
+  keep their callee source positions. The verifier runs behind the pass in Debug.
+- **Slice 3** — scalar replacement: a `mkstruct` whose value never escapes becomes one local per
+  field. Value semantics means no aliasing, so escape analysis alone decides. Gate: the Vec2 loop
+  (352 B/op today) measures 0 B/op; for-in over a range ≈ `while`.
+- **Slice 4, cut candidate** — devirtualization: a `callvirt` whose receiver comes from exactly one
+  `mkiface` of known concrete type becomes a direct call; second inlining round. Gate: Map/Set
+  iteration. Falls out if the milestone drags (the >50% rule, applied in advance).
+- Explicitly NOT in M14: value structs as a language feature, the native-boundary ABI (M15
+  material, designed only after slice 3's numbers exist), a JIT.
+
+After M14: the M15 plan (host-declared value types across the native boundary — Erato's A2) is
+written against the measured outcome. The other open points — heterogeneous arithmetic, compound
+assignment through the interfaces, the static-extension asymmetry, project-wide references, the
+first compiler-read attribute — stay material for the **2026-09-06** scope check.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
