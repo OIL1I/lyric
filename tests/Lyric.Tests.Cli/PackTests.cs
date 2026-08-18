@@ -166,6 +166,66 @@ public class PackTests
     }
 
     [Fact]
+    public void Lyric_pack_compiles_and_packs_in_one_step()
+    {
+        using var directory = Toolchain.TempDirectory();
+        var lyr = directory.Write("greet.lyr", """
+            import std.io.console;
+
+            fn main(): int {
+                console.println("one step");
+                return 0;
+            }
+            """);
+
+        var packed = Toolchain.Lyric("pack", lyr, "-o", Exe(directory, "greet"));
+        Assert.True(packed.ExitCode == 0, packed.Err);
+
+        var run = Toolchain.Run(Exe(directory, "greet"));
+        Assert.Equal("one step\n", run.Out);
+        Assert.Equal(0, run.ExitCode);
+    }
+
+    [Fact]
+    public void Lyric_pack_names_the_executable_after_the_source()
+    {
+        // The default must come from the SOURCE: the module the driver hands the packer is a
+        // temporary file, and an executable named after it would be a Guid nobody asked for.
+        using var directory = Toolchain.TempDirectory();
+        var lyr = directory.Write("greet.lyr", "fn main(): int { return 0; }");
+
+        var packed = Toolchain.Lyric("pack", lyr);
+        Assert.True(packed.ExitCode == 0, packed.Err);
+        Assert.True(File.Exists(Exe(directory, "greet")),
+            "expected the executable beside the source, named after it");
+    }
+
+    [Fact]
+    public void Lyric_pack_refuses_program_arguments()
+    {
+        // 'lyric run app.lyr -- a b' hands a and b to the program it runs. pack runs nothing,
+        // so the same tail would silently vanish — refused instead, with the reason.
+        using var directory = Toolchain.TempDirectory();
+        var lyr = directory.Write("greet.lyr", "fn main(): int { return 0; }");
+
+        var packed = Toolchain.Lyric("pack", lyr, "--", "alpha");
+        Assert.Equal(ExitCodes.Usage, packed.ExitCode);
+        Assert.Contains("when it runs", packed.Err);
+    }
+
+    [Fact]
+    public void A_compile_error_packs_nothing()
+    {
+        using var directory = Toolchain.TempDirectory();
+        var lyr = directory.Write("broken.lyr", "fn main(): int { return; }");
+
+        var packed = Toolchain.Lyric("pack", lyr);
+        Assert.NotEqual(0, packed.ExitCode);
+        Assert.False(File.Exists(Exe(directory, "broken")),
+            "a program that does not compile must not leave an executable");
+    }
+
+    [Fact]
     public void A_failed_pack_leaves_no_output_behind()
     {
         using var directory = Toolchain.TempDirectory();

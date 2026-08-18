@@ -41,6 +41,7 @@
     <ProjectReference Include="..\Lyrvm\Lyrvm.csproj" ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\Lyrrepl\Lyrrepl.csproj" ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\Lyrbuild\Lyrbuild.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\Lyrpack\Lyrpack.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <!--
@@ -52,7 +53,7 @@
     for its tools beside itself, and "beside itself" has to mean the same in both cases.
   -->
   <Target Name="CopyToolsNextToDriver" AfterTargets="Build">
-    <MSBuild Projects="..\Lyrc\Lyrc.csproj;..\Lyrvm\Lyrvm.csproj;..\Lyrrepl\Lyrrepl.csproj;..\Lyrbuild\Lyrbuild.csproj"
+    <MSBuild Projects="..\Lyrc\Lyrc.csproj;..\Lyrvm\Lyrvm.csproj;..\Lyrrepl\Lyrrepl.csproj;..\Lyrbuild\Lyrbuild.csproj;..\Lyrpack\Lyrpack.csproj"
              Targets="Build"
              Properties="Configuration=$(Configuration)">
       <Output TaskParameter="TargetOutputs" ItemName="ToolAssembly" />
