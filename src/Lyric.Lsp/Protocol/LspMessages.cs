@@ -110,6 +110,36 @@ public sealed record ServerCapabilities
     public required RenameOptions RenameProvider { get; init; }
 
     public required bool WorkspaceSymbolProvider { get; init; }
+
+    public required SemanticTokensOptions SemanticTokensProvider { get; init; }
+}
+
+/// <summary>Only the full form. A delta or a range form would be announced here the day a
+/// measurement asks for one.</summary>
+public sealed record SemanticTokensOptions
+{
+    public required SemanticTokensLegend Legend { get; init; }
+    public required bool Full { get; init; }
+}
+
+/// <summary>The names behind the indices in <see cref="SemanticTokens.Data"/>. Announced once;
+/// order is meaning.</summary>
+public sealed record SemanticTokensLegend
+{
+    public required IReadOnlyList<string> TokenTypes { get; init; }
+    public required IReadOnlyList<string> TokenModifiers { get; init; }
+}
+
+public sealed record SemanticTokensParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+}
+
+/// <summary>The flat quintuple stream: line delta, character delta, length, type index, modifier
+/// bits — the protocol's own encoding, produced ready to send.</summary>
+public sealed record SemanticTokens
+{
+    public required IReadOnlyList<int> Data { get; init; }
 }
 
 /// <summary>Announcing <c>prepareProvider</c> makes the editor ask before opening its rename box,
@@ -536,6 +566,7 @@ public static class LspMethods
     public const string PrepareRename = "textDocument/prepareRename";
     public const string Rename = "textDocument/rename";
     public const string WorkspaceSymbol = "workspace/symbol";
+    public const string SemanticTokensFull = "textDocument/semanticTokens/full";
 
     public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
 
