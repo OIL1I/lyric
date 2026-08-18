@@ -198,6 +198,104 @@ public class AttributeSectionTests
         Assert.Contains("names System(order, label)", text);
     }
 
+    /// <summary>A LIBRARY module — Erato's case: scripts have entry points the host calls, no
+    /// 'main'. Pruning does not run without an entry, so every row keeps its index; what this
+    /// pins is that the rows are written at all on that path.</summary>
+    [Fact]
+    public void A_library_module_keeps_its_rows()
+    {
+        var module = Compile(Markers + """
+
+            @System { order = 1 }
+            pub fn onUpdate(dt: float): void { }
+
+            pub fn helper(): int { return 1; }
+            """);
+
+        var row = Assert.Single(module.Attributes);
+        Assert.Equal("app.onUpdate", module.Functions[row.Target].Name);
+        // No entry point, no pruning: the unattributed neighbour stays too.
+        Assert.Contains(module.Functions, f => f.Name == "app.helper");
+        Assert.Null(module.Start);
+    }
+
+    [Fact]
+    public void An_attributed_main_is_root_twice_without_a_second_row()
+    {
+        var module = Compile(Markers + """
+
+            @System { order = 1 }
+            fn main(): int { return 0; }
+            """);
+
+        var row = Assert.Single(module.Attributes);
+        Assert.Equal("app.main", module.Functions[row.Target].Name);
+        Assert.NotNull(module.Start);
+    }
+
+    [Fact]
+    public void Several_rows_survive_a_prune_that_moves_their_targets()
+    {
+        // 'gone' sits BETWEEN the attributed functions in id order, so pruning shifts 'second'
+        // down by one — the case a stale index would survive numerically.
+        var module = Compile(Markers + """
+
+            @System { order = 1 }
+            pub fn first(): int { return 1; }
+
+            pub fn gone(): int { return 2; }
+
+            @System { order = 2 }
+            pub fn second(): int { return 3; }
+
+            fn main(): int { return 0; }
+            """);
+
+        Assert.DoesNotContain(module.Functions, f => f.Name == "app.gone");
+        Assert.Equal(2, module.Attributes.Count);
+        Assert.Equal("app.first", module.Functions[module.Attributes[0].Target].Name);
+        Assert.Equal("app.second", module.Functions[module.Attributes[1].Target].Name);
+        Assert.Equal(1, module.Attributes[0].Values[0].AsInt);
+        Assert.Equal(2, module.Attributes[1].Values[0].AsInt);
+    }
+
+    /// <summary>Sections 6 and 11 in one file: the source map sits BETWEEN Functions and the new
+    /// sections, and both survive one read. Held because the v1.0.1 skip defect was exactly an
+    /// interplay of this kind.</summary>
+    [Fact]
+    public void Attributes_and_a_source_map_coexist()
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", Markers + """
+
+            @System { order = 1 }
+            pub fn tick(dt: float): void { }
+
+            fn main(): int { return 0; }
+            """);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+        Assert.False(de.HasErrors);
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+        Assert.NotNull(ir);
+
+        var bytes = BytecodeWriter.Write(ir!,
+            new SourceMapContext(sm, Directory.GetCurrentDirectory()));
+        var module = BytecodeReader.ReadOrThrow(bytes);
+
+        Assert.NotNull(module.SourceMap);
+        Assert.Single(module.Attributes);
+        Assert.Equal(
+            [(byte)SectionId.SourceMap, (byte)SectionId.Attributes, (byte)SectionId.Names],
+            RawSectionIds(bytes).Where(sectionId => sectionId is 6 or 11 or 12));
+    }
+
     // ------------------------------------------------------------------ hand-built rejections
 
     /// <summary>A minimal module from the spec alone: one pooled string, one struct type with one

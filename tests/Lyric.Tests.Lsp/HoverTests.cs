@@ -145,6 +145,20 @@ public sealed class HoverTests
 
         Assert.Contains("fn id<T>(T) -> T", text);
     }
+
+    /// <summary>An attribute is a reference to its struct, so hovering it answers with the struct
+    /// — the LSP surface the attribute design gets for free, pinned so it stays free.</summary>
+    [Fact]
+    public void An_attribute_shows_its_struct()
+    {
+        Assert.Contains("System", Text("""
+            import std.core { OnFunction };
+            struct System :: [OnFunction] { order: int = 0 }
+            @Sys$tem { order = 1 }
+            fn tick(): void { }
+            fn main(): int { return 0; }
+            """));
+    }
 }
 
 /// <summary>Hover across the wire, including the case the whole retained-model design exists for.
