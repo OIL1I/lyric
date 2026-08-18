@@ -133,10 +133,14 @@ Numbers instead of opinions. Since 2026-08-18 they come from `tools/Bench` — i
 | `for-in` over an array (against `while`) | 153.1 | 208 |
 | `Set.iter()`, the `callvirt` route (against `while`) | 420.9 | 229 |
 
-Two findings the plan did not have: **`next()` costs 208 B per element** — the call frame (176 B)
-plus a **32 B box for the `?int` a `Some` builds**, so slice 3 has to treat `mksome` exactly like
-`mkstruct` or the range loop keeps allocating. And the old 112 B for construction was a
-four-field shape; the two-field `Vec2` is 56 B.
+One correction to the old numbers: the 112 B for "construction only" was a four-field shape; the
+two-field `Vec2` is 56 B.
+
+**After slice 1 (frame pooling), same harness:** call **176 → 0 B** and 49.9 → 7.9 ns;
+`for-in` range **208 → 0.1 B** (the 208 B were the frame trio alone — a `Some` over a scalar
+never allocated, disproving slice 0's guess); `Vec2.add` 352 → **112 B**, which is the result
+plus the assignment's `structcopy` — precisely the slice 2+3 target. `set_iter` keeps its
+~50 ns/op `callvirt` premium over the array route: the slice 4 gate.
 
 **The VM is allocation-free at its core** — a loop with floating-point arithmetic allocates nothing
 worth mentioning over 100 000 passes. Everything above that is calls and objects.

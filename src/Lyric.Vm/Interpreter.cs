@@ -15,6 +15,11 @@ namespace Lyric.Vm;
 ///
 /// <para>An explicit frame stack rather than .NET recursion, so the CLR stack does not bound
 /// Lyric recursion and an overflow is a diagnostic rather than a process abort.</para>
+///
+/// <para>Frames are pooled per function: a call rents, a return or a handled unwind recycles.
+/// Before the pool, the three allocations behind a frame were half of all bytes a call-heavy
+/// program allocated. The pool is not thread-safe, which is the VM's own contract: one thread,
+/// coroutines are state machines and hold no frame across a yield.</para>
 /// </summary>
 public static class Interpreter
 {
@@ -47,7 +52,7 @@ public static class Interpreter
         LyrValue[]? entryArguments = null, BytecodeSourceMap? sourceMap = null)
     {
         var frames = new Stack<Frame>();
-        var frame = Frame.For(prepared[startIndex]);
+        var frame = prepared[startIndex].Rent();
 
         // The entry point receives its arguments in the parameter slots, the same convention as
         // any other call.
@@ -184,7 +189,7 @@ public static class Interpreter
                             $"call depth exceeded {MaxCallDepth} frames in '{frame.Fn.Source.Name}'");
 
                     var callee = prepared[index - natives.Length];
-                    var next = Frame.For(callee);
+                    var next = callee.Rent();
                     // Arguments lie on the stack in call order, the first lowest.
                     for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();
 
@@ -275,7 +280,7 @@ public static class Interpreter
                             $"call depth exceeded {MaxCallDepth} frames in '{frame.Fn.Source.Name}'");
 
                     var target = prepared[index - natives.Length];
-                    var callFrame = Frame.For(target);
+                    var callFrame = target.Rent();
 
                     var offset = closure.HasEnvironment ? 1 : 0;
                     for (var i = argCount - 1; i >= 0; i--) callFrame.Slots[offset + i] = frame.Pop();
@@ -316,7 +321,7 @@ public static class Interpreter
                             $"call depth exceeded {MaxCallDepth} frames in '{frame.Fn.Source.Name}'");
 
                     var callee = prepared[index - natives.Length];
-                    var next = Frame.For(callee);
+                    var next = callee.Rent();
                     for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();
 
                     frames.Push(frame);
@@ -457,9 +462,17 @@ public static class Interpreter
                     var result = instruction.Opcode == Op.ReturnValue ? frame.Pop() : default;
                     var returnsValue = frame.Fn.Source.ReturnType.Tag != TypeTag.Void;
 
-                    if (frames.Count == 0) return result;
+                    // The result was read before the recycle clears the arrays; a LyrValue is a
+                    // copy, so nothing points back into the dead frame.
+                    var dead = frame;
+                    if (frames.Count == 0)
+                    {
+                        dead.Fn.Recycle(dead);
+                        return result;
+                    }
 
                     frame = frames.Pop();
+                    dead.Fn.Recycle(dead);
                     if (returnsValue) frame.Push(result);
                     break;
                 }
@@ -590,7 +603,11 @@ public static class Interpreter
             if (frames.Count == 0) return false;
 
             // One level out: the search restarts there, with the call site as the origin block.
+            // The frame searched through is dead — a caught exception never returns into it — and
+            // goes back to its pool. The 'thrown' value is a parameter copy, not a read from it.
+            var dead = frame;
             frame = frames.Pop();
+            dead.Fn.Recycle(dead);
             frame.NextHandler = 0;
             frame.UnwindBlock = BlockAt(frame, frame.Ip - 1);
         }
@@ -865,15 +882,66 @@ public static class Interpreter
                 Handlers = handlers, BlockOfInstruction = blockOf, Index = index,
             };
         }
+
+        // -------------------------------------------------------------- frame pool
+        //
+        // A frame and its two arrays are sized by their function, so each function keeps its own
+        // free list and a rented frame always fits. The list is intrusive (Frame.Next) and
+        // unbounded: its depth is bounded by the deepest simultaneous recursion ever seen, the
+        // same order the CLR stack would have paid.
+        //
+        // A panic abandons its frames to the GC instead of recycling them — the backtrace is
+        // built from them after the loop has left. That loses pool entries, never correctness;
+        // the next call allocates fresh ones.
+
+        private Frame? _free;
+
+        /// <summary>A frame for this function, reset to its entry state. Slots and stack are
+        /// zeroed — <see cref="Recycle"/> did that, so the rent path stays two reads.</summary>
+        public Frame Rent()
+        {
+            var frame = _free;
+            if (frame is null)
+                return new Frame
+                {
+                    Fn = this,
+                    Slots = new LyrValue[Source.SlotTypes.Count],
+                    Stack = new LyrValue[Math.Max(Source.MaxStack, 1)],
+                    Ip = BlockStart[0],
+                };
+
+            _free = frame.Next;
+            frame.Next = null;
+            frame.Ip = BlockStart[0];
+            frame.Sp = 0;
+            frame.Unwinding = default;
+            frame.UnwindType = -1;
+            frame.NextHandler = 0;
+            frame.UnwindBlock = 0;
+            return frame;
+        }
+
+        /// <summary>Takes a dead frame back. The arrays are cleared HERE rather than at rent, so
+        /// a pooled frame holds no reference alive between two calls.</summary>
+        public void Recycle(Frame frame)
+        {
+            System.Array.Clear(frame.Slots);
+            System.Array.Clear(frame.Stack);
+            frame.Next = _free;
+            _free = frame;
+        }
     }
 
-    private sealed class Frame
+    internal sealed class Frame
     {
         public required Prepared Fn { get; init; }
         public required LyrValue[] Slots { get; init; }
         public required LyrValue[] Stack { get; init; }
         public int Sp;
         public int Ip;
+
+        /// <summary>The free-list link while the frame sits in its function's pool.</summary>
+        public Frame? Next;
 
         /// <summary>The exception currently unwinding through this frame; <c>UnwindType &lt; 0</c>
         /// means none.
@@ -891,15 +959,6 @@ public static class Interpreter
         /// <summary>The block the throw came from. It survives a <c>finally</c>, because handler
         /// ranges talk about the origin.</summary>
         public int UnwindBlock;
-
-        /// <summary>Block 0 is the entry block, as the format requires.</summary>
-        public static Frame For(Prepared fn) => new()
-        {
-            Fn = fn,
-            Slots = new LyrValue[fn.Source.SlotTypes.Count],
-            Stack = new LyrValue[Math.Max(fn.Source.MaxStack, 1)],
-            Ip = fn.BlockStart[0],
-        };
 
         public void Push(LyrValue value) => Stack[Sp++] = value;
         public LyrValue Pop() => Stack[--Sp];
