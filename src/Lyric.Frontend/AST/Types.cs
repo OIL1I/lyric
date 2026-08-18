@@ -9,7 +9,13 @@ namespace Lyric.AST;
 public abstract record TypeNode(Span Span) : Node(Span);
 
 public sealed record NullableType(TypeNode Inner, Span Span) : TypeNode(Span);                         // ?T
-public sealed record NamedType(string[] Path, TypeNode[] TypeArguments, Span Span) : TypeNode(Span);   // a.b.C<...>
+/// <remarks><c>a.b.C&lt;...&gt;</c>. <see cref="NameSpan"/> is the LAST path segment — the name
+/// the type's symbol answers for; the segments before it qualify. INVALID (default) on the nodes
+/// <see cref="Lyric.Resolver.BuiltinTypes"/> synthesizes, which stand in no text.</remarks>
+public sealed record NamedType(string[] Path, TypeNode[] TypeArguments, Span Span) : TypeNode(Span)
+{
+    public required Span NameSpan { get; init; }
+}
 public sealed record ArrayType(TypeNode Element, IntLiteralExpr? Size, Span Span) : TypeNode(Span);    // T[] and T[N]; the parser requires an integer literal as the size
 public sealed record TupleType(TypeNode[] Elements, Span Span) : TypeNode(Span);                       // (A, B[, C])
 public sealed record FunctionType(TypeNode[] Parameters, TypeNode ReturnType, Span Span) : TypeNode(Span); // fn(A, B) -> R

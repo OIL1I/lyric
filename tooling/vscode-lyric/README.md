@@ -17,7 +17,12 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
   read from disk, so the jump opens the real `.lyr` source and selects the name.
 - **Find references** (`Shift+F12`) across the project, in both directions: standing on a
   declaration finds the uses in files that import this one.
-- **Completion** after `.` and for names in scope, and an **outline** of the file's declarations.
+- **Rename** (`F2`) across the project — declaration, uses, and the `import` clauses that carry
+  the name. What cannot be renamed says why: the standard library, a module, a file outside any
+  project whose rename would leave the file. Whether the NEW name collides with something is left
+  to the compile that follows immediately — its diagnostics are the conflict analysis.
+- **Completion** after `.` and for names in scope, an **outline** of the file's declarations, and
+  **workspace symbols** (`Ctrl+T`): every declaration of the project, searched by name.
 - **Highlighting** for `.lyr` files — keywords, types, strings with interpolation, nested block
   comments, all numeric literal forms.
 - **Run** the active file with `Ctrl+F5`, the play button in the editor title bar, or the
@@ -25,9 +30,10 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
 
 ## What it does not do
 
-No rename yet. A generic call shows the **declared** signature rather than the instantiated one —
-the substitution is private to the type checker, and a second one in the server would be a second
-answer to what `T` became.
+A generic call shows the **declared** signature rather than the instantiated one — the
+substitution is private to the type checker, and a second one in the server would be a second
+answer to what `T` became. Renaming a module, an enum variant's payload field, or anything the
+standard library declares is refused with the reason.
 
 ## Setup
 

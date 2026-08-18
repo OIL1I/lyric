@@ -80,13 +80,13 @@ public sealed class ReferenceTests
         // The test that needs both tables: the annotation is bound by the resolver, the initializer
         // by the sema. Either alone gives half of this list.
         //
-        // The second site is the WHOLE initializer, because a StructInitExpr carries no span for the
-        // type name it opens with — the same limit as a member access.
+        // Both sites are the NAME alone: since the rename slice, an initializer records where its
+        // type name stands, and the occurrence list uses the same span the edit would.
         var sites = Sites(
             "struct Po$int { x: int, }\n"
             + "fn main(): int {\n    let p: Point = Point { x = 1 };\n    return p.x;\n}\n");
 
-        Assert.Equal(["Point", "Point { x = 1 }"], sites);
+        Assert.Equal(["Point", "Point"], sites);
     }
 
     [Fact]
@@ -100,8 +100,8 @@ public sealed class ReferenceTests
             + "fn main(): int {\n    let one: Item = Item { v = 1 };\n    return take([one]);\n}\n");
 
         // The element type of the parameter and the annotation, both from the resolver, plus the
-        // initializer from the sema.
-        Assert.Equal(["Item", "Item", "Item { v = 1 }"], sites);
+        // initializer from the sema — each narrowed to the name itself.
+        Assert.Equal(["Item", "Item", "Item"], sites);
     }
 
     [Fact]
@@ -268,20 +268,21 @@ public sealed class ReferenceTests
             .Select(s => result.Sources.GetText(s.File).Substring(s.Span.Start, s.Span.Length))
             .ToArray();
 
-        Assert.Equal(["Point", "Point { x = 1 }"], texts);
+        Assert.Equal(["Point", "Point"], texts);
     }
 
     [Fact]
-    public void A_field_use_marks_the_whole_member_access()
+    public void A_field_use_marks_exactly_the_member_name()
     {
-        // Measured, not claimed. A MemberExpr spans 'p.x' and carries no span for the member name
-        // alone — the mirror of what slice 1 fixed on the declaration side. A use-site name span
-        // would narrow this; it is not built.
+        // The limit this test used to pin — 'p.x' whole, because a MemberExpr carried no span for
+        // its name — fell with the rename slice: an edit needs exactly the name, and the
+        // occurrence list now uses the same span. The initializer field counts too.
         var sites = Sites(
             "struct Point { x$: int, }\n"
             + "fn main(): int {\n    let p = Point { x = 1 };\n    return p.x;\n}\n");
 
-        Assert.Contains("p.x", sites);
+        Assert.All(sites, site => Assert.Equal("x", site));
+        Assert.Equal(2, sites.Length);
     }
 }
 

@@ -23,13 +23,16 @@ namespace Lyric.Lsp.Analysis;
 /// <c>Compilation</c> keeps its source manager to itself, and a span cannot be turned into a line
 /// and a column without one.</para>
 /// </summary>
+/// <param name="ProjectWide">Whether the compilation behind this snapshot covered a whole project.
+/// A rename trusts a project compilation to be complete; a buffer-rooted one it does not.</param>
 public sealed record AnalysisSnapshot(
     Compiler.SemanticModel Model,
     Core.SourceManager Sources,
     Core.FileId File,
     Module Root,
     string Text,
-    int Version);
+    int Version,
+    bool ProjectWide);
 
 /// <summary>
 /// Turns buffer and disk changes into published diagnostics.
@@ -488,7 +491,7 @@ public sealed class AnalysisService : IDisposable
             if (file.IsValid && result.Model is { } model && RootOf(model, file) is { } moduleAst)
             {
                 _lastGood[path] = new AnalysisSnapshot(model, result.Sources, file, moduleAst,
-                    result.Sources.GetText(file), open?.Version ?? 0);
+                    result.Sources.GetText(file), open?.Version ?? 0, ProjectWide: true);
             }
 
             published.Add(uri);
@@ -550,7 +553,7 @@ public sealed class AnalysisService : IDisposable
         {
             _lastGood[document.Path] =
                 new AnalysisSnapshot(model, result.Sources, file, model.Entry, document.Text,
-                    document.Version);
+                    document.Version, ProjectWide: false);
         }
 
         // The entry file is missing from the source manager only when the run never opened it. The
@@ -621,6 +624,16 @@ public sealed class AnalysisService : IDisposable
     /// </summary>
     public AnalysisSnapshot? LastGood(string path) =>
         _lastGood.TryGetValue(path, out var snapshot) ? snapshot : null;
+
+    /// <summary>
+    /// One snapshot per live compilation — what a question WITHOUT a document behind it (the
+    /// workspace symbol search) iterates. The per-file snapshots of one project share their model,
+    /// so distinctness by model identity is distinctness by compilation.
+    /// </summary>
+    public IReadOnlyList<AnalysisSnapshot> CurrentCompilations() =>
+        _lastGood.Values
+            .DistinctBy(snapshot => snapshot.Model, ReferenceEqualityComparer.Instance)
+            .ToList();
 
     /// <summary>
     /// Every root of the project: the <c>.lyr</c> files under its source root as the disk knows

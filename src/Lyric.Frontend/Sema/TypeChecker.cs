@@ -1189,7 +1189,10 @@ public sealed class TypeChecker
     /// </summary>
     private LyrType DesugarToMethodCall(BinaryExpr b, string method, SymbolTable scope)
     {
-        var member = new MemberExpr(b.Left, method, IsOptional: false, b.Span);
+        // MemberSpan stays invalid: this node is synthesized, the operator text carries no member
+        // name an editor could point at or edit.
+        var member = new MemberExpr(b.Left, method, IsOptional: false, b.Span)
+            { MemberSpan = default };
         var call = new CallExpr(member, [b.Right], b.Span);
 
         var type = CheckExpr(call, scope);
@@ -1433,7 +1436,9 @@ public sealed class TypeChecker
         if (_into is { } into && (CanConform(op) || op is PrimitiveType)
             && Satisfies(op, into, new GenericInstance(into, [target])))
         {
-            var member = new MemberExpr(c.Operand, "into", IsOptional: false, c.Span);
+            // MemberSpan stays invalid, as on the operator desugar: 'as T' writes no 'into'.
+            var member = new MemberExpr(c.Operand, "into", IsOptional: false, c.Span)
+                { MemberSpan = default };
             var call = new CallExpr(member, [], c.Span);
 
             if (!CheckExpr(call, scope).IsError) _result.DesugarOperator(c, call);
@@ -2472,6 +2477,11 @@ public sealed class TypeChecker
                     $"duplicate field '{field.Name}' in initializer for '{ts.Name}'");
             if (ts.Members.LookupLocal(field.Name) is FieldSymbol fs)
             {
+                // The initializer field names the declared field, and until now that reference was
+                // resolved and dropped — 'x = 1' is a use of 'x' the same way the initializer's
+                // head is a use of the type, and every-place-this-name-occurs was blind to it.
+                _result.BindRef(field, fs);
+
                 var ft = Substitute(FieldType(fs), subst);
                 CheckAssignable(field.Value, CheckExpr(field.Value, scope, ft), ft, field.Span);
             }

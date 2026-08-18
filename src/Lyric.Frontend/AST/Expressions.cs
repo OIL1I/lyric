@@ -48,7 +48,15 @@ public sealed record CastExpr(Expr Operand, TypeNode Type, Span Span) : Expr(Spa
 public sealed record CallExpr(Expr Callee, Expr[] Arguments, Span Span,
     TypeNode[]? TypeArguments = null) : Expr(Span);
 public sealed record IndexExpr(Expr Target, Expr Index, Span Span) : Expr(Span);
-public sealed record MemberExpr(Expr Target, string Member, bool IsOptional, Span Span) : Expr(Span); // IsOptional means '?.' rather than '.'
+/// <remarks>IsOptional means '?.' rather than '.'.</remarks>
+public sealed record MemberExpr(Expr Target, string Member, bool IsOptional, Span Span) : Expr(Span)
+{
+    /// <summary>Where the member name alone stands — what a consumer that must edit exactly the
+    /// name reads, where <see cref="Node.Span"/> covers the whole access. INVALID (default) on a
+    /// node the sema synthesized: an operator use carries no member name in the text, so there is
+    /// nothing to edit.</summary>
+    public required Span MemberSpan { get; init; }
+}
 
 // --- composite literals ---
 public sealed record ArrayLitExpr(Expr[] Elements, Span Span) : Expr(Span);
@@ -76,7 +84,12 @@ public sealed record MatchExpr(Expr Scrutinee, MatchArm[] Arms, Span Span) : Exp
 // --- struct initializers: TypePath '{' field = expr, … '}' ---
 // Recognised in value position only, not at the start of an ExprStmt, where it would be ambiguous
 // with a block. The field separator is '='; ':' is reserved for types.
-public sealed record StructInitExpr(string[] Path, TypeNode[] TypeArguments, StructInitField[] Fields, Span Span) : Expr(Span);
+public sealed record StructInitExpr(string[] Path, TypeNode[] TypeArguments, StructInitField[] Fields, Span Span) : Expr(Span)
+{
+    /// <summary>The span of the LAST path segment — the name the initializer's symbol answers for.
+    /// The segments before it qualify; only this one is the type's own name.</summary>
+    public required Span NameSpan { get; init; }
+}
 
 // --- a type path in value position: 'Pair<int>.of(3)' ---
 //
@@ -86,8 +99,19 @@ public sealed record StructInitExpr(string[] Path, TypeNode[] TypeArguments, Str
 //
 // It always stands as the target of a MemberExpr; alone it is a type rather than a value, and
 // CheckExpr reports it there as LYR-SEM0052, like any other type name.
-public sealed record TypePathExpr(string[] Path, TypeNode[] TypeArguments, Span Span) : Expr(Span);
-public sealed record StructInitField(string Name, Expr Value, Span Span) : Node(Span);
+public sealed record TypePathExpr(string[] Path, TypeNode[] TypeArguments, Span Span) : Expr(Span)
+{
+    /// <summary>The span of the LAST path segment, as on <see cref="StructInitExpr.NameSpan"/>.
+    /// </summary>
+    public required Span NameSpan { get; init; }
+}
+
+public sealed record StructInitField(string Name, Expr Value, Span Span) : Node(Span)
+{
+    /// <summary>Where the field name alone stands; <see cref="Node.Span"/> covers
+    /// <c>name = value</c>.</summary>
+    public required Span NameSpan { get; init; }
+}
 
 // --- recovery ---
 public sealed record ErrorExpr(Span Span) : Expr(Span);

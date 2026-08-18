@@ -115,4 +115,9 @@ public static class JsonRpcErrorCodes
     /// <summary>A request arrived before <c>initialize</c>. The client is expected to wait rather
     /// than to retry.</summary>
     public const int ServerNotInitialized = -32002;
+
+    /// <summary>The request was understood and the answer is "no, because": a rename whose target
+    /// is the standard library, for instance. The message is shown to the user, which is the whole
+    /// point of refusing with this code rather than with an empty result.</summary>
+    public const int RequestFailed = -32803;
 }

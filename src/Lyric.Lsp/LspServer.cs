@@ -213,6 +213,18 @@ public sealed class LspServer : IDisposable
                 await SendCompletionAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.PrepareRename when _state == State.Running:
+                await SendPrepareRenameAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case LspMethods.Rename when _state == State.Running:
+                await SendRenameAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case LspMethods.WorkspaceSymbol when _state == State.Running:
+                await SendWorkspaceSymbolsAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -639,6 +651,132 @@ public sealed class LspServer : IDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answers where the rename would edit, or with the reason it will not — BEFORE the user has
+    /// typed anything, which is what prepare exists for.
+    /// </summary>
+    private async Task SendPrepareRenameAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(
+            message.Params, LspJson.Default.TextDocumentPositionParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document and a position", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var offset = TextOffsets.ToOffset(snapshot.Text, parameters.Position);
+        var (range, refusal) = RenameProvider.Prepare(
+            snapshot.Model, snapshot.Root, snapshot.File, offset, snapshot.ProjectWide);
+
+        if (range is null)
+        {
+            // The reason reaches the user: an editor renders this message where a null would
+            // render a shrug.
+            await SendErrorAsync(id, JsonRpcErrorCodes.RequestFailed,
+                refusal ?? "nothing to rename here", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await SendResultAsync(id, new PrepareRenameResult
+        {
+            Range = SpanMapper.ToRange(snapshot.Sources, range.Span),
+            Placeholder = range.Placeholder,
+        }, LspJson.Default.PrepareRenameResult, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Answers with the edits of the rename over the whole compilation, grouped by file.
+    ///
+    /// <para>No collision check stands behind this, on purpose: the compile that follows the edit
+    /// is the conflict analysis, and its diagnostics point at any name the rename ran into.</para>
+    /// </summary>
+    private async Task SendRenameAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.RenameParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document, a position and a new name", cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var offset = TextOffsets.ToOffset(snapshot.Text, parameters.Position);
+        var (edits, refusal) = RenameProvider.Rename(snapshot.Model, snapshot.Root, snapshot.File,
+            offset, parameters.NewName, snapshot.ProjectWide);
+
+        if (edits is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.RequestFailed,
+                refusal ?? "nothing to rename here", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var changes = new Dictionary<string, List<TextEdit>>(StringComparer.Ordinal);
+        foreach (var edit in edits)
+        {
+            var editPath = snapshot.Sources.GetPath(edit.File);
+
+            // The client's own spelling for the file it asked about, a built URI for the rest —
+            // the rule every answer with URIs in it follows here.
+            var uri = DocumentUri.PathComparer.Equals(editPath, path)
+                ? parameters.TextDocument.Uri
+                : DocumentUri.FromFilePath(editPath);
+
+            if (!changes.TryGetValue(uri, out var list))
+                changes[uri] = list = [];
+
+            list.Add(new TextEdit
+            {
+                Range = SpanMapper.ToRange(snapshot.Sources, edit.Span),
+                NewText = parameters.NewName,
+            });
+        }
+
+        await SendResultAsync(id, new WorkspaceEdit { Changes = changes },
+            LspJson.Default.WorkspaceEdit, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Answers the workspace symbol search over every live compilation.</summary>
+    private async Task SendWorkspaceSymbolsAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.WorkspaceSymbolParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a query", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var symbols = WorkspaceSymbolProvider.Find(
+            _analysis.CurrentCompilations(), parameters.Query);
+
+        await SendResultAsync(id, symbols, LspJson.Default.IReadOnlyListSymbolInformation,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     private InitializeResult BuildInitializeResult() => new()
     {
         Capabilities = new ServerCapabilities
@@ -654,6 +792,8 @@ public sealed class LspServer : IDisposable
             DocumentSymbolProvider = true,
             ReferencesProvider = true,
             CompletionProvider = new CompletionOptions { TriggerCharacters = ["."] },
+            RenameProvider = new RenameOptions { PrepareProvider = true },
+            WorkspaceSymbolProvider = true,
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };

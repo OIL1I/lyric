@@ -106,6 +106,66 @@ public sealed record ServerCapabilities
     public required bool ReferencesProvider { get; init; }
 
     public required CompletionOptions CompletionProvider { get; init; }
+
+    public required RenameOptions RenameProvider { get; init; }
+
+    public required bool WorkspaceSymbolProvider { get; init; }
+}
+
+/// <summary>Announcing <c>prepareProvider</c> makes the editor ask before opening its rename box,
+/// so a refusal arrives before the user types a new name — the better of the two moments.</summary>
+public sealed record RenameOptions
+{
+    public required bool PrepareProvider { get; init; }
+}
+
+public sealed record RenameParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+    public required Position Position { get; init; }
+    public required string NewName { get; init; }
+}
+
+/// <summary>The answer to <c>prepareRename</c>: what to select and what to prefill.</summary>
+public sealed record PrepareRenameResult
+{
+    public required Range Range { get; init; }
+    public required string Placeholder { get; init; }
+}
+
+public sealed record TextEdit
+{
+    public required Range Range { get; init; }
+    public required string NewText { get; init; }
+}
+
+/// <summary>
+/// Edits over possibly many files, keyed by URI. The plain <c>changes</c> shape rather than
+/// <c>documentChanges</c>: nothing here needs versioned edits or file operations, and the simple
+/// shape is the one every client accepts.
+/// </summary>
+public sealed record WorkspaceEdit
+{
+    public required Dictionary<string, List<TextEdit>> Changes { get; init; }
+}
+
+public sealed record WorkspaceSymbolParams
+{
+    public required string Query { get; init; }
+}
+
+/// <summary>
+/// The FLAT symbol shape. Deprecated members are omitted; the container name is all it can say
+/// about nesting, and that is enough for a list a user filters by name.
+/// </summary>
+public sealed record SymbolInformation
+{
+    public required string Name { get; init; }
+    public required SymbolKind Kind { get; init; }
+    public required Location Location { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ContainerName { get; init; }
 }
 
 /// <summary>What makes the editor ask for completions without being told to.</summary>
@@ -472,6 +532,10 @@ public static class LspMethods
     public const string DocumentSymbol = "textDocument/documentSymbol";
     public const string References = "textDocument/references";
     public const string Completion = "textDocument/completion";
+
+    public const string PrepareRename = "textDocument/prepareRename";
+    public const string Rename = "textDocument/rename";
+    public const string WorkspaceSymbol = "workspace/symbol";
 
     public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
 
