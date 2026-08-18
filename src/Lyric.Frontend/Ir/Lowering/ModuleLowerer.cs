@@ -98,12 +98,26 @@ public static class ModuleLowerer
                     try
                     {
                         var host = HostTypeResolver(module, compilation);
-                        var (flattened, shape) = LowerNativeParameters(module, function, host,
+                        var (flattened, parameters) = LowerNativeParameters(module, function,
+                            host, typeTable);
+
+                        // A struct RETURN wires as void plus a trailing out-parameter of the
+                        // struct's type; the call site passes a hidden buffer and copies the
+                        // value out. See ImportReturn.
+                        var returned = NativeStructParameter(module, function.ReturnType,
                             typeTable);
+                        var wireReturn = returned is { } r
+                            ? new IrScalarType(IrScalar.Void)
+                            : DeclaredTypes.Lower(function.ReturnType, host);
+                        if (returned is { } outParam)
+                            flattened = [.. flattened, outParam.Declared];
+
                         imports.Declare(symbol, new IrImport(
                             NameMangling.ForFunction(module, function.Name),
-                            flattened,
-                            DeclaredTypes.Lower(function.ReturnType, host)), shape);
+                            flattened, wireReturn),
+                            new ImportShape(parameters, returned is { } ret
+                                ? new ImportReturn(ret.Struct!.Value, ret.Fields)
+                                : null));
                     }
                     catch (UnsupportedConstructException ex)
                     {
@@ -347,6 +361,29 @@ public static class ModuleLowerer
 
         functions.AddRange(late.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
 
+        // The hidden out-buffers behind struct-returning natives: one object per import, built
+        // BEFORE every other initializer, because a module-level 'let' may itself call such a
+        // native. Injected as IR rather than lowered from AST — the buffer has no expression.
+        if (imports.ResultBuffers.Count > 0)
+        {
+            if (globalInit is null)
+            {
+                globalInit = new FunctionId(functions.Count);
+                functions.Add(EmptyGlobalInit());
+            }
+
+            var init = functions[globalInit.Value.Value];
+            var at = 0;
+            foreach (var (global, structType) in imports.ResultBuffers)
+            {
+                var dest = new TempId(init.Temps.Count);
+                init.Temps.Add(new IrTemp(dest, new IrStructType(structType)));
+                init.Blocks[0].Insts.Insert(at++,
+                    new NewObject(dest, structType, new IrStructType(structType), default));
+                init.Blocks[0].Insts.Insert(at++, new StoreGlobal(global, dest, default));
+            }
+        }
+
         // Types are collected after the lowering rather than before: the table contains only what was
         // actually used — a declared but never instantiated class does not belong in the bytecode. The
         // same rule as for the imports.
@@ -433,6 +470,21 @@ public static class ModuleLowerer
         }
 
         return (flattened.ToArray(), shape);
+    }
+
+    /// <summary>An initializer with nothing to initialize: the carrier for injected buffer
+    /// construction when the module has no globals of its own.</summary>
+    private static IrFunction EmptyGlobalInit()
+    {
+        var blocks = new List<IrBlock>();
+        _ = new BlockBuilder(blocks);
+        blocks[0].Terminator = new Return(null, default);
+
+        return new IrFunction(GlobalInitializer.Name, new IrScalarType(IrScalar.Void), 0,
+            new List<IrLocal>(), new List<IrTemp>(), blocks)
+        {
+            Entry = new BlockId(0),
+        };
     }
 
     /// <summary>A struct of this native module used as a parameter, or <c>null</c> when the node

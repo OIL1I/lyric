@@ -16,6 +16,17 @@ namespace Lyric.Ir.Lowering;
 internal readonly record struct ImportParam(IrType Declared, TypeId? Struct, IrType[] Fields);
 
 /// <summary>
+/// A struct RETURN. The wire form is void plus a trailing out-parameter: a hidden module global
+/// holds one instance of the struct, the call passes it last, the host fills its slots, and the
+/// call site copies the value out — a copy the scalarizer dissolves when it never escapes. The
+/// language's value semantics are what make the shared buffer safe: any binding copies.
+/// </summary>
+internal readonly record struct ImportReturn(TypeId Struct, IrType[] Fields);
+
+/// <summary>The declared shape of a native whose signature was transformed on the wire.</summary>
+internal sealed record ImportShape(ImportParam[] Params, ImportReturn? Return);
+
+/// <summary>
 /// The native declarations of the loaded stdlib, and which of them this module actually uses.
 ///
 /// <para>INTERNED ON DEMAND, NOT IN ADVANCE. Whoever calls only <c>println</c> should not get an
@@ -33,12 +44,18 @@ internal sealed class ImportTable
     private readonly Dictionary<FunctionSymbol, IrImport> _declared = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, IrImport> _byName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ImportId> _assigned = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, ImportParam[]> _shapes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ImportShape> _shapes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, GlobalId> _buffers = new(StringComparer.Ordinal);
     private readonly List<IrImport> _used = new();
 
     public List<IrImport> Used => _used;
 
-    public void Declare(FunctionSymbol symbol, IrImport import, ImportParam[]? shape = null)
+    /// <summary>The hidden out-buffers created so far: one global per struct-returning import
+    /// that has a call site. The module lowerer injects their construction into the global
+    /// initializer at the end.</summary>
+    public List<(GlobalId Global, TypeId Type)> ResultBuffers { get; } = new();
+
+    public void Declare(FunctionSymbol symbol, IrImport import, ImportShape? shape = null)
     {
         _declared[symbol] = import;
         _byName[import.Name] = import;
@@ -47,8 +64,21 @@ internal sealed class ImportTable
 
     /// <summary>The declared shape of an interned import, or <c>null</c> where none was recorded
     /// — runtime helpers and generated host functions, whose parameters are all plain.</summary>
-    public ImportParam[]? ShapeOf(ImportId id) =>
+    public ImportShape? ShapeOf(ImportId id) =>
         _shapes.TryGetValue(_used[id.Value].Name, out var shape) ? shape : null;
+
+    /// <summary>The hidden global holding this import's result buffer, created on first use.</summary>
+    public GlobalId ResultBuffer(ImportId id, GlobalTable globals)
+    {
+        var name = _used[id.Value].Name;
+        if (_buffers.TryGetValue(name, out var existing)) return existing;
+
+        var structType = _shapes[name].Return!.Value.Struct;
+        var global = globals.DeclareSynthetic($"<out:{name}>", new IrStructType(structType));
+        _buffers[name] = global;
+        ResultBuffers.Add((global, structType));
+        return global;
+    }
 
     public bool IsNative(FunctionSymbol symbol) => _declared.ContainsKey(symbol);
 

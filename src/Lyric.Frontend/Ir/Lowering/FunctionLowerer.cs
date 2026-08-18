@@ -3906,7 +3906,7 @@ internal sealed class FunctionLowerer
         // signature. Without a shape — runtime helpers, generated host functions — the two
         // coincide.
         var shape = _imports.ShapeOf(target);
-        if (arguments.Length + offset != (shape?.Length ?? import.ParamTypes.Length))
+        if (arguments.Length + offset != (shape?.Params.Length ?? import.ParamTypes.Length))
             throw NotSupported($"call to '{import.Name}' with default or variadic arguments", span);
 
         var args = new List<TempId>(import.ParamTypes.Length);
@@ -3914,7 +3914,7 @@ internal sealed class FunctionLowerer
         for (var i = 0; i < arguments.Length; i++)
         {
             var value = LowerExpr(arguments[i]);
-            if (shape?[i + offset] is not { Struct: { } structType } flat)
+            if (shape?.Params[i + offset] is not { Struct: { } structType } flat)
             {
                 args.Add(value);
                 continue;
@@ -3930,6 +3930,25 @@ internal sealed class FunctionLowerer
                     span));
                 args.Add(field);
             }
+        }
+
+        // A struct RETURN: the hidden buffer goes in as the trailing argument, the host fills
+        // its slots, and the expression's value is a fresh COPY of the buffer — value semantics
+        // is what makes the shared buffer safe (any binding copies), and the scalarizer is what
+        // makes the copy free when it never escapes.
+        if (shape?.Return is { } returned)
+        {
+            var bufferType = new IrStructType(returned.Struct);
+            var buffer = _slots.NewTemp(bufferType);
+            _b.Emit(new LoadGlobal(buffer, _imports.ResultBuffer(target, _globals), bufferType,
+                span));
+            args.Add(buffer);
+
+            _b.Emit(new CallImport(null, target, [.. args], span));
+
+            var copied = _slots.NewTemp(bufferType);
+            _b.Emit(new StructCopy(copied, buffer, returned.Struct, span));
+            return copied;
         }
 
         if (IsVoid(import.ReturnType))

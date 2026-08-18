@@ -15,3 +15,6 @@ pub struct Vec2 { x: float, y: float }
 /// A struct in — crosses as two floats, allocates nothing once the scalarizer has dissolved
 /// the operand.
 pub fn pull2(v: Vec2): float;
+
+/// A struct out — the host fills a hidden buffer, the script sees an ordinary value.
+pub fn origin(): Vec2;

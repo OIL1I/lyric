@@ -136,6 +136,14 @@ internal static class Program
         registry.Register("bench.api.pull2", [TypeTag.F64, TypeTag.F64], TypeTag.F64,
             arguments => LyrValue.FromF64(arguments[0].AsF64 * 0.9999 + arguments[1].AsF64));
 
+        // 'origin(): Vec2' — the result buffer is the trailing argument; one value per field.
+        registry.RegisterStructReturning("bench.api.origin", [], [TypeTag.F64, TypeTag.F64],
+            (arguments, result) =>
+            {
+                result[0] = LyrValue.FromF64(0.25);
+                result[1] = LyrValue.FromF64(1.5);
+            });
+
         return registry;
     }
 
@@ -367,6 +375,24 @@ internal static class Program
                 while (i < 100000) {
                     let v = Vec2 { x = acc, y = 1.5 };
                     acc = pull2(v);
+                    i = i + 1;
+                }
+                return if (acc > 0.0) 0 else 1;
+            }
+            """, RawNatives: true);
+
+        // A struct coming BACK over the boundary: the positionOf shape. The gate is 0 B — the
+        // buffer exists once per program, and the copy-out dissolves when the value never
+        // escapes.
+        yield return new Case("native_vec2_ret", 100_000, "scalar", """
+            import bench.api { origin };
+
+            fn main(): int {
+                var acc = 0.0;
+                var i = 0;
+                while (i < 100000) {
+                    let p = origin();
+                    acc = acc * 0.9999 + p.x + p.y;
                     i = i + 1;
                 }
                 return if (acc > 0.0) 0 else 1;

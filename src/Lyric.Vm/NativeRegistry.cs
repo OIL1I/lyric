@@ -26,7 +26,8 @@ public sealed class NativeRegistry
     private sealed record Native(
         TypeTag[] ParamTypes, TypeTag ReturnType, Func<LyrValue[], LyrValue> Implementation,
         TypeTag? ReturnElement = null,
-        BytecodeType[]? FullParamTypes = null, BytecodeType? FullReturnType = null);
+        BytecodeType[]? FullParamTypes = null, BytecodeType? FullReturnType = null,
+        TypeTag[]? StructResult = null);
 
     public void Register(string name, TypeTag[] paramTypes, TypeTag returnType,
         Func<LyrValue[], LyrValue> implementation) =>
@@ -66,6 +67,34 @@ public sealed class NativeRegistry
             paramTypes.Select(p => p.Tag).ToArray(), returnType.Tag, implementation,
             ReturnElement: null, FullParamTypes: paramTypes, FullReturnType: returnType);
 
+    /// <summary>
+    /// A native declared in Lyric to RETURN a struct: <c>pub fn positionOf(e: int): Vec2;</c>.
+    ///
+    /// <para>On the wire the struct comes back through a trailing out-parameter — a buffer the
+    /// runtime owns and passes as the LAST argument. The implementation receives the ordinary
+    /// arguments plus that buffer's slots and fills ONE VALUE PER FIELD in field order. The same
+    /// writing pattern as an array parameter, one entity wide; the script side sees an ordinary
+    /// value.</para>
+    ///
+    /// <para><paramref name="resultFields"/> names the field tags the implementation writes.
+    /// Binding checks them against the struct layout the module declares, so a host that
+    /// disagrees with the SDK fails at load, not in frame 40 000.</para>
+    ///
+    /// <para>The loan contract of the class applies to BOTH arrays: read arguments and write the
+    /// result during the call, keep neither. And a native that re-enters the VM does so before
+    /// writing its result, or the inner call may read a half-written buffer.</para>
+    /// </summary>
+    public void RegisterStructReturning(string name, TypeTag[] paramTypes, TypeTag[] resultFields,
+        Action<LyrValue[], LyrValue[]> implementation) =>
+        _natives[name] = new Native(
+            [.. paramTypes, TypeTag.Struct], TypeTag.Void,
+            arguments =>
+            {
+                implementation(arguments, (LyrValue[])arguments[^1].AsObject);
+                return default;
+            },
+            StructResult: resultFields);
+
     /// <summary>A bound import: the implementation plus what the call site needs. Arity and
     /// return kind live here so the interpreter looks nothing up in the hot path.</summary>
     public sealed record BoundNative(int Arity, bool ReturnsValue,
@@ -97,6 +126,21 @@ public sealed class NativeRegistry
                 throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
                     $"native '{import.Name}' returns a different array element type than the "
                     + "module expects");
+
+            // A struct-returning native writes fields by position, and the layout is the
+            // module's. Checking it here turns a host/SDK disagreement into a load error with a
+            // name in it rather than a wrong value in a frame.
+            if (native.StructResult is { } fields)
+            {
+                var trailing = import.ParamTypes.Count > 0 ? import.ParamTypes[^1] : default;
+                if (trailing.Tag != TypeTag.Struct
+                    || trailing.TypeIndex < 0 || trailing.TypeIndex >= module.Types.Count
+                    || !module.Types[trailing.TypeIndex].FieldTypes
+                        .Select(f => f.Tag).SequenceEqual(fields))
+                    throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
+                        $"native '{import.Name}' fills a struct result whose layout does not "
+                        + "match what the module declares");
+            }
 
             // For a host type only the name distinguishes it. Without this check a module
             // expecting one host type could be bound to another, and the mismatch would surface as
