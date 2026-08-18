@@ -1,0 +1,13 @@
+Module [0..41)
+  Fn main [0..28)
+    NamedType int [11..14)
+    Block [15..28)
+      Return [17..26)
+        Int 0 [24..25)
+  ErrorDecl [30..41)
+
+=== diagnostics ===
+attr_dangling.lyr:3:1: error[LYR-PAR0042]: an attribute must be followed by the declaration it applies to
+@Component
+^^^^^^^^^^
+

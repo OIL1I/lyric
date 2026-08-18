@@ -1,0 +1,8 @@
+@Component
+interface I { fn f(): int; }
+
+@Component
+let g = 1;
+
+@Component
+type T = int;

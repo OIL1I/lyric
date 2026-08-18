@@ -5,8 +5,27 @@ namespace Lyric.AST;
 // Module structure and declarations. Enum keeps variants and methods apart, because they are
 // structurally different.
 
-public sealed record Module(ModulePath? Header, Decl[] Declarations, Span Span) : Node(Span);
+public sealed record Module(ModulePath? Header, Decl[] Declarations, Span Span) : Node(Span)
+{
+    /// <summary>Attributes written before the module header. A file without a header cannot carry
+    /// them: at the top of such a file an attribute belongs to the first declaration.</summary>
+    public AttributeNode[] Attributes { get; init; } = [];
+}
 public sealed record ModulePath(string[] Segments, Span Span) : Node(Span);
+
+/// <summary>
+/// An attribute before a declaration or the module header: <c>@Name</c> or
+/// <c>@Name { field = literal, … }</c>.
+///
+/// <para>The path names a struct type and the fields reuse the initializer shape, because the
+/// checking is the same — an attribute IS a struct, and where it may sit is the marker interface
+/// it declares (<c>OnModule</c>, <c>OnType</c>, <c>OnFunction</c>).</para>
+/// </summary>
+public sealed record AttributeNode(string[] Path, StructInitField[] Fields, Span Span) : Node(Span)
+{
+    /// <summary>The span of the <c>@Name</c> path alone, without the argument block.</summary>
+    public required Span PathSpan { get; init; }
+}
 
 public abstract record Decl(Span Span) : Node(Span);
 
@@ -36,6 +55,9 @@ public sealed record FunctionDecl(
     TypeNode? ReturnType, ThrowsClause? Throws, Block? Body, Span Span) : Decl(Span), INamedDecl // Body == null means abstract or declared with ';'
 {
     public required Span NameSpan { get; init; }
+
+    /// <summary>Only set on a TOP-LEVEL function: the parser rejects attributes on members.</summary>
+    public AttributeNode[] Attributes { get; init; } = [];
 }
 
 /// <summary>A <c>static let</c> constant in the body of a struct or class, reachable as
@@ -58,16 +80,22 @@ public sealed record FieldDecl(string Name, TypeNode Type, Expr? Default, Span S
 public sealed record StructDecl(bool IsPublic, string Name, GenericParam[] Generics, TypeNode[] Interfaces, Decl[] Members, Span Span) : Decl(Span), INamedDecl
 {
     public required Span NameSpan { get; init; }
+
+    public AttributeNode[] Attributes { get; init; } = [];
 }
 
 public sealed record ClassDecl(bool IsPublic, string Name, GenericParam[] Generics, TypeNode[] Interfaces, Decl[] Members, Span Span) : Decl(Span), INamedDecl
 {
     public required Span NameSpan { get; init; }
+
+    public AttributeNode[] Attributes { get; init; } = [];
 }
 
 public sealed record EnumDecl(bool IsPublic, string Name, GenericParam[] Generics, TypeNode[] Interfaces, EnumVariant[] Variants, FunctionDecl[] Methods, Span Span) : Decl(Span), INamedDecl
 {
     public required Span NameSpan { get; init; }
+
+    public AttributeNode[] Attributes { get; init; } = [];
 }
 
 public sealed record EnumVariant(string Name, TypeNode[]? TupleFields, FieldDecl[]? StructFields, Span Span) : Node(Span), INamedDecl // both null means a unit variant

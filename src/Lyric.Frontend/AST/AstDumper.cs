@@ -167,7 +167,12 @@ public static class AstDumper
             // --- declarations ---
             case Module n:
                 Line(sb, indent, n.Header is null ? "Module" : $"Module {string.Join('.', n.Header.Segments)}", n.Span);
+                foreach (var a in n.Attributes) Write(a, indent + 1, sb);
                 foreach (var d in n.Declarations) Write(d, indent + 1, sb);
+                break;
+            case AttributeNode n:
+                Line(sb, indent, $"Attribute {string.Join('.', n.Path)}", n.Span);
+                foreach (var f in n.Fields) Write(f, indent + 1, sb);
                 break;
             case ImportDecl n:
                 Line(sb, indent, $"Import {string.Join('.', n.Path)}", n.Span);
@@ -194,6 +199,7 @@ public static class AstDumper
                 break;
             case FunctionDecl n:
                 Line(sb, indent, $"Fn {n.Name}{Vis(n.IsPublic)}{(n.IsMut ? " mut" : "")}{(n.Body is null ? " (abstract)" : "")}", n.Span);
+                foreach (var a in n.Attributes) Write(a, indent + 1, sb);
                 foreach (var g in n.Generics) Write(g, indent + 1, sb);
                 foreach (var p in n.Parameters) Write(p, indent + 1, sb);
                 if (n.ReturnType is not null) Write(n.ReturnType, indent + 1, sb);
@@ -207,14 +213,17 @@ public static class AstDumper
                 break;
             case StructDecl n:
                 Line(sb, indent, $"Struct {n.Name}{Vis(n.IsPublic)}", n.Span);
+                foreach (var a in n.Attributes) Write(a, indent + 1, sb);
                 WriteTypeDeclChildren(n.Generics, n.Interfaces, n.Members, indent, sb);
                 break;
             case ClassDecl n:
                 Line(sb, indent, $"Class {n.Name}{Vis(n.IsPublic)}", n.Span);
+                foreach (var a in n.Attributes) Write(a, indent + 1, sb);
                 WriteTypeDeclChildren(n.Generics, n.Interfaces, n.Members, indent, sb);
                 break;
             case EnumDecl n:
                 Line(sb, indent, $"Enum {n.Name}{Vis(n.IsPublic)}", n.Span);
+                foreach (var a in n.Attributes) Write(a, indent + 1, sb);
                 foreach (var g in n.Generics) Write(g, indent + 1, sb);
                 foreach (var i in n.Interfaces) Write(i, indent + 1, sb);
                 foreach (var v in n.Variants) Write(v, indent + 1, sb);

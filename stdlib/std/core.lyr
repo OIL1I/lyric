@@ -381,6 +381,19 @@ pub interface Into<T> {
     fn into(): T;
 }
 
+// The three attribute markers. Which of them a struct declares decides where '@Name' may stand;
+// conformance, not the name, so no struct becomes an attribute by accident. They are empty on
+// purpose: nothing is dispatched through them, so they cost nothing at runtime.
+
+/// A struct declaring this may stand as `@Name` before the module header.
+pub interface OnModule { }
+
+/// A struct declaring this may stand as `@Name` before a struct, class or enum declaration.
+pub interface OnType { }
+
+/// A struct declaring this may stand as `@Name` before a top-level function.
+pub interface OnFunction { }
+
 // No `Hashable` for `float`, deliberately.
 //
 // A hash table requires equal values to hash equally. Floating point breaks the premise rather

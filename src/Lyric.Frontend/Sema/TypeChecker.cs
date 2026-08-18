@@ -99,7 +99,20 @@ public sealed class TypeChecker
         _mul = core?.LookupLocal("Mul") as TypeSymbol;
         _div = core?.LookupLocal("Div") as TypeSymbol;
         _into = core?.LookupLocal("Into") as TypeSymbol;
+        _onModule = core?.LookupLocal("OnModule") as TypeSymbol;
+        _onType = core?.LookupLocal("OnType") as TypeSymbol;
+        _onFunction = core?.LookupLocal("OnFunction") as TypeSymbol;
     }
+
+    /// <summary>The three attribute markers, under the same rules as <see cref="_equatable"/>:
+    /// which of them an attribute struct declares decides where it may sit.</summary>
+    private readonly TypeSymbol? _onModule;
+
+    /// <inheritdoc cref="_onModule"/>
+    private readonly TypeSymbol? _onType;
+
+    /// <inheritdoc cref="_onModule"/>
+    private readonly TypeSymbol? _onFunction;
 
     /// <summary>What a non-numeric <c>as</c> converts through, under the same rules.</summary>
     private readonly TypeSymbol? _into;
@@ -139,7 +152,10 @@ public sealed class TypeChecker
         foreach (var module in _comp.Modules)
         {
             _currentModule = module;
-            foreach (var decl in _comp.AstOf(module).Declarations)
+            var ast = _comp.AstOf(module);
+            CheckAttributes(ast.Attributes, AttributeTarget.Module, targetIsGeneric: false,
+                module.Members, "the module header");
+            foreach (var decl in ast.Declarations)
                 CheckDecl(decl, module);
         }
         CheckExtensionBlocks(); // extend bodies, the orphan rule, conformance
@@ -177,14 +193,31 @@ public sealed class TypeChecker
     {
         switch (decl)
         {
-            case FunctionDecl fn: RequireBody(fn, module); CheckFunction(fn, module.Members, thisType: null); break;
+            case FunctionDecl fn:
+                CheckAttributes(fn.Attributes, AttributeTarget.Function, fn.Generics.Length > 0,
+                    module.Members, "a function");
+                RequireBody(fn, module);
+                CheckFunction(fn, module.Members, thisType: null);
+                break;
             case StructDecl s:
+                CheckAttributes(s.Attributes, AttributeTarget.Type, s.Generics.Length > 0,
+                    module.Members, "a struct");
                 CheckStructIsFinite(s, module);
                 CheckMethods(s.Name, s.Members, module);
                 CheckTypeConformance(s.Name, s.Interfaces, module);
                 break;
-            case ClassDecl c: CheckMethods(c.Name, c.Members, module); CheckTypeConformance(c.Name, c.Interfaces, module); break;
-            case EnumDecl e: CheckEnumMethods(e, module); CheckTypeConformance(e.Name, e.Interfaces, module); break;
+            case ClassDecl c:
+                CheckAttributes(c.Attributes, AttributeTarget.Type, c.Generics.Length > 0,
+                    module.Members, "a class");
+                CheckMethods(c.Name, c.Members, module);
+                CheckTypeConformance(c.Name, c.Interfaces, module);
+                break;
+            case EnumDecl e:
+                CheckAttributes(e.Attributes, AttributeTarget.Type, e.Generics.Length > 0,
+                    module.Members, "an enum");
+                CheckEnumMethods(e, module);
+                CheckTypeConformance(e.Name, e.Interfaces, module);
+                break;
             case InterfaceDecl i: CheckMethods(i.Name, i.Members, module); break;
             // ExtendDecl goes to CheckExtensionBlocks after all types; GlobalBindingDecl to ComputeGlobals.
         }
@@ -891,12 +924,12 @@ public sealed class TypeChecker
             case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
             case LambdaExpr lam: return CheckLambda(lam, scope, expected);
             case ResumeExpr re: return CheckResume(re, scope);
-            // Attributes are post-v1 and have no expression type. Reporting that rather than silently
-            // yielding Error is the difference between "does not work" and "does not work
-            // unnoticed".
+            // An attribute is not an expression: it describes the declaration it precedes and has
+            // no value. Reporting that rather than silently yielding Error is the difference
+            // between "does not work" and "does not work unnoticed".
             case AtIdentifierExpr at:
                 return Report(at.Span, "LYR-SEM0053",
-                    $"'{at.Name}' is an attribute, and attributes are not part of v1");
+                    $"'{at.Name}' is not an expression — an attribute stands before a declaration");
 
             default: return LyrType.Error;
         }
@@ -2210,6 +2243,152 @@ public sealed class TypeChecker
     }
 
     private LyrType FieldType(FieldSymbol fs) => ResolveType(((FieldDecl)fs.Declaration!).Type, _comp.Builtins);
+
+    // --- attributes ---
+
+    private enum AttributeTarget { Module, Type, Function }
+
+    private static string MarkerName(AttributeTarget target) => target switch
+    {
+        AttributeTarget.Module => "OnModule",
+        AttributeTarget.Type => "OnType",
+        _ => "OnFunction",
+    };
+
+    /// <summary>
+    /// The attributes of one declaration or of the module header.
+    ///
+    /// <para>An attribute IS a struct: the name resolves like any type name, the arguments are
+    /// checked as its initializer, and where it may sit is the marker interface it declares —
+    /// conformance, not the name, the same nominal rule the operators follow. What ends up in the
+    /// bytecode has to be a value at compile time, hence the literal rule; and because the
+    /// emitted row carries EVERY field, a field the use does not write needs a literal default.
+    /// </para>
+    /// </summary>
+    private void CheckAttributes(AttributeNode[] attributes, AttributeTarget target,
+        bool targetIsGeneric, SymbolTable scope, string targetDescription)
+    {
+        if (attributes.Length == 0) return;
+
+        // Duplicates by resolved symbol, not by written path: two spellings of one type are still
+        // one metadata row too many.
+        var seen = new List<TypeSymbol>();
+        foreach (var attribute in attributes)
+        {
+            var ts = CheckAttribute(attribute, target, targetIsGeneric, scope, targetDescription);
+            if (ts is null) continue;
+            if (seen.Contains(ts))
+                _de.Report("LYR-SEM0068", Severity.Error, attribute.PathSpan,
+                    $"'@{ts.Name}' sits on this declaration twice");
+            else
+                seen.Add(ts);
+        }
+    }
+
+    /// <returns>The resolved attribute type, or <c>null</c> when the name resolved to nothing an
+    /// attribute could be. Diagnosed findings beyond that still return the symbol, so the
+    /// duplicate check above keeps working on a faulty attribute.</returns>
+    private TypeSymbol? CheckAttribute(AttributeNode attribute, AttributeTarget target,
+        bool targetIsGeneric, SymbolTable scope, string targetDescription)
+    {
+        var (sym, _) = ResolveInitPath(attribute.Path, scope);
+        var written = string.Join('.', attribute.Path);
+        if (sym is null)
+        {
+            _de.Report("LYR-SEM0011", Severity.Error, attribute.PathSpan, $"unknown type '{written}'");
+            foreach (var f in attribute.Fields) CheckExpr(f.Value, scope);
+            return null;
+        }
+
+        if (sym is not TypeSymbol { Kind: TypeSymbolKind.Struct } ts)
+        {
+            _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
+                $"'@{written}' is not an attribute — an attribute is a struct declaring "
+                + $"'{MarkerName(target)}'");
+            foreach (var f in attribute.Fields) CheckExpr(f.Value, scope);
+            return null;
+        }
+
+        _result.BindRef(attribute, ts); // '@Component' is a reference to its type, as an initializer is
+
+        if (ts.Generics.Length > 0)
+        {
+            _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
+                $"a generic type cannot be an attribute — one metadata row cannot stand for every "
+                + $"instance of '{ts.Name}'");
+            return ts;
+        }
+
+        var marker = target switch
+        {
+            AttributeTarget.Module => _onModule,
+            AttributeTarget.Type => _onType,
+            _ => _onFunction,
+        };
+        if (marker is null || !Satisfies(new NamedRef(ts), marker, new NamedRef(marker)))
+        {
+            _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
+                $"'@{ts.Name}' cannot sit on {targetDescription} — declare '{ts.Name}' with "
+                + $"':: [{MarkerName(target)}]' to allow it here");
+            return ts;
+        }
+
+        if (targetIsGeneric)
+            _de.Report("LYR-SEM0067", Severity.Error, attribute.PathSpan,
+                "an attribute cannot sit on a generic declaration — there is one metadata row "
+                + "and as many instances as the program creates");
+
+        var writtenFields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in attribute.Fields)
+        {
+            if (!writtenFields.Add(field.Name))
+                _de.Report("LYR-SEM0068", Severity.Error, field.Span,
+                    $"'@{ts.Name}' sets '{field.Name}' twice");
+
+            if (ts.Members.LookupLocal(field.Name) is FieldSymbol fs)
+            {
+                var ft = FieldType(fs);
+                CheckAssignable(field.Value, CheckExpr(field.Value, scope, ft), ft, field.Span);
+                if (!IsAttributeLiteral(field.Value))
+                    _de.Report("LYR-SEM0066", Severity.Error, field.Value.Span,
+                        $"an attribute argument must be a literal — a number, a string, a char or "
+                        + $"a bool; what stands in the bytecode has to be a value at compile time");
+            }
+            else
+            {
+                _de.Report("LYR-SEM0015", Severity.Error, field.Span,
+                    $"'{ts.Name}' has no field '{field.Name}'");
+                CheckExpr(field.Value, scope);
+            }
+        }
+
+        // The emitted row is COMPLETE: absent fields are filled from their defaults, so the host
+        // never resolves one. A field that is neither written nor literal-defaulted has no value
+        // to fill in.
+        foreach (var field in (ts.Declaration as StructDecl)?.Members.OfType<FieldDecl>() ?? [])
+        {
+            if (writtenFields.Contains(field.Name)) continue;
+            if (field.Default is not null && IsAttributeLiteral(field.Default)) continue;
+            _de.Report("LYR-SEM0069", Severity.Error, attribute.Span,
+                field.Default is null
+                    ? $"'@{ts.Name}' leaves '{field.Name}' without a value — write it, or give "
+                      + "the field a literal default"
+                    : $"'@{ts.Name}' leaves '{field.Name}' to a default that is not a literal — "
+                      + "what stands in the bytecode has to be a value at compile time");
+        }
+        return ts;
+    }
+
+    /// <summary>What may stand in an attribute argument: exactly what can be written into the
+    /// bytecode as a constant. <c>null</c> is excluded on purpose — an attribute field is a
+    /// scalar, a char or a string, never an optional.</summary>
+    private static bool IsAttributeLiteral(Expr e) => e switch
+    {
+        IntLiteralExpr or FloatLiteralExpr or StringLiteralExpr or CharLiteralExpr
+            or BoolLiteralExpr => true,
+        UnaryExpr { Operator: UnaryOp.Neg, Operand: IntLiteralExpr or FloatLiteralExpr } => true,
+        _ => false,
+    };
 
     private LyrType CheckStructInit(StructInitExpr si, SymbolTable scope, LyrType? expected)
     {

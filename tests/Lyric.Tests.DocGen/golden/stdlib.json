@@ -1100,6 +1100,39 @@
             "File": "stdlib/std/core.lyr",
             "Line": 379
           }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "OnModule",
+          "Signature": "pub interface OnModule",
+          "Doc": "A struct declaring this may stand as `@Name` before the module header.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 389
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "OnType",
+          "Signature": "pub interface OnType",
+          "Doc": "A struct declaring this may stand as `@Name` before a struct, class or enum declaration.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 392
+          }
+        },
+        {
+          "Kind": "Interface",
+          "Name": "OnFunction",
+          "Signature": "pub interface OnFunction",
+          "Doc": "A struct declaring this may stand as `@Name` before a top-level function.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 395
+          }
         }
       ]
     },

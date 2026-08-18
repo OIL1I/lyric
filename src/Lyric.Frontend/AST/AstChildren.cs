@@ -26,11 +26,16 @@ public static class AstChildren
         {
             // --- module and declarations ---
             case Module m:
+                foreach (var a in m.Attributes) yield return a;
                 if (m.Header is not null) yield return m.Header;
                 foreach (var d in m.Declarations) yield return d;
                 break;
 
             case ModulePath:
+                break;
+
+            case AttributeNode at:
+                foreach (var f in at.Fields) yield return f;
                 break;
 
             case ImportDecl i:
@@ -55,6 +60,7 @@ public static class AstChildren
                 break;
 
             case FunctionDecl f:
+                foreach (var a in f.Attributes) yield return a;
                 foreach (var g in f.Generics) yield return g;
                 foreach (var p in f.Parameters) yield return p;
                 if (f.ReturnType is not null) yield return f.ReturnType;
@@ -72,18 +78,21 @@ public static class AstChildren
                 break;
 
             case StructDecl s:
+                foreach (var a in s.Attributes) yield return a;
                 foreach (var g in s.Generics) yield return g;
                 foreach (var i in s.Interfaces) yield return i;
                 foreach (var m in s.Members) yield return m;
                 break;
 
             case ClassDecl c:
+                foreach (var a in c.Attributes) yield return a;
                 foreach (var g in c.Generics) yield return g;
                 foreach (var i in c.Interfaces) yield return i;
                 foreach (var m in c.Members) yield return m;
                 break;
 
             case EnumDecl e:
+                foreach (var a in e.Attributes) yield return a;
                 foreach (var g in e.Generics) yield return g;
                 foreach (var i in e.Interfaces) yield return i;
                 foreach (var v in e.Variants) yield return v;

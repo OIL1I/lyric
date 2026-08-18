@@ -24,14 +24,13 @@ public class RejectedSyntaxTests
         return de.Diagnostics;
     }
 
-    // ------------------------------------------------------------------ Attribute (§10)
+    // ------------------------------------------------------------------ Attribute
 
-    /// <summary>On a declaration it always said so; here it stands as the reference point.
-    /// </summary>
+    /// <summary>On a declaration an attribute PARSES since the attribute milestone; what it names
+    /// is the sema's question. This test pins the parser half of that split.</summary>
     [Fact]
-    public void An_attribute_on_a_declaration_says_attributes_are_post_v1() =>
-        Assert.Contains(Parse("@test\nfn f(): int { return 1; }"),
-            d => d.Code == "LYR-PAR0038");
+    public void An_attribute_on_a_declaration_parses() =>
+        Assert.Empty(Parse("@test\nfn f(): int { return 1; }"));
 
     /// <summary>
     /// On a parameter it used to say <c>LYR-SEM0051</c> — "only standard-library modules may declare
