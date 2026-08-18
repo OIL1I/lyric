@@ -10,6 +10,8 @@
     <Project Path="src/Lyrrepl/Lyrrepl.csproj" />
     <Project Path="src/Lyrls/Lyrls.csproj" />
     <Project Path="src/Lyrbuild/Lyrbuild.csproj" />
+    <Project Path="src/Lyrstub/Lyrstub.csproj" />
+    <Project Path="src/Lyrpack/Lyrpack.csproj" />
     <Project Path="src/Lyric.Cli/Lyric.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">

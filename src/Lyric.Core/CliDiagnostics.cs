@@ -52,6 +52,18 @@ public static class CliDiagnostics
     /// against a module root the file was trying to change.</summary>
     public const string BadProjectFile = "LYR-CLI0010";
 
+    /// <summary>The stub was started directly: the executable carries no program. Not an
+    /// accident of a damaged pack, which is <see cref="PackDamaged"/>.</summary>
+    public const string StubEmpty = "LYR-CLI0013";
+
+    /// <summary>A pack footer is present and does not hold together: wrong footer version, or a
+    /// payload length that reaches outside the file. A truncated download looks like this.</summary>
+    public const string PackDamaged = "LYR-CLI0014";
+
+    /// <summary>No stub to pack into: the resolution ladder (<c>--stub</c>, <c>LYRIC_STUB</c>,
+    /// <c>stubs/&lt;rid&gt;/</c> beside the binary) ended empty-handed.</summary>
+    public const string StubNotFound = "LYR-CLI0015";
+
     /// <summary>Reports a CLI diagnostic and renders it immediately. It has no source span, so
     /// there is nothing to collect or order.</summary>
     public static int Fail(TextWriter error, string code, string message, int exitCode)

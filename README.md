@@ -152,6 +152,8 @@ lyric/
 │   ├── Lyrrepl/          → lyrrepl.exe
 │   ├── Lyrbuild/         → lyrbuild.exe
 │   ├── Lyrls/            → lyrls.exe
+│   ├── Lyrpack/          → lyrpack.exe   packs a module into one executable
+│   ├── Lyrstub/          → lyrstub.exe   the runtime half of a packed program
 │   └── Lyric.Cli/        → lyric.exe
 ├── stdlib/               standard library, written in Lyric
 ├── tests/                xUnit test projects

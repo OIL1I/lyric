@@ -55,6 +55,28 @@ public static class Toolchain
 
     public static ToolResult Lyrbuild(params string[] args) => Run(LyrbuildPath, args);
 
+    public static string LyrpackPath => BinaryPath("Lyrpack", "lyrpack");
+
+    public static ToolResult Lyrpack(params string[] args) => Run(LyrpackPath, args);
+
+    /// <summary>The single-file stub the Lyrpack build publishes beside the packer — the same one
+    /// lyrpack resolves on its own, named here so tests can run and manipulate it directly.
+    /// </summary>
+    public static string StubPath
+    {
+        get
+        {
+            var name = OperatingSystem.IsWindows() ? "lyrstub.exe" : "lyrstub";
+            var path = Path.Combine(OutputDirectory("Lyrpack"), "stubs",
+                System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier, name);
+            if (!File.Exists(path))
+                throw new FileNotFoundException(
+                    $"the stub was not published at {path} — the Lyrpack build does that, so "
+                    + "this means its publish target changed.", path);
+            return path;
+        }
+    }
+
     /// <summary>
     /// Runs a tool and writes something to its stdin, for the REPL, which cannot be checked otherwise.
     ///
