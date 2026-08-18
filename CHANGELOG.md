@@ -12,9 +12,10 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ## v1.7.0 — unreleased
 
-The interpreter stops allocating. No language change and no format change — the same programs
-compile to faster, smaller modules and run with far fewer heap allocations. The numbers below
-come from `tools/Bench` (new in this release), Release, per operation, against v1.6.0.
+The interpreter stops allocating — and so does the native boundary. No language change and no
+format change: the same programs compile to faster, smaller modules, run with far fewer heap
+allocations, and a host SDK can now put `Vec2` in a native signature. The numbers below come
+from `tools/Bench` (new in this release), Release, per operation, against v1.6.0.
 
 ### Changed
 
@@ -49,22 +50,53 @@ come from `tools/Bench` (new in this release), Release, per operation, against v
 
 ### Added
 
+- **The native boundary takes and returns value structs, without allocating.** A native
+  signature may use a `struct` declared in the same native module (scalar and string fields
+  only). The declaration stays fully typed on the script side; on the wire it is flattened:
+
+  ```lyr
+  module engine.geo;
+
+  pub struct Vec2 { x: float, y: float }
+
+  pub fn setPosition(entity: int, at: Vec2);
+  pub fn positionOf(entity: int): Vec2;
+  ```
+
+  A struct parameter crosses as its fields — the host registers the delegate it would have
+  written for scalars. A struct return comes back through a buffer the runtime owns
+  (`NativeRegistry.RegisterStructReturning`): the implementation fills one value per field, the
+  script sees an ordinary value, and value semantics keeps the shared buffer invisible. Layout
+  disagreements between host and SDK are load errors with the import's name in them.
+
+  Measured: a `Vec2` built fresh and passed in, or received back, costs **0 B per call** —
+  the answer to the embedding question that produced this milestone (Erato's `positionOf`).
+
+- **A native call no longer allocates its argument array.** The `LyrValue[]` handed to an
+  implementation is pooled and reused; a one-argument crossing went from 40 B to 0 B, a
+  four-argument one from 88 B to 0 B. The array is therefore a LOAN: read it during the call,
+  copy values out, never store it — documented on `NativeRegistry`, and every implementation in
+  the standard registry already complied.
+
 - **`tools/Bench`** — the in-process measurement harness behind all numbers above:
   `dotnet run -c Release --project tools/Bench`. Allocated bytes and nanoseconds per operation,
-  scalar-loop baseline subtracted, round-robin against JIT tiering.
+  scalar-loop baseline subtracted, round-robin against JIT tiering, raw-registry boundary
+  probes.
 
 ### Not in this release
 
-- **Escape analysis across surviving calls** — a struct passed to or returned from a function
-  that stays a function still allocates.
+- **Struct returns through the embedding layer's delegates.** `RegisterStructReturning` is a
+  `NativeRegistry` surface; a `LangVm.RegisterNative` overload that marshals a C# struct is
+  sugar for a later release — the raw form is the one a game host uses anyway.
+- **Structs from other modules in native signatures** — the struct must live in the module that
+  declares the native, which is where an SDK's value types belong.
+- **Escape analysis across surviving calls** — a struct passed to or returned from a *Lyric*
+  function that stays a function still allocates.
 - **The remaining optional ops in `for-in`**: a range loop still runs ~1.9× a hand-written
   `while`; the gap is `optsome`/`optissome`/`optget` and block hops, peephole material.
 - **Value structs as a language feature.** Deliberately: a `struct` already HAS value
-  semantics; this release makes the representation keep that promise where it matters, with no
-  new mechanism.
-- **The native boundary** is untouched: natives still take and return scalars, and a native
-  call still allocates its argument array. That is the next milestone's subject, not a slice of
-  this one.
+  semantics; this release makes the representation keep that promise everywhere it matters,
+  with no new mechanism.
 
 ## v1.6.0 — 2026-08-18
 

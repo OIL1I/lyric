@@ -108,6 +108,18 @@ internal sealed class GlobalTable
         _pending.Add((symbol, binding, module));
     }
 
+    /// <summary>
+    /// A slot no declaration stands behind — the hidden result buffers of struct-returning
+    /// natives live here. No entry in <see cref="Pending"/>: the initialization is injected as
+    /// IR after the lowering, because the buffer is an object, not an expression.
+    /// </summary>
+    public GlobalId DeclareSynthetic(string name, IrType type)
+    {
+        var id = new GlobalId(_defs.Count);
+        _defs.Add(new IrGlobal(name, type));
+        return id;
+    }
+
     /// <summary>The slot and type of a global. An unknown symbol is a lowering bug: collection was
     /// complete before the first function was lowered.</summary>
     public (GlobalId Id, IrType Type) Resolve(GlobalSymbol symbol, Span span)

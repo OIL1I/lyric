@@ -48,6 +48,12 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **M15 — the boundary learns values** (2026-08-18). Four slices, same day as M14, stacked on
+  its branch; details under *What we are working on*. The one measured sentence: a native call
+  allocates nothing anymore — argument arrays pooled (40/88 → 0 B), `Vec2` in as fields (0 B),
+  `Vec2` out through a hidden buffer that value semantics makes unobservable (0 B), layouts
+  checked at load. Erato's A2, answered.
+
 - [x] **M14 — the interpreter stops allocating** (2026-08-18). Five slices in one day, 3855 tests
   green in Debug and Release, branch `feature/m14-allocations`. No language change, no format
   change.
@@ -230,28 +236,35 @@ changelog carries a v1.7.0 entry as *unreleased*; merging the PR and tagging is 
 call. What M14 deliberately did NOT do: value structs as a language feature (a `struct` already
 has value semantics; the representation now keeps the promise), a JIT, and the native boundary.
 
-**M15 — the boundary learns values — is the proposed next milestone**, written against M14's
-measured outcome (details in the PR discussion):
+**M15 — the boundary learns values — is finished** (2026-08-18, `feature/m15-boundary`, stacked
+on the M14 branch). All four slices; the v1.7.0 changelog entry covers both milestones and stays
+*unreleased* until the maintainer merges and tags.
 
-- **Slice 0, measure first**: a boundary bench beside the compute benches — per-crossing cost and
-  the `new LyrValue[arity]` argument array every native call allocates today. Erato's
-  world-hunt/world-bulk shapes, in Lyric's own harness.
-- **Slice 1, stop the boundary from allocating**: pool the native-call argument buffers per
-  arity, the exact mechanic frames got. VM-only, no format change, and it addresses the crossing
-  cost E3-3 measured without any new feature.
-- **Slice 2, struct parameters IN**: a native declared `fn setPos(e: int, v: Vec2)` receives the
-  fields flattened as scalars — no object crosses, nothing allocates. Sema + binding + writer;
-  `TypeTag.Struct` exists in signatures already.
-- **Slice 3, struct RETURNS**: `positionOf(e): Vec2` — the native writes into a frame-owned
-  scratch the scalarizer immediately dissolves; escape-safe because slice-3-of-M14 machinery
-  proves the non-escape. The hard slice, designed only after slices 0–2 are measured.
-- **Slice 4, the host declares the types**: `RegisterStruct<T>` maps a C# struct onto an SDK
-  `.lyr` struct, layout checked at load like every native signature — `Vec2`, `Rect`, `Color`,
-  `HitInfo` become SDK types, Erato's A2 answered in its useful direction.
+- **Slice 0**: boundary probes in `tools/Bench`, through the RAW registry path a game host uses
+  — the embedding layer's per-call boxing would have buried the figure. Baseline: 40 B per
+  one-argument crossing, 88 B per four-argument one.
+- **Slice 1**: the argument buffers are pooled (per arity, stack-shaped for reentrancy, cleared
+  on recycle, abandoned on throw). The array is a documented LOAN to the implementation. 40/88
+  → **0 B**. This is the fix for the GC tail Erato's SoA measurement exposed.
+- **Slice 2**: struct parameters flatten — the .lyr declaration is the typed façade, the wire
+  and the binder see scalars, the call site emits field loads. Flattening removes the escape,
+  so the M14 scalarizer dissolves the operand: a fresh `Vec2` per call measures **0 B**.
+- **Slice 3**: struct returns through a hidden out-buffer — one module-owned instance per
+  import, passed as trailing wire argument (`0x45` was always legal in import rows; spec now
+  says so), host fills fields in order, call site copies out. VALUE SEMANTICS is the safety
+  argument: any binding copies, so the shared buffer is unobservable — pinned by the
+  two-calls-one-buffer and escaping-result tests. `positionOf(e): Vec2` measures **0 B**.
+  `RegisterStructReturning` checks the layout at load.
+- What M15 deliberately did not do: embedding-layer delegate sugar for struct returns,
+  cross-module structs in native signatures, and structs with reference fields — each a
+  boundary-rule decision, recorded in the changelog.
 
-The other open points — heterogeneous arithmetic, compound assignment through the interfaces, the
-static-extension asymmetry, project-wide references, the first compiler-read attribute, the
-`for-in` peephole — stay material for the **2026-09-06** scope check.
+**Erato's A2 is answered in its useful direction** — the host declares the value types in its
+SDK, the script uses them, nothing allocates. What remains on the register's list for Lyric is
+A4 (an opaque `Entity`) and the E4-side adoption. The other open points — heterogeneous
+arithmetic, compound assignment through the interfaces, the static-extension asymmetry,
+project-wide references, the first compiler-read attribute, the `for-in` peephole — stay
+material for the **2026-09-06** scope check.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
