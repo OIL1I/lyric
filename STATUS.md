@@ -14,6 +14,13 @@
 **v1.0.0 through v1.7.0 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
+**M16 — the tooling milestone — is current** (decided 2026-08-18, at the post-v1 pace): the
+language server learns the project, the editors learn the server. Slices, in order: workspace
+compilation (**done**, PR #43) → rename + workspace symbols → semantic tokens → signature help +
+folding + inlay hints → the VS Code extension rounded off (restart command, status item, task
+provider, snippets, `.vsix` in the release) → a JetBrains thin plugin over the platform's LSP API,
+deliberately no PSI.
+
 **M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
 (frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
 value structs at 0 B per call. PRs #41 and #42, details under *Recently finished*.
@@ -33,24 +40,44 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3856 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
+3878 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
 `lyrembed.dll`, version **1.7.0**.
-
-**All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
-language server reads the project file, and editing a module refreshes the file that imports it.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
-written in Lyric); six tools including the REPL, the language server and the build runner; a VS Code
-extension with live diagnostics; a project that scaffolds, declares its own layout and builds itself
-with a Lyric script; and an embedding API with which a C# host loads scripts, sandboxes them, calls
-functions out of them and hands its own functions and types in.
+written in Lyric); six tools including the REPL, the build runner and a language server that
+compiles the PROJECT — references across files in both directions, diagnostics for files nobody has
+open, disk changes behind the editor picked up through file watches; a VS Code extension with live
+diagnostics; a project that scaffolds, declares its own layout and builds itself with a Lyric
+script; and an embedding API with which a C# host loads scripts, sandboxes them, calls functions
+out of them and hands its own functions, types and value structs in.
 
 > **The file had grown to 1088 lines by 2026-08-07** and contradicted itself in three places. It has
 > been cut back to its own maintenance rule: recent slices, open points, design context. Everything
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M16 slice 1 — the server compiles the project, not the buffer** (2026-08-18, PR #43). 3878
+  tests green in Debug and Release, 11 new.
+  - **`SourceCompiler.CheckProject`**: every `.lyr` under the source root as ONE compilation —
+    symbols are identity objects, so cross-file answers need one symbol world; per-buffer
+    compilations cannot be merged after the fact. Roots register before anything resolves, so an
+    import between roots reads no file twice; a root's name comes from its header, else from the
+    path — the exact inverse of the import derivation, which is what makes the dedup hold.
+  - **A workspace is not an executable.** Two scripts may both declare `main`;
+    `Semantics.Analyze(singleProgram:)` switches off only the duplicate rule, the shape rule stays,
+    and the single-file path still rejects a second `main` — all three pinned by tests. Found in
+    the code, not in the plan: `CheckMain` counts across all modules, and without the switch every
+    two-script project would have been a fake error.
+  - **The M11 references limit is closed**: standing on a declaration finds the uses in files that
+    import this one. Closed files get diagnostics into the Problems panel, deleted files have them
+    withdrawn, never-saved buffers under the root join the project, and `**/*.lyr` +
+    `**/lyric.json` watches (the server's one outgoing request) pick up changes behind the editor.
+  - Files outside a project keep the per-buffer path. Recorded limits: a `sourceRoot` change
+    mid-session can leave stale squiggles on the old root's files; two files claiming one module
+    name both compile, imports bind to the first — a duplicate-module diagnostic is a decision for
+    later, not an accident.
 
 - [x] **M15 — the boundary learns values** (2026-08-18). Four slices, same day as M14, stacked on
   its branch; details under *What we are working on*. The one measured sentence: a native call
@@ -98,54 +125,6 @@ functions out of them and hands its own functions and types in.
     names are unqualified, like every type name in the bytecode; the guide says an SDK owns them.
   - The reserved expression form `@name(args)` left the grammar; `LYR-PAR0038` narrowed to
     parameters and stopped promising the future. Doc ratchet 120 → 123 of 359.
-
-- [x] **v1.5.0 slice 4 — a cast is a conversion the type declared** (2026-08-18). 3744 tests green.
-  Merged as PR #34, and it completed v1.5.0.
-  - `x as T` beyond the numerics desugars through `Into<T>` from `std.core`: `x.into()`, checked and
-    stored exactly as the operators are. The numeric branch stands first and is not overridable —
-    `1 as float` never desugars, whatever conformances exist.
-  - **Three boundaries, each deliberate and each tested.** Explicit only — an implicit conversion is
-    a second, invisible mechanism beside the visible one. ONE target per type — `into` is a member
-    name, a type has one member of a name, and the second conformance is a duplicate-member
-    diagnostic, measured rather than asserted in prose. And total only — `Into` returns `T`, not
-    `?T`; a conversion that can fail is a named function returning an optional.
-  - **The orphan rule guards conversions too, and it corrected the plan.** `extend int ::
-    [Into<Cents>]` is `LYR-SEM0041` — the rule looks at the extended type and the interface, not at
-    the interface's type ARGUMENTS, so a local `Cents` does not rescue it. A conversion OUT of a
-    builtin therefore has no home, and the planned "primitive source through a user extend" was
-    wrong. Pinned as a limit with an address instead.
-  - Conversions chain — `(a as B) as C` — and the cast agrees with the written `into()` in the same
-    program. The operand lowers once; same seam, same guarantees.
-  - Doc ratchet 118 → 120 of 356.
-
-- [x] **v1.5.0 slice 3 — arithmetic through interfaces, and a hole it dug up first** (2026-08-18).
-  3732 tests green, Debug and Release. Not merged.
-  - **The slice began as a bug fix.** Planning the compound forms exposed that a compound assignment
-    never checked its OPERATOR: `p += p` on a struct passed the sema — the only rule was
-    right-assignable-to-left, which any value of the target's own type satisfies — and the lowering
-    emitted an integer `add` over two references. The `s += "x"` bug of v1.1.0, one type over,
-    invisible in Release where the verifier does not run. `s &= s` and `f <<= f` passed the same
-    way. Measured first, then fixed with failing tests, own commit.
-  - **The fix types a compound as the binary it carries**: a synthesized `target op value` runs
-    through `CheckBinary` — the same rules as the written form, not a second copy. `??=`, `&&=` and
-    `||=` keep the old path; their meaning is not "apply the operator to both sides".
-  - **The fix delivered `s *= 3` and `xs *= 2`.** Their rejection was an accident of the
-    assignability rule, pinned by a v1.1.0 test whose own comment predicted this moment: *"the
-    moment the sema rule is corrected this test goes red and says so."* It did; it now runs the
-    repetition and checks the output. The lowering had been ready since every compound was routed
-    through `EmitBinary`.
-  - Then the slice itself: `+ - * /` desugar through `Add<T>`, `Sub<T>`, `Mul<T>`, `Div<T>` — four
-    new `std.core` interfaces, one method each, homogeneous. The built-in numerics and `string`
-    (`Add` only) conform via `extend`, so a generic `total<T :: [Add<T>]>` serves an `int`, a
-    `string` and a `Vec2` in one program. `%` stays numeric-only, deliberately.
-  - `Vec2` is the test receiver on purpose: the type of the project's own measurements, whose
-    method-call cost is exactly what the operator now costs.
-  - **A compound through an interface is a diagnostic, not support**: the compound lowering
-    evaluates the target's address once and cannot yet route through a call — a silent second
-    evaluation of the receiver would be the wrong surprise. The message says `write it out:
-    'a = a + b'`, and a test holds it.
-  - Doc ratchet 110 → 118 of 354; the snapshot gained documentation only, no signature and no name
-    moved.
 
 ## Measurements
 
@@ -226,48 +205,27 @@ once, a batch invocation pays it every time. **Measure in the process that will 
 batch number is an upper bound, and here it was off by a factor of ten in the direction that would
 have bought an incremental compiler nobody needs.
 
+**The workspace compile confirms it** (2026-08-18, in-process, Release, 15 runs): a 14-file
+project through `CheckProject` measures **median 41.7 ms** against **40.1 ms** for a single file
+of it. The standard library dominates; the project's size is in the noise, and the incremental
+compiler stays unwarranted at project scale too.
+
 ## What we are working on
 
-**v1.5.0 is released** — equality (#31), ordering (#32), arithmetic plus the compound-assign fix
-(#33) and conversion (#34). One mechanism throughout: the interface the type declares.
-
-**v1.6.0 is released** — M13, attributes (#36, PR #38), all four slices in one day. Erato re-pins
-at its own pace: a 1.5.0 runtime loads 3.2 modules, so nothing forces the update.
-
-**M14 is finished** (decided 2026-08-18 ahead of the scope check as a deliberate reaction to the
-Erato findings, done the same day — all five slices, slice 4 included rather than cut). The
-changelog carries a v1.7.0 entry as *unreleased*; merging the PR and tagging is the maintainer's
-call. What M14 deliberately did NOT do: value structs as a language feature (a `struct` already
-has value semantics; the representation now keeps the promise), a JIT, and the native boundary.
-
-**M15 — the boundary learns values — is finished and released** (2026-08-18,
-`feature/m15-boundary`, merged as PR #42 into #41, released as **v1.7.0** together with M14).
-
-- **Slice 0**: boundary probes in `tools/Bench`, through the RAW registry path a game host uses
-  — the embedding layer's per-call boxing would have buried the figure. Baseline: 40 B per
-  one-argument crossing, 88 B per four-argument one.
-- **Slice 1**: the argument buffers are pooled (per arity, stack-shaped for reentrancy, cleared
-  on recycle, abandoned on throw). The array is a documented LOAN to the implementation. 40/88
-  → **0 B**. This is the fix for the GC tail Erato's SoA measurement exposed.
-- **Slice 2**: struct parameters flatten — the .lyr declaration is the typed façade, the wire
-  and the binder see scalars, the call site emits field loads. Flattening removes the escape,
-  so the M14 scalarizer dissolves the operand: a fresh `Vec2` per call measures **0 B**.
-- **Slice 3**: struct returns through a hidden out-buffer — one module-owned instance per
-  import, passed as trailing wire argument (`0x45` was always legal in import rows; spec now
-  says so), host fills fields in order, call site copies out. VALUE SEMANTICS is the safety
-  argument: any binding copies, so the shared buffer is unobservable — pinned by the
-  two-calls-one-buffer and escaping-result tests. `positionOf(e): Vec2` measures **0 B**.
-  `RegisterStructReturning` checks the layout at load.
-- What M15 deliberately did not do: embedding-layer delegate sugar for struct returns,
-  cross-module structs in native signatures, and structs with reference fields — each a
-  boundary-rule decision, recorded in the changelog.
+**M16 slice 2 — rename + workspace symbols — is next.** `prepareRename` refuses a target declared
+outside the project (renaming the standard library is an accident, not a rename); the rename
+returns a `WorkspaceEdit` over the reference sites of the project compilation, the new name is
+checked as an identifier against the lexer, and collisions are deliberately left to the recompile
+that follows — the compiler is the conflict analysis. `workspace/symbol` serves the project's
+declarations. Then, in order: semantic tokens, signature help + folding + inlay hints, the VS Code
+extension work, the JetBrains thin plugin.
 
 **Erato's A2 is answered in its useful direction** — the host declares the value types in its
 SDK, the script uses them, nothing allocates. What remains on the register's list for Lyric is
 A4 (an opaque `Entity`) and the E4-side adoption. The other open points — heterogeneous
 arithmetic, compound assignment through the interfaces, the static-extension asymmetry,
-project-wide references, the first compiler-read attribute, the `for-in` peephole — stay
-material for the **2026-09-06** scope check.
+the first compiler-read attribute, the `for-in` peephole — stay material for the **2026-09-06**
+scope check.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer
@@ -377,7 +335,7 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`Merge pull request #38 from OIL1I/feature/attributes`
+`compiler, lsp: the server compiles the project, not the buffer` (PR #43)
 
 ---
 
