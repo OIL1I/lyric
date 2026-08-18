@@ -2282,8 +2282,15 @@ public sealed class TypeChecker
             subst = EmptySubst;
         }
 
+        // One value per field: the lowering writes fields by name, and a second write has no slot to
+        // land in. The first occurrence stands; each repeat is reported at its own span, and its
+        // value is still checked below so faults inside it surface too.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var field in si.Fields)
         {
+            if (!seen.Add(field.Name))
+                _de.Report("LYR-SEM0065", Severity.Error, field.Span,
+                    $"duplicate field '{field.Name}' in initializer for '{ts.Name}'");
             if (ts.Members.LookupLocal(field.Name) is FieldSymbol fs)
             {
                 var ft = Substitute(FieldType(fs), subst);
@@ -2424,8 +2431,13 @@ public sealed class TypeChecker
             return result;
         }
 
+        // One value per field, as for a struct or class initializer.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var field in si.Fields)
         {
+            if (!seen.Add(field.Name))
+                _de.Report("LYR-SEM0065", Severity.Error, field.Span,
+                    $"duplicate field '{field.Name}' in initializer for variant '{ev.Name}'");
             if (Array.Find(decls, d => d.Name == field.Name) is { } fd)
             {
                 var ft = Substitute(ResolveType(fd.Type, enumTs.Members), subst);
