@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Interfaces — Lyric v1.8.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v1.8.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/" class="here">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+</ul>
+</nav>
+<main>
+<h1>Interfaces</h1>
+<nav class="contents">
+<ul>
+<li><a href="#default-methods">Default methods</a></li>
+<li><a href="#extending-a-type">Extending a type</a></li>
+<li><a href="#operators-through-interfaces">Operators through interfaces</a></li>
+</ul>
+</nav>
+<p>An interface names methods. A type declares which interfaces it satisfies with <code>::</code>.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+interface Drawable {
+    fn draw(): string;
+}
+
+class Circle :: [Drawable] {
+    radius: float,
+    fn draw(): string { return &quot;circle&quot;; }
+}
+
+class Square :: [Drawable] {
+    side: float,
+    fn draw(): string { return &quot;square&quot;; }
+}
+
+fn show(d: Drawable): void {
+    println(d.draw());
+}
+
+fn main(): int {
+    show(Circle { radius = 1.0 });
+    show(Square { side = 2.0 });
+    return 0;
+}
+</code></pre>
+<p>A value used through its interface dispatches dynamically. That is the only dynamic dispatch in
+the language.</p>
+<p>There is no inheritance and no interface inheritance. A type that needs two contracts lists both:</p>
+<pre><code class="language-lyr">interface Named { fn name(): string; }
+interface Sized { fn size(): int; }
+
+class Box :: [Named, Sized] {
+    fn name(): string { return &quot;box&quot;; }
+    fn size(): int { return 1; }
+}
+
+fn main(): int { return Box { }.size(); }
+</code></pre>
+<h2 id="default-methods">Default methods</h2>
+<p>An interface method with a body is a default. A type may use it or override it; its own member
+wins.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+interface Greeter {
+    fn name(): string;
+    fn greet(): string { return &quot;Hello, &quot; + this.name(); }
+}
+
+class Formal :: [Greeter] {
+    fn name(): string { return &quot;Ada&quot;; }
+    fn greet(): string { return &quot;Good evening, &quot; + this.name(); }
+}
+
+class Casual :: [Greeter] {
+    fn name(): string { return &quot;Grace&quot;; }
+}
+
+fn main(): int {
+    println(Formal { }.greet());
+    println(Casual { }.greet());
+    return 0;
+}
+</code></pre>
+<h2 id="extending-a-type">Extending a type</h2>
+<p><code>extend</code> adds methods to a type you did not declare, including a built-in one.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+extend int {
+    fn doubled(): int { return this * 2; }
+}
+
+interface Drawable { fn draw(): string; }
+
+class Plain { }
+
+extend Plain :: [Drawable] {
+    fn draw(): string { return &quot;plain&quot;; }
+}
+
+fn main(): int {
+    println(Plain { }.draw());
+    return 21.doubled();
+}
+</code></pre>
+<p>An <code>extend</code> block may also declare that the type satisfies an interface.</p>
+<h2 id="operators-through-interfaces">Operators through interfaces</h2>
+<p><code>==</code> and <code>!=</code> work on any type that conforms to <code>Equatable</code> from <code>std.core</code>. There is no separate
+operator declaration: the operator <em>is</em> the interface method, written as mathematics. <code>a == b</code> calls
+<code>a.equals(b)</code>, and <code>a != b</code> negates it.</p>
+<pre><code class="language-lyr">import std.core { Equatable };
+import std.io.console { println };
+
+struct Point :: [Equatable&lt;Point&gt;] {
+    x: int,
+    y: int,
+    fn equals(other: Point): bool {
+        return this.x == other.x &amp;&amp; this.y == other.y;
+    }
+}
+
+fn main(): int {
+    let a = Point { x = 1, y = 2 };
+    let b = Point { x = 1, y = 2 };
+    if (a == b) {
+        println(&quot;same place&quot;);
+    }
+    return 0;
+}
+</code></pre>
+<p>The conformance is what enables the operator, not the method alone. A type with an <code>equals</code> method
+that never declares <code>:: [Equatable&lt;Point&gt;]</code> keeps its method — but <code>==</code> stays an error. That is
+deliberate: the conformance names the contract, and without it any method that happens to be called
+<code>equals</code> would silently become an operator.</p>
+<p>Inside generic code the constraint is enough:</p>
+<pre><code class="language-lyr">import std.core { Equatable };
+
+fn contains&lt;T :: [Equatable&lt;T&gt;]&gt;(xs: T[], wanted: T): bool {
+    for (x in xs) {
+        if (x == wanted) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn main(): int {
+    return if (contains([1, 2, 3], 2)) 0 else 1;
+}
+</code></pre>
+<p>Because the built-in types conform through <code>extend</code> blocks in <code>std.core</code>, the same generic function
+serves an <code>int</code>, a <code>string</code>, and any type of yours that declares the conformance. Monomorphization
+turns each use into a direct call — the operator costs no more than the method it stands for.</p>
+<p>Optionals stay outside this rule: a <code>?T</code> compares against <code>null</code>, and the value inside compares
+after narrowing.</p>
+<p>Ordering works the same way, through <code>Ordered</code> and its single <code>compare</code> method — negative, zero or
+positive, as <code>strcmp</code>. All four comparison operators derive from it:</p>
+<pre><code class="language-lyr">import std.core { Ordered };
+import std.io.console { println };
+
+struct Version :: [Ordered&lt;Version&gt;] {
+    major: int,
+    minor: int,
+    fn compare(other: Version): int {
+        if (this.major != other.major) {
+            return if (this.major &lt; other.major) -1 else 1;
+        }
+        if (this.minor != other.minor) {
+            return if (this.minor &lt; other.minor) -1 else 1;
+        }
+        return 0;
+    }
+}
+
+fn main(): int {
+    let old = Version { major = 1, minor = 4 };
+    let new = Version { major = 1, minor = 5 };
+    if (old &lt; new) {
+        println(&quot;upgrade available&quot;);
+    }
+    return 0;
+}
+</code></pre>
+<p><code>string</code> conforms to <code>Ordered&lt;string&gt;</code> in the standard library, so <code>&quot;apple&quot; &lt; &quot;banana&quot;</code> works out of
+the box — lexicographic over code points, the same order <code>compare</code> defines.</p>
+<p>Arithmetic follows the same rule, through one interface per operator: <code>Add</code>, <code>Sub</code>, <code>Mul</code> and <code>Div</code>
+from <code>std.core</code>, each with a single method of the same name. The operands are homogeneous — <code>T</code> with
+<code>T</code>, giving <code>T</code>:</p>
+<pre><code class="language-lyr">import std.core { Add, Sub };
+import std.io.console { println };
+import std.string { fromInt };
+
+struct Vec2 :: [Add&lt;Vec2&gt;, Sub&lt;Vec2&gt;] {
+    x: int,
+    y: int,
+    fn add(other: Vec2): Vec2 {
+        return Vec2 { x = this.x + other.x, y = this.y + other.y };
+    },
+    fn sub(other: Vec2): Vec2 {
+        return Vec2 { x = this.x - other.x, y = this.y - other.y };
+    }
+}
+
+fn main(): int {
+    let position = Vec2 { x = 10, y = 20 };
+    let velocity = Vec2 { x = 1, y = -2 };
+    let next = position + velocity;
+    println(fromInt(next.x));
+    println(fromInt(next.y));
+    return 0;
+}
+</code></pre>
+<p>The built-in numerics and <code>string</code> conform in <code>std.core</code>, so a generic function constrained on <code>Add</code>
+serves them and your types alike:</p>
+<pre><code class="language-lyr">import std.core { Add };
+
+fn total&lt;T :: [Add&lt;T&gt;]&gt;(a: T, b: T): T {
+    return a + b;
+}
+
+fn main(): int {
+    return total(40, 2) - 42;
+}
+</code></pre>
+<p>A mixed form such as <code>Vec2 * float</code> does not exist yet: the interfaces are homogeneous by design,
+and <code>%</code> stays numeric-only. Compound assignment (<code>v += w</code>) does not reach through the interfaces
+either — write <code>v = v + w</code>.</p>
+<p>The last operator is <code>as</code>. Beyond the numeric casts, which keep their built-in meaning, a cast is a
+conversion the operand's type declared through <code>Into</code>:</p>
+<pre><code class="language-lyr">import std.core { Into };
+import std.io.console { println };
+import std.string { fromInt };
+
+struct Fahrenheit { degrees: int, }
+
+struct Celsius :: [Into&lt;Fahrenheit&gt;] {
+    degrees: int,
+    fn into(): Fahrenheit {
+        return Fahrenheit { degrees = this.degrees * 9 / 5 + 32 };
+    }
+}
+
+fn main(): int {
+    let boiling = Celsius { degrees = 100 };
+    let f = boiling as Fahrenheit;
+    println(fromInt(f.degrees));
+    return 0;
+}
+</code></pre>
+<p>Three boundaries, each deliberate. Conversions are <strong>explicit</strong> — nothing converts on its own, and
+<code>1 as float</code> never goes through <code>Into</code>. A type has <strong>one</strong> conversion target, because <code>into</code> is a
+member name and a type has one member of a name; the second conversion is an ordinary named method.
+And a conversion that can <strong>fail</strong> does not belong here: <code>Into</code> returns <code>T</code>, not <code>?T</code> — parsing a
+string into a number is a named function returning an optional.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/enums-and-matching/">Enums and pattern matching</a>
+<a class="next" href="../../guide/generics/">Generics</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
