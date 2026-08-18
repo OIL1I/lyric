@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Modules — Lyric v1.7.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v1.7.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/" class="here">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+</ul>
+</nav>
+<main>
+<h1>Modules</h1>
+<nav class="contents">
+<ul>
+<li><a href="#importing">Importing</a></li>
+<li><a href="#a-program-of-several-files">A program of several files</a></li>
+<li><a href="#saying-where-the-modules-are">Saying where the modules are</a></li>
+<li><a href="#module-constants">Module constants</a></li>
+<li><a href="#type-aliases">Type aliases</a></li>
+</ul>
+</nav>
+<p>A file is a module. The header names it; without a header the name comes from the file name.</p>
+<pre><code class="language-lyr">module app.geometry;
+
+pub struct Point { x: int, y: int, }
+
+pub fn origin(): Point { return Point { x = 0, y = 0 }; }
+
+fn helper(): int { return 1; }
+</code></pre>
+<p><code>pub</code> exports. Everything else is visible only inside the module.</p>
+<h2 id="importing">Importing</h2>
+<pre><code class="language-lyr">import std.io.console;                     // qualified: console.println(…)
+import std.math { sqrt, pi };              // selective
+import std.collections as coll;            // alias
+
+fn main(): int {
+    console.println(f&quot;{sqrt(4.0)}&quot;);
+    let list = coll.emptyList&lt;int&gt;();
+    return list.length();
+}
+</code></pre>
+<p>A qualified import binds the last path segment as the name. A selective import binds the listed
+names directly. An alias renames the module.</p>
+<h2 id="a-program-of-several-files">A program of several files</h2>
+<p>A module path becomes a file path under the directory of the file being compiled:</p>
+<pre><code>app.lyr            &lt;- the entry file, and the root
+util.lyr           &lt;- import util
+shapes/circle.lyr  &lt;- import shapes.circle
+</code></pre>
+<pre><code class="language-text">// util.lyr
+module util;
+
+pub fn double(n: int): int { return n * 2; }
+
+// app.lyr
+import util { double };
+
+fn main(): int { return double(21); }
+</code></pre>
+<pre><code class="language-bash">lyric run app.lyr
+</code></pre>
+<p>The two files above are shown together because neither is a program on its own — which is also why
+they are not compiled by the test suite the way every other snippet in this guide is.</p>
+<p>Three rules follow from where a module is found:</p>
+<ul>
+<li><strong>A file must agree with the path it was loaded from.</strong> <code>util.lyr</code> declares <code>module util;</code> or no
+header at all. A header naming something else is an error, because the path is what the import
+wrote down.</li>
+<li><strong><code>std</code> belongs to the standard library.</strong> A file at <code>std/io/console.lyr</code> beside your program is
+never loaded; the import goes to the standard library. Nothing in your own directory can quietly
+take its place.</li>
+<li><strong>Only the standard library declares functions without a body.</strong> In your own modules a missing
+body is an error, not an import declaration.</li>
+</ul>
+<p>Everything ends up in one <code>.lyrbc</code>. There is no separate compilation step per file and no link step.</p>
+<h2 id="saying-where-the-modules-are">Saying where the modules are</h2>
+<p>The rules above need no configuration, and for a program in one directory that is the whole story.
+A project with a <code>src/</code> directory says so in a <code>lyric.json</code> beside it:</p>
+<pre><code class="language-json">{
+  // where our own modules live
+  &quot;sourceRoot&quot;: &quot;src&quot;,
+
+  /* an SDK whose modules may declare functions without a body */
+  &quot;nativeRoots&quot;: { &quot;engine&quot;: &quot;sdk&quot; },
+}
+</code></pre>
+<pre><code>lyric.json
+src/main.lyr          &lt;- import shapes.area
+src/shapes/area.lyr
+sdk/engine/input.lyr  &lt;- import engine.input
+</code></pre>
+<p>The file is searched for upwards from the file being compiled, so it is found from anywhere in the
+project. Comments and trailing commas are allowed; it is meant to be edited by hand.</p>
+<ul>
+<li><strong><code>sourceRoot</code></strong> replaces &quot;the directory of the entry file&quot; as the module root.</li>
+<li><strong><code>nativeRoots</code></strong> maps a module path segment to a directory whose modules may declare functions
+without a body. That segment then belongs to the root, and is no longer looked for under
+<code>sourceRoot</code>.</li>
+</ul>
+<p>Both are optional, and <strong>without the file nothing changes</strong>: the entry file's directory is the root
+and no module of your own may declare a native.</p>
+<p>A key nobody knows is a warning rather than an error, so a file written for a later version still
+loads — but the warning is there, because a typo that does nothing is worse than one that complains.</p>
+<p><code>lyric.json</code> is read and never executed. That is what lets an editor learn the layout of a project
+without running anything from it.</p>
+<h2 id="module-constants">Module constants</h2>
+<p>A module-level <code>let</code> is a constant. It is initialized once before <code>main</code> runs, in declaration
+order.</p>
+<pre><code class="language-lyr">let VERSION = &quot;1.0&quot;;
+let BANNER = &quot;lyric &quot; + VERSION;
+
+fn main(): int {
+    return if (BANNER == &quot;lyric 1.0&quot;) 0 else 1;
+}
+</code></pre>
+<p>An initializer may read a constant declared before it, not one after. There is no module-level
+<code>var</code>.</p>
+<h2 id="type-aliases">Type aliases</h2>
+<pre><code class="language-lyr">type Id = int;
+
+fn describe(id: Id): int {
+    let copy: Id = id;
+    return copy;
+}
+
+fn main(): int { return describe(1); }
+</code></pre>
+<p>An alias is a name for a type, not a new type: <code>Id</code> and <code>int</code> are interchangeable.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/coroutines/">Coroutines</a>
+<a class="next" href="../../guide/standard-library/">The standard library</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

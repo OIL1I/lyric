@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.build — Lyric v1.7.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v1.7.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/" class="here">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.build</h1>
+<nav class="contents">
+<ul>
+<li><a href="#class-artifact">Artifact</a></li>
+<li><a href="#function-addexecutable">addExecutable</a></li>
+</ul>
+</nav>
+<section class="item" id="class-artifact">
+<h2><a href="#class-artifact">Artifact</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class Artifact</code></pre>
+<p>One thing a build produces: a <code>.lyrbc</code> compiled from an entry file.</p>
+<p>Returned by <code>addExecutable</code>, and configured after the fact — the compile itself happens once
+<code>build</code> has returned, so an option set on the next line still applies.</p>
+<p class="source">stdlib/std/build.lyr:7</p>
+</section>
+<section class="item" id="function-addexecutable">
+<h2><a href="#function-addexecutable">addExecutable</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn addExecutable(entry: string, output: string): Artifact</code></pre>
+<p>Declares a program to compile: <code>entry</code> is its main file, <code>output</code> the <code>.lyrbc</code> to write.</p>
+<p>Both are relative to the directory holding <code>build.lyr</code>. The module root and the native roots
+come from <code>lyric.json</code>; this does not repeat them.</p>
+<p>Nothing is compiled while <code>build</code> runs. The artifacts are collected and built afterwards, so
+work the script does in between — writing a generated source file, for instance — is finished
+before any of them is read.</p>
+<p class="source">stdlib/std/build.lyr:22</p>
+</section>
+<nav class="neighbours">
+<a class="next" href="../../stdlib/std.collections/">std.collections</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
