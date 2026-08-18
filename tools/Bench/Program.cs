@@ -131,6 +131,11 @@ internal static class Program
                 return default;
             });
 
+        // 'pull2(v: Vec2)' arrives flattened: the host registers against the wire signature,
+        // two floats, exactly as it would have written two scalar parameters itself.
+        registry.Register("bench.api.pull2", [TypeTag.F64, TypeTag.F64], TypeTag.F64,
+            arguments => LyrValue.FromF64(arguments[0].AsF64 * 0.9999 + arguments[1].AsF64));
+
         return registry;
     }
 
@@ -344,6 +349,24 @@ internal static class Program
                 while (i < 100000) {
                     push4(acc, 0.5, 1.5, 2.5);
                     acc = acc * 0.9999 + 1.5;
+                    i = i + 1;
+                }
+                return if (acc > 0.0) 0 else 1;
+            }
+            """, RawNatives: true);
+
+        // A struct crossing the boundary: built fresh each pass, flattened at the call. The
+        // gate is 0 B — the scalarizer dissolves the construction because flattening removed
+        // the escape.
+        yield return new Case("native_vec2_arg", 100_000, "scalar", """
+            import bench.api { Vec2, pull2 };
+
+            fn main(): int {
+                var acc = 0.0;
+                var i = 0;
+                while (i < 100000) {
+                    let v = Vec2 { x = acc, y = 1.5 };
+                    acc = pull2(v);
                     i = i + 1;
                 }
                 return if (acc > 0.0) 0 else 1;

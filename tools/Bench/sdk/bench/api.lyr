@@ -7,3 +7,11 @@ pub fn step(a: float): float;
 
 /// Four scalars in, nothing out — the shape of a setPosition-style command.
 pub fn push4(a: float, b: float, c: float, d: float);
+
+/// The value type the flattening probes use. Declared HERE because an SDK owns its value types;
+/// the wire signature below carries its fields as scalars.
+pub struct Vec2 { x: float, y: float }
+
+/// A struct in — crosses as two floats, allocates nothing once the scalarizer has dissolved
+/// the operand.
+pub fn pull2(v: Vec2): float;

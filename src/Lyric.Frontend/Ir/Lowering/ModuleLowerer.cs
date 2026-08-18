@@ -98,11 +98,12 @@ public static class ModuleLowerer
                     try
                     {
                         var host = HostTypeResolver(module, compilation);
+                        var (flattened, shape) = LowerNativeParameters(module, function, host,
+                            typeTable);
                         imports.Declare(symbol, new IrImport(
-                        NameMangling.ForFunction(module, function.Name),
-                            function.Parameters
-                                .Select(p => DeclaredTypes.Lower(p.Type, host)).ToArray(),
-                            DeclaredTypes.Lower(function.ReturnType, host)));
+                            NameMangling.ForFunction(module, function.Name),
+                            flattened,
+                            DeclaredTypes.Lower(function.ReturnType, host)), shape);
                     }
                     catch (UnsupportedConstructException ex)
                     {
@@ -399,6 +400,65 @@ public static class ModuleLowerer
         node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
             ? HostTypes.NameOf(module.Members.LookupLocal(named.Path[0]) as TypeSymbol, compilation)
             : null;
+
+    /// <summary>
+    /// The parameters of a native declaration: the flattened wire types plus the declared shape.
+    ///
+    /// <para>A struct parameter — declared in the SAME native module, which is where an SDK's
+    /// value types live — is flattened to its fields, so the import table, the bytecode and the
+    /// binder see scalars and nothing changes below the compiler. The call site emits one field
+    /// load per slot; the shape is what tells it to.</para>
+    /// </summary>
+    private static (IrType[] Flattened, ImportParam[] Shape) LowerNativeParameters(
+        ModuleSymbol module, FunctionDecl function, Func<TypeNode, string?> host,
+        TypeTable typeTable)
+    {
+        var flattened = new List<IrType>(function.Parameters.Length);
+        var shape = new ImportParam[function.Parameters.Length];
+
+        for (var i = 0; i < function.Parameters.Length; i++)
+        {
+            var node = function.Parameters[i].Type;
+            if (NativeStructParameter(module, node, typeTable) is { } flat)
+            {
+                shape[i] = flat;
+                flattened.AddRange(flat.Fields);
+            }
+            else
+            {
+                var lowered = DeclaredTypes.Lower(node, host);
+                shape[i] = new ImportParam(lowered, null, []);
+                flattened.Add(lowered);
+            }
+        }
+
+        return (flattened.ToArray(), shape);
+    }
+
+    /// <summary>A struct of this native module used as a parameter, or <c>null</c> when the node
+    /// is anything else.</summary>
+    /// <exception cref="UnsupportedConstructException">The struct has a field that cannot be
+    /// flattened. Scalars and strings only: an array or object field would put a module layout
+    /// into the host's hands, which is the boundary this design keeps closed.</exception>
+    private static ImportParam? NativeStructParameter(ModuleSymbol module, TypeNode? node,
+        TypeTable typeTable)
+    {
+        if (node is not NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
+            || module.Members.LookupLocal(named.Path[0])
+                is not TypeSymbol { Kind: TypeSymbolKind.Struct } symbol)
+            return null;
+
+        var type = typeTable.Intern(symbol);
+        var layout = typeTable.Defs[type.Value];
+
+        foreach (var field in layout.FieldTypes)
+            if (field is not IrScalarType)
+                throw new UnsupportedConstructException(
+                    $"a struct in a native signature is flattened to scalars, and a field of "
+                    + $"'{symbol.Name}' is none — scalar and string fields only", node.Span);
+
+        return new ImportParam(new IrStructType(type), type, layout.FieldTypes);
+    }
 
     /// <summary>
     /// What capabilities this program requires: the union over all loaded modules.
