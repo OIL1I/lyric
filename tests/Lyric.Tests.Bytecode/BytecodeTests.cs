@@ -516,9 +516,11 @@ public class BytecodeTests
         var module = BytecodeReader.ReadOrThrow(BytecodeWriter.Write(ir));
         var text = Disassembler.Dump(module);
 
-        Assert.Equal(6, module.Functions.Count);
+        // Two functions, not the six the source declares: the small ones are inlined and then
+        // pruned. 'gcd' is recursive and therefore survives, call site included.
+        Assert.Equal(2, module.Functions.Count);
         Assert.Contains("fn main.main -> i64", text, StringComparison.Ordinal);
-        Assert.Contains("call main.sumTo", text, StringComparison.Ordinal);
+        Assert.Contains("call main.gcd", text, StringComparison.Ordinal);
         Assert.Contains("condbr bb", text, StringComparison.Ordinal);
 
         // No redundant store/load pair: that would be the sign that the scheduling does not apply.

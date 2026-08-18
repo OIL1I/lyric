@@ -51,9 +51,11 @@ public class VmTests
     [Fact]
     public void A_backtrace_names_the_line_that_panicked_and_the_line_that_called()
     {
-        // Two frames, two different questions of the same arithmetic: the innermost frame wants the
-        // instruction that FAULTED, every frame below it the 'call' it is waiting on. Both sit at
-        // Ip - 1, because the loop reads with Ip++.
+        // 'divide' is small and is INLINED, so the backtrace has one frame: the caller's name with
+        // the faulting line of the callee — spliced instructions keep their spans, which is what
+        // preserves the line. The frame that would name 'divide' is the price of inlining, the
+        // same trade every optimizing compiler makes. A function sealed by 'panic' never returns
+        // and is not inlined, so a deliberate panic keeps its full backtrace.
         var panic = PanicWithSourceMap("""
             fn divide(a: int, b: int): int {
                 return a / b;
@@ -65,7 +67,7 @@ public class VmTests
             }
             """);
 
-        Assert.Equal(["main.divide (test.lyr:2)", "main.main (test.lyr:7)"], panic.CallStack);
+        Assert.Equal(["main.main (test.lyr:2)"], panic.CallStack);
     }
 
     [Fact]
@@ -93,7 +95,8 @@ public class VmTests
     public void Without_a_source_map_a_backtrace_is_names_only()
     {
         // The same program through the ordinary path: a stripped module still produces a backtrace,
-        // just without positions. That is the whole cost of stripping.
+        // just without positions. That is the whole cost of stripping. One frame, not two —
+        // 'divide' is inlined, see the test above.
         var panic = RunExpectingPanic("""
             fn divide(a: int, b: int): int {
                 return a / b;
@@ -105,7 +108,7 @@ public class VmTests
             }
             """);
 
-        Assert.Equal(["main.divide", "main.main"], panic.CallStack);
+        Assert.Equal(["main.main"], panic.CallStack);
     }
 
     /// <summary>A programming error at runtime is a <c>panic</c>: not catchable, with a backtrace. No
@@ -653,8 +656,8 @@ public class VmTests
             """);
 
         Assert.Equal(VmDiagnostics.DivisionByZero, ex.Code);
-        // Innermost function first: the backtrace shows where it blew up and who led there.
-        Assert.Equal(new[] { "main.divide", "main.main" }, ex.CallStack);
+        // One frame: 'divide' is inlined into main, and the backtrace names the surviving frame.
+        Assert.Equal(new[] { "main.main" }, ex.CallStack);
     }
 
     [Fact]

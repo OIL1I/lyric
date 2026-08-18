@@ -197,12 +197,12 @@ public sealed class CommandTests
         Assert.Equal(withMap.ExitCode, without.ExitCode);
 
         // The expression stands on its own line, so the faulting division is line 3 and not the
-        // line of the return it belongs to.
+        // line of the return it belongs to. 'divide' is small and inlined, so one frame remains:
+        // the caller's name, the callee's line — spliced instructions keep their spans.
         var name = Path.GetFileName(source.Path);
-        Assert.Contains($"in main.divide ({name}:3)", withMap.Err, StringComparison.Ordinal);
-        Assert.Contains($"in main.main ({name}:8)", withMap.Err, StringComparison.Ordinal);
+        Assert.Contains($"in main.main ({name}:3)", withMap.Err, StringComparison.Ordinal);
 
-        Assert.Contains("in main.divide", without.Err, StringComparison.Ordinal);
+        Assert.Contains("in main.main", without.Err, StringComparison.Ordinal);
         Assert.DoesNotContain(name, without.Err, StringComparison.Ordinal);
     }
 

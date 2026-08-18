@@ -134,13 +134,18 @@ Numbers instead of opinions. Since 2026-08-18 they come from `tools/Bench` — i
 | `Set.iter()`, the `callvirt` route (against `while`) | 420.9 | 229 |
 
 One correction to the old numbers: the 112 B for "construction only" was a four-field shape; the
-two-field `Vec2` is 56 B.
+two-field `Vec2` is 56 B. And one to the harness: the interpreter loop is one shared method that
+tiered compilation keeps improving while the harness runs, so the cases are measured round-robin
+over three cycles, minimum per case — sequentially, the scalar baseline came out slower than the
+loop doing the same work plus a call.
 
-**After slice 1 (frame pooling), same harness:** call **176 → 0 B** and 49.9 → 7.9 ns;
-`for-in` range **208 → 0.1 B** (the 208 B were the frame trio alone — a `Some` over a scalar
-never allocated, disproving slice 0's guess); `Vec2.add` 352 → **112 B**, which is the result
-plus the assignment's `structcopy` — precisely the slice 2+3 target. `set_iter` keeps its
-~50 ns/op `callvirt` premium over the array route: the slice 4 gate.
+**After slice 1 (frame pooling):** call **176 → 0 B**; `for-in` range **208 → 0.1 B** — the
+208 B were the frame trio alone; a `Some` over a scalar never allocated, disproving slice 0's
+guess. **After slice 2 (inlining), adjusted ns/op:** `Vec2.add` 271 → **112**, `for-in` range
+143 → **68**, array 153 → **94**; the ~7 ns residue on a bare call is the spliced
+parameter/return traffic through locals. Bytes unchanged since slice 1 — the remaining 112 B on
+`Vec2.add` are the result plus the assignment's `structcopy`, which is exactly slice 3. The
+`callvirt` route (`set_iter`, 353 ns/op adj.) remains the slice 4 gate.
 
 **The VM is allocation-free at its core** — a loop with floating-point arithmetic allocates nothing
 worth mentioning over 100 000 passes. Everything above that is calls and objects.

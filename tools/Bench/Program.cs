@@ -39,25 +39,35 @@ internal static class Program
         Console.WriteLine("| case | ns/op | B/op | ns/op adj. | B/op adj. |");
         Console.WriteLine("|---|---:|---:|---:|---:|");
 
-        // One warm pass over everything first: the interpreter loop is one shared method, and
-        // without this the first case pays its tiering for all of them — measured as a negative
-        // call cost before this pass existed.
+        // Round-robin over several cycles rather than case after case: the interpreter loop is
+        // ONE shared method, and tiered compilation keeps improving it while the harness runs.
+        // Measured sequentially, the first case pays the cold tiers for all of them — the scalar
+        // baseline came out slower than the loop that did the same work plus a call. The minimum
+        // per case across cycles sees every case at the final tier at least once.
         var cases = Cases().ToList();
+        var vm = new LangVm(new HostOptions { StdlibRoot = stdlib });
+        var modules = cases.ToDictionary(c => c.Name, c => vm.Compile(c.Source, "bench"));
+
+        foreach (var c in cases) Require(vm.Run(modules[c.Name]), c.Name);
+
+        var results = cases.ToDictionary(c => c.Name,
+            _ => new Result(double.MaxValue, double.MaxValue), StringComparer.Ordinal);
+
+        for (var cycle = 0; cycle < 3; cycle++)
+            foreach (var c in cases)
+            {
+                var measured = Measure(vm, modules[c.Name], c);
+                results[c.Name] = new Result(
+                    Math.Min(results[c.Name].NsPerOp, measured.NsPerOp),
+                    Math.Min(results[c.Name].BytesPerOp, measured.BytesPerOp));
+            }
+
         foreach (var c in cases)
         {
-            var vm = new LangVm(new HostOptions { StdlibRoot = stdlib });
-            Require(vm.Run(vm.Compile(c.Source, "bench")), c.Name);
-        }
-
-        var results = new Dictionary<string, Result>(StringComparer.Ordinal);
-        foreach (var c in cases)
-        {
-            var result = Measure(c, stdlib);
-            results[c.Name] = result;
-
             if (filter is not null && !c.Name.Contains(filter, StringComparison.Ordinal))
                 continue;
 
+            var result = results[c.Name];
             var baseline = c.Baseline is null ? new Result(0, 0) : results[c.Baseline];
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
                 $"| {c.Name} | {result.NsPerOp:F1} | {result.BytesPerOp:F1} " +
@@ -68,14 +78,8 @@ internal static class Program
         return 0;
     }
 
-    private static Result Measure(Case c, string stdlib)
+    private static Result Measure(LangVm vm, ScriptModule module, Case c)
     {
-        var vm = new LangVm(new HostOptions { StdlibRoot = stdlib });
-        var module = vm.Compile(c.Source, "bench");
-
-        Require(vm.Run(module), c.Name);
-        Require(vm.Run(module), c.Name);
-
         var bestTicks = long.MaxValue;
         var bestBytes = long.MaxValue;
         for (var i = 0; i < Repetitions; i++)

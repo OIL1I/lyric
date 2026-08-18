@@ -59,8 +59,11 @@ public static class ModuleLowerer
     /// <c>LYR-IR0001</c>; the cause then stands in <paramref name="de"/>.</summary>
     /// <param name="verify"><c>null</c> means <see cref="VerifyByDefault"/>. Tests set the value
     /// explicitly, so their result does not depend on the build configuration.</param>
+    /// <param name="optimize">Whether the inliner runs. On everywhere except in tests that pin
+    /// the SHAPE of lowered code — a test about monomorphization asserts an instance the inliner
+    /// would fold away, and turning the optimizer off there keeps the test about its subject.</param>
     public static IrModule? Lower(Compilation compilation, BindingResult binding, TypeResult types,
-        DiagnosticEngine de, bool? verify = null)
+        DiagnosticEngine de, bool? verify = null, bool optimize = true)
     {
         // Receiver == null means a free function or a 'static fn'. Otherwise the type whose instance is
         // passed as parameter 0.
@@ -361,6 +364,10 @@ public static class ModuleLowerer
             Attributes = attributes,
         };
         if (failed) return null;
+
+        // Inlining BEFORE the pruning: a body spliced into its last caller leaves a function
+        // nobody calls, and the pruning that follows deletes it in the same run.
+        if (optimize) Inliner.Run(result);
 
         // BEFORE the verifier: what gets deleted does not need checking, and the verifier runs again at
         // load time anyway, so this is the one place where the saving counts twice.
