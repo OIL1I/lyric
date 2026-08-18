@@ -366,8 +366,14 @@ public static class ModuleLowerer
         if (failed) return null;
 
         // Inlining BEFORE the pruning: a body spliced into its last caller leaves a function
-        // nobody calls, and the pruning that follows deletes it in the same run.
-        if (optimize) Inliner.Run(result);
+        // nobody calls, and the pruning that follows deletes it in the same run. Scalar
+        // replacement BEHIND the inliner, because a returned value escapes its own function but
+        // not the caller it was inlined into — without that order the analysis finds nothing.
+        if (optimize)
+        {
+            Inliner.Run(result);
+            ScalarReplacement.Run(result);
+        }
 
         // BEFORE the verifier: what gets deleted does not need checking, and the verifier runs again at
         // load time anyway, so this is the one place where the saving counts twice.

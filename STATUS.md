@@ -143,9 +143,22 @@ loop doing the same work plus a call.
 208 B were the frame trio alone; a `Some` over a scalar never allocated, disproving slice 0's
 guess. **After slice 2 (inlining), adjusted ns/op:** `Vec2.add` 271 → **112**, `for-in` range
 143 → **68**, array 153 → **94**; the ~7 ns residue on a bare call is the spliced
-parameter/return traffic through locals. Bytes unchanged since slice 1 — the remaining 112 B on
-`Vec2.add` are the result plus the assignment's `structcopy`, which is exactly slice 3. The
-`callvirt` route (`set_iter`, 353 ns/op adj.) remains the slice 4 gate.
+parameter/return traffic through locals.
+
+**After slice 3 (scalar replacement), against the slice-0 baseline, adjusted:**
+
+| Case | baseline | now |
+|---|---:|---:|
+| construction only | 60.6 ns / 56 B | **18.2 ns / 0 B** |
+| `Vec2.add` plus assignment | 271.0 ns / 352 B | **8.4 ns / 0 B** |
+| the same through `a + b` | 252.3 ns / 352 B | **6.1 ns / 0 B** |
+| `for-in` over a range | 143.2 ns / 208 B | **40.5 ns / 0 B** |
+| `for-in` over an array | 153.1 ns / 208 B | **109.7 ns / 0.3 B** |
+
+The `Vec2` gate is met: expression-shaped struct code allocates NOTHING and runs ~30–40× the
+baseline. The range loop is 0 B but 1.85× a `while` — the optional ops and the extra block hops
+remain; honest, and material for a later peephole rather than this milestone. `set_iter`
+(`callvirt`, ~390 ns/op adj.) is untouched: the slice 4 gate.
 
 **The VM is allocation-free at its core** — a loop with floating-point arithmetic allocates nothing
 worth mentioning over 100 000 passes. Everything above that is calls and objects.
