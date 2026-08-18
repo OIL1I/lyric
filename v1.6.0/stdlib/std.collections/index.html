@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.collections — Lyric v1.6.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<span class="version">v1.6.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+</ul>
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/" class="here">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.collections</h1>
+<nav class="contents">
+<ul>
+<li><a href="#interface-indexable">Indexable</a></li>
+<li><a href="#class-list">List</a></li>
+<li><a href="#function-emptylist">emptyList</a></li>
+<li><a href="#class-listiterator">ListIterator</a></li>
+<li><a href="#function-collect">collect</a></li>
+<li><a href="#class-map">Map</a></li>
+<li><a href="#function-emptymap">emptyMap</a></li>
+<li><a href="#function-sortlist">sortList</a></li>
+<li><a href="#function-sortlistby">sortListBy</a></li>
+<li><a href="#class-set">Set</a></li>
+<li><a href="#class-setiterator">SetIterator</a></li>
+<li><a href="#function-emptyset">emptySet</a></li>
+<li><a href="#function-union">union</a></li>
+<li><a href="#function-intersect">intersect</a></li>
+<li><a href="#function-difference">difference</a></li>
+<li><a href="#function-issubset">isSubset</a></li>
+<li><a href="#class-mapkeyiterator">MapKeyIterator</a></li>
+<li><a href="#class-mapvalueiterator">MapValueIterator</a></li>
+<li><a href="#function-keys">keys</a></li>
+<li><a href="#function-values">values</a></li>
+<li><a href="#function-listcontains">listContains</a></li>
+<li><a href="#function-listindexof">listIndexOf</a></li>
+</ul>
+</nav>
+<section class="item" id="interface-indexable">
+<h2><a href="#interface-indexable">Indexable</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Indexable&lt;T&gt;</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn get(index: int): T</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">mut fn set(index: int, value: T): void</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:22</p>
+</section>
+<section class="item" id="class-list">
+<h2><a href="#class-list">List</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class List&lt;T&gt; :: [Indexable&lt;T&gt;, Iterable&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">data: (?T)[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">count: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn length(): int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn iter(): Iterator&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn isEmpty(): bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn capacity(): int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn push(value: T): void</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn pop(): ?T</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn get(index: int): T</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn set(index: int, value: T): void</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn clear(): void</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn toArray(): T[]</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:40</p>
+</section>
+<section class="item" id="function-emptylist">
+<h2><a href="#function-emptylist">emptyList</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn emptyList&lt;T&gt;(): List&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:163</p>
+</section>
+<section class="item" id="class-listiterator">
+<h2><a href="#class-listiterator">ListIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class ListIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: List&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">index: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:170</p>
+</section>
+<section class="item" id="function-collect">
+<h2><a href="#function-collect">collect</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn collect&lt;T&gt;(source: Iterator&lt;T&gt;): List&lt;T&gt;</code></pre>
+<p>Collects an iterator into a <code>List&lt;T&gt;</code>.</p>
+<p>Here rather than in <code>std.iter</code>, because the dependency runs this way: <code>std.collections</code> imports
+<code>std.iter</code>, not the reverse. <code>std.iter.collectArray</code> is the variant without that dependency,
+and it is quadratic because a <code>T[]</code> copies on every append. This one doubles and is linear.</p>
+<p class="source">stdlib/std/collections.lyr:189</p>
+</section>
+<section class="item" id="class-map">
+<h2><a href="#class-map">Map</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class Map&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">keys: (?K)[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">values: (?V)[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">states: int[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">count: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">used: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn length(): int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn isEmpty(): bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn containsKey(key: K): bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn get(key: K): ?V</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn set(key: K, value: V): void</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn remove(key: K): ?V</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:212</p>
+</section>
+<section class="item" id="function-emptymap">
+<h2><a href="#function-emptymap">emptyMap</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn emptyMap&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;(): Map&lt;K, V&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:354</p>
+</section>
+<section class="item" id="function-sortlist">
+<h2><a href="#function-sortlist">sortList</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sortList&lt;T :: [Ordered&lt;T&gt;]&gt;(xs: List&lt;T&gt;): void</code></pre>
+<p>Sorts in place by the natural order of the type.</p>
+<p class="source">stdlib/std/collections.lyr:384</p>
+</section>
+<section class="item" id="function-sortlistby">
+<h2><a href="#function-sortlistby">sortListBy</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sortListBy&lt;T&gt;(xs: List&lt;T&gt;, less: fn(T, T) -&gt; bool): void</code></pre>
+<p>Sorts in place with a comparison of your own.</p>
+<p><code>less(a, b)</code> must return <code>true</code> when <code>a</code> comes STRICTLY before <code>b</code>. A <code>less</code> returning <code>true</code>
+for equal elements destroys stability; a contradictory <code>less</code> makes the output arbitrary but
+crashes nothing, because the algorithm only compares.</p>
+<p class="source">stdlib/std/collections.lyr:393</p>
+</section>
+<section class="item" id="class-set">
+<h2><a href="#class-set">Set</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class Set&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">items: (?T)[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">states: int[]</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">count: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">used: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn length(): int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn isEmpty(): bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn contains(value: T): bool</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn add(value: T): bool</code></pre>
+<p>Adds and returns <code>true</code> when the value was NEW.</p>
+<p>The return value saves a preceding <code>contains</code>, which would probe twice.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn remove(value: T): bool</code></pre>
+<p>Removes and returns <code>true</code> when the value was present.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn iter(): Iterator&lt;T&gt;</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:476</p>
+</section>
+<section class="item" id="class-setiterator">
+<h2><a href="#class-setiterator">SetIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class SetIterator&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Set&lt;T&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">index: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:599</p>
+</section>
+<section class="item" id="function-emptyset">
+<h2><a href="#function-emptyset">emptySet</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn emptySet&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(): Set&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:615</p>
+</section>
+<section class="item" id="function-union">
+<h2><a href="#function-union">union</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn union&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:622</p>
+</section>
+<section class="item" id="function-intersect">
+<h2><a href="#function-intersect">intersect</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn intersect&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:629</p>
+</section>
+<section class="item" id="function-difference">
+<h2><a href="#function-difference">difference</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn difference&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:640</p>
+</section>
+<section class="item" id="function-issubset">
+<h2><a href="#function-issubset">isSubset</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isSubset&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): bool</code></pre>
+<p class="source">stdlib/std/collections.lyr:648</p>
+</section>
+<section class="item" id="class-mapkeyiterator">
+<h2><a href="#class-mapkeyiterator">MapKeyIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class MapKeyIterator&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt; :: [Iterator&lt;K&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Map&lt;K, V&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">index: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?K</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:666</p>
+</section>
+<section class="item" id="class-mapvalueiterator">
+<h2><a href="#class-mapvalueiterator">MapValueIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class MapValueIterator&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt; :: [Iterator&lt;V&gt;]</code></pre>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">source: Map&lt;K, V&gt;</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">index: int</code></pre>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?V</code></pre>
+</div>
+</div>
+<p class="source">stdlib/std/collections.lyr:682</p>
+</section>
+<section class="item" id="function-keys">
+<h2><a href="#function-keys">keys</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn keys&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;K&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:698</p>
+</section>
+<section class="item" id="function-values">
+<h2><a href="#function-values">values</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn values&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;V&gt;</code></pre>
+<p class="source">stdlib/std/collections.lyr:702</p>
+</section>
+<section class="item" id="function-listcontains">
+<h2><a href="#function-listcontains">listContains</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn listContains&lt;T :: [Equatable&lt;T&gt;]&gt;(xs: List&lt;T&gt;, value: T): bool</code></pre>
+<p class="source">stdlib/std/collections.lyr:712</p>
+</section>
+<section class="item" id="function-listindexof">
+<h2><a href="#function-listindexof">listIndexOf</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn listIndexOf&lt;T :: [Equatable&lt;T&gt;]&gt;(xs: List&lt;T&gt;, value: T): ?int</code></pre>
+<p>The position of the first occurrence, or <code>null</code> when there is none.</p>
+<p class="source">stdlib/std/collections.lyr:724</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.build/">std.build</a>
+<a class="next" href="../../stdlib/std.core/">std.core</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
