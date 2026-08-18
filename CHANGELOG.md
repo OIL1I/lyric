@@ -10,6 +10,14 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.8.1 — 2026-08-18
+
+A one-line fix for the JetBrains plugin (now 1.2.1): the TextMate bundle provider was registered
+under an extension-point namespace that does not exist, so `.lyr` files rendered uncolored while
+everything the language server answers worked. The point is declared by the TextMate plugin but
+qualified under `com.intellij`; the registration moved there, and highlighting appears. The
+toolchain itself is unchanged.
+
 ## v1.8.0 — 2026-08-18
 
 The editors catch up with the compiler. No language change and no format change: the language
