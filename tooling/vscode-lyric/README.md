@@ -23,6 +23,10 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
   to the compile that follows immediately — its diagnostics are the conflict analysis.
 - **Completion** after `.` and for names in scope, an **outline** of the file's declarations, and
   **workspace symbols** (`Ctrl+T`): every declaration of the project, searched by name.
+- **Signature help** while you type a call — the declaration as written, the active parameter
+  following your commas. **Folding** for declarations, blocks and matches, with the closing line
+  kept visible. **Inlay hints** show the inferred type of a `let`/`var` without an annotation and
+  of every loop variable; a written annotation silences the hint.
 - **Highlighting** in two layers. The TextMate grammar colors what is lexical — keywords, strings
   with interpolation, nested block comments, all numeric literal forms. On top, **semantic
   tokens** from the server color every name by what the compiler resolved it to: a type in an

@@ -112,6 +112,79 @@ public sealed record ServerCapabilities
     public required bool WorkspaceSymbolProvider { get; init; }
 
     public required SemanticTokensOptions SemanticTokensProvider { get; init; }
+
+    public required SignatureHelpOptions SignatureHelpProvider { get; init; }
+
+    public required bool FoldingRangeProvider { get; init; }
+
+    public required bool InlayHintProvider { get; init; }
+}
+
+/// <summary>What makes the editor ask for a signature without being told to.</summary>
+public sealed record SignatureHelpOptions
+{
+    /// <summary>Opening a call and moving to the next argument — the two moments the question
+    /// changes its answer.</summary>
+    public required IReadOnlyList<string> TriggerCharacters { get; init; }
+}
+
+public sealed record SignatureHelp
+{
+    public required IReadOnlyList<SignatureInformation> Signatures { get; init; }
+
+    /// <summary>Always 0: Lyric has no overloading, so there is exactly one signature to show —
+    /// the constraint mechanism is this language's overloading, and it does not fork
+    /// signatures.</summary>
+    public required int ActiveSignature { get; init; }
+
+    public required int ActiveParameter { get; init; }
+}
+
+public sealed record SignatureInformation
+{
+    public required string Label { get; init; }
+
+    /// <summary>Each a substring of <see cref="Label"/> by construction, which is what the
+    /// client's highlight matches on. Empty when the callee is a function VALUE: the type knows
+    /// no parameter names, and invented ones would read as fact.</summary>
+    public required IReadOnlyList<ParameterInformation> Parameters { get; init; }
+}
+
+public sealed record ParameterInformation
+{
+    public required string Label { get; init; }
+}
+
+public sealed record FoldingRangeParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+}
+
+/// <summary>Line-only folding. Character precision exists in the protocol and buys nothing here:
+/// the foldable forms all end their line.</summary>
+public sealed record FoldingRange
+{
+    public required int StartLine { get; init; }
+    public required int EndLine { get; init; }
+}
+
+public sealed record InlayHintParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+    public required Range Range { get; init; }
+}
+
+public enum InlayHintKind
+{
+    Type = 1,
+    Parameter = 2,
+}
+
+public sealed record InlayHint
+{
+    public required Position Position { get; init; }
+    public required string Label { get; init; }
+    public required InlayHintKind Kind { get; init; }
 }
 
 /// <summary>Only the full form. A delta or a range form would be announced here the day a
@@ -567,6 +640,9 @@ public static class LspMethods
     public const string Rename = "textDocument/rename";
     public const string WorkspaceSymbol = "workspace/symbol";
     public const string SemanticTokensFull = "textDocument/semanticTokens/full";
+    public const string SignatureHelp = "textDocument/signatureHelp";
+    public const string FoldingRange = "textDocument/foldingRange";
+    public const string InlayHint = "textDocument/inlayHint";
 
     public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
 

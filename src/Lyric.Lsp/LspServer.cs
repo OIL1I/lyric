@@ -229,6 +229,18 @@ public sealed class LspServer : IDisposable
                 await SendSemanticTokensAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.SignatureHelp when _state == State.Running:
+                await SendSignatureHelpAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case LspMethods.FoldingRange when _state == State.Running:
+                await SendFoldingRangesAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
+            case LspMethods.InlayHint when _state == State.Running:
+                await SendInlayHintsAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -655,6 +667,97 @@ public sealed class LspServer : IDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Answers which parameter the cursor is on, off the CURRENT buffer — see
+    /// <see cref="AnalysisService.SignatureHelpAsync"/>.</summary>
+    private async Task SendSignatureHelpAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(
+            message.Params, LspJson.Default.TextDocumentPositionParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document and a position", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _documents.ByPath(path) is not { } document)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var offset = TextOffsets.ToOffset(document.Text, parameters.Position);
+        var help = await _analysis.SignatureHelpAsync(document, offset, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (help is null)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await SendResultAsync(id, help, LspJson.Default.SignatureHelp, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Answers what may collapse, or answers with null. Syntax off the last good tree —
+    /// regions must not snap open on a type error.</summary>
+    private async Task SendFoldingRangesAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.FoldingRangeParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var ranges = FoldingProvider.Of(snapshot.Root, snapshot.File, snapshot.Sources);
+
+        await SendResultAsync(id, ranges, LspJson.Default.IReadOnlyListFoldingRange,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Answers the inferred types of the bindings in a range, off the last good
+    /// analysis.</summary>
+    private async Task SendInlayHintsAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(message.Params, LspJson.Default.InlayHintParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document and a range", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _analysis.LastGood(path) is not { } snapshot)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var hints = InlayHintProvider.Of(snapshot.Model, snapshot.Root, snapshot.File,
+            snapshot.Sources, parameters.Range);
+
+        await SendResultAsync(id, hints, LspJson.Default.IReadOnlyListInlayHint,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Answers where the rename would edit, or with the reason it will not — BEFORE the user has
     /// typed anything, which is what prepare exists for.
@@ -839,6 +942,9 @@ public sealed class LspServer : IDisposable
                 },
                 Full = true,
             },
+            SignatureHelpProvider = new SignatureHelpOptions { TriggerCharacters = ["(", ","] },
+            FoldingRangeProvider = true,
+            InlayHintProvider = true,
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };
