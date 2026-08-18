@@ -48,6 +48,26 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **M14 — the interpreter stops allocating** (2026-08-18). Five slices in one day, 3855 tests
+  green in Debug and Release, branch `feature/m14-allocations`. No language change, no format
+  change.
+  - **Slice 0**: `tools/Bench`, the in-process harness — every later gate is a diff against its
+    baseline. Round-robin against JIT tiering, minima, scalar loop subtracted.
+  - **Slice 1**: frame pooling. Rent from a per-function free list, recycle on return and handled
+    unwind, arrays cleared so nothing stays alive. Coroutines need no exception: state machines,
+    no frame survives a yield. Call: 176 → 0 B.
+  - **Slice 2**: the inliner. Splice via renumbering — the phi-free IR makes it cheap. Not
+    inlined: handlers on either side, self calls, never-returning callees (the verifier caught
+    that one as an orphaned continuation), >24 ops. Backtrace trade documented in the changelog.
+  - **Slice 3**: scalar replacement. Local forwarding plus sole-ownership scalarization, classes
+    and structs alike; `structcopy` becomes a field-wise init except across struct-typed fields
+    (deep copy). `Vec2.add` + assignment: 352 B/271 ns → 0 B/8.4 ns. THE ORDER MATTERED: a
+    returned value escapes its function but not the caller it was inlined into.
+  - **Slice 4**: devirtualization. A `callvirt` whose receiver is one provable `mkiface` becomes
+    the direct call, then the pipeline runs once more. A default-method slot keeps the fat
+    pointer — `this` in a default method dispatches virtually; the verifier caught the wrong
+    receiver before any test did.
+
 - [x] **M13 — attributes: metadata a host can read** (2026-08-18). Four slices in one day, 3822
   tests green in Debug and Release. Merged as PR #38, released as **v1.6.0**.
   - An attribute is a STRUCT; where it may sit is the marker it declares (`OnModule`/`OnType`/
@@ -157,8 +177,14 @@ parameter/return traffic through locals.
 
 The `Vec2` gate is met: expression-shaped struct code allocates NOTHING and runs ~30–40× the
 baseline. The range loop is 0 B but 1.85× a `while` — the optional ops and the extra block hops
-remain; honest, and material for a later peephole rather than this milestone. `set_iter`
-(`callvirt`, ~390 ns/op adj.) is untouched: the slice 4 gate.
+remain; honest, and material for a later peephole rather than this milestone.
+
+**After slice 4 (devirtualization):** the `Set.iter()` loop carries no `callvirt` anymore — the
+receiver's single `mkiface` proves the concrete type, and the loop direct-calls
+`SetIterator<int>.next` (too big to inline; the call is pooled). The gate was structural and is
+met; the time gain drowns in the probing work the loop actually does. One find on the way, caught
+by the verifier: a DEFAULT-method slot takes the fat pointer, not the concrete value — `this` in
+a default method dispatches virtually.
 
 **The VM is allocation-free at its core** — a loop with floating-point arithmetic allocates nothing
 worth mentioning over 100 000 passes. Everything above that is calls and objects.
@@ -198,32 +224,34 @@ have bought an incremental compiler nobody needs.
 **v1.6.0 is released** — M13, attributes (#36, PR #38), all four slices in one day. Erato re-pins
 at its own pace: a 1.5.0 runtime loads 3.2 modules, so nothing forces the update.
 
-**M14 — the interpreter stops allocating — is the current milestone** (decided 2026-08-18, ahead
-of the scope check, as a deliberate reaction to the Erato findings in its
-`docs/lyric-anforderungen.md`). No language change: a `struct` already HAS value semantics, only
-the representation does not keep the promise — so the work is the measured order from the 2026-08-07
-numbers: frame pooling, then inlining, then scalar replacement. Slices:
+**M14 is finished** (decided 2026-08-18 ahead of the scope check as a deliberate reaction to the
+Erato findings, done the same day — all five slices, slice 4 included rather than cut). The
+changelog carries a v1.7.0 entry as *unreleased*; merging the PR and tagging is the maintainer's
+call. What M14 deliberately did NOT do: value structs as a language feature (a `struct` already
+has value semantics; the representation now keeps the promise), a JIT, and the native boundary.
 
-- **Slice 0** — a benchmark harness in the repo: the three microbenches plus for-in-range vs while
-  and Map/Set iteration, GC bytes and time, Release, in-process. Gates for the later slices.
-- **Slice 1** — frame pooling. `Frame.For` allocates three objects per call, half of all bytes.
-  Coroutine frames stay out of the pool; reference slots are cleared on return.
-- **Slice 2** — an IR-to-IR inlining pass: direct calls only, small non-recursive callees without
-  try/defer, splice via local/temp renumbering, returns through a join local. Inlined instructions
-  keep their callee source positions. The verifier runs behind the pass in Debug.
-- **Slice 3** — scalar replacement: a `mkstruct` whose value never escapes becomes one local per
-  field. Value semantics means no aliasing, so escape analysis alone decides. Gate: the Vec2 loop
-  (352 B/op today) measures 0 B/op; for-in over a range ≈ `while`.
-- **Slice 4, cut candidate** — devirtualization: a `callvirt` whose receiver comes from exactly one
-  `mkiface` of known concrete type becomes a direct call; second inlining round. Gate: Map/Set
-  iteration. Falls out if the milestone drags (the >50% rule, applied in advance).
-- Explicitly NOT in M14: value structs as a language feature, the native-boundary ABI (M15
-  material, designed only after slice 3's numbers exist), a JIT.
+**M15 — the boundary learns values — is the proposed next milestone**, written against M14's
+measured outcome (details in the PR discussion):
 
-After M14: the M15 plan (host-declared value types across the native boundary — Erato's A2) is
-written against the measured outcome. The other open points — heterogeneous arithmetic, compound
-assignment through the interfaces, the static-extension asymmetry, project-wide references, the
-first compiler-read attribute — stay material for the **2026-09-06** scope check.
+- **Slice 0, measure first**: a boundary bench beside the compute benches — per-crossing cost and
+  the `new LyrValue[arity]` argument array every native call allocates today. Erato's
+  world-hunt/world-bulk shapes, in Lyric's own harness.
+- **Slice 1, stop the boundary from allocating**: pool the native-call argument buffers per
+  arity, the exact mechanic frames got. VM-only, no format change, and it addresses the crossing
+  cost E3-3 measured without any new feature.
+- **Slice 2, struct parameters IN**: a native declared `fn setPos(e: int, v: Vec2)` receives the
+  fields flattened as scalars — no object crosses, nothing allocates. Sema + binding + writer;
+  `TypeTag.Struct` exists in signatures already.
+- **Slice 3, struct RETURNS**: `positionOf(e): Vec2` — the native writes into a frame-owned
+  scratch the scalarizer immediately dissolves; escape-safe because slice-3-of-M14 machinery
+  proves the non-escape. The hard slice, designed only after slices 0–2 are measured.
+- **Slice 4, the host declares the types**: `RegisterStruct<T>` maps a C# struct onto an SDK
+  `.lyr` struct, layout checked at load like every native signature — `Vec2`, `Rect`, `Color`,
+  `HitInfo` become SDK types, Erato's A2 answered in its useful direction.
+
+The other open points — heterogeneous arithmetic, compound assignment through the interfaces, the
+static-extension asymmetry, project-wide references, the first compiler-read attribute, the
+`for-in` peephole — stay material for the **2026-09-06** scope check.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer

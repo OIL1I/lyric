@@ -373,6 +373,15 @@ public static class ModuleLowerer
         {
             Inliner.Run(result);
             ScalarReplacement.Run(result);
+
+            // Forwarding just handed receivers to their call sites; when one turns out to be a
+            // single mkiface, the callvirt becomes a direct call — which the inliner can see, so
+            // the pipeline runs once more behind it.
+            if (Devirtualizer.Run(result))
+            {
+                Inliner.Run(result);
+                ScalarReplacement.Run(result);
+            }
         }
 
         // BEFORE the verifier: what gets deleted does not need checking, and the verifier runs again at

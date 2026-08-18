@@ -10,6 +10,62 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.7.0 — unreleased
+
+The interpreter stops allocating. No language change and no format change — the same programs
+compile to faster, smaller modules and run with far fewer heap allocations. The numbers below
+come from `tools/Bench` (new in this release), Release, per operation, against v1.6.0.
+
+### Changed
+
+- **A function call no longer allocates.** Frames are pooled per function; a call went from
+  **176 B to 0 B** and from ~50 ns to ~8 ns. Deep recursion still works, exceptions and panics
+  unwind exactly as before.
+
+- **Small functions are inlined.** A direct call to a function of roughly a dozen instructions —
+  a `Vec2.add`, an iterator's `next`, a getter — is replaced by its body. Callers and callees
+  with `try`/`defer` are left alone, recursion stays a call, and a function that always throws
+  keeps its frame.
+
+- **Objects that never leave their function are dissolved into locals.** A `Vec2` built, read
+  and assigned inside a loop costs **0 bytes**: construction plus method call went from
+  352 B / 271 ns to **0 B / 8 ns**, the operator form (`a + b`) from 352 B / 252 ns to
+  **0 B / 6 ns**. This is what makes vector arithmetic through the v1.5.0 operators usable in a
+  per-frame game loop.
+
+- **`for-in` no longer allocates its iterator.** A range or array loop runs at **0 B per
+  element** (208 B before); a range loop is ~3× faster than in v1.6.0. The `Iterable` route
+  through an interface is devirtualized where the concrete iterator is provable — a
+  `Set`/`Map` loop now calls its `next` directly instead of dispatching per element.
+
+- **Modules got smaller.** A function whose every call was inlined is removed; the six-function
+  `examples/arith.lyr` compiles to two. An attributed function always survives — the row is a
+  promise to the host.
+
+- **A panic in an inlined function names the caller's frame with the callee's line.** The line
+  is right, the frame above it is gone — the trade every optimizing compiler makes. A
+  deliberate `panic(...)` keeps its full backtrace, because a function that never returns is
+  not inlined.
+
+### Added
+
+- **`tools/Bench`** — the in-process measurement harness behind all numbers above:
+  `dotnet run -c Release --project tools/Bench`. Allocated bytes and nanoseconds per operation,
+  scalar-loop baseline subtracted, round-robin against JIT tiering.
+
+### Not in this release
+
+- **Escape analysis across surviving calls** — a struct passed to or returned from a function
+  that stays a function still allocates.
+- **The remaining optional ops in `for-in`**: a range loop still runs ~1.9× a hand-written
+  `while`; the gap is `optsome`/`optissome`/`optget` and block hops, peephole material.
+- **Value structs as a language feature.** Deliberately: a `struct` already HAS value
+  semantics; this release makes the representation keep that promise where it matters, with no
+  new mechanism.
+- **The native boundary** is untouched: natives still take and return scalars, and a native
+  call still allocates its argument array. That is the next milestone's subject, not a slice of
+  this one.
+
 ## v1.6.0 — 2026-08-18
 
 Attributes. A program can say things about itself that a tool outside it can read — which
