@@ -20,7 +20,7 @@ public static class SiteBuilder
 
         var guide = Section("Guide", SiteArea.Guide, GuideSources(repoRoot), repoRoot, links, broken);
         var reference = Section("Reference", SiteArea.Documentation,
-            ["docs/Grammar.md", "docs/Bytecode.md"], repoRoot, links, broken);
+            ["docs/Grammar.md", "docs/Bytecode.md", "docs/Pack.md"], repoRoot, links, broken);
 
         // The changelog renders with the repository fallback: its entries legitimately point at
         // files the site does not hold (README.md), and those belong on GitHub rather than in the

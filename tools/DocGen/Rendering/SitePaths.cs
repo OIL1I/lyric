@@ -30,6 +30,7 @@ public static class SitePaths
         {
             "docs/Grammar.md" => "grammar/",
             "docs/Bytecode.md" => "bytecode/",
+            "docs/Pack.md" => "pack/",
             "CHANGELOG.md" => "changelog/",
             _ => null,
         };

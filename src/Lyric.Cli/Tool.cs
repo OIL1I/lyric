@@ -21,7 +21,11 @@ public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
     /// both libraries for the same reason the REPL does.</summary>
     public static readonly Tool Builder = new("lyrbuild", "--builder", "LYRIC_BUILD");
 
-    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl, Builder];
+    /// <summary>The packer: a <c>.lyrbc</c> into one executable. It neither compiles nor
+    /// executes; <c>lyric pack app.lyr</c> composes it with the compiler.</summary>
+    public static readonly Tool Packer = new("lyrpack", "--packer", "LYRIC_PACK");
+
+    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl, Builder, Packer];
 
     /// <summary>Where the tool lives: <c>--flag &lt;path&gt;</c> beats the environment variable,
     /// which beats the executable next to this one.</summary>

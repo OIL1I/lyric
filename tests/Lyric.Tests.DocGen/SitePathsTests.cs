@@ -74,7 +74,7 @@ public class SitePathsTests
 
         var sorted = files.OrderBy(SitePaths.Order).ToArray();
         Assert.Equal("guide/getting-started/", SitePaths.OfSource(sorted[0]));
-        Assert.Equal("guide/building/", SitePaths.OfSource(sorted[^1]));
+        Assert.Equal("guide/packaging/", SitePaths.OfSource(sorted[^1]));
 
         // Every chapter has a prefix, or the ordering would be silently arbitrary.
         Assert.All(files, f => Assert.NotEqual(int.MaxValue, SitePaths.Order(f)));

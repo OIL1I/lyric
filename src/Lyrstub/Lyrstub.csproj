@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrstub</AssemblyName>
+    <RootNamespace>Lyric.Cli.Stub</RootNamespace>
+
+    <!--
+      Every platform a release archive carries a stub for. Declared here so ONE restore writes the
+      RID targets into the assets file; the publish targets (in Lyrpack.csproj and
+      build/publish.proj) can then run inside a build that already restored, which a second
+      restore-with-RID in the same session cannot — the assets are evaluated before it runs.
+    -->
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-arm64</RuntimeIdentifiers>
+    <Description>The runtime half of a packed program: executes the module appended to its own file.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The runtime's references and nothing more — a packed program must not carry a compiler.
+      tests/Lyric.Tests.Cli checks for lyrvm that lyrfe.dll never lands next to the exe; the stub
+      ships as a single file, where the same question is answered by what is bundled.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
+  </ItemGroup>
+
+</Project>

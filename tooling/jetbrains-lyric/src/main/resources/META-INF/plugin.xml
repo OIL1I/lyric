@@ -31,9 +31,12 @@
             instance="dev.lyric.jetbrains.LyricConfigurable"
             id="dev.lyric.jetbrains.settings"
             displayName="Lyric"/>
-    </extensions>
 
-    <extensions defaultExtensionNs="org.jetbrains.plugins.textmate">
-        <bundleProvider implementation="dev.lyric.jetbrains.LyricTextMateBundleProvider"/>
+        <!-- The point is declared by the TextMate plugin but QUALIFIED under com.intellij:
+             `com.intellij.textmate.bundleProvider`, verbatim from intellij.textmate.xml. The
+             1.2.0 zip registered it under the plugin's own namespace, which exists nowhere —
+             the provider was never called and nothing was colored. -->
+        <textmate.bundleProvider
+            implementation="dev.lyric.jetbrains.LyricTextMateBundleProvider"/>
     </extensions>
 </idea-plugin>

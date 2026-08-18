@@ -31,6 +31,7 @@ public static class Program
             "run" => Run(args, selection),
             "new" => NewProject.Run(args),
             "build" => Build(args, selection),
+            "pack" => Pack(args, selection),
             "check" => Forward(Tool.Compiler, selection, args),
             "disasm" => Forward(Tool.Runtime, selection, args),
 
@@ -93,6 +94,90 @@ public static class Program
         string[] tail = programArguments.Length == 0 ? [] : ["--", .. programArguments];
         return Tool.Run(selection.PathOf(Tool.Runtime),
             ["run", module, .. options, .. tail], Console.Error);
+    }
+
+    /// <summary>
+    /// Compile and pack, or pack alone: a <c>.lyrbc</c> goes to the packer as it stands, a source
+    /// is compiled into a temporary module first — the composition of <c>run</c>, with an
+    /// executable instead of an execution.
+    ///
+    /// <para>The pack options (<c>-o</c>, <c>--stub</c>) are taken out here and everything else
+    /// travels to the compiler. The output is ALWAYS passed explicitly on the source path: the
+    /// packer's default names the executable after its input, and its input is a temporary file
+    /// whose name is nobody's deliverable.</para>
+    /// </summary>
+    private static int Pack(string[] args, ToolSelection selection)
+    {
+        if (Missing(selection, Tool.Packer) is { } packerError) return packerError;
+
+        string? file = null, output = null, stub = null;
+        var compilerArguments = new List<string>();
+        for (var i = 1; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--":
+                    // 'run' forwards what follows to the program; here there is no program run.
+                    return CliDiagnostics.Fail(Console.Error, CliDiagnostics.UnknownCommand,
+                        "pack: '--' has no place here — a packed program receives its arguments "
+                        + "when it runs", ExitCodes.Usage);
+
+                case "-o" or "--output" or "--stub":
+                    if (i + 1 >= args.Length)
+                        return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
+                            $"{args[i]}: missing path argument", ExitCodes.Usage);
+                    if (args[i] == "--stub") stub = args[++i];
+                    else output = args[++i];
+                    break;
+
+                default:
+                    if (file is null && !args[i].StartsWith('-')) file = args[i];
+                    else compilerArguments.Add(args[i]);
+                    break;
+            }
+        }
+
+        if (file is null)
+            return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,
+                "pack: missing file argument", ExitCodes.Usage);
+
+        string[] stubOption = stub is null ? [] : ["--stub", stub];
+
+        if (file.EndsWith(".lyrbc", StringComparison.OrdinalIgnoreCase))
+        {
+            string[] outputOption = output is null ? [] : ["-o", output];
+            return Tool.Run(selection.PathOf(Tool.Packer),
+                [file, .. outputOption, .. stubOption, .. compilerArguments], Console.Error);
+        }
+
+        if (Missing(selection, Tool.Compiler) is { } compilerError) return compilerError;
+
+        var executable = output ?? DefaultExecutable(file);
+        var module = Path.Combine(Path.GetTempPath(),
+            $"{Path.GetFileNameWithoutExtension(file)}-{Guid.NewGuid():N}.lyrbc");
+
+        try
+        {
+            var built = Tool.Run(selection.PathOf(Tool.Compiler),
+                ["build", file, "-o", module, "--quiet", .. compilerArguments], Console.Error);
+            if (built != ExitCodes.Success) return built;
+
+            return Tool.Run(selection.PathOf(Tool.Packer),
+                [module, "-o", executable, .. stubOption], Console.Error);
+        }
+        finally
+        {
+            try { File.Delete(module); } catch (IOException) { /* nothing further to do */ }
+        }
+    }
+
+    /// <summary>The source's own name as an executable, beside the source — the same place the
+    /// compiler drops a module nobody named.</summary>
+    private static string DefaultExecutable(string source)
+    {
+        var directory = Path.GetDirectoryName(source) ?? "";
+        var name = Path.GetFileNameWithoutExtension(source);
+        return Path.Combine(directory, OperatingSystem.IsWindows() ? $"{name}.exe" : name);
     }
 
     /// <summary>
@@ -160,6 +245,7 @@ public static class Program
               run <file>               Compile and execute (.lyr or .lyrbc)
               build <file> [-o <out>]  Compile .lyr to .lyrbc
               build [<dir>]            Run the build.lyr there and compile what it declares
+              pack <file> [-o <out>]   Compile and pack into one standalone executable
               check <file>             Compile without writing a file
               disasm <file.lyrbc>      Print a readable disassembly
               repl                     Start a REPL session

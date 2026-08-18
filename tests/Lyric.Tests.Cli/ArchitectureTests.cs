@@ -76,7 +76,8 @@ public sealed class ArchitectureTests
         Assert.Contains("lyrc.dll", shipped);    // the tools lie next to it,
         Assert.Contains("lyrvm.dll", shipped);   // because it looks for them there
         Assert.Contains("lyrrepl.dll", shipped);  // the REPL
-        Assert.Contains("lyrbuild.dll", shipped); // and the build runner
+        Assert.Contains("lyrbuild.dll", shipped); // the build runner
+        Assert.Contains("lyrpack.dll", shipped);  // and the packer
     }
 
     [Fact]
@@ -87,8 +88,32 @@ public sealed class ArchitectureTests
         // Tool.All; when it grows, this test fails until the copy target in Lyric.Cli.csproj follows.
         var shipped = LyricAssemblies("Lyric.Cli");
 
-        foreach (var tool in new[] { "lyrc.dll", "lyrvm.dll", "lyrrepl.dll", "lyrbuild.dll" })
+        foreach (var tool in new[] { "lyrc.dll", "lyrvm.dll", "lyrrepl.dll", "lyrbuild.dll",
+                     "lyrpack.dll" })
             Assert.Contains(tool, shipped);
+    }
+
+    [Fact]
+    public void The_packer_ships_the_shared_contract_and_nothing_else()
+    {
+        // lyrpack packs modules: it neither compiles (that is lyrc, composed by 'lyric pack') nor
+        // executes (that is the STUB it copies). Either library beside it would mean it started
+        // doing one of the two.
+        AssertShips("Lyrpack", Shared, "lyrpack.dll");
+    }
+
+    [Fact]
+    public void The_stub_lies_next_to_the_packer_and_next_to_the_driver()
+    {
+        // The packer resolves its stub at stubs/<rid>/ beside its own executable (after --stub
+        // and $LYRIC_STUB), and through the driver it RUNS from the driver's directory — so the
+        // stub has to lie in both, or 'lyrpack' works and 'lyric pack' does not.
+        var stub = Path.Combine("stubs",
+            System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier,
+            OperatingSystem.IsWindows() ? "lyrstub.exe" : "lyrstub");
+
+        Assert.True(File.Exists(Path.Combine(Toolchain.OutputDirectory("Lyrpack"), stub)));
+        Assert.True(File.Exists(Path.Combine(Toolchain.OutputDirectory("Lyric.Cli"), stub)));
     }
 
     [Theory]

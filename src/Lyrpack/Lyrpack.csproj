@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrpack</AssemblyName>
+    <RootNamespace>Lyric.Cli.Packer</RootNamespace>
+    <Description>Wraps a compiled .lyrbc module and the stub runtime into one executable.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      ONE reference, and that is the design: lyrpack packs modules, it neither compiles nor
+      executes them. 'lyric pack app.lyr' composes lyrc and lyrpack in the driver, the same way
+      'lyric run' composes lyrc and lyrvm.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+
+    <!-- Built so the stub publish below always has something current to publish. -->
+    <ProjectReference Include="..\Lyrstub\Lyrstub.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <!--
+    The stub lyrpack packs with, published as ONE file into stubs/<rid>/ beside the packer.
+
+    Published rather than copied: the build output of a framework-dependent exe is an apphost
+    plus a directory of assemblies, and a packed program must be a single file someone can hand
+    over. Framework-dependent on purpose here — this is the DEVELOPMENT stub; the release archive
+    carries self-contained ones per platform, published by build/publish.proj.
+
+    The RID-specific assets this needs are guaranteed by the RuntimeIdentifiers list in
+    Lyrstub.csproj — a restore inside this target would come too late, the assets are evaluated
+    before a target can run (the same reason build/publish.proj has a separate Restore target).
+  -->
+  <Target Name="PublishStubNextToPacker" AfterTargets="Build">
+    <PropertyGroup>
+      <StubRid>$(NETCoreSdkPortableRuntimeIdentifier)</StubRid>
+    </PropertyGroup>
+
+    <MSBuild Projects="..\Lyrstub\Lyrstub.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(StubRid);SelfContained=false;PublishSingleFile=true;PublishDir=$(TargetDir)stubs\$(StubRid)\" />
+  </Target>
+
+</Project>

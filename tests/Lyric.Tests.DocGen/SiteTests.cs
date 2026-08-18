@@ -54,8 +54,8 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("guide/getting-started/", guide.Pages[0].SitePath);
-        Assert.Equal("guide/building/", guide.Pages[^1].SitePath);
-        Assert.Equal(16, guide.Pages.Length);
+        Assert.Equal("guide/packaging/", guide.Pages[^1].SitePath);
+        Assert.Equal(17, guide.Pages.Length);
         Assert.Equal("guide/attributes/", guide.Pages[14].SitePath);
     }
 
@@ -64,7 +64,7 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("Getting started", guide.Pages[0].Title);
-        Assert.Equal("Building a project", guide.Pages[^1].Title);
+        Assert.Equal("Packing a program", guide.Pages[^1].Title);
     }
 
     [Fact]
@@ -125,6 +125,7 @@ public class SiteTests
             "# Changelog\n\n## v1.0.0 — 2026-01-01\n\nchanged things\n");
         File.WriteAllText(Path.Combine(root.FullName, "docs", "Grammar.md"), "# Grammar\n\ntext\n");
         File.WriteAllText(Path.Combine(root.FullName, "docs", "Bytecode.md"), "# Bytecode\n\ntext\n");
+        File.WriteAllText(Path.Combine(root.FullName, "docs", "Pack.md"), "# Pack\n\ntext\n");
         File.WriteAllText(Path.Combine(stdlib.FullName, "m.lyr"), "module std.m;\npub fn f(): void { }\n");
         return root;
     }

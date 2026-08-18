@@ -19,6 +19,8 @@
                       ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\..\src\Lyrvm\Lyrvm.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\src\Lyrpack\Lyrpack.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\..\src\Lyrls\Lyrls.csproj"
                       ReferenceOutputAssembly="false" Private="false" />
     <ProjectReference Include="..\..\src\Lyric.Cli\Lyric.Cli.csproj"
