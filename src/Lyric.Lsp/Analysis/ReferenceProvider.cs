@@ -28,10 +28,13 @@ public sealed record ReferenceSite(FileId File, Span Span);
 /// </summary>
 public static class ReferenceProvider
 {
+    /// <param name="root">The module AST of the file the cursor is in — see
+    /// <see cref="HoverProvider.At"/> for why it is passed. Only the SEARCH for the symbol under
+    /// the cursor needs it; the sites come from the whole compilation either way.</param>
     public static IReadOnlyList<ReferenceSite>? At(
-        SemanticModel model, FileId file, int offset, bool includeDeclaration)
+        SemanticModel model, Module root, FileId file, int offset, bool includeDeclaration)
     {
-        if (SymbolAt(model, file, offset) is not { } symbol) return null;
+        if (SymbolAt(model, root, file, offset) is not { } symbol) return null;
 
         // Reference equality throughout: symbols are identity objects, and two distinct locals of
         // the same name in different scopes must not collapse into one answer.
@@ -75,9 +78,9 @@ public static class ReferenceProvider
     /// for the references of a function while standing on its name is the ordinary gesture, so the
     /// module's own symbol tables are the fallback.</para>
     /// </summary>
-    private static Symbol? SymbolAt(SemanticModel model, FileId file, int offset)
+    private static Symbol? SymbolAt(SemanticModel model, Module root, FileId file, int offset)
     {
-        var path = NodeFinder.PathAt(model.Entry, file, offset);
+        var path = NodeFinder.PathAt(root, file, offset);
 
         for (var i = path.Count - 1; i >= 0; i--)
             if ((model.Types.RefOf(path[i]) ?? model.Binding.Resolve(path[i])) is { } symbol)

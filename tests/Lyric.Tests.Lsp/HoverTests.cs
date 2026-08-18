@@ -33,7 +33,7 @@ public sealed class HoverTests
         var file = DiagnosticMapper.FindFile(result.Sources, path);
         Assert.True(file.IsValid);
 
-        return HoverProvider.At(model, file, offset);
+        return HoverProvider.At(model, model.Entry, file, offset);
     }
 
     private static string Text(string programWithMarker)

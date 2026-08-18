@@ -82,51 +82,7 @@ public static class SourceCompiler
         var loaderTime = TimeSpan.Zero;
         var loaded = new List<string>();
 
-        var fromStdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
-            sources, diagnostics, options.SourceOverlay);
-        var fromProject = StdlibLoader.ForProject(
-            options.SourceRoot ?? source.BaseDirectory, sources, diagnostics, options.SourceOverlay);
-
-        // Roots the host declares native, keyed by the segment they own. An SDK ships its
-        // declarations as .lyr files and says which prefix they live under.
-        var nativeRoots = options.NativeRoots?.ToDictionary(
-            entry => entry.Key,
-            entry => StdlibLoader.ForRoot(entry.Value, sources, diagnostics, options.SourceOverlay),
-            StringComparer.Ordinal);
-
-        // Several roots, one delegate: 'std' comes from the standard library, a segment the host
-        // claimed from its own root, everything else from the program's directory.
-        //
-        // The split is by module path rather than by trying one root and then the other. A
-        // precedence rule would let a file at '<program>/std/io/console.lyr' shadow the standard
-        // library silently, and silently is the part that makes it a trap.
-        var stdlib = (string[] modulePath) =>
-        {
-            if (modulePath is ["std", ..]) return fromStdlib(modulePath);
-
-            if (nativeRoots is not null && modulePath.Length > 0
-                && nativeRoots.TryGetValue(modulePath[0], out var native))
-                return native(modulePath);
-
-            return fromProject(modulePath);
-        };
-
-        // Supplied modules first, then disk. Chained rather than a second loader mechanism:
-        // 'Compilation' knows exactly one delegate.
-        var provided = options.NativeModules;
-        if (provided is { Count: > 0 })
-        {
-            var fromDisk = stdlib;
-            stdlib = modulePath =>
-            {
-                var name = string.Join('.', modulePath);
-                if (!provided.TryGetValue(name, out var text)) return fromDisk(modulePath);
-
-                var id = sources.AddVirtual(name, text);
-                var parsed = ParsedModule.Parse(sources, id, diagnostics);
-                return new LoadedModule(parsed.Ast, IsNative: true, parsed.Documentation);
-            };
-        }
+        var stdlib = BuildModuleLoader(sources, diagnostics, options, source.BaseDirectory);
 
         var compilation = new Compilation(sources, diagnostics)
         {
@@ -197,6 +153,130 @@ public static class SourceCompiler
         report?.EndPhase();
 
         return new CompileResult(sources, diagnostics, ir, bytes, model);
+    }
+
+    /// <summary>
+    /// The module loader every run uses: 'std' from the standard library, a segment the host
+    /// claimed from one of its native roots, everything else from the program's directory.
+    ///
+    /// <para>The split is by module path rather than by trying one root and then the other. A
+    /// precedence rule would let a file at '&lt;program&gt;/std/io/console.lyr' shadow the standard
+    /// library silently, and silently is the part that makes it a trap.</para>
+    /// </summary>
+    private static Func<string[], LoadedModule?> BuildModuleLoader(
+        SourceManager sources, DiagnosticEngine diagnostics, CompilerOptions options,
+        string fallbackSourceRoot)
+    {
+        var fromStdlib = StdlibLoader.ForRoot(options.StdlibRoot ?? StdlibLoader.DefaultRoot(),
+            sources, diagnostics, options.SourceOverlay);
+        var fromProject = StdlibLoader.ForProject(
+            options.SourceRoot ?? fallbackSourceRoot, sources, diagnostics, options.SourceOverlay);
+
+        // Roots the host declares native, keyed by the segment they own. An SDK ships its
+        // declarations as .lyr files and says which prefix they live under.
+        var nativeRoots = options.NativeRoots?.ToDictionary(
+            entry => entry.Key,
+            entry => StdlibLoader.ForRoot(entry.Value, sources, diagnostics, options.SourceOverlay),
+            StringComparer.Ordinal);
+
+        var loader = (string[] modulePath) =>
+        {
+            if (modulePath is ["std", ..]) return fromStdlib(modulePath);
+
+            if (nativeRoots is not null && modulePath.Length > 0
+                && nativeRoots.TryGetValue(modulePath[0], out var native))
+                return native(modulePath);
+
+            return fromProject(modulePath);
+        };
+
+        // Supplied modules first, then disk. Chained rather than a second loader mechanism:
+        // 'Compilation' knows exactly one delegate.
+        var provided = options.NativeModules;
+        if (provided is { Count: > 0 })
+        {
+            var fromDisk = loader;
+            loader = modulePath =>
+            {
+                var name = string.Join('.', modulePath);
+                if (!provided.TryGetValue(name, out var text)) return fromDisk(modulePath);
+
+                var id = sources.AddVirtual(name, text);
+                var parsed = ParsedModule.Parse(sources, id, diagnostics);
+                return new LoadedModule(parsed.Ast, IsNative: true, parsed.Documentation);
+            };
+        }
+
+        return loader;
+    }
+
+    /// <summary>
+    /// Everything <see cref="Check(ScriptSource, CompilerOptions?)"/> does, over every root of a
+    /// project at once: ONE compilation, one source manager, one model.
+    ///
+    /// <para>One compilation rather than one per root, because symbols are identity objects. An
+    /// editor asking "who uses this function" needs the uses in OTHER files bound to the same
+    /// symbol the declaration produced, and two compilations of the same text produce two symbol
+    /// worlds with nothing to compare.</para>
+    ///
+    /// <para>Every root is registered before anything resolves, so an import between two roots
+    /// finds the module already there instead of reading its file a second time. A root's name
+    /// comes from its header when it has one, and from the caller otherwise —
+    /// <see cref="ScriptSource.ModuleName"/> is where a caller says what a headerless file is
+    /// called, and for a file under the source root that must be the same derivation the import
+    /// path makes in the other direction, or the import will not find it.</para>
+    ///
+    /// <para>Checked as a workspace, not as an executable: two roots may both declare 'main',
+    /// because each is the entry point of its own program (see
+    /// <see cref="Semantics.Analyze"/>).</para>
+    /// </summary>
+    public static CompileResult CheckProject(
+        IReadOnlyList<ScriptSource> roots, CompilerOptions? options = null)
+    {
+        options ??= new CompilerOptions();
+        var sources = new SourceManager();
+        var diagnostics = new DiagnosticEngine(sources);
+
+        var loader = BuildModuleLoader(sources, diagnostics, options,
+            roots.Count > 0 ? roots[0].BaseDirectory : Directory.GetCurrentDirectory());
+
+        var compilation = new Compilation(sources, diagnostics) { ModuleLoader = loader };
+
+        Module? entry = null;
+        foreach (var root in roots)
+        {
+            if (root.Open(sources, diagnostics) is not { } id) continue;
+
+            var parsed = ParsedModule.Parse(sources, id, diagnostics);
+
+            // The header wins over the caller's derivation. A file whose header disagrees with its
+            // path registers under the name it claims; an import of the path-derived name then
+            // reloads the file and reports the mismatch (LYR-RES0006), the same way it would were
+            // the file not a root.
+            var name = parsed.Ast.Header is not null ? null : root.ModuleName;
+
+            compilation.AddModule(parsed.Ast, name, documentation: parsed.Documentation);
+            entry ??= parsed.Ast;
+        }
+
+        // No root could even be opened. The diagnostics say why, and there is no module to hang a
+        // model on.
+        if (entry is null) return new CompileResult(sources, diagnostics, null, null);
+
+        var binding = compilation.Resolve();
+        var types = Semantics.Analyze(compilation, binding, diagnostics, singleProgram: false);
+
+        var model = new SemanticModel(compilation, entry, binding, types);
+
+        if (diagnostics.HasErrors)
+            return new CompileResult(sources, diagnostics, null, null, model);
+
+        var ir = ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: false);
+        if (ir is null) return new CompileResult(sources, diagnostics, null, null, model);
+
+        if (ModuleLowerer.VerifyByDefault) IrVerifier.VerifyOrThrow(ir);
+
+        return new CompileResult(sources, diagnostics, ir, null, model);
     }
 
     private static string ModuleCount(List<string> loaded) =>

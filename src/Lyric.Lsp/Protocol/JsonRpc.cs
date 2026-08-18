@@ -24,11 +24,19 @@ public sealed record JsonRpcMessage
     [JsonPropertyName("method")] public string? Method { get; init; }
     [JsonPropertyName("params")] public JsonElement? Params { get; init; }
 
+    /// <summary>Present on a failed RESPONSE. Read only to log it: the one request this server
+    /// sends is the watch registration, and a client that refuses it should say so somewhere the
+    /// user can find.</summary>
+    [JsonPropertyName("error")] public JsonRpcError? Error { get; init; }
+
     /// <summary>A request expects an answer; a notification does not. The distinction is the
     /// presence of an id and nothing else.</summary>
     public bool IsRequest => Method is not null && Id is not null;
 
     public bool IsNotification => Method is not null && Id is null;
+
+    /// <summary>An answer to a request this server sent: an id without a method.</summary>
+    public bool IsResponse => Method is null && Id is not null;
 }
 
 /// <summary>
@@ -62,6 +70,22 @@ public sealed record JsonRpcError
 {
     [JsonPropertyName("code")] public required int Code { get; init; }
     [JsonPropertyName("message")] public required string Message { get; init; }
+}
+
+/// <summary>
+/// A request the SERVER issues. Exactly one exists: the watch registration after
+/// <c>initialized</c>.
+///
+/// <para>The id is a plain integer because this side chooses it; the <see cref="JsonElement"/>
+/// gymnastics of <see cref="JsonRpcMessage.Id"/> exist only for ids chosen by the other side.
+/// </para>
+/// </summary>
+public sealed record JsonRpcRequest
+{
+    [JsonPropertyName("jsonrpc")] public string JsonRpc => "2.0";
+    [JsonPropertyName("id")] public required int Id { get; init; }
+    [JsonPropertyName("method")] public required string Method { get; init; }
+    [JsonPropertyName("params")] public JsonElement? Params { get; init; }
 }
 
 /// <summary>A message the server sends without being asked. In this server: diagnostics and log

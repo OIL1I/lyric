@@ -258,6 +258,23 @@ public sealed record ClientCapabilities
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public TextDocumentClientCapabilities? TextDocument { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public WorkspaceClientCapabilities? Workspace { get; init; }
+}
+
+public sealed record WorkspaceClientCapabilities
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DidChangeWatchedFilesClientCapabilities? DidChangeWatchedFiles { get; init; }
+}
+
+public sealed record DidChangeWatchedFilesClientCapabilities
+{
+    /// <summary>Whether the client accepts a watch registration at all. There is no static form:
+    /// file watching exists only as a dynamic registration, so a client without this never learns
+    /// that a file changed behind the editor.</summary>
+    public bool DynamicRegistration { get; init; }
 }
 
 public sealed record TextDocumentClientCapabilities
@@ -367,6 +384,61 @@ public sealed record DidCloseTextDocumentParams
     public required TextDocumentIdentifier TextDocument { get; init; }
 }
 
+/// <summary>
+/// One registration of the single kind this server makes. The protocol allows arbitrary
+/// register options per method; typing them as the watched-files options rather than as a free
+/// element keeps the one use checkable, and a second registration kind is a second member here.
+/// </summary>
+public sealed record Registration
+{
+    /// <summary>Chosen by the server; only needed again to unregister, which this server never
+    /// does — the watches live exactly as long as the session.</summary>
+    public required string Id { get; init; }
+
+    public required string Method { get; init; }
+
+    public required DidChangeWatchedFilesRegistrationOptions RegisterOptions { get; init; }
+}
+
+public sealed record RegistrationParams
+{
+    public required IReadOnlyList<Registration> Registrations { get; init; }
+}
+
+public sealed record DidChangeWatchedFilesRegistrationOptions
+{
+    public required IReadOnlyList<LspFileSystemWatcher> Watchers { get; init; }
+}
+
+/// <summary>The protocol calls this <c>FileSystemWatcher</c>; the prefix only keeps it apart from
+/// <see cref="System.IO.FileSystemWatcher"/>, the same way <see cref="LspDiagnostic"/> does.
+/// </summary>
+public sealed record LspFileSystemWatcher
+{
+    /// <summary>Relative patterns need a base URI; the plain string form watches across every
+    /// workspace folder, which is exactly what a server that discovers projects by path wants.
+    /// </summary>
+    public required string GlobPattern { get; init; }
+}
+
+public enum FileChangeType
+{
+    Created = 1,
+    Changed = 2,
+    Deleted = 3,
+}
+
+public sealed record FileEvent
+{
+    public required string Uri { get; init; }
+    public required FileChangeType Type { get; init; }
+}
+
+public sealed record DidChangeWatchedFilesParams
+{
+    public required IReadOnlyList<FileEvent> Changes { get; init; }
+}
+
 public enum MessageType
 {
     Error = 1,
@@ -401,6 +473,9 @@ public static class LspMethods
     public const string References = "textDocument/references";
     public const string Completion = "textDocument/completion";
 
+    public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
+
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";
+    public const string RegisterCapability = "client/registerCapability";
 }

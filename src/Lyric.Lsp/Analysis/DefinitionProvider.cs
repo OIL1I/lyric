@@ -29,9 +29,11 @@ public sealed record DefinitionTarget(FileId File, Span Span, Span NameSpan);
 /// </summary>
 public static class DefinitionProvider
 {
-    public static DefinitionTarget? At(SemanticModel model, FileId file, int offset)
+    /// <param name="root">The module AST of the file the cursor is in — see
+    /// <see cref="HoverProvider.At"/> for why it is passed.</param>
+    public static DefinitionTarget? At(SemanticModel model, Module root, FileId file, int offset)
     {
-        var path = NodeFinder.PathAt(model.Entry, file, offset);
+        var path = NodeFinder.PathAt(root, file, offset);
 
         // From the inside out, like hover: the innermost node is the most specific, and the nodes
         // above it are the fallback when it binds to nothing.

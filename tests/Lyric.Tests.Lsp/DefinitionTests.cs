@@ -30,7 +30,7 @@ public sealed class DefinitionTests
         Assert.NotNull(result.Model);
 
         var file = DiagnosticMapper.FindFile(result.Sources, path);
-        var target = DefinitionProvider.At(result.Model, file, cursor);
+        var target = DefinitionProvider.At(result.Model, result.Model.Entry, file, cursor);
 
         Assert.NotNull(target);
         Assert.Equal(file, target.File);
@@ -52,7 +52,7 @@ public sealed class DefinitionTests
         Assert.NotNull(result.Model);
 
         var file = DiagnosticMapper.FindFile(result.Sources, path);
-        return DefinitionProvider.At(result.Model, file, cursor);
+        return DefinitionProvider.At(result.Model, result.Model.Entry, file, cursor);
     }
 
     /// <summary>Strips the two markers and returns the offsets they stood at.</summary>
@@ -207,7 +207,8 @@ public sealed class DefinitionTests
         Assert.NotNull(result.Model);
 
         var file = DiagnosticMapper.FindFile(result.Sources, path);
-        var target = DefinitionProvider.At(result.Model, file, program.IndexOf("println(\"hi\")") + 2);
+        var target = DefinitionProvider.At(result.Model, result.Model.Entry, file,
+            program.IndexOf("println(\"hi\")") + 2);
 
         Assert.NotNull(target);
         Assert.NotEqual(file, target.File);

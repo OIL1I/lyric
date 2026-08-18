@@ -89,12 +89,15 @@ internal sealed class ServerHarness : IAsyncDisposable
         }
     }
 
-    /// <summary>The answer to a request, skipping notifications that overtake it.</summary>
+    /// <summary>The answer to a request, skipping notifications that overtake it — and requests
+    /// the SERVER issues, which carry an id of their own numbering that may collide with this
+    /// side's.</summary>
     public async Task<JsonElement> ReceiveResponseAsync(int id)
     {
         while (true)
         {
             var message = await ReceiveAsync();
+            if (message.TryGetProperty("method", out _)) continue;
             if (message.TryGetProperty("id", out var value)
                 && value.ValueKind == JsonValueKind.Number
                 && value.GetInt32() == id)
