@@ -14,12 +14,25 @@
 **v1.0.0 through v1.7.0 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
 
-**M16 — the tooling milestone — is current** (decided 2026-08-18, at the post-v1 pace): the
-language server learns the project, the editors learn the server. Slices, in order: workspace
-compilation (**done**, PR #43) → rename + workspace symbols (**done**, PR #44) → semantic tokens
-(**done**, PR #45) → signature help + folding + inlay hints (**done**, PR #46) → the VS Code
-extension rounded off (**done**, stacked on #46) → a JetBrains thin plugin over the platform's
-LSP API, deliberately no PSI.
+**M16 — the tooling milestone — is CLOSED** (decided and built 2026-08-18, at the post-v1 pace):
+the language server learned the project, the editors learned the server. The delivery list,
+ticked point by point as the milestone rule demands:
+
+- [x] project-wide compilation (PR #43)
+- [x] rename (PR #44)
+- [x] workspace symbols (PR #44)
+- [x] semantic tokens (PR #45)
+- [x] signature help (PR #46)
+- [x] folding (PR #46)
+- [x] inlay hints (PR #46)
+- [x] restart command and status item in VS Code (PR #47)
+- [x] task provider with problem matcher (PR #47)
+- [x] snippets (PR #47)
+- [x] `.vsix` in the release (PR #47)
+- [x] the JetBrains thin plugin (PR stacked on #47)
+
+The PR stack #43 ← #44 ← #45 ← #46 ← #47 ← #48 merges in that order; the release that follows
+ships two new installables beside the toolchain archives.
 
 **M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
 (frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
@@ -57,6 +70,27 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M16 slice 6 — the JetBrains thin plugin, and the milestone closes** (2026-08-18, stacked
+  on #47). `tooling/jetbrains-lyric`: ~200 lines of Kotlin, and every one of them is wiring.
+  - **The plan's verification came first and corrected the baseline**: the platform's LSP
+    integration gained find references and semantic tokens in 2024.2, folding and inlay hints in
+    2025.2, signature help and workspace symbols in 2025.3, rename in **2026.1** — so the
+    baseline is 2026.1 (`sinceBuild 261`), not the 2023.2 the plan guessed; that floor would have
+    kept only diagnostics, completion and the jump. Commercial IDEs only (`com.intellij.modules.lsp`);
+    LSP4IJ deliberately unsupported.
+  - The DEPRECATED API names (`LspServerSupportProvider`) on purpose: documented as preserved and
+    fully functional, while the renamed successor exists only from 2026.1.4 — pinning to a point
+    release for a rename of the same API would be baseline for nothing.
+  - **The grammar has one home**: the build copies the TextMate bundle from `../vscode-lyric` at
+    packaging time (the test suite pins that copy against the lexer) and the provider extracts it
+    for the IDE's TextMate machinery at runtime. One setting — the toolchain directory, else
+    PATH, the extension's own ladder.
+  - **Verified by building**: the 17 KB zip holds the jar, the grammar and no Kotlin stdlib
+    (`compileOnly` — the IDE ships its own, a second copy is a classloader conflict on a timer).
+    `verifyPluginStructure` green; the runtime behavior is a manual checklist in the plugin's
+    README, because headless IDE tests cost more harness than this plugin has code. CI builds it
+    on every push; the release attaches `jetbrains-lyric-<version>.zip`.
 
 - [x] **M16 slice 5 — the VS Code extension rounded off** (2026-08-18, stacked on #46). No server
   change; the extension catches up with what the server can do, and the release learns to ship it.
@@ -106,27 +140,6 @@ out of them and hands its own functions, types and value structs in.
   - Import-clause names carry the target's color, through the same special case the rename walks.
     Method vs function is the member-table line; the initializer field, `this.x` and `p.x` are
     all the FIELD (pinned by decoded-token tests, not by raw deltas).
-
-- [x] **M16 slice 2 — rename and workspace symbols** (2026-08-18, stacked on #43). 3893 tests
-  green in Debug and Release.
-  - **The AST learned where names stand at USE sites**: `MemberExpr`, `NamedType`,
-    `StructInitExpr`, `TypePathExpr`, `StructInitField`, `AttributeNode` and the selective import
-    clause now record the span of the name alone, the same `INamedDecl.NameSpan` idea on the other
-    side. A node the sema synthesizes carries an INVALID span — an operator use writes no name, so
-    a rename edits nothing there and `a + b` survives renaming `add` (pinned by test).
-  - **Rename is the reference walk plus the import clauses**, which no table carries: `import util
-    { value }` declares a binding rather than using the target, and forgetting it breaks every
-    importer. End-to-end pinned: the returned WorkspaceEdit, APPLIED, recompiles clean with the
-    old name gone.
-  - **Refusals carry reasons** (surfaced via `-32803`): the standard library, a module, a built-in,
-    an unknown node form (refuse loudly rather than corrupt quietly), and outside a project any
-    rename that would leave the file. NO collision analysis, on purpose — the compile that follows
-    is the conflict analysis.
-  - **The sema now binds an initializer's fields** (`x = 1` in `Point { x = 1 }`) — found because
-    the rename test demanded completeness; references gained the same sites, and every reference
-    site narrowed from the node to the name (`p.x` → `x`), four pinned tests updated.
-  - `workspace/symbol`: the outline walk, flattened over every live compilation, stdlib excluded,
-    case-insensitive substring, capped at 512.
 
 ## Measurements
 
@@ -214,14 +227,15 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M16 slice 6 — the JetBrains thin plugin — is next, and it closes the milestone.** A Gradle
-project under `tooling/jetbrains-lyric`: the `.lyr` file type, the existing TextMate grammar
-bundled, an `LspServerSupportProvider` that starts `lyrls` with the same lookup the VS Code
-extension uses (explicit path → beside the driver → PATH). To verify at slice start, not from
-memory: which LSP features the platform API consumes at the chosen baseline. Commercial IDEs
-only; LSP4IJ support is deliberately not built. Verification is `verifyPlugin` plus a manual
-checklist — headless IDE tests are not worth their harness. A PSI plugin stays off the table:
-a second frontend in Kotlin with a permanent lag is the mechanism this project does not add.
+**M16 is closed; merging the stack and tagging the release is the maintainer's call.** The next
+release ships the toolchain archives plus two installables: the `.vsix` and the JetBrains plugin
+zip. First manual run of the JetBrains checklist (plugin README) belongs to that release.
+
+The open points for the **2026-09-06 scope check** stand unchanged: heterogeneous arithmetic,
+compound assignment through the interfaces, the static-extension asymmetry, the first
+compiler-read attribute, the `for-in` peephole, Erato's A4 (an opaque `Entity`) and the E4-side
+adoption — plus, new from this milestone: parameter-name inlay hints, semantic-token deltas if a
+measurement ever asks, and a duplicate-module diagnostic for two files claiming one name.
 
 **Not renameable, recorded**: a module (rename the file), an enum variant's payload field (no
 symbol exists for it), anything whose declaring module is native. Renaming across `build.lyr` is
@@ -343,7 +357,7 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`vscode: the extension catches up with its server, and the release ships it` (stacked on PR #46)
+`jetbrains: two hundred lines of wiring, and the whole server behind them` (closes M16)
 
 ---
 
