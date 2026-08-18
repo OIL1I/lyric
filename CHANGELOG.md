@@ -10,6 +10,94 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.7.0 — unreleased
+
+The interpreter stops allocating — and so does the native boundary. No language change and no
+format change: the same programs compile to faster, smaller modules, run with far fewer heap
+allocations, and a host SDK can now put `Vec2` in a native signature. The numbers below come
+from `tools/Bench` (new in this release), Release, per operation, against v1.6.0.
+
+### Changed
+
+- **A function call no longer allocates.** Frames are pooled per function; a call went from
+  **176 B to 0 B** and from ~50 ns to ~8 ns. Deep recursion still works, exceptions and panics
+  unwind exactly as before.
+
+- **Small functions are inlined.** A direct call to a function of roughly a dozen instructions —
+  a `Vec2.add`, an iterator's `next`, a getter — is replaced by its body. Callers and callees
+  with `try`/`defer` are left alone, recursion stays a call, and a function that always throws
+  keeps its frame.
+
+- **Objects that never leave their function are dissolved into locals.** A `Vec2` built, read
+  and assigned inside a loop costs **0 bytes**: construction plus method call went from
+  352 B / 271 ns to **0 B / 8 ns**, the operator form (`a + b`) from 352 B / 252 ns to
+  **0 B / 6 ns**. This is what makes vector arithmetic through the v1.5.0 operators usable in a
+  per-frame game loop.
+
+- **`for-in` no longer allocates its iterator.** A range or array loop runs at **0 B per
+  element** (208 B before); a range loop is ~3× faster than in v1.6.0. The `Iterable` route
+  through an interface is devirtualized where the concrete iterator is provable — a
+  `Set`/`Map` loop now calls its `next` directly instead of dispatching per element.
+
+- **Modules got smaller.** A function whose every call was inlined is removed; the six-function
+  `examples/arith.lyr` compiles to two. An attributed function always survives — the row is a
+  promise to the host.
+
+- **A panic in an inlined function names the caller's frame with the callee's line.** The line
+  is right, the frame above it is gone — the trade every optimizing compiler makes. A
+  deliberate `panic(...)` keeps its full backtrace, because a function that never returns is
+  not inlined.
+
+### Added
+
+- **The native boundary takes and returns value structs, without allocating.** A native
+  signature may use a `struct` declared in the same native module (scalar and string fields
+  only). The declaration stays fully typed on the script side; on the wire it is flattened:
+
+  ```lyr
+  module engine.geo;
+
+  pub struct Vec2 { x: float, y: float }
+
+  pub fn setPosition(entity: int, at: Vec2);
+  pub fn positionOf(entity: int): Vec2;
+  ```
+
+  A struct parameter crosses as its fields — the host registers the delegate it would have
+  written for scalars. A struct return comes back through a buffer the runtime owns
+  (`NativeRegistry.RegisterStructReturning`): the implementation fills one value per field, the
+  script sees an ordinary value, and value semantics keeps the shared buffer invisible. Layout
+  disagreements between host and SDK are load errors with the import's name in them.
+
+  Measured: a `Vec2` built fresh and passed in, or received back, costs **0 B per call** —
+  the answer to the embedding question that produced this milestone (Erato's `positionOf`).
+
+- **A native call no longer allocates its argument array.** The `LyrValue[]` handed to an
+  implementation is pooled and reused; a one-argument crossing went from 40 B to 0 B, a
+  four-argument one from 88 B to 0 B. The array is therefore a LOAN: read it during the call,
+  copy values out, never store it — documented on `NativeRegistry`, and every implementation in
+  the standard registry already complied.
+
+- **`tools/Bench`** — the in-process measurement harness behind all numbers above:
+  `dotnet run -c Release --project tools/Bench`. Allocated bytes and nanoseconds per operation,
+  scalar-loop baseline subtracted, round-robin against JIT tiering, raw-registry boundary
+  probes.
+
+### Not in this release
+
+- **Struct returns through the embedding layer's delegates.** `RegisterStructReturning` is a
+  `NativeRegistry` surface; a `LangVm.RegisterNative` overload that marshals a C# struct is
+  sugar for a later release — the raw form is the one a game host uses anyway.
+- **Structs from other modules in native signatures** — the struct must live in the module that
+  declares the native, which is where an SDK's value types belong.
+- **Escape analysis across surviving calls** — a struct passed to or returned from a *Lyric*
+  function that stays a function still allocates.
+- **The remaining optional ops in `for-in`**: a range loop still runs ~1.9× a hand-written
+  `while`; the gap is `optsome`/`optissome`/`optget` and block hops, peephole material.
+- **Value structs as a language feature.** Deliberately: a `struct` already HAS value
+  semantics; this release makes the representation keep that promise everywhere it matters,
+  with no new mechanism.
+
 ## v1.6.0 — 2026-08-18
 
 Attributes. A program can say things about itself that a tool outside it can read — which

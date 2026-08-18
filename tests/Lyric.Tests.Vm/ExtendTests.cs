@@ -52,7 +52,9 @@ public class ExtendTests
         de.RenderText(writer);
         Assert.False(de.HasErrors, "source did not compile: " + writer);
 
-        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+        // optimize:false — the tests on this helper pin WHICH functions the lowering produces,
+        // and the inliner would fold the very extension they look for.
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true, optimize: false);
         Assert.NotNull(ir);
         return ir!;
     }

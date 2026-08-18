@@ -50,7 +50,9 @@ public class LoweringTests
         var types = Semantics.Analyze(comp, binding, de);
 
         Assert.False(de.HasErrors, "source did not type-check:\n" + Render(de));
-        return (ModuleLowerer.Lower(comp, binding, types, de, verify), de);
+        // optimize:false — these tests pin the SHAPE of lowered code. The inliner would fold the
+        // very call or instance a test asserts; it has tests of its own.
+        return (ModuleLowerer.Lower(comp, binding, types, de, verify, optimize: false), de);
     }
 
     private static string Render(DiagnosticEngine de)
@@ -166,7 +168,7 @@ public class LoweringTests
         de.RenderText(writer);
         Assert.False(de.HasErrors, "source did not compile:\n" + writer.ToString());
 
-        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+        var ir = ModuleLowerer.Lower(comp, binding, types, de, verify: true, optimize: false);
         Assert.NotNull(ir);
         return ir!;
     }

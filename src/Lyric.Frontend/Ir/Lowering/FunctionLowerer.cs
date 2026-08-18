@@ -3902,21 +3902,63 @@ internal sealed class FunctionLowerer
         var import = _imports.Used[target.Value];
         var offset = receiver is null ? 0 : 1;
 
-        if (arguments.Length + offset != import.ParamTypes.Length)
+        // The shape carries the DECLARED parameters; the import carries the flattened wire
+        // signature. Without a shape — runtime helpers, generated host functions — the two
+        // coincide.
+        var shape = _imports.ShapeOf(target);
+        if (arguments.Length + offset != (shape?.Params.Length ?? import.ParamTypes.Length))
             throw NotSupported($"call to '{import.Name}' with default or variadic arguments", span);
 
-        var args = new TempId[arguments.Length + offset];
-        if (receiver is { } self) args[0] = self;
-        for (var i = 0; i < arguments.Length; i++) args[i + offset] = LowerExpr(arguments[i]);
+        var args = new List<TempId>(import.ParamTypes.Length);
+        if (receiver is { } self) args.Add(self);
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            var value = LowerExpr(arguments[i]);
+            if (shape?.Params[i + offset] is not { Struct: { } structType } flat)
+            {
+                args.Add(value);
+                continue;
+            }
+
+            // A struct crosses as its fields, read at the call: the same snapshot a by-value
+            // pass would take, without the copy — and without the object, once the scalarizer
+            // has dissolved the operand.
+            for (var f = 0; f < flat.Fields.Length; f++)
+            {
+                var field = _slots.NewTemp(flat.Fields[f]);
+                _b.Emit(new LoadField(field, value, structType, new FieldId(f), flat.Fields[f],
+                    span));
+                args.Add(field);
+            }
+        }
+
+        // A struct RETURN: the hidden buffer goes in as the trailing argument, the host fills
+        // its slots, and the expression's value is a fresh COPY of the buffer — value semantics
+        // is what makes the shared buffer safe (any binding copies), and the scalarizer is what
+        // makes the copy free when it never escapes.
+        if (shape?.Return is { } returned)
+        {
+            var bufferType = new IrStructType(returned.Struct);
+            var buffer = _slots.NewTemp(bufferType);
+            _b.Emit(new LoadGlobal(buffer, _imports.ResultBuffer(target, _globals), bufferType,
+                span));
+            args.Add(buffer);
+
+            _b.Emit(new CallImport(null, target, [.. args], span));
+
+            var copied = _slots.NewTemp(bufferType);
+            _b.Emit(new StructCopy(copied, buffer, returned.Struct, span));
+            return copied;
+        }
 
         if (IsVoid(import.ReturnType))
         {
-            _b.Emit(new CallImport(null, target, args, span));
+            _b.Emit(new CallImport(null, target, [.. args], span));
             return null;
         }
 
         var dest = _slots.NewTemp(import.ReturnType);
-        _b.Emit(new CallImport(dest, target, args, span));
+        _b.Emit(new CallImport(dest, target, [.. args], span));
         return dest;
     }
 

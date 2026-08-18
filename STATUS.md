@@ -48,6 +48,32 @@ functions out of them and hands its own functions and types in.
 
 ## Recently finished
 
+- [x] **M15 — the boundary learns values** (2026-08-18). Four slices, same day as M14, stacked on
+  its branch; details under *What we are working on*. The one measured sentence: a native call
+  allocates nothing anymore — argument arrays pooled (40/88 → 0 B), `Vec2` in as fields (0 B),
+  `Vec2` out through a hidden buffer that value semantics makes unobservable (0 B), layouts
+  checked at load. Erato's A2, answered.
+
+- [x] **M14 — the interpreter stops allocating** (2026-08-18). Five slices in one day, 3855 tests
+  green in Debug and Release, branch `feature/m14-allocations`. No language change, no format
+  change.
+  - **Slice 0**: `tools/Bench`, the in-process harness — every later gate is a diff against its
+    baseline. Round-robin against JIT tiering, minima, scalar loop subtracted.
+  - **Slice 1**: frame pooling. Rent from a per-function free list, recycle on return and handled
+    unwind, arrays cleared so nothing stays alive. Coroutines need no exception: state machines,
+    no frame survives a yield. Call: 176 → 0 B.
+  - **Slice 2**: the inliner. Splice via renumbering — the phi-free IR makes it cheap. Not
+    inlined: handlers on either side, self calls, never-returning callees (the verifier caught
+    that one as an orphaned continuation), >24 ops. Backtrace trade documented in the changelog.
+  - **Slice 3**: scalar replacement. Local forwarding plus sole-ownership scalarization, classes
+    and structs alike; `structcopy` becomes a field-wise init except across struct-typed fields
+    (deep copy). `Vec2.add` + assignment: 352 B/271 ns → 0 B/8.4 ns. THE ORDER MATTERED: a
+    returned value escapes its function but not the caller it was inlined into.
+  - **Slice 4**: devirtualization. A `callvirt` whose receiver is one provable `mkiface` becomes
+    the direct call, then the pipeline runs once more. A default-method slot keeps the fat
+    pointer — `this` in a default method dispatches virtually; the verifier caught the wrong
+    receiver before any test did.
+
 - [x] **M13 — attributes: metadata a host can read** (2026-08-18). Four slices in one day, 3822
   tests green in Debug and Release. Merged as PR #38, released as **v1.6.0**.
   - An attribute is a STRUCT; where it may sit is the marker it declares (`OnModule`/`OnType`/
@@ -119,15 +145,52 @@ functions out of them and hands its own functions and types in.
 
 ## Measurements
 
-Numbers instead of opinions. Taken 2026-08-07, Release, 100 000 iterations, adjusted for a scalar
-loop of the same length.
+Numbers instead of opinions. Since 2026-08-18 they come from `tools/Bench` — in-process, Release,
+100 000 operations per case, minima over nine runs, a scalar loop of the same shape subtracted.
+`dotnet run -c Release --project tools/Bench` reproduces them. The M14 baseline:
 
-| What | Bytes per operation |
-|---|---|
-| Struct construction **plus** method call (`Vec2.add`) | **352 B** |
-| call only (`fn step(a: float): float`) | **176 B** |
-| struct construction only | **112 B** |
-| scalar baseline | 9 064 B *in total* |
+| Case | ns/op adj. | B/op adj. |
+|---|---:|---:|
+| call (`fn step(a: float): float`) | 49.9 | **176** |
+| struct construction only | 60.6 | 56 |
+| construction **plus** method call (`Vec2.add`) | 271.0 | **352** |
+| the same through `a + b` (`Add<Vec2>`) | 252.3 | 352 |
+| `for-in` over a range (against `while`) | 143.2 | **208** |
+| `for-in` over an array (against `while`) | 153.1 | 208 |
+| `Set.iter()`, the `callvirt` route (against `while`) | 420.9 | 229 |
+
+One correction to the old numbers: the 112 B for "construction only" was a four-field shape; the
+two-field `Vec2` is 56 B. And one to the harness: the interpreter loop is one shared method that
+tiered compilation keeps improving while the harness runs, so the cases are measured round-robin
+over three cycles, minimum per case — sequentially, the scalar baseline came out slower than the
+loop doing the same work plus a call.
+
+**After slice 1 (frame pooling):** call **176 → 0 B**; `for-in` range **208 → 0.1 B** — the
+208 B were the frame trio alone; a `Some` over a scalar never allocated, disproving slice 0's
+guess. **After slice 2 (inlining), adjusted ns/op:** `Vec2.add` 271 → **112**, `for-in` range
+143 → **68**, array 153 → **94**; the ~7 ns residue on a bare call is the spliced
+parameter/return traffic through locals.
+
+**After slice 3 (scalar replacement), against the slice-0 baseline, adjusted:**
+
+| Case | baseline | now |
+|---|---:|---:|
+| construction only | 60.6 ns / 56 B | **18.2 ns / 0 B** |
+| `Vec2.add` plus assignment | 271.0 ns / 352 B | **8.4 ns / 0 B** |
+| the same through `a + b` | 252.3 ns / 352 B | **6.1 ns / 0 B** |
+| `for-in` over a range | 143.2 ns / 208 B | **40.5 ns / 0 B** |
+| `for-in` over an array | 153.1 ns / 208 B | **109.7 ns / 0.3 B** |
+
+The `Vec2` gate is met: expression-shaped struct code allocates NOTHING and runs ~30–40× the
+baseline. The range loop is 0 B but 1.85× a `while` — the optional ops and the extra block hops
+remain; honest, and material for a later peephole rather than this milestone.
+
+**After slice 4 (devirtualization):** the `Set.iter()` loop carries no `callvirt` anymore — the
+receiver's single `mkiface` proves the concrete type, and the loop direct-calls
+`SetIterator<int>.next` (too big to inline; the call is pooled). The gate was structural and is
+met; the time gain drowns in the probing work the loop actually does. One find on the way, caught
+by the verifier: a DEFAULT-method slot takes the fat pointer, not the concrete value — `this` in
+a default method dispatches virtually.
 
 **The VM is allocation-free at its core** — a loop with floating-point arithmetic allocates nothing
 worth mentioning over 100 000 passes. Everything above that is calls and objects.
@@ -167,10 +230,41 @@ have bought an incremental compiler nobody needs.
 **v1.6.0 is released** — M13, attributes (#36, PR #38), all four slices in one day. Erato re-pins
 at its own pace: a 1.5.0 runtime loads 3.2 modules, so nothing forces the update.
 
-**Nothing is planned after it.** The open points below are the material — heterogeneous arithmetic
-and its coherence question, compound assignment through the interfaces, the static-extension
-asymmetry, project-wide references, and the first compiler-read attribute as a decision of its own.
-The next scope check is **2026-09-06**, and that is the place to decide.
+**M14 is finished** (decided 2026-08-18 ahead of the scope check as a deliberate reaction to the
+Erato findings, done the same day — all five slices, slice 4 included rather than cut). The
+changelog carries a v1.7.0 entry as *unreleased*; merging the PR and tagging is the maintainer's
+call. What M14 deliberately did NOT do: value structs as a language feature (a `struct` already
+has value semantics; the representation now keeps the promise), a JIT, and the native boundary.
+
+**M15 — the boundary learns values — is finished** (2026-08-18, `feature/m15-boundary`, stacked
+on the M14 branch). All four slices; the v1.7.0 changelog entry covers both milestones and stays
+*unreleased* until the maintainer merges and tags.
+
+- **Slice 0**: boundary probes in `tools/Bench`, through the RAW registry path a game host uses
+  — the embedding layer's per-call boxing would have buried the figure. Baseline: 40 B per
+  one-argument crossing, 88 B per four-argument one.
+- **Slice 1**: the argument buffers are pooled (per arity, stack-shaped for reentrancy, cleared
+  on recycle, abandoned on throw). The array is a documented LOAN to the implementation. 40/88
+  → **0 B**. This is the fix for the GC tail Erato's SoA measurement exposed.
+- **Slice 2**: struct parameters flatten — the .lyr declaration is the typed façade, the wire
+  and the binder see scalars, the call site emits field loads. Flattening removes the escape,
+  so the M14 scalarizer dissolves the operand: a fresh `Vec2` per call measures **0 B**.
+- **Slice 3**: struct returns through a hidden out-buffer — one module-owned instance per
+  import, passed as trailing wire argument (`0x45` was always legal in import rows; spec now
+  says so), host fills fields in order, call site copies out. VALUE SEMANTICS is the safety
+  argument: any binding copies, so the shared buffer is unobservable — pinned by the
+  two-calls-one-buffer and escaping-result tests. `positionOf(e): Vec2` measures **0 B**.
+  `RegisterStructReturning` checks the layout at load.
+- What M15 deliberately did not do: embedding-layer delegate sugar for struct returns,
+  cross-module structs in native signatures, and structs with reference fields — each a
+  boundary-rule decision, recorded in the changelog.
+
+**Erato's A2 is answered in its useful direction** — the host declares the value types in its
+SDK, the script uses them, nothing allocates. What remains on the register's list for Lyric is
+A4 (an opaque `Entity`) and the E4-side adoption. The other open points — heterogeneous
+arithmetic, compound assignment through the interfaces, the static-extension asymmetry,
+project-wide references, the first compiler-read attribute, the `for-in` peephole — stay
+material for the **2026-09-06** scope check.
 
 **One limit stays**: a generic call shows the DECLARED signature, because the
 substitution is private to the type checker and a second one in the server would be a second answer

@@ -20,6 +20,10 @@ public sealed class LoadedProgram
     private readonly NativeRegistry.BoundNative[] _natives;
     private readonly LyrValue[] _globals;
 
+    /// <summary>Argument buffers for native calls, shared across every call into this program —
+    /// which is what amortizes them over a host that calls once per frame.</summary>
+    private readonly ArgumentPool _arguments = new();
+
     private LoadedProgram(BytecodeModule module, Interpreter.Prepared[] prepared,
         DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals)
     {
@@ -132,5 +136,5 @@ public sealed class LoadedProgram
 
     private LyrValue Execute(int index, LyrValue[]? arguments = null) =>
         Interpreter.Execute(_prepared, index, _module.Strings, _module.Types, _dispatch,
-            _natives, _globals, arguments, _module.SourceMap);
+            _natives, _globals, _arguments, arguments, _module.SourceMap);
 }

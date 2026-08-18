@@ -115,6 +115,56 @@ Three things follow from how it is keyed:
 A module in a native root may hold ordinary Lyric code beside its declarations; `anyKey` above is
 compiled like any other function.
 
+## Value types across the boundary
+
+A native signature may use a `struct` declared **in the same native module**, with scalar and
+string fields only. The declaration stays fully typed on the script side; on the wire the struct
+is **flattened**:
+
+```text
+// sdk/engine/geo.lyr
+module engine.geo;
+
+pub struct Vec2 { x: float, y: float }
+
+pub fn setPosition(entity: int, at: Vec2);
+
+pub fn positionOf(entity: int): Vec2;
+```
+
+A struct **parameter** crosses as its fields. The host registers exactly the delegate it would
+have written for scalar parameters — `setPosition` above binds against `(long, double, double)`:
+
+```csharp
+vm.RegisterNative("engine.geo.setPosition",
+    (long entity, double x, double y) => world.SetPosition(entity, x, y));
+```
+
+A struct **return** comes back through a buffer the runtime owns: the implementation receives
+the ordinary arguments plus the buffer's slots and fills one value per field, in field order.
+That is the `NativeRegistry` surface a game host uses:
+
+```csharp
+natives.RegisterStructReturning("engine.geo.positionOf",
+    [TypeTag.I64], [TypeTag.F64, TypeTag.F64],
+    (args, result) =>
+    {
+        var p = world.PositionOf(args[0].AsI64);
+        result[0] = LyrValue.FromF64(p.X);
+        result[1] = LyrValue.FromF64(p.Y);
+    });
+```
+
+On the script side nothing special happens — `let p = positionOf(e);` binds an ordinary value
+with value semantics, and mutating `p` afterwards changes nothing the host sees. The point of
+the arrangement is what it costs: **nothing allocates**. A `Vec2` built fresh and passed in, or
+received back in a loop of a hundred thousand iterations, measures 0 bytes per call — the fields
+travel as scalars, and the result buffer exists once per program.
+
+Registration checks the layout at load time: a host that fills three fields against a struct the
+SDK declares with two is rejected with the import's name in the message, before any instruction
+runs.
+
 ## Registering types
 
 `RegisterType` exposes a C# class to scripts. Scripts receive such an object and pass it on; they

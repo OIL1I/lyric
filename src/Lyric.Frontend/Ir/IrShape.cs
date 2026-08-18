@@ -135,4 +135,84 @@ public static class IrShape
         _ => throw new InternalCompilationException(
             $"ir: unhandled terminator {terminator.GetType().Name}")
     };
+
+    // ------------------------------------------------------------------ rewriting
+    //
+    // The id maps live here for the same reason the operand lists do: an instruction missing from
+    // a copy of this switch would keep its old ids and produce silently wrong code. The inliner is
+    // the consumer; function, type, import and global ids are module-wide and stay untouched.
+
+    /// <summary>The instruction with every temp and local id passed through the two maps.</summary>
+    public static IrOp Rewrite(IrOp op, Func<TempId, TempId> temp, Func<LocalId, LocalId> local)
+    {
+        TempId? Opt(TempId? id) => id is { } value ? temp(value) : null;
+        TempId[] All(TempId[] ids)
+        {
+            var mapped = new TempId[ids.Length];
+            for (var i = 0; i < ids.Length; i++) mapped[i] = temp(ids[i]);
+            return mapped;
+        }
+
+        return op switch
+        {
+            Const c => c with { Dest = temp(c.Dest) },
+            BinOp b => b with { Dest = temp(b.Dest), Lhs = temp(b.Lhs), Rhs = temp(b.Rhs) },
+            UnOp u => u with { Dest = temp(u.Dest), Operand = temp(u.Operand) },
+            Convert cv => cv with { Dest = temp(cv.Dest), Operand = temp(cv.Operand) },
+            LoadLocal l => l with { Dest = temp(l.Dest), Local = local(l.Local) },
+            StoreLocal s => s with { Local = local(s.Local), Value = temp(s.Value) },
+            Call k => k with { Dest = Opt(k.Dest), Args = All(k.Args) },
+            CallImport k => k with { Dest = Opt(k.Dest), Args = All(k.Args) },
+            NewObject n => n with { Dest = temp(n.Dest) },
+            LoadField f => f with { Dest = temp(f.Dest), Object = temp(f.Object) },
+            StoreField f => f with { Object = temp(f.Object), Value = temp(f.Value) },
+
+            NewArray a => a with { Dest = temp(a.Dest), Elements = All(a.Elements) },
+            LoadElem e => e with { Dest = temp(e.Dest), Array = temp(e.Array), Index = temp(e.Index) },
+            StoreElem e => e with { Array = temp(e.Array), Index = temp(e.Index), Value = temp(e.Value) },
+            ArrayLen a => a with { Dest = temp(a.Dest), Array = temp(a.Array) },
+            ArrayConcat c => c with { Dest = temp(c.Dest), Left = temp(c.Left), Right = temp(c.Right) },
+            ArrayRepeat r => r with { Dest = temp(r.Dest), Array = temp(r.Array), Count = temp(r.Count) },
+
+            OptNone n => n with { Dest = temp(n.Dest) },
+            OptSome s => s with { Dest = temp(s.Dest), Value = temp(s.Value) },
+            OptIsSome i => i with { Dest = temp(i.Dest), Option = temp(i.Option) },
+            OptGet g => g with { Dest = temp(g.Dest), Option = temp(g.Option) },
+
+            NewVariant v => v with { Dest = temp(v.Dest), Fields = All(v.Fields) },
+            EnumTag t => t with { Dest = temp(t.Dest), Value = temp(t.Value) },
+            EnumAs a => a with { Dest = temp(a.Dest), Value = temp(a.Value) },
+
+            MakeInterface m => m with { Dest = temp(m.Dest), Value = temp(m.Value) },
+            StructCopy c => c with { Dest = temp(c.Dest), Value = temp(c.Value) },
+
+            LoadGlobal l => l with { Dest = temp(l.Dest) },
+            StoreGlobal g => g with { Value = temp(g.Value) },
+
+            MakeClosure m => m with { Dest = temp(m.Dest), Environment = Opt(m.Environment) },
+            CallIndirect c => c with
+            {
+                Dest = Opt(c.Dest), Callee = temp(c.Callee), Args = All(c.Args),
+            },
+            CallVirt c => c with { Dest = Opt(c.Dest), Args = All(c.Args) },
+
+            _ => throw new InternalCompilationException($"ir: unhandled op {op.GetType().Name}")
+        };
+    }
+
+    /// <summary>The terminator with its temp and block ids passed through the two maps.</summary>
+    public static IrTerminator Rewrite(IrTerminator terminator, Func<TempId, TempId> temp,
+        Func<BlockId, BlockId> block) => terminator switch
+    {
+        Return r => r with { Value = r.Value is { } value ? temp(value) : null },
+        Branch b => b with { Target = block(b.Target) },
+        CondBranch c => c with
+        {
+            Cond = temp(c.Cond), IfTrue = block(c.IfTrue), IfFalse = block(c.IfFalse),
+        },
+        Throw t => t with { Value = temp(t.Value) },
+        Unreachable or EndFinally => terminator,
+        _ => throw new InternalCompilationException(
+            $"ir: unhandled terminator {terminator.GetType().Name}")
+    };
 }

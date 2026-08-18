@@ -178,6 +178,20 @@ entries          count × {
 Host functions are referenced symbolically by name and signature. Binding to implementations
 happens at load time.
 
+Parameter and return types use the general type grammar of §3. Two composite forms carry a
+convention with them:
+
+- **A struct-typed parameter in LAST position** may be a **result buffer**: the compiler wires a
+  native declared `fn f(...): S` as `f(..., out: S): void`, the runtime passes a module-owned
+  instance of `S`, and the implementation fills one value per field in field order. Which imports
+  follow this convention is the host's knowledge, carried by its registration — the format only
+  provides the shape.
+- Whether a runtime can BIND a given signature is the registry's question, not the reader's: a
+  reader accepts any well-formed type here, and a runtime without an implementation for the name
+  and signature rejects the module at load time. That is what keeps this section forward-open —
+  a module using conventions a runtime predates fails at binding, with the import's name in the
+  message, never by misreading.
+
 ### Functions (Id 5)
 
 ```

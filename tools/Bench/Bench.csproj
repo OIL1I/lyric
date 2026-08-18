@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>bench</AssemblyName>
+    <RootNamespace>Lyric.Bench</RootNamespace>
+    <Description>The measurement harness: allocation and time gates for the interpreter work.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The embedding API is the whole dependency: the harness compiles source strings in-process and
+      runs them, which is the process that does the work — a batch invocation would measure process
+      start and JIT warm-up instead. It is a tool and stays out of build/publish.proj.
+    -->
+    <ProjectReference Include="..\..\src\Lyric.Embedding\Lyric.Embedding.csproj" />
+  </ItemGroup>
+
+</Project>
