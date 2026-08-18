@@ -17,9 +17,9 @@ three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0
 **M16 — the tooling milestone — is current** (decided 2026-08-18, at the post-v1 pace): the
 language server learns the project, the editors learn the server. Slices, in order: workspace
 compilation (**done**, PR #43) → rename + workspace symbols (**done**, PR #44) → semantic tokens
-(**done**, PR #45) → signature help + folding + inlay hints (**done**, stacked on #45) → the VS
-Code extension rounded off (restart command, status item, task provider, snippets, `.vsix` in the
-release) → a JetBrains thin plugin over the platform's LSP API, deliberately no PSI.
+(**done**, PR #45) → signature help + folding + inlay hints (**done**, PR #46) → the VS Code
+extension rounded off (**done**, stacked on #46) → a JetBrains thin plugin over the platform's
+LSP API, deliberately no PSI.
 
 **M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
 (frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
@@ -58,7 +58,22 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
-- [x] **M16 slice 4 — signature help, folding, inlay hints** (2026-08-18, stacked on #45). 3912
+- [x] **M16 slice 5 — the VS Code extension rounded off** (2026-08-18, stacked on #46). No server
+  change; the extension catches up with what the server can do, and the release learns to ship it.
+  - **`lyric.restartServer`** over the existing restart chain — the way out of a hung or updated
+    server without a window reload. A **language status item** shows starting/running-with-version/
+    failed; a failed start stops being an invisible toast, and clicking the item retries.
+  - **A task provider** (`lyric: build`) for every workspace folder with a `lyric.json`: runs the
+    project's `build.lyr` through the driver, diagnostics land in the Problems panel via the
+    `$lyric` problem matcher. The matcher's regex was verified against `DiagnosticEngine.RenderText`
+    first — `path:line:col: severity[CODE]: message` — the precondition the plan named.
+  - **Snippets** for the declaration forms, written against the grammar (`match (x) { P => v, }`),
+    and **`vsce package` in the release workflow**: from the next tag every release carries an
+    installable `vscode-lyric-<version>.vsix` beside the archives — verified by a local dry run
+    (324 files, 471 KB), including the LICENSE copy vsce insists on. Marketplace publishing stays
+    a separate decision; the release asset is the distribution.
+
+- [x] **M16 slice 4 — signature help, folding, inlay hints** (2026-08-18, PR #46). 3912
   tests green in Debug and Release, 13 new.
   - **Signature help off the CURRENT buffer** (the completion argument: the model the keystroke
     invalidated is the one that would answer about the text before it). The label is the
@@ -112,27 +127,6 @@ out of them and hands its own functions, types and value structs in.
     site narrowed from the node to the name (`p.x` → `x`), four pinned tests updated.
   - `workspace/symbol`: the outline walk, flattened over every live compilation, stdlib excluded,
     case-insensitive substring, capped at 512.
-
-- [x] **M16 slice 1 — the server compiles the project, not the buffer** (2026-08-18, PR #43). 3878
-  tests green in Debug and Release, 11 new.
-  - **`SourceCompiler.CheckProject`**: every `.lyr` under the source root as ONE compilation —
-    symbols are identity objects, so cross-file answers need one symbol world; per-buffer
-    compilations cannot be merged after the fact. Roots register before anything resolves, so an
-    import between roots reads no file twice; a root's name comes from its header, else from the
-    path — the exact inverse of the import derivation, which is what makes the dedup hold.
-  - **A workspace is not an executable.** Two scripts may both declare `main`;
-    `Semantics.Analyze(singleProgram:)` switches off only the duplicate rule, the shape rule stays,
-    and the single-file path still rejects a second `main` — all three pinned by tests. Found in
-    the code, not in the plan: `CheckMain` counts across all modules, and without the switch every
-    two-script project would have been a fake error.
-  - **The M11 references limit is closed**: standing on a declaration finds the uses in files that
-    import this one. Closed files get diagnostics into the Problems panel, deleted files have them
-    withdrawn, never-saved buffers under the root join the project, and `**/*.lyr` +
-    `**/lyric.json` watches (the server's one outgoing request) pick up changes behind the editor.
-  - Files outside a project keep the per-buffer path. Recorded limits: a `sourceRoot` change
-    mid-session can leave stale squiggles on the old root's files; two files claiming one module
-    name both compile, imports bind to the first — a duplicate-module diagnostic is a decision for
-    later, not an accident.
 
 ## Measurements
 
@@ -220,12 +214,14 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M16 slice 5 — the VS Code extension rounded off — is next.** A restart command over the
-existing restart chain; a language status item, so a server that failed to start stops being
-invisible; a task provider for `lyrbuild` with a problem matcher (precondition to verify first:
-the CLI diagnostic format is stable and regex-able); snippets written against `docs/Grammar.md`;
-`vsce package` in the release workflow, so the `.vsix` hangs on the release as an installable
-artifact — a Marketplace account is a separate decision. Then: the JetBrains thin plugin.
+**M16 slice 6 — the JetBrains thin plugin — is next, and it closes the milestone.** A Gradle
+project under `tooling/jetbrains-lyric`: the `.lyr` file type, the existing TextMate grammar
+bundled, an `LspServerSupportProvider` that starts `lyrls` with the same lookup the VS Code
+extension uses (explicit path → beside the driver → PATH). To verify at slice start, not from
+memory: which LSP features the platform API consumes at the chosen baseline. Commercial IDEs
+only; LSP4IJ support is deliberately not built. Verification is `verifyPlugin` plus a manual
+checklist — headless IDE tests are not worth their harness. A PSI plugin stays off the table:
+a second frontend in Kotlin with a permanent lag is the mechanism this project does not add.
 
 **Not renameable, recorded**: a module (rename the file), an enum variant's payload field (no
 symbol exists for it), anything whose declaring module is native. Renaming across `build.lyr` is
@@ -347,8 +343,7 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`lsp: the call under the cursor, the fold behind the brace, the type nobody wrote` (stacked on
-PR #45)
+`vscode: the extension catches up with its server, and the release ships it` (stacked on PR #46)
 
 ---
 

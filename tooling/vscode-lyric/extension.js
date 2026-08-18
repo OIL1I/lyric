@@ -1,13 +1,15 @@
 // The Lyric extension for VS Code.
 //
-// Three things: syntax highlighting, declared through package.json and the TextMate grammar and
-// needing no code; a run command; and a client for `lyrls`, which produces the diagnostics.
+// The parts that need no code are declared in package.json: the TextMate grammar, the snippets,
+// the problem matcher. The code here is the run command, the build task provider, a status item,
+// and a client for `lyrls` — which is where everything language-aware happens.
 //
-// The diagnostics themselves are not computed here. The client starts the server, forwards the
-// open buffers to it and renders what comes back — the compiler is the only thing that decides
-// what is wrong with a program, and a second opinion in JavaScript would be a second answer to
-// the same question.
+// Nothing about the language is computed here. The client starts the server, forwards the open
+// buffers to it and renders what comes back — the compiler is the only thing that decides what
+// is wrong with a program, and a second opinion in JavaScript would be a second answer to the
+// same question.
 
+const fs = require("fs");
 const path = require("path");
 const vscode = require("vscode");
 const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
@@ -51,6 +53,43 @@ function callPrefix() {
 
 /** The running language client, or null when diagnostics are off or the server did not start. */
 let client = null;
+
+/**
+ * The one visible answer to "is the server running". Without it a failed start is a warning
+ * toast that disappears, and the user reads the silence as "no diagnostics today" with no way to
+ * tell why or to retry. Clicking it restarts.
+ */
+let statusItem = null;
+
+function showStatus(state, detail) {
+    if (statusItem === null) {
+        return;
+    }
+
+    statusItem.busy = state === "starting";
+    statusItem.severity = state === "failed"
+        ? vscode.LanguageStatusSeverity.Error
+        : vscode.LanguageStatusSeverity.Information;
+
+    switch (state) {
+        case "starting":
+            statusItem.text = "Lyric: starting";
+            statusItem.detail = "the language server is coming up";
+            break;
+        case "running":
+            statusItem.text = detail ? `Lyric ${detail}` : "Lyric";
+            statusItem.detail = "language server running";
+            break;
+        case "failed":
+            statusItem.text = "Lyric: server failed";
+            statusItem.detail = "diagnostics are off; click to retry";
+            break;
+        case "off":
+            statusItem.text = "Lyric: diagnostics off";
+            statusItem.detail = "enable lyric.diagnostics.enable to start the server";
+            break;
+    }
+}
 
 /**
  * Restarts run STRICTLY ONE AFTER ANOTHER.
@@ -137,15 +176,18 @@ async function startClient() {
 
     const starting = new LanguageClient("lyric", "Lyric Language Server", server, options);
     client = starting;
+    showStatus("starting");
 
     // Awaited rather than left running: the caller is the restart chain, and it may only proceed to
     // the next stop once this handshake is finished.
     try {
         await starting.start();
+        showStatus("running", starting.initializeResult?.serverInfo?.version);
     } catch (error) {
         if (client === starting) {
             client = null;
         }
+        showStatus("failed");
         vscode.window.showWarningMessage(
             `Lyric: the language server could not be started (${command}). ` +
             `Diagnostics are off; highlighting and Ctrl+F5 still work. ${error.message}`
@@ -180,6 +222,8 @@ function restart() {
         await stopClient();
         if (diagnosticsEnabled()) {
             await startClient();
+        } else {
+            showStatus("off");
         }
     });
     return restarts;
@@ -195,7 +239,60 @@ function scheduleRestart() {
     }, RestartDelayMs);
 }
 
+/**
+ * The build task: the project's own build.lyr, run by the driver, with the problem matcher
+ * reading the compiler's diagnostics into the Problems panel.
+ *
+ * One task per workspace folder that carries a lyric.json — a folder without one has no project
+ * to build, and offering the task there produces exactly the "no build.lyr found" the user did
+ * not ask about.
+ */
+function buildTask(definition, scope, cwd) {
+    const executable = vscode.workspace
+        .getConfiguration("lyric")
+        .get("executable", "lyric");
+
+    const task = new vscode.Task(
+        definition,
+        scope,
+        "build",
+        "lyric",
+        new vscode.ShellExecution(executable, ["build"], { cwd }),
+        "$lyric"
+    );
+    task.group = vscode.TaskGroup.Build;
+    task.detail = "lyric build — run the project's build.lyr";
+    return task;
+}
+
+const taskProvider = {
+    provideTasks() {
+        const tasks = [];
+        for (const folder of vscode.workspace.workspaceFolders ?? []) {
+            const manifest = vscode.Uri.joinPath(folder.uri, "lyric.json").fsPath;
+            if (fs.existsSync(manifest)) {
+                tasks.push(buildTask({ type: "lyric" }, folder, folder.uri.fsPath));
+            }
+        }
+        return tasks;
+    },
+
+    // A tasks.json entry of type "lyric" arrives here with its own definition; the execution is
+    // rebuilt around it, honoring an explicit projectDir.
+    resolveTask(task) {
+        const scope = task.scope ?? vscode.TaskScope.Workspace;
+        const folder = typeof scope === "object" ? scope.uri.fsPath : undefined;
+        return buildTask(task.definition, scope, task.definition.projectDir ?? folder);
+    },
+};
+
 function activate(context) {
+    statusItem = vscode.languages.createLanguageStatusItem("lyric.server", {
+        language: "lyric",
+    });
+    statusItem.command = { command: "lyric.restartServer", title: "Restart" };
+    context.subscriptions.push(statusItem);
+
     // Through the same chain the setting changes use, so the first start and a restart triggered
     // seconds later cannot overlap.
     restart();
@@ -240,6 +337,13 @@ function activate(context) {
     });
 
     context.subscriptions.push(run);
+
+    // The way out of a hung or updated server that does not cost a window reload.
+    context.subscriptions.push(
+        vscode.commands.registerCommand("lyric.restartServer", () => restart())
+    );
+
+    context.subscriptions.push(vscode.tasks.registerTaskProvider("lyric", taskProvider));
 }
 
 function deactivate() {

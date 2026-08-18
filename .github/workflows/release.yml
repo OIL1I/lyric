@@ -75,9 +75,36 @@ jobs:
           path: dist/*
           retention-days: 7
 
+  extension:
+    name: Package (vscode)
+    needs: verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # vsce stops on a missing LICENSE with a prompt no CI can answer; the repository's license
+      # covers the extension and travels into the package.
+      - name: Package extension
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
+          cp LICENSE tooling/vscode-lyric/LICENSE
+          cd tooling/vscode-lyric
+          npm install --omit=dev
+          npx --yes @vscode/vsce package --out "../../dist/vscode-lyric-${version}.vsix"
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-vscode
+          path: dist/*
+          retention-days: 7
+
   publish:
     name: Publish release
-    needs: package
+    needs: [package, extension]
     runs-on: ubuntu-latest
 
     steps:
