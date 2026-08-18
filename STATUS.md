@@ -11,8 +11,12 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.6.0 are released** — annotated tags on the remote, each with a release page and
+**v1.0.0 through v1.7.0 are released** — annotated tags on the remote, each with a release page and
 three archives. M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`).
+
+**M14 and M15 are what v1.7.0 shipped, both built 2026-08-18**: the interpreter stops allocating
+(frame pooling, inlining, scalar replacement, devirtualization) and the native boundary learns
+value structs at 0 B per call. PRs #41 and #42, details under *Recently finished*.
 
 **M13, attributes, is what v1.6.0 shipped**: a program says things about itself that a host can
 read. Format 3.2, and the 7-day rule was retired with it — it was pre-v1 scope discipline, and v1.0
@@ -29,8 +33,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3830 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
-`lyrembed.dll`, version **1.6.0**.
+3856 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
+`lyrembed.dll`, version **1.7.0**.
 
 **All three limitations v1.1.0 shipped with are closed.** The command line knows native roots, the
 language server reads the project file, and editing a module refreshes the file that imports it.
@@ -236,9 +240,8 @@ changelog carries a v1.7.0 entry as *unreleased*; merging the PR and tagging is 
 call. What M14 deliberately did NOT do: value structs as a language feature (a `struct` already
 has value semantics; the representation now keeps the promise), a JIT, and the native boundary.
 
-**M15 — the boundary learns values — is finished** (2026-08-18, `feature/m15-boundary`, stacked
-on the M14 branch). All four slices; the v1.7.0 changelog entry covers both milestones and stays
-*unreleased* until the maintainer merges and tags.
+**M15 — the boundary learns values — is finished and released** (2026-08-18,
+`feature/m15-boundary`, merged as PR #42 into #41, released as **v1.7.0** together with M14).
 
 - **Slice 0**: boundary probes in `tools/Bench`, through the RAW registry path a game host uses
   — the embedding layer's per-call boxing would have buried the figure. Baseline: 40 B per

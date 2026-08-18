@@ -10,7 +10,7 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## v1.7.0 — unreleased
+## v1.7.0 — 2026-08-18
 
 The interpreter stops allocating — and so does the native boundary. No language change and no
 format change: the same programs compile to faster, smaller modules, run with far fewer heap
