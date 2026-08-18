@@ -1,0 +1,9 @@
+/// The boundary probes: natives whose implementations do almost nothing, so a measurement sees
+/// the crossing itself — argument transport, dispatch, return — rather than any work behind it.
+module bench.api;
+
+/// One scalar in, one out — the smallest round trip.
+pub fn step(a: float): float;
+
+/// Four scalars in, nothing out — the shape of a setPosition-style command.
+pub fn push4(a: float, b: float, c: float, d: float);

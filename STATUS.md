@@ -230,8 +230,10 @@ changelog carries a v1.7.0 entry as *unreleased*; merging the PR and tagging is 
 call. What M14 deliberately did NOT do: value structs as a language feature (a `struct` already
 has value semantics; the representation now keeps the promise), a JIT, and the native boundary.
 
-**M15 — the boundary learns values — is the proposed next milestone**, written against M14's
-measured outcome (details in the PR discussion):
+**M15 — the boundary learns values — is the current milestone** (started 2026-08-18 on
+`feature/m15-boundary`, stacked on the M14 branch). Erato's SoA measurement sharpened the
+motive: a crossing costs ~9–37 ns, but every native call allocates its argument array — the
+scatter, not the crossing, is the cost. Slices:
 
 - **Slice 0, measure first**: a boundary bench beside the compute benches — per-crossing cost and
   the `new LyrValue[arity]` argument array every native call allocates today. Erato's

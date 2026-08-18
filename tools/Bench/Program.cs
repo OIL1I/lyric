@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using Lyric.Bytecode;
+using Lyric.Core;
 using Lyric.Embedding;
+using Lyric.Vm;
 
 namespace Lyric.Bench;
 
@@ -24,7 +27,11 @@ internal static class Program
 
     /// <param name="Baseline">The case whose per-op figures are subtracted, so the reported
     /// number names the operation rather than the loop around it.</param>
-    private sealed record Case(string Name, int Ops, string? Baseline, string Source);
+    /// <param name="RawNatives">Run through <c>VmHost.Load</c> with a raw
+    /// <see cref="NativeRegistry"/> instead of the embedding layer — see
+    /// <see cref="Prepare"/>.</param>
+    private sealed record Case(string Name, int Ops, string? Baseline, string Source,
+        bool RawNatives = false);
 
     private sealed record Result(double NsPerOp, double BytesPerOp);
 
@@ -45,10 +52,17 @@ internal static class Program
         // baseline came out slower than the loop that did the same work plus a call. The minimum
         // per case across cycles sees every case at the final tier at least once.
         var cases = Cases().ToList();
-        var vm = new LangVm(new HostOptions { StdlibRoot = stdlib });
-        var modules = cases.ToDictionary(c => c.Name, c => vm.Compile(c.Source, "bench"));
+        var vm = new LangVm(new HostOptions
+        {
+            StdlibRoot = stdlib,
+            NativeRoots = new Dictionary<string, string>
+            {
+                ["bench"] = Path.Combine(RepoRoot(), "tools", "Bench", "sdk"),
+            },
+        });
+        var runners = cases.ToDictionary(c => c.Name, c => Prepare(vm, c), StringComparer.Ordinal);
 
-        foreach (var c in cases) Require(vm.Run(modules[c.Name]), c.Name);
+        foreach (var c in cases) Require(runners[c.Name](), c.Name);
 
         var results = cases.ToDictionary(c => c.Name,
             _ => new Result(double.MaxValue, double.MaxValue), StringComparer.Ordinal);
@@ -56,7 +70,7 @@ internal static class Program
         for (var cycle = 0; cycle < 3; cycle++)
             foreach (var c in cases)
             {
-                var measured = Measure(vm, modules[c.Name], c);
+                var measured = Measure(runners[c.Name], c);
                 results[c.Name] = new Result(
                     Math.Min(results[c.Name].NsPerOp, measured.NsPerOp),
                     Math.Min(results[c.Name].BytesPerOp, measured.BytesPerOp));
@@ -78,7 +92,49 @@ internal static class Program
         return 0;
     }
 
-    private static Result Measure(LangVm vm, ScriptModule module, Case c)
+    /// <summary>Turns a case into a run delegate returning the exit code.</summary>
+    /// <remarks>Two paths on purpose. Ordinary cases go through <see cref="LangVm.Run"/>. Cases
+    /// with RAW NATIVES bypass the embedding layer's delegate marshalling — it boxes every
+    /// argument and DynamicInvokes, which would bury the interpreter's own transport cost this
+    /// harness wants to see. The raw path is <c>VmHost.Load</c> plus a registry of
+    /// <c>Func&lt;LyrValue[], LyrValue&gt;</c> implementations: exactly the path a game engine
+    /// host takes.</remarks>
+    private static Func<long> Prepare(LangVm vm, Case c)
+    {
+        var module = vm.Compile(c.Source, "bench");
+
+        if (!c.RawNatives) return () => vm.Run(module);
+
+        var loaded = VmHost.Load(module.Bytes, Console.Error)
+                     ?? throw new InvalidOperationException($"case '{c.Name}' did not load");
+        var program = LoadedProgram.Load(loaded, RawRegistry(), Capability.None);
+        return () => program.RunEntry([]).AsI64;
+    }
+
+    /// <summary>Sinks for the boundary probes: enough side effect that nothing can be elided,
+    /// no work that would pollute the figure.</summary>
+    private static double _sink;
+
+    private static NativeRegistry RawRegistry()
+    {
+        var registry = NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null);
+
+        registry.Register("bench.api.step", [TypeTag.F64], TypeTag.F64,
+            arguments => LyrValue.FromF64(arguments[0].AsF64 * 0.9999 + 1.5));
+
+        registry.Register("bench.api.push4",
+            [TypeTag.F64, TypeTag.F64, TypeTag.F64, TypeTag.F64], TypeTag.Void,
+            arguments =>
+            {
+                _sink = arguments[0].AsF64 + arguments[1].AsF64
+                        + arguments[2].AsF64 - arguments[3].AsF64;
+                return default;
+            });
+
+        return registry;
+    }
+
+    private static Result Measure(Func<long> run, Case c)
     {
         var bestTicks = long.MaxValue;
         var bestBytes = long.MaxValue;
@@ -86,7 +142,7 @@ internal static class Program
         {
             var bytesBefore = GC.GetAllocatedBytesForCurrentThread();
             var ticksBefore = Stopwatch.GetTimestamp();
-            var exit = vm.Run(module);
+            var exit = run();
             var ticks = Stopwatch.GetTimestamp() - ticksBefore;
             var bytes = GC.GetAllocatedBytesForCurrentThread() - bytesBefore;
 
@@ -99,7 +155,7 @@ internal static class Program
         return new Result(nanos / c.Ops, (double)bestBytes / c.Ops);
     }
 
-    private static void Require(int exit, string name)
+    private static void Require(long exit, string name)
     {
         if (exit != 0)
             throw new InvalidOperationException($"case '{name}' exited with {exit}");
@@ -256,6 +312,43 @@ internal static class Program
                 return if (sum > 0) 0 else 1;
             }
             """);
+
+        // --------------------------------------------------------------- the boundary probes
+        //
+        // Erato's finding, reproduced in Lyric's own harness: the crossing is cheap, its
+        // allocation scatter is not. Every native call builds a LyrValue[arity]; these two cases
+        // put a number on it, per arity.
+
+        // One scalar in, one out — the smallest round trip.
+        yield return new Case("native_ret", 100_000, "scalar", """
+            import bench.api { step };
+
+            fn main(): int {
+                var acc = 0.0;
+                var i = 0;
+                while (i < 100000) {
+                    acc = step(acc);
+                    i = i + 1;
+                }
+                return if (acc > 0.0) 0 else 1;
+            }
+            """, RawNatives: true);
+
+        // Four scalars in, nothing out — the setPosition shape.
+        yield return new Case("native_void4", 100_000, "scalar", """
+            import bench.api { push4 };
+
+            fn main(): int {
+                var acc = 0.0;
+                var i = 0;
+                while (i < 100000) {
+                    push4(acc, 0.5, 1.5, 2.5);
+                    acc = acc * 0.9999 + 1.5;
+                    i = i + 1;
+                }
+                return if (acc > 0.0) 0 else 1;
+            }
+            """, RawNatives: true);
 
         // The callvirt route: iter() answers with the interface, so every next() dispatches
         // dynamically. The setup (1000 adds) is inside the measurement and constant across
