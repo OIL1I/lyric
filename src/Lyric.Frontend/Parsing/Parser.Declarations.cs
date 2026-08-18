@@ -20,18 +20,84 @@ public sealed partial class Parser
     public Module ParseModule()
     {
         var start = _buffer.Current.Span;
+
+        // Attributes at the top of the file bind to the HEADER when one follows, and to the first
+        // declaration otherwise. The distinction has to fall here: once the header is parsed there
+        // is no second place where module attributes could stand.
+        var leading = ParseAttributeList();
+        AttributeNode[] moduleAttributes = [];
+        AttributeNode[] pending = [];
+        if (_buffer.Check(TokenKind.Module)) moduleAttributes = leading;
+        else pending = leading;
+
         ModulePath? header = _buffer.Check(TokenKind.Module) ? ParseModuleHeader() : null;
 
         var decls = new List<Decl>();
         while (!_buffer.AtEnd)
         {
             var before = _buffer.Position;
-            decls.Add(ParseTopLevelDecl());
+            decls.Add(ParseTopLevelDecl(pending));
+            pending = [];
             if (_buffer.Position == before) _buffer.Advance(); // force progress
         }
 
+        // Attributes with no declaration to bind to: at EOF the list would silently vanish.
+        if (pending.Length > 0)
+            _de.Report("LYR-PAR0042", Severity.Error, pending[0].Span,
+                "an attribute must be followed by the declaration it applies to");
+
         var end = decls.Count > 0 ? decls[^1].Span : (header?.Span ?? start);
-        return new Module(header, decls.ToArray(), Span.Union(start, end));
+        return new Module(header, decls.ToArray(), Span.Union(start, end)) { Attributes = moduleAttributes };
+    }
+
+    /// <summary>
+    /// Zero or more attributes: <c>@Name</c> or <c>@Name { field = expr, … }</c>, each an
+    /// optionally dotted path. The VALUES are parsed as expressions; that they must be literals is
+    /// a semantic rule, so the message can name the offending expression instead of refusing to
+    /// read it.
+    /// </summary>
+    private AttributeNode[] ParseAttributeList()
+    {
+        if (!_buffer.Check(TokenKind.AtIdentifier)) return [];
+
+        var attributes = new List<AttributeNode>();
+        while (_buffer.Check(TokenKind.AtIdentifier))
+        {
+            var at = _buffer.Advance();
+            var path = new List<string> { _sm.Slice(at.Span)[1..].ToString() }; // strip the '@'
+            var pathEnd = at.Span;
+            while (_buffer.Match(TokenKind.Dot))
+            {
+                var segment = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                    $"expected attribute name, got {_buffer.Current.TokenKind}");
+                path.Add(_sm.Slice(segment.Span).ToString());
+                pathEnd = segment.Span;
+            }
+
+            var fields = new List<StructInitField>();
+            var end = pathEnd;
+            if (_buffer.Check(TokenKind.LBrace))
+            {
+                _buffer.Advance();
+                while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
+                {
+                    var nameTok = _buffer.Expect(TokenKind.Identifier, "LYR-PAR0026",
+                        $"expected field name, got {_buffer.Current.TokenKind}");
+                    _buffer.Expect(TokenKind.Equal, "LYR-PAR0037",
+                        "expected '=' in attribute arguments (':' is only for types)");
+                    var value = ParseSubExpr();
+                    fields.Add(new StructInitField(_sm.Slice(nameTok.Span).ToString(), value,
+                        Span.Union(nameTok.Span, value.Span)));
+                    if (!_buffer.Match(TokenKind.Comma)) break;
+                }
+                end = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018",
+                    "expected '}' to close attribute arguments").Span;
+            }
+
+            attributes.Add(new AttributeNode(path.ToArray(), fields.ToArray(),
+                Span.Union(at.Span, end)) { PathSpan = Span.Union(at.Span, pathEnd) });
+        }
+        return attributes.ToArray();
     }
 
     private ModulePath ParseModuleHeader()
@@ -42,48 +108,89 @@ public sealed partial class Parser
         return new ModulePath(segments, Span.Union(kw.Span, semi.Span));
     }
 
-    private Decl ParseTopLevelDecl()
+    private Decl ParseTopLevelDecl(AttributeNode[] pending)
     {
-        if (_buffer.Check(TokenKind.Import)) return ParseImport();
+        // Attributes precede 'pub'. The ones handed down come from the top of a header-less file.
+        var attributes = pending;
+        if (_buffer.Check(TokenKind.AtIdentifier))
+        {
+            var parsed = ParseAttributeList();
+            attributes = pending.Length == 0 ? parsed : [.. pending, .. parsed];
+        }
 
-        var start = _buffer.Current.Span;
+        var start = attributes.Length > 0 ? attributes[0].Span : _buffer.Current.Span;
+
+        if (_buffer.Check(TokenKind.Import))
+        {
+            RejectAttributes(attributes, "an import");
+            return ParseImport();
+        }
+
         var isPublic = _buffer.Match(TokenKind.Pub);
 
         switch (_buffer.Current.TokenKind)
         {
             case TokenKind.Mut:
             case TokenKind.Fn:
-                return ParseFunctionDecl(isPublic, start);
+                return ParseFunctionDecl(isPublic, start) with { Attributes = attributes };
             case TokenKind.Struct:
-                return ParseStructOrClass(isPublic, start, isClass: false);
+                return WithAttributes(ParseStructOrClass(isPublic, start, isClass: false), attributes);
             case TokenKind.Class:
-                return ParseStructOrClass(isPublic, start, isClass: true);
+                return WithAttributes(ParseStructOrClass(isPublic, start, isClass: true), attributes);
             case TokenKind.Enum:
-                return ParseEnum(isPublic, start);
+                return WithAttributes(ParseEnum(isPublic, start), attributes);
             case TokenKind.Interface:
+                RejectAttributes(attributes, "an interface");
                 return ParseInterface(isPublic, start);
             case TokenKind.Extend:
+                RejectAttributes(attributes, "an extend block");
                 return ParseExtend(isPublic, start);
             case TokenKind.Let:
             case TokenKind.Var:
+                RejectAttributes(attributes, "a global binding");
                 return ParseGlobalBinding(isPublic, start);
-            // Attributes are post-v1. The syntax stays reserved, and this reports its own message
-            // rather than "expected a declaration": someone writing '@test' expected something
-            // that exists, just not yet.
-            case TokenKind.AtIdentifier:
-                _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
-                    "attributes are not part of v1; '@test' and 'lyric test' arrive later");
-                var skipped = SynchronizeTopLevel();
-                return new ErrorDecl(Span.Union(start, skipped));
 
             default:
-                if (AtContextual("type")) return ParseTypeAlias(isPublic, start);
+                if (AtContextual("type"))
+                {
+                    RejectAttributes(attributes, "a type alias");
+                    return ParseTypeAlias(isPublic, start);
+                }
+                if (attributes.Length > 0)
+                {
+                    // '@Component' followed by something that opens no declaration. The list would
+                    // vanish silently; instead the message says what an attribute may precede.
+                    _de.Report("LYR-PAR0042", Severity.Error, attributes[0].Span,
+                        "an attribute must be followed by the declaration it applies to");
+                    var stop = SynchronizeTopLevel();
+                    return new ErrorDecl(Span.Union(start, stop));
+                }
                 _de.Report("LYR-PAR0025", Severity.Error, _buffer.Current.Span,
                     $"expected a declaration, got {_buffer.Current.TokenKind}");
                 var end = SynchronizeTopLevel(); // skip to the next declaration start, so only ONE error
                 return new ErrorDecl(Span.Union(start, end));
         }
     }
+
+    /// <summary>An attribute may precede a function, a struct, a class, an enum or the module
+    /// header. Everywhere else the list is reported and dropped; the declaration itself parses
+    /// on unharmed.</summary>
+    private void RejectAttributes(AttributeNode[] attributes, string what)
+    {
+        if (attributes.Length == 0) return;
+        _de.Report("LYR-PAR0042", Severity.Error, attributes[0].Span,
+            $"an attribute cannot sit on {what} — only a function, a struct, a class, an enum "
+            + "or the module header carries one");
+    }
+
+    private static Decl WithAttributes(Decl decl, AttributeNode[] attributes) => decl switch
+    {
+        _ when attributes.Length == 0 => decl,
+        StructDecl s => s with { Attributes = attributes },
+        ClassDecl c => c with { Attributes = attributes },
+        EnumDecl e => e with { Attributes = attributes },
+        _ => decl, // recovery produced an ErrorDecl; the list is lost with the declaration
+    };
 
     /// <summary>Recovery: consumes tokens up to the next plausible declaration start (a keyword,
     /// the contextual 'type', or EOF). Returns the span of the last skipped token.</summary>
@@ -94,7 +201,8 @@ public sealed partial class Parser
         {
             if (_buffer.Current.TokenKind is TokenKind.Module or TokenKind.Import or TokenKind.Pub
                 or TokenKind.Fn or TokenKind.Mut or TokenKind.Struct or TokenKind.Class or TokenKind.Enum
-                or TokenKind.Interface or TokenKind.Extend or TokenKind.Let or TokenKind.Var)
+                or TokenKind.Interface or TokenKind.Extend or TokenKind.Let or TokenKind.Var
+                or TokenKind.AtIdentifier)
                 break;
             if (AtContextual("type")) break;
             span = _buffer.Advance().Span;
@@ -186,14 +294,14 @@ public sealed partial class Parser
             if (_buffer.Check(TokenKind.RParen)) break; // trailing comma
             var start = _buffer.Current.Span;
 
-            // Attributes are post-v1, ON A PARAMETER too. Without this case the parser would read
+            // An attribute may not sit ON A PARAMETER. Without this case the parser would read
             // '@noCapture' as a parameter name, then lose the body, and report a message about
-            // native declarations to someone writing an attribute. The same message as on a
-            // declaration, so both places say the same thing.
+            // native declarations to someone writing an attribute.
             while (_buffer.Check(TokenKind.AtIdentifier))
             {
                 _de.Report("LYR-PAR0038", Severity.Error, _buffer.Current.Span,
-                    "attributes are not part of v1; '@noCapture' and the others arrive later");
+                    "an attribute cannot sit on a parameter — only a function, a struct, a class, "
+                    + "an enum or the module header carries one");
                 _buffer.Advance();
             }
 
@@ -232,6 +340,12 @@ public sealed partial class Parser
         var members = new List<Decl>();
         while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
         {
+            // An attribute sits on top-level declarations only. Without this guard the '@' would be
+            // read as a field name and the member lost; the whole list is parsed and dropped so
+            // that recovery lands cleanly on the member behind it.
+            if (_buffer.Check(TokenKind.AtIdentifier))
+                RejectAttributes(ParseAttributeList(), "a member");
+
             var before = _buffer.Position;
             var member = ParseTypeMember();
             members.Add(member);

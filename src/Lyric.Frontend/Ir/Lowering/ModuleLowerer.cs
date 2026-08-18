@@ -346,12 +346,19 @@ public static class ModuleLowerer
         // Types are collected after the lowering rather than before: the table contains only what was
         // actually used — a declared but never instantiated class does not belong in the bytecode. The
         // same rule as for the imports.
+        // Attribute rows AFTER the function lowering and BEFORE the module is assembled: function
+        // ids are final here, and the rows may still intern types — an attribute struct nobody
+        // constructs, or an attributed type nobody uses, enters the table exactly because the row
+        // references it.
+        var attributes = CollectAttributes(compilation, types, ids, typeTable);
+
         var result = new IrModule(functions)
         {
             EntryFunction = entry, Imports = imports.Used, Types = typeTable.Defs,
             Globals = globals.Defs, GlobalInit = globalInit,
             Capabilities = RequiredCapabilities(compilation),
             Impls = impls,
+            Attributes = attributes,
         };
         if (failed) return null;
 
@@ -378,6 +385,129 @@ public static class ModuleLowerer
     /// compilation, and its requirement belongs to the program, even when the main file never names it.
     /// Counting only the import lines of the root would leave a gap exactly one indirection deep.</para>
     /// </summary>
+    /// <summary>
+    /// The attribute rows of every module, in module and declaration order.
+    ///
+    /// <para>The sema has resolved every attribute to its struct and checked completeness, so this
+    /// only EVALUATES: one value per field, the written literal or the field's literal default.
+    /// Anything unresolved here is an internal error, not a diagnostic.</para>
+    /// </summary>
+    private static List<IrAttribute> CollectAttributes(Compilation compilation, TypeResult types,
+        Dictionary<FunctionSymbol, FunctionId> ids, TypeTable typeTable)
+    {
+        var rows = new List<IrAttribute>();
+        foreach (var module in compilation.Modules)
+        {
+            var ast = compilation.AstOf(module);
+            foreach (var attribute in ast.Attributes)
+                rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Module, 0, types, typeTable));
+
+            foreach (var decl in ast.Declarations)
+            {
+                switch (decl)
+                {
+                    case FunctionDecl { Attributes.Length: > 0 } fn:
+                        if (module.Members.LookupLocal(fn.Name) is not FunctionSymbol fs
+                            || !ids.TryGetValue(fs, out var fid))
+                            throw new InternalCompilationException(
+                                $"ir: attributed function '{fn.Name}' has no lowered id");
+                        foreach (var attribute in fn.Attributes)
+                            rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Function,
+                                fid.Value, types, typeTable));
+                        break;
+
+                    case StructDecl { Attributes.Length: > 0 } s:
+                        AddTypeRows(s.Name, s.Attributes);
+                        break;
+                    case ClassDecl { Attributes.Length: > 0 } c:
+                        AddTypeRows(c.Name, c.Attributes);
+                        break;
+                    case EnumDecl { Attributes.Length: > 0 } e:
+                        AddTypeRows(e.Name, e.Attributes);
+                        break;
+                }
+
+                void AddTypeRows(string name, AttributeNode[] attributes)
+                {
+                    // Interned exactly because the row references it: an attributed type nobody
+                    // uses would otherwise be missing from the table, and the row would have no
+                    // index to point at.
+                    if (module.Members.LookupLocal(name) is not TypeSymbol target)
+                        throw new InternalCompilationException(
+                            $"ir: attributed type '{name}' has no symbol");
+                    var targetId = typeTable.Intern(target);
+                    foreach (var attribute in attributes)
+                        rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Type,
+                            targetId.Value, types, typeTable));
+                }
+            }
+        }
+        return rows;
+    }
+
+    private static IrAttribute BuildAttributeRow(AttributeNode node, IrAttributeTarget kind,
+        int target, TypeResult types, TypeTable typeTable)
+    {
+        if (types.RefOf(node) is not TypeSymbol { Declaration: StructDecl decl } symbol)
+            throw new InternalCompilationException(
+                $"ir: attribute '@{string.Join('.', node.Path)}' was not resolved by the sema");
+
+        var typeId = typeTable.Intern(symbol);
+        var fieldTypes = typeTable.Defs[typeId.Value].FieldTypes;
+        var fields = decl.Members.OfType<FieldDecl>().ToArray();
+
+        // The row is complete by construction: the written value wins, the literal default fills
+        // the rest. The sema rejected every use where neither exists.
+        var values = new IrAttributeValue[fields.Length];
+        for (var i = 0; i < fields.Length; i++)
+        {
+            var written = node.Fields.FirstOrDefault(f => f.Name == fields[i].Name);
+            var expr = written?.Value ?? fields[i].Default
+                ?? throw new InternalCompilationException(
+                    $"ir: attribute field '{fields[i].Name}' has neither a value nor a default");
+            values[i] = EvaluateAttributeValue(fieldTypes[i], expr);
+        }
+        return new IrAttribute(kind, target, typeId, values);
+    }
+
+    /// <summary>A literal, evaluated against the FIELD's type: an integer written into a float
+    /// field becomes that float, so the tag in the bytecode always matches the layout.</summary>
+    private static IrAttributeValue EvaluateAttributeValue(IrType fieldType, Expr literal)
+    {
+        var negative = false;
+        if (literal is UnaryExpr { Operator: UnaryOp.Neg } neg)
+        {
+            negative = true;
+            literal = neg.Operand;
+        }
+
+        var isFloatField = fieldType is IrScalarType { Kind: IrScalar.F32 or IrScalar.F64 };
+        switch (literal)
+        {
+            case IntLiteralExpr i:
+            {
+                var value = negative ? -(long)i.Value : (long)i.Value;
+                return isFloatField
+                    ? new IrAttributeValue(fieldType, BitConverter.DoubleToUInt64Bits(value), null)
+                    : new IrAttributeValue(fieldType, (ulong)value, null);
+            }
+            case FloatLiteralExpr f:
+            {
+                var value = negative ? -f.Value : f.Value;
+                return new IrAttributeValue(fieldType, BitConverter.DoubleToUInt64Bits(value), null);
+            }
+            case CharLiteralExpr c:
+                return new IrAttributeValue(fieldType, (ulong)c.CodePoint, null);
+            case BoolLiteralExpr b:
+                return new IrAttributeValue(fieldType, b.Value ? 1UL : 0UL, null);
+            case StringLiteralExpr s:
+                return new IrAttributeValue(fieldType, 0, s.Value);
+            default:
+                throw new InternalCompilationException(
+                    $"ir: attribute value of kind {literal.GetType().Name} survived the sema");
+        }
+    }
+
     private static Capability RequiredCapabilities(Compilation compilation)
     {
         var needed = Capability.None;

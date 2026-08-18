@@ -12,7 +12,7 @@ public static class Format
     /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
     /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
-    public const ushort VersionMinor = 1;
+    public const ushort VersionMinor = 2;
 }
 
 /// <summary>
@@ -72,6 +72,23 @@ public enum SectionId : byte
     /// as a value would only work for scalars.</para>
     /// </summary>
     Globals = 10,
+
+    /// <summary>
+    /// Attribute rows, new in 3.2: which struct type describes which function, type or the module,
+    /// with literal argument values — one per field of the attribute type, in declaration order.
+    ///
+    /// <para>Skippable: no other section refers to it, and a runtime that ignores it runs the
+    /// program unchanged — an attribute describes, it does nothing.</para>
+    /// </summary>
+    Attributes = 11,
+
+    /// <summary>
+    /// Field names, new in 3.2, and ONLY for types an attribute row references. Everywhere else
+    /// the rule of the Types section stands — field names are not in the bytecode — but a host
+    /// reading <c>@Component struct Health</c> needs <c>value</c> and <c>max</c>, or it has
+    /// learned a shape it cannot name.
+    /// </summary>
+    Names = 12,
 }
 
 /// <summary>

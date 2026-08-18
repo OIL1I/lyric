@@ -31,6 +31,13 @@ public static class BytecodeWriter
         // is written long before section 3.
         foreach (var type in module.Types) strings.Intern(type.Name);
 
+        // Attribute string values for the same reason: section 11 references the pool, and the pool
+        // is long serialized by then.
+        foreach (var row in module.Attributes)
+            foreach (var value in row.Values)
+                if (value.Text is not null)
+                    strings.Intern(value.Text);
+
         foreach (var function in module.Functions)
         {
             strings.Intern(function.Name);
@@ -193,7 +200,83 @@ public static class BytecodeWriter
                     : 0UL);
             });
 
+        if (module.Attributes.Count > 0)
+        {
+            WriteSection(writer, SectionId.Attributes, s =>
+            {
+                s.ULeb(module.Attributes.Count);
+                foreach (var row in module.Attributes)
+                {
+                    s.U8((byte)row.TargetKind);
+                    s.ULeb(row.Target);
+                    s.ULeb(row.Type.Value);
+                    s.ULeb(row.Values.Length);
+                    foreach (var value in row.Values)
+                        WriteAttributeValue(s, strings, value);
+                }
+            });
+
+            // Field names for every type a row references — the attribute types themselves and the
+            // attributed type targets. Only here does a name enter the bytecode: a host reading
+            // '@Component struct Health' needs 'value' and 'max', or it has learned a shape it
+            // cannot name. Ascending by type index, so the output is deterministic.
+            var referenced = new SortedSet<int>();
+            foreach (var row in module.Attributes)
+            {
+                referenced.Add(row.Type.Value);
+                if (row.TargetKind == IrAttributeTarget.Type) referenced.Add(row.Target);
+            }
+            referenced.RemoveWhere(t => module.Types[t].FieldNames.Length == 0);
+
+            if (referenced.Count > 0)
+                WriteSection(writer, SectionId.Names, s =>
+                {
+                    s.ULeb(referenced.Count);
+                    foreach (var typeIndex in referenced)
+                    {
+                        s.ULeb(typeIndex);
+                        var names = module.Types[typeIndex].FieldNames;
+                        s.ULeb(names.Length);
+                        foreach (var name in names) s.String(name);
+                    }
+                });
+        }
+
         return writer.ToArray();
+    }
+
+    /// <summary>One attribute value: the field's tag, then the payload in the encoding the
+    /// <c>const</c> opcode uses — integers and chars as uleb of the widened bits, floats as their
+    /// IEEE pattern, bool one byte, a string through the pool.</summary>
+    private static void WriteAttributeValue(ByteWriter s, StringPool strings, IrAttributeValue value)
+    {
+        var tag = TagOf(value.Type);
+        s.Tag(tag);
+        switch (tag)
+        {
+            case TypeTag.String:
+                s.ULeb(strings.Intern(value.Text!)); // pre-interned above, so no new pool entry
+                break;
+            case TypeTag.Bool:
+                s.U8((byte)value.Bits);
+                break;
+            // The IR carries every float as the DOUBLE pattern; the field's tag decides the width
+            // on disk, the same narrowing the const opcode applies.
+            case TypeTag.F32:
+                s.F32((float)BitConverter.UInt64BitsToDouble(value.Bits));
+                break;
+            case TypeTag.F64:
+                s.F64(BitConverter.UInt64BitsToDouble(value.Bits));
+                break;
+            case TypeTag.I8 or TypeTag.I16 or TypeTag.I32 or TypeTag.I64
+                or TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64
+                or TypeTag.Char:
+                s.ULeb(value.Bits);
+                break;
+            default:
+                throw new InternalCompilationException(
+                    $"bytecode: attribute value of type {tag} is not encodable");
+        }
     }
 
     /// <summary>A section is id, byte length, content. The length lets a reader skip an unknown

@@ -1,4 +1,4 @@
-# Lyric `.lyrbc` Bytecode Format 3.1
+# Lyric `.lyrbc` Bytecode Format 3.2
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.
@@ -6,9 +6,15 @@ or a second runtime can be written from this document alone.
 Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.
 
-Format version **3.1** covers: scalars, locals, module-internal and native calls, structured
+Format version **3.2** covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
-value semantics, exceptions, global constants, closures, host objects, and source positions.
+value semantics, exceptions, global constants, closures, host objects, source positions, and
+attributes.
+
+**3.2 against 3.1**: two new sections — Attributes (id 11) and Names (id 12). Both are skippable:
+no other section refers to either, and a runtime that ignores them runs the program unchanged,
+because an attribute describes and does nothing. A 3.1 reader therefore loads a 3.2 module; the
+only difference is whether a host can read the attributes.
 
 **3.1 against 3.0**: the SourceMap section (id 6) has a payload. It is skippable, so a 3.0 reader
 loads a 3.1 module and a 3.1 reader loads a 3.0 module; the only difference is whether a panic can
@@ -74,6 +80,8 @@ minor version may only add skippable sections.
 | 8 | Impls | no | interface implementations (vtables) |
 | 9 | Handlers | no | protected regions per function |
 | 10 | Globals | no | global slots and their initializer |
+| 11 | Attributes | no | attribute rows: which struct describes which target, with literal values |
+| 12 | Names | no | field names, only for types an Attributes row references |
 
 A missing section counts as empty.
 
@@ -321,6 +329,74 @@ A reader must reject: a global type of `void`, an init index outside the call sp
 non-empty global list without an init function.
 
 A slot of type `string` starts as the empty string, not as an empty reference.
+
+### Attributes (Id 11)
+
+New in 3.2. Which struct type describes which function, type or the module, with literal values.
+
+```
+count            uleb128
+rows             count × {
+                   targetKind   u8        0 = function, 1 = type, 2 = module
+                   target       uleb128   into Functions (kind 0) or Types (kind 1); 0 for kind 2
+                   type         uleb128   the attribute's struct type: an index into Types
+                   valueCount   uleb128   must equal the struct's fieldCount
+                   values       valueCount × ConstValue
+                 }
+
+ConstValue       = tag u8, then by tag:
+                   integers, char     uleb128    two's complement, widened to 64 bits
+                   f32 / f64          4 / 8 bytes IEEE-754 bit pattern, little-endian
+                   bool               u8
+                   string             uleb128    index into the string pool
+```
+
+**A row is complete**: one value per field of the attribute type, in field declaration order — a
+field the source did not write carries the field's literal default, filled in by the compiler. The
+position IS the field index, which is why no index is stored, and each value's tag must equal the
+tag of the field at its position.
+
+The rows stand in declaration order: modules in compilation order, targets in source order, the
+attributes of one target in the order written.
+
+**Skippable, and inert by design.** No other section refers to this one, and a runtime that
+ignores it runs the program unchanged: an attribute describes its target, it does nothing. What a
+host makes of a row is the host's business.
+
+A compiler must keep an attributed function alive: the row is a promise that the index is valid,
+and the host is a caller the reachability analysis cannot see — the same standing as the entry
+point.
+
+A reader must reject: an unknown target kind, a target or type index outside its table, a nonzero
+target for a module row, a type that is not a struct, the same (targetKind, target, type) triple
+twice, a value count differing from the struct's field count, a value tag differing from the field
+tag at its position, a string index outside the pool, and a value of a non-literal type.
+
+### Names (Id 12)
+
+New in 3.2. Field names, ONLY for types an Attributes row references — the attribute types
+themselves and the attributed type targets. Everywhere else the rule of the Types section stands:
+field names are not in the bytecode.
+
+```
+count            uleb128
+entries          count × {
+                   type         uleb128   index into Types
+                   nameCount    uleb128   must equal that type's fieldCount
+                   names        nameCount × string
+                 }
+```
+
+The names stand in field order, so `names[i]` names the field `fieldTypes[i]` describes — and for
+an attribute type, the value at position `i` of every row that references it. Entries ascend by
+type index; a referenced type with zero fields has no entry.
+
+Without this section a host reading `@Component struct Health { value, max }` would learn a shape
+it cannot name: the layout gives field types and the row gives values, but which field means what
+exists only in the source.
+
+A reader must reject: a type index outside the table, the same type twice, and a name count
+differing from that type's field count.
 
 ---
 
@@ -693,7 +769,7 @@ default; this is the stripped form, which is why section 6 is absent:
 ```
 4C 59 52 42                  magic "LYRB"
 03 00                        version.major = 3
-01 00                        version.minor = 1
+02 00                        version.minor = 2
 
 01                           § section 1 — Capabilities
 01                             byteLength = 1

@@ -1,0 +1,12 @@
+@Component
+struct Health { value: int, max: int }
+
+@System { order = 10 }
+pub fn damageTick(dt: float): void { }
+
+@Tagged
+@engine.ecs.System { order = -1, label = "late" }
+class Scheduler { }
+
+@Marked
+enum Phase { Start, End }

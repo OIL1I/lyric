@@ -136,20 +136,25 @@ segments. `!` is postfix force-unwrap and prefix logical not.
 ## 2. Module structure
 
 ```ebnf
-Module          = ModuleHeader { TopLevelDecl } .
+Module          = { Attribute } ModuleHeader { TopLevelDecl }
+                | { TopLevelDecl } .
 ModuleHeader    = 'module' ModulePath ';' .
 ModulePath      = IDENTIFIER { '.' IDENTIFIER } .
+
+Attribute       = AT_IDENT { '.' IDENTIFIER }
+                  [ '{' [ AttrArg { ',' AttrArg } [ ',' ] ] '}' ] .
+AttrArg         = IDENTIFIER '=' Expr .
 
 ImportDecl      = 'import' ModulePath [ ImportClause ] ';' .
 ImportClause    = '{' IDENTIFIER { ',' IDENTIFIER } [ ',' ] '}'
                 | 'as' IDENTIFIER .
 
 TopLevelDecl    = ImportDecl
-                | [ 'pub' ] ( FunctionDecl
-                            | StructDecl
-                            | ClassDecl
-                            | EnumDecl
-                            | InterfaceDecl
+                | { Attribute } [ 'pub' ] ( FunctionDecl
+                                          | StructDecl
+                                          | ClassDecl
+                                          | EnumDecl )
+                | [ 'pub' ] ( InterfaceDecl
                             | ExtendDecl
                             | GlobalBinding
                             | TypeAlias ) .
@@ -161,6 +166,11 @@ TypeAlias       = 'type' IDENTIFIER '=' TypeExpr ';' .
 The module header is optional. In an entry file the name then comes from the file name; in a file
 reached through an `import`, the name is the imported path, and a header that disagrees with it is
 an error.
+
+An attribute before the header describes the module; in a file without a header an attribute at the
+top belongs to the first declaration. The path names a struct type, and an `AttrArg` value must be
+a literal — an integer, float, string, char or bool, optionally sign-prefixed — which is a semantic
+rule, not a syntactic one.
 
 ---
 
@@ -379,7 +389,6 @@ Primary         = IntLit | FloatLit | StringLit | InterpolatedStr
                 | 'this'
                 | IDENTIFIER
                 | TypePath
-                | AT_IDENT [ '(' [ ArgList ] ')' ]
                 | '(' Expr ')'
                 | IfExpr
                 | MatchExpr

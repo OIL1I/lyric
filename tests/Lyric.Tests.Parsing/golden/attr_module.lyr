@@ -1,0 +1,4 @@
+@Plugin { name = "mymod", api = 2 }
+module mymod;
+
+fn main(): int { return 0; }

@@ -197,8 +197,9 @@ public class BytecodeTests
         // skipped one, and the reader rejected the payload it was supposed to step over.
         var bytes = ValidBytes();
 
-        // Id 11 ascends past every id the writer emits, so appending keeps the file well formed.
-        var extended = bytes.Concat(new byte[] { 11, 2, 0xAA, 0xBB }).ToArray();
+        // Id 13 ascends past every id the writer emits — 11 and 12 are taken since 3.2 — so
+        // appending keeps the file well formed.
+        var extended = bytes.Concat(new byte[] { 13, 2, 0xAA, 0xBB }).ToArray();
 
         var de = new DiagnosticEngine(new SourceManager());
         var module = BytecodeReader.Read(extended, de);

@@ -69,6 +69,15 @@ internal static class Reachability
         if (module.GlobalInit is { } init && neueId.TryGetValue(init.Value, out var initNeu))
             module.GlobalInit = new FunctionId(initNeu);
 
+        // The attribute rows follow the renumbering. Their function targets are roots above, so
+        // the lookup cannot miss; type targets are untouched, the table keeps every entry.
+        for (var i = 0; i < module.Attributes.Count; i++)
+        {
+            var row = module.Attributes[i];
+            if (row.TargetKind == IrAttributeTarget.Function)
+                module.Attributes[i] = row with { Target = neueId[row.Target] };
+        }
+
         // A vtable row whose methods were all deleted is dead itself. Rows in a mixed state must not
         // exist: Collect takes a row whole or not at all.
         var impls = module.Impls
@@ -107,6 +116,13 @@ internal static class Reachability
 
         Wurzel(module.EntryFunction);
         Wurzel(module.GlobalInit);
+
+        // An attributed function is a root: the row in section 11 is a promise to the host that
+        // this function exists, and the host calls it by that index — a caller this analysis
+        // cannot see, exactly like the entry point.
+        foreach (var attribute in module.Attributes)
+            if (attribute.TargetKind == IrAttributeTarget.Function)
+                Wurzel(new FunctionId(attribute.Target));
 
         // Types that become an interface value in reachable code. Grows during the loop: a 'mkiface'
         // may sit in a function that becomes reachable only later.

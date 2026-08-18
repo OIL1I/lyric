@@ -55,6 +55,8 @@ public static class BytecodeReader
         IReadOnlyList<BytecodeType> globals = Array.Empty<BytecodeType>();
         int? globalInit = null;
         BytecodeSourceMap? sourceMap = null;
+        IReadOnlyList<BytecodeAttribute> attributes = Array.Empty<BytecodeAttribute>();
+        IReadOnlyList<BytecodeFieldNames> fieldNames = Array.Empty<BytecodeFieldNames>();
 
         var previousId = -1;
         while (!reader.AtEnd)
@@ -93,6 +95,12 @@ public static class BytecodeReader
                     globalInit = init == 0 ? null : init - 1;
                     break;
                 }
+                // Both read after Types and Functions, which the ascending ids guarantee: every
+                // index a row carries is checked against the table it points into.
+                case SectionId.Attributes:
+                    attributes = ReadAttributes(payload, strings, types, functions.Count);
+                    break;
+                case SectionId.Names: fieldNames = ReadFieldNames(payload, types); break;
                 // Unknown or reserved: skipped, which is what the length is for. The payload has to
                 // be consumed rather than merely ignored, or the trailing-byte check below rejects
                 // exactly the section it is meant to let through — and with it the forward
@@ -122,6 +130,8 @@ public static class BytecodeReader
             Globals = globals,
             GlobalInit = globalInit,
             SourceMap = sourceMap,
+            Attributes = attributes,
+            FieldNames = fieldNames,
         };
 
         Validate(module);
@@ -135,6 +145,151 @@ public static class BytecodeReader
     /// file names against the pool, the row count against the function count, and every offset
     /// against the code it claims to describe.</para>
     /// </summary>
+    /// <summary>
+    /// Section 11: attribute rows. Everything a row points at is validated here, so a consumer can
+    /// index without guarding — the same contract as for the source map.
+    /// </summary>
+    private static IReadOnlyList<BytecodeAttribute> ReadAttributes(ByteReader payload,
+        IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types, int functionCount)
+    {
+        var count = payload.ULebAsCount();
+        var rows = new List<BytecodeAttribute>(Math.Min(count, 1024));
+        var seen = new HashSet<(byte, int, int)>();
+
+        for (var i = 0; i < count; i++)
+        {
+            var kind = payload.U8();
+            var target = payload.ULebAsCount();
+            var type = payload.ULebAsCount();
+
+            if (kind > (byte)AttributeTargetKind.Module)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"attribute row {i}: unknown target kind {kind}");
+
+            switch ((AttributeTargetKind)kind)
+            {
+                case AttributeTargetKind.Function when target >= functionCount:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"attribute row {i}: function target {target} is out of range");
+                case AttributeTargetKind.Type when target >= types.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"attribute row {i}: type target {target} is out of range");
+                // The module is the file; a nonzero index would be a second meaning for the field.
+                case AttributeTargetKind.Module when target != 0:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                        $"attribute row {i}: a module target carries index 0, not {target}");
+            }
+
+            if (type >= types.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"attribute row {i}: attribute type {type} is out of range");
+            var def = types[type];
+            if (!def.IsStruct)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"attribute row {i}: '{def.Name}' is not a struct — an attribute always is");
+
+            if (!seen.Add((kind, target, type)))
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"attribute row {i}: '{def.Name}' sits on the same target twice");
+
+            // The row is complete by contract: one value per field, in field order, each tagged
+            // with the FIELD's type. Anything else and the position no longer names the field.
+            var valueCount = payload.ULebAsCount();
+            if (valueCount != def.FieldTypes.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"attribute row {i}: {valueCount} value(s) for {def.FieldTypes.Count} field(s) "
+                    + $"of '{def.Name}'");
+
+            var values = new List<BytecodeConstValue>(valueCount);
+            for (var v = 0; v < valueCount; v++)
+            {
+                var value = ReadAttributeValue(payload, strings, i);
+                if (value.Tag != def.FieldTypes[v].Tag)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                        $"attribute row {i}: value {v} is {value.Tag}, field {v} of '{def.Name}' "
+                        + $"is {def.FieldTypes[v].Tag}");
+                values.Add(value);
+            }
+
+            rows.Add(new BytecodeAttribute
+            {
+                TargetKind = (AttributeTargetKind)kind, Target = target, Type = type,
+                Values = values,
+            });
+        }
+        return rows;
+    }
+
+    private static BytecodeConstValue ReadAttributeValue(ByteReader payload,
+        IReadOnlyList<string> strings, int row)
+    {
+        var tag = payload.Tag();
+        switch (tag)
+        {
+            case TypeTag.String:
+            {
+                var index = payload.ULebAsCount();
+                if (index >= strings.Count)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"attribute row {row}: string index {index} is out of the pool");
+                return new BytecodeConstValue(tag) { Text = strings[index] };
+            }
+            case TypeTag.Bool:
+                return new BytecodeConstValue(tag) { Bits = payload.U8() != 0 ? 1UL : 0UL };
+            // F32 widens on read, so a consumer sees every float as the same 64-bit pattern.
+            case TypeTag.F32:
+                return new BytecodeConstValue(tag)
+                {
+                    Bits = BitConverter.DoubleToUInt64Bits(payload.F32()),
+                };
+            case TypeTag.F64:
+                return new BytecodeConstValue(tag)
+                {
+                    Bits = BitConverter.DoubleToUInt64Bits(payload.F64()),
+                };
+            case TypeTag.I8 or TypeTag.I16 or TypeTag.I32 or TypeTag.I64
+                or TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64
+                or TypeTag.Char:
+                return new BytecodeConstValue(tag) { Bits = payload.ULeb() };
+            default:
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"attribute row {row}: a value of type {tag} is not a literal");
+        }
+    }
+
+    /// <summary>Section 12: field names, one entry per referenced type, count matching the
+    /// layout. The names are inline rather than pooled, like an import's name: they occur
+    /// once.</summary>
+    private static IReadOnlyList<BytecodeFieldNames> ReadFieldNames(ByteReader payload,
+        IReadOnlyList<BytecodeTypeDef> types)
+    {
+        var count = payload.ULebAsCount();
+        var entries = new List<BytecodeFieldNames>(Math.Min(count, 1024));
+        var seen = new HashSet<int>();
+
+        for (var i = 0; i < count; i++)
+        {
+            var type = payload.ULebAsCount();
+            if (type >= types.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"names entry {i}: type {type} is out of range");
+            if (!seen.Add(type))
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"names entry {i}: type {type} appears twice");
+
+            var nameCount = payload.ULebAsCount();
+            if (nameCount != types[type].FieldTypes.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"names entry {i}: {nameCount} name(s) for {types[type].FieldTypes.Count} "
+                    + $"field(s) of '{types[type].Name}'");
+
+            var names = new List<string>(nameCount);
+            for (var n = 0; n < nameCount; n++) names.Add(payload.String());
+            entries.Add(new BytecodeFieldNames { Type = type, Names = names });
+        }
+        return entries;
+    }
+
     private static BytecodeSourceMap ReadSourceMap(ByteReader payload, IReadOnlyList<string> strings,
         IReadOnlyList<BytecodeFunction> functions)
     {

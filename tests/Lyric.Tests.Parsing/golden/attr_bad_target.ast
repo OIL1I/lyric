@@ -1,0 +1,23 @@
+Module [0..88)
+  Interface I [0..39)
+    Fn f (abstract) [25..37)
+      NamedType int [33..36)
+  Global [41..62)
+    Let g [52..62)
+      Int 1 [60..61)
+  TypeAlias T [64..88)
+    NamedType int [84..87)
+
+=== diagnostics ===
+attr_bad_target.lyr:1:1: error[LYR-PAR0042]: an attribute cannot sit on an interface — only a function, a struct, a class, an enum or the module header carries one
+@Component
+^^^^^^^^^^
+
+attr_bad_target.lyr:4:1: error[LYR-PAR0042]: an attribute cannot sit on a global binding — only a function, a struct, a class, an enum or the module header carries one
+@Component
+^^^^^^^^^^
+
+attr_bad_target.lyr:7:1: error[LYR-PAR0042]: an attribute cannot sit on a type alias — only a function, a struct, a class, an enum or the module header carries one
+@Component
+^^^^^^^^^^
+

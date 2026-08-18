@@ -79,6 +79,49 @@ public sealed class ScriptInstance
         Invoke(index, MarshalArguments(function, signature, arguments));
     }
 
+    /// <summary>The attribute rows of this script's module. The same answer as
+    /// <see cref="ScriptModule.Attributes"/>, reachable from the instance a host holds.</summary>
+    public ModuleAttributes Attributes => Module.Attributes;
+
+    /// <summary>
+    /// Calls the function an attribute row names. The use IS the handle: it carries the function
+    /// index, so nothing is looked up by name — the path a host takes after enumerating
+    /// <c>Attributes.OnFunctions("System")</c> once.
+    /// </summary>
+    /// <exception cref="ScriptException">The use does not name a function, or the arity does not
+    /// match.</exception>
+    public TResult Call<TResult>(AttributeUse target, params object?[] arguments)
+    {
+        var (index, signature) = Resolve(target, arguments.Length);
+        var produced = Invoke(index, MarshalArguments(target.TargetName, signature, arguments));
+        return Marshal.FromLyric<TResult>(produced, signature.ReturnType,
+            $"the result of '{target.TargetName}'");
+    }
+
+    /// <inheritdoc cref="Call{TResult}(AttributeUse, object?[])"/>
+    public void CallVoid(AttributeUse target, params object?[] arguments)
+    {
+        var (index, signature) = Resolve(target, arguments.Length);
+        Invoke(index, MarshalArguments(target.TargetName, signature, arguments));
+    }
+
+    private (int Index, BytecodeFunction Signature) Resolve(AttributeUse target, int argumentCount)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (target.TargetKind != AttributeTargetKind.Function)
+            throw new ScriptException("LYR-EMB0006",
+                $"'@{target.Attribute}' sits on {(target.TargetKind == AttributeTargetKind.Module ? "the module" : $"type '{target.TargetName}'")} — there is no function to call", null);
+
+        var signature = _program.Module.Functions[target.Target];
+        if (signature.ParamCount != argumentCount)
+            throw new ScriptException("LYR-EMB0007",
+                $"'{target.TargetName}' takes {signature.ParamCount} argument(s), got {argumentCount}",
+                null);
+
+        return (target.Target, signature);
+    }
+
     private (int Index, BytecodeFunction Signature) Resolve(string function, int argumentCount)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(function);

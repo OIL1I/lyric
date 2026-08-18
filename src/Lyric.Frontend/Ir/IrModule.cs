@@ -150,6 +150,28 @@ public record struct IrImpl(TypeId Type, TypeId Interface, FunctionId[] Methods)
 /// bytecode, and the index is the identity.</summary>
 public record struct IrGlobal(string Name, IrType Type);
 
+/// <summary>What an attribute row describes. The numeric values are the bytecode encoding.</summary>
+public enum IrAttributeTarget : byte { Function = 0, Type = 1, Module = 2 }
+
+/// <summary>
+/// One evaluated attribute argument. <paramref name="Type"/> is the FIELD's declared type — the
+/// writer takes the tag and the byte width from it, the same division of labour as everywhere
+/// else in this IR.
+/// </summary>
+/// <param name="Bits">Integers two's-complement in 64 bits, chars zero-extended, bools 0/1,
+/// floats always the DOUBLE bit pattern; the writer narrows for an <c>f32</c> field.</param>
+/// <param name="Text">The value for a string field, <c>null</c> otherwise.</param>
+public record struct IrAttributeValue(IrType Type, ulong Bits, string? Text);
+
+/// <summary>
+/// One attribute row: the struct <paramref name="Type"/> describes the target, with one value per
+/// field in declaration order — the row is complete, unwritten fields carry their literal default.
+/// </summary>
+/// <param name="Target">A <see cref="FunctionId"/> value or a <see cref="TypeId"/> value depending
+/// on <paramref name="TargetKind"/>; 0 for the module.</param>
+public record struct IrAttribute(IrAttributeTarget TargetKind, int Target, TypeId Type,
+    IrAttributeValue[] Values);
+
 public class IrModule(List<IrFunction> Functions)
 {
     /// <summary>The native functions this module calls, only the ones actually used.
@@ -196,4 +218,8 @@ public class IrModule(List<IrFunction> Functions)
     /// the bytecode as the Start section; without it a runtime would have to guess the entry from a
     /// naming convention.</summary>
     public FunctionId? EntryFunction { get; set; }
+
+    /// <summary>The attribute rows, in declaration order. They land as section 11; the types they
+    /// reference additionally get their field names into section 12.</summary>
+    public List<IrAttribute> Attributes { get; init; } = new();
 }
