@@ -49,7 +49,8 @@ public static class Interpreter
     internal static LyrValue Execute(Prepared[] prepared, int startIndex,
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
         DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals,
-        LyrValue[]? entryArguments = null, BytecodeSourceMap? sourceMap = null)
+        ArgumentPool arguments, LyrValue[]? entryArguments = null,
+        BytecodeSourceMap? sourceMap = null)
     {
         var frames = new Stack<Frame>();
         var frame = prepared[startIndex].Rent();
@@ -61,7 +62,8 @@ public static class Interpreter
 
         try
         {
-            return Loop(prepared, strings, types, dispatch, natives, globals, frames, ref frame);
+            return Loop(prepared, strings, types, dispatch, natives, globals, arguments, frames,
+                ref frame);
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
@@ -98,8 +100,8 @@ public static class Interpreter
 
     private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
         IReadOnlyList<BytecodeTypeDef> types, DispatchTable dispatch,
-        NativeRegistry.BoundNative[] natives, LyrValue[] globals, Stack<Frame> frames,
-        ref Frame frame)
+        NativeRegistry.BoundNative[] natives, LyrValue[] globals, ArgumentPool arguments,
+        Stack<Frame> frames, ref Frame frame)
     {
         while (true)
         {
@@ -176,10 +178,14 @@ public static class Interpreter
                     if (index < natives.Length)
                     {
                         var native = natives[index];
-                        var args = new LyrValue[native.Arity];
+                        // Rented, not allocated: the buffer is loaned to the implementation for
+                        // the duration of the call and recycled behind it. An implementation
+                        // that throws abandons it — a lost pool entry, never a corrupt one.
+                        var args = arguments.Rent(native.Arity);
                         for (var i = native.Arity - 1; i >= 0; i--) args[i] = frame.Pop();
 
                         var produced = native.Implementation(args);
+                        arguments.Recycle(args);
                         if (native.ReturnsValue) frame.Push(produced);
                         break;
                     }
@@ -266,11 +272,12 @@ public static class Interpreter
                     if (index < natives.Length)
                     {
                         var native = natives[index];
-                        var nativeArgs = new LyrValue[native.Arity];
+                        var nativeArgs = arguments.Rent(native.Arity);
                         for (var i = native.Arity - 1; i >= 0; i--) nativeArgs[i] = frame.Pop();
                         frame.Pop(); // the closure value itself
 
                         var produced = native.Implementation(nativeArgs);
+                        arguments.Recycle(nativeArgs);
                         if (native.ReturnsValue) frame.Push(produced);
                         break;
                     }
@@ -308,10 +315,11 @@ public static class Interpreter
                     if (index < natives.Length)
                     {
                         var native = natives[index];
-                        var args = new LyrValue[native.Arity];
+                        var args = arguments.Rent(native.Arity);
                         for (var i = native.Arity - 1; i >= 0; i--) args[i] = frame.Pop();
 
                         var produced = native.Implementation(args);
+                        arguments.Recycle(args);
                         if (native.ReturnsValue) frame.Push(produced);
                         break;
                     }

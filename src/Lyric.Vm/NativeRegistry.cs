@@ -12,6 +12,12 @@ namespace Lyric.Vm;
 /// the call.</para>
 ///
 /// <para>The host-facing <c>RegisterFunction</c> uses the same seam.</para>
+///
+/// <para><b>The argument array is a loan.</b> The runtime pools the <c>LyrValue[]</c> it passes
+/// to an implementation and reuses it after the call returns. Read the arguments during the
+/// call, freely and more than once — but an implementation that stores the ARRAY itself for
+/// later reads someone else's arguments. Copy the values out instead; every implementation in
+/// this file already does.</para>
 /// </summary>
 public sealed class NativeRegistry
 {
