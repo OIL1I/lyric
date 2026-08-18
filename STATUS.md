@@ -180,10 +180,6 @@ to what `T` became. Measured by a test rather than left as an intention.
 boundary — does the host keep it alive or the VM? That is the one place in M10 where I have no
 answer yet, and it belongs asked before E4 starts.
 
-**`gh-pages` exists on the remote**, so `docs.yml` has run against GitHub. Whether the Pages
-*setting* points at that branch is not visible from here; if the site does not answer, that switch
-is the thing to check.
-
 ## Still open
 
 **Language gaps still open:**
