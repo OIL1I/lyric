@@ -16,6 +16,14 @@ M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9
 release carries the three toolchain archives plus two installables: the `.vsix` and the JetBrains
 plugin zip.
 
+**M17 — packing: a program becomes one file — is BUILT, awaiting review** (2026-08-18, branch
+`feature/m17-lyrpack`, three slices). `lyric pack app.lyr` produces a standalone executable:
+a prebuilt stub runtime with the `.lyrbc` and a 24-byte footer appended — a byte copy, no
+linker. Two new binaries (`lyrpack`, packer, references Core ALONE; `lyrstub`, the runtime half
+of a packed program), format contract in `docs/Pack.md`, guide chapter 17, and both workflows
+pack-and-run an example on every platform before archiving. After it: **lyrfmt**, the formatter
+(decided 2026-08-18, plan stands in the session log).
+
 **M16 — the tooling milestone — is CLOSED** (decided and built 2026-08-18, at the post-v1 pace):
 the language server learned the project, the editors learned the server. The delivery list,
 ticked point by point as the milestone rule demands:
@@ -54,8 +62,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3912 tests green **in Debug and Release**, bytecode format **3.2**, **six** binaries plus
-`lyrembed.dll`, version **1.8.0**.
+3947 tests green **in Debug and Release**, bytecode format **3.2**, **eight** binaries
+(`lyrstub` and `lyrpack` are the two new ones) plus `lyrembed.dll`, version **1.8.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -71,6 +79,25 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M17 — packing** (2026-08-18, three slices, `feature/m17-lyrpack`, 3947 tests green in
+  Debug and Release). A `.lyrbc` plus a prebuilt single-file stub plus a 24-byte footer = one
+  executable; the stub reads the module out of its own file and runs it with every capability.
+  - **The pack owns nothing it does not need**: `lyrpack` references Core alone (the
+    architecture test states it positively), packs `.lyrbc` only, and validates nothing beyond
+    the extension — the module meets exactly the reader it was paired with, at first start.
+    `lyric pack app.lyr` is the driver composing lyrc and lyrpack, the `run` pattern.
+  - **A packed program owns its argv** — no `--` protocol, no stub flag, not even `--help`; the
+    footer's absent/damaged answers are distinct so a bare stub and a truncated download get
+    different messages; a failed pack deletes its half-written output.
+  - **Measured**: dev stub (framework-dependent single file) 0.36 MB; self-contained win-x64
+    stub **73.5 MB**, packed hello 73.6 MB. `PublishTrimmed` takes the stub to **13.0 MB** with
+    no trim warnings and survives a Set/f-string/argv smoke — shipped UNTRIMMED anyway: the
+    only gate so far is that smoke, and 60 MB is not worth an unverified runtime. Decision
+    material for the scope check.
+  - **The release gates itself**: both workflows publish, pack `examples/hello.lyr` and RUN the
+    result on each platform — on macOS after the ad-hoc re-sign the guide documents, so the
+    documented shipping workflow is executed, not merely written down.
 
 - [x] **M16 slice 6 — the JetBrains thin plugin, and the milestone closes** (2026-08-18, stacked
   on #47). `tooling/jetbrains-lyric`: ~200 lines of Kotlin, and every one of them is wiring.
@@ -125,22 +152,6 @@ out of them and hands its own functions, types and value structs in.
     annotation silences the hint; an `ErrorType` shows nothing — the squiggle owns that spot.
     Parameter-name hints are a different feature with a different noise budget, deliberately not
     half-built here.
-
-- [x] **M16 slice 3 — semantic tokens** (2026-08-18, PR #45). 3899 tests green in Debug
-  and Release.
-  - Every NAME colored by what the compiler resolved it to, from the same two tables and the same
-    name spans the references and the rename use — one switch (`NameSpans`), three consumers.
-    Keywords, literals and comments stay with the TextMate grammar, which knows them lexically.
-  - Full-document only, no delta and no range form: the cost is one walk over one file, not a
-    number that buys bookkeeping. The legend: namespace, type, enum, interface, typeParameter,
-    parameter, variable, property, enumMember, function, method; modifiers declaration, static,
-    readonly (a `let`).
-  - An operator use colors nothing — the synthesized node's invalid span, doing for colors what
-    it does for rename edits (pinned: no token ever contains `+`). An unresolved name gets NO
-    token: uncolored is visibly "the compiler does not know".
-  - Import-clause names carry the target's color, through the same special case the rename walks.
-    Method vs function is the member-table line; the initializer field, `this.x` and `p.x` are
-    all the FIELD (pinned by decoded-token tests, not by raw deltas).
 
 ## Measurements
 
@@ -227,6 +238,19 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**M17, packing, is built and awaits review** — branch `feature/m17-lyrpack`, PR open. Release
+(the version bump, the changelog entry, the tag) is the maintainer's step, as always. Known
+limits, deliberate: one platform per pack (a foreign platform packs via `--stub` with that
+platform's stub out of its archive — no `--target` until someone needs it); the stub ships
+untrimmed (measured 73.5 → 13.0 MB, decision material above); capability narrowing at pack time
+is a footer field for a future minor.
+
+**After M17: lyrfmt, the formatter** (decided 2026-08-18). gofmt-shape: AST plus a comment side
+list from an opt-in lexer trivia mode, a Wadler-style document IR for printing, no
+configuration; own library `Lyric.Formatting` so the language server can serve
+`textDocument/formatting` from the same code. Gates: idempotence and parse-equality over every
+`.lyr` in the repository, and the standard library formats ITSELF as the closing artifact.
 
 **M16 is closed and released as v1.8.0.** What remains from it: the first manual run of the
 JetBrains checklist (plugin README) against the released zip, in a 2026.1+ IDE.
@@ -357,7 +381,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`jetbrains: two hundred lines of wiring, and the whole server behind them` (closes M16)
+`cli, docs: lyric pack — compile and pack in one step, and the guide says how` (M17 slice 2;
+slice 3 is the release wiring in the same PR)
 
 ---
 
