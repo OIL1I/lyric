@@ -4,28 +4,30 @@ Diagnostics, syntax highlighting and a run command for [Lyric](https://github.co
 
 ## What it does
 
-- **Diagnostics** while you type. The `lyrls` language server compiles the buffer — not the file on
-  disk — and reports exactly what `lyric check` reports, at the same positions.
-- **Hover** over a name to see what the compiler thinks it is: the binding form and type of a local,
-  a parameter's type, a function's signature, what kind of type a type name names. It keeps
-  answering while the buffer does not parse, from the last analysis that got through.
+- **Diagnostics** while you type — for the whole project. Under a `lyric.json`, every `.lyr` file
+  beneath the source root is compiled as one program: an edit that breaks a file you do not have
+  open puts the error in the Problems panel all the same, and a change on disk behind the editor —
+  a branch switch, another tool — is picked up through the file watcher. A file outside any
+  project is compiled from itself, as before.
+- **Hover** over a name to see what the compiler thinks it is: the binding form and type of a
+  local, a parameter's type, a function's signature — and the `///` documentation written above
+  the declaration. It keeps answering while the buffer does not parse, from the last analysis that
+  got through.
+- **Go to definition** (`F12`) on a name, including into the standard library — those files are
+  read from disk, so the jump opens the real `.lyr` source and selects the name.
+- **Find references** (`Shift+F12`) across the project, in both directions: standing on a
+  declaration finds the uses in files that import this one.
+- **Completion** after `.` and for names in scope, and an **outline** of the file's declarations.
 - **Highlighting** for `.lyr` files — keywords, types, strings with interpolation, nested block
   comments, all numeric literal forms.
 - **Run** the active file with `Ctrl+F5`, the play button in the editor title bar, or the
   command palette (`Lyric: Run File`).
 
-- **Go to definition** (`F12`) on a name, including into the standard library — those files are
-  read from disk, so the jump opens the real `.lyr` source.
-
 ## What it does not do
 
-No completion and no find-references yet. Hover shows no documentation either, and that is not an
-omission to be filled in later: `///` is a token the lexer produces and nothing carries it into the
-syntax tree, so there is nothing to show.
-
-A jump lands on the **start** of a declaration rather than on its name. The syntax tree records no
-span for a name on its own, and searching the text for it would be a second, weaker way of knowing
-where it is.
+No rename yet. A generic call shows the **declared** signature rather than the instantiated one —
+the substitution is private to the type checker, and a second one in the server would be a second
+answer to what `T` became.
 
 ## Setup
 

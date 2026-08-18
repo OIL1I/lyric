@@ -22,9 +22,12 @@ public sealed record HoverResult(string Markdown, Span Span);
 /// </summary>
 public static class HoverProvider
 {
-    public static HoverResult? At(SemanticModel model, FileId file, int offset)
+    /// <param name="root">The module AST of the file the cursor is in. Passed rather than taken
+    /// from <see cref="SemanticModel.Entry"/>: a workspace compilation holds many modules, and the
+    /// entry is the right walk root for exactly one of them.</param>
+    public static HoverResult? At(SemanticModel model, Module root, FileId file, int offset)
     {
-        var path = NodeFinder.PathAt(model.Entry, file, offset);
+        var path = NodeFinder.PathAt(root, file, offset);
 
         // From the inside out: the innermost node is the most specific answer, but not every node
         // carries one — a literal knows its type, the argument list around it does not.

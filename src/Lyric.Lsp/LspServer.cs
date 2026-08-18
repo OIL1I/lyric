@@ -68,6 +68,14 @@ public sealed class LspServer : IDisposable
     /// produced, so a client without this gets no outline rather than a wrong one.</summary>
     private bool _hierarchicalSymbols;
 
+    /// <summary>Whether the client accepts a file-watch registration. Without it the server never
+    /// hears about changes behind the editor and the diagnostics of closed files go stale.</summary>
+    private bool _watchedFilesSupport;
+
+    /// <summary>The id of the next request THIS side issues. Distinct from the client's ids by
+    /// construction: each side numbers its own requests.</summary>
+    private int _nextRequestId = 1;
+
     public LspServer(Stream input, Stream output, LspServerOptions? options = null)
     {
         _options = options ?? new LspServerOptions();
@@ -131,9 +139,19 @@ public sealed class LspServer : IDisposable
             return;
         }
 
+        if (message is not null && message.IsResponse)
+        {
+            // The answer to a request this side sent — the watch registration is the only one.
+            // Nothing waits on it; a refusal is only worth a line in the log, because the server
+            // works without the watches, just with staler answers about closed files.
+            if (message.Error is { } error)
+                await SafeLogAsync($"the client refused a request: {error.Message}")
+                    .ConfigureAwait(false);
+            return;
+        }
+
         if (message is null || message.Method is null)
         {
-            // A response to something we never sent: this server issues no requests of its own.
             await SendErrorAsync(message?.Id, JsonRpcErrorCodes.InvalidRequest,
                 "expected a request or a notification", cancellationToken).ConfigureAwait(false);
             return;
@@ -156,12 +174,15 @@ public sealed class LspServer : IDisposable
                 // Unreadable parameters are not an error here: everything this server takes from
                 // them has a default, and refusing to initialize over an unknown capability would
                 // be a server that only talks to the clients it was tested against.
-                var client = LspJson.ReadParams(message.Params, LspJson.Default.InitializeParams)
-                    ?.Capabilities?.TextDocument;
+                var capabilities = LspJson.ReadParams(
+                    message.Params, LspJson.Default.InitializeParams)?.Capabilities;
+                var client = capabilities?.TextDocument;
 
                 _definitionLinkSupport = client?.Definition?.LinkSupport ?? false;
                 _hierarchicalSymbols =
                     client?.DocumentSymbol?.HierarchicalDocumentSymbolSupport ?? false;
+                _watchedFilesSupport =
+                    capabilities?.Workspace?.DidChangeWatchedFiles?.DynamicRegistration ?? false;
 
                 await SendResultAsync(id, BuildInitializeResult(),
                     LspJson.Default.InitializeResult, cancellationToken).ConfigureAwait(false);
@@ -237,7 +258,14 @@ public sealed class LspServer : IDisposable
         switch (message.Method)
         {
             case LspMethods.Initialized:
-                // Acknowledgement only. Nothing is registered dynamically.
+                // The one dynamic registration: file watches. Asked for here rather than in the
+                // initialize answer because the protocol has no static form for them.
+                if (_watchedFilesSupport)
+                    await RegisterFileWatchesAsync(cancellationToken).ConfigureAwait(false);
+                return;
+
+            case LspMethods.DidChangeWatchedFiles:
+                HandleDidChangeWatchedFiles(message);
                 return;
 
             case LspMethods.DidOpen:
@@ -312,7 +340,59 @@ public sealed class LspServer : IDisposable
         var document = _documents.Remove(parameters.TextDocument.Uri);
         if (document is null) return;
 
-        await _analysis.ClearAsync(document, cancellationToken).ConfigureAwait(false);
+        await _analysis.CloseAsync(document, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A file changed behind the editor: a save from another program, a branch switch, a delete.
+    /// Each named file is handed to the analysis, which decides what it invalidates.
+    /// </summary>
+    private void HandleDidChangeWatchedFiles(JsonRpcMessage message)
+    {
+        var parameters = LspJson.ReadParams(
+            message.Params, LspJson.Default.DidChangeWatchedFilesParams);
+        if (parameters is null) return;
+
+        foreach (var change in parameters.Changes)
+            if (DocumentUri.TryToFilePath(change.Uri, out var path))
+                _analysis.ChangedOnDisk(path);
+    }
+
+    /// <summary>
+    /// Asks the client to watch what the analysis reads from disk: the sources, and the project
+    /// file that says what belongs together.
+    ///
+    /// <para>A REQUEST, the only one this server sends. The response carries nothing; it is read
+    /// only so a refusal lands in the log rather than nowhere.</para>
+    /// </summary>
+    private Task RegisterFileWatchesAsync(CancellationToken cancellationToken)
+    {
+        var registration = new RegistrationParams
+        {
+            Registrations =
+            [
+                new Registration
+                {
+                    Id = "lyric-watched-files",
+                    Method = LspMethods.DidChangeWatchedFiles,
+                    RegisterOptions = new DidChangeWatchedFilesRegistrationOptions
+                    {
+                        Watchers =
+                        [
+                            new LspFileSystemWatcher { GlobPattern ="**/*.lyr" },
+                            new LspFileSystemWatcher { GlobPattern ="**/lyric.json" },
+                        ],
+                    },
+                },
+            ],
+        };
+
+        return SendAsync(new JsonRpcRequest
+        {
+            Id = _nextRequestId++,
+            Method = LspMethods.RegisterCapability,
+            Params = LspJson.ToElement(registration, LspJson.Default.RegistrationParams),
+        }, LspJson.Default.JsonRpcRequest, cancellationToken);
     }
 
     /// <summary>
@@ -347,7 +427,7 @@ public sealed class LspServer : IDisposable
         }
 
         var offset = TextOffsets.ToOffset(snapshot.Text, parameters.Position);
-        var found = HoverProvider.At(snapshot.Model, snapshot.File, offset);
+        var found = HoverProvider.At(snapshot.Model, snapshot.Root, snapshot.File, offset);
 
         if (found is null)
         {
@@ -391,8 +471,8 @@ public sealed class LspServer : IDisposable
 
         if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
             || _analysis.LastGood(path) is not { } snapshot
-            || DefinitionProvider.At(snapshot.Model, snapshot.File, TextOffsets.ToOffset(
-                snapshot.Text, parameters.Position)) is not { } target)
+            || DefinitionProvider.At(snapshot.Model, snapshot.Root, snapshot.File,
+                TextOffsets.ToOffset(snapshot.Text, parameters.Position)) is not { } target)
         {
             await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
             return;
@@ -462,7 +542,7 @@ public sealed class LspServer : IDisposable
 
         // Ranged against the snapshot's own source manager, where the spans are valid — the same
         // reason hover and the jump give.
-        var symbols = DocumentSymbolProvider.Of(snapshot.Sources, snapshot.Model.Entry);
+        var symbols = DocumentSymbolProvider.Of(snapshot.Sources, snapshot.Root);
 
         await SendResultAsync(id, symbols, LspJson.Default.IReadOnlyListDocumentSymbol,
             cancellationToken).ConfigureAwait(false);
@@ -491,7 +571,7 @@ public sealed class LspServer : IDisposable
 
         if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
             || _analysis.LastGood(path) is not { } snapshot
-            || ReferenceProvider.At(snapshot.Model, snapshot.File,
+            || ReferenceProvider.At(snapshot.Model, snapshot.Root, snapshot.File,
                 TextOffsets.ToOffset(snapshot.Text, parameters.Position),
                 parameters.Context.IncludeDeclaration) is not { } sites)
         {

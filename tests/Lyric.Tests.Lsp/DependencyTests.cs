@@ -147,12 +147,18 @@ public sealed class DependencyTests : IDisposable
     }
 
     [Fact]
-    public async Task A_module_nobody_imports_starts_no_cascade()
+    public async Task A_file_outside_the_project_starts_no_cascade()
     {
-        // The counter-check. Without it the cascade could be re-analysing every open document on
-        // every keystroke and all three tests above would still pass.
-        var stranger = DocumentUri.FromFilePath(PathOf("stranger.lyr"));
+        // The counter-check. A document outside the source root is its own unit of analysis, and
+        // opening it must not re-analyse a project whose program does not read it. Without this
+        // the cascade could be re-analysing everything on every keystroke and the three tests
+        // above would still pass.
+        //
+        // Outside the SOURCE ROOT on purpose: a file under it belongs to the project unit, and
+        // opening one re-publishes the whole project by design.
+        var stranger = DocumentUri.FromFilePath(Path.Combine(_dir, "stranger.lyr"));
         var app = DocumentUri.FromFilePath(PathOf("app.lyr"));
+        var util = DocumentUri.FromFilePath(PathOf("util.lyr"));
 
         await using var harness = new ServerHarness();
         await harness.InitializeAsync();
@@ -160,14 +166,18 @@ public sealed class DependencyTests : IDisposable
         await harness.NotifyAsync(LspMethods.DidOpen, DidOpen(app, Program));
         Assert.Empty((await DiagnosticsFor(harness, app)).EnumerateArray());
 
+        // The project run publishes for util as well; consumed here so the next batch read below
+        // is the answer to the OPEN of the stranger, not a leftover of this run.
+        await DiagnosticsFor(harness, util);
+
         await harness.NotifyAsync(LspMethods.DidOpen, DidOpen(stranger, """
             module stranger;
 
             pub fn alone(): int { return 0; }
             """));
 
-        // The next batch is the stranger's own. If the program were re-analysed for no reason, its
-        // batch would arrive first.
+        // The next batch is the stranger's own. If the project were re-analysed for no reason,
+        // its batches would arrive first.
         var published = await harness.ReceiveNotificationAsync(LspMethods.PublishDiagnostics);
         Assert.Equal(stranger, published.GetProperty("params").GetProperty("uri").GetString());
     }

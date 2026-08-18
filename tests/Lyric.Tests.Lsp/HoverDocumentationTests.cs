@@ -27,7 +27,7 @@ public sealed class HoverDocumentationTests
         Assert.NotNull(result.Model);
 
         var file = DiagnosticMapper.FindFile(result.Sources, path);
-        return HoverProvider.At(result.Model, file, offset);
+        return HoverProvider.At(result.Model, result.Model.Entry, file, offset);
     }
 
     private static string Text(string programWithMarker)
@@ -208,8 +208,8 @@ public sealed class HoverDocumentationTests
         Assert.NotNull(result.Model);
 
         var file = DiagnosticMapper.FindFile(result.Sources, path);
-        var found = HoverProvider.At(
-            result.Model, file, program.IndexOf("return cores()", StringComparison.Ordinal) + 9);
+        var found = HoverProvider.At(result.Model, result.Model.Entry, file,
+            program.IndexOf("return cores()", StringComparison.Ordinal) + 9);
 
         Assert.NotNull(found);
         Assert.Contains("Local one.", found.Markdown);

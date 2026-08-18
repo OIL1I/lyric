@@ -28,7 +28,8 @@ public sealed class ReferenceTests
         Assert.NotNull(result.Model);
 
         var file = DiagnosticMapper.FindFile(result.Sources, path);
-        var sites = ReferenceProvider.At(result.Model, file, offset, includeDeclaration);
+        var sites = ReferenceProvider.At(
+            result.Model, result.Model.Entry, file, offset, includeDeclaration);
 
         if (sites is null) return ([], result);
 
@@ -225,7 +226,8 @@ public sealed class ReferenceTests
         Assert.NotNull(result.Model);
 
         var file = DiagnosticMapper.FindFile(result.Sources, path);
-        Assert.Null(ReferenceProvider.At(result.Model, file, offset, includeDeclaration: false));
+        Assert.Null(ReferenceProvider.At(
+            result.Model, result.Model.Entry, file, offset, includeDeclaration: false));
     }
 
     [Fact]
@@ -257,7 +259,8 @@ public sealed class ReferenceTests
         var file = DiagnosticMapper.FindFile(result.Sources, path);
         var offset = program.IndexOf("Point { x = 1 }", StringComparison.Ordinal) + 2;
 
-        var sites = ReferenceProvider.At(result.Model, file, offset, includeDeclaration: true);
+        var sites = ReferenceProvider.At(
+            result.Model, result.Model.Entry, file, offset, includeDeclaration: true);
 
         Assert.NotNull(sites);
         var texts = sites

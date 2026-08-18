@@ -15,14 +15,17 @@ public sealed class SemaRules
     private readonly BindingResult _binding;
     private readonly TypeResult _types;
     private readonly DiagnosticEngine _de;
+    private readonly bool _singleProgram;
     private bool _thisMut; // inside a 'mut fn' method?
 
-    public SemaRules(Compilation comp, BindingResult binding, TypeResult types, DiagnosticEngine de)
+    public SemaRules(Compilation comp, BindingResult binding, TypeResult types, DiagnosticEngine de,
+        bool singleProgram = true)
     {
         _comp = comp;
         _binding = binding;
         _types = types;
         _de = de;
+        _singleProgram = singleProgram;
     }
 
     public void Run()
@@ -95,6 +98,10 @@ public sealed class SemaRules
             if (!ValidMain(main))
                 _de.Report("LYR-SEM0021", Severity.Error, main.Span,
                     "'main' must be 'fn main(): int' or 'fn main(args: string[]): int'");
+
+        // One 'main' per EXECUTABLE. A workspace compilation holds several programs side by side,
+        // and there a second 'main' is the entry point of another script, not a duplicate.
+        if (!_singleProgram) return;
 
         for (var i = 1; i < mains.Count; i++)
             _de.Report("LYR-SEM0021", Severity.Error, mains[i].Span, "duplicate 'main' function");
