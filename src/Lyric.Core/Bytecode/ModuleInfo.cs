@@ -26,6 +26,8 @@ public static class ModuleInfo
                       + $"({module.Types.Count(t => t.IsEnum)} enum)");
         sb.AppendLine($"  imports         {module.Imports.Count}");
         sb.AppendLine($"  functions       {module.Functions.Count}");
+        if (module.Attributes.Count > 0)
+            sb.AppendLine($"  attributes      {module.Attributes.Count}");
         sb.AppendLine($"  code            {TotalCodeBytes(module)} bytes");
 
         if (module.Imports.Count > 0)
@@ -60,6 +62,7 @@ public static class ModuleInfo
           .Append(",\"types\":").Append(module.Types.Count)
           .Append(",\"imports\":").Append(module.Imports.Count)
           .Append(",\"functions\":").Append(module.Functions.Count)
+          .Append(",\"attributes\":").Append(module.Attributes.Count)
           .Append(",\"codeBytes\":").Append(TotalCodeBytes(module)).Append('}');
 
         sb.Append(",\"imports\":[");

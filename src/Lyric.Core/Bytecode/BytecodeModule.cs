@@ -40,6 +40,76 @@ public sealed class BytecodeModule
     /// <summary>Positions from the SourceMap section, or <c>null</c> when the module carries none.
     /// A stripped module is valid; a runtime then names a function rather than a line.</summary>
     public BytecodeSourceMap? SourceMap { get; init; }
+
+    /// <summary>The attribute rows from section 11 (format 3.2). Empty when the module carries
+    /// none, and empty in every module a 3.1 compiler wrote.</summary>
+    public IReadOnlyList<BytecodeAttribute> Attributes { get; init; } = [];
+
+    /// <summary>Field names from section 12 (format 3.2), only for types an attribute row
+    /// references. Everywhere else field names stay out of the bytecode.</summary>
+    public IReadOnlyList<BytecodeFieldNames> FieldNames { get; init; } = [];
+}
+
+/// <summary>What an attribute row describes.</summary>
+public enum AttributeTargetKind : byte
+{
+    Function = 0,
+    Type = 1,
+
+    /// <summary>The module itself. The row's target index is 0 — the module is the file, so there
+    /// is nothing to index.</summary>
+    Module = 2,
+}
+
+/// <summary>
+/// One attribute row: the struct type <see cref="Type"/> describes the target, with one value per
+/// field of that type, in declaration order.
+///
+/// <para>The row is COMPLETE: a field the source did not write carries the field's literal
+/// default, so a consumer never resolves one. That is also why there is no field index beside the
+/// values — the position is the field index.</para>
+/// </summary>
+public sealed class BytecodeAttribute
+{
+    public required AttributeTargetKind TargetKind { get; init; }
+
+    /// <summary>Index into Functions or Types depending on <see cref="TargetKind"/>; 0 for the
+    /// module.</summary>
+    public required int Target { get; init; }
+
+    /// <summary>The attribute's struct type: an index into the Types section.</summary>
+    public required int Type { get; init; }
+
+    public required IReadOnlyList<BytecodeConstValue> Values { get; init; }
+}
+
+/// <summary>
+/// A literal value in an attribute row: the tag, and a payload in the same encoding the
+/// <c>const</c> opcode uses — integers and chars widened to 64 bits, floats as IEEE bit patterns,
+/// strings through the pool.
+/// </summary>
+public sealed record BytecodeConstValue(TypeTag Tag)
+{
+    /// <summary>Integers two's-complement in 64 bits, chars zero-extended, bools 0/1, floats the
+    /// IEEE bit pattern of the value (F32 widened to F64 bits when read back).</summary>
+    public ulong Bits { get; init; }
+
+    /// <summary>The value when <see cref="Tag"/> is <c>String</c>; <c>null</c> otherwise.</summary>
+    public string? Text { get; init; }
+
+    public long AsInt => (long)Bits;
+    public double AsFloat => BitConverter.UInt64BitsToDouble(Bits);
+    public bool AsBool => Bits != 0;
+}
+
+/// <summary>The field names of one type, in field order. Present only for types an attribute row
+/// references.</summary>
+public sealed class BytecodeFieldNames
+{
+    /// <summary>Index into the Types section.</summary>
+    public required int Type { get; init; }
+
+    public required IReadOnlyList<string> Names { get; init; }
 }
 
 /// <summary>

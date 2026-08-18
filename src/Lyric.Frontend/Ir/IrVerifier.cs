@@ -40,6 +40,40 @@ public static class IrVerifier
         VerifyTypes(module, findings);
         VerifyImpls(module, findings);
 
+        // Attribute rows become section 11. An index into nothing would only show at load time,
+        // the same reason the entry point is checked here; the value count against the layout is
+        // the contract that lets a consumer read values by field position.
+        foreach (var attribute in module.Attributes)
+        {
+            if (attribute.Type.Value < 0 || attribute.Type.Value >= module.Types.Count)
+            {
+                findings.Add($"attribute type {attribute.Type} is out of range " +
+                             $"(module has {module.Types.Count} type(s))");
+                continue;
+            }
+            var def = module.Types[attribute.Type.Value];
+            if (attribute.Values.Length != def.FieldTypes.Length)
+                findings.Add($"attribute '{def.Name}' carries {attribute.Values.Length} value(s) " +
+                             $"for {def.FieldTypes.Length} field(s)");
+            switch (attribute.TargetKind)
+            {
+                case IrAttributeTarget.Function
+                    when attribute.Target < 0 || attribute.Target >= module.Functions.Count:
+                    findings.Add($"attribute '{def.Name}' targets function {attribute.Target}, " +
+                                 "which is out of range");
+                    break;
+                case IrAttributeTarget.Type
+                    when attribute.Target < 0 || attribute.Target >= module.Types.Count:
+                    findings.Add($"attribute '{def.Name}' targets type {attribute.Target}, " +
+                                 "which is out of range");
+                    break;
+                case IrAttributeTarget.Module when attribute.Target != 0:
+                    findings.Add($"attribute '{def.Name}' targets the module with index " +
+                                 $"{attribute.Target}; a module target carries 0");
+                    break;
+            }
+        }
+
         // The init function is called by the runtime before the entry point; an index into nothing
         // would only show at load time.
         if (module.GlobalInit is { } init

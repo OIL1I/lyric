@@ -77,6 +77,29 @@ public static class Disassembler
                       $"{string.Join(", ", import.ParamTypes.Select(p => TypeName(module, p)))})" +
                       $" -> {TypeName(module, import.ReturnType)}\n");
 
+        // The attribute rows, values by field position. The names beside them come from section
+        // 12 when the module carries it, so the line reads like the source that produced it.
+        foreach (var attribute in module.Attributes)
+        {
+            var type = module.Types[attribute.Type];
+            var target = attribute.TargetKind switch
+            {
+                AttributeTargetKind.Function => $"fn {module.Functions[attribute.Target].Name}",
+                AttributeTargetKind.Type => $"type {module.Types[attribute.Target].Name}",
+                _ => "module",
+            };
+            var names = module.FieldNames.FirstOrDefault(n => n.Type == attribute.Type)?.Names;
+            var values = attribute.Values.Select((value, i) =>
+                $"{(names is not null ? names[i] + " = " : "")}{ValueText(value)}");
+            sb.Append($"  attribute @{type.Name}" +
+                      $"{(attribute.Values.Count > 0 ? $" {{{string.Join(", ", values)}}}" : "")}" +
+                      $" -> {target}\n");
+        }
+
+        foreach (var entry in module.FieldNames)
+            sb.Append($"  names {module.Types[entry.Type].Name}" +
+                      $"({string.Join(", ", entry.Names)})\n");
+
         foreach (var function in module.Functions)
         {
             if (filter is not null && function.Name != filter) continue;
@@ -233,6 +256,18 @@ public static class Disassembler
 
     private static string N(int value) => value.ToString(CultureInfo.InvariantCulture);
     private static string N(ulong value) => value.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>An attribute value the way the source wrote it: quoted strings, unsigned kinds
+    /// without a sign, floats round-trippable.</summary>
+    private static string ValueText(BytecodeConstValue value) => value.Tag switch
+    {
+        TypeTag.String => Quote(value.Text ?? ""),
+        TypeTag.Bool => value.AsBool ? "true" : "false",
+        TypeTag.F32 or TypeTag.F64 => value.AsFloat.ToString("R", CultureInfo.InvariantCulture),
+        TypeTag.Char => $"'{char.ConvertFromUtf32((int)value.Bits)}'",
+        TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64 => N(value.Bits),
+        _ => value.AsInt.ToString(CultureInfo.InvariantCulture),
+    };
 
     // Escaping as in IrPrinter.Quote and AstDumper.Quote; keep the three consistent.
     private static string Quote(string value)
