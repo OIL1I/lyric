@@ -209,6 +209,10 @@ Field           = IDENTIFIER ':' TypeExpr [ '=' Expr ] .
 Members are separated by `,`. Only a field requires it: a member that closes itself — a block body
 ending in `}`, a bodiless method or a `static let` ending in `;` — may omit it.
 
+Every entry of an interface list names an interface — a semantic rule, not a syntactic one, and it
+holds wherever the list appears: on a struct, class or enum, on an extend block, and (as the parent
+rule of §3.5) on an interface.
+
 ### 3.3 Classes
 
 ```ebnf
