@@ -10,7 +10,7 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v1.12.0 — 2026-08-19
 
 The standard library grows up. Every public item is documented, constructors live on the types,
 the first real deprecations start their clock, and the library tests itself — in Lyric. Two
