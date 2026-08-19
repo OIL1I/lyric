@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.15.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.15.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.15.0 — 2026-08-19</h2>
+<p>The freeze prep: the design leftovers settled before the spec freezes semantics. <code>opaque type</code>
+arrives, the string API becomes methods, iterator chaining gets its documented No — and a
+latent function-id collision in the lowering falls. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong>A function-id collision in the lowering</strong>, latent since struct-returning natives: the
+global initializer's slot was reserved only for DECLARED globals, but a struct-return buffer
+CREATES one during body lowering — and once a body also requested an extension method (the
+new string methods do), initializer and extension landed on the same id, and calls
+mis-spliced into the wrong function. The initializer draws from the shared id counter now,
+and the function list refuses id holes with a named internal error instead of a silent
+mis-splice.</li>
+</ul>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>Strings have methods</strong>: <code>s.trim()</code>, <code>s.split(&quot;,&quot;)</code>, <code>s.contains(x)</code>, <code>s.length()</code> — 26
+methods via <code>extend string</code> in <code>std.string</code>. The free forms warn as <strong>deprecated</strong> and go
+with 2.0; <code>concat</code> and <code>repeat</code> stay free (they back <code>+</code> and <code>*</code>), and the type-directed
+families (<code>fromXxx</code>, <code>parseXxx</code>) keep their names. The methods come with any import of the
+module; a file needing no free name writes <code>import std.string as strings;</code> — and an import
+whose extensions are used no longer counts as unused. <code>s.length()</code> stays a call because it
+costs O(n), and every method returns a NEW string.</p>
+</li>
+<li><p><strong><code>opaque type</code></strong>: an alias with a new IDENTITY over the same layout —
+<code>pub opaque type Entity = int;</code>. Nothing converts implicitly in either direction; the explicit
+<code>as</code> to exactly the underlying and back is the one crossing; <code>==</code>/<code>!=</code> compare within one
+alias; arithmetic, ordering, constraint satisfaction and f-string rendering are refused. At
+runtime the value IS its underlying (the cast costs nothing), and a native signature resolves
+the alias to the underlying — an SDK's handle crosses the host boundary as a plain number
+while scripts can neither forge one nor leak it. Neither <code>opaque</code> nor <code>type</code> is a keyword;
+both stay usable as identifiers.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
