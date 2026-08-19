@@ -60,8 +60,11 @@ the operating system, the way every executable does.
   explicitly.
 - **Size.** The stub contains the whole runtime, so even `return 0;` is megabytes. The program
   on top costs what the module costs — usually kilobytes.
-- **macOS re-verifies signatures.** Appending bytes invalidates a code signature, so on macOS
-  the packed file needs a re-sign before it ships: `codesign --force --sign - app`.
+- **macOS cannot run packed programs yet.** A Mach-O declares its own size, appended bytes put
+  the file beyond it, and `codesign` refuses to bless the result — so the packed file is killed
+  on start and cannot be re-signed either. Pack FOR macOS is planned (the payload has to become
+  a real Mach-O segment); pack ON macOS for the other platforms works today, with their stubs
+  and `--stub`.
 - **Packing is not verification.** `lyrpack` copies bytes and does not look inside the module;
   a broken module packs fine and reports at first start. `lyrvm verify` answers ahead of time.
 

@@ -74,9 +74,13 @@ Three answers when the stub inspects its own file, and they are deliberately dis
   and packs in one step.
 - **Not linking.** The module travels whole, the stub travels whole. There is no dead-code step
   beyond what the compiler already did, and two packed programs share nothing.
-- **Not signing.** Appending bytes invalidates an existing code signature on platforms that
-  have one; macOS in particular re-verifies. Re-signing after the pack is the shipper's step —
-  `codesign --force --sign - <file>` for the ad-hoc case.
+- **Not macOS-runnable — yet.** A Mach-O declares its own extent in its load commands, and
+  appended bytes put the file beyond it: the existing ad-hoc signature stops validating, and
+  `codesign` refuses to write a new one over the layout ("main executable failed strict
+  validation") — measured by the release pipeline, which is how this limit was found. Packing
+  WORKS on macOS; running the result does not, until the payload becomes a real Mach-O segment
+  the way deno and Node's SEA do it. Windows (PE) and Linux (ELF) do not validate the file
+  tail and are unaffected.
 
 ## Failure duties
 

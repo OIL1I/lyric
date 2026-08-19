@@ -36,9 +36,9 @@ format and the embedding API are untouched; the format stays **3.2**, and a `.ly
   the runtime half of a packed program. The release archives hold the platform's stub under
   `stubs/<rid>/`; a bare stub started directly explains itself instead of failing obscurely,
   and a truncated pack is reported as damaged rather than executed. The format is specified in
-  [`docs/Pack.md`](docs/Pack.md), the guide's chapter 17 says what to know before shipping —
-  including that macOS requires an ad-hoc re-sign after packing, which the release pipeline
-  itself performs and verifies on every platform.
+  [`docs/Pack.md`](docs/Pack.md), the guide's chapter 17 says what to know before shipping.
+  The release pipeline packs an example and RUNS the result on Windows and Linux before an
+  archive exists.
 
 - **`lyric fmt` — the formatter.** In place for files and directories, `--check` for CI (writes
   nothing, exits nonzero when anything would change), `--stdin` for editors. No style options.
@@ -60,6 +60,10 @@ format and the embedding API are untouched; the format stays **3.2**, and a `.ly
 
 ### Not in this release
 
+- **Packed executables that run on macOS.** A Mach-O declares its own extent; appended bytes
+  put the file beyond it, and `codesign` refuses the result — found by the release pipeline's
+  own gate, recorded in [`docs/Pack.md`](docs/Pack.md). The fix is a real Mach-O segment for
+  the payload, deno's route; until then macOS packs for the OTHER platforms via `--stub`.
 - **Cross-platform packing sugar**: a pack is for one platform, and a foreign platform packs
   via `--stub` with that platform's stub out of its archive. No `--target` until someone
   needs it.

@@ -58,15 +58,19 @@ jobs:
           -p:PublishRoot=${{ github.workspace }}/out
           -p:Rid=${{ matrix.rid }}
 
-      # Same gate as the release: the published toolchain packs an example and the result runs.
+      # Same gate as the release; the macOS exception is explained in release.yml.
       - name: Pack and run an example
         shell: bash
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then lyric=out/lyric.exe; packed=hello.exe
           else lyric=out/lyric; packed=hello; fi
           "$lyric" pack examples/hello.lyr -o "$packed"
-          if [ "${{ runner.os }}" = "macOS" ]; then codesign --force --sign - "$packed"; fi
-          "./$packed"
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            code=0; ./out/stubs/${{ matrix.rid }}/lyrstub || code=$?
+            [ "$code" -eq 2 ]
+          else
+            "./$packed"
+          fi
 
       - name: Archive
         shell: bash

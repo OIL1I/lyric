@@ -264,7 +264,11 @@ runs an example on every platform before an archive exists.
 **M17's deliberate limits**: one platform per pack (a foreign platform packs via `--stub` with
 that platform's stub out of its archive — no `--target` until someone needs it); the stub ships
 untrimmed (measured 73.5 → 13.0 MB, decision material above); capability narrowing at pack time
-is a footer field for a future minor.
+is a footer field for a future minor. **And one limit the release gate found rather than the
+plan**: a packed Mach-O fails codesign's strict validation, so macOS cannot RUN packed programs
+yet — the payload has to become a real Mach-O segment (deno's route). The pipeline documents
+the state honestly: macOS verifies pack-succeeds plus the signed bare stub, Windows and Linux
+run the packed result.
 
 **M18's deliberate limits**: precedence-redundant parentheses vanish (the AST has no node for
 them — keeping them means a parser change, material for the scope check if it itches); a
