@@ -119,11 +119,11 @@ pub fn center(value: string, width: int): string {
     if (missing <= 0) {
         return value;
     }
-    let links = missing / 2;
-    return repeat(" ", links) + value + repeat(" ", missing - links);
+    let left = missing / 2;
+    return repeat(" ", left) + value + repeat(" ", missing - left);
 }
 
-// ------------------------------------------------------------------ Groessen
+// ------------------------------------------------------------------ sizes
 
 /// Bytes in readable form: `1536` becomes `"1.5 KB"`.
 ///
@@ -134,20 +134,20 @@ pub fn formatBytes(bytes: int): string {
         return formatInt(bytes, "") + " B";
     }
 
-    let einheiten = ["KB", "MB", "GB", "TB", "PB"];
-    var wert = bytes as float;
-    var stufe = -1;
+    let units = ["KB", "MB", "GB", "TB", "PB"];
+    var value = bytes as float;
+    var level = -1;
 
     // Divide while a larger unit exists and the value fills it.
-    while (wert >= 1024.0 && stufe + 1 < einheiten.length) {
-        wert = wert / 1024.0;
-        stufe = stufe + 1;
+    while (value >= 1024.0 && level + 1 < units.length) {
+        value = value / 1024.0;
+        level = level + 1;
     }
 
-    return formatFloat(wert, "N1") + " " + einheiten[stufe];
+    return formatFloat(value, "N1") + " " + units[level];
 }
 
-// ------------------------------------------------------------------ Tabellen
+// ------------------------------------------------------------------ tables
 
 /// Aligns columns. Each row is a `string[]`; short rows are padded with empty cells.
 ///
@@ -159,23 +159,23 @@ pub fn table(rows: string[][], separator: string): string {
     }
 
     // First pass: the widest cell per column.
-    var spalten = 0;
+    var columns = 0;
     var i = 0;
     while (i < rows.length) {
-        if (rows[i].length > spalten) {
-            spalten = rows[i].length;
+        if (rows[i].length > columns) {
+            columns = rows[i].length;
         }
         i = i + 1;
     }
 
-    var breiten = [0] * spalten;
+    var widths = [0] * columns;
     i = 0;
     while (i < rows.length) {
         var j = 0;
         while (j < rows[i].length) {
             let l = length(rows[i][j]);
-            if (l > breiten[j]) {
-                breiten[j] = l;
+            if (l > widths[j]) {
+                widths[j] = l;
             }
             j = j + 1;
         }
@@ -190,13 +190,13 @@ pub fn table(rows: string[][], separator: string): string {
             result = result + "\n";
         }
         var j = 0;
-        while (j < spalten) {
+        while (j < columns) {
             if (j > 0) {
                 result = result + separator;
             }
-            let zelle = if (j < rows[i].length) rows[i][j] else "";
+            let cell = if (j < rows[i].length) rows[i][j] else "";
             // The last column is NOT padded, or invisible trailing spaces would remain.
-            result = result + (if (j == spalten - 1) zelle else padEnd(zelle, breiten[j], ' '));
+            result = result + (if (j == columns - 1) cell else padEnd(cell, widths[j], ' '));
             j = j + 1;
         }
         i = i + 1;

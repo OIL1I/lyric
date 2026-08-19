@@ -80,3 +80,17 @@ pub fn listContains_uses_equality(): void {
     assertTrue(listContains<int>(xs, 5), "5 is in it");
     assertTrue(!listContains<int>(xs, 6), "6 is not");
 }
+
+// v1.14: `clear` keeps the backing for reuse; the values are released all the same.
+@Test
+pub fn clear_keeps_the_capacity_and_the_list_refills(): void {
+    let xs = List<int>.empty();
+    xs.push(1);
+    xs.push(2);
+    xs.push(3);
+    xs.clear();
+    assertEq(xs.length(), 0);
+    assertTrue(xs.capacity() > 0, "the backing array must survive a clear");
+    xs.push(9);
+    assertEq(xs.get(0), 9);
+}

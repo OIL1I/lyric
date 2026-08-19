@@ -145,7 +145,6 @@ pub fn parentDir(path: string): string {
 ///
 /// A leading dot does not count: `".gitignore"` has no extension, that is its name. This rule
 /// differs between languages, so it is stated here.
-/// jemanden herausfinden zu lassen.
 pub fn extension(path: string): string {
     let name = fileName(path);
     var i = length(name) - 1;

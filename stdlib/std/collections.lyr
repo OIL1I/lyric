@@ -134,11 +134,16 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         this.data[index] = value;
     }
 
-    /// Empties the list and releases every slot.
+    /// Empties the list. Every slot is released — nothing inserted stays alive — but the
+    /// backing array is KEPT: a buffer emptied once per frame must not reallocate on every
+    /// refill.
     pub mut fn clear(): void {
-        let hole: ?T = null;
+        var i = 0;
+        while (i < this.count) {
+            this.data[i] = null;
+            i = i + 1;
+        }
         this.count = 0;
-        this.data = [hole] * 0;
     }
 
     /// A copy as a real array.

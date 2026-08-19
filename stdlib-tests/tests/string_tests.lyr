@@ -68,3 +68,31 @@ pub fn a_builder_joins_its_pieces(): void {
     sb.appendLine("c");
     assertEq(sb.build(), "abc\n");
 }
+
+// The balanced concatenation (v1.14): many pieces, one linear-ish build — and building twice
+// must yield the same string, because `build` reads and never consumes.
+@Test
+pub fn a_builder_with_many_pieces_builds_repeatably(): void {
+    let b = StringBuilder.new();
+    var i = 0;
+    while (i < 100) {
+        b.append("x");
+        i = i + 1;
+    }
+    let first = b.build();
+    assertEq(first, b.build());
+    assertTrue(count(first, "x") == 100, "expected 100 pieces in the built string");
+}
+
+@Test
+pub fn join_weaves_the_separator_between_all_parts(): void {
+    assertEq(join(["a", "b", "c", "d", "e"], "-"), "a-b-c-d-e");
+    assertEq(join([], "-"), "");
+    assertEq(join(["solo"], "-"), "solo");
+}
+
+@Test
+pub fn replace_leaves_a_string_without_matches_untouched(): void {
+    assertEq(replace("abc", "zz", "y"), "abc");
+    assertEq(replace("start middle end", "middle", ""), "start  end");
+}

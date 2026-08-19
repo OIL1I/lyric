@@ -197,11 +197,11 @@
               "Kind": "Method",
               "Name": "clear",
               "Signature": "pub mut fn clear(): void",
-              "Doc": "Empties the list and releases every slot.",
+              "Doc": "Empties the list. Every slot is released — nothing inserted stays alive — but the\nbacking array is KEPT: a buffer emptied once per frame must not reallocate on every\nrefill.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 138
+                "Line": 140
               }
             },
             {
@@ -212,7 +212,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 151
+                "Line": 156
               }
             }
           ],
@@ -229,7 +229,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 170
+            "Line": 175
           }
         },
         {
@@ -246,7 +246,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 178
+                "Line": 183
               }
             },
             {
@@ -257,7 +257,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 180
+                "Line": 185
               }
             },
             {
@@ -268,13 +268,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 183
+                "Line": 188
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 176
+            "Line": 181
           }
         },
         {
@@ -285,7 +285,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 198
+            "Line": 203
           }
         },
         {
@@ -302,7 +302,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 226
+                "Line": 231
               }
             },
             {
@@ -313,7 +313,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 228
+                "Line": 233
               }
             },
             {
@@ -324,7 +324,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 230
+                "Line": 235
               }
             },
             {
@@ -335,7 +335,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 232
+                "Line": 237
               }
             },
             {
@@ -346,7 +346,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 234
+                "Line": 239
               }
             },
             {
@@ -357,7 +357,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 237
+                "Line": 242
               }
             },
             {
@@ -368,7 +368,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 242
+                "Line": 247
               }
             },
             {
@@ -379,7 +379,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 279
+                "Line": 284
               }
             },
             {
@@ -390,7 +390,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 292
+                "Line": 297
               }
             },
             {
@@ -401,7 +401,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 297
+                "Line": 302
               }
             },
             {
@@ -412,7 +412,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 306
+                "Line": 311
               }
             },
             {
@@ -423,13 +423,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 347
+                "Line": 352
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 224
+            "Line": 229
           }
         },
         {
@@ -440,7 +440,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 390
+            "Line": 395
           }
         },
         {
@@ -451,7 +451,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 411
+            "Line": 416
           }
         },
         {
@@ -462,7 +462,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 420
+            "Line": 425
           }
         },
         {
@@ -479,7 +479,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 513
+                "Line": 518
               }
             },
             {
@@ -490,7 +490,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 515
+                "Line": 520
               }
             },
             {
@@ -501,7 +501,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 517
+                "Line": 522
               }
             },
             {
@@ -512,7 +512,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 519
+                "Line": 524
               }
             },
             {
@@ -523,7 +523,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 522
+                "Line": 527
               }
             },
             {
@@ -534,7 +534,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 527
+                "Line": 532
               }
             },
             {
@@ -545,7 +545,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 559
+                "Line": 564
               }
             },
             {
@@ -556,7 +556,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 565
+                "Line": 570
               }
             },
             {
@@ -567,7 +567,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 572
+                "Line": 577
               }
             },
             {
@@ -578,7 +578,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 607
+                "Line": 612
               }
             },
             {
@@ -589,13 +589,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 619
+                "Line": 624
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 511
+            "Line": 516
           }
         },
         {
@@ -612,7 +612,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 650
+                "Line": 655
               }
             },
             {
@@ -623,7 +623,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 652
+                "Line": 657
               }
             },
             {
@@ -634,13 +634,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 655
+                "Line": 660
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 648
+            "Line": 653
           }
         },
         {
@@ -651,7 +651,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 668
+            "Line": 673
           }
         },
         {
@@ -662,7 +662,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 676
+            "Line": 681
           }
         },
         {
@@ -673,7 +673,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 688
+            "Line": 693
           }
         },
         {
@@ -684,7 +684,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 702
+            "Line": 707
           }
         },
         {
@@ -695,7 +695,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 713
+            "Line": 718
           }
         },
         {
@@ -712,7 +712,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 736
+                "Line": 741
               }
             },
             {
@@ -723,7 +723,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 738
+                "Line": 743
               }
             },
             {
@@ -734,13 +734,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 741
+                "Line": 746
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 734
+            "Line": 739
           }
         },
         {
@@ -757,7 +757,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 756
+                "Line": 761
               }
             },
             {
@@ -768,7 +768,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 758
+                "Line": 763
               }
             },
             {
@@ -779,13 +779,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/collections.lyr",
-                "Line": 761
+                "Line": 766
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 754
+            "Line": 759
           }
         },
         {
@@ -796,7 +796,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 774
+            "Line": 779
           }
         },
         {
@@ -807,7 +807,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 779
+            "Line": 784
           }
         },
         {
@@ -818,7 +818,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 790
+            "Line": 795
           }
         },
         {
@@ -829,7 +829,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/collections.lyr",
-            "Line": 802
+            "Line": 807
           }
         }
       ]
@@ -1479,20 +1479,20 @@
         },
         {
           "Kind": "Function",
-          "Name": "flush",
-          "Signature": "pub fn flush(): void",
-          "Doc": "Pushes buffered output to the console.\n\nNeeded as soon as something is written without a line break and has to be visible before the\nprogram continues — a prompt being the usual case.",
+          "Name": "eprint",
+          "Signature": "pub fn eprint(value: string)",
+          "Doc": "Writes to standard error without a line break.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
-            "Line": 83
+            "Line": 80
           }
         },
         {
           "Kind": "Function",
-          "Name": "eprint",
-          "Signature": "pub fn eprint(value: string)",
-          "Doc": "Writes to standard error without a line break.",
+          "Name": "flush",
+          "Signature": "pub fn flush(): void",
+          "Doc": "Pushes buffered output to the console.\n\nNeeded as soon as something is written without a line break and has to be visible before the\nprogram continues — a prompt being the usual case.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/console.lyr",
@@ -1785,11 +1785,11 @@
           "Kind": "Function",
           "Name": "extension",
           "Signature": "pub fn extension(path: string): string",
-          "Doc": "The extension WITHOUT the dot. `\"\"` when there is none.\n\nA leading dot does not count: `\".gitignore\"` has no extension, that is its name. This rule\ndiffers between languages, so it is stated here.\njemanden herausfinden zu lassen.",
+          "Doc": "The extension WITHOUT the dot. `\"\"` when there is none.\n\nA leading dot does not count: `\".gitignore\"` has no extension, that is its name. This rule\ndiffers between languages, so it is stated here.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 149
+            "Line": 148
           }
         },
         {
@@ -1800,7 +1800,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 165
+            "Line": 164
           }
         },
         {
@@ -1811,7 +1811,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 175
+            "Line": 174
           }
         },
         {
@@ -1822,7 +1822,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 183
+            "Line": 182
           }
         }
       ]
@@ -3836,7 +3836,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 159
+            "Line": 161
           }
         },
         {
@@ -3847,7 +3847,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 174
+            "Line": 190
           }
         },
         {
@@ -3858,7 +3858,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 192
+            "Line": 208
           }
         },
         {
@@ -3869,7 +3869,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 213
+            "Line": 229
           }
         },
         {
@@ -3880,7 +3880,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 230
+            "Line": 291
           }
         },
         {
@@ -3891,7 +3891,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 245
+            "Line": 312
           }
         },
         {
@@ -3902,7 +3902,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 251
+            "Line": 318
           }
         },
         {
@@ -3913,7 +3913,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 262
+            "Line": 331
           }
         },
         {
@@ -3924,7 +3924,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 285
+            "Line": 365
           }
         },
         {
@@ -3935,7 +3935,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 298
+            "Line": 378
           }
         },
         {
@@ -3946,7 +3946,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 308
+            "Line": 388
           }
         },
         {
@@ -3957,7 +3957,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 318
+            "Line": 399
           }
         },
         {
@@ -3968,7 +3968,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 328
+            "Line": 409
           }
         },
         {
@@ -3979,7 +3979,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 345
+            "Line": 426
           }
         },
         {
@@ -3990,7 +3990,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 378
+            "Line": 460
           }
         },
         {
@@ -4001,7 +4001,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 422
+            "Line": 505
           }
         },
         {
@@ -4012,7 +4012,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 435
+            "Line": 518
           }
         },
         {
@@ -4023,7 +4023,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 492
+            "Line": 576
           }
         },
         {
@@ -4040,7 +4040,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 511
+                "Line": 595
               }
             },
             {
@@ -4051,7 +4051,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 513
+                "Line": 597
               }
             },
             {
@@ -4062,18 +4062,18 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 516
+                "Line": 600
               }
             },
             {
               "Kind": "Method",
               "Name": "length",
               "Signature": "pub fn length(): int",
-              "Doc": "How many pieces were appended — the PIECE count, not the character count.",
+              "Doc": "How many pieces were appended — the PIECE count, an implementation detail, NOT the\ncharacter count. Measure the built string instead. (It would carry `@Deprecated`, but an\nattribute cannot sit on a member yet; the removal is planned for 2.0 regardless.)",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 521
+                "Line": 607
               }
             },
             {
@@ -4084,7 +4084,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 526
+                "Line": 612
               }
             },
             {
@@ -4095,7 +4095,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 541
+                "Line": 627
               }
             },
             {
@@ -4106,24 +4106,24 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 547
+                "Line": 633
               }
             },
             {
               "Kind": "Method",
               "Name": "build",
               "Signature": "pub fn build(): string",
-              "Doc": "The pieces joined once — the point of collecting them.",
+              "Doc": "The pieces joined once — the point of collecting them. Balanced rather than a left\nfold: the fold would copy the whole result once per piece, the exact cost the builder\nexists to avoid.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 552
+                "Line": 640
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 509
+            "Line": 593
           }
         },
         {
@@ -4134,7 +4134,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 564
+            "Line": 646
           }
         }
       ]
@@ -4158,11 +4158,11 @@
           "Kind": "Function",
           "Name": "assertTrue",
           "Signature": "pub fn assertTrue(condition: bool, message: string): void",
-          "Doc": "Fails the test with `message` when `condition` is false.",
+          "Doc": "Fails the test with `message` when `condition` is false.\n\nThe same behavior as `std.core.assert` — it exists so a test file needs one import, and it\ndelegates so there is one implementation.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/test.lyr",
-            "Line": 19
+            "Line": 22
           }
         },
         {
@@ -4173,7 +4173,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/test.lyr",
-            "Line": 26
+            "Line": 27
           }
         }
       ]

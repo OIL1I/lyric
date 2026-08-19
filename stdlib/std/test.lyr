@@ -9,17 +9,18 @@
 /// here do.
 module std.test;
 
-import std.core { Display, Equatable, OnFunction, panic };
+import std.core { Display, Equatable, OnFunction, assert, panic };
 
 /// Marks a top-level function as a test. `lyric test` finds it through the attribute row and
 /// runs it in a fresh instance; the function takes no parameters and returns nothing.
 pub struct Test :: [OnFunction] { }
 
 /// Fails the test with `message` when `condition` is false.
+///
+/// The same behavior as `std.core.assert` — it exists so a test file needs one import, and it
+/// delegates so there is one implementation.
 pub fn assertTrue(condition: bool, message: string): void {
-    if (!condition) {
-        panic(message);
-    }
+    assert(condition, message);
 }
 
 /// Fails the test when the two values differ, naming both.

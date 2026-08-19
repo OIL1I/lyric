@@ -76,14 +76,14 @@ pub fn readChar(): ?char;
 /// A program writing into a pipe should not put a prompt into the stream, and this is how it knows.
 pub fn isInteractive(): bool;
 
+/// Writes to standard error without a line break.
+pub fn eprint(value: string);
+
 /// Pushes buffered output to the console.
 ///
 /// Needed as soon as something is written without a line break and has to be visible before the
 /// program continues — a prompt being the usual case.
 pub fn flush(): void;
-
-/// Writes to standard error without a line break.
-pub fn eprint(value: string);
 
 // From here on: written in Lyric, not native.
 //
