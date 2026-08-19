@@ -10,6 +10,22 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- **`{{` and `}}` in f-strings produce a literal brace** — promised by the grammar since 1.0,
+  honored by the lexer since this release: `f"json: {{\"k\": {n}}}"` renders braces instead
+  of a parse error. A lone `}` in the text stays ordinary text. Found by the spec audit.
+
+- **`catch (e: Throwable)` catches now.** It compiled — the exception analysis treats an
+  interface catch as handling — and then never caught: the handler carried the interface's
+  type id and the runtime compared it against the thrown CLASS, so the exception flew past a
+  clause the compiler had accepted. Found by the conformance suite on its first run. The
+  explicit `Throwable` catch is the catch-all now, identical to `catch (e)`; a catch naming
+  any OTHER interface is refused with a diagnostic until the handler table can express a
+  conformance test — the alternative was a clause that silently caught nothing.
+
 ## v1.15.0 — 2026-08-19
 
 The freeze prep: the design leftovers settled before the spec freezes semantics. `opaque type`

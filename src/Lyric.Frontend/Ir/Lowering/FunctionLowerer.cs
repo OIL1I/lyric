@@ -830,14 +830,33 @@ internal sealed class FunctionLowerer
                     ?? throw Bug($"catch binding at {clause.Span} was not bound by the type checker");
 
                 var type = LowerType(symbol.Type, declared.Span);
-                caught = type switch
+                switch (type)
                 {
-                    IrRefType r => r.Type,
-                    IrInterfaceType i => i.Type,
-                    _ => throw NotSupported(
-                        "catching a non-class type (only classes and interfaces are throwable)",
-                        clause.Span),
-                };
+                    case IrRefType r:
+                        caught = r.Type;
+                        break;
+
+                    // 'catch (e: Throwable)' IS the catch-all, written out: 'caught' stays null
+                    // exactly as for the typeless form, and the VM builds the fat pointer. Any
+                    // OTHER interface would need a conformance test during unwinding, which the
+                    // handler table cannot express yet — the id comparison would silently catch
+                    // nothing, so the boundary is a diagnostic instead.
+                    case IrInterfaceType when symbol.Type is Sema.NamedRef nr
+                        && ReferenceEquals(nr.Symbol,
+                            _typeTable.Compilation.Builtins.LookupLocal("Throwable")):
+                        caught = null;
+                        break;
+                    case IrInterfaceType:
+                        throw NotSupported(
+                            "catching a specific interface is not supported by this compiler "
+                            + "version yet — catch the concrete classes, or 'catch (e)' for "
+                            + "everything", clause.Span);
+
+                    default:
+                        throw NotSupported(
+                            "catching a non-class type (only classes and interfaces are throwable)",
+                            clause.Span);
+                }
 
                 slot = _slots.DeclareFor(symbol, type);
             }
@@ -4042,8 +4061,11 @@ internal sealed class FunctionLowerer
             {
                 case InterpText text:
                     // The parser stores the text pieces raw (see InterpText); the escapes are resolved
-                    // here. Adjacent pieces collect into one constant.
-                    pendingText.Append(Escapes.Resolve(text.Text));
+                    // here, and the doubled braces of the f-string form fold to one — '{{' and '}}'
+                    // are the grammar's literal-brace escape, and they exist only in THESE chunks.
+                    // Adjacent pieces collect into one constant.
+                    pendingText.Append(Escapes.Resolve(
+                        text.Text.Replace("{{", "{").Replace("}}", "}")));
                     break;
 
                 case InterpHole hole:

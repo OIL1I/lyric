@@ -320,7 +320,24 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M24 is merged and released as v1.15.0** (PR #62) — the freeze prep. With it the
+**M25 — the spec draft — is BUILT** (2026-08-19, ships as v1.16.0; the substance lives in
+`lyriclang/lyric-spec`). The delivery list:
+
+- [x] twelve chapters, non-normative until 2.0: lexical contract, grammar framing (EBNF stays
+      canonical in this repo until subsumed), types with the FROZEN decisions (wrapping
+      arithmetic; distinct numeric types; the opaque wall), modules/capabilities, interfaces,
+      operators-as-methods, statements and narrowing, monomorphization, the three failure
+      shapes, coroutines, the stdlib boundary, the diagnostic-code contract
+- [x] the conformance suite seed: 30 cases (one .lyr, expectations in a //! header), the
+      reference runner under 150 lines, CI running against the PINNED toolchain release
+- [x] the suite earned its keep on day one: resume yields T and exhaustion panics (the draft
+      had a null protocol — corrected), Throwable is a builtin (corrected), and
+      'catch (e: Throwable)' compiled but never caught — a sema/VM split, fixed HERE:
+      the explicit Throwable catch is the catch-all now, and a specific-interface catch is
+      refused with a diagnostic instead of silently catching nothing
+- [x] decisions recorded: overflow wraps (frozen), pub-roots YES at 2.0, spec repo now
+
+**M24 was merged and released as v1.15.0** (PR #62) — the freeze prep. With it the
 pre-freeze design space is closed; next is v1.16, the spec draft (non-normative) plus the seed
 of the conformance suite, and the semantics freeze begins there. The scope came
 from a line-by-line audit of the standard library after the first extension list turned out to
@@ -402,18 +419,6 @@ boundary — does the host keep it alive or the VM? That is the one place in M10
 answer yet, and it belongs asked before E4 starts.
 
 ## Still open
-
-**Language gaps still open:**
-
-- **A block lambda does not deliver its return type to the inference**: `(n: int) => n` binds `U`,
-  `(n: int) => { return n; }` does not. *Not a gap but a documented limit* — `LYR-SEM0046` says so
-  and suggests the annotation, and that works. It stands here because I wrongly reported it as a bug
-  on 2026-08-08.
-
-- **There is no interface inheritance** (`interface A :: [B]` is `LYR-PAR0039` with a message that
-  names the way out). Noticed while building the constraint rules, which presupposed it. Whether it
-  is worth having is open — `Hashable` would need it only to imply `Equatable`. No program is
-  unwritable without it: `std.core` requires both side by side.
 
 **Tooling and format:**
 
@@ -500,6 +505,12 @@ answer yet, and it belongs asked before E4 starts.
   differently through the child and through the parent. A child interface VALUE does not convert to
   the parent's type; implication holds for implementing types. `std.core` adopts
   `Hashable :: [Equatable]` at 2.0, not before.
+- **pub declarations become a library's reachability roots — decided YES, lands at 2.0**
+  (maintainer, 2026-08-19). A module without `main` currently keeps the well-known standard
+  library wholesale (measured: 7886 bytes for a one-function library). With the rule, a
+  library's `pub` surface decides its contents. It waits for 2.0 because it is observable:
+  a host calling an unexported function through the embedding API would find it missing.
+  The spec documents the rule as "from 2.0".
 - **Iterator method chaining: documented No for now** (M24 probe). `xs.iter().map(f).take(3)`
   wants generic default methods on `Iterator<T>`. The sema ACCEPTS them already; the lowering
   refuses on both paths — an interface VALUE fails at instance interning (`fn(T) -> U` in the

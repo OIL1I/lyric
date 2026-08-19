@@ -698,7 +698,10 @@ public sealed class Lexer
             return new Token(TokenKind.FStringEnd, new Span(_file, _pos - 1, _pos));
         }
 
-        if (Current == '{')
+        // '{{' is a literal brace and belongs to the CHUNK (the lowering folds the pair); a
+        // single '{' opens an interpolation. The grammar has promised the escape since 1.0 —
+        // the lexer honoring it arrived with the spec draft, which is what specs are for.
+        if (Current == '{' && PeekAt(1) != '{')
         {
             _pos++;
             _modeStack.Push(new ModeFrame { Mode = LexMode.FStringInterp, BraceDepth = 0 });
@@ -706,8 +709,13 @@ public sealed class Lexer
         }
 
         var chunkStart = _pos;
-        while (Current is not ('"' or '{' or '\0' or '\n'))
+        while (Current is not ('"' or '\0' or '\n'))
         {
+            if (Current == '{')
+            {
+                if (PeekAt(1) == '{') { _pos += 2; continue; }
+                break;
+            }
             if (Current == '\\') ConsumeEscapeSequence();
             else _pos++;
         }
