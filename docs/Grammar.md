@@ -106,7 +106,8 @@ NullLit         = 'null' .
 ```
 
 Inside an interpolated string, `{{` and `}}` produce a literal brace. `FormatSpec` runs to the
-matching `}`, tracking nested braces, parentheses and brackets.
+matching `}`, tracking nested braces, parentheses and brackets. A `\u{…}` escape carries at
+most eight hex digits and must name a Unicode scalar value.
 
 ### 1.6 Operators and punctuation
 

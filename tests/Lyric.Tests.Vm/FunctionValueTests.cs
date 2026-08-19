@@ -193,6 +193,22 @@ public class FunctionValueTests
             """).Out);
 
     [Fact]
+    public void Interpolation_braces_escape_as_the_grammar_promises() =>
+        // '{{'/'}}' fold to one literal brace, a lone '}' is text — the JSON case is the one
+        // that motivated the escape. Promised by the grammar since 1.0, honored since v1.16.
+        Assert.Equal("{n} is 7\njson: {\"k\": 7}\n}\n", Run("""
+            import std.io.console { println };
+
+            fn main(): int {
+                let n = 7;
+                println(f"{{n}} is {n}");
+                println(f"json: {{\"k\": {n}}}");
+                println(f"}");
+                return 0;
+            }
+            """).Out);
+
+    [Fact]
     public void A_block_lambda_without_annotation_infers_and_runs() =>
         // v1.13: no return type, no context — the type comes from the body's returns, including
         // through an open generic (U binds to what the block returns).

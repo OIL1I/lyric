@@ -1438,6 +1438,24 @@ public class LexerTests
         Assert.False(diag.HasErrors);
     }
 
+    /// <summary>
+    /// <c>{{</c> and <c>}}</c> are the literal-brace escape the grammar has promised since 1.0;
+    /// the lexer honoring it arrived with the spec draft (v1.16). The doubled pair stays INSIDE
+    /// the chunk — the lowering folds it — and a lone <c>}</c> is ordinary text.
+    /// </summary>
+    [Theory]
+    [InlineData("f\"{{\"")]      // Lyric: f"{{"
+    [InlineData("f\"}}\"")]      // Lyric: f"}}"
+    [InlineData("f\"a{{b}}c\"")] // Lyric: f"a{{b}}c"
+    [InlineData("f\"}\"")]       // a lone '}' is text
+    public void Fstring_literal_braces_stay_in_the_chunk(string input)
+    {
+        var (tokens, diag) = Tokenize(input);
+        Assert.Equal(4, tokens.Count);  // FStringStart, Chunk, FStringEnd, Eof
+        Assert.Equal(TokenKind.FStringChunk, tokens[1].TokenKind);
+        Assert.False(diag.HasErrors);
+    }
+
     [Fact]
     public void Fstring_chunk_with_hex_escape()
     {
@@ -1531,8 +1549,9 @@ public class LexerTests
     [Fact]
     public void Inner_braces_in_interp_tokenize_as_LBrace_RBrace()
     {
-        // f"{{x}}": the outer {} are interpolation markers, the inner {} are LBrace and RBrace.
-        var (tokens, diag) = Tokenize("f\"{{x}}\"");
+        // f"{ {x} }": the inner {} are LBrace and RBrace. (A DOUBLED brace is the literal-brace
+        // escape since v1.16, so the interpolation opens with a space after it.)
+        var (tokens, diag) = Tokenize("f\"{ {x} }\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
             new[] {
@@ -1552,7 +1571,7 @@ public class LexerTests
     [Fact]
     public void Empty_inner_brace_pair_in_interp()
     {
-        var (tokens, diag) = Tokenize("f\"{{}}\"");
+        var (tokens, diag) = Tokenize("f\"{ {} }\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
             new[] {
@@ -1571,8 +1590,8 @@ public class LexerTests
     [Fact]
     public void Deeply_nested_braces_in_interp()
     {
-        // f"{{ {x} }}": three brace depths in a row.
-        var (tokens, diag) = Tokenize("f\"{{ {x} }}\"");
+        // f"{ { {x} } }": three brace depths in a row.
+        var (tokens, diag) = Tokenize("f\"{ { {x} } }\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
             new[] {
@@ -1594,9 +1613,9 @@ public class LexerTests
     [Fact]
     public void Colon_at_depth_greater_zero_does_not_trigger_format_spec()
     {
-        // f"{{x:y}}": the inner `:` is at brace depth 1 and therefore triggers no format spec. It is a
-        // Colon token.
-        var (tokens, diag) = Tokenize("f\"{{x:y}}\"");
+        // f"{ {x:y} }": the inner `:` is at brace depth 1 and therefore triggers no format spec. It
+        // is a Colon token.
+        var (tokens, diag) = Tokenize("f\"{ {x:y} }\"");
         var kinds = tokens.Select(t => t.TokenKind).ToArray();
         Assert.Equal(
             new[] {

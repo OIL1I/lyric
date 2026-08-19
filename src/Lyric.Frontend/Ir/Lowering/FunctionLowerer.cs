@@ -4061,8 +4061,11 @@ internal sealed class FunctionLowerer
             {
                 case InterpText text:
                     // The parser stores the text pieces raw (see InterpText); the escapes are resolved
-                    // here. Adjacent pieces collect into one constant.
-                    pendingText.Append(Escapes.Resolve(text.Text));
+                    // here, and the doubled braces of the f-string form fold to one — '{{' and '}}'
+                    // are the grammar's literal-brace escape, and they exist only in THESE chunks.
+                    // Adjacent pieces collect into one constant.
+                    pendingText.Append(Escapes.Resolve(
+                        text.Text.Replace("{{", "{").Replace("}}", "}")));
                     break;
 
                 case InterpHole hole:
