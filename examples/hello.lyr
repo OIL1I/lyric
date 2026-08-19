@@ -1,6 +1,6 @@
-﻿import std.io.console { println };
+import std.io.console { println };
 
-fn main():int {
+fn main(): int {
     let name = "Lyric";
     println(f"Hello, {name}!");
     return 0;

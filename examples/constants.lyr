@@ -6,11 +6,13 @@
 import std.io.console;
 
 let VERSION = "1.0";
+
 let BANNER = "lyric " + VERSION;
 
 // The order is the declaration order: BASE reads LEVELS because LEVELS stands above it. The other
 // way round is LYR-SEM0057, since it would read a value nobody has written.
 let LEVELS = 4;
+
 let BASE = LEVELS * 10;
 
 pub struct Vector2 {

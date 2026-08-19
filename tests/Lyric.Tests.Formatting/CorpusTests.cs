@@ -30,6 +30,17 @@ public class CorpusTests
         return data;
     }
 
+    /// <summary>The gofmt property, held from now on: the repository's own Lyric is formatted.
+    /// A change that reformats — a new style decision, a fixed bug — reformats the corpus in
+    /// the same commit, or this test says so.</summary>
+    [Theory]
+    [MemberData(nameof(Files))]
+    public void The_repository_is_formatted(string relativePath)
+    {
+        var source = File.ReadAllText(Path.Combine(RepoRoot(), relativePath));
+        Assert.Equal(source, Format(source, relativePath));
+    }
+
     [Theory]
     [MemberData(nameof(Files))]
     public void Formatting_preserves_the_program(string relativePath)

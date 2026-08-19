@@ -213,8 +213,8 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
     keys: (?K)[],
     values: (?V)[],
     states: int[],
-    count: int,      // the occupied ones only
-    used: int,       // belegte + Grabsteine
+    count: int, // the occupied ones only
+    used: int, // belegte + Grabsteine
 
     pub fn length(): int {
         return this.count;
@@ -241,7 +241,7 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
 
         while (schritte < n) {
             if (this.states[i] == 0) {
-                return -1;                      // empty: this is where it would have been
+                return -1; // empty: this is where it would have been
             }
             if (this.states[i] == 1) {
                 let vorhanden = this.keys[i];
@@ -298,7 +298,7 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
             } else {
                 let vorhanden = this.keys[i];
                 if (vorhanden != null && vorhanden.equals(key)) {
-                    this.values[i] = value;     // overwrite, not a new entry
+                    this.values[i] = value; // overwrite, not a new entry
                     return;
                 }
             }
@@ -426,8 +426,14 @@ pub fn sortListBy<T>(xs: List<T>, less: fn(T, T) -> bool): void {
 }
 
 // Merges [start, middle) and [middle, end) from `xs` into `buffer`.
-fn mergeRuns<T>(xs: List<T>, buffer: (?T)[], start: int, mitte: int, ende: int,
-                less: fn(T, T) -> bool): void {
+fn mergeRuns<T>(
+    xs: List<T>,
+    buffer: (?T)[],
+    start: int,
+    mitte: int,
+    ende: int,
+    less: fn(T, T) -> bool
+): void {
     var links = start;
     var rechts = mitte;
     var ziel = start;
@@ -548,7 +554,7 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
             } else {
                 let vorhanden = this.items[i];
                 if (vorhanden != null && vorhanden.equals(value)) {
-                    return false;                 // already present
+                    return false; // already present
                 }
             }
             i = (i + 1) % n;
@@ -621,8 +627,12 @@ pub fn emptySet<T :: [Hashable<T>, Equatable<T>]>(): Set<T> {
 
 pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
     let result = emptySet<T>();
-    for (v in a.iter()) { result.add(v); }
-    for (v in b.iter()) { result.add(v); }
+    for (v in a.iter()) {
+        result.add(v);
+    }
+    for (v in b.iter()) {
+        result.add(v);
+    }
     return result;
 }
 
@@ -632,7 +642,9 @@ pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T>
     let klein = if (a.length() <= b.length()) a else b;
     let gross = if (a.length() <= b.length()) b else a;
     for (v in klein.iter()) {
-        if (gross.contains(v)) { result.add(v); }
+        if (gross.contains(v)) {
+            result.add(v);
+        }
     }
     return result;
 }
@@ -640,7 +652,9 @@ pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T>
 pub fn difference<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
     let result = emptySet<T>();
     for (v in a.iter()) {
-        if (!b.contains(v)) { result.add(v); }
+        if (!b.contains(v)) {
+            result.add(v);
+        }
     }
     return result;
 }
@@ -650,7 +664,9 @@ pub fn isSubset<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): bool {
         return false;
     }
     for (v in a.iter()) {
-        if (!b.contains(v)) { return false; }
+        if (!b.contains(v)) {
+            return false;
+        }
     }
     return true;
 }

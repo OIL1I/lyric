@@ -24,7 +24,9 @@ pub class Player :: [Damageable] {
 
     mut fn takeDamage(amount: int) {
         this.hp -= amount;
-        if (this.hp < 0) { this.hp = 0; }
+        if (this.hp < 0) {
+            this.hp = 0;
+        }
     }
 
     fn getHp(): int {
@@ -42,7 +44,9 @@ pub class Wall :: [Damageable] {
     // A Wall absorbs half of it.
     mut fn takeDamage(amount: int) {
         this.hp -= amount / 2;
-        if (this.hp < 0) { this.hp = 0; }
+        if (this.hp < 0) {
+            this.hp = 0;
+        }
     }
 
     fn getHp(): int {
@@ -62,7 +66,9 @@ fn hit(target: Damageable, amount: int): int {
 }
 
 fn describe(target: Damageable): string {
-    if (target.isAlive()) { return "alive"; }
+    if (target.isAlive()) {
+        return "alive";
+    }
     return "down";
 }
 

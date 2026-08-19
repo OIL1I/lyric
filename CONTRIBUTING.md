@@ -112,8 +112,10 @@ made on impulse (e.g. "I just thought of something better") are forbidden.
 | `var` (C#) | Prefer when type is obvious from RHS; use explicit type otherwise |
 | Comments | English, describing the technique and the logic. No justifications, no project history, no milestone or decision references. |
 
-No formatter is enforced in v1 (a `lyric fmt` tool may come post-v1).
-Follow these rules manually.
+For C# code, follow these rules manually. For Lyric code (`.lyr`) the formatter is the rule:
+`lyric fmt` writes the one shape there is, the repository's own Lyric (stdlib, examples,
+templates) is kept formatted, and a test in `Lyric.Tests.Formatting` fails when it stops
+being it.
 
 ---
 

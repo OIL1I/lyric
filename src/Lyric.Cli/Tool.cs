@@ -25,7 +25,10 @@ public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
     /// executes; <c>lyric pack app.lyr</c> composes it with the compiler.</summary>
     public static readonly Tool Packer = new("lyrpack", "--packer", "LYRIC_PACK");
 
-    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl, Builder, Packer];
+    /// <summary>The formatter. It parses and prints; it neither resolves nor executes.</summary>
+    public static readonly Tool Fmt = new("lyrfmt", "--fmt", "LYRIC_FMT");
+
+    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl, Builder, Packer, Fmt];
 
     /// <summary>Where the tool lives: <c>--flag &lt;path&gt;</c> beats the environment variable,
     /// which beats the executable next to this one.</summary>

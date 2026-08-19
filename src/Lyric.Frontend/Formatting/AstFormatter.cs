@@ -149,6 +149,10 @@ public sealed class AstFormatter
             var air = previous is not null ? airOf(previous, item) : Air.User;
             if (glued < pending.Count)
             {
+                // A comment heading the unit marks a boundary the user drew: a pair that would
+                // collapse (imports) keeps the user's blank line instead. Forced stays forced —
+                // the doc comment of a declaration carries its declaration's air.
+                if (air == Air.Never) air = Air.User;
                 EmitOwnLine(parts, pending[glued], air);
                 for (var i = glued + 1; i < pending.Count; i++)
                     EmitOwnLine(parts, pending[i], Air.User);
@@ -210,6 +214,9 @@ public sealed class AstFormatter
         (ModulePath, _) => Air.Forced,
         (AttributeNode, _) => Air.Never,             // an attribute belongs to what follows it
         (ImportDecl, ImportDecl) => Air.Never,       // imports form one contiguous head
+        // Two bodiless declarations group like interface members do: the standard library's
+        // native declarations come in blocks a forced blank would tear apart.
+        (FunctionDecl { Body: null }, FunctionDecl { Body: null }) => Air.User,
         (Decl, Decl) => Air.Forced,
         _ => Air.User,
     };

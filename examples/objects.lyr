@@ -29,12 +29,12 @@ fn bump(c: Counter) {
 }
 
 class Inner {
-    label: string
+    label: string,
 }
 
 class Outer {
     inner: Inner,
-    count: int
+    count: int,
 }
 
 fn main(): int {

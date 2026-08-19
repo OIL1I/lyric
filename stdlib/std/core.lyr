@@ -96,23 +96,33 @@ pub interface Display {
 }
 
 extend int :: [Display] {
-    fn show(): string { return fromInt(this); }
+    fn show(): string {
+        return fromInt(this);
+    }
 }
 
 extend float :: [Display] {
-    fn show(): string { return fromFloat(this); }
+    fn show(): string {
+        return fromFloat(this);
+    }
 }
 
 extend bool :: [Display] {
-    fn show(): string { return fromBool(this); }
+    fn show(): string {
+        return fromBool(this);
+    }
 }
 
 extend char :: [Display] {
-    fn show(): string { return fromChar(this); }
+    fn show(): string {
+        return fromChar(this);
+    }
 }
 
 extend string :: [Display] {
-    fn show(): string { return this; }
+    fn show(): string {
+        return this;
+    }
 }
 
 // --------------------------------------------------------------- equality, hashing, ordering
@@ -160,13 +170,19 @@ pub interface Ordered<T> {
 }
 
 extend int :: [Equatable<int>] {
-    fn equals(other: int): bool { return this == other; }
+    fn equals(other: int): bool {
+        return this == other;
+    }
 }
 
 extend int :: [Ordered<int>] {
     fn compare(other: int): int {
-        if (this < other) { return -1; }
-        if (this > other) { return 1; }
+        if (this < other) {
+            return -1;
+        }
+        if (this > other) {
+            return 1;
+        }
         return 0;
     }
 }
@@ -174,47 +190,69 @@ extend int :: [Ordered<int>] {
 extend int :: [Hashable<int>] {
     // An int is its own hash. Which bits a table needs is the table's business, not the
     // value's.
-    fn hash(): int { return this; }
+    fn hash(): int {
+        return this;
+    }
 }
 
 extend char :: [Equatable<char>] {
-    fn equals(other: char): bool { return this == other; }
+    fn equals(other: char): bool {
+        return this == other;
+    }
 }
 
 extend char :: [Ordered<char>] {
     fn compare(other: char): int {
-        if (this < other) { return -1; }
-        if (this > other) { return 1; }
+        if (this < other) {
+            return -1;
+        }
+        if (this > other) {
+            return 1;
+        }
         return 0;
     }
 }
 
 extend char :: [Hashable<char>] {
-    fn hash(): int { return this as int; }
+    fn hash(): int {
+        return this as int;
+    }
 }
 
 extend bool :: [Equatable<bool>] {
-    fn equals(other: bool): bool { return this == other; }
+    fn equals(other: bool): bool {
+        return this == other;
+    }
 }
 
 extend bool :: [Hashable<bool>] {
-    fn hash(): int { return if (this) 1 else 0; }
+    fn hash(): int {
+        return if (this) 1 else 0;
+    }
 }
 
 extend float :: [Equatable<float>] {
-    fn equals(other: float): bool { return this == other; }
+    fn equals(other: float): bool {
+        return this == other;
+    }
 }
 
 extend float :: [Ordered<float>] {
     fn compare(other: float): int {
-        if (this < other) { return -1; }
-        if (this > other) { return 1; }
+        if (this < other) {
+            return -1;
+        }
+        if (this > other) {
+            return 1;
+        }
         return 0;
     }
 }
 
 extend string :: [Equatable<string>] {
-    fn equals(other: string): bool { return this == other; }
+    fn equals(other: string): bool {
+        return this == other;
+    }
 }
 
 extend string :: [Ordered<string>] {
@@ -230,14 +268,22 @@ extend string :: [Ordered<string>] {
         while (i < kurz) {
             let x = charAt(this, i) as int;
             let y = charAt(other, i) as int;
-            if (x < y) { return -1; }
-            if (x > y) { return 1; }
+            if (x < y) {
+                return -1;
+            }
+            if (x > y) {
+                return 1;
+            }
             i = i + 1;
         }
 
         // Same prefix: the shorter one wins.
-        if (a < b) { return -1; }
-        if (a > b) { return 1; }
+        if (a < b) {
+            return -1;
+        }
+        if (a > b) {
+            return 1;
+        }
         return 0;
     }
 }
@@ -249,12 +295,12 @@ extend string :: [Hashable<string>] {
     // The constants are the 64-bit variant. A hash need not be cryptographic; it must spread and
     // produce the same result everywhere.
     fn hash(): int {
-        var h = -3750763034362895579;      // the FNV offset basis, 64 bit
+        var h = -3750763034362895579; // the FNV offset basis, 64 bit
         let n = length(this);
         var i = 0;
         while (i < n) {
-            h = h ^ (charAt(this, i) as int);
-            h = h * 1099511628211;         // FNV-Prime
+            h = h ^ charAt(this, i) as int;
+            h = h * 1099511628211; // FNV-Prime
             i = i + 1;
         }
         return h;
@@ -262,19 +308,27 @@ extend string :: [Hashable<string>] {
 }
 
 extend uint :: [Equatable<uint>] {
-    fn equals(other: uint): bool { return this == other; }
+    fn equals(other: uint): bool {
+        return this == other;
+    }
 }
 
 extend uint :: [Ordered<uint>] {
     fn compare(other: uint): int {
-        if (this < other) { return -1; }
-        if (this > other) { return 1; }
+        if (this < other) {
+            return -1;
+        }
+        if (this > other) {
+            return 1;
+        }
         return 0;
     }
 }
 
 extend uint :: [Hashable<uint>] {
-    fn hash(): int { return this as int; }
+    fn hash(): int {
+        return this as int;
+    }
 }
 
 // ------------------------------------------------------------------------------- arithmetic
@@ -312,56 +366,82 @@ pub interface Div<T> {
 }
 
 extend int :: [Add<int>] {
-    fn add(other: int): int { return this + other; }
+    fn add(other: int): int {
+        return this + other;
+    }
 }
 
 extend int :: [Sub<int>] {
-    fn sub(other: int): int { return this - other; }
+    fn sub(other: int): int {
+        return this - other;
+    }
 }
 
 extend int :: [Mul<int>] {
-    fn mul(other: int): int { return this * other; }
+    fn mul(other: int): int {
+        return this * other;
+    }
 }
 
 extend int :: [Div<int>] {
-    fn div(other: int): int { return this / other; }
+    fn div(other: int): int {
+        return this / other;
+    }
 }
 
 extend uint :: [Add<uint>] {
-    fn add(other: uint): uint { return this + other; }
+    fn add(other: uint): uint {
+        return this + other;
+    }
 }
 
 extend uint :: [Sub<uint>] {
-    fn sub(other: uint): uint { return this - other; }
+    fn sub(other: uint): uint {
+        return this - other;
+    }
 }
 
 extend uint :: [Mul<uint>] {
-    fn mul(other: uint): uint { return this * other; }
+    fn mul(other: uint): uint {
+        return this * other;
+    }
 }
 
 extend uint :: [Div<uint>] {
-    fn div(other: uint): uint { return this / other; }
+    fn div(other: uint): uint {
+        return this / other;
+    }
 }
 
 extend float :: [Add<float>] {
-    fn add(other: float): float { return this + other; }
+    fn add(other: float): float {
+        return this + other;
+    }
 }
 
 extend float :: [Sub<float>] {
-    fn sub(other: float): float { return this - other; }
+    fn sub(other: float): float {
+        return this - other;
+    }
 }
 
 extend float :: [Mul<float>] {
-    fn mul(other: float): float { return this * other; }
+    fn mul(other: float): float {
+        return this * other;
+    }
 }
 
 extend float :: [Div<float>] {
-    fn div(other: float): float { return this / other; }
+    fn div(other: float): float {
+        return this / other;
+    }
 }
 
 // `Add` alone: a string concatenates and does nothing else arithmetic.
 extend string :: [Add<string>] {
-    fn add(other: string): string { return this + other; }
+    fn add(other: string): string {
+        return this + other;
+    }
 }
 
 // ------------------------------------------------------------------------------ conversion

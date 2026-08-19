@@ -7,8 +7,10 @@ import std.io.console { println };
 
 // An interface with one abstract and one default method.
 interface Priced {
-    fn price(): int;                       // abstract
-    fn isFree(): bool {                    // default: uses the abstract method
+    fn price(): int; // abstract
+
+    fn isFree(): bool {
+        // default: uses the abstract method
         return this.price() == 0;
     }
 }
@@ -16,7 +18,7 @@ interface Priced {
 enum Rarity {
     Common,
     Rare,
-    Legendary
+    Legendary,
 }
 
 struct Item :: [Priced] {
@@ -26,9 +28,9 @@ struct Item :: [Priced] {
 
     fn price(): int {
         return this.basePrice * match (this.rarity) {
-            Common    => 1,
-            Rare      => 3,
-            Legendary => 10
+            Common => 1,
+            Rare => 3,
+            Legendary => 10,
         };
     }
 }
@@ -61,9 +63,9 @@ fn firstMatching(items: Item[], keep: fn(Item) -> bool): ?Item {
 
 fn main(): int {
     let items: Item[] = [
-        Item { name = "Bread",  basePrice = 0,  rarity = Rarity.Common },
-        Item { name = "Sword",  basePrice = 5,  rarity = Rarity.Rare },
-        Item { name = "Amulet", basePrice = 8,  rarity = Rarity.Legendary },
+        Item { name = "Bread", basePrice = 0, rarity = Rarity.Common },
+        Item { name = "Sword", basePrice = 5, rarity = Rarity.Rare },
+        Item { name = "Amulet", basePrice = 8, rarity = Rarity.Legendary },
     ];
 
     for (it in items) {
@@ -76,7 +78,7 @@ fn main(): int {
     let affordable = firstMatching(items, (it) => it.price() <= budget);
     let name = match (affordable) {
         null => "nichts Bezahlbares",
-        it   => it.name
+        it => it.name,
     };
     println(f"Erstes im Budget ({budget}): {name}");
 

@@ -13,22 +13,22 @@ pub enum Shape {
 
     fn area(): float {
         return match (this) {
-            Circle(r)       => pi * r * r,
+            Circle(r) => pi * r * r,
             Rectangle(w, h) => w * h,
             Triangle { a, b, c } => {
                 let s = (a + b + c) / 2.0;
                 return sqrt(s * (s - a) * (s - b) * (s - c));
-            },
+            }
             Empty => 0.0,
         };
     }
 
     fn name(): string {
         return match (this) {
-            Circle(_)            => "Kreis",
-            Rectangle(_, _)      => "Rechteck",
+            Circle(_) => "Kreis",
+            Rectangle(_, _) => "Rechteck",
             Triangle { a, b, c } => "Dreieck",
-            Empty                => "Leer",
+            Empty => "Leer",
         };
     }
 }
@@ -37,9 +37,10 @@ fn main(): int {
     let shapes: Shape[] = [
         Shape.Circle(2.0),
         Shape.Rectangle(3.0, 4.0),
-        Triangle { a = 3.0, b = 4.0, c = 5.0 },   // the type comes contextually from Shape[]
+        Triangle { a = 3.0, b = 4.0, c = 5.0 },
         Shape.Empty,
     ];
+    // the type comes contextually from Shape[]
 
     for (s in shapes) {
         println(f"{s.name()}: Flaeche = {s.area():N2}");
