@@ -10,7 +10,11 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v1.16.0 — 2026-08-19
+
+The language has a specification: `lyriclang/lyric-spec` holds twelve chapters and a
+conformance suite, non-normative until 2.0 — and from this release on the semantics are
+FROZEN. Two toolchain fixes came out of writing it. The bytecode format stays **3.2**.
 
 ### Fixed
 

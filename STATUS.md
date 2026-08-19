@@ -190,8 +190,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4319 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **1.15.0**.
+4307 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **1.16.0**; the conformance suite stands at 43 cases in
+`lyriclang/lyric-spec`.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -530,8 +531,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`std, ir: strings get their method API, and a latent id collision falls`
-(closes M24's delivery list; released as v1.15.0)
+`lexer, ir: f-strings honor the literal-brace escape the grammar promised`
+(closes M25's delivery list; released as v1.16.0)
 
 ---
 
