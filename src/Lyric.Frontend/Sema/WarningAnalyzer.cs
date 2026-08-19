@@ -29,6 +29,12 @@ internal sealed class WarningAnalyzer
     private readonly Dictionary<FileId, HashSet<Symbol>> _usedByFile = [];
     private readonly HashSet<Symbol> _mutated = new(ReferenceEqualityComparer.Instance);
 
+    private readonly Dictionary<Node, (string Message, Span AttributeSpan)> _deprecatedDecls =
+        new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<ModuleSymbol, (string Message, Span AttributeSpan)>
+        _deprecatedModules = new(ReferenceEqualityComparer.Instance);
+    private readonly List<(FileId File, Span Extent)> _deprecatedExtents = [];
+
     public WarningAnalyzer(Compilation comp, BindingResult binding, TypeResult types,
         DiagnosticEngine de)
     {
@@ -62,7 +68,122 @@ internal sealed class WarningAnalyzer
         WarnUnusedLocals();
         HintNeverReassigned();
         WarnUnusedImports();
+
+        CollectDeprecated();
+        WarnDeprecatedUses();
     }
+
+    // ─── deprecated uses ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// The declarations carrying <c>@Deprecated</c>, by the CANONICAL type: the struct
+    /// <c>std.core</c> declares, resolved by identity — a struct someone else names
+    /// <c>Deprecated</c> deprecates nothing.
+    /// </summary>
+    private void CollectDeprecated()
+    {
+        if (_comp.FindModule(["std", "core"])?.Members.LookupLocal("Deprecated")
+            is not TypeSymbol canonical) return;
+
+        foreach (var module in _comp.Modules)
+        {
+            var ast = _comp.AstOf(module);
+
+            if (FindDeprecated(ast.Attributes, canonical) is { } onModule)
+            {
+                _deprecatedModules[module] = onModule;
+                _deprecatedExtents.Add((ast.Span.File, ast.Span));
+            }
+
+            foreach (var decl in ast.Declarations)
+            {
+                AttributeNode[] attributes = decl switch
+                {
+                    FunctionDecl f => f.Attributes,
+                    StructDecl s => s.Attributes,
+                    ClassDecl c => c.Attributes,
+                    EnumDecl e => e.Attributes,
+                    _ => [],
+                };
+                if (FindDeprecated(attributes, canonical) is not { } info) continue;
+                _deprecatedDecls[decl] = info;
+                _deprecatedExtents.Add((decl.Span.File, decl.Span));
+            }
+        }
+    }
+
+    private (string Message, Span AttributeSpan)? FindDeprecated(
+        AttributeNode[] attributes, TypeSymbol canonical)
+    {
+        foreach (var attribute in attributes)
+        {
+            if (!ReferenceEquals(_types.RefOf(attribute), canonical)) continue;
+
+            // One string field; its declared default is "". Reading the default from the struct
+            // declaration would be the general form — one field does not need it.
+            var written = attribute.Fields.FirstOrDefault(f => f.Name == "message");
+            var message = written?.Value is StringLiteralExpr s ? s.Value : "";
+            return (message, attribute.Span);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Every use of a deprecated declaration warns at the use site, with the note pointing at
+    /// the attribute. Uses INSIDE anything itself deprecated are exempt — a deprecated function
+    /// may call itself and its deprecated siblings without the compiler nagging the one place
+    /// that is allowed not to care. A deprecated module warns at the imports that pull it in.
+    /// </summary>
+    private void WarnDeprecatedUses()
+    {
+        if (_deprecatedDecls.Count > 0)
+        {
+            var reported = new HashSet<Node>(ReferenceEqualityComparer.Instance);
+            foreach (var table in new[]
+                     {
+                         (IEnumerable<KeyValuePair<Node, Symbol>>)_types.AllReferences,
+                         _binding.All,
+                     })
+                foreach (var (node, symbol) in table)
+                {
+                    var target = symbol is ImportBindingSymbol shell ? shell.Target : symbol;
+                    if (target.Declaration is not { } declaration) continue;
+                    if (!_deprecatedDecls.TryGetValue(declaration, out var info)) continue;
+                    if (ReferenceEquals(symbol.Declaration, node)) continue; // the declaration itself
+                    if (_nativeFiles.Contains(node.Span.File)) continue;
+                    if (InsideDeprecated(node.Span)) continue;
+                    if (!reported.Add(node)) continue;
+
+                    _de.Report("LYR-SEM0076", Severity.Warning, node.Span,
+                        DeprecationMessage($"'{target.Name}'", info.Message),
+                        new DiagnosticNote(info.AttributeSpan, "declared deprecated here"));
+                }
+        }
+
+        if (_deprecatedModules.Count == 0) return;
+        foreach (var module in _comp.Modules)
+        {
+            if (_comp.IsNative(module)) continue;
+            foreach (var decl in _comp.AstOf(module).Declarations)
+            {
+                if (decl is not ImportDecl import) continue;
+                if (_comp.FindModule(import.Path) is not { } imported) continue;
+                if (!_deprecatedModules.TryGetValue(imported, out var info)) continue;
+                if (InsideDeprecated(import.Span)) continue;
+
+                _de.Report("LYR-SEM0076", Severity.Warning, import.Span,
+                    DeprecationMessage($"module '{imported.FullName}'", info.Message),
+                    new DiagnosticNote(info.AttributeSpan, "declared deprecated here"));
+            }
+        }
+    }
+
+    private static string DeprecationMessage(string what, string message) =>
+        message.Length == 0 ? $"{what} is deprecated" : $"{what} is deprecated: {message}";
+
+    private bool InsideDeprecated(Span use) =>
+        _deprecatedExtents.Any(d =>
+            d.File == use.File && use.Start >= d.Extent.Start && use.End <= d.Extent.End);
 
     private void CollectUses(IEnumerable<KeyValuePair<Node, Symbol>> table)
     {

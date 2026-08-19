@@ -1133,6 +1133,29 @@
             "File": "stdlib/std/core.lyr",
             "Line": 475
           }
+        },
+        {
+          "Kind": "Struct",
+          "Name": "Deprecated",
+          "Signature": "pub struct Deprecated :: [OnModule, OnType, OnFunction]",
+          "Doc": "Marks its target as deprecated: the compiler warns at every use, and `message` says what to\nuse instead. The first attribute the compiler itself reads — it changes diagnostics and\nnothing else, so a program that ignores the warning runs unchanged.",
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "message",
+              "Signature": "message: string",
+              "Doc": null,
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 481
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/core.lyr",
+            "Line": 480
+          }
         }
       ]
     },

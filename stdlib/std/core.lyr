@@ -474,6 +474,13 @@ pub interface OnType { }
 /// A struct declaring this may stand as `@Name` before a top-level function.
 pub interface OnFunction { }
 
+/// Marks its target as deprecated: the compiler warns at every use, and `message` says what to
+/// use instead. The first attribute the compiler itself reads — it changes diagnostics and
+/// nothing else, so a program that ignores the warning runs unchanged.
+pub struct Deprecated :: [OnModule, OnType, OnFunction] {
+    message: string = "",
+}
+
 // No `Hashable` for `float`, deliberately.
 //
 // A hash table requires equal values to hash equally. Floating point breaks the premise rather

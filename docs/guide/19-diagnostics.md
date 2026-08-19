@@ -30,8 +30,9 @@ main.lyr:4:9: warning[LYR-SEM0071]: 'unused' is never used
 What warns today: a local binding, loop variable, catch binding or pattern binding that is
 never referenced (`LYR-SEM0071`); an imported name nobody in the file uses (`LYR-SEM0072`); a
 statement that can never run because control flow always leaves the block before it
-(`LYR-SEM0073`); and a static extension method called through an instance (`LYR-SEM0074`) —
-that form is deprecated and becomes an error in a future major version.
+(`LYR-SEM0073`); a static extension method called through an instance (`LYR-SEM0074`) — that
+form is deprecated and becomes an error in a future major version; and every use of something
+marked `@Deprecated` (`LYR-SEM0076`), with the attribute's message naming the way forward.
 
 Naming a binder `_` says the value is deliberately unused, and no warning fires. Parameters
 never warn — a signature is often fixed by an interface — and neither does the shorthand field
