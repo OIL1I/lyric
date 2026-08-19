@@ -11,7 +11,7 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.10.0 are released** — annotated tags on the remote, each with a release page.
+**v1.0.0 through v1.11.0 are released** — annotated tags on the remote, each with a release page.
 M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
 v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables; since the org
 split the editor clients release from their own repositories, and a toolchain release carries
@@ -108,8 +108,7 @@ where it was declared, a program followed across its files, documentation on hov
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
 4208 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-(`lyrtest` is the newest) plus `lyrembed.dll`, version **1.10.0** (M20 pending review as
-v1.11.0).
+(`lyrtest` is the newest) plus `lyrembed.dll`, version **1.11.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -256,8 +255,7 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M20 is built and awaits review** (branch `feature/m20-attributes`, three slice commits, PR
-to follow; ships as v1.11.0). Attributes stopped being decoration: the compiler reads
+**M20 is merged and released as v1.11.0** (PR #57). Attributes stopped being decoration: the compiler reads
 `@Deprecated`, the new `lyric test` reads `@Test` — through the same embedding machinery a host
 uses, deliberately. The compiler-read attribute set is language contract from here on and grows
 by decision; suppression stayed out for exactly that reason. Next in the agreed v2 sequence:

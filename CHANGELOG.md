@@ -10,7 +10,7 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v1.11.0 — 2026-08-19
 
 Attributes stop being decoration. One is now read by the compiler — `@Deprecated` — and one by
 a new tool: `lyric test` runs every function marked `@Test`. The bytecode format stays **3.2**,
