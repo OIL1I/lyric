@@ -50,6 +50,11 @@ a { color: var(--accent); }
 
 .brand { font-weight: 700; text-decoration: none; font-size: 1.1rem; }
 .version { color: var(--muted); font-family: var(--mono); font-size: 0.85rem; }
+
+.areas { display: flex; gap: 1rem; }
+.areas a { text-decoration: none; color: var(--muted); }
+.areas a:hover { color: var(--accent); }
+.areas a.current { color: var(--fg); font-weight: 600; }
 .switcher { margin-left: auto; }
 .switcher select {
     font: inherit;
@@ -168,4 +173,35 @@ blockquote {
     .layout { grid-template-columns: minmax(0, 1fr); }
     .sidebar { position: static; }
     .contents ul { columns: 1; }
+}
+
+/* --- welcome page ------------------------------------------------------- */
+
+.welcome {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3rem 1.5rem;
+}
+.welcome h1 { font-size: 2.4rem; margin: 0 0 0.5rem; }
+.welcome .lead { color: var(--muted); font-size: 1.1rem; margin: 0 0 2rem; }
+
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.card {
+    display: block;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--fg);
+}
+.card:hover { border-color: var(--accent); }
+.card h2 { margin: 0 0 0.4rem; color: var(--accent); font-size: 1.2rem; border: none; padding-bottom: 0; }
+.card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+.changes { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); }
+.changes > h2 { font-size: 1.3rem; }
+
+@media (max-width: 40rem) {
+    .cards { grid-template-columns: 1fr; }
+    .areas { display: none; }
 }

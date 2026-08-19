@@ -2,11 +2,160 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="refresh" content="0; url=guide/getting-started/" />
-<link rel="canonical" href="guide/getting-started/" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lyric nightly</title>
+<link rel="stylesheet" href="site.css" />
 </head>
 <body>
-<p><a href="guide/getting-started/">Lyric nightly</a></p>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">nightly</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.8.0 — 2026-08-18</h2>
+<p>The editors catch up with the compiler. No language change and no format change: the language
+server compiles the PROJECT instead of the open buffer, answers everything an editor asks, and
+two installable clients ship beside the toolchain — the VS Code extension as a <code>.vsix</code>, and a
+new JetBrains plugin.</p>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><p><strong>The language server compiles the project, not the buffer.</strong> Under a <code>lyric.json</code>, every
+<code>.lyr</code> file beneath the source root is one compilation: find-references works in BOTH
+directions (standing on a declaration finds the uses in files that import it), files nobody
+has open get their errors into the Problems panel, a deleted file has its squiggles withdrawn,
+and a change behind the editor — a branch switch, another tool — is picked up through file
+watches. A file outside any project is compiled from itself, as before. Measured: a 14-file
+project checks in the same time as a single file — the standard library dominates either way.</p>
+</li>
+<li><p><strong>Find references and semantic highlighting underline the name, not the expression</strong> — <code>x</code>
+instead of <code>p.x</code>, <code>Point</code> instead of <code>Point { x = 1 }</code>.</p>
+</li>
+</ul>
+<h3 id="added">Added</h3>
+<ul>
+<li><strong>Rename</strong> (<code>F2</code> / <code>Shift+F6</code>), project-wide: the declaration, every use, and the <code>import</code>
+clauses that carry the name. What cannot be renamed says why — the standard library, a module,
+a built-in. Whether the NEW name collides is left to the compile that follows immediately; its
+diagnostics are the conflict analysis. Applied edits recompile clean, pinned by test.</li>
+<li><strong>Workspace symbols</strong>: every declaration of the project, searched by name.</li>
+<li><strong>Semantic highlighting</strong>: every name colored by what the compiler resolved it to — a type in
+an annotation, an initializer and an attribute alike; <code>let</code> bindings as readonly. An
+unresolved name stays uncolored, which is the honest signal.</li>
+<li><strong>Signature help</strong> while typing a call — the declaration as written, the active parameter
+following the commas. <strong>Folding</strong> with the closing line kept visible. <strong>Inlay hints</strong> for the
+inferred type of unannotated bindings and loop variables.</li>
+<li><strong>The VS Code extension grew up</strong>: a restart command, a status item that shows the server
+state and version, a <code>lyric: build</code> task wired to the Problems panel, snippets — and the
+extension ships as <code>vscode-lyric-&lt;version&gt;.vsix</code> on every release.</li>
+<li><strong>A JetBrains plugin</strong> (<code>jetbrains-lyric-&lt;version&gt;.zip</code>): the same server in CLion, IntelliJ
+IDEA, Rider and the other commercial IDEs, 2026.1 or newer — diagnostics, completion,
+navigation, rename, semantic highlighting, signature help, folding and inlay hints through
+the platform's own LSP integration. Install from disk; neither client is on a marketplace.</li>
+</ul>
+<p>The interpreter stops allocating — and so does the native boundary. No language change and no
+format change: the same programs compile to faster, smaller modules, run with far fewer heap
+allocations, and a host SDK can now put <code>Vec2</code> in a native signature. The numbers below come
+from <code>tools/Bench</code> (new in this release), Release, per operation, against v1.6.0.</p>
+<h3 id="changed-1">Changed</h3>
+<ul>
+<li><p><strong>A function call no longer allocates.</strong> Frames are pooled per function; a call went from
+<strong>176 B to 0 B</strong> and from ~50 ns to ~8 ns. Deep recursion still works, exceptions and panics
+unwind exactly as before.</p>
+</li>
+<li><p><strong>Small functions are inlined.</strong> A direct call to a function of roughly a dozen instructions —
+a <code>Vec2.add</code>, an iterator's <code>next</code>, a getter — is replaced by its body. Callers and callees
+with <code>try</code>/<code>defer</code> are left alone, recursion stays a call, and a function that always throws
+keeps its frame.</p>
+</li>
+<li><p><strong>Objects that never leave their function are dissolved into locals.</strong> A <code>Vec2</code> built, read
+and assigned inside a loop costs <strong>0 bytes</strong>: construction plus method call went from
+352 B / 271 ns to <strong>0 B / 8 ns</strong>, the operator form (<code>a + b</code>) from 352 B / 252 ns to
+<strong>0 B / 6 ns</strong>. This is what makes vector arithmetic through the v1.5.0 operators usable in a
+per-frame game loop.</p>
+</li>
+<li><p><strong><code>for-in</code> no longer allocates its iterator.</strong> A range or array loop runs at <strong>0 B per
+element</strong> (208 B before); a range loop is ~3× faster than in v1.6.0. The <code>Iterable</code> route
+through an interface is devirtualized where the concrete iterator is provable — a
+<code>Set</code>/<code>Map</code> loop now calls its <code>next</code> directly instead of dispatching per element.</p>
+</li>
+<li><p><strong>Modules got smaller.</strong> A function whose every call was inlined is removed; the six-function
+<code>examples/arith.lyr</code> compiles to two. An attributed function always survives — the row is a
+promise to the host.</p>
+</li>
+<li><p><strong>A panic in an inlined function names the caller's frame with the callee's line.</strong> The line
+is right, the frame above it is gone — the trade every optimizing compiler makes. A
+deliberate <code>panic(...)</code> keeps its full backtrace, because a function that never returns is
+not inlined.</p>
+</li>
+</ul>
+<h3 id="added-1">Added</h3>
+<ul>
+<li><p><strong>The native boundary takes and returns value structs, without allocating.</strong> A native
+signature may use a <code>struct</code> declared in the same native module (scalar and string fields
+only). The declaration stays fully typed on the script side; on the wire it is flattened:</p>
+<pre><code class="language-lyr">module engine.geo;
+
+pub struct Vec2 { x: float, y: float }
+
+pub fn setPosition(entity: int, at: Vec2);
+pub fn positionOf(entity: int): Vec2;
+</code></pre>
+<p>A struct parameter crosses as its fields — the host registers the delegate it would have
+written for scalars. A struct return comes back through a buffer the runtime owns
+(<code>NativeRegistry.RegisterStructReturning</code>): the implementation fills one value per field, the
+script sees an ordinary value, and value semantics keeps the shared buffer invisible. Layout
+disagreements between host and SDK are load errors with the import's name in them.</p>
+<p>Measured: a <code>Vec2</code> built fresh and passed in, or received back, costs <strong>0 B per call</strong> —
+the answer to the embedding question that produced this milestone (Erato's <code>positionOf</code>).</p>
+</li>
+<li><p><strong>A native call no longer allocates its argument array.</strong> The <code>LyrValue[]</code> handed to an
+implementation is pooled and reused; a one-argument crossing went from 40 B to 0 B, a
+four-argument one from 88 B to 0 B. The array is therefore a LOAN: read it during the call,
+copy values out, never store it — documented on <code>NativeRegistry</code>, and every implementation in
+the standard registry already complied.</p>
+</li>
+<li><p><strong><code>tools/Bench</code></strong> — the in-process measurement harness behind all numbers above:
+<code>dotnet run -c Release --project tools/Bench</code>. Allocated bytes and nanoseconds per operation,
+scalar-loop baseline subtracted, round-robin against JIT tiering, raw-registry boundary
+probes.</p>
+</li>
+</ul>
+<h3 id="not-in-this-release">Not in this release</h3>
+<ul>
+<li><strong>Struct returns through the embedding layer's delegates.</strong> <code>RegisterStructReturning</code> is a
+<code>NativeRegistry</code> surface; a <code>LangVm.RegisterNative</code> overload that marshals a C# struct is
+sugar for a later release — the raw form is the one a game host uses anyway.</li>
+<li><strong>Structs from other modules in native signatures</strong> — the struct must live in the module that
+declares the native, which is where an SDK's value types belong.</li>
+<li><strong>Escape analysis across surviving calls</strong> — a struct passed to or returned from a <em>Lyric</em>
+function that stays a function still allocates.</li>
+<li><strong>The remaining optional ops in <code>for-in</code></strong>: a range loop still runs ~1.9× a hand-written
+<code>while</code>; the gap is <code>optsome</code>/<code>optissome</code>/<code>optget</code> and block hops, peephole material.</li>
+<li><strong>Value structs as a language feature.</strong> Deliberately: a <code>struct</code> already HAS value
+semantics; this release makes the representation keep that promise everywhere it matters,
+with no new mechanism.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
 </body>
 </html>
