@@ -10,6 +10,55 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+Attributes stop being decoration. One is now read by the compiler — `@Deprecated` — and one by
+a new tool: `lyric test` runs every function marked `@Test`. The bytecode format stays **3.2**,
+and no existing program changes meaning.
+
+### Added
+
+- **`@Deprecated`, the first attribute the compiler reads.** From `std.core`, on a function, a
+  type or a module: every use warns (`LYR-SEM0076`) at the use site, the note points at the
+  attribute, and `message` says what to use instead. Resolved by IDENTITY — a struct someone
+  else names `Deprecated` deprecates nothing. Uses inside anything itself deprecated are exempt,
+  so a deprecated function may keep calling its deprecated siblings; a deprecated module warns
+  at the imports that pull it in. It changes diagnostics and nothing else — the same module
+  compiles either way. Editors strike deprecated uses through.
+
+  With this the compiler-read attribute set becomes part of the language contract: `@Deprecated`
+  is in it, everything else stays inert.
+
+- **`lyric test` — tests, the Go shape.** Tests live under `tests/` (or the `testRoot` your
+  `lyric.json` names) and only the test runner ever compiles them; production builds never see
+  a test file. A test is a top-level function marked `@Test` from the new **`std.test`**, fails
+  by panicking, and runs in a **fresh instance** — module state cannot leak between tests.
+
+  ```bash
+  lyric test
+  ```
+
+  `std.test` ships the marker and the assertions: `assertTrue`, and `assertEq` over
+  `[Equatable<T>, Display]`, naming both values when they differ. The report is plain text, one
+  line per test; the exit code is `0` when everything passed and `1` otherwise. No `tests/`
+  directory means no tests and exits 0; a testRoot named explicitly and missing is an error.
+  Guide chapter 20 covers it.
+
+  The runner is `lyrtest`, the tenth binary, and it drives the compiled module through the
+  embedding API — the attribute rows for discovery, a call handle per test: the same machinery
+  a host uses, now with a consumer that is not a test of it.
+
+- **`HostOptions.SourceRoot`** in the embedding API: a host may compile a file whose imports
+  resolve against a directory other than the file's own — the test runner compiling `tests/`
+  against `src/` is the case that added it.
+
+### Not in this release
+
+- **Test filters, parallel execution, expectPanic, fixtures and setup/teardown, JSON output,
+  editor test integration** — deliberately; each is an idea issue, none blocks running tests.
+- **Suppressing a deprecation warning in code**: the mechanism would be another compiler-read
+  attribute, and the set grows by decision. `--deny-warnings` still means what it says.
+
 ## v1.10.0 — 2026-08-19
 
 The compiler learns to speak below "error". Four severities, warnings that matter, notes that

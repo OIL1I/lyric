@@ -17,6 +17,21 @@ v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables
 split the editor clients release from their own repositories, and a toolchain release carries
 the archives alone.
 
+**M20 — attributes become load-bearing — is BUILT** (2026-08-19, branch
+`feature/m20-attributes`, three slices, ships as v1.11.0). The delivery list:
+
+- [x] `@Deprecated` in std.core; every use warns at the use site, the note points at the
+      attribute, `message` names the way forward (slice 1)
+- [x] resolved by identity, not by name; self- and sibling-exemption; a deprecated module
+      warns at its imports; editors strike uses through (slice 1)
+- [x] guide 15 documents the compiler-read set as contract (slice 1)
+- [x] `std.test`: the `Test` marker, `assertTrue`, `assertEq` naming both values (slice 2)
+- [x] `testRoot` in `lyric.json`; only the runner compiles it — the Go shape (slice 2)
+- [x] `lyrtest`, the tenth binary: discovery through the attribute rows, a FRESH instance per
+      test, panic = FAIL with frames, exit code carries the verdict (slice 2)
+- [x] `HostOptions.SourceRoot` in the embedding API (slice 2)
+- [x] `lyric test` in the driver; guide chapter 20; CHANGELOG as Unreleased (slice 3)
+
 **M19 — diagnostics — is BUILT** (2026-08-19, branch `feature/m19-diagnostics`, four slices,
 the first milestone of the v2 sequence: v1.10.0). The delivery list, ticked point by point:
 
@@ -92,8 +107,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4183 tests green **in Debug and Release**, bytecode format **3.2**, **nine** binaries
-plus `lyrembed.dll`, version **1.10.0**.
+4208 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+(`lyrtest` is the newest) plus `lyrembed.dll`, version **1.10.0** (M20 pending review as
+v1.11.0).
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -109,6 +125,14 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M20 — attributes become load-bearing** (2026-08-19, three slices,
+  `feature/m20-attributes`, 4208 tests green). One attribute read by the compiler, one by a new
+  tool, and zero new mechanisms: `@Deprecated` rides the WarningAnalyzer's use tables, `lyrtest`
+  rides the embedding API's attribute rows and call handles — its first consumer that is not a
+  test of it. Tests live in a root of their own (the Go shape), so `@Test` never touches a
+  production build and no build rule hangs off an attribute. A fresh instance per test makes
+  state leaks structurally impossible rather than discouraged.
 
 - [x] **M19 — diagnostics** (2026-08-19, four slices, `feature/m19-diagnostics`, 4183 tests
   green in Release). The compiler learns to speak below "error", with no lint framework: the
@@ -145,25 +169,6 @@ out of them and hands its own functions, types and value structs in.
     reformatted with its own tool, `The_repository_is_formatted` holds the gofmt property
     permanently. Two style rules were corrected against the corpus before freezing it; the
     goldens pin taste, the corpus pins correctness.
-
-- [x] **M17 — packing** (2026-08-18, three slices, `feature/m17-lyrpack`, 3947 tests green in
-  Debug and Release). A `.lyrbc` plus a prebuilt single-file stub plus a 24-byte footer = one
-  executable; the stub reads the module out of its own file and runs it with every capability.
-  - **The pack owns nothing it does not need**: `lyrpack` references Core alone (the
-    architecture test states it positively), packs `.lyrbc` only, and validates nothing beyond
-    the extension — the module meets exactly the reader it was paired with, at first start.
-    `lyric pack app.lyr` is the driver composing lyrc and lyrpack, the `run` pattern.
-  - **A packed program owns its argv** — no `--` protocol, no stub flag, not even `--help`; the
-    footer's absent/damaged answers are distinct so a bare stub and a truncated download get
-    different messages; a failed pack deletes its half-written output.
-  - **Measured**: dev stub (framework-dependent single file) 0.36 MB; self-contained win-x64
-    stub **73.5 MB**, packed hello 73.6 MB. `PublishTrimmed` takes the stub to **13.0 MB** with
-    no trim warnings and survives a Set/f-string/argv smoke — shipped UNTRIMMED anyway: the
-    only gate so far is that smoke, and 60 MB is not worth an unverified runtime. Decision
-    material for the scope check.
-  - **The release gates itself**: both workflows publish, pack `examples/hello.lyr` and RUN the
-    result on each platform — on macOS after the ad-hoc re-sign the guide documents, so the
-    documented shipping workflow is executed, not merely written down.
 
 ## Measurements
 
@@ -251,12 +256,13 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M19 is merged and released as v1.10.0** (PR #56), the first milestone of the agreed v2
-sequence. Next in line and in work: v1.11 "attributes become load-bearing" (`@Deprecated` compiler-read, `@Test`/lyrtest tool-read). The severity of a
-code is contract from here on; the future spec's catalogue lists code → severity, and nothing
-configures it. Deliberately NOT in M19: suppression (would be a compiler-read attribute — a
-v1.11 decision), per-lint levels (config surface without an ecosystem to need it),
-machine-applicable fixes (need an edit representation; quick-fix material for later).
+**M20 is built and awaits review** (branch `feature/m20-attributes`, three slice commits, PR
+to follow; ships as v1.11.0). Attributes stopped being decoration: the compiler reads
+`@Deprecated`, the new `lyric test` reads `@Test` — through the same embedding machinery a host
+uses, deliberately. The compiler-read attribute set is language contract from here on and grows
+by decision; suppression stayed out for exactly that reason. Next in the agreed v2 sequence:
+v1.12, the std rework — adoption of operators and attributes across the standard library, full
+documentation, and the first real `@Deprecated` uses, whose removals land with 2.0.
 
 **The repository moved and the clients moved out** (2026-08-19): the project lives in the
 `lyriclang` org — `lyriclang/lyric` is the toolchain, ONE repository with ONE version, and the
@@ -294,9 +300,11 @@ too (`feature/lsp-formatting`).
 namespace in `lyrfe`, because both consumers (lyrfmt, lyrls) already share that assembly and a
 fourth library bought naming trouble for zero separation.
 
-**Noticed twice while testing, unresolved**: one LSP test fails sporadically under full-suite
-load (different configs, different runs, never reproducible alone — 254/254 green in isolation
-every time). Worth a look before it becomes a CI lottery.
+**Noticed repeatedly while testing, unresolved**: individual process-spawning tests fail
+sporadically under full-suite load and never in isolation — first an LSP test (254/254 green
+alone, repeatedly), during M20 once `ProtocolTests.A_panic_looks_the_same_through_a_foreign_runtime`
+in Debug (3/3 green alone, full Cli rerun green). The pattern is load, not logic. Worth a look
+before it becomes a CI lottery.
 
 **M16 is closed and released as v1.8.0.** What remains from it: the first manual run of the
 JetBrains checklist (plugin README) against the released zip, in a 2026.1+ IDE.

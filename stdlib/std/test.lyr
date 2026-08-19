@@ -1,0 +1,30 @@
+// std.test — what a test file needs.
+//
+// The runner is `lyric test`: it compiles the project's test root, finds every function marked
+// `@Test` through the attribute rows, and runs each in a fresh instance. The module itself is
+// ordinary Lyric — the attribute describes, the RUNNER acts, and the compiler stays out of it.
+
+/// Marking tests, and the assertions that fail them. `lyric test` runs every function marked
+/// `@Test` in the project's test root; a test fails by panicking, which is what the assertions
+/// here do.
+module std.test;
+
+import std.core { Display, Equatable, OnFunction, panic };
+
+/// Marks a top-level function as a test. `lyric test` finds it through the attribute row and
+/// runs it in a fresh instance; the function takes no parameters and returns nothing.
+pub struct Test :: [OnFunction] { }
+
+/// Fails the test with `message` when `condition` is false.
+pub fn assertTrue(condition: bool, message: string): void {
+    if (!condition) {
+        panic(message);
+    }
+}
+
+/// Fails the test when the two values differ, naming both.
+pub fn assertEq<T :: [Equatable<T>, Display]>(actual: T, expected: T): void {
+    if (!actual.equals(expected)) {
+        panic("expected " + expected.show() + ", got " + actual.show());
+    }
+}

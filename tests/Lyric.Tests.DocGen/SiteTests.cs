@@ -56,8 +56,8 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("guide/getting-started/", guide.Pages[0].SitePath);
-        Assert.Equal("guide/diagnostics/", guide.Pages[^1].SitePath);
-        Assert.Equal(19, guide.Pages.Length);
+        Assert.Equal("guide/testing/", guide.Pages[^1].SitePath);
+        Assert.Equal(20, guide.Pages.Length);
         Assert.Equal("guide/attributes/", guide.Pages[14].SitePath);
     }
 
@@ -66,7 +66,7 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("Getting started", guide.Pages[0].Title);
-        Assert.Equal("Diagnostics", guide.Pages[^1].Title);
+        Assert.Equal("Testing", guide.Pages[^1].Title);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class SiteTests
     public void Every_standard_library_module_has_a_page()
     {
         var stdlib = Build().Sections[3];
-        Assert.Equal(11, stdlib.Pages.Length);
+        Assert.Equal(12, stdlib.Pages.Length);
         Assert.All(stdlib.Pages, p => Assert.StartsWith("stdlib/std.", p.SitePath));
     }
 

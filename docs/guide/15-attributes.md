@@ -132,5 +132,33 @@ pub fn hunt(dt: float): void { }
 Attribute names are unqualified in the compiled module: `System`, not `engine.ecs.System`. An SDK
 owns its attribute names the way it owns its native names.
 
-No attribute means anything to the compiler itself. There is no `@Inline`, no `@Deprecated` — the
-set stays open precisely because every attribute is inert.
+## The one attribute the compiler reads
+
+Exactly one attribute means something to the compiler itself: `@Deprecated`, from `std.core`.
+It marks a function, a type or a module, and every use of the marked thing warns
+(`LYR-SEM0076`) with the message naming the way forward:
+
+```lyr
+import std.core { Deprecated };
+
+@Deprecated { message = "use renew" }
+pub fn old(): int {
+    return 1;
+}
+
+pub fn renew(): int {
+    return 2;
+}
+
+fn main(): int {
+    return renew();
+}
+```
+
+It changes diagnostics and nothing else — a program that ignores the warning compiles to the
+same module, and a deprecated function may keep calling itself and its deprecated siblings
+without the compiler nagging the one place allowed not to care.
+
+The compiler-read set is part of the language's contract, which is why it grows by decision
+rather than by convention: `@Deprecated` is in it, `@Inline` and its kind are not. Everything
+else stays inert — an attribute the compiler does not know describes, and does nothing.

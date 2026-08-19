@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrtest</AssemblyName>
+    <RootNamespace>Lyric.Cli.Test</RootNamespace>
+    <Description>Runs the @Test functions of a project's test root.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The third binary with BOTH sides, after lyrrepl and lyrbuild, and for the same shape of
+      reason: a test file has to be COMPILED and then RUN, and the runner calls into the compiled
+      module through the embedding API — the same attribute rows and call handles a host uses,
+      which is deliberate: this binary is the attribute machinery's first consumer that is not a
+      test of it.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />
+    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
+    <ProjectReference Include="..\Lyric.Embedding\Lyric.Embedding.csproj" />
+  </ItemGroup>
+
+</Project>

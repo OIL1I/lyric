@@ -90,6 +90,7 @@ lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
 lyrbuild.exe                       build runner, for a build.lyr
 lyrpack.exe                        packs a module into one executable
 lyrfmt.exe                         formatter
+lyrtest.exe                        runs a project's @Test functions
 lyrls.exe                          language server, for editors
 lyrcore.dll                        diagnostics and the bytecode reader
 lyrfe.dll                          lexer through emitter
@@ -117,13 +118,14 @@ That is what a release ships, one archive per platform.
 
 | Binary | Role |
 |---|---|
-| `lyric` | Driver: `run`, `build`, `pack`, `fmt`, `check`, `disasm`, `repl` — dispatches to the tools below |
+| `lyric` | Driver: `run`, `build`, `pack`, `fmt`, `test`, `check`, `disasm`, `repl` — dispatches to the tools below |
 | `lyrc` | Compiler: `build`, `check`, and the `lower`/`parse`/`tokenize` dumps |
 | `lyrvm` | Runtime: `run`, `disasm`, `verify` on `.lyrbc` |
 | `lyrrepl` | Interactive prompt |
 | `lyrbuild` | Runs a `build.lyr` and compiles what it declares |
 | `lyrpack` | Packs a compiled module and the stub runtime into one standalone executable |
 | `lyrfmt` | The formatter: in place, `--check` for CI, `--stdin` for editors — no style options |
+| `lyrtest` | Runs every function marked `@Test` in the project's test root, one fresh instance per test |
 | `lyrls` | Language server over stdio, started by an editor: diagnostics, hover, go to definition, outline, find references, completion, formatting |
 
 `lyrembed.dll` is the host library: compile and run Lyric from C#.
@@ -160,6 +162,7 @@ lyric/
 │   ├── Lyrpack/          → lyrpack.exe   packs a module into one executable
 │   ├── Lyrstub/          → lyrstub.exe   the runtime half of a packed program
 │   ├── Lyrfmt/           → lyrfmt.exe    formatter
+│   ├── Lyrtest/          → lyrtest.exe   runs a project's @Test functions
 │   └── Lyric.Cli/        → lyric.exe
 ├── stdlib/               standard library, written in Lyric
 ├── tests/                xUnit test projects
