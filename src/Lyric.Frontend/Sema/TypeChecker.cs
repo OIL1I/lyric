@@ -1365,13 +1365,21 @@ public sealed class TypeChecker
             var binary = new BinaryExpr(a.Target, op, a.Value, a.Span);
             value = CheckBinary(binary, scope);
 
-            // The binary would desugar through an operator interface. The compound lowering
-            // evaluates the target's ADDRESS once and cannot yet route through a call, so this is
-            // a diagnostic rather than a silent double evaluation of the receiver.
-            if (_result.OperatorCallOf(binary) is not null)
-                _de.Report("LYR-SEM0003", Severity.Error, a.Span,
-                    $"compound assignment does not reach through an operator interface yet — "
-                    + $"write it out: 'a = a {OperatorText(op)} b'");
+            // The binary desugars through an operator interface: store the call ON THE ASSIGN,
+            // where the lowering finds it and lowers it whole. For an identifier target that
+            // evaluates the receiver exactly once — a local load has no side effects. A field or
+            // element target would evaluate its object or index a second time through the call,
+            // and whether that is allowed is a language question deliberately not answered by an
+            // implementation detail — those stay written out.
+            if (_result.OperatorCallOf(binary) is { } operatorCall)
+            {
+                if (a.Target is IdentifierExpr)
+                    _result.DesugarOperator(a, operatorCall);
+                else
+                    _de.Report("LYR-SEM0003", Severity.Error, a.Span,
+                        $"compound assignment through an operator interface needs a simple "
+                        + $"variable target — write it out: 'a = a {OperatorText(op)} b'");
+            }
         }
         else
         {

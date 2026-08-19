@@ -1834,6 +1834,16 @@ internal sealed class FunctionLowerer
         if (expr.Operator is BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
             throw NotSupported("short-circuit assignment ('&&=' / '||=')", expr.Span);
 
+        // Through the operator interface when the sema desugared one: the stored call lowers the
+        // real operand nodes — the identifier receiver loads once, exactly like the read below.
+        if (_types.OperatorCallOf(expr) is { } operatorCall)
+        {
+            var combined = LowerCall(operatorCall)
+                ?? throw Bug("operator compound returned no value");
+            StoreValue(slot, combined, expr.Span);
+            return combined;
+        }
+
         var type = ValueTypeOf(slot);
         var current = LoadValue(slot, expr.Target.Span);
 
@@ -1980,6 +1990,14 @@ internal sealed class FunctionLowerer
         if (expr.Operator is BinaryOp.Coalesce or BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
             throw NotSupported($"'{expr.Operator}=' on a coroutine local", expr.Span);
 
+        if (_types.OperatorCallOf(expr) is { } operatorCall)
+        {
+            var combined = LowerCall(operatorCall)
+                ?? throw Bug("operator compound returned no value");
+            StoreStateField(field, combined, expr.Span);
+            return combined;
+        }
+
         var current = LoadStateField(field, expr.Target.Span);
         var operand = LowerExpr(expr.Value);
         var result = EmitBinary(IrBinKindExtensions.FromAst(expr.Operator.Value), type,
@@ -2003,6 +2021,14 @@ internal sealed class FunctionLowerer
 
         if (expr.Operator is BinaryOp.Coalesce or BinaryOp.LogicalAnd or BinaryOp.LogicalOr)
             throw NotSupported($"'{expr.Operator}=' on a captured variable", expr.Span);
+
+        if (_types.OperatorCallOf(expr) is { } operatorCall)
+        {
+            var combined = LowerCall(operatorCall)
+                ?? throw Bug("operator compound returned no value");
+            _b.Emit(new StoreField(cell, cellType, new FieldId(0), combined, expr.Span));
+            return combined;
+        }
 
         var current = _slots.NewTemp(type);
         _b.Emit(new LoadField(current, cell, cellType, new FieldId(0), type, expr.Target.Span));
