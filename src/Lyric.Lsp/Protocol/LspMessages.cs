@@ -118,6 +118,24 @@ public sealed record ServerCapabilities
     public required bool FoldingRangeProvider { get; init; }
 
     public required bool InlayHintProvider { get; init; }
+
+    public required bool DocumentFormattingProvider { get; init; }
+}
+
+public sealed record DocumentFormattingParams
+{
+    public required TextDocumentIdentifier TextDocument { get; init; }
+
+    /// <summary>Read for nothing: the formatter has one shape, and honoring a client's tab
+    /// preference would make the editor a second place where a project's look is negotiated.
+    /// Declared so the required member of the protocol deserializes rather than erroring.</summary>
+    public FormattingOptions? Options { get; init; }
+}
+
+public sealed record FormattingOptions
+{
+    public int TabSize { get; init; }
+    public bool InsertSpaces { get; init; }
 }
 
 /// <summary>What makes the editor ask for a signature without being told to.</summary>
@@ -643,6 +661,7 @@ public static class LspMethods
     public const string SignatureHelp = "textDocument/signatureHelp";
     public const string FoldingRange = "textDocument/foldingRange";
     public const string InlayHint = "textDocument/inlayHint";
+    public const string Formatting = "textDocument/formatting";
 
     public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
 

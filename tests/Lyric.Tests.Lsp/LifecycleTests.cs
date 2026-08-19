@@ -98,11 +98,11 @@ public sealed class LifecycleTests
         await using var harness = new ServerHarness();
         await harness.InitializeAsync();
 
-        // Formatting, because it is the one method in this area the project has deliberately put
-        // outside the language server: a 'lyric fmt' is post-v1 and is not one of M11's slices.
-        // This test previously used hover, and hover became real — a method that is only unknown
-        // for now makes the test expire rather than fail meaningfully.
-        var id = await harness.RequestAsync("textDocument/formatting", "{}");
+        // A '$/'-prefixed request: the protocol reserves the prefix for optional methods and
+        // REQUIRES MethodNotFound for an unimplemented one, so this method can never become
+        // real. The test used hover, which became real, then formatting, which became real —
+        // third time with a name the specification itself keeps unknown.
+        var id = await harness.RequestAsync("$/neverImplemented", "{}");
         var response = await harness.ReceiveResponseAsync(id);
 
         // The honest answer for a capability this server does not announce. Answering null instead

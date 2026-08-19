@@ -241,6 +241,10 @@ public sealed class LspServer : IDisposable
                 await SendInlayHintsAsync(message, id, cancellationToken).ConfigureAwait(false);
                 return;
 
+            case LspMethods.Formatting when _state == State.Running:
+                await SendFormattingAsync(message, id, cancellationToken).ConfigureAwait(false);
+                return;
+
             case LspMethods.Shutdown when _state == State.Running:
                 _state = State.ShuttingDown;
 
@@ -916,6 +920,87 @@ public sealed class LspServer : IDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Answers with the formatter's one shape, off the CURRENT buffer — an edit computed against
+    /// anything older would write stale text over what the user just typed.
+    ///
+    /// <para>A buffer that does not parse gets NO edits, the same duty <c>lyrfmt</c> has on
+    /// disk: the formatter never writes a guess over broken text, and the diagnostics already on
+    /// screen say why nothing happened. The client's tab preferences in the request are read for
+    /// nothing — one shape is the tool's contract.</para>
+    ///
+    /// <para>One edit spanning the whole document rather than a diff: the shape a client applies
+    /// atomically, and computing minimal edits buys smoother cursors at the price of a diff
+    /// algorithm nobody has asked for yet.</para>
+    /// </summary>
+    private async Task SendFormattingAsync(
+        JsonRpcMessage message, JsonElement id, CancellationToken cancellationToken)
+    {
+        var parameters = LspJson.ReadParams(
+            message.Params, LspJson.Default.DocumentFormattingParams);
+
+        if (parameters is null)
+        {
+            await SendErrorAsync(id, JsonRpcErrorCodes.InvalidParams,
+                "expected a text document", cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (!DocumentUri.TryToFilePath(parameters.TextDocument.Uri, out var path)
+            || _documents.ByPath(path) is not { } document)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // A manager of its own, as everywhere: spans are coupled to the manager they were made
+        // in. The engine is throwaway — the analysis already published these diagnostics.
+        var sources = new SourceManager();
+        var file = sources.AddVirtual(path, document.Text);
+        var formatted = Formatting.Formatter.Format(sources, file, new DiagnosticEngine(sources));
+
+        if (formatted is null)
+        {
+            await SendResultAsync(id, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (formatted == document.Text)
+        {
+            // In shape already: an empty list, not null — "nothing to change" is an answer.
+            await SendResultAsync(id, Array.Empty<TextEdit>(),
+                LspJson.Default.IReadOnlyListTextEdit, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        IReadOnlyList<TextEdit> edits =
+            [new TextEdit { Range = WholeDocument(document.Text), NewText = formatted }];
+        await SendResultAsync(id, edits, LspJson.Default.IReadOnlyListTextEdit, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>The range from the first character to just past the last, in protocol
+    /// coordinates. The tail after the last newline may end in <c>\r</c>; the position lands
+    /// past the visible end of that line, which a client clamps — the whole file is meant
+    /// either way.</summary>
+    private static Protocol.Range WholeDocument(string text)
+    {
+        var lines = 0;
+        var lastLineStart = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '\n') continue;
+            lines++;
+            lastLineStart = i + 1;
+        }
+
+        return new Protocol.Range
+        {
+            Start = new Position { Line = 0, Character = 0 },
+            End = new Position { Line = lines, Character = text.Length - lastLineStart },
+        };
+    }
+
     private InitializeResult BuildInitializeResult() => new()
     {
         Capabilities = new ServerCapabilities
@@ -945,6 +1030,7 @@ public sealed class LspServer : IDisposable
             SignatureHelpProvider = new SignatureHelpOptions { TriggerCharacters = ["(", ","] },
             FoldingRangeProvider = true,
             InlayHintProvider = true,
+            DocumentFormattingProvider = true,
         },
         ServerInfo = new ServerInfo { Name = "lyrls", Version = ToolchainVersion.Value },
     };
