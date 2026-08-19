@@ -27,6 +27,7 @@ internal sealed class WarningAnalyzer
     private readonly HashSet<FileId> _nativeFiles = [];
     private readonly HashSet<Symbol> _used = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FileId, HashSet<Symbol>> _usedByFile = [];
+    private readonly HashSet<Symbol> _mutated = new(ReferenceEqualityComparer.Instance);
 
     public WarningAnalyzer(Compilation comp, BindingResult binding, TypeResult types,
         DiagnosticEngine de)
@@ -49,15 +50,18 @@ internal sealed class WarningAnalyzer
         CollectUses(_types.AllReferences);
         CollectUses(_binding.All);
 
-        WarnUnusedLocals();
-        WarnUnusedImports();
-
+        // The walk first: it reports unreachable statements and collects the reassignments the
+        // never-reassigned hint reads.
         foreach (var module in _comp.Modules)
         {
             if (_comp.IsNative(module)) continue;
             foreach (var decl in _comp.AstOf(module).Declarations)
                 WalkDecl(decl);
         }
+
+        WarnUnusedLocals();
+        HintNeverReassigned();
+        WarnUnusedImports();
     }
 
     private void CollectUses(IEnumerable<KeyValuePair<Node, Symbol>> table)
@@ -110,6 +114,35 @@ internal sealed class WarningAnalyzer
             };
             _de.Report("LYR-SEM0071", Severity.Warning, span, message,
                 new DiagnosticNote("name it '_' when the value is deliberately unused"));
+        }
+    }
+
+    /// <summary>
+    /// A <c>var</c> with an initializer through which nothing is ever changed: no reassignment,
+    /// no field or element write, no <c>mut fn</c> call on it — <c>let</c> says what it actually
+    /// is. Deliberately conservative: the language happens to allow field writes and mut calls
+    /// through a <c>let</c> binding, so a stricter hint would be LITERALLY right — but it would
+    /// advise hiding mutation behind <c>let</c>, and a hint must not teach that. A <c>var</c>
+    /// that documents mutation keeps its <c>var</c>.
+    ///
+    /// <para>A hint rather than a warning — the program is fine, a clearer form exists. A
+    /// <c>var</c> declared WITHOUT an initializer is exempt, because its later assignment is what
+    /// completes the declaration, not a change of mind.</para>
+    /// </summary>
+    private void HintNeverReassigned()
+    {
+        foreach (var (node, symbol) in _types.AllReferences)
+        {
+            if (symbol is not LocalSymbol { IsMutable: true } local) continue;
+            if (!ReferenceEquals(symbol.Declaration, node)) continue;
+            if (node is not BindingStmt { Initializer: not null } binding) continue;
+            if (local.Name == "_") continue;
+            if (_nativeFiles.Contains(node.Span.File)) continue;
+            if (!_used.Contains(symbol)) continue; // the unused warning already spoke
+            if (_mutated.Contains(symbol)) continue;
+
+            _de.Report("LYR-SEM0075", Severity.Hint, binding.NameSpan,
+                $"'{local.Name}' is never reassigned — 'let' would do");
         }
     }
 
@@ -238,6 +271,25 @@ internal sealed class WarningAnalyzer
         }
     }
 
+    /// <summary>The binding a write or a <c>mut</c> call reaches THROUGH: the identifier at the
+    /// root of the member, index, unwrap and cast chain.</summary>
+    private void MarkMutated(Expr target)
+    {
+        var root = target;
+        while (true)
+        {
+            switch (root)
+            {
+                case MemberExpr m: root = m.Target; continue;
+                case IndexExpr ix: root = ix.Target; continue;
+                case PostfixExpr { Operator: PostfixOp.ForceUnwrap } fu: root = fu.Operand; continue;
+                case CastExpr cs: root = cs.Operand; continue;
+            }
+            break;
+        }
+        if (root is IdentifierExpr id && _types.RefOf(id) is { } symbol) _mutated.Add(symbol);
+    }
+
     private void WalkArm(MatchArm arm)
     {
         if (arm.Guard is { } guard) WalkExpr(guard);
@@ -259,11 +311,36 @@ internal sealed class WarningAnalyzer
                 break;
             case IfExpr iff: WalkExpr(iff.Condition); WalkExpr(iff.Then); WalkExpr(iff.Else); break;
             case BinaryExpr bi: WalkExpr(bi.Left); WalkExpr(bi.Right); break;
-            case UnaryExpr u: WalkExpr(u.Operand); break;
-            case PostfixExpr p: WalkExpr(p.Operand); break;
+            case UnaryExpr u:
+                if (u.Operator is UnaryOp.PreInc or UnaryOp.PreDec) MarkMutated(u.Operand);
+                WalkExpr(u.Operand);
+                break;
+            case PostfixExpr p:
+                if (p.Operator is PostfixOp.Inc or PostfixOp.Dec) MarkMutated(p.Operand);
+                WalkExpr(p.Operand);
+                break;
             case ResumeExpr re: WalkExpr(re.Coroutine); break;
-            case AssignExpr a: WalkExpr(a.Target); WalkExpr(a.Value); break;
+            case AssignExpr a:
+                MarkMutated(a.Target);
+                WalkExpr(a.Target);
+                WalkExpr(a.Value);
+                break;
             case CallExpr c:
+                if (c.Callee is MemberExpr callee
+                    && _types.RefOf(callee) is FunctionSymbol { IsMut: true })
+                    MarkMutated(callee.Target);
+                foreach (var arg in c.Arguments)
+                {
+                    // A reference-typed argument may be written by the callee — an array's
+                    // elements, a class's fields. The analysis cannot see across the call, so a
+                    // var handed over by reference conservatively counts as touched; a value
+                    // argument (scalar, struct) is a copy and cannot be.
+                    if (arg is IdentifierExpr passed
+                        && _types.RefOf(passed) is LocalSymbol { IsMutable: true } byRef
+                        && (byRef.Type is ArrayOf
+                            || TypeFacts.Is(byRef.Type, TypeSymbolKind.Class)))
+                        _mutated.Add(byRef);
+                }
                 WalkExpr(c.Callee);
                 foreach (var arg in c.Arguments) WalkExpr(arg);
                 break;

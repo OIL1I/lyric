@@ -25,6 +25,13 @@ public sealed class Resolver
         _ = sm; // reserved for later source-related diagnostics
     }
 
+    /// <summary>The "previous declaration" note for a duplicate, or none when the first claimant
+    /// has no source (a builtin, a synthetic symbol).</summary>
+    private static DiagnosticNote[] PreviousDeclaration(SymbolTable scope, string name) =>
+        scope.LookupLocal(name)?.Declaration is { } previous
+            ? [new DiagnosticNote(previous.Span, "previous declaration")]
+            : [];
+
     public BindingResult Run()
     {
         foreach (var module in _comp.Modules) DeclareModule(module);
@@ -74,7 +81,9 @@ public sealed class Resolver
         {
             var fsym = Fn(fn);
             if (methodScope.TryDeclare(fsym)) methods.Add(fsym);
-            else _de.Report("LYR-RES0001", Severity.Error, fn.Span, $"'{fn.Name}' is already declared in this extend block");
+            else _de.Report("LYR-RES0001", Severity.Error, fn.Span,
+                $"'{fn.Name}' is already declared in this extend block",
+                PreviousDeclaration(methodScope, fn.Name));
         }
         _comp.Extensions.Add(new ExtensionBlock(ex, module, methodScope, methods.ToArray()));
     }
@@ -144,14 +153,16 @@ public sealed class Resolver
     {
         if (!module.Members.TryDeclare(sym))
             _de.Report("LYR-RES0001", Severity.Error, decl.Span,
-                $"'{sym.Name}' is already declared in this module{OverloadHint(module.Members, sym)}");
+                $"'{sym.Name}' is already declared in this module{OverloadHint(module.Members, sym)}",
+                PreviousDeclaration(module.Members, sym.Name));
     }
 
     private void DeclareMember(SymbolTable scope, Symbol sym, Node decl)
     {
         if (!scope.TryDeclare(sym))
             _de.Report("LYR-RES0001", Severity.Error, decl.Span,
-                $"'{sym.Name}' is already declared in this type{OverloadHint(scope, sym)}");
+                $"'{sym.Name}' is already declared in this type{OverloadHint(scope, sym)}",
+                PreviousDeclaration(scope, sym.Name));
     }
 
     /// <summary>
@@ -161,7 +172,7 @@ public sealed class Resolver
     /// </summary>
     private static string OverloadHint(SymbolTable scope, Symbol sym) =>
         sym is FunctionSymbol && scope.LookupLocal(sym.Name) is FunctionSymbol
-            ? " — Lyric has no overloading in v1; give the functions distinct names"
+            ? " — Lyric has no overloading; give the functions distinct names"
             : "";
 
     // --- Pass 2: Imports ---
@@ -226,7 +237,9 @@ public sealed class Resolver
     private void DeclareImport(ModuleSymbol module, Symbol sym, ImportDecl imp)
     {
         if (!module.Members.TryDeclare(sym))
-            _de.Report("LYR-RES0001", Severity.Error, imp.Span, $"'{sym.Name}' is already declared in this module");
+            _de.Report("LYR-RES0001", Severity.Error, imp.Span,
+                $"'{sym.Name}' is already declared in this module",
+                PreviousDeclaration(module.Members, sym.Name));
     }
 
     private void DetectImportCycles()
