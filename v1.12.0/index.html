@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.12.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.12.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.12.0 — 2026-08-19</h2>
+<p>The standard library grows up. Every public item is documented, constructors live on the types,
+the first real deprecations start their clock, and the library tests itself — in Lyric. Two
+compiler fixes came out of the work. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>Constructors on the types</strong>: <code>List&lt;T&gt;.empty()</code>, <code>Map&lt;K, V&gt;.empty()</code>, <code>Set&lt;T&gt;.empty()</code>,
+<code>StringBuilder.new()</code> and <code>Random.seeded(seed)</code>. The free functions <code>emptyList</code>, <code>emptyMap</code>,
+<code>emptySet</code> and <code>newRandom</code> still work and warn as <strong>deprecated</strong> — the first real uses of
+<code>@Deprecated</code>, and their removal lands with the next major. (<code>newStringBuilder</code> points at its
+successor in the documentation; its attribute waits on <code>std.core</code> visibility inside
+<code>std.string</code>, where the import would be a cycle.)</p>
+</li>
+<li><p><strong><code>std.io.file.readBytes</code></strong>: the whole content as raw bytes, undecoded — the answer
+<code>readText</code> cannot give, because its UTF-8 decoding turns invalid bytes into U+FFFD. Writing
+bytes is not there yet: an array has never crossed the native boundary as a parameter, and
+that machinery is a change of its own.</p>
+</li>
+<li><p><strong>The standard library tests itself.</strong> <code>stdlib-tests/</code> holds behavioral tests written in
+Lyric and run by <code>lyric test</code>; the build runs them, and both repository invariants —
+formatted, and compiling in silence — cover the directory.</p>
+</li>
+<li><p><strong>Every public item of the standard library is documented</strong> — hover and the reference site
+answer everywhere — and a test pins completeness, not a count: new API without documentation
+is a red build.</p>
+</li>
+<li><p><strong>A bare import that shadows a builtin type warns</strong> (<code>LYR-SEM0077</code>): <code>import std.string;</code>
+binds the name <code>string</code>, and the annotation then names the module. The warning says the way
+out; using the shadowed name as a type is now a proper error naming the trap — previously it
+CRASHED the compiler on the local-annotation path.</p>
+</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><p><strong><code>@Deprecated</code> may sit on generic declarations</strong> — the one exception to the
+no-attributes-on-generics rule, because its consumer is the compiler and no metadata row is
+involved; none is emitted there.</p>
+</li>
+<li><p><strong>A static call on a generic instance substitutes the caller's type parameter</strong>:
+<code>List&lt;T&gt;.empty()</code> inside your own generic function works now; previously the lowering met the
+bare <code>T</code> and failed with an internal error.</p>
+</li>
+<li><p>Two parameters of <code>std.string.replace</code>/<code>replaceFirst</code> are named <code>replacement</code> (signature help
+used to show a German name); every remaining German local and section header in the library
+is English now.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
