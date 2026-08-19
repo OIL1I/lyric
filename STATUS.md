@@ -11,7 +11,7 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.8.0 are released** — annotated tags on the remote, each with a release page.
+**v1.0.0 through v1.10.0 are released** — annotated tags on the remote, each with a release page.
 M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
 v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables; since the org
 split the editor clients release from their own repositories, and a toolchain release carries
@@ -93,7 +93,7 @@ where it was declared, a program followed across its files, documentation on hov
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
 4183 tests green **in Debug and Release**, bytecode format **3.2**, **nine** binaries
-plus `lyrembed.dll`, version **1.9.1** (M19 pending review as v1.10.0).
+plus `lyrembed.dll`, version **1.10.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -251,9 +251,8 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M19 is built and awaits review** (branch `feature/m19-diagnostics`, four slice commits, PR to
-follow). It is the first milestone of the agreed v2 sequence — next in line: v1.11 "attributes
-become load-bearing" (`@Deprecated` compiler-read, `@Test`/lyrtest tool-read). The severity of a
+**M19 is merged and released as v1.10.0** (PR #56), the first milestone of the agreed v2
+sequence. Next in line and in work: v1.11 "attributes become load-bearing" (`@Deprecated` compiler-read, `@Test`/lyrtest tool-read). The severity of a
 code is contract from here on; the future spec's catalogue lists code → severity, and nothing
 configures it. Deliberately NOT in M19: suppression (would be a compiler-read attribute — a
 v1.11 decision), per-lint levels (config surface without an ecosystem to need it),

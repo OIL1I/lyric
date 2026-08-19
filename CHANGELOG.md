@@ -10,7 +10,7 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v1.10.0 — 2026-08-19
 
 The compiler learns to speak below "error". Four severities, warnings that matter, notes that
 point at places, and a CI gate. The language, the bytecode format (**3.2**) and the embedding
