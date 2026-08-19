@@ -55,6 +55,8 @@ namespace Lyric.Lsp.Protocol;
 [JsonSerializable(typeof(IReadOnlyList<FoldingRange>))]
 [JsonSerializable(typeof(InlayHintParams))]
 [JsonSerializable(typeof(IReadOnlyList<InlayHint>))]
+[JsonSerializable(typeof(DocumentFormattingParams))]
+[JsonSerializable(typeof(IReadOnlyList<TextEdit>))]
 public sealed partial class LspJson : JsonSerializerContext
 {
     /// <summary>

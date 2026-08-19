@@ -272,9 +272,11 @@ run the packed result.
 
 **M18's deliberate limits**: precedence-redundant parentheses vanish (the AST has no node for
 them — keeping them means a parser change, material for the scope check if it itches); a
-comment inside an expression surfaces at its statement's end; the language server does not
-serve `textDocument/formatting` yet — the formatter lives in `lyrfe`, so wiring it into `lyrls`
-is a slice, not a design.
+comment inside an expression surfaces at its statement's end. The
+`textDocument/formatting` gap closed right after the release: the server answers with one
+whole-document edit off the CURRENT buffer, a buffer that does not parse gets no edits, and
+the client's tab preferences are read for nothing — one shape is the contract in the editor
+too (`feature/lsp-formatting`).
 
 **Deviation from the plan, recorded**: no own `Lyric.Formatting` library — the formatter is a
 namespace in `lyrfe`, because both consumers (lyrfmt, lyrls) already share that assembly and a

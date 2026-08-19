@@ -26,7 +26,19 @@ public class CorpusTests
         foreach (var root in new[] { "stdlib", "examples", "templates" })
         foreach (var file in Directory.GetFiles(Path.Combine(RepoRoot(), root), "*.lyr",
                      SearchOption.AllDirectories))
-            data.Add(Path.GetRelativePath(RepoRoot(), file));
+        {
+            var relative = Path.GetRelativePath(RepoRoot(), file);
+
+            // The corpus is what the repository TRACKS. Build output is not in it — the
+            // embedded-host example copies the whole stdlib into its bin/, and sweeping that in
+            // made the theory count drift with whoever built what last.
+            var segments = relative.Split(
+                Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (segments.Any(s => s is "bin" or "obj" or "out")) continue;
+
+            data.Add(relative);
+        }
+
         return data;
     }
 

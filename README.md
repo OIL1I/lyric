@@ -124,7 +124,7 @@ That is what a release ships, one archive per platform.
 | `lyrbuild` | Runs a `build.lyr` and compiles what it declares |
 | `lyrpack` | Packs a compiled module and the stub runtime into one standalone executable |
 | `lyrfmt` | The formatter: in place, `--check` for CI, `--stdin` for editors — no style options |
-| `lyrls` | Language server over stdio, started by an editor: diagnostics, hover, go to definition, outline, find references, completion |
+| `lyrls` | Language server over stdio, started by an editor: diagnostics, hover, go to definition, outline, find references, completion, formatting |
 
 `lyrembed.dll` is the host library: compile and run Lyric from C#.
 
