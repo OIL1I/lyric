@@ -2,7 +2,7 @@
 
 A statically typed, GC-managed application language with an embeddable bytecode VM.
 
-![CI](https://github.com/OIL1I/lyric/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/lyriclang/lyric/actions/workflows/ci.yml/badge.svg)
 
 Source files use `.lyr`, compiled modules use `.lyrbc`.
 
@@ -165,7 +165,7 @@ lyric/
 ├── tests/                xUnit test projects
 ├── examples/             22 example programs, plus embedded-host/
 ├── build/                publish.proj
-├── tooling/              VS Code extension
+├── tooling/              textmate/ — the editor grammar, pinned against the lexer by the tests
 ├── tools/                DocGen, the documentation site generator
 └── docs/                 specifications and documentation sources
 ```
@@ -225,6 +225,12 @@ Two channels:
   and publishes the archives as a GitHub release. Each one runs without a .NET install.
 - **Nightly** — built from `main` once a day and published as the `nightly` prerelease. The
   `nightly` tag moves to the commit that was built. No compatibility promise.
+
+The editor clients live in their own repositories and release on their own cadence:
+[vscode-lyric](https://github.com/lyriclang/vscode-lyric) (the `.vsix`) and
+[jetbrains-lyric](https://github.com/lyriclang/jetbrains-lyric) (the plugin zip). Toolchain
+releases v1.8.0 through v1.9.1 carried both beside the archives; from here on they are found
+there.
 
 ## License
 

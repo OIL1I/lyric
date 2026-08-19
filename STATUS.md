@@ -12,9 +12,10 @@
 ## Current milestone
 
 **v1.0.0 through v1.8.0 are released** — annotated tags on the remote, each with a release page.
-M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). From v1.8.0 a
-release carries the three toolchain archives plus two installables: the `.vsix` and the JetBrains
-plugin zip.
+M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
+v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables; since the org
+split the editor clients release from their own repositories, and a toolchain release carries
+the archives alone.
 
 **M18 — the formatter — is BUILT** (2026-08-19, branch `feature/m18-lyrfmt`, stacked on M17,
 four slices). The delivery list, ticked point by point as the milestone rule demands:
@@ -255,6 +256,18 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**The repository moved and the clients moved out** (2026-08-19): the project lives in the
+`lyriclang` org — `lyriclang/lyric` is the toolchain, ONE repository with ONE version, and the
+editor clients are their own repositories (`vscode-lyric`, `jetbrains-lyric`), split with their
+history, versioned on their own cadence, releasing their own installables. The TextMate
+grammar's canonical home is `tooling/textmate` HERE, beside the lexer `GrammarTests` pins it
+against; each client carries a working copy its `grammar-sync` CI job diffs against this one.
+The extension's manifest tests moved with the extension (`scripts/check-manifest.mjs` there,
+`ExtensionTests.cs` gone here). **Open from the move**: the next release's changelog entry says
+where the installables went; the clients' `grammar-sync` fallback to the old path goes once this
+lands; Erato pins checked-in binaries (`lib/lyric`), so nothing breaks — its README names the
+repository and gets the new URL with the next pin update.
 
 **M17 and M18 shipped together as v1.9.0** (2026-08-19) — the PR stack #50 (packing) ← #51
 (formatter), merged in that order; release commit and annotated tag explicitly delegated for

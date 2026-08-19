@@ -51,8 +51,15 @@
       framework-dependent for the SDK's own platform, so 'lyric pack' works out of a local
       publish too.
     -->
+    <!--
+      The host's RID comes from the runtime MSBuild itself runs on, NOT from
+      $(NETCoreSdkPortableRuntimeIdentifier): that is an SDK property, and this file is not an
+      SDK project — it evaluated to empty here, and a single-file publish without a
+      RuntimeIdentifier is NETSDK1097. The release never saw it because a shipping build passes
+      -p:Rid; every CI publish without one failed.
+    -->
     <StubRid Condition="'$(Rid)' != ''">$(Rid)</StubRid>
-    <StubRid Condition="'$(Rid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</StubRid>
+    <StubRid Condition="'$(Rid)' == ''">$([System.Runtime.InteropServices.RuntimeInformation]::RuntimeIdentifier)</StubRid>
   </PropertyGroup>
 
   <ItemGroup>

@@ -102,12 +102,6 @@ docs/_site/
 # Publish output (build/publish.proj)
 artifacts/
 
-# The VS Code extension's dependencies. It needs exactly one, the language client, and it is
-# restored with npm install rather than committed. package-lock.json is NOT ignored: it pins the
-# version that was actually tested, which is the same promise Deterministic=true makes on the
-# other side of the repository.
-tooling/vscode-lyric/node_modules/
-
 # =============================================================================
 # Agent instructions (local, not part of the repository)
 # =============================================================================
