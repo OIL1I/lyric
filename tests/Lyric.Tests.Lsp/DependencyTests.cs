@@ -79,6 +79,27 @@ public sealed class DependencyTests : IDisposable
         throw new InvalidOperationException($"no diagnostics arrived for {uri}");
     }
 
+    /// <summary>
+    /// Reads batches for this URI until one carries diagnostics.
+    ///
+    /// <para>For the assertion "this file HEARS about an edit elsewhere". Between the edit and
+    /// its cascade the server may legitimately publish a clean batch for the same file — an
+    /// open of the dependency re-analyses the project too, and whether its batch lands before
+    /// the edit's depends on scheduling alone. Under load (a CI runner, a full parallel suite)
+    /// it regularly did, and the first-batch assertion read the clean batch as the answer:
+    /// this was the release-blocking flake of v1.9.1.</para>
+    /// </summary>
+    private static async Task<JsonElement> DiagnosticsEventuallyFor(ServerHarness harness, string uri)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var diagnostics = await DiagnosticsFor(harness, uri);
+            if (diagnostics.GetArrayLength() > 0) return diagnostics;
+        }
+
+        throw new InvalidOperationException($"no batch for {uri} ever carried diagnostics");
+    }
+
     [Fact]
     public async Task A_dependency_is_read_from_an_open_buffer_and_not_from_disk()
     {
@@ -114,7 +135,7 @@ public sealed class DependencyTests : IDisposable
         await harness.NotifyAsync(LspMethods.DidOpen, DidOpen(util, File.ReadAllText(PathOf("util.lyr"))));
         await harness.NotifyAsync(LspMethods.DidChange, DidChange(util, 2, UtilWithoutValue));
 
-        Assert.NotEmpty((await DiagnosticsFor(harness, app)).EnumerateArray());
+        Assert.NotEmpty((await DiagnosticsEventuallyFor(harness, app)).EnumerateArray());
     }
 
     [Fact]
