@@ -16,13 +16,26 @@ M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9
 release carries the three toolchain archives plus two installables: the `.vsix` and the JetBrains
 plugin zip.
 
-**M17 — packing: a program becomes one file — is BUILT, awaiting review** (2026-08-18, branch
-`feature/m17-lyrpack`, three slices). `lyric pack app.lyr` produces a standalone executable:
-a prebuilt stub runtime with the `.lyrbc` and a 24-byte footer appended — a byte copy, no
-linker. Two new binaries (`lyrpack`, packer, references Core ALONE; `lyrstub`, the runtime half
-of a packed program), format contract in `docs/Pack.md`, guide chapter 17, and both workflows
-pack-and-run an example on every platform before archiving. After it: **lyrfmt**, the formatter
-(decided 2026-08-18, plan stands in the session log).
+**M18 — the formatter — is BUILT** (2026-08-19, branch `feature/m18-lyrfmt`, stacked on M17,
+four slices). The delivery list, ticked point by point as the milestone rule demands:
+
+- [x] the lexer keeps comments on request; the compile path stays byte-identical (slice 1)
+- [x] the document algebra and its renderer — only the renderer measures columns (slice 1)
+- [x] the whole AST prints: literals from their spans, parentheses re-derived from §6.1 (slice 2)
+- [x] comments survive — all three forms, one positional mechanism; blank lines are the
+      user's, capped at one (slice 3)
+- [x] the corpus invariants: every `.lyr` in the repository formats, is stable, reparses to
+      the same tree, loses no comment (slice 3)
+- [x] `lyrfmt` in place / `--check` / `--stdin`, `lyric fmt` in the driver (slice 4)
+- [x] the repository formats ITSELF, and a test holds it formatted from now on (slice 4)
+- [x] guide chapter 18; CONTRIBUTING's "no formatter in v1" clause retired (slice 4)
+
+**M17 — packing: a program becomes one file — is BUILT** (2026-08-18, branch
+`feature/m17-lyrpack`, three slices, PR #50). `lyric pack app.lyr` produces a standalone
+executable: a prebuilt stub runtime with the `.lyrbc` and a 24-byte footer appended — a byte
+copy, no linker. Two new binaries (`lyrpack`, packer, references Core ALONE; `lyrstub`, the
+runtime half of a packed program), format contract in `docs/Pack.md`, guide chapter 17, and
+both workflows pack-and-run an example on every platform before archiving.
 
 **M16 — the tooling milestone — is CLOSED** (decided and built 2026-08-18, at the post-v1 pace):
 the language server learned the project, the editors learned the server. The delivery list,
@@ -62,8 +75,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-3947 tests green **in Debug and Release**, bytecode format **3.2**, **eight** binaries
-(`lyrstub` and `lyrpack` are the two new ones) plus `lyrembed.dll`, version **1.8.0**.
+4125 tests green **in Debug and Release**, bytecode format **3.2**, **nine** binaries
+(`lyrstub`, `lyrpack` and `lyrfmt` are the three new ones) plus `lyrembed.dll`, version
+**1.8.0** heading for **1.9.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -79,6 +93,27 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M18 — the formatter** (2026-08-19, four slices, `feature/m18-lyrfmt`, 4125 tests green
+  in Debug and Release). gofmt's shape for Lyric: parse, print from the tree, no style options.
+  - **Wadler under everything**: the node formatters say what belongs together and where
+    breaking is allowed; ONLY the renderer measures columns (width 100, indent 4 — the numbers
+    CONTRIBUTING already had). `IfBroken` carries the trailing commas of broken layout, exactly
+    where the grammar permits one.
+  - **The AST decides two things.** Literals lost their spelling, so every literal prints from
+    its source span. And there are no parenthesis nodes, so parentheses re-derive from §6.1 —
+    redundant ones GO (`(a && b) || c` loses its pair; `&` beats `==` here, unlike C), needed
+    ones return, and the corpus invariant is what proves no meaning moved.
+  - **Comments are one positional stream** — line, block and doc under a single cursor,
+    consumed at sequence boundaries; trailing stays trailing, the group glued to an item
+    travels with it, a comment inside an expression surfaces at the statement boundary (the
+    documented trade). Blank lines are the user's, capped at one; imports collapse, top-level
+    declarations breathe, bodiless natives group.
+  - **The repository is the test.** Four invariants over every `.lyr` in stdlib, examples and
+    templates — formats, stable, same tree, no comment lost — and since the corpus was
+    reformatted with its own tool, `The_repository_is_formatted` holds the gofmt property
+    permanently. Two style rules were corrected against the corpus before freezing it; the
+    goldens pin taste, the corpus pins correctness.
 
 - [x] **M17 — packing** (2026-08-18, three slices, `feature/m17-lyrpack`, 3947 tests green in
   Debug and Release). A `.lyrbc` plus a prebuilt single-file stub plus a 24-byte footer = one
@@ -134,24 +169,6 @@ out of them and hands its own functions, types and value structs in.
     installable `vscode-lyric-<version>.vsix` beside the archives — verified by a local dry run
     (324 files, 471 KB), including the LICENSE copy vsce insists on. Marketplace publishing stays
     a separate decision; the release asset is the distribution.
-
-- [x] **M16 slice 4 — signature help, folding, inlay hints** (2026-08-18, PR #46). 3912
-  tests green in Debug and Release, 13 new.
-  - **Signature help off the CURRENT buffer** (the completion argument: the model the keystroke
-    invalidated is the one that would answer about the text before it). The label is the
-    declaration AS WRITTEN, sliced from the declaration's own source — parameter names and types
-    verbatim, each parameter a substring of the whole, which is what the client's highlight
-    matches. The active parameter follows the argument spans; a callee that is a function VALUE
-    shows the FnType's shape with no invented parameter names. `activeSignature` is always 0 — no
-    overloading, by Rule 2.
-  - **Folding** is syntax off the last-good tree (regions must not snap open on a type error):
-    declarations, blocks, matches; the closing line stays visible; one range per start line, so
-    `fn f() {` — declaration AND body — renders one fold control, not two.
-  - **Inlay hints for bindings only**: the inferred type of an unannotated `let`/`var` and of
-    every loop variable, from the symbol the definite-assignment analysis already binds. A written
-    annotation silences the hint; an `ErrorType` shows nothing — the squiggle owns that spot.
-    Parameter-name hints are a different feature with a different noise budget, deliberately not
-    half-built here.
 
 ## Measurements
 
@@ -239,18 +256,28 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M17, packing, is built and awaits review** — branch `feature/m17-lyrpack`, PR open. Release
-(the version bump, the changelog entry, the tag) is the maintainer's step, as always. Known
-limits, deliberate: one platform per pack (a foreign platform packs via `--stub` with that
-platform's stub out of its archive — no `--target` until someone needs it); the stub ships
+**M17 and M18 ship together as v1.9.0** — the PR stack #50 (packing) ← #51 (formatter), merged
+in that order, then the release commit and the annotated tag (explicitly delegated for this
+release; normally the maintainer's step).
+
+**M17's deliberate limits**: one platform per pack (a foreign platform packs via `--stub` with
+that platform's stub out of its archive — no `--target` until someone needs it); the stub ships
 untrimmed (measured 73.5 → 13.0 MB, decision material above); capability narrowing at pack time
 is a footer field for a future minor.
 
-**After M17: lyrfmt, the formatter** (decided 2026-08-18). gofmt-shape: AST plus a comment side
-list from an opt-in lexer trivia mode, a Wadler-style document IR for printing, no
-configuration; own library `Lyric.Formatting` so the language server can serve
-`textDocument/formatting` from the same code. Gates: idempotence and parse-equality over every
-`.lyr` in the repository, and the standard library formats ITSELF as the closing artifact.
+**M18's deliberate limits**: precedence-redundant parentheses vanish (the AST has no node for
+them — keeping them means a parser change, material for the scope check if it itches); a
+comment inside an expression surfaces at its statement's end; the language server does not
+serve `textDocument/formatting` yet — the formatter lives in `lyrfe`, so wiring it into `lyrls`
+is a slice, not a design.
+
+**Deviation from the plan, recorded**: no own `Lyric.Formatting` library — the formatter is a
+namespace in `lyrfe`, because both consumers (lyrfmt, lyrls) already share that assembly and a
+fourth library bought naming trouble for zero separation.
+
+**Noticed twice while testing, unresolved**: one LSP test fails sporadically under full-suite
+load (different configs, different runs, never reproducible alone — 254/254 green in isolation
+every time). Worth a look before it becomes a CI lottery.
 
 **M16 is closed and released as v1.8.0.** What remains from it: the first manual run of the
 JetBrains checklist (plugin README) against the released zip, in a 2026.1+ IDE.
@@ -381,8 +408,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`cli, docs: lyric pack — compile and pack in one step, and the guide says how` (M17 slice 2;
-slice 3 is the release wiring in the same PR)
+`fmt, cli: lyrfmt ships, lyric fmt drives it, and the repository formats itself` (closes M18's
+delivery list; the release commit follows on main)
 
 ---
 
