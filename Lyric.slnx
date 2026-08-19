@@ -22,6 +22,7 @@
     <Project Path="tests/Lyric.Tests.Sema/Lyric.Tests.Sema.csproj" />
     <Project Path="tests/Lyric.Tests.Ir/Lyric.Tests.Ir.csproj" />
     <Project Path="tests/Lyric.Tests.Bytecode/Lyric.Tests.Bytecode.csproj" />
+    <Project Path="tests/Lyric.Tests.Formatting/Lyric.Tests.Formatting.csproj" />
     <Project Path="tests/Lyric.Tests.Vm/Lyric.Tests.Vm.csproj" />
     <Project Path="tests/Lyric.Tests.Cli/Lyric.Tests.Cli.csproj" />
     <Project Path="tests/Lyric.Tests.Embedding/Lyric.Tests.Embedding.csproj" />
