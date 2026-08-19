@@ -1,0 +1,62 @@
+import std.test { Test, assertEq, assertTrue };
+import std.math {
+    gcd,
+    lcm,
+    divFloor,
+    modFloor,
+    powInt,
+    clampInt,
+    isNaN,
+    isFinite,
+    sqrt,
+    Random,
+    absInt,
+};
+
+@Test
+pub fn gcd_and_lcm_agree(): void {
+    assertEq(gcd(12, 18), 6);
+    assertEq(gcd(-12, 18), 6);
+    assertEq(gcd(0, 5), 5);
+    assertEq(lcm(4, 6), 12);
+    assertEq(lcm(0, 9), 0);
+}
+
+@Test
+pub fn floor_division_rounds_down_not_towards_zero(): void {
+    assertEq(divFloor(-7, 2), -4);
+    assertEq(modFloor(-7, 2), 1);
+    assertEq(divFloor(7, 2), 3);
+    assertEq(modFloor(7, -2), -1);
+}
+
+@Test
+pub fn integer_power_refuses_fractions(): void {
+    assertEq(powInt(2, 10)!, 1024);
+    assertEq(powInt(5, 0)!, 1);
+    assertTrue(powInt(2, -1) == null, "a negative exponent is a fraction");
+}
+
+@Test
+pub fn clamp_holds_the_bounds(): void {
+    assertEq(clampInt(5, 0, 3), 3);
+    assertEq(clampInt(-5, 0, 3), 0);
+    assertEq(clampInt(2, 0, 3), 2);
+}
+
+@Test
+pub fn ieee_special_values_are_recognised(): void {
+    assertTrue(isNaN(sqrt(-1.0)), "the root of a negative is NaN");
+    assertTrue(!isFinite(1.0 / 0.0), "dividing by zero float is infinite");
+    assertTrue(isFinite(1.5), "an ordinary value is finite");
+}
+
+@Test
+pub fn a_seeded_generator_is_reproducible(): void {
+    let a = Random.seeded(42);
+    let b = Random.seeded(42);
+    assertEq(a.nextInt(), b.nextInt());
+    assertEq(a.nextIntRange(0, 10), b.nextIntRange(0, 10));
+    let c = Random.seeded(0);
+    assertTrue(absInt(c.nextInt()) > 0, "the zero seed is replaced, not a fixed point");
+}

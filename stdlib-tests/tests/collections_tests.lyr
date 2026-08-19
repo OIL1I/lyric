@@ -1,0 +1,82 @@
+import std.test { Test, assertEq, assertTrue };
+import std.collections { List, Map, Set, sortList, union, difference, isSubset, listContains };
+
+@Test
+pub fn a_list_grows_and_pops_in_order(): void {
+    let xs = List<int>.empty();
+    xs.push(1);
+    xs.push(2);
+    assertEq(xs.length(), 2);
+    assertEq(xs.pop()!, 2);
+    assertEq(xs.pop()!, 1);
+    assertTrue(xs.pop() == null, "an empty list pops null");
+}
+
+@Test
+pub fn a_map_overwrites_equal_keys(): void {
+    let m = Map<string, int>.empty();
+    m.set("a", 1);
+    m.set("a", 2);
+    assertEq(m.length(), 1);
+    assertEq(m.get("a")!, 2);
+}
+
+@Test
+pub fn removal_leaves_the_probe_chain_intact(): void {
+    // Enough keys to force collisions, then remove some and find the rest — the tombstone
+    // rule's observable half.
+    let m = Map<int, int>.empty();
+    var i = 0;
+    while (i < 32) {
+        m.set(i, i * 10);
+        i = i + 1;
+    }
+    var removed = 0;
+    i = 0;
+    while (i < 32) {
+        if (i % 3 == 0 && m.remove(i) != null) {
+            removed = removed + 1;
+        }
+        i = i + 1;
+    }
+    assertEq(m.length(), 32 - removed);
+    assertEq(m.get(1)!, 10);
+    assertEq(m.get(31)!, 310);
+    assertTrue(m.get(0) == null, "a removed key stays gone");
+}
+
+@Test
+pub fn a_set_answers_membership_and_algebra(): void {
+    let a = Set<int>.empty();
+    a.add(1);
+    a.add(2);
+    let b = Set<int>.empty();
+    b.add(2);
+    b.add(3);
+
+    assertTrue(a.contains(1), "1 was added");
+    assertTrue(!a.contains(3), "3 was not");
+    assertEq(union<int>(a, b).length(), 3);
+    assertEq(difference<int>(a, b).length(), 1);
+    assertTrue(isSubset<int>(a, union<int>(a, b)), "a is inside the union");
+}
+
+@Test
+pub fn sorting_is_stable_on_the_natural_order(): void {
+    let xs = List<int>.empty();
+    xs.push(3);
+    xs.push(1);
+    xs.push(2);
+    sortList<int>(xs);
+    assertEq(xs.get(0), 1);
+    assertEq(xs.get(1), 2);
+    assertEq(xs.get(2), 3);
+}
+
+@Test
+pub fn listContains_uses_equality(): void {
+    let xs = List<int>.empty();
+    xs.push(5);
+    assertTrue(listContains<int>(xs, 5), "5 is in it");
+    assertTrue(!listContains<int>(xs, 6), "6 is not");
+}

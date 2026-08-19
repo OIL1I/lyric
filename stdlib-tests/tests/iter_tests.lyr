@@ -1,0 +1,75 @@
+import std.test { Test, assertEq, assertTrue };
+import std.iter {
+    map,
+    filter,
+    take,
+    skip,
+    zip,
+    chain,
+    fold,
+    count,
+    sum,
+    any,
+    all,
+    find,
+    minValue,
+    maxValue,
+};
+import std.collections { List, collect };
+
+fn upTo(n: int): List<int> {
+    let xs = List<int>.empty();
+    var i = 1;
+    while (i <= n) {
+        xs.push(i);
+        i = i + 1;
+    }
+    return xs;
+}
+
+@Test
+pub fn adapters_compose_lazily(): void {
+    let doubledEvens = collect<int>(
+        map<int, int>(filter<int>(upTo(6).iter(), (n: int) => n % 2 == 0), (n: int) => n * 10)
+    );
+    assertEq(doubledEvens.length(), 3);
+    assertEq(doubledEvens.get(0), 20);
+    assertEq(doubledEvens.get(2), 60);
+}
+
+@Test
+pub fn take_and_skip_split_a_sequence(): void {
+    assertEq(sum(take<int>(upTo(10).iter(), 3)), 6);
+    assertEq(sum(skip<int>(upTo(10).iter(), 7)), 27);
+    assertEq(count<int>(take<int>(upTo(3).iter(), -1)), 0);
+}
+
+@Test
+pub fn zip_ends_with_the_shorter_side(): void {
+    let pairs = collect<(int, int)>(zip<int, int>(upTo(2).iter(), upTo(5).iter()));
+    assertEq(pairs.length(), 2);
+}
+
+@Test
+pub fn chain_walks_both_in_order(): void {
+    assertEq(sum(chain<int>(upTo(2).iter(), upTo(3).iter())), 9);
+}
+
+@Test
+pub fn fold_carries_the_seed_left_to_right(): void {
+    assertEq(fold<int, int>(upTo(4).iter(), 100, (acc: int, n: int) => acc + n), 110);
+}
+
+@Test
+pub fn any_all_and_find_answer_predicates(): void {
+    assertTrue(any<int>(upTo(5).iter(), (n: int) => n == 3), "3 is in it");
+    assertTrue(all<int>(upTo(5).iter(), (n: int) => n > 0), "all are positive");
+    assertEq(find<int>(upTo(5).iter(), (n: int) => n > 3)!, 4);
+}
+
+@Test
+pub fn min_and_max_answer_null_on_empty(): void {
+    assertEq(minValue<int>(upTo(5).iter())!, 1);
+    assertEq(maxValue<int>(upTo(5).iter())!, 5);
+    assertTrue(minValue<int>(upTo(0).iter()) == null, "an empty source has no minimum");
+}
