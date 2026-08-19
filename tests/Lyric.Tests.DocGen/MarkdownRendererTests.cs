@@ -136,8 +136,8 @@ public class MarkdownRendererTests
     [Fact]
     public void An_external_link_is_left_alone()
     {
-        var page = Render("[repo](https://github.com/OIL1I/lyric)");
-        Assert.Contains("href=\"https://github.com/OIL1I/lyric\"", page.Html);
+        var page = Render("[repo](https://github.com/lyriclang/lyric)");
+        Assert.Contains("href=\"https://github.com/lyriclang/lyric\"", page.Html);
         Assert.Empty(page.BrokenLinks);
     }
 

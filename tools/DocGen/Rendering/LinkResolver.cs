@@ -17,7 +17,7 @@ namespace Lyric.DocGen.Rendering;
 /// specifications an unresolvable link staying a failing test is the guard worth keeping.</param>
 public sealed class LinkResolver(string version, bool repositoryFallback = false)
 {
-    private const string Repository = "https://github.com/OIL1I/lyric/blob/main/";
+    private const string Repository = "https://github.com/lyriclang/lyric/blob/main/";
     /// <summary>Left untouched: another host, a mail address, or a link that is already absolute.</summary>
     private static bool IsExternal(string href) =>
         href.StartsWith("http://", StringComparison.OrdinalIgnoreCase)

@@ -17,7 +17,7 @@ namespace Lyric.Tests.Cli;
 public sealed class GrammarTests
 {
     private static string GrammarPath => Path.Combine(Toolchain.RepositoryRoot,
-        "tooling", "vscode-lyric", "syntaxes", "lyric.tmLanguage.json");
+        "tooling", "textmate", "syntaxes", "lyric.tmLanguage.json");
 
     private static string LexerPath => Path.Combine(Toolchain.RepositoryRoot,
         "src", "Lyric.Frontend", "Lexing", "Lexer.cs");
@@ -56,7 +56,7 @@ public sealed class GrammarTests
 
         Assert.True(missing.Length == 0,
             "the TextMate grammar does not colour: " + string.Join(", ", missing)
-            + " — add them to tooling/vscode-lyric/syntaxes/lyric.tmLanguage.json");
+            + " — add them to tooling/textmate/syntaxes/lyric.tmLanguage.json");
     }
 
     [Fact]

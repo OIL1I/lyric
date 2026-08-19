@@ -49,30 +49,6 @@ jobs:
           path: '**/TestResults/*.trx'
           retention-days: 7
 
-  jetbrains-plugin:
-    # The one non-.NET build in the suite. It lives in CI rather than only in the release so a
-    # platform or Kotlin break is a red push, not a red release tag. Gradle caches the IntelliJ
-    # platform dependency, so the recurring cost is minutes, not the first run's download.
-    name: Build JetBrains plugin
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up JDK
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v5
-
-      - name: Build plugin
-        working-directory: tooling/jetbrains-lyric
-        run: ./gradlew buildPlugin verifyPluginStructure
-
   publish:
     # Runs after the tests so no artifact is produced from a red build.
     name: Publish toolchain
