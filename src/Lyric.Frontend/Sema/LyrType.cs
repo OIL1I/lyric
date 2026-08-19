@@ -33,6 +33,9 @@ public abstract record LyrType
     {
         (PrimitiveType x, PrimitiveType y) => x.Kind == y.Kind,
         (NamedRef x, NamedRef y) => ReferenceEquals(x.Symbol, y.Symbol),
+        // By SYMBOL, deliberately not by underlying: two opaque aliases of int are two types,
+        // and an opaque alias never equals its underlying — that is the point of it.
+        (OpaqueRef x, OpaqueRef y) => ReferenceEquals(x.Symbol, y.Symbol),
         (TypeParamType x, TypeParamType y) => ReferenceEquals(x.Param, y.Param),
         (GenericInstance x, GenericInstance y) => ReferenceEquals(x.Definition, y.Definition) && SameSequence(x.Arguments, y.Arguments),
         (Optional x, Optional y) => Equal(x.Inner, y.Inner),
@@ -60,6 +63,12 @@ public abstract record LyrType
 
 public sealed record PrimitiveType(PrimitiveKind Kind) : LyrType;
 public sealed record NamedRef(TypeSymbol Symbol) : LyrType;          // a struct, class, enum or interface instance, non-generic
+
+/// <summary>An <c>opaque type</c> alias (v1.15): its IDENTITY is the symbol, its layout the
+/// underlying type. The sema compares by symbol — nothing converts implicitly, only an explicit
+/// <c>as</c> crosses — while the lowering sees only <see cref="Underlying"/>: at runtime an
+/// opaque value IS its underlying value, which is what lets it cross the native boundary.</summary>
+public sealed record OpaqueRef(TypeSymbol Symbol, LyrType Underlying) : LyrType;
 public sealed record TypeParamType(GenericParamSymbol Param) : LyrType; // T inside a generic definition
 public sealed record GenericInstance(TypeSymbol Definition, LyrType[] Arguments) : LyrType; // Stack<int>
 public sealed record Optional(LyrType Inner) : LyrType;              // ?T

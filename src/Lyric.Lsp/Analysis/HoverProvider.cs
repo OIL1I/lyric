@@ -113,6 +113,9 @@ public static class HoverProvider
               + $" -> {TypeFacts.Display(fn.Return)}"
             : $"fn {function.Name}{Generics(function.Generics)}",
 
+        // An opaque alias says so: the hover is where a user learns why '+ 1' was refused.
+        TypeSymbol { Kind: TypeSymbolKind.Alias, Declaration: Lyric.AST.TypeAliasDecl { IsOpaque: true } } o =>
+            $"opaque type {o.Name}",
         TypeSymbol declared => $"{Keyword(declared.Kind)} {declared.Name}{Generics(declared.Generics)}",
 
         EnumVariantSymbol variant => Named(variant.Name, type),

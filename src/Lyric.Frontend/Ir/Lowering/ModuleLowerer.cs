@@ -98,17 +98,18 @@ public static class ModuleLowerer
                     try
                     {
                         var host = HostTypeResolver(module, compilation);
+                        var aliases = LocalAliases(compilation, module);
                         var (flattened, parameters) = LowerNativeParameters(module, function,
-                            host, typeTable);
+                            host, typeTable, aliases);
 
                         // A struct RETURN wires as void plus a trailing out-parameter of the
                         // struct's type; the call site passes a hidden buffer and copies the
                         // value out. See ImportReturn.
-                        var returned = NativeStructParameter(module, function.ReturnType,
-                            typeTable);
+                        var returnNode = ResolveLocalAliases(function.ReturnType, aliases);
+                        var returned = NativeStructParameter(module, returnNode, typeTable);
                         var wireReturn = returned is { } r
                             ? new IrScalarType(IrScalar.Void)
-                            : DeclaredTypes.Lower(function.ReturnType, host);
+                            : DeclaredTypes.Lower(returnNode, host);
                         if (returned is { } outParam)
                             flattened = [.. flattened, outParam.Declared];
 
@@ -446,16 +447,43 @@ public static class ModuleLowerer
     /// binder see scalars and nothing changes below the compiler. The call site emits one field
     /// load per slot; the shape is what tells it to.</para>
     /// </summary>
+    /// <summary>The module-local type aliases, for resolving native signatures on the syntax
+    /// level: <c>type Entity = int</c> beside <c>fn destroy(e: Entity);</c> is the whole point
+    /// of an opaque handle (v1.15). The wire carries the LAYOUT; identity is the sema's
+    /// business, so plain and opaque aliases resolve alike here.</summary>
+    private static Dictionary<string, TypeNode> LocalAliases(Compilation compilation,
+        ModuleSymbol module) =>
+        compilation.AstOf(module).Declarations.OfType<TypeAliasDecl>()
+            .GroupBy(a => a.Name, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Aliased, StringComparer.Ordinal);
+
+    private static TypeNode? ResolveLocalAliases(TypeNode? node,
+        Dictionary<string, TypeNode> aliases)
+    {
+        if (node is null) return null;
+        // The guard bounds a cyclic alias pair; the sema diagnoses the cycle itself.
+        var guard = 0;
+        while (node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
+               && aliases.TryGetValue(named.Path[0], out var target) && guard++ < 16)
+            node = target;
+        return node switch
+        {
+            NullableType opt => opt with { Inner = ResolveLocalAliases(opt.Inner, aliases)! },
+            ArrayType arr => arr with { Element = ResolveLocalAliases(arr.Element, aliases)! },
+            _ => node,
+        };
+    }
+
     private static (IrType[] Flattened, ImportParam[] Shape) LowerNativeParameters(
         ModuleSymbol module, FunctionDecl function, Func<TypeNode, string?> host,
-        TypeTable typeTable)
+        TypeTable typeTable, Dictionary<string, TypeNode> aliases)
     {
         var flattened = new List<IrType>(function.Parameters.Length);
         var shape = new ImportParam[function.Parameters.Length];
 
         for (var i = 0; i < function.Parameters.Length; i++)
         {
-            var node = function.Parameters[i].Type;
+            var node = ResolveLocalAliases(function.Parameters[i].Type, aliases)!;
             if (NativeStructParameter(module, node, typeTable) is { } flat)
             {
                 shape[i] = flat;

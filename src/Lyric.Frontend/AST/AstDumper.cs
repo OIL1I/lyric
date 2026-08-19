@@ -251,7 +251,8 @@ public static class AstDumper
                 Write(n.Binding, indent + 1, sb);
                 break;
             case TypeAliasDecl n:
-                Line(sb, indent, $"TypeAlias {n.Name}{Vis(n.IsPublic)}", n.Span);
+                Line(sb, indent,
+                    $"TypeAlias {n.Name}{(n.IsOpaque ? " opaque" : "")}{Vis(n.IsPublic)}", n.Span);
                 Write(n.Aliased, indent + 1, sb);
                 break;
             case ErrorDecl n:

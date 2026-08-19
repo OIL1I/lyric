@@ -241,7 +241,8 @@ public sealed class AstFormatter
         GlobalBindingDecl d => Doc.Of(Pub(d.IsPublic), StmtDoc(d.Binding)),
         StaticBindingDecl d => Doc.Of(Pub(d.IsPublic), Doc.From("static "), StmtDoc(d.Binding)),
         TypeAliasDecl d => Doc.Of(Pub(d.IsPublic),
-            Doc.From($"type {d.Name} = "), TypeDoc(d.Aliased), Doc.From(";")),
+            Doc.From($"{(d.IsOpaque ? "opaque " : "")}type {d.Name} = "), TypeDoc(d.Aliased),
+            Doc.From(";")),
         FieldDecl d => FieldDoc(d),
         _ => throw new InternalCompilationException($"unreachable: unformatted {decl.GetType().Name}"),
     };

@@ -129,7 +129,7 @@ public sealed record GlobalBindingDecl(bool IsPublic, BindingStmt Binding, Span 
     public Span NameSpan => Binding.NameSpan;
 }
 
-public sealed record TypeAliasDecl(bool IsPublic, string Name, TypeNode Aliased, Span Span) : Decl(Span), INamedDecl
+public sealed record TypeAliasDecl(bool IsPublic, bool IsOpaque, string Name, TypeNode Aliased, Span Span) : Decl(Span), INamedDecl
 {
     public required Span NameSpan { get; init; }
 }

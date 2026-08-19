@@ -160,8 +160,19 @@ TopLevelDecl    = ImportDecl
                             | TypeAlias ) .
 
 GlobalBinding   = BindingStmt .                   (* 'let' only *)
-TypeAlias       = 'type' IDENTIFIER '=' TypeExpr ';' .
+TypeAlias       = [ 'opaque' ] 'type' IDENTIFIER '=' TypeExpr ';' .
 ```
+
+Neither `type` nor `opaque` is a keyword; both are contextual, so both remain usable as
+identifiers.
+
+A plain alias is a name for a type, not a new type. An **opaque** alias (since v1.15) is a new
+IDENTITY over the same layout: nothing converts implicitly in either direction, an explicit `as`
+to exactly the underlying type and back is the one crossing, `==`/`!=` compare within one alias,
+and everything else — arithmetic, ordering, constraint satisfaction, f-string rendering — is
+refused. At runtime an opaque value is its underlying value; in a native signature the alias
+resolves to the underlying, which is how a handle crosses the host boundary as a plain number
+while scripts cannot forge one.
 
 The module header is optional. In an entry file the name then comes from the file name; in a file
 reached through an `import`, the name is the imported path, and a header that disagrees with it is

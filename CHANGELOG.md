@@ -10,6 +10,19 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Added
+
+- **`opaque type`**: an alias with a new IDENTITY over the same layout —
+  `pub opaque type Entity = int;`. Nothing converts implicitly in either direction; the explicit
+  `as` to exactly the underlying and back is the one crossing; `==`/`!=` compare within one
+  alias; arithmetic, ordering, constraint satisfaction and f-string rendering are refused. At
+  runtime the value IS its underlying (the cast costs nothing), and a native signature resolves
+  the alias to the underlying — an SDK's handle crosses the host boundary as a plain number
+  while scripts can neither forge one nor leak it. Neither `opaque` nor `type` is a keyword;
+  both stay usable as identifiers.
+
 ## v1.14.0 — 2026-08-19
 
 The std polish, born from a line-by-line audit. The string module stops being quadratic, the
