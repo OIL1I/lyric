@@ -190,8 +190,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4277 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **1.14.0**.
+4319 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **1.15.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -320,7 +320,7 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M24 is built on `feature/m24-freeze-prep`** — the freeze prep, ships as v1.15.0. With it the
+**M24 is merged and released as v1.15.0** (PR #62) — the freeze prep. With it the
 pre-freeze design space is closed; next is v1.16, the spec draft (non-normative) plus the seed
 of the conformance suite, and the semantics freeze begins there. The scope came
 from a line-by-line audit of the standard library after the first extension list turned out to
@@ -519,8 +519,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`std: randomness moves out of math, and time gets its meaning layer`
-(closes M23's delivery list; released as v1.14.0)
+`std, ir: strings get their method API, and a latent id collision falls`
+(closes M24's delivery list; released as v1.15.0)
 
 ---
 

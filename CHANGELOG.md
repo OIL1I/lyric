@@ -10,7 +10,11 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v1.15.0 — 2026-08-19
+
+The freeze prep: the design leftovers settled before the spec freezes semantics. `opaque type`
+arrives, the string API becomes methods, iterator chaining gets its documented No — and a
+latent function-id collision in the lowering falls. The bytecode format stays **3.2**.
 
 ### Fixed
 
