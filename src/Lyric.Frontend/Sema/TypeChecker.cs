@@ -2093,7 +2093,18 @@ public sealed class TypeChecker
 
                 _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null)
             };
-        if (ExtensionMember(ts, member, span) is { } ext) return (FnTypeOf(ext), ext);
+        if (ExtensionMember(ts, member, span) is { } ext)
+        {
+            // The instance path used to fall through to a STATIC extension without checking — the
+            // asymmetry the type path never had. Recorded as an accident, warned now, an error
+            // with the next major: the warning is the deprecation clock.
+            if (ext.IsStatic)
+                _de.Report("LYR-SEM0074", Severity.Warning, span,
+                    $"'{member}' is a static extension and belongs to the type — "
+                    + $"call '{ts.Name}.{member}(…)'; the instance form is deprecated "
+                    + "and becomes an error");
+            return (FnTypeOf(ext), ext);
+        }
         if (DefaultMember(ts, member, span) is { } def) return def;
         return (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null);
     }

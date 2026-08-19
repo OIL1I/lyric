@@ -105,6 +105,20 @@ public sealed class Compilation
         var path = name is not null ? name.Split('.')
                  : ast.Header is not null ? ast.Header.Segments
                  : ["main"];
+
+        // Two files claiming one module name: everything downstream assumes a name means ONE
+        // module — imports find the first, symbols of the second shadow nothing and resolve
+        // nowhere obvious. The import loaders guard with FindModule before loading, so this fires
+        // for two ROOTS of a project compilation, which is exactly where a user can cause it.
+        if (FindModule(path) is { } existing)
+        {
+            var second = ast.Header?.Span ?? ast.Span;
+            var firstAst = AstOf(existing);
+            _de.Report("LYR-RES0007", Severity.Error, second,
+                $"module '{string.Join('.', path)}' is declared by more than one file",
+                new DiagnosticNote(firstAst.Header?.Span ?? firstAst.Span, "also declared here"));
+        }
+
         var members = new SymbolTable(_builtins); // the parent is the builtins, so 'int' and friends resolve through the lookup chain
         var symbol = new ModuleSymbol(path, members, ast);
         _modules.Add(symbol);
