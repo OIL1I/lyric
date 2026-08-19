@@ -10,7 +10,12 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v1.14.0 — 2026-08-19
+
+The std polish, born from a line-by-line audit. The string module stops being quadratic, the
+print family collapses to one generic concept, the collections learn the operations daily use
+kept reaching for, arrays cross the native boundary as parameters for the first time — and two
+new modules arrive: `std.random` and `std.time`. The bytecode format stays **3.2**.
 
 ### Added
 

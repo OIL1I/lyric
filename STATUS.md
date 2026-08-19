@@ -171,8 +171,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4257 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **1.13.0**.
+4277 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **1.14.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -310,7 +310,7 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M23 is built on `feature/m23-std-polish`** — the std polish, ships as v1.14.0. The scope came
+**M23 is merged and released as v1.14.0** (PR #61) — the std polish. The scope came
 from a line-by-line audit of the standard library after the first extension list turned out to
 describe modules that already existed. Deferred by decision: the string method API via `extend`
 and iterator chaining (each needs its own design round plus a probe), the three-convention
@@ -498,8 +498,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`std, ir, sema: the library gets a root, @Deprecated its promise, block lambdas their inference`
-(closes M22's delivery list; released as v1.13.0)
+`std: randomness moves out of math, and time gets its meaning layer`
+(closes M23's delivery list; released as v1.14.0)
 
 ---
 
