@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.11.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.11.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.11.0 — 2026-08-19</h2>
+<p>Attributes stop being decoration. One is now read by the compiler — <code>@Deprecated</code> — and one by
+a new tool: <code>lyric test</code> runs every function marked <code>@Test</code>. The bytecode format stays <strong>3.2</strong>,
+and no existing program changes meaning.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong><code>@Deprecated</code>, the first attribute the compiler reads.</strong> From <code>std.core</code>, on a function, a
+type or a module: every use warns (<code>LYR-SEM0076</code>) at the use site, the note points at the
+attribute, and <code>message</code> says what to use instead. Resolved by IDENTITY — a struct someone
+else names <code>Deprecated</code> deprecates nothing. Uses inside anything itself deprecated are exempt,
+so a deprecated function may keep calling its deprecated siblings; a deprecated module warns
+at the imports that pull it in. It changes diagnostics and nothing else — the same module
+compiles either way. Editors strike deprecated uses through.</p>
+<p>With this the compiler-read attribute set becomes part of the language contract: <code>@Deprecated</code>
+is in it, everything else stays inert.</p>
+</li>
+<li><p><strong><code>lyric test</code> — tests, the Go shape.</strong> Tests live under <code>tests/</code> (or the <code>testRoot</code> your
+<code>lyric.json</code> names) and only the test runner ever compiles them; production builds never see
+a test file. A test is a top-level function marked <code>@Test</code> from the new <strong><code>std.test</code></strong>, fails
+by panicking, and runs in a <strong>fresh instance</strong> — module state cannot leak between tests.</p>
+<pre><code class="language-bash">lyric test
+</code></pre>
+<p><code>std.test</code> ships the marker and the assertions: <code>assertTrue</code>, and <code>assertEq</code> over
+<code>[Equatable&lt;T&gt;, Display]</code>, naming both values when they differ. The report is plain text, one
+line per test; the exit code is <code>0</code> when everything passed and <code>1</code> otherwise. No <code>tests/</code>
+directory means no tests and exits 0; a testRoot named explicitly and missing is an error.
+Guide chapter 20 covers it.</p>
+<p>The runner is <code>lyrtest</code>, the tenth binary, and it drives the compiled module through the
+embedding API — the attribute rows for discovery, a call handle per test: the same machinery
+a host uses, now with a consumer that is not a test of it.</p>
+</li>
+<li><p><strong><code>HostOptions.SourceRoot</code></strong> in the embedding API: a host may compile a file whose imports
+resolve against a directory other than the file's own — the test runner compiling <code>tests/</code>
+against <code>src/</code> is the case that added it.</p>
+</li>
+</ul>
+<h3 id="not-in-this-release">Not in this release</h3>
+<ul>
+<li><strong>Test filters, parallel execution, expectPanic, fixtures and setup/teardown, JSON output,
+editor test integration</strong> — deliberately; each is an idea issue, none blocks running tests.</li>
+<li><strong>Suppressing a deprecation warning in code</strong>: the mechanism would be another compiler-read
+attribute, and the set grows by decision. <code>--deny-warnings</code> still means what it says.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
