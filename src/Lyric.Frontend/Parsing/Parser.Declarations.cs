@@ -484,25 +484,16 @@ public sealed partial class Parser
         var name = ExpectNamed("LYR-PAR0026", "interface name");
         var generics = _buffer.Check(TokenKind.Less) ? ParseGenericParams() : [];
 
-        // 'interface B :: [A]' — there is no interface inheritance. Without this case the parser
-        // runs into a follow-up message about parameter parentheses, unrelated to the cause.
-        //
-        // The message names the way out, because there is one: two constraints side by side.
-        if (_buffer.Check(TokenKind.ColonColon))
-        {
-            _de.Report("LYR-PAR0039", Severity.Error, _buffer.Current.Span,
-                "an interface cannot extend another one — Lyric has no interface inheritance. "
-                + "Require both where you need both: '<T :: [A, B]>'");
-            // The list is READ and discarded anyway, or the parser would stumble over '[A]' a
-            // second time and report two errors for one cause.
-            ParseInterfaceList();
-        }
+        // 'interface B :: [A]' — B implies its parents: whoever conforms to B conforms to them
+        // too. What the list does NOT do the sema explains where it matters; here it is just a
+        // type list, shaped like the one on structs. (LYR-PAR0039 rejected this until v1.13.)
+        var interfaces = _buffer.Check(TokenKind.ColonColon) ? ParseInterfaceList() : [];
 
         _buffer.Expect(TokenKind.LBrace, "LYR-PAR0017", "expected '{' to open interface body");
         var members = new List<FunctionDecl>();
         ParseMethodSequence(members, allowStatic: false);
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close interface body");
-        return new InterfaceDecl(isPublic, name.Name, generics, members.ToArray(), Span.Union(start, close.Span))
+        return new InterfaceDecl(isPublic, name.Name, generics, interfaces, members.ToArray(), Span.Union(start, close.Span))
             { NameSpan = name.Span };
     }
 

@@ -33,7 +33,7 @@ fn main(): int {
 A value used through its interface dispatches dynamically. That is the only dynamic dispatch in
 the language.
 
-There is no inheritance and no interface inheritance. A type that needs two contracts lists both:
+There is no class inheritance. A type that needs two contracts lists both:
 
 ```lyr
 interface Named { fn name(): string; }
@@ -75,6 +75,50 @@ fn main(): int {
     return 0;
 }
 ```
+
+## Interface inheritance
+
+An interface may name one **parent**. Conforming to the child implies conforming to the parent:
+the implementing type provides the abstract members of the whole chain, inherits its default
+methods, and satisfies a constraint on the parent wherever one is required.
+
+```lyr
+import std.io.console { println };
+
+interface Named {
+    fn name(): string;
+}
+
+interface Labeled :: [Named] {
+    fn label(): string { return "[" + this.name() + "]"; }
+}
+
+struct Tag :: [Labeled] {
+    fn name(): string { return "tag"; }
+}
+
+fn describe<T :: [Named]>(x: T): string {
+    return x.name();
+}
+
+fn main(): int {
+    let t = Tag { };
+    println(t.label());          // the inherited default calls the parent's member
+    println(describe(t));        // 'Labeled' satisfies a 'Named' constraint
+    let n: Named = t;            // the implied conformance carries the value into the parent
+    println(n.name());
+    return 0;
+}
+```
+
+The parent list holds exactly one entry — several requirements side by side are what constraints
+are for (`<T :: [A, B]>`). The chain cannot be circular, and a member of the chain cannot be
+redeclared: an inherited member keeps its declaring interface.
+
+A value of interface type reaches the members of its whole chain (`Labeled` values answer
+`name()`). What it does not do is convert to the parent's type: `Named` in the example is built
+from the concrete `Tag`, not from a `Labeled` value. Where a parent-typed value is needed, take
+the concrete value through the parent directly.
 
 ## Extending a type
 

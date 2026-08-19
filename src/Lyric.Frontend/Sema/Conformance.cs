@@ -32,8 +32,35 @@ public static class Conformance
             EnumDecl e => e.Interfaces,
             _ => (TypeNode[])[]
         };
+        // The transitive closure, not just the written list: declaring an interface implies
+        // conforming to its parents (§3.5). Every consumer — throwability, witness emission,
+        // default lookup — wants exactly that implication, so it lives in ONE place.
+        var seen = new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance);
         foreach (var t in list)
-            if (InterfaceOf(t, binding) is { } iface) yield return iface;
+            if (InterfaceOf(t, binding) is { } iface)
+                foreach (var i in WithParents(iface, binding, seen))
+                    yield return i;
+    }
+
+    /// <summary>The parent interfaces one interface declares, direct only.</summary>
+    public static IEnumerable<TypeSymbol> ParentsOf(TypeSymbol iface, BindingResult binding)
+    {
+        if (iface.Declaration is not InterfaceDecl decl) yield break;
+        foreach (var t in decl.Interfaces)
+            if (InterfaceOf(t, binding) is { } parent) yield return parent;
+    }
+
+    /// <summary>An interface plus its transitive parents. The set breaks cycles — those are
+    /// diagnosed separately (LYR-SEM0078), and the walk must survive them regardless.</summary>
+    public static IEnumerable<TypeSymbol> WithParents(TypeSymbol iface, BindingResult binding,
+        HashSet<TypeSymbol>? seen = null)
+    {
+        seen ??= new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance);
+        if (!seen.Add(iface)) yield break;
+        yield return iface;
+        foreach (var p in ParentsOf(iface, binding))
+            foreach (var t in WithParents(p, binding, seen))
+                yield return t;
     }
 
     public static bool Implements(TypeSymbol ts, TypeSymbol iface, BindingResult binding) =>
@@ -52,7 +79,8 @@ public static class Conformance
             NamedRef nr => ReferenceEquals(nr.Symbol, throwable) || Implements(nr.Symbol, throwable, binding),
             GenericInstance gi => Implements(gi.Definition, throwable, binding),
             TypeParamType tp => tp.Param.Constraints.Any(c =>
-                InterfaceOf(c, binding) is { } it && ReferenceEquals(it, throwable)),
+                InterfaceOf(c, binding) is { } it
+                && WithParents(it, binding).Any(i => ReferenceEquals(i, throwable))),
             _ => false
         };
     }

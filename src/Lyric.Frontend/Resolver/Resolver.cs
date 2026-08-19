@@ -296,6 +296,7 @@ public sealed class Resolver
             case InterfaceDecl i:
                 var isc = MemberScope(scope, i.Name);
                 BindGenerics(i.Generics, isc);
+                BindEach(i.Interfaces, isc);
                 foreach (var m in i.Members) BindFunctionTypes(m, isc);
                 break;
             // ExtendDecl goes to ResolveExtensionTargets, which needs the block method scope for

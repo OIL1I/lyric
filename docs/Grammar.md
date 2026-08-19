@@ -238,12 +238,23 @@ The `;` separates the variant list from the method list.
 
 ```ebnf
 InterfaceDecl   = [ 'pub' ] 'interface' IDENTIFIER [ GenericParams ]
+                  [ '::' InterfaceList ]
                   '{' { InterfaceMember } '}' .
 InterfaceMember = FunctionDecl .
 ```
 
-An interface member with a body is a default implementation. An interface declares no interface
-list; there is no interface inheritance.
+An interface member with a body is a default implementation.
+
+The interface list names the **parent**: whoever conforms to the interface conforms to the parent
+too, transitively — abstract members of the whole chain must be implemented, default methods of the
+whole chain are inherited, and a constraint on the parent is satisfied by the child. Semantic
+rules, not syntactic ones: the list holds at most **one** entry (several requirements side by side
+are what constraints are for: `<T :: [A, B]>`), the entry names an interface, the chain is acyclic,
+and a member of the chain cannot be redeclared — an inherited member keeps its declaring interface.
+
+A value of interface type reaches the members of its whole chain. It does not, however, convert to
+a value of the parent's type: conformance is implied for the *implementing* type, so take the
+concrete value through the parent where a parent-typed value is needed.
 
 A member carries no `static`: it is reached through a vtable slot, which takes a receiver, and a
 static member has none. Declare it on the implementing type instead.

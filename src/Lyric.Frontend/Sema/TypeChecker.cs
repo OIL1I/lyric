@@ -218,7 +218,10 @@ public sealed class TypeChecker
                 CheckEnumMethods(e, module);
                 CheckTypeConformance(e.Name, e.Interfaces, module);
                 break;
-            case InterfaceDecl i: CheckMethods(i.Name, i.Members, module); break;
+            case InterfaceDecl i:
+                CheckInterfaceParents(i, module);
+                CheckMethods(i.Name, i.Members, module);
+                break;
             // ExtendDecl goes to CheckExtensionBlocks after all types; GlobalBindingDecl to ComputeGlobals.
         }
     }
@@ -395,30 +398,92 @@ public sealed class TypeChecker
     {
         if (interfaces.Length == 0) return;
         var candidates = CandidateMethods(implementer, module);
+        // One seen-set across the list: a parent written out beside its child is checked once.
+        var seen = new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance);
 
         foreach (var node in interfaces)
         {
-            if (InterfaceWithSubst(node) is not { } r) continue;
-            var (iface, subst) = r;
-            if (iface.Declaration is not InterfaceDecl idecl) continue;
-
-            foreach (var im in idecl.Members)
+            if (Conformance.InterfaceOf(node, _binding) is not { } direct) continue;
+            foreach (var (iface, subst) in ClosureOfNode(node, seen))
             {
-                var impl = candidates.TryGetValue(im.Name, out var c) ? c : null;
-                if (impl is null)
+                if (iface.Declaration is not InterfaceDecl idecl) continue;
+                var implied = ReferenceEquals(iface, direct) ? "" : $" (implied by '{direct.Name}')";
+
+                foreach (var im in idecl.Members)
                 {
-                    if (im.Body is null) // abstract and not implemented
-                        _de.Report("LYR-SEM0020", Severity.Error, NodeSpan(node),
-                            $"'{name}' does not implement abstract method '{im.Name}' of interface '{iface.Name}'",
-                            new DiagnosticNote(im.Span, $"'{im.Name}' is declared here"));
-                    continue; // a default method is inherited
+                    var impl = candidates.TryGetValue(im.Name, out var c) ? c : null;
+                    if (impl is null)
+                    {
+                        if (im.Body is null) // abstract and not implemented
+                            _de.Report("LYR-SEM0020", Severity.Error, NodeSpan(node),
+                                $"'{name}' does not implement abstract method '{im.Name}' of interface '{iface.Name}'{implied}",
+                                new DiagnosticNote(im.Span, $"'{im.Name}' is declared here"));
+                        continue; // a default method is inherited
+                    }
+                    var want = (FnType)Substitute(FnTypeOf(FnSym(iface, im.Name)!), subst);
+                    if (SignatureMismatch(want, im, impl) is { } reason)
+                        _de.Report("LYR-SEM0042", Severity.Error, impl.Declaration?.Span ?? NodeSpan(node),
+                            $"'{name}.{im.Name}' does not match interface '{iface.Name}'{implied}: {reason}");
                 }
-                var want = (FnType)Substitute(FnTypeOf(FnSym(iface, im.Name)!), subst);
-                if (SignatureMismatch(want, im, impl) is { } reason)
-                    _de.Report("LYR-SEM0042", Severity.Error, impl.Declaration?.Span ?? NodeSpan(node),
-                        $"'{name}.{im.Name}' does not match interface '{iface.Name}': {reason}");
             }
         }
+    }
+
+    // The parent list of an interface: every entry an interface, no chain back to the declaring
+    // one, and no member redeclared. An inherited member keeps its declaring interface — a name
+    // occurring twice along one chain would make the same call dispatch differently through the
+    // child and through the parent, so redeclaration is refused rather than given override
+    // semantics the method tables do not have.
+    private void CheckInterfaceParents(InterfaceDecl decl, ModuleSymbol module)
+    {
+        if (decl.Interfaces.Length == 0) return;
+        if (module.Members.LookupLocal(decl.Name) is not TypeSymbol self) return;
+
+        // At most one parent: a parent's default method runs against the child's method table, and
+        // only a single chain keeps the parent's slot indexes valid there (the prefix layout).
+        // Several requirements side by side are what constraints are for.
+        for (var i = 1; i < decl.Interfaces.Length; i++)
+            _de.Report("LYR-SEM0078", Severity.Error, NodeSpan(decl.Interfaces[i]),
+                $"'{decl.Name}' can have at most one parent interface — "
+                + "require several where you use them: '<T :: [A, B]>'");
+
+        foreach (var node in decl.Interfaces)
+        {
+            if (Conformance.InterfaceOf(node, _binding) is not { } parent)
+            {
+                // An unknown name was the resolver's error already; a known one that is not an
+                // interface is this one.
+                var s = node is NamedType nt ? _binding.Resolve(nt) : null;
+                if (s is ImportBindingSymbol ib) s = ib.Target;
+                if (s is not null and not ErrorSymbol)
+                    _de.Report("LYR-SEM0078", Severity.Error, NodeSpan(node),
+                        $"only an interface can stand in the parent list of '{decl.Name}'");
+                continue;
+            }
+            if (Conformance.WithParents(parent, _binding).Any(p => ReferenceEquals(p, self)))
+                _de.Report("LYR-SEM0078", Severity.Error, NodeSpan(node),
+                    ReferenceEquals(parent, self)
+                        ? $"interface '{decl.Name}' cannot inherit itself"
+                        : $"interface '{decl.Name}' inherits itself through '{parent.Name}' — the parent chain cannot be circular");
+        }
+
+        // Seeding with 'self' keeps a cyclic chain from presenting the declaring interface's own
+        // members as inherited ones.
+        var seen = new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance) { self };
+        var inherited = new Dictionary<string, (TypeSymbol Iface, FunctionSymbol Fn)>(StringComparer.Ordinal);
+        foreach (var parent in Conformance.ParentsOf(self, _binding))
+            foreach (var iface in Conformance.WithParents(parent, _binding, seen))
+                foreach (var sym in iface.Members.Symbols)
+                    if (sym is FunctionSymbol fn)
+                        inherited.TryAdd(fn.Name, (iface, fn));
+
+        foreach (var m in decl.Members)
+            if (inherited.TryGetValue(m.Name, out var have))
+                _de.Report("LYR-SEM0079", Severity.Error, m.Span,
+                    $"'{m.Name}' redeclares a member of parent interface '{have.Iface.Name}' — "
+                    + "an inherited member keeps its declaring interface; rename this one",
+                    new DiagnosticNote(have.Fn.Declaration?.Span ?? default,
+                        $"'{m.Name}' is declared here"));
     }
 
     // Own methods plus visible extension methods, by name; own ones win.
@@ -698,6 +763,19 @@ public sealed class TypeChecker
                     ? Substitute(argument, SubstMap(instance))
                     : argument;
             }
+        }
+
+        // Reached when the conformance is inherited: 'class Ones :: [Counting]' with
+        // 'interface Counting :: [Iterator<int>]'. The direct list has no Iterator node, but the
+        // closure carries the parent instance with the child's arguments substituted through.
+        foreach (var node in declared)
+        {
+            if (Conformance.InterfaceOf(node, _binding) is not { } direct) continue;
+            foreach (var (p, inst) in InterfaceClosure(direct, ResolveType(node, DeclarationScope(symbol))))
+                if (ReferenceEquals(p, iface) && inst is GenericInstance { Arguments.Length: 1 } via)
+                    return type is GenericInstance outer
+                        ? Substitute(via.Arguments[0], SubstMap(outer))
+                        : via.Arguments[0];
         }
 
         return null;
@@ -1802,24 +1880,25 @@ public sealed class TypeChecker
     private TypeSymbol? BuiltinSymbol(PrimitiveType p) =>
         _comp.Builtins.LookupLocal(TypeFacts.Display(p)) as TypeSymbol;
 
-    // Members on a type parameter T: only what its constraint interfaces provide.
+    // Members on a type parameter T: what its constraint interfaces provide — the closure, since
+    // a constraint on the child interface implies the parents' members too.
     private (LyrType, Symbol?) MemberOfTypeParam(GenericParamSymbol gp, string member, Span span)
     {
         foreach (var c in gp.Constraints)
         {
             if (c is not NamedType nt) continue;
-            if (InterfaceWithSubst(nt) is not { } resolved) continue;
+            foreach (var (it, subst) in ClosureOfNode(nt))
+            {
+                if (it.Members.LookupLocal(member) is not FunctionSymbol fn) continue;
 
-            var (it, subst) = resolved;
-            if (it.Members.LookupLocal(member) is not FunctionSymbol fn) continue;
-
-            // Substitute the type arguments OF THE CONSTRAINT. 'T :: [Eq<T>]' means the 'T' in
-            // 'Eq<T>.eq(other: T)' is the 'T' of the calling function — two different symbols with
-            // the same name.
-            //
-            // Without the substitution the raw interface type comes back and 'a.eq(b)' fails with
-            // "cannot assign 'T' to 'T'".
-            return (Substitute(FnTypeOf(fn), subst), fn);
+                // Substitute the type arguments OF THE CONSTRAINT. 'T :: [Eq<T>]' means the 'T' in
+                // 'Eq<T>.eq(other: T)' is the 'T' of the calling function — two different symbols
+                // with the same name.
+                //
+                // Without the substitution the raw interface type comes back and 'a.eq(b)' fails
+                // with "cannot assign 'T' to 'T'".
+                return (Substitute(FnTypeOf(fn), subst), fn);
+            }
         }
         return (Report(span, "LYR-SEM0027",
             $"type parameter '{gp.Name}' has no member '{member}' (no constraint provides it)"), null);
@@ -2018,21 +2097,20 @@ public sealed class TypeChecker
         GenericInstance gi => ImplementsWithExtensions(gi.Definition, iface, wanted, SubstMap(gi)),
 
         TypeParamType tp => tp.Param.Constraints.Any(c =>
-            ReferenceEquals(ConstraintInterface(c), iface)
-            && Matches(ResolveType(c, _currentModule?.Members ?? _comp.Builtins), EmptySubst, wanted)),
+            NodeReaches(c, _currentModule?.Members ?? _comp.Builtins, iface, wanted, EmptySubst)),
 
         PrimitiveType prim when BuiltinSymbol(prim) is { } builtin =>
             ImplementsWithExtensions(builtin, iface, wanted, EmptySubst),
         _ => true // external or error: pass through opaquely
     };
 
-    // Conformance through the declared interfaces OR a visible `extend T :: [I]` block.
+    // Conformance through the declared interfaces OR a visible `extend T :: [I]` block — each
+    // reaching through its parents: declaring the child implies the whole chain.
     private bool ImplementsWithExtensions(TypeSymbol ts, TypeSymbol iface, LyrType wanted,
         Dictionary<GenericParamSymbol, LyrType> ofInstance)
     {
         foreach (var node in DeclaredInterfaceNodes(ts))
-            if (ReferenceEquals(Conformance.InterfaceOf(node, _binding), iface)
-                && Matches(ResolveType(node, DeclarationScope(ts)), ofInstance, wanted))
+            if (NodeReaches(node, DeclarationScope(ts), iface, wanted, ofInstance))
                 return true;
 
         foreach (var block in _comp.Extensions.Blocks)
@@ -2040,10 +2118,21 @@ public sealed class TypeChecker
             if (!ReferenceEquals(block.Target, ts)) continue;
             if (_currentModule is not null && !_comp.Sees(_currentModule, block.Module)) continue;
             foreach (var node in block.Decl.Interfaces)
-                if (ReferenceEquals(Conformance.InterfaceOf(node, _binding), iface)
-                    && Matches(ResolveType(node, DeclarationScope(ts)), ofInstance, wanted))
+                if (NodeReaches(node, DeclarationScope(ts), iface, wanted, ofInstance))
                     return true;
         }
+        return false;
+    }
+
+    // Does this conformance node reach 'iface' — directly or through a parent — with matching
+    // type arguments?
+    private bool NodeReaches(TypeNode node, SymbolTable scope, TypeSymbol iface, LyrType wanted,
+        Dictionary<GenericParamSymbol, LyrType> ofInstance)
+    {
+        if (Conformance.InterfaceOf(node, _binding) is not { } direct) return false;
+        foreach (var (p, inst) in InterfaceClosure(direct, ResolveType(node, scope)))
+            if (ReferenceEquals(p, iface) && Matches(inst, ofInstance, wanted))
+                return true;
         return false;
     }
 
@@ -2104,6 +2193,17 @@ public sealed class TypeChecker
 
                 _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null)
             };
+        // An interface value reaches its parent's members: the chain-prefix slot layout puts them
+        // in the child's own method table, so the dispatch needs no re-wrapping toward the parent.
+        // This also serves 'this' inside a default body, which has the interface's own type.
+        if (ts.Kind == TypeSymbolKind.Interface)
+            foreach (var (parent, inst) in InterfaceClosure(ts, new NamedRef(ts)))
+            {
+                if (ReferenceEquals(parent, ts)) continue;
+                if (parent.Members.LookupLocal(member) is not FunctionSymbol pfn) continue;
+                var subst = inst is GenericInstance g ? SubstMap(g) : EmptySubst;
+                return (Substitute(FnTypeOf(pfn), subst), pfn);
+            }
         if (ExtensionMember(ts, member, span) is { } ext)
         {
             // The instance path used to fall through to a STATIC extension without checking — the
@@ -2167,23 +2267,18 @@ public sealed class TypeChecker
     // arguments from the '::'. Declared interfaces plus those from visible `extend T :: [I]` blocks.
     private IEnumerable<(TypeSymbol iface, Dictionary<GenericParamSymbol, LyrType> subst)> InterfacesOf(TypeSymbol ts)
     {
+        // One seen-set across the whole list: the same interface reached twice — the diamond, or
+        // written out beside its child — is one conformance, not two.
+        var seen = new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance);
         foreach (var node in DeclaredInterfaceNodes(ts))
-            if (InterfaceWithSubst(node) is { } r) yield return r;
+            foreach (var r in ClosureOfNode(node, seen)) yield return r;
         foreach (var block in _comp.Extensions.Blocks)
         {
             if (!ReferenceEquals(block.Target, ts)) continue;
             if (_currentModule is not null && !_comp.Sees(_currentModule, block.Module)) continue;
             foreach (var node in block.Decl.Interfaces)
-                if (InterfaceWithSubst(node) is { } r) yield return r;
+                foreach (var r in ClosureOfNode(node, seen)) yield return r;
         }
-    }
-
-    private (TypeSymbol, Dictionary<GenericParamSymbol, LyrType>)? InterfaceWithSubst(TypeNode node)
-    {
-        if (Conformance.InterfaceOf(node, _binding) is not { } iface) return null;
-        var resolved = ResolveType(node, _currentModule?.Members ?? _comp.Builtins);
-        var subst = resolved is GenericInstance gi ? SubstMap(gi) : EmptySubst;
-        return (iface, subst);
     }
 
     private static TypeNode[] DeclaredInterfaceNodes(TypeSymbol ts) => ts.Declaration switch
@@ -2193,6 +2288,44 @@ public sealed class TypeChecker
         EnumDecl e => e.Interfaces,
         _ => []
     };
+
+    /// <summary>
+    /// One resolved interface instance plus its transitive parents, each with the child's type
+    /// arguments substituted through: <c>Hashable&lt;S&gt;</c> yields itself and
+    /// <c>Equatable&lt;S&gt;</c> when <c>Hashable&lt;T&gt;</c> declares <c>:: [Equatable&lt;T&gt;]</c>.
+    ///
+    /// <para>Deliberately NOT reached from a value of interface type: a fat pointer carries the
+    /// method table of its own interface and nothing above it, so the closure applies where a
+    /// conformance is declared, not where an interface value flows.</para>
+    /// </summary>
+    private IEnumerable<(TypeSymbol iface, LyrType instance)> InterfaceClosure(
+        TypeSymbol iface, LyrType instance, HashSet<TypeSymbol>? seen = null)
+    {
+        seen ??= new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance);
+        if (!seen.Add(iface)) yield break;
+        yield return (iface, instance);
+        if (iface.Declaration is not InterfaceDecl decl) yield break;
+        var subst = instance is GenericInstance gi ? SubstMap(gi) : EmptySubst;
+        foreach (var node in decl.Interfaces)
+        {
+            if (Conformance.InterfaceOf(node, _binding) is not { } parent) continue;
+            // The parent node stands in the child's scope ('Equatable<T>' with Hashable's T);
+            // substituting through the child instance turns it into the conforming type's terms.
+            var resolved = Substitute(ResolveType(node, DeclarationScope(iface)), subst);
+            foreach (var r in InterfaceClosure(parent, resolved, seen)) yield return r;
+        }
+    }
+
+    /// <summary>The closure behind one conformance node: the named interface and its transitive
+    /// parents, as (definition, substitution) pairs.</summary>
+    private IEnumerable<(TypeSymbol iface, Dictionary<GenericParamSymbol, LyrType> subst)>
+        ClosureOfNode(TypeNode node, HashSet<TypeSymbol>? seen = null)
+    {
+        if (Conformance.InterfaceOf(node, _binding) is not { } iface) yield break;
+        var resolved = ResolveType(node, _currentModule?.Members ?? _comp.Builtins);
+        foreach (var (i, inst) in InterfaceClosure(iface, resolved, seen))
+            yield return (i, inst is GenericInstance gi ? SubstMap(gi) : EmptySubst);
+    }
 
     /// <param name="instance">The instance from a type path with arguments
     /// (<c>Pair&lt;int&gt;.of(3)</c>). When present, the member's type is substituted through it;

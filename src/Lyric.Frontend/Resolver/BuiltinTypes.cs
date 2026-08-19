@@ -47,7 +47,7 @@ public static class BuiltinTypes
             ReturnType: new NamedType(["string"], [], default) { NameSpan = default },
             Throws: null, Body: null, Span: default)
             { NameSpan = default };
-        var decl = new InterfaceDecl(IsPublic: true, Name: "Throwable", Generics: [], Members: [message], Span: default)
+        var decl = new InterfaceDecl(IsPublic: true, Name: "Throwable", Generics: [], Interfaces: [], Members: [message], Span: default)
             { NameSpan = default };
         var members = new SymbolTable();
         members.TryDeclare(new FunctionSymbol("message", Visibility.Public, isMut: false, message));

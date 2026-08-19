@@ -237,6 +237,7 @@ public static class AstDumper
             case InterfaceDecl n:
                 Line(sb, indent, $"Interface {n.Name}{Vis(n.IsPublic)}", n.Span);
                 foreach (var g in n.Generics) Write(g, indent + 1, sb);
+                foreach (var i in n.Interfaces) Write(i, indent + 1, sb);
                 foreach (var m in n.Members) Write(m, indent + 1, sb);
                 break;
             case ExtendDecl n:

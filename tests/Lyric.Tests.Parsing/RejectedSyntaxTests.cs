@@ -58,22 +58,13 @@ public class RejectedSyntaxTests
     // ------------------------------------------------------------------ interface inheritance
 
     /// <summary>
-    /// The message names the way out, because there is one: <c>std.core</c> solves the same with two
-    /// constraints side by side (<c>K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;]</c>).
+    /// v1.13 turned LYR-PAR0039 from an error into the feature: the parent list parses like the
+    /// one on structs, and everything it may not be — several parents, a non-interface, a cycle —
+    /// is the sema's message, not the parser's.
     /// </summary>
     [Fact]
-    public void An_interface_conformance_list_says_there_is_no_interface_inheritance()
-    {
-        var diagnostics = Parse("interface A { fn a(): int; }\ninterface B :: [A] { fn b(): int; }");
-
-        var reported = Assert.Single(diagnostics, d => d.Code == "LYR-PAR0039");
-        Assert.Contains("no interface inheritance", reported.Message, StringComparison.Ordinal);
-        Assert.Contains("[A, B]", reported.Message, StringComparison.Ordinal);
-
-        // ONE message per cause: the conformance list is read and discarded, or the parser would stumble
-        // over '[A]' a second time.
-        Assert.Single(diagnostics);
-    }
+    public void An_interface_parent_list_parses_since_v1_13() =>
+        Assert.Empty(Parse("interface A { fn a(): int; }\ninterface B :: [A] { fn b(): int; }"));
 
     /// <summary>
     /// The counter-check. A <c>::</c> on a CLASS is valid and must not be hit by this message, or half

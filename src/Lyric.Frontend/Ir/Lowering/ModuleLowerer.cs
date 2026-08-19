@@ -708,10 +708,16 @@ public static class ModuleLowerer
                     // For a generic instance the method belongs to the INSTANCE rather than to the
                     // definition: 'ListIterator<int>.next' arises only through the monomorphization, and
                     // the definition has no lowerable version.
+                    // The last resort walks the interface CHAIN: a slot may be a parent's member,
+                    // and its default then lives on the parent, not on 'iface' itself. The
+                    // chain-prefix slot layout keeps the parent's own dispatches valid through a
+                    // child-typed receiver.
                     var target = ResolveInInstance(typeTable, typeId, slots[i], instances)
                                  ?? Resolve(type, slots[i], ids)
                                  ?? ResolveInExtensions(viaExtension, slots[i], extensions)
-                                 ?? Resolve(iface, slots[i], ids);
+                                 ?? Conformance.WithParents(iface, binding)
+                                     .Select(p => Resolve(p, slots[i], ids))
+                                     .FirstOrDefault(f => f is not null);
                     if (target is { } id) { methods[i] = id; continue; }
 
                     // The sema already checked conformance. If something is missing here all the same, it
