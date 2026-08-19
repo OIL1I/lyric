@@ -43,6 +43,9 @@ public static class CapabilityTable
         ("std.io.file", Capability.FileAccess),
         ("std.io.net", Capability.NetworkAccess),
         ("std.os", Capability.OsAccess),
+        // The same bit as std.os, deliberately: reading the clock is a question to the
+        // environment, and a new bit would be a contract change for every older runtime.
+        ("std.time", Capability.OsAccess),
         ("std.dotnet", Capability.HostAccess),
     ];
 

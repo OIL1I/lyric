@@ -668,6 +668,11 @@ public sealed class NativeRegistry
         registry.Register("std.os.cpuCount", none, TypeTag.I64,
             _ => LyrValue.FromI64(Environment.ProcessorCount));
 
+        // std.time's private clock — the same host function as std.os.nowMillis, two names, one
+        // truth.
+        registry.Register("std.time.nowMillis", none, TypeTag.I64,
+            _ => LyrValue.FromI64(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
         registry.Register("std.os.nowMillis", none, TypeTag.I64,
             _ => LyrValue.FromI64(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
 

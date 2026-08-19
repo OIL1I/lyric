@@ -34,6 +34,18 @@ bytecode format, the command line and the embedding API. Compiler internals are 
   instead of the U+FFFD replacement `readText` documents — and `fromChars` became one native
   call instead of one string per character.
 
+- **`std.random`**: the generator moved out of `std.math` — randomness is not arithmetic —
+  and gained what it was missing there: `shuffle` (Fisher–Yates over a `List`), `choice` and
+  `nextGaussian`. Deterministic, seeded by the caller, no capability. The `std.math.Random`
+  twin stays one release as a deprecated migration path.
+
+- **`std.time`**: `Instant` and `Duration` as value structs over epoch milliseconds —
+  `b.since(a)`, `a.plus(d)`, and `iso()` rendering UTC ISO 8601 with floor semantics, so an
+  instant before 1970 lands in the right day. Gated by `osAccess`, the same bit as `std.os`:
+  reading the clock is a question to the environment, and a new bit would be a contract change.
+  The subtraction is a named method, not an operator — `Instant - Instant` yields a Duration,
+  and the operator interfaces are homogeneous by the v1.13 decision.
+
 ### Fixed
 
 - **`std.string` stops being quadratic.** `StringBuilder.build` and `join` folded left and

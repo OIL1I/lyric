@@ -1,17 +1,5 @@
 import std.test { Test, assertEq, assertTrue };
-import std.math {
-    gcd,
-    lcm,
-    divFloor,
-    modFloor,
-    powInt,
-    clampInt,
-    isNaN,
-    isFinite,
-    sqrt,
-    Random,
-    absInt,
-};
+import std.math { gcd, lcm, divFloor, modFloor, powInt, clampInt, isNaN, isFinite, sqrt, absInt };
 
 @Test
 pub fn gcd_and_lcm_agree(): void {
@@ -51,12 +39,4 @@ pub fn ieee_special_values_are_recognised(): void {
     assertTrue(isFinite(1.5), "an ordinary value is finite");
 }
 
-@Test
-pub fn a_seeded_generator_is_reproducible(): void {
-    let a = Random.seeded(42);
-    let b = Random.seeded(42);
-    assertEq(a.nextInt(), b.nextInt());
-    assertEq(a.nextIntRange(0, 10), b.nextIntRange(0, 10));
-    let c = Random.seeded(0);
-    assertTrue(absInt(c.nextInt()) > 0, "the zero seed is replaced, not a fixed point");
-}
+// The generator moved to std.random in v1.14; its tests live in random_tests.lyr now.

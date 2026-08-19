@@ -1,0 +1,71 @@
+import std.test { Test, assertEq, assertTrue };
+import std.random { Random, shuffle, choice };
+import std.collections { List };
+import std.math { absInt, isFinite };
+
+@Test
+pub fn a_seeded_generator_is_reproducible(): void {
+    let a = Random.seeded(42);
+    let b = Random.seeded(42);
+    assertEq(a.nextInt(), b.nextInt());
+    assertEq(a.nextIntRange(0, 10), b.nextIntRange(0, 10));
+    let c = Random.seeded(0);
+    assertTrue(absInt(c.nextInt()) > 0, "the zero seed is replaced, not a fixed point");
+}
+
+@Test
+pub fn shuffle_permutes_and_keeps_every_element(): void {
+    let xs = List<int>.empty();
+    var i = 1;
+    while (i <= 20) {
+        xs.push(i);
+        i = i + 1;
+    }
+
+    let r = Random.seeded(7);
+    shuffle<int>(r, xs);
+
+    var sum = 0;
+    var j = 0;
+    while (j < xs.length()) {
+        sum = sum + xs.get(j);
+        j = j + 1;
+    }
+    assertEq(sum, 210);
+    assertEq(xs.length(), 20);
+
+    // The same seed gives the same permutation — determinism is the module's promise.
+    let ys = List<int>.empty();
+    i = 1;
+    while (i <= 20) {
+        ys.push(i);
+        i = i + 1;
+    }
+    shuffle<int>(Random.seeded(7), ys);
+    j = 0;
+    while (j < xs.length()) {
+        assertEq(xs.get(j), ys.get(j));
+        j = j + 1;
+    }
+}
+
+@Test
+pub fn choice_draws_from_the_list_and_null_from_nothing(): void {
+    let xs = List<int>.empty();
+    xs.push(5);
+    xs.push(6);
+    xs.push(7);
+    let r = Random.seeded(3);
+    let drawn = choice<int>(r, xs) ?? -1;
+    assertTrue(drawn >= 5 && drawn <= 7, "the draw must come from the list");
+    assertTrue(choice<int>(r, List<int>.empty()) == null, "an empty list yields null");
+}
+
+@Test
+pub fn gaussian_draws_are_finite_and_reproducible(): void {
+    let a = Random.seeded(11);
+    let b = Random.seeded(11);
+    let x = a.nextGaussian();
+    assertTrue(isFinite(x), "a gaussian draw is a finite number");
+    assertEq(if (x == b.nextGaussian()) 1 else 0, 1);
+}

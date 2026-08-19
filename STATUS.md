@@ -17,6 +17,28 @@ v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables
 split the editor clients release from their own repositories, and a toolchain release carries
 the archives alone.
 
+**M23 — the std polish — is BUILT** (2026-08-19, branch `feature/m23-std-polish`, four slices,
+ships as v1.14.0). Born from a full audit of the actual std, not a wishlist. The delivery list:
+
+- [x] std.string stops being quadratic: builder/join fold no more, searches and parsers index
+      chars; audit rests (German locals in fmt, a torn doc line, a lying section divider) gone
+      (slice 1)
+- [x] List.clear keeps its backing; test.assertTrue delegates to core.assert (slice 1)
+- [x] print/println/eprint/eprintln generic over Display — println(42) works, write/writeln
+      deprecated as the second name for the same thing; old bytecode keeps running (slice 2)
+- [x] List insert/removeAt/first/last/reverse/swap; Map getOr/clear/entries; Set clear +
+      Iterable; iter flatMap/chunks/reduce/first (slice 2)
+- [x] arrays cross the native boundary as PARAMETERS — the format always allowed it; the
+      registry checks element tags at bind time now (slice 3)
+- [x] writeBytes/appendBytes, utf8Encode/utf8Decode (strict: invalid bytes are null, not
+      U+FFFD), joinAll behind join/build, fromChars native (slice 3)
+- [x] std.random: the generator moved out of math, plus shuffle/choice/nextGaussian; the math
+      twin deprecated for one release (slice 4)
+- [x] std.time: Instant/Duration over epoch millis, iso() with floor semantics for pre-epoch
+      days; osAccess, deliberately no new capability bit (slice 4)
+- [x] doc ratchet 370 → 430, still completeness; stdlib-tests grow file/random/time suites;
+      guide 13, CHANGELOG as Unreleased (all slices)
+
 **M22 — the language gaps — is BUILT** (2026-08-19, branch `feature/m22-language-gaps`, four
 slices, ships as v1.13.0). The delivery list:
 
@@ -167,6 +189,15 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **M23 — the std polish** (2026-08-19, four slices, `feature/m23-std-polish`). The audit
+  the extension list forced: std.string stopped being quadratic (builder/join were left folds —
+  the exact cost the builder existed to avoid), the print family collapsed to one generic
+  concept, the collections got the operations daily use kept reaching for, and arrays crossed
+  the native boundary as PARAMETERS for the first time — the format always allowed it, only the
+  registry never could. On top: the byte bridge (writeBytes, strict utf8Decode), std.random
+  (moved out of math, plus shuffle/choice/gaussian) and std.time (Instant/Duration, iso() with
+  floor semantics). Doc ratchet 370 → 430.
+
 - [x] **M22 — the language gaps** (2026-08-19, four slices, `feature/m22-language-gaps`).
   Compound assignment through the operator interfaces; interface inheritance with ONE parent
   and implication-only semantics — the chain-prefix slot layout is what lets a parent's
@@ -279,11 +310,12 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M22 is merged and released as v1.13.0** (PR #59) — the language gaps of the v2 sequence.
-Every planned point landed or got its documented decision; the details stand in the milestone
-block above and under §Design decisions. Next in the sequence: v1.14, the std extension — the
-`std.io.net`/`std.time` choice is the maintainer's (issues decide which), plus the open Erato
-register entry A4 (an opaque handle type).
+**M23 is built on `feature/m23-std-polish`** — the std polish, ships as v1.14.0. The scope came
+from a line-by-line audit of the standard library after the first extension list turned out to
+describe modules that already existed. Deferred by decision: the string method API via `extend`
+and iterator chaining (each needs its own design round plus a probe), the three-convention
+file-error cleanup (a 2.0 cut), and member-level `@Deprecated` (the attribute cannot sit on a
+member yet — surfaced when StringBuilder.length wanted one).
 
 **The repository moved and the clients moved out** (2026-08-19): the project lives in the
 `lyriclang` org — `lyriclang/lyric` is the toolchain, ONE repository with ONE version, and the

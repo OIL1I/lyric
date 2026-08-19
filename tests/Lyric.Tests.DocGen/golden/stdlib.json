@@ -3475,7 +3475,7 @@
           "Kind": "Class",
           "Name": "Random",
           "Signature": "pub class Random",
-          "Doc": "A deterministic pseudo-random generator (xorshift64*): one `int` of state, seeded by the\ncaller. Not cryptographic — keys need a source from the operating system.",
+          "Doc": "A deterministic pseudo-random generator. Moved to `std.random`, where `shuffle`, `choice`\nand `nextGaussian` live beside it; this twin goes with 2.0.",
           "Members": [
             {
               "Kind": "Field",
@@ -3485,7 +3485,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/math.lyr",
-                "Line": 293
+                "Line": 289
               }
             },
             {
@@ -3496,7 +3496,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/math.lyr",
-                "Line": 296
+                "Line": 292
               }
             },
             {
@@ -3507,7 +3507,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/math.lyr",
-                "Line": 306
+                "Line": 302
               }
             },
             {
@@ -3518,7 +3518,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/math.lyr",
-                "Line": 315
+                "Line": 311
               }
             },
             {
@@ -3529,7 +3529,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/math.lyr",
-                "Line": 324
+                "Line": 320
               }
             },
             {
@@ -3540,13 +3540,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/math.lyr",
-                "Line": 329
+                "Line": 325
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/math.lyr",
-            "Line": 291
+            "Line": 286
           }
         },
         {
@@ -3557,7 +3557,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/math.lyr",
-            "Line": 335
+            "Line": 331
           }
         }
       ]
@@ -3857,6 +3857,123 @@
           "Source": {
             "File": "stdlib/std/os.lyr",
             "Line": 61
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.random",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Class",
+          "Name": "Random",
+          "Signature": "pub class Random",
+          "Doc": "A deterministic pseudo-random generator (xorshift64*): one `int` of state, seeded by the\ncaller. Not cryptographic — keys need a source from the operating system.",
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "state",
+              "Signature": "state: int",
+              "Doc": "The generator state; every draw replaces it.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/random.lyr",
+                "Line": 22
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "seeded",
+              "Signature": "pub static fn seeded(seed: int): Random",
+              "Doc": "A generator with an explicit seed. A seed of 0 is a fixed point for xorshift — the\nsequence would stay 0 forever — so it is replaced silently rather than panicking on a\nplausible input.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/random.lyr",
+                "Line": 27
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextInt",
+              "Signature": "pub mut fn nextInt(): int",
+              "Doc": "The next raw value. It may have either sign.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/random.lyr",
+                "Line": 32
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextIntRange",
+              "Signature": "pub mut fn nextIntRange(lo: int, hi: int): int",
+              "Doc": "Uniformly distributed in `[lo, hi)`. An empty range yields `lo`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/random.lyr",
+                "Line": 42
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextFloat",
+              "Signature": "pub mut fn nextFloat(): float",
+              "Doc": "Uniformly distributed in `[0, 1)`.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/random.lyr",
+                "Line": 51
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextBool",
+              "Signature": "pub mut fn nextBool(): bool",
+              "Doc": "True or false, from the next draw's parity.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/random.lyr",
+                "Line": 58
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "nextGaussian",
+              "Signature": "pub mut fn nextGaussian(): float",
+              "Doc": "Normally distributed, mean 0 and deviation 1 (Box–Muller).",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/random.lyr",
+                "Line": 63
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/random.lyr",
+            "Line": 20
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "shuffle",
+          "Signature": "pub fn shuffle<T>(random: Random, xs: List<T>): void",
+          "Doc": "Shuffles in place, Fisher–Yates: every permutation equally likely, one draw per element.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/random.lyr",
+            "Line": 78
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "choice",
+          "Signature": "pub fn choice<T>(random: Random, xs: List<T>): ?T",
+          "Doc": "One element drawn uniformly, or `null` from an empty list.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/random.lyr",
+            "Line": 88
           }
         }
       ]
@@ -4541,6 +4658,201 @@
           "Source": {
             "File": "stdlib/std/test.lyr",
             "Line": 27
+          }
+        }
+      ]
+    },
+    {
+      "Path": "std.time",
+      "Doc": null,
+      "Items": [
+        {
+          "Kind": "Struct",
+          "Name": "Duration",
+          "Signature": "pub struct Duration",
+          "Doc": "A distance between two instants, in whole milliseconds. May be negative: `a.since(b)` with\n`b` later than `a` says so rather than hiding it.",
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "millis",
+              "Signature": "millis: int",
+              "Doc": "The distance in milliseconds; the sign is the direction.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 27
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "ofMillis",
+              "Signature": "pub static fn ofMillis(value: int): Duration",
+              "Doc": "A duration of whole milliseconds.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 30
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "ofSeconds",
+              "Signature": "pub static fn ofSeconds(value: int): Duration",
+              "Doc": "A duration of whole seconds.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 35
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "ofMinutes",
+              "Signature": "pub static fn ofMinutes(value: int): Duration",
+              "Doc": "A duration of whole minutes.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 40
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "totalMillis",
+              "Signature": "pub fn totalMillis(): int",
+              "Doc": "The whole distance in milliseconds.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 45
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "totalSeconds",
+              "Signature": "pub fn totalSeconds(): int",
+              "Doc": "The whole distance in seconds, truncated towards zero.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 50
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "plus",
+              "Signature": "pub fn plus(other: Duration): Duration",
+              "Doc": "The two added.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 55
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "minus",
+              "Signature": "pub fn minus(other: Duration): Duration",
+              "Doc": "The other subtracted from this one.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 60
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/time.lyr",
+            "Line": 25
+          }
+        },
+        {
+          "Kind": "Struct",
+          "Name": "Instant",
+          "Signature": "pub struct Instant",
+          "Doc": "A point on the wall clock: milliseconds since 1970-01-01 UTC.",
+          "Members": [
+            {
+              "Kind": "Field",
+              "Name": "millis",
+              "Signature": "millis: int",
+              "Doc": "Milliseconds since the epoch; negative is before 1970.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 68
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "now",
+              "Signature": "pub static fn now(): Instant",
+              "Doc": "The wall clock, now.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 71
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "ofEpochMillis",
+              "Signature": "pub static fn ofEpochMillis(value: int): Instant",
+              "Doc": "The instant at these epoch milliseconds — for stored timestamps and for tests, which\nwant a clock that stands still.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 77
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "epochMillis",
+              "Signature": "pub fn epochMillis(): int",
+              "Doc": "Milliseconds since the epoch — the raw number back, for storing.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 82
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "since",
+              "Signature": "pub fn since(earlier: Instant): Duration",
+              "Doc": "The distance from `earlier` to this instant. Negative when `earlier` is actually later.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 87
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "plus",
+              "Signature": "pub fn plus(d: Duration): Instant",
+              "Doc": "This instant moved by a duration; a negative one moves backwards.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 92
+              }
+            },
+            {
+              "Kind": "Method",
+              "Name": "iso",
+              "Signature": "pub fn iso(): string",
+              "Doc": "ISO 8601 in UTC, millisecond precision: `1970-01-01T00:00:00.000Z`.\n\n`divFloor`/`modFloor` rather than `/` and `%`, so an instant BEFORE the epoch lands in\nthe right day — truncation would round the day towards 1970 and hand the rest a negative\ntime.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/time.lyr",
+                "Line": 101
+              }
+            }
+          ],
+          "Source": {
+            "File": "stdlib/std/time.lyr",
+            "Line": 66
           }
         }
       ]
