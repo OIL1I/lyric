@@ -11,8 +11,9 @@ namespace Lyric.Tests.Sema;
 /// Lambdas + Closures — M4-Slice 4a (docs/Grammar.md §6.2). Bidirektionale
 /// Inference: unannotated parameters take the context FnType (a call argument, a binding, a return, a
 /// field); generic calls run in two phases (T from the eagerly typed arguments, U from the lambda
-/// return). Block lambdas deliver values through 'return' and need an annotation or a context
-/// (SEM0046); a 'return' checks against the lambda. Captures are recorded.
+/// return). Block lambdas deliver values through 'return'; without an annotation or a context the
+/// type is inferred from the body's returns (v1.13), unified like match arms. Captures are
+/// recorded.
 /// </summary>
 public class LambdaTests
 {
@@ -195,11 +196,48 @@ public class LambdaTests
             """));
     }
 
+    // --- block lambdas without context infer their return type from the body (v1.13) ---
+
     [Fact]
-    public void Value_returning_block_lambda_without_context_is_reported()
+    public void Value_returning_block_lambda_without_context_infers_from_the_returns()
     {
-        var de = Diags("fn u() { let f = (x: int) => { return x + 1; }; }");
+        var (t, de) = LastInit("fn u() { let f = (x: int) => { return x + 1; }; }");
+        AssertClean(de);
+        AssertType(new FnType([LyrType.Int], LyrType.Int), t);
+    }
+
+    [Fact]
+    public void A_null_return_widens_the_inferred_type_to_the_optional()
+    {
+        var (t, de) = LastInit(
+            "fn u() { let f = (x: int) => { if (x < 0) { return null; } return x; }; }");
+        AssertClean(de);
+        AssertType(new FnType([LyrType.Int], new Optional(LyrType.Int)), t);
+    }
+
+    [Fact]
+    public void Disagreeing_returns_are_one_error_naming_the_lambda()
+    {
+        var de = Diags(
+            "fn u() { let f = (x: int) => { if (x < 0) { return \"no\"; } return x; }; }");
+        var error = Assert.Single(de.Diagnostics, d => d.Code == "LYR-SEM0016");
+        Assert.Contains("block lambda", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_inferred_non_void_lambda_still_needs_return_coverage()
+    {
+        var de = Diags("fn u() { let f = (x: int) => { if (x < 0) { return x; } }; }");
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0046");
+    }
+
+    [Fact]
+    public void A_nested_lambda_keeps_its_returns_out_of_the_outer_inference()
+    {
+        var (t, de) = LastInit(
+            "fn u() { let f = (x: int) => { let inner = (y: int) => { return \"s\"; }; return x; }; }");
+        AssertClean(de);
+        AssertType(new FnType([LyrType.Int], LyrType.Int), t);
     }
 
     // --- valueless block lambdas without a context are void ---
@@ -227,11 +265,12 @@ public class LambdaTests
     }
 
     [Fact]
-    public void Void_defaulted_block_lambda_returning_a_value_is_still_flagged()
+    public void Void_defaulted_block_lambda_returning_a_value_infers_instead()
     {
-        // A value return in the body gives HasValueReturn and SEM0046, not the void default.
-        var de = Diags("fn u() { let f = (x: int) => { let y = x; return y; }; }");
-        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0046");
+        // A value return gives HasValueReturn, so the void default steps aside for inference.
+        var (t, de) = LastInit("fn u() { let f = (x: int) => { let y = x; return y; }; }");
+        AssertClean(de);
+        AssertType(new FnType([LyrType.Int], LyrType.Int), t);
     }
 
     [Fact]

@@ -214,6 +214,29 @@ public class LoweringTests
         Assert.DoesNotContain("std.io.console.prompt", namen);
     }
 
+    /// <summary>
+    /// The canonical <c>@Deprecated</c> emits no attribute row and roots nothing: the promise is
+    /// that it changes diagnostics and NOTHING else. With a row, the pruner would keep every
+    /// deprecated declaration alive in every importing program — dead code carried around exactly
+    /// because it was marked for removal.
+    /// </summary>
+    [Fact]
+    public void A_deprecated_declaration_is_neither_a_row_nor_a_root()
+    {
+        var module = LowerWithStdlib("""
+            import std.string { toUpper };
+            fn main(): int {
+                let _ = toUpper("x");
+                return 0;
+            }
+            """);
+
+        // 'newStringBuilder' carries @Deprecated in std.string; it must not survive into a
+        // program that never calls it, and no attribute row may exist at all.
+        Assert.DoesNotContain(module.Functions, f => f.Name.Contains("newStringBuilder"));
+        Assert.Empty(module.Attributes);
+    }
+
     [Fact]
     public void Stdlib_signatures_are_enforced()
     {

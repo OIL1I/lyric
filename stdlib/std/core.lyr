@@ -11,9 +11,10 @@
 /// reach them.
 module std.core;
 
-// For the Display extensions below. 'std.string' does not import 'std.core', so there is no cycle,
-// and even one would terminate because the loader registers before descending.
-import std.string { fromInt, fromFloat, fromBool, fromChar, length, charAt };
+// No imports, deliberately: 'std.core' is the library's root, and any module it imported could
+// never import 'std.core' back (LYR-RES0005) — which is exactly what 'std.string' needs for
+// '@Deprecated'. The extensions below therefore use PRIVATE duplicates of six string natives,
+// declared at the end of this file; the registry binds both names to the same host function.
 
 /// Ends the program with `message` and a backtrace.
 ///
@@ -492,3 +493,17 @@ pub struct Deprecated :: [OnModule, OnType, OnFunction] {
 // obviously right one, and a wrong default here would surface only as a map losing values.
 //
 // `Equatable` and `Ordered` remain: there `NaN != NaN` is the expected behaviour.
+
+// --- private string natives ---------------------------------------------------------------
+//
+// Duplicates of `std.string` declarations, private and for the extensions above only. This
+// module is the library's root and imports nothing — with an import of `std.string` here, no
+// module could import `std.core` back (LYR-RES0005). The registry binds both names to the same
+// host function, so behavior has one truth.
+
+fn fromInt(value: int): string;
+fn fromFloat(value: float): string;
+fn fromBool(value: bool): string;
+fn fromChar(value: char): string;
+fn length(text: string): int;
+fn charAt(text: string, index: int): char;

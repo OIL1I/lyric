@@ -529,12 +529,20 @@ public static class ModuleLowerer
     private static List<IrAttribute> CollectAttributes(Compilation compilation, TypeResult types,
         Dictionary<FunctionSymbol, FunctionId> ids, TypeTable typeTable)
     {
+        // The canonical @Deprecated emits NO row: its consumer is the sema, and the promise is
+        // that it changes diagnostics and nothing else. A row would also make the pruner keep
+        // the deprecated declaration — every program importing the module would carry dead code
+        // exactly because it was marked for removal.
+        var deprecated = compilation.FindModule(["std", "core"])?.Members.LookupLocal("Deprecated");
+        bool EmitsRow(AttributeNode a) => !ReferenceEquals(types.RefOf(a), deprecated);
+
         var rows = new List<IrAttribute>();
         foreach (var module in compilation.Modules)
         {
             var ast = compilation.AstOf(module);
             foreach (var attribute in ast.Attributes)
-                rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Module, 0, types, typeTable));
+                if (EmitsRow(attribute))
+                    rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Module, 0, types, typeTable));
 
             foreach (var decl in ast.Declarations)
             {
@@ -550,13 +558,15 @@ public static class ModuleLowerer
                         break;
 
                     case FunctionDecl { Attributes.Length: > 0 } fn:
+                        if (!fn.Attributes.Any(EmitsRow)) break; // @Deprecated only: no row, no root
                         if (module.Members.LookupLocal(fn.Name) is not FunctionSymbol fs
                             || !ids.TryGetValue(fs, out var fid))
                             throw new InternalCompilationException(
                                 $"ir: attributed function '{fn.Name}' has no lowered id");
                         foreach (var attribute in fn.Attributes)
-                            rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Function,
-                                fid.Value, types, typeTable));
+                            if (EmitsRow(attribute))
+                                rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Function,
+                                    fid.Value, types, typeTable));
                         break;
 
                     case StructDecl { Attributes.Length: > 0 } s:
@@ -572,6 +582,7 @@ public static class ModuleLowerer
 
                 void AddTypeRows(string name, AttributeNode[] attributes)
                 {
+                    if (!attributes.Any(EmitsRow)) return; // @Deprecated only: no row, no intern
                     // Interned exactly because the row references it: an attributed type nobody
                     // uses would otherwise be missing from the table, and the row would have no
                     // index to point at.
@@ -580,8 +591,9 @@ public static class ModuleLowerer
                             $"ir: attributed type '{name}' has no symbol");
                     var targetId = typeTable.Intern(target);
                     foreach (var attribute in attributes)
-                        rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Type,
-                            targetId.Value, types, typeTable));
+                        if (EmitsRow(attribute))
+                            rows.Add(BuildAttributeRow(attribute, IrAttributeTarget.Type,
+                                targetId.Value, types, typeTable));
                 }
             }
         }

@@ -11,6 +11,10 @@
 
 module std.string;
 
+// Possible since v1.13: 'std.core' imports nothing anymore — it is the library's root, and this
+// import is the reason why.
+import std.core { Deprecated };
+
 /// The two joined — what `+` on strings compiles to.
 pub fn concat(a: string, b: string): string;
 
@@ -556,8 +560,8 @@ pub class StringBuilder {
     }
 }
 
-/// An empty builder. Prefer `StringBuilder.new()`; deprecating this one waits on attribute
-/// visibility — `@Deprecated` lives in `std.core`, and importing that here would be a cycle.
+/// An empty builder.
+@Deprecated { message = "use StringBuilder.new()" }
 pub fn newStringBuilder(): StringBuilder {
     return StringBuilder.new();
 }

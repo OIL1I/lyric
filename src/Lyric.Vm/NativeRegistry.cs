@@ -247,15 +247,26 @@ public sealed class NativeRegistry
             _ => throw new LyricPanic(VmDiagnostics.Panicked,
                 "resume on a coroutine that has already finished"));
 
+        // 'std.core' carries PRIVATE duplicates of six of these declarations (fromInt through
+        // charAt): the module is the library's root and imports nothing — with an import of
+        // std.string there, no module could import std.core back (LYR-RES0005). One host function
+        // under both names keeps a single truth about the behavior.
+        void Both(string name, TypeTag[] paramTypes, TypeTag returnType,
+            Func<LyrValue[], LyrValue> implementation)
+        {
+            registry.Register("std.string." + name, paramTypes, returnType, implementation);
+            registry.Register("std.core." + name, paramTypes, returnType, implementation);
+        }
+
         // Invariant culture: '3.5', not '3,5'. The same .lyrbc produces the same output on every
         // machine.
-        registry.Register("std.string.fromInt", new[] { TypeTag.I64 }, TypeTag.String,
+        Both("fromInt", new[] { TypeTag.I64 }, TypeTag.String,
             args => LyrValue.FromString(args[0].AsI64.ToString(CultureInfo.InvariantCulture)));
-        registry.Register("std.string.fromFloat", new[] { TypeTag.F64 }, TypeTag.String,
+        Both("fromFloat", new[] { TypeTag.F64 }, TypeTag.String,
             args => LyrValue.FromString(args[0].AsF64.ToString("R", CultureInfo.InvariantCulture)));
-        registry.Register("std.string.fromBool", new[] { TypeTag.Bool }, TypeTag.String,
+        Both("fromBool", new[] { TypeTag.Bool }, TypeTag.String,
             args => LyrValue.FromString(args[0].AsBool ? "true" : "false"));
-        registry.Register("std.string.fromChar", new[] { TypeTag.Char }, TypeTag.String,
+        Both("fromChar", new[] { TypeTag.Char }, TypeTag.String,
             args => LyrValue.FromString(char.ConvertFromUtf32((int)args[0].Bits)));
 
         // --- queries --------------------------------------------------------------------
@@ -264,10 +275,10 @@ public sealed class NativeRegistry
         // what iteration yields. The cost is O(n) rather than O(1); there is no 's[i]', so a
         // quadratic index loop cannot be written.
 
-        registry.Register("std.string.length", str, TypeTag.I64,
+        Both("length", str, TypeTag.I64,
             args => LyrValue.FromI64(CodepointCount(args[0].AsString)));
 
-        registry.Register("std.string.charAt", new[] { TypeTag.String, TypeTag.I64 }, TypeTag.Char,
+        Both("charAt", new[] { TypeTag.String, TypeTag.I64 }, TypeTag.Char,
             args => LyrValue.FromBits((ulong)CodepointAt(args[0].AsString, args[1].AsI64)));
 
         registry.Register("std.string.substring",

@@ -312,6 +312,31 @@ public class InterfaceInheritanceTests
     }
 
     [Fact]
+    public void Two_instances_of_one_interface_are_still_two_conformances()
+    {
+        // The dedup across a conformance list keys on the INSTANCE, not the symbol: 'Mul<Vec2>'
+        // beside 'Mul<float>' must reach the signature check that refuses the second — the pin
+        // against a closure walk that would skip it as "already seen".
+        var de = Check(
+            """
+            import std.core { Mul };
+
+            struct Vec2 :: [Mul<Vec2>, Mul<float>] {
+                x: float,
+
+                fn mul(other: Vec2): Vec2 {
+                    return Vec2 { x = this.x * other.x };
+                }
+            }
+
+            fn main(): int {
+                return 0;
+            }
+            """);
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0042");
+    }
+
+    [Fact]
     public void A_parent_written_out_beside_its_child_is_checked_once()
     {
         // 'Tag' misses 'name'; with Labeled AND Named declared, the closure walks Named once —

@@ -32,10 +32,28 @@ bytecode format, the command line and the embedding API. Compiler internals are 
   reporting `LYR-SEM0003`. Field and element targets stay written out — the desugaring would
   evaluate the object or the index twice, and that stays visible in source.
 
+- **Block lambdas infer their return type**: `(x: int) => { return x * 2; }` needs neither an
+  annotation nor a context anymore — the type comes from the body's `return` statements,
+  unified like match arms (`return null;` widens to the optional). This also closes the
+  open-generic case: `apply(5, (n) => { … })` binds `U` from the block. A non-void inferred
+  lambda still needs return coverage, and disagreeing returns are one error at the lambda.
+
 ### Changed
 
 - **`LYR-PAR0039` retired**: `interface B :: [A]` parses since this release; everything the
   parent list may not be is a semantic message now, not a parse error.
+
+- **`newStringBuilder` warns as deprecated** — the piece v1.12 had to leave out. `std.core`
+  imports nothing anymore: its extensions use private duplicates of six string natives
+  (`fromInt` through `charAt`; the registry binds both names to the same host function), which
+  makes `std.core` the library's root — and `import std.core { Deprecated }` inside
+  `std.string` legal. Public API is unchanged; existing bytecode keeps running.
+
+### Fixed
+
+- **`@Deprecated` keeps its promise**: it emits no metadata row and roots nothing. Previously a
+  non-generic deprecated function survived dead-code pruning in every importing program — dead
+  code carried along exactly because it was marked for removal.
 
 ## v1.12.0 — 2026-08-19
 

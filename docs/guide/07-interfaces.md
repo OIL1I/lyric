@@ -285,9 +285,12 @@ fn main(): int {
 }
 ```
 
-A mixed form such as `Vec2 * float` does not exist yet: the interfaces are homogeneous by design,
-and `%` stays numeric-only. Compound assignment (`v += w`) does not reach through the interfaces
-either — write `v = v + w`.
+A mixed form such as `Vec2 * float` does not exist, by decision: a type conforms to `Mul` once,
+and without overloading a second `mul` for a second right-hand type cannot exist either — the
+form would buy one fixed partner type and nothing more. `%` stays numeric-only. Compound
+assignment (`v += w`) reaches through the interfaces for variable targets since v1.13; a field or
+element target stays written out (`p.v = p.v + w`), because the shorthand would evaluate the
+object or the index twice.
 
 The last operator is `as`. Beyond the numeric casts, which keep their built-in meaning, a cast is a
 conversion the operand's type declared through `Into`:

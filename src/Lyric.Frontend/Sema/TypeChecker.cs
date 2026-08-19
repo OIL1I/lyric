@@ -51,6 +51,11 @@ public sealed class TypeChecker
 
     private LyrType _currentReturn = LyrType.Void;
     private LyrType? _currentYield; // the yield type when the current function is a coroutine
+
+    /// <summary>Non-null while a block lambda infers its return type: every <c>return</c> of that
+    /// lambda lands here instead of being checked against a known type. Saved and restored on
+    /// every lambda entry, so a nested lambda's returns never leak into the outer collection.</summary>
+    private List<LyrType>? _returnInference;
     private LyrType? _currentThis;
     private ModuleSymbol? _currentModule; // for extension visibility
     private Dictionary<Symbol, LyrType> _narrowed = new(ReferenceEqualityComparer.Instance); // ?T narrowed to T inside a proven non-null region
@@ -398,8 +403,9 @@ public sealed class TypeChecker
     {
         if (interfaces.Length == 0) return;
         var candidates = CandidateMethods(implementer, module);
-        // One seen-set across the list: a parent written out beside its child is checked once.
-        var seen = new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance);
+        // One instance list across the walk: a parent written out beside its child is checked
+        // once, while two instances of one interface are still two conformances to check.
+        var seen = new List<LyrType>();
 
         foreach (var node in interfaces)
         {
@@ -611,6 +617,10 @@ public sealed class TypeChecker
                             "a coroutine ends with a bare 'return;' — it cannot return a value");
                     }
                 }
+                // A block lambda inferring its return type: the returns are COLLECTED here and
+                // unified afterwards — there is nothing to check assignability against yet.
+                else if (_returnInference is { } inferred)
+                    inferred.Add(r.Value is not null ? CheckExpr(r.Value, scope) : LyrType.Void);
                 else if (r.Value is not null) CheckAssignable(r.Value, CheckExpr(r.Value, scope, _currentReturn), _currentReturn, r.Span);
                 else if (!TypeFacts.IsVoid(_currentReturn) && !_currentReturn.IsError)
                     _de.Report("LYR-SEM0001", Severity.Error, r.Span, "return without a value in a non-void function");
@@ -2017,10 +2027,9 @@ public sealed class TypeChecker
     /// Is there an <see cref="ErrorType"/> anywhere inside this type?
     /// </summary>
     /// <remarks>
-    /// <para><c>IsError</c> alone is not enough: a block lambda without a return type annotation has
-    /// the type <c>fn(int) -&gt; &lt;error&gt;</c> — intact outside, broken inside. The cause is
-    /// already reported as <c>LYR-SEM0046</c>, and a second line about a type argument that cannot be
-    /// inferred would bury it.</para>
+    /// <para><c>IsError</c> alone is not enough: a block lambda whose returns disagree has the type
+    /// <c>fn(int) -&gt; &lt;error&gt;</c> — intact outside, broken inside. The cause is already
+    /// reported, and a second line about a type argument that cannot be inferred would bury it.</para>
     /// </remarks>
     private static bool ContainsError(LyrType type) => type switch
     {
@@ -2267,9 +2276,9 @@ public sealed class TypeChecker
     // arguments from the '::'. Declared interfaces plus those from visible `extend T :: [I]` blocks.
     private IEnumerable<(TypeSymbol iface, Dictionary<GenericParamSymbol, LyrType> subst)> InterfacesOf(TypeSymbol ts)
     {
-        // One seen-set across the whole list: the same interface reached twice — the diamond, or
+        // One instance list across the whole walk: the same instance reached twice — a parent
         // written out beside its child — is one conformance, not two.
-        var seen = new HashSet<TypeSymbol>(ReferenceEqualityComparer.Instance);
+        var seen = new List<LyrType>();
         foreach (var node in DeclaredInterfaceNodes(ts))
             foreach (var r in ClosureOfNode(node, seen)) yield return r;
         foreach (var block in _comp.Extensions.Blocks)
@@ -2317,14 +2326,26 @@ public sealed class TypeChecker
     }
 
     /// <summary>The closure behind one conformance node: the named interface and its transitive
-    /// parents, as (definition, substitution) pairs.</summary>
+    /// parents, as (definition, substitution) pairs.
+    ///
+    /// <para><paramref name="seenInstances"/> deduplicates ACROSS a conformance list by the
+    /// resolved instance, not by the symbol: a parent written out beside its child is one
+    /// conformance, but <c>Mul&lt;Vec2&gt;</c> beside <c>Mul&lt;float&gt;</c> is two — the second
+    /// must still reach the signature check that refuses it.</para></summary>
     private IEnumerable<(TypeSymbol iface, Dictionary<GenericParamSymbol, LyrType> subst)>
-        ClosureOfNode(TypeNode node, HashSet<TypeSymbol>? seen = null)
+        ClosureOfNode(TypeNode node, List<LyrType>? seenInstances = null)
     {
         if (Conformance.InterfaceOf(node, _binding) is not { } iface) yield break;
         var resolved = ResolveType(node, _currentModule?.Members ?? _comp.Builtins);
-        foreach (var (i, inst) in InterfaceClosure(iface, resolved, seen))
+        foreach (var (i, inst) in InterfaceClosure(iface, resolved))
+        {
+            if (seenInstances is not null)
+            {
+                if (seenInstances.Any(t => LyrType.Equal(t, inst))) continue;
+                seenInstances.Add(inst);
+            }
             yield return (i, inst is GenericInstance gi ? SubstMap(gi) : EmptySubst);
+        }
     }
 
     /// <param name="instance">The instance from a type path with arguments
@@ -3056,7 +3077,7 @@ public sealed class TypeChecker
         return true;
     }
 
-    private LyrType UnifyArms(List<LyrType> bodies, Span span)
+    private LyrType UnifyArms(List<LyrType> bodies, Span span, string what = "match arms")
     {
         if (bodies.Count == 0) return LyrType.Error;
         var result = bodies[0];
@@ -3066,7 +3087,7 @@ public sealed class TypeChecker
             if (result.IsError) { result = bodies[i]; continue; }
             if (LyrType.Equal(result, bodies[i])) continue;
             if (WidenAgainstNull(result, bodies[i]) is { } widened) { result = widened; continue; }
-            _de.Report("LYR-SEM0016", Severity.Error, span, $"match arms have incompatible types: '{TypeFacts.Display(result)}' vs '{TypeFacts.Display(bodies[i])}'");
+            _de.Report("LYR-SEM0016", Severity.Error, span, $"{what} have incompatible types: '{TypeFacts.Display(result)}' vs '{TypeFacts.Display(bodies[i])}'");
             break;
         }
         return result;
@@ -3437,15 +3458,17 @@ public sealed class TypeChecker
 
     // A lambda with bidirectional inference: unannotated parameters take the context FnType, and the
     // return context — an annotation before the context — types the body. Block lambdas yield values
-    // through 'return' only, so the return type has to come from an annotation or the context, and a
-    // non-void one requires return coverage.
+    // through 'return' only; without an annotation or a context the type is inferred from the body's
+    // returns (v1.13), and a non-void one requires return coverage.
     private LyrType CheckLambda(LambdaExpr lam, SymbolTable scope, LyrType? expected = null)
     {
         var expFn = expected is FnType ef && ef.Parameters.Length == lam.Parameters.Length ? ef : null;
 
         var savedYield = _currentYield;
         var savedReturn = _currentReturn;
+        var savedInference = _returnInference;
         _currentYield = null; // a lambda is no coroutine, so a yield inside it is an error
+        _returnInference = null; // this lambda's returns are its own, never the outer collection's
 
         var lambdaScope = new SymbolTable(scope);
         var pTypes = new LyrType[lam.Parameters.Length];
@@ -3491,13 +3514,20 @@ public sealed class TypeChecker
                 }
                 else if (contextRet is null || openGeneric)
                 {
-                    ret = Report(lam.Span, "LYR-SEM0046", openGeneric
-                            ? "cannot infer a generic return type for a block lambda"
-                            : "the return type of this block lambda is not known here",
-                        new DiagnosticNote(
-                            "add a return type annotation, or give the lambda a context type"));
-                    _currentReturn = LyrType.Error; // do not let returns in the body cascade
+                    // Inference from the body's returns (v1.13), with the same unification match
+                    // arms use. The collection diverts every 'return' in THIS lambda; a nested
+                    // lambda saves and restores the list, so its returns stay its own.
+                    var collected = new List<LyrType>();
+                    _returnInference = collected;
+                    _currentReturn = LyrType.Error; // nothing reads it while collecting
                     CheckBlock(b, lambdaScope);
+                    _returnInference = null;
+                    ret = collected.Count == 0
+                        ? LyrType.Void // openGeneric without a value return: U binds to void
+                        : UnifyArms(collected, lam.Span, "the returns of this block lambda");
+                    if (!TypeFacts.IsVoid(ret) && !ret.IsError && !Flow.AlwaysReturns(b, _result))
+                        _de.Report("LYR-SEM0046", Severity.Error, lam.Span,
+                            "a non-void block lambda must return or throw on every path");
                 }
                 else
                 {
@@ -3516,6 +3546,7 @@ public sealed class TypeChecker
 
         _currentReturn = savedReturn;
         _currentYield = savedYield;
+        _returnInference = savedInference;
 
         RecordCaptures(lam);
         return new FnType(pTypes, ret);
