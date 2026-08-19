@@ -10,7 +10,12 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v1.13.0 — 2026-08-19
+
+The language gaps close. Interface inheritance arrives — one parent, implied through the whole
+chain — compound assignment reaches through the operator interfaces, block lambdas infer their
+return type, and `std.core` becomes the import-free root of the library. One question got its
+documented No: heterogeneous operator arithmetic. The bytecode format stays **3.2**.
 
 ### Added
 

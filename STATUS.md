@@ -149,8 +149,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4228 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **1.12.0**.
+4257 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **1.13.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -279,11 +279,11 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M22 is built on `feature/m22-language-gaps`** — the language gaps of the v2 sequence, ships
-as v1.13.0. Every planned point landed or got its documented decision; the details stand in
-the milestone block above and under §Design decisions. Next in the sequence: v1.14, the std
-extension — the `std.io.net`/`std.time`/`std.random` choice (issues decide which), plus the
-Erato embedding answers (A4/E4).
+**M22 is merged and released as v1.13.0** (PR #59) — the language gaps of the v2 sequence.
+Every planned point landed or got its documented decision; the details stand in the milestone
+block above and under §Design decisions. Next in the sequence: v1.14, the std extension — the
+`std.io.net`/`std.time` choice is the maintainer's (issues decide which), plus the open Erato
+register entry A4 (an opaque handle type).
 
 **The repository moved and the clients moved out** (2026-08-19): the project lives in the
 `lyriclang` org — `lyriclang/lyric` is the toolchain, ONE repository with ONE version, and the
@@ -466,8 +466,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`fmt, cli: lyrfmt ships, lyric fmt drives it, and the repository formats itself` (closes M18's
-delivery list; the release commit follows on main)
+`std, ir, sema: the library gets a root, @Deprecated its promise, block lambdas their inference`
+(closes M22's delivery list; released as v1.13.0)
 
 ---
 
