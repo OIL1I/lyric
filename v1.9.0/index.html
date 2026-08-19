@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.9.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.9.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.9.0 — 2026-08-19</h2>
+<p>Two tools. <code>lyric pack</code> turns a program into one standalone executable, and <code>lyric fmt</code> gives
+every Lyric file the one shape there is. The language, the standard library, the bytecode
+format and the embedding API are untouched; the format stays <strong>3.2</strong>, and a <code>.lyrbc</code> built by
+1.8.0 packs and runs unchanged.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong><code>lyric pack app.lyr</code> — a program becomes one file.</strong></p>
+<pre><code class="language-bash">lyric pack app.lyr
+./app arg1 arg2
+</code></pre>
+<p>The result is a copy of a prebuilt stub runtime with the compiled module and a 24-byte footer
+appended — a byte copy, no linker, no .NET on the target machine. The packed program owns its
+whole command line (no <code>--</code> protocol, no wrapper options), runs with every capability like
+any standalone program, exits with <code>main</code>'s return value, and its panics name your lines —
+same runtime, same bytes, same backtraces as <code>lyric run</code>.</p>
+<p>Two new binaries carry it: <code>lyrpack</code>, which packs a <code>.lyrbc</code> and nothing else, and <code>lyrstub</code>,
+the runtime half of a packed program. The release archives hold the platform's stub under
+<code>stubs/&lt;rid&gt;/</code>; a bare stub started directly explains itself instead of failing obscurely,
+and a truncated pack is reported as damaged rather than executed. The format is specified in
+<a href="/v1.9.0/pack/"><code>docs/Pack.md</code></a>, the guide's chapter 17 says what to know before shipping —
+including that macOS requires an ad-hoc re-sign after packing, which the release pipeline
+itself performs and verifies on every platform.</p>
+</li>
+<li><p><strong><code>lyric fmt</code> — the formatter.</strong> In place for files and directories, <code>--check</code> for CI (writes
+nothing, exits nonzero when anything would change), <code>--stdin</code> for editors. No style options.</p>
+<p>What it keeps: every comment (trailing ones trailing), your blank lines capped at one, your
+literal spellings (<code>0xFF</code>, <code>1_000_000</code>). What it decides: line breaks against the 100-column
+limit, trailing commas exactly where the grammar allows them and only in broken layout, a
+blank line after the module header and between declarations with bodies. A file that does
+not parse is reported and left byte-for-byte untouched.</p>
+<p>The repository holds itself to it: the standard library, the examples and the templates are
+formatted, and a test fails when they stop being it.</p>
+</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><strong>The standard library, the examples and the project templates are reformatted</strong> with the
+new formatter. No signature, no name and no behaviour changed — the test suite verifies the
+reformatted sources compile to the same programs.</li>
+</ul>
+<h3 id="not-in-this-release">Not in this release</h3>
+<ul>
+<li><strong>Cross-platform packing sugar</strong>: a pack is for one platform, and a foreign platform packs
+via <code>--stub</code> with that platform's stub out of its archive. No <code>--target</code> until someone
+needs it.</li>
+<li><strong>A trimmed stub</strong>: 73.5 MB self-contained today; trimming measures 13.0 MB and survives a
+smoke test, but one smoke is not a gate. Decision material for the next scope check.</li>
+<li><strong>Capability narrowing at pack time</strong>: a packed program runs with everything, like any
+standalone program. Narrowing is a footer field for a future minor.</li>
+<li><strong><code>textDocument/formatting</code> in the language server</strong>: the formatter lives in the library the
+server already uses; the wiring is a later slice.</li>
+<li><strong>Format-on-save configuration, formatter style flags</strong>: deliberately never.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
