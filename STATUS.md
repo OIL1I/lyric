@@ -17,6 +17,26 @@ v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables
 split the editor clients release from their own repositories, and a toolchain release carries
 the archives alone.
 
+**M21 — the std rework — is BUILT** (2026-08-19, branch `feature/m21-std-rework`, four
+slices, ships as v1.12.0). The delivery list:
+
+- [x] every public item of the standard library documented; the coverage ratchet pins
+      COMPLETENESS (370 of 370), not a number (slice 1)
+- [x] the audit fixed inline where behavior-neutral: German locals and two parameters, torn
+      fragments, milestone references in comments, the misplaced capacity doc (slice 1)
+- [x] the import-std.string crash is a diagnostic naming the trap; a builtin-shadowing import
+      warns (LYR-SEM0077) (slice 2)
+- [x] readBytes — raw bytes against the U+FFFD limitation; write-side filed, array parameters
+      have never crossed the native boundary (slice 2)
+- [x] constructors on the types (List/Map/Set.empty, StringBuilder.new, Random.seeded); the
+      approved relics deprecated with successors, corpus migrated in the same commit (slice 2)
+- [x] @Deprecated may sit on generics (the one row-less exception), and a generic static call
+      substitutes the caller's T — two Vm regression tests pin both (slice 2)
+- [x] stdlib-tests/: 27 behavioral tests in Lyric, run by lyrtest, wired into dotnet test,
+      covered by both corpus invariants (slice 3)
+- [x] guide 13 documents constructors-on-types and the stale-copy trap; CHANGELOG as
+      Unreleased (slice 4)
+
 **M20 — attributes become load-bearing — is BUILT** (2026-08-19, branch
 `feature/m20-attributes`, three slices, ships as v1.11.0). The delivery list:
 
@@ -107,8 +127,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4208 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-(`lyrtest` is the newest) plus `lyrembed.dll`, version **1.11.0**.
+4228 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **1.11.0** (M21 pending review as v1.12.0).
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -124,6 +144,14 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M21 — the std rework** (2026-08-19, four slices, `feature/m21-std-rework`, 4228 tests
+  green). All 370 public items documented with the ratchet pinning completeness; constructors on
+  the types with the first real @Deprecated wave and the whole corpus migrated in the same
+  commit; readBytes against the U+FFFD limitation; the import-std.string crash became a
+  diagnostic; and stdlib-tests/ — the library tested by the language it is written in, through
+  the runner the toolchain ships. Two language fixes forced by the wave: @Deprecated on
+  generics (row-less), and generic static calls substituting the caller's T.
 
 - [x] **M20 — attributes become load-bearing** (2026-08-19, three slices,
   `feature/m20-attributes`, 4208 tests green). One attribute read by the compiler, one by a new
@@ -147,27 +175,6 @@ out of them and hands its own functions, types and value structs in.
   - **Two long-standing entries closed on the way**: the static-extension asymmetry is a
     deprecation warning now, and duplicate module names are an error with a note at the first
     claim. The corpus checks in silence, and a test holds it there.
-
-- [x] **M18 — the formatter** (2026-08-19, four slices, `feature/m18-lyrfmt`, 4125 tests green
-  in Debug and Release). gofmt's shape for Lyric: parse, print from the tree, no style options.
-  - **Wadler under everything**: the node formatters say what belongs together and where
-    breaking is allowed; ONLY the renderer measures columns (width 100, indent 4 — the numbers
-    CONTRIBUTING already had). `IfBroken` carries the trailing commas of broken layout, exactly
-    where the grammar permits one.
-  - **The AST decides two things.** Literals lost their spelling, so every literal prints from
-    its source span. And there are no parenthesis nodes, so parentheses re-derive from §6.1 —
-    redundant ones GO (`(a && b) || c` loses its pair; `&` beats `==` here, unlike C), needed
-    ones return, and the corpus invariant is what proves no meaning moved.
-  - **Comments are one positional stream** — line, block and doc under a single cursor,
-    consumed at sequence boundaries; trailing stays trailing, the group glued to an item
-    travels with it, a comment inside an expression surfaces at the statement boundary (the
-    documented trade). Blank lines are the user's, capped at one; imports collapse, top-level
-    declarations breathe, bodiless natives group.
-  - **The repository is the test.** Four invariants over every `.lyr` in stdlib, examples and
-    templates — formats, stable, same tree, no comment lost — and since the corpus was
-    reformatted with its own tool, `The_repository_is_formatted` holds the gofmt property
-    permanently. Two style rules were corrected against the corpus before freezing it; the
-    goldens pin taste, the corpus pins correctness.
 
 ## Measurements
 
@@ -255,12 +262,13 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M20 is merged and released as v1.11.0** (PR #57). Attributes stopped being decoration: the compiler reads
-`@Deprecated`, the new `lyric test` reads `@Test` — through the same embedding machinery a host
-uses, deliberately. The compiler-read attribute set is language contract from here on and grows
-by decision; suppression stayed out for exactly that reason. Next in the agreed v2 sequence:
-v1.12, the std rework — adoption of operators and attributes across the standard library, full
-documentation, and the first real `@Deprecated` uses, whose removals land with 2.0.
+**M21 is built and awaits review** (branch `feature/m21-std-rework`, four slice commits, PR to
+follow; ships as v1.12.0). The std rework the plan promised: documented to the last item,
+constructors on the types, the first deprecation clocks running, the library testing itself in
+Lyric. Two compiler gaps fell on the way and are fixed with regression tests. Next in the v2
+sequence: v1.13, the language gaps — compound assignment through the operator interfaces,
+the heterogeneous-arithmetic decision, interface inheritance (decide, then build), the
+block-lambda inference, and the attribute-visibility question newStringBuilder filed.
 
 **The repository moved and the clients moved out** (2026-08-19): the project lives in the
 `lyriclang` org — `lyriclang/lyric` is the toolchain, ONE repository with ONE version, and the

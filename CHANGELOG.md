@@ -10,6 +10,53 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+The standard library grows up. Every public item is documented, constructors live on the types,
+the first real deprecations start their clock, and the library tests itself — in Lyric. Two
+compiler fixes came out of the work. The bytecode format stays **3.2**.
+
+### Added
+
+- **Constructors on the types**: `List<T>.empty()`, `Map<K, V>.empty()`, `Set<T>.empty()`,
+  `StringBuilder.new()` and `Random.seeded(seed)`. The free functions `emptyList`, `emptyMap`,
+  `emptySet` and `newRandom` still work and warn as **deprecated** — the first real uses of
+  `@Deprecated`, and their removal lands with the next major. (`newStringBuilder` points at its
+  successor in the documentation; its attribute waits on `std.core` visibility inside
+  `std.string`, where the import would be a cycle.)
+
+- **`std.io.file.readBytes`**: the whole content as raw bytes, undecoded — the answer
+  `readText` cannot give, because its UTF-8 decoding turns invalid bytes into U+FFFD. Writing
+  bytes is not there yet: an array has never crossed the native boundary as a parameter, and
+  that machinery is a change of its own.
+
+- **The standard library tests itself.** `stdlib-tests/` holds behavioral tests written in
+  Lyric and run by `lyric test`; the build runs them, and both repository invariants —
+  formatted, and compiling in silence — cover the directory.
+
+- **Every public item of the standard library is documented** — hover and the reference site
+  answer everywhere — and a test pins completeness, not a count: new API without documentation
+  is a red build.
+
+- **A bare import that shadows a builtin type warns** (`LYR-SEM0077`): `import std.string;`
+  binds the name `string`, and the annotation then names the module. The warning says the way
+  out; using the shadowed name as a type is now a proper error naming the trap — previously it
+  CRASHED the compiler on the local-annotation path.
+
+### Changed
+
+- **`@Deprecated` may sit on generic declarations** — the one exception to the
+  no-attributes-on-generics rule, because its consumer is the compiler and no metadata row is
+  involved; none is emitted there.
+
+- **A static call on a generic instance substitutes the caller's type parameter**:
+  `List<T>.empty()` inside your own generic function works now; previously the lowering met the
+  bare `T` and failed with an internal error.
+
+- Two parameters of `std.string.replace`/`replaceFirst` are named `replacement` (signature help
+  used to show a German name); every remaining German local and section header in the library
+  is English now.
+
 ## v1.11.0 — 2026-08-19
 
 Attributes stop being decoration. One is now read by the compiler — `@Deprecated` — and one by
