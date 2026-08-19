@@ -43,6 +43,16 @@
     <!-- Handed to every project below. With no Rid this is just the configuration, as before. -->
     <PublishProperties>Configuration=$(Configuration)</PublishProperties>
     <PublishProperties Condition="'$(Rid)' != ''">$(PublishProperties);RuntimeIdentifier=$(Rid);SelfContained=$(SelfContained)</PublishProperties>
+
+    <!--
+      The stub lyrpack packs with. Unlike the binaries above it never runs from this directory —
+      it is a TEMPLATE, one file, under stubs/<rid>/ where lyrpack resolves it. A shipping build
+      makes it self-contained like everything else in the archive; a local run keeps it
+      framework-dependent for the SDK's own platform, so 'lyric pack' works out of a local
+      publish too.
+    -->
+    <StubRid Condition="'$(Rid)' != ''">$(Rid)</StubRid>
+    <StubRid Condition="'$(Rid)' == ''">$(NETCoreSdkPortableRuntimeIdentifier)</StubRid>
   </PropertyGroup>
 
   <ItemGroup>
@@ -55,6 +65,7 @@
     <Binary Include="..\src\Lyrvm\Lyrvm.csproj" />
     <Binary Include="..\src\Lyrrepl\Lyrrepl.csproj" />
     <Binary Include="..\src\Lyrbuild\Lyrbuild.csproj" />
+    <Binary Include="..\src\Lyrpack\Lyrpack.csproj" />
 
     <!--
       The language server. Not a tool of the driver — an editor starts it directly and it owns its
@@ -83,6 +94,12 @@
              Targets="Restore"
              BuildInParallel="false"
              Properties="$(PublishProperties)" />
+
+    <!-- Restored without the RID: its RuntimeIdentifiers list already writes every RID target
+         into the assets file, and a restore under a single RuntimeIdentifier would not. -->
+    <MSBuild Projects="..\src\Lyrstub\Lyrstub.csproj"
+             Targets="Restore"
+             Properties="Configuration=$(Configuration)" />
   </Target>
 
   <!--
@@ -111,6 +128,16 @@
              Targets="Publish"
              BuildInParallel="false"
              Properties="$(PublishProperties);PublishDir=$(PublishRoot)\" />
+
+    <!--
+      Into its own subdirectory, as ONE file. Single-file is what makes a pack a single
+      artifact; the own directory is what keeps it out of the shared-assembly overlap the
+      comment at the top describes — which is also why trimming stays rejected wholesale
+      rather than made an exception here: one rule, no special case to explain.
+    -->
+    <MSBuild Projects="..\src\Lyrstub\Lyrstub.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(StubRid);SelfContained=$(SelfContained);PublishSingleFile=true;PublishDir=$(PublishRoot)\stubs\$(StubRid)\" />
 
     <ItemGroup>
       <Published Include="$(PublishRoot)\**\*" />

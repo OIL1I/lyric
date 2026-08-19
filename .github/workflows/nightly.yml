@@ -58,6 +58,16 @@ jobs:
           -p:PublishRoot=${{ github.workspace }}/out
           -p:Rid=${{ matrix.rid }}
 
+      # Same gate as the release: the published toolchain packs an example and the result runs.
+      - name: Pack and run an example
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then lyric=out/lyric.exe; packed=hello.exe
+          else lyric=out/lyric; packed=hello; fi
+          "$lyric" pack examples/hello.lyr -o "$packed"
+          if [ "${{ runner.os }}" = "macOS" ]; then codesign --force --sign - "$packed"; fi
+          "./$packed"
+
       - name: Archive
         shell: bash
         run: |

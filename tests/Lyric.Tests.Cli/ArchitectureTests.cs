@@ -263,7 +263,11 @@ public sealed class ArchitectureTests
         // MSBuild writes '\' as the separator, on Linux too, where it is an ordinary character in a file
         // name. Without normalization this test finds NOTHING and is silently empty — green locally on
         // Windows, red in CI.
-        var queue = new Queue<string>(Regex.Matches(project, @"<Binary Include=""([^""]+)""")
+        // Both ways publish.proj delivers a project: the @(Binary) list into the shared root,
+        // and a direct MSBuild call for anything with its own directory — the stub is the first
+        // of those. The '.csproj' filter keeps the item reference '@(Binary)' out of the queue.
+        var queue = new Queue<string>(Regex
+            .Matches(project, @"(?:<Binary Include|<MSBuild Projects)=""([^""]+\.csproj)""")
             .Select(m => Path.GetFullPath(
                 Path.Combine(root, "build", Normalize(m.Groups[1].Value)))));
 

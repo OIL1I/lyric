@@ -88,6 +88,7 @@ target directory is wiped first. What the toolchain itself contributes, and noth
 lyric.exe  lyrc.exe               driver and compiler
 lyrvm.exe  lyrrepl.exe            runtime and interactive prompt
 lyrbuild.exe                       build runner, for a build.lyr
+lyrpack.exe                        packs a module into one executable
 lyrls.exe                          language server, for editors
 lyrcore.dll                        diagnostics and the bytecode reader
 lyrfe.dll                          lexer through emitter
@@ -96,6 +97,7 @@ lyrembed.dll                       host API
 lyrlsp.dll                         language server protocol
 *.runtimeconfig.json               framework version to load
 stdlib/                            standard library, as .lyr source
+stubs/<rid>/lyrstub.exe            what lyrpack packs a program into
 ```
 
 `lyrvm.exe` ships neither `lyrfe.dll` nor `stdlib/`: a runtime consumes bytecode, not source.
