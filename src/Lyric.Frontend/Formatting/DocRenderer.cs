@@ -77,6 +77,10 @@ public static class DocRenderer
                 case Doc.Indent(var content):
                     work.Push((indent + IndentSize, flat, content));
                     break;
+
+                case Doc.IfBroken(var content):
+                    if (!flat) work.Push((indent, flat, content));
+                    break;
             }
         }
 
@@ -147,6 +151,11 @@ public static class DocRenderer
 
                 case Doc.Indent(var content):
                     work.Push((flat, content));
+                    break;
+
+                case Doc.IfBroken(var content):
+                    // Measured FLAT the content does not exist; in broken surroundings it does.
+                    if (!flat) work.Push((flat, content));
                     break;
             }
         }

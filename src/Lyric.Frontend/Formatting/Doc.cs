@@ -38,6 +38,11 @@ public abstract record Doc
     /// before the first newline stays where it is.</summary>
     public sealed record Indent(Doc Content) : Doc;
 
+    /// <summary>Nothing when the enclosing group renders flat, the content when it breaks — the
+    /// trailing comma of a broken list, which the flat form must not carry because the grammar
+    /// allows it in some positions and taste forbids it in the flat ones.</summary>
+    public sealed record IfBroken(Doc Content) : Doc;
+
     // The builders. Static on the type so a formatter reads as prose: Doc.Group(...).
 
     public static readonly Doc Nil = new Text("");
@@ -53,6 +58,8 @@ public abstract record Doc
     public static Doc GroupOf(params Doc[] parts) => new Group(new Concat(parts));
 
     public static Doc IndentOf(params Doc[] parts) => new Indent(new Concat(parts));
+
+    public static Doc WhenBroken(Doc content) => new IfBroken(content);
 
     /// <summary>The parts with the separator between neighbours — the comma-list shape.</summary>
     public static Doc Join(Doc separator, IReadOnlyList<Doc> parts)
