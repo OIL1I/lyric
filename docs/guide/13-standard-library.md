@@ -11,7 +11,7 @@ The standard library is written in Lyric and ships as source alongside the toolc
 | `std.collections` | `List<T>`, `Map<K, V>`, `Set<T>`, `Indexable<T>`, sorting |
 | `std.iter` | `Iterator<T>`, `Iterable<T>`, adapters, `sum` |
 | `std.option` | `map`, `andThen`, `filter`, `zip`, `contains`, `toArray`, `iter`, `expect` |
-| `std.io.console` | `print`, `println`, `readLine` |
+| `std.io.console` | `print`, `println`, `readLine` — the writers take any `Display` value: `println(42)` |
 | `std.io.file` | reading and writing files — requires `fileAccess` |
 | `std.os` | environment, process, exit — requires `osAccess` |
 | `std.build` | `addExecutable` — only a `build.lyr` run by `lyric build` can use it |

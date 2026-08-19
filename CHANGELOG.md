@@ -10,6 +10,33 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Added
+
+- **`print`, `println`, `eprint` and `eprintln` take any `Display` value**: `println(42)`,
+  `println(true)`. The string forms keep working unchanged — a string displays as itself — and
+  `write`/`writeln` warn as **deprecated**; they were the same thing under a second name.
+  Bytecode compiled before this release keeps running.
+
+- **Collections round out**: `List` gains `insert`, `removeAt`, `first`, `last`, `reverse` and
+  `swap`; `Map` gains `getOr`, `clear` and `entries` — key and value in ONE walk, without the
+  second probe per key; `Set` gains `clear` and is `Iterable`, so `for (v in set)` walks it
+  directly. `clear` on all three keeps the backing for reuse; the values are released all the
+  same.
+
+- **`std.iter` gains `flatMap`, `chunks`, `reduce` and `first`.**
+
+### Fixed
+
+- **`std.string` stops being quadratic.** `StringBuilder.build`, `join` and `fromChars` reduce
+  balanced instead of folding left; `replace` moves untouched stretches as whole substrings;
+  the searches, parsers and trims index a character array instead of calling O(n) `charAt` per
+  position. Same results, different cost curve.
+
+- Audit rests: `std.fmt` loses its German locals, `std.io.file` a torn doc fragment, and
+  `std.io.console` sorts a native above the "written in Lyric" divider it contradicted.
+
 ## v1.13.0 — 2026-08-19
 
 The language gaps close. Interface inheritance arrives — one parent, implied through the whole

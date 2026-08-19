@@ -177,13 +177,14 @@ public class LoweringTests
     public void Stdlib_is_loaded_from_source_when_imported()
     {
         // The core of source-first: std.io.console is an ordinary Lyric module, loaded and type-checked
-        // while resolving, with no special case in the compiler.
+        // while resolving, with no special case in the compiler. Since v1.14 'println' is a Lyric
+        // body over Display; the import it reaches is the private native behind it.
         var module = LowerWithStdlib("""
             import std.io.console { println };
             fn main(): int { println("hi"); return 0; }
             """);
 
-        var println = Assert.Single(module.Imports, i => i.Name == "std.io.console.println");
+        var println = Assert.Single(module.Imports, i => i.Name == "std.io.console.rawPrintln");
         Assert.Equal(new IrScalarType(IrScalar.String), Assert.Single(println.ParamTypes));
         Assert.Equal(new IrScalarType(IrScalar.Void), println.ReturnType);
     }
@@ -192,8 +193,12 @@ public class LoweringTests
     /// A program carries ONLY what it really needs.
     ///
     /// <para>Measured on this hello world: from 420 bytes with four imports and four functions down to
-    /// 230 bytes with one import and one function. The code shrank from 115 to 9 bytes, and 9 bytes is
-    /// exactly <c>main</c>, without a single byte of foreign stdlib.</para>
+    /// 230 bytes with one import and one function — 9 bytes of code, exactly <c>main</c>. Since v1.14
+    /// the hello world carries THREE functions: <c>main</c>, the monomorphized
+    /// <c>println&lt;string&gt;</c> wrapper over the private native, and the
+    /// <c>extend string</c> <c>show</c> it dispatches through. That is the print family's
+    /// generality as two small Lyric bodies (this test lowers UNOPTIMIZED; the inliner exists
+    /// for exactly this shape), not a return of the old bloat.</para>
     /// </summary>
     [Fact]
     public void A_program_carries_only_what_it_reaches()
@@ -203,9 +208,9 @@ public class LoweringTests
             fn main(): int { println("hi"); return 0; }
             """);
 
-        Assert.Single(module.Functions);
+        Assert.Equal(3, module.Functions.Count);
         Assert.Single(module.Imports);
-        Assert.Equal("std.io.console.println", module.Imports[0].Name);
+        Assert.Equal("std.io.console.rawPrintln", module.Imports[0].Name);
 
         // The three that used to come along unavoidably.
         var namen = module.Functions.Select(f => f.Name).ToArray();
@@ -240,11 +245,13 @@ public class LoweringTests
     [Fact]
     public void Stdlib_signatures_are_enforced()
     {
-        // The proof that the signature really arrives: with every stdlib symbol opaque, `println(42)`
-        // would pass silently.
+        // The proof that the signature really arrives: with every stdlib symbol opaque, a wrong
+        // argument type would pass silently. `println(42)` stopped being the example when the
+        // print family went generic over Display in v1.14; `writeText` keeps two fixed string
+        // parameters, so a number in the second slot is the same proof.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr",
-            "import std.io.console { println };\nfn main(): int { println(42); return 0; }");
+            "import std.io.file { writeText };\nfn main(): int { let _ = writeText(\"p\", 42); return 0; }");
         var de = new DiagnosticEngine(sm);
         var comp = new Compilation(sm, de)
         {

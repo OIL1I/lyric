@@ -187,18 +187,25 @@ public sealed class NativeRegistry
         var none = Array.Empty<TypeTag>();
         var stdin = input ?? Console.In;
 
-        registry.Register("std.io.console.print", str, TypeTag.Void,
-            args => { output.Write(args[0].AsString); return default; });
-        registry.Register("std.io.console.println", str, TypeTag.Void,
-            // Always '\n', never Environment.NewLine: the output of a Lyric program does not
-            // depend on the operating system.
-            args => { output.Write(args[0].AsString); output.Write('\n'); return default; });
-        registry.Register("std.io.console.eprintln", str, TypeTag.Void,
-            args => { error.Write(args[0].AsString); error.Write('\n'); return default; });
+        // Since v1.14 the module declares these as PRIVATE raw* natives behind the Display
+        // generics; the old public names stay bound so bytecode compiled before the change keeps
+        // running. One host function under both names keeps a single truth about the behavior.
+        void ConsoleWriter(string name, Func<LyrValue[], LyrValue> implementation)
+        {
+            registry.Register("std.io.console.raw" + char.ToUpperInvariant(name[0]) + name[1..],
+                str, TypeTag.Void, implementation);
+            registry.Register("std.io.console." + name, str, TypeTag.Void, implementation);
+        }
 
+        ConsoleWriter("print", args => { output.Write(args[0].AsString); return default; });
+        // Always '\n', never Environment.NewLine: the output of a Lyric program does not
+        // depend on the operating system.
+        ConsoleWriter("println",
+            args => { output.Write(args[0].AsString); output.Write('\n'); return default; });
+        ConsoleWriter("eprintln",
+            args => { error.Write(args[0].AsString); error.Write('\n'); return default; });
         // Writes a diagnostic without a line break.
-        registry.Register("std.io.console.eprint", str, TypeTag.Void,
-            args => { error.Write(args[0].AsString); return default; });
+        ConsoleWriter("eprint", args => { error.Write(args[0].AsString); return default; });
 
         // ---------------------------------------------------------------- input
         //
