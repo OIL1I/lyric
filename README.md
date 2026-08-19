@@ -12,7 +12,7 @@ The compiler, the bytecode VM and the standard library work end to end; every co
 [`docs/Grammar.md`](docs/Grammar.md) compiles and runs. From v1.0 the language and the `.lyrbc`
 format carry the promise the versioning describes: a minor may add, a major may break.
 
-Current version: **1.8.0**, bytecode format **3.2**.
+Current version: **1.9.0**, bytecode format **3.2**.
 
 ## Targets
 
@@ -130,7 +130,7 @@ That is what a release ships, one archive per platform.
 
 ```
 $ lyric repl
-Lyric 1.8.0 — :help for commands, :quit to leave
+Lyric 1.9.0 — :help for commands, :quit to leave
 lyr> let x = 5
 lyr> x * 2
 10
@@ -177,6 +177,7 @@ lyric/
 | [`docs/guide/`](docs/guide/) | User guide — start here to learn the language |
 | [`docs/Grammar.md`](docs/Grammar.md) | Formal grammar |
 | [`docs/Bytecode.md`](docs/Bytecode.md) | Formal `.lyrbc` format specification |
+| [`docs/Pack.md`](docs/Pack.md) | The pack format: how a program becomes one executable |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Contribution rules and process |
 | [`CHANGELOG.md`](CHANGELOG.md) | What changed per release, from v1.0.0 on |
 

@@ -10,6 +10,67 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.9.0 — 2026-08-19
+
+Two tools. `lyric pack` turns a program into one standalone executable, and `lyric fmt` gives
+every Lyric file the one shape there is. The language, the standard library, the bytecode
+format and the embedding API are untouched; the format stays **3.2**, and a `.lyrbc` built by
+1.8.0 packs and runs unchanged.
+
+### Added
+
+- **`lyric pack app.lyr` — a program becomes one file.**
+
+  ```bash
+  lyric pack app.lyr
+  ./app arg1 arg2
+  ```
+
+  The result is a copy of a prebuilt stub runtime with the compiled module and a 24-byte footer
+  appended — a byte copy, no linker, no .NET on the target machine. The packed program owns its
+  whole command line (no `--` protocol, no wrapper options), runs with every capability like
+  any standalone program, exits with `main`'s return value, and its panics name your lines —
+  same runtime, same bytes, same backtraces as `lyric run`.
+
+  Two new binaries carry it: `lyrpack`, which packs a `.lyrbc` and nothing else, and `lyrstub`,
+  the runtime half of a packed program. The release archives hold the platform's stub under
+  `stubs/<rid>/`; a bare stub started directly explains itself instead of failing obscurely,
+  and a truncated pack is reported as damaged rather than executed. The format is specified in
+  [`docs/Pack.md`](docs/Pack.md), the guide's chapter 17 says what to know before shipping —
+  including that macOS requires an ad-hoc re-sign after packing, which the release pipeline
+  itself performs and verifies on every platform.
+
+- **`lyric fmt` — the formatter.** In place for files and directories, `--check` for CI (writes
+  nothing, exits nonzero when anything would change), `--stdin` for editors. No style options.
+
+  What it keeps: every comment (trailing ones trailing), your blank lines capped at one, your
+  literal spellings (`0xFF`, `1_000_000`). What it decides: line breaks against the 100-column
+  limit, trailing commas exactly where the grammar allows them and only in broken layout, a
+  blank line after the module header and between declarations with bodies. A file that does
+  not parse is reported and left byte-for-byte untouched.
+
+  The repository holds itself to it: the standard library, the examples and the templates are
+  formatted, and a test fails when they stop being it.
+
+### Changed
+
+- **The standard library, the examples and the project templates are reformatted** with the
+  new formatter. No signature, no name and no behaviour changed — the test suite verifies the
+  reformatted sources compile to the same programs.
+
+### Not in this release
+
+- **Cross-platform packing sugar**: a pack is for one platform, and a foreign platform packs
+  via `--stub` with that platform's stub out of its archive. No `--target` until someone
+  needs it.
+- **A trimmed stub**: 73.5 MB self-contained today; trimming measures 13.0 MB and survives a
+  smoke test, but one smoke is not a gate. Decision material for the next scope check.
+- **Capability narrowing at pack time**: a packed program runs with everything, like any
+  standalone program. Narrowing is a footer field for a future minor.
+- **`textDocument/formatting` in the language server**: the formatter lives in the library the
+  server already uses; the wiring is a later slice.
+- **Format-on-save configuration, formatter style flags**: deliberately never.
+
 ## v1.8.0 — 2026-08-18
 
 The editors catch up with the compiler. No language change and no format change: the language

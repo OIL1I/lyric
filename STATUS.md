@@ -77,7 +77,7 @@ file, every place a name occurs, and completion. v1.3.0 shipped the first seven,
 
 4125 tests green **in Debug and Release**, bytecode format **3.2**, **nine** binaries
 (`lyrstub`, `lyrpack` and `lyrfmt` are the three new ones) plus `lyrembed.dll`, version
-**1.8.0** heading for **1.9.0**.
+**1.9.0**.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -256,9 +256,10 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M17 and M18 ship together as v1.9.0** — the PR stack #50 (packing) ← #51 (formatter), merged
-in that order, then the release commit and the annotated tag (explicitly delegated for this
-release; normally the maintainer's step).
+**M17 and M18 shipped together as v1.9.0** (2026-08-19) — the PR stack #50 (packing) ← #51
+(formatter), merged in that order; release commit and annotated tag explicitly delegated for
+this release, normally the maintainer's step. The release workflow gates itself: it packs and
+runs an example on every platform before an archive exists.
 
 **M17's deliberate limits**: one platform per pack (a foreign platform packs via `--stub` with
 that platform's stub out of its archive — no `--target` until someone needs it); the stub ships
