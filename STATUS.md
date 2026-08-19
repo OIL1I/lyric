@@ -320,13 +320,22 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M25 is underway** — v1.16, the spec draft. The repository exists
-(`lyriclang/lyric-spec`): non-normative until 2.0, chapters 1–3 written (lexical, grammar
-framing, types — with the two frozen decisions: integer arithmetic WRAPS, and every numeric
-type is distinct with `as` as the only crossing). Decided by the maintainer 2026-08-19:
-overflow stays wrapping; the pub-roots rule is a YES for 2.0; the spec repo starts now.
-Remaining slices: the semantics chapters, the conformance-suite seed, the diagnostic
-catalogue, release v1.16.0.
+**M25 — the spec draft — is BUILT** (2026-08-19, ships as v1.16.0; the substance lives in
+`lyriclang/lyric-spec`). The delivery list:
+
+- [x] twelve chapters, non-normative until 2.0: lexical contract, grammar framing (EBNF stays
+      canonical in this repo until subsumed), types with the FROZEN decisions (wrapping
+      arithmetic; distinct numeric types; the opaque wall), modules/capabilities, interfaces,
+      operators-as-methods, statements and narrowing, monomorphization, the three failure
+      shapes, coroutines, the stdlib boundary, the diagnostic-code contract
+- [x] the conformance suite seed: 30 cases (one .lyr, expectations in a //! header), the
+      reference runner under 150 lines, CI running against the PINNED toolchain release
+- [x] the suite earned its keep on day one: resume yields T and exhaustion panics (the draft
+      had a null protocol — corrected), Throwable is a builtin (corrected), and
+      'catch (e: Throwable)' compiled but never caught — a sema/VM split, fixed HERE:
+      the explicit Throwable catch is the catch-all now, and a specific-interface catch is
+      refused with a diagnostic instead of silently catching nothing
+- [x] decisions recorded: overflow wraps (frozen), pub-roots YES at 2.0, spec repo now
 
 **M24 was merged and released as v1.15.0** (PR #62) — the freeze prep. With it the
 pre-freeze design space is closed; next is v1.16, the spec draft (non-normative) plus the seed

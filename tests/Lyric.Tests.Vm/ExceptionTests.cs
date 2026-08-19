@@ -37,6 +37,19 @@ public class ExceptionTests
             NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
+    private static (Lyric.Ir.IrModule? Ir, DiagnosticEngine De) TryLower(string source)
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", source);
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de);
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+        Assert.False(de.HasErrors, "the fixture must pass the sema; the boundary under test is the lowering");
+        return (ModuleLowerer.Lower(comp, binding, types, de, verify: true), de);
+    }
+
     private const string Errors = """
         class Boom :: [Throwable] {
             code: int,
@@ -408,6 +421,54 @@ public class ExceptionTests
                 catch (e) { return 42; }
             }
             """));
+    }
+
+    /// <summary>
+    /// <c>catch (e: Throwable)</c> IS the catch-all, written out (v1.16). Before the fix it
+    /// compiled — the sema treats an interface catch as handling — and then never caught: the
+    /// handler carried the interface's type id, and the VM's equality test compared it against
+    /// the thrown CLASS. The conformance suite found the split.
+    /// </summary>
+    [Fact]
+    public void An_explicit_Throwable_catch_is_the_catch_all()
+    {
+        Assert.Equal(42, Run(Errors + """
+
+            fn risky(): int throws { throw Boom { code = 7 }; }
+
+            fn main(): int {
+                try { let v = risky(); return 99; }
+                catch (e: Throwable) { return 42; }
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_specific_interface_catch_is_refused_not_silently_missed()
+    {
+        // Until the handler table can express a conformance test, a specific interface in a
+        // catch is a diagnosed boundary — the alternative was an id comparison that caught
+        // NOTHING and let the exception fly past a handler the sema had accepted.
+        var (ir, de) = TryLower("""
+            interface AppError :: [Throwable] {
+                fn code(): int;
+            }
+
+            class NetError :: [AppError] {
+                fn message(): string { return "down"; }
+                fn code(): int { return 502; }
+            }
+
+            fn risky(): int throws NetError { throw NetError { }; }
+
+            fn main(): int {
+                try { let v = risky(); return 99; }
+                catch (e: AppError) { return 42; }
+            }
+            """);
+        Assert.Null(ir);
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-IR0001"
+            && d.Message.Contains("specific interface"));
     }
 
     [Fact]
