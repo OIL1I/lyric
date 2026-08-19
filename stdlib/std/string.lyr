@@ -46,40 +46,52 @@ pub fn repeat(value: string, count: int): string;
 // would make the obvious loop quadratic without showing it. Walk characters with 'for (c in s)'.
 
 /// The length in code points — the unit every position in this module uses.
+@Deprecated { message = "use s.length()" }
 pub fn length(value: string): int;
 /// The character at a code-point position. O(n): a position counts code points, not bytes.
+@Deprecated { message = "use s.charAt(i)" }
 pub fn charAt(value: string, index: int): char;
 /// `count` characters from `start`, both in code points.
+@Deprecated { message = "use s.substring(start, count)" }
 pub fn substring(value: string, start: int, count: int): string;
 
 // Position in code points, or -1, so the result can be passed straight to 'charAt' and
 // 'substring'.
 /// The first position of `needle` in code points, or `-1` — ready for `charAt` and
 /// `substring`.
+@Deprecated { message = "use s.indexOf(needle)" }
 pub fn indexOf(value: string, needle: string): int;
 /// Whether `needle` occurs.
+@Deprecated { message = "use s.contains(needle)" }
 pub fn contains(value: string, needle: string): bool;
 /// Whether the string begins with `prefix`.
+@Deprecated { message = "use s.startsWith(prefix)" }
 pub fn startsWith(value: string, prefix: string): bool;
 /// Whether the string ends with `suffix`.
+@Deprecated { message = "use s.endsWith(suffix)" }
 pub fn endsWith(value: string, suffix: string): bool;
 
 /// Without leading and trailing whitespace.
+@Deprecated { message = "use s.trim()" }
 pub fn trim(value: string): string;
 
 // Ordinal rather than culture-dependent: the same program yields the same result everywhere.
 /// Upper-cased, ordinal — the same result everywhere, no culture involved.
+@Deprecated { message = "use s.toUpper()" }
 pub fn toUpper(value: string): string;
 /// Lower-cased, ordinal.
+@Deprecated { message = "use s.toLower()" }
 pub fn toLower(value: string): string;
 
 // An empty separator is a panic: "split into what" has no answer.
 /// The parts between occurrences of `separator`. An empty separator panics: "split into
 /// what" has no answer.
+@Deprecated { message = "use s.split(separator)" }
 pub fn split(value: string, separator: string): string[];
 
 // What 'for (c in s)' uses: one O(n) pass instead of n calls to 'charAt'.
 /// The characters as an array, in one O(n) pass — what `for (c in s)` uses.
+@Deprecated { message = "use s.toChars()" }
 pub fn toChars(value: string): char[];
 
 /// The characters joined back into one string — the inverse of `toChars`. Native since v1.14:
@@ -93,6 +105,7 @@ pub fn fromChars(chars: char[]): string;
 
 /// The string as UTF-8 bytes — the inverse of `utf8Decode`, and what a file or a socket
 /// actually carries.
+@Deprecated { message = "use s.utf8Encode()" }
 pub fn utf8Encode(value: string): uint8[];
 
 /// The bytes as a string, STRICTLY: invalid UTF-8 answers `null` rather than a U+FFFD quietly
@@ -103,6 +116,291 @@ pub fn utf8Decode(bytes: uint8[]): ?string;
 // Behind `join` and `StringBuilder.build`: one native call instead of a copy cascade. Private —
 // `join` IS the public name for this.
 fn joinAll(parts: string[], separator: string): string;
+
+// --- the raw twins (v1.15) ----------------------------------------------------------------
+//
+// Inside 'extend string' a method SHADOWS the free function of the same name, so the method
+// bodies below reach the host through these private twins. The registry binds both names to
+// one implementation; the deprecated pub forms above stay bound for existing bytecode.
+
+fn rawLength(value: string): int;
+fn rawCharAt(value: string, index: int): char;
+fn rawSubstring(value: string, start: int, count: int): string;
+fn rawIndexOf(value: string, needle: string): int;
+fn rawContains(value: string, needle: string): bool;
+fn rawStartsWith(value: string, prefix: string): bool;
+fn rawEndsWith(value: string, suffix: string): bool;
+fn rawTrim(value: string): string;
+fn rawToUpper(value: string): string;
+fn rawToLower(value: string): string;
+fn rawSplit(value: string, separator: string): string[];
+fn rawToChars(value: string): char[];
+fn rawUtf8Encode(value: string): uint8[];
+
+// =============================================================== the method API (v1.15)
+//
+// One name, one form: `s.trim()`, not a free function beside a method. The free forms above and
+// below warn as deprecated and go with 2.0; `concat` and `repeat` stay free — they back `+` and
+// `*` — and the type-directed families (`fromXxx`, `parseXxx`) keep their names.
+//
+// A method is a call and looks like one. `s.length()` has parentheses BECAUSE it costs O(n) —
+// a property would promise a stored answer this type does not have.
+
+extend string {
+    /// The length in code points — the unit every position in this module uses. O(n), which is
+    /// why it is a call and not a property.
+    pub fn length(): int {
+        return rawLength(this);
+    }
+
+    /// The character at a code-point position. O(n): a position counts code points, not bytes.
+    /// Walking all characters is `for (c in s)`, not a loop over positions.
+    pub fn charAt(index: int): char {
+        return rawCharAt(this, index);
+    }
+
+    /// `count` characters from `start`, both in code points.
+    pub fn substring(start: int, count: int): string {
+        return rawSubstring(this, start, count);
+    }
+
+    /// The first position of `needle` in code points, or `-1` — ready for `charAt` and
+    /// `substring`.
+    pub fn indexOf(needle: string): int {
+        return rawIndexOf(this, needle);
+    }
+
+    /// Searches from a position. `-1` when nothing is found, as in `indexOf`.
+    pub fn indexOfFrom(needle: string, start: int): int {
+        let chars = rawToChars(this);
+        let pattern = rawToChars(needle);
+        if (pattern.length == 0) {
+            return if (start <= chars.length) start else 0 - 1;
+        }
+
+        var i = if (start < 0) 0 else start;
+        while (i + pattern.length <= chars.length) {
+            if (matchesAt(chars, pattern, i)) {
+                return i;
+            }
+            i = i + 1;
+        }
+        return 0 - 1;
+    }
+
+    /// The LAST occurrence, or `-1`.
+    pub fn lastIndexOf(needle: string): int {
+        let chars = rawToChars(this);
+        let pattern = rawToChars(needle);
+        if (pattern.length == 0) {
+            return chars.length;
+        }
+
+        var i = chars.length - pattern.length;
+        while (i >= 0) {
+            if (matchesAt(chars, pattern, i)) {
+                return i;
+            }
+            i = i - 1;
+        }
+        return 0 - 1;
+    }
+
+    /// Whether `needle` occurs.
+    pub fn contains(needle: string): bool {
+        return rawContains(this, needle);
+    }
+
+    /// Whether the string begins with `prefix`.
+    pub fn startsWith(prefix: string): bool {
+        return rawStartsWith(this, prefix);
+    }
+
+    /// Whether the string ends with `suffix`.
+    pub fn endsWith(suffix: string): bool {
+        return rawEndsWith(this, suffix);
+    }
+
+    /// How often `needle` occurs, WITHOUT overlap: `"aaa".count("aa")` is 1. This matches
+    /// `replace`.
+    pub fn count(needle: string): int {
+        let chars = rawToChars(this);
+        let pattern = rawToChars(needle);
+        if (pattern.length == 0) {
+            return 0;
+        }
+
+        var n = 0;
+        var i = 0;
+        while (i + pattern.length <= chars.length) {
+            if (matchesAt(chars, pattern, i)) {
+                n = n + 1;
+                i = i + pattern.length;
+            } else {
+                i = i + 1;
+            }
+        }
+        return n;
+    }
+
+    /// Whether the length is zero.
+    pub fn isEmpty(): bool {
+        return rawLength(this) == 0;
+    }
+
+    /// Empty or whitespace only.
+    pub fn isBlank(): bool {
+        let chars = rawToChars(this);
+        var i = 0;
+        while (i < chars.length) {
+            if (!isWhitespace(chars[i])) {
+                return false;
+            }
+            i = i + 1;
+        }
+        return true;
+    }
+
+    /// Without leading and trailing whitespace. The receiver is unchanged — every method here
+    /// returns a NEW string; a Lyric string has nothing to mutate.
+    pub fn trim(): string {
+        return rawTrim(this);
+    }
+
+    /// Without leading whitespace.
+    pub fn trimStart(): string {
+        let chars = rawToChars(this);
+        var i = 0;
+        while (i < chars.length && isWhitespace(chars[i])) {
+            i = i + 1;
+        }
+        return rawSubstring(this, i, chars.length - i);
+    }
+
+    /// Without trailing whitespace.
+    pub fn trimEnd(): string {
+        let chars = rawToChars(this);
+        var n = chars.length;
+        while (n > 0 && isWhitespace(chars[n - 1])) {
+            n = n - 1;
+        }
+        return rawSubstring(this, 0, n);
+    }
+
+    /// Upper-cased, ordinal — the same result everywhere, no culture involved.
+    pub fn toUpper(): string {
+        return rawToUpper(this);
+    }
+
+    /// Lower-cased, ordinal.
+    pub fn toLower(): string {
+        return rawToLower(this);
+    }
+
+    /// Every non-overlapping occurrence of `needle` replaced. An empty needle changes nothing.
+    // Untouched stretches travel as WHOLE substrings into a builder rather than character by
+    // character into a growing string.
+    pub fn replace(needle: string, replacement: string): string {
+        let chars = rawToChars(this);
+        let pattern = rawToChars(needle);
+        if (pattern.length == 0) {
+            return this;
+        }
+
+        let out = StringBuilder.new();
+        var segmentStart = 0;
+        var i = 0;
+
+        while (i + pattern.length <= chars.length) {
+            if (matchesAt(chars, pattern, i)) {
+                if (i > segmentStart) {
+                    out.append(rawSubstring(this, segmentStart, i - segmentStart));
+                }
+                out.append(replacement);
+                i = i + pattern.length;
+                segmentStart = i;
+            } else {
+                i = i + 1;
+            }
+        }
+
+        if (segmentStart == 0) {
+            return this; // nothing matched, nothing copied
+        }
+        if (segmentStart < chars.length) {
+            out.append(rawSubstring(this, segmentStart, chars.length - segmentStart));
+        }
+        return out.build();
+    }
+
+    /// The first occurrence replaced; without one the string comes back unchanged.
+    pub fn replaceFirst(needle: string, replacement: string): string {
+        let i = rawIndexOf(this, needle);
+        if (i < 0) {
+            return this;
+        }
+        let n = rawLength(this);
+        let m = rawLength(needle);
+        let front = rawSubstring(this, 0, i);
+        let back = rawSubstring(this, i + m, n - i - m);
+        return front + replacement + back;
+    }
+
+    /// Pads at the front until `width` is reached. A longer string is left unchanged;
+    /// truncating would lose data in a function that only formats.
+    pub fn padStart(width: int, fill: char): string {
+        let missing = width - rawLength(this);
+        if (missing <= 0) {
+            return this;
+        }
+        return repeat(fromChar(fill), missing) + this;
+    }
+
+    /// Pads at the end until `width` is reached. A longer string is left unchanged; truncating
+    /// would lose data in a function that only formats.
+    pub fn padEnd(width: int, fill: char): string {
+        let missing = width - rawLength(this);
+        if (missing <= 0) {
+            return this;
+        }
+        return this + repeat(fromChar(fill), missing);
+    }
+
+    /// The parts between occurrences of `separator`. An empty separator panics: "split into
+    /// what" has no answer.
+    pub fn split(separator: string): string[] {
+        return rawSplit(this, separator);
+    }
+
+    /// Splits at line breaks. Both `\r\n` and `\n` count.
+    pub fn splitLines(): string[] {
+        return this.replace("\r\n", "\n").split("\n");
+    }
+
+    /// Splits at the FIRST occurrence; the rest stays whole, for `key=value=more`.
+    pub fn splitFirst(separator: string): string[] {
+        let i = rawIndexOf(this, separator);
+        if (i < 0) {
+            return [this];
+        }
+        let n = rawLength(this);
+        let m = rawLength(separator);
+        let front = rawSubstring(this, 0, i);
+        let back = rawSubstring(this, i + m, n - i - m);
+        return [front, back];
+    }
+
+    /// The characters as an array, in one O(n) pass — what `for (c in s)` uses.
+    pub fn toChars(): char[] {
+        return rawToChars(this);
+    }
+
+    /// The string as UTF-8 bytes — the inverse of `utf8Decode`, and what a file or a socket
+    /// actually carries.
+    pub fn utf8Encode(): uint8[] {
+        return rawUtf8Encode(this);
+    }
+}
 
 // ================================================================== written in Lyric
 //
@@ -173,23 +471,17 @@ pub fn digitToChar(value: int): ?char {
 // ------------------------------------------------------------------ predicates
 
 /// Whether the length is zero.
+@Deprecated { message = "use s.isEmpty()" }
 pub fn isEmpty(value: string): bool {
-    return length(value) == 0;
+    return value.isEmpty();
 }
 
 /// Empty or whitespace only.
 // Over `toChars` rather than `charAt` per position: `charAt` is O(n), and the loop around it
 // would be quadratic. The same pattern holds for everything below that walks characters.
+@Deprecated { message = "use s.isBlank()" }
 pub fn isBlank(value: string): bool {
-    let chars = toChars(value);
-    var i = 0;
-    while (i < chars.length) {
-        if (!isWhitespace(chars[i])) {
-            return false;
-        }
-        i = i + 1;
-    }
-    return true;
+    return value.isBlank();
 }
 
 // ------------------------------------------------------------------ searching
@@ -209,63 +501,24 @@ fn matchesAt(chars: char[], needle: char[], at: int): bool {
 /// Searches from a position. `-1` when nothing is found, as in `indexOf`.
 // One `toChars` per side and a window comparison per position: the old form compared a fresh
 // `substring` copy per position, which multiplied two O(n) costs.
+@Deprecated { message = "use s.indexOfFrom(needle, start)" }
 pub fn indexOfFrom(value: string, needle: string, start: int): int {
-    let chars = toChars(value);
-    let pattern = toChars(needle);
-    if (pattern.length == 0) {
-        return if (start <= chars.length) start else -1;
-    }
-
-    var i = if (start < 0) 0 else start;
-    while (i + pattern.length <= chars.length) {
-        if (matchesAt(chars, pattern, i)) {
-            return i;
-        }
-        i = i + 1;
-    }
-    return -1;
+    return value.indexOfFrom(needle, start);
 }
 
 /// The LAST occurrence.
+@Deprecated { message = "use s.lastIndexOf(needle)" }
 pub fn lastIndexOf(value: string, needle: string): int {
-    let chars = toChars(value);
-    let pattern = toChars(needle);
-    if (pattern.length == 0) {
-        return chars.length;
-    }
-
-    var i = chars.length - pattern.length;
-    while (i >= 0) {
-        if (matchesAt(chars, pattern, i)) {
-            return i;
-        }
-        i = i - 1;
-    }
-    return -1;
+    return value.lastIndexOf(needle);
 }
 
 /// How often `needle` occurs, WITHOUT overlap.
 ///
 /// Overlapping occurrences are not counted: `count("aaa", "aa")` is 1, not 2. This matches
 /// `replace`.
+@Deprecated { message = "use s.count(needle)" }
 pub fn count(value: string, needle: string): int {
-    let chars = toChars(value);
-    let pattern = toChars(needle);
-    if (pattern.length == 0) {
-        return 0;
-    }
-
-    var n = 0;
-    var i = 0;
-    while (i + pattern.length <= chars.length) {
-        if (matchesAt(chars, pattern, i)) {
-            n = n + 1;
-            i = i + pattern.length;
-        } else {
-            i = i + 1;
-        }
-    }
-    return n;
+    return value.count(needle);
 }
 
 // ------------------------------------------------------------------ splitting and joining
@@ -277,109 +530,57 @@ pub fn join(parts: string[], separator: string): string {
 }
 
 /// Splits at line breaks. Both `\r\n` and `\n` count.
+@Deprecated { message = "use s.splitLines()" }
 pub fn splitLines(value: string): string[] {
-    // Remove the carriage returns first, then split at `\n`.
-    return split(replace(value, "\r\n", "\n"), "\n");
+    return value.splitLines();
 }
 
 /// Splits at the FIRST occurrence; the rest stays whole, for `key=value=more`.
+@Deprecated { message = "use s.splitFirst(separator)" }
 pub fn splitFirst(value: string, separator: string): string[] {
-    let i = indexOf(value, separator);
-    if (i < 0) {
-        return [value];
-    }
-    let front = substring(value, 0, i);
-    let back = substring(value, i + length(separator), length(value) - i - length(separator));
-    return [front, back];
+    return value.splitFirst(separator);
 }
 
 /// Every non-overlapping occurrence of `needle` replaced. An empty needle changes nothing.
 // Untouched stretches travel as WHOLE substrings into a builder rather than character by
 // character into a growing string: the old form copied the entire result once per character.
+@Deprecated { message = "use s.replace(needle, replacement)" }
 pub fn replace(value: string, needle: string, replacement: string): string {
-    let chars = toChars(value);
-    let pattern = toChars(needle);
-    if (pattern.length == 0) {
-        return value;
-    }
-
-    var out = StringBuilder.new();
-    var segmentStart = 0;
-    var i = 0;
-
-    while (i + pattern.length <= chars.length) {
-        if (matchesAt(chars, pattern, i)) {
-            if (i > segmentStart) {
-                out.append(substring(value, segmentStart, i - segmentStart));
-            }
-            out.append(replacement);
-            i = i + pattern.length;
-            segmentStart = i;
-        } else {
-            i = i + 1;
-        }
-    }
-
-    if (segmentStart == 0) {
-        return value; // nothing matched, nothing copied
-    }
-    if (segmentStart < chars.length) {
-        out.append(substring(value, segmentStart, chars.length - segmentStart));
-    }
-    return out.build();
+    return value.replace(needle, replacement);
 }
 
 /// The first occurrence replaced; without one the string comes back unchanged.
+@Deprecated { message = "use s.replaceFirst(needle, replacement)" }
 pub fn replaceFirst(value: string, needle: string, replacement: string): string {
-    let i = indexOf(value, needle);
-    if (i < 0) {
-        return value;
-    }
-    let front = substring(value, 0, i);
-    let back = substring(value, i + length(needle), length(value) - i - length(needle));
-    return front + replacement + back;
+    return value.replaceFirst(needle, replacement);
 }
 
 // ------------------------------------------------------------------ trimming and padding
 
 /// Without leading whitespace.
+@Deprecated { message = "use s.trimStart()" }
 pub fn trimStart(value: string): string {
-    let chars = toChars(value);
-    var i = 0;
-    while (i < chars.length && isWhitespace(chars[i])) {
-        i = i + 1;
-    }
-    return substring(value, i, chars.length - i);
+    return value.trimStart();
 }
 
 /// Without trailing whitespace.
+@Deprecated { message = "use s.trimEnd()" }
 pub fn trimEnd(value: string): string {
-    let chars = toChars(value);
-    var n = chars.length;
-    while (n > 0 && isWhitespace(chars[n - 1])) {
-        n = n - 1;
-    }
-    return substring(value, 0, n);
+    return value.trimEnd();
 }
 
 /// Pads at the front until `width` is reached. A longer string is left unchanged; truncating
 /// would lose data in a function that only formats.
+@Deprecated { message = "use s.padStart(width, fill)" }
 pub fn padStart(value: string, width: int, fill: char): string {
-    let missing = width - length(value);
-    if (missing <= 0) {
-        return value;
-    }
-    return repeat(fromChar(fill), missing) + value;
+    return value.padStart(width, fill);
 }
 
 /// Pads at the end until `width` is reached. A longer string is left unchanged; truncating
 /// would lose data in a function that only formats.
+@Deprecated { message = "use s.padEnd(width, fill)" }
 pub fn padEnd(value: string, width: int, fill: char): string {
-    let missing = width - length(value);
-    if (missing <= 0) {
-        return value;
-    }
-    return value + repeat(fromChar(fill), missing);
+    return value.padEnd(width, fill);
 }
 
 // ------------------------------------------------------------------ parsing

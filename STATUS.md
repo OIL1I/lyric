@@ -488,6 +488,15 @@ answer yet, and it belongs asked before E4 starts.
   differently through the child and through the parent. A child interface VALUE does not convert to
   the parent's type; implication holds for implementing types. `std.core` adopts
   `Hashable :: [Equatable]` at 2.0, not before.
+- **Iterator method chaining: documented No for now** (M24 probe). `xs.iter().map(f).take(3)`
+  wants generic default methods on `Iterator<T>`. The sema ACCEPTS them already; the lowering
+  refuses on both paths — an interface VALUE fails at instance interning (`fn(T) -> U` in the
+  slot signatures, the same wall as generic interface values over struct arguments), and even
+  the monomorphized constraint path has no lowering for a default body with its own type
+  parameters. Building both means interface-instance layout work plus monomorphized defaults,
+  with an open vtable question (there are no generic slots — such defaults could never be
+  overridden). Milestone-sized; the spec documents free adapters as THE form, and an
+  `IrPinTests` entry keeps today's refusal visible instead of accidental.
 - **Heterogeneous operator arithmetic: documented No** (M22 probe). Two facts cap it below
   usefulness: a type conforms to `Mul` ONCE (`Mul<Vec2>` beside `Mul<float>` fails the signature
   check — one `mul`, two wanted signatures), and Lyric has no overloading, so `mul(other: float)`

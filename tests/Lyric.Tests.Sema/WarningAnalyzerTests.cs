@@ -170,7 +170,7 @@ public class WarningAnalyzerTests
     public void A_used_import_is_silent()
     {
         AssertSilent(Check(
-            "import std.string { concat, length };\n\nfn main(): int {\n    return length(concat(\"a\", \"b\"));\n}\n",
+            "import std.string { concat, parseInt };\n\nfn main(): int {\n    return parseInt(concat(\"4\", \"2\")) ?? 0;\n}\n",
             withStdlib: true));
     }
 
@@ -212,7 +212,7 @@ public class WarningAnalyzerTests
     public void A_selective_import_of_the_same_module_is_silent()
     {
         AssertSilent(Check(
-            "import std.string { length };\n\nfn main(): int {\n    return length(\"ab\");\n}\n",
+            "import std.string { parseInt };\n\nfn main(): int {\n    return parseInt(\"ab\") ?? 0;\n}\n",
             withStdlib: true));
     }
 

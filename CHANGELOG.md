@@ -12,7 +12,25 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ## Unreleased
 
+### Fixed
+
+- **A function-id collision in the lowering**, latent since struct-returning natives: the
+  global initializer's slot was reserved only for DECLARED globals, but a struct-return buffer
+  CREATES one during body lowering — and once a body also requested an extension method (the
+  new string methods do), initializer and extension landed on the same id, and calls
+  mis-spliced into the wrong function. The initializer draws from the shared id counter now,
+  and the function list refuses id holes with a named internal error instead of a silent
+  mis-splice.
+
 ### Added
+
+- **Strings have methods**: `s.trim()`, `s.split(",")`, `s.contains(x)`, `s.length()` — 26
+  methods via `extend string` in `std.string`. The free forms warn as **deprecated** and go
+  with 2.0; `concat` and `repeat` stay free (they back `+` and `*`), and the type-directed
+  families (`fromXxx`, `parseXxx`) keep their names. The methods come with any import of the
+  module; a file needing no free name writes `import std.string as strings;` — and an import
+  whose extensions are used no longer counts as unused. `s.length()` stays a call because it
+  costs O(n), and every method returns a NEW string.
 
 - **`opaque type`**: an alias with a new IDENTITY over the same layout —
   `pub opaque type Entity = int;`. Nothing converts implicitly in either direction; the explicit

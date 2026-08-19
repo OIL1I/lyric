@@ -86,6 +86,29 @@ iterator per call, so two loops over the same collection do not interfere.
 everything; a host grants explicitly, and a module that requires more than it is granted is
 rejected before it runs.
 
+## Strings have methods
+
+Since v1.15 the string API is method-shaped: `s.trim()`, `s.split(",")`, `s.contains(x)`,
+`s.length()`. The free forms (`trim(s)`, …) still work and warn as deprecated; they go with the
+next major. `concat` and `repeat` stay free — they back `+` and `*` — and the type-directed
+families (`fromInt`, `parseInt`, …) keep their names.
+
+The methods come with the module: any `import std.string { … }` makes them visible, and a file
+that needs no free name imports the module under an alias, which avoids shadowing the builtin
+type name:
+
+```lyr
+import std.string as strings;
+
+fn main(): int {
+    return "  Grüße  ".trim().length();
+}
+```
+
+Two things worth knowing: `s.length()` is a call BECAUSE it costs O(n) — a property would
+promise a stored answer this type does not have — and every method returns a NEW string;
+`s.trim();` as a statement does nothing, because a Lyric string has nothing to mutate.
+
 ## Constructors live on the types
 
 A container comes from its type: `List<int>.empty()`, `Map<string, int>.empty()`,

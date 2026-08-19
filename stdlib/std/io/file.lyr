@@ -9,8 +9,11 @@
 
 module std.io.file;
 
+// For the string METHODS the path helpers below use; the alias avoids shadowing the
+// builtin type name.
+import std.string as strings;
+
 // For the path helpers below. 'std.string' imports nothing, so there is no cycle.
-import std.string { length, charAt, substring };
 
 /// The whole content as text, decoded as UTF-8 — bytes that are not valid UTF-8 become
 /// U+FFFD. For binary data use `readBytes`. `null` when the file does not exist or is not
@@ -97,18 +100,18 @@ fn isSeparator(c: char): bool {
 
 /// Joins two path parts, with neither a doubled nor a missing separator.
 pub fn joinPath(left: string, right: string): string {
-    if (length(left) == 0) {
+    if (left.length() == 0) {
         return right;
     }
-    if (length(right) == 0) {
+    if (right.length() == 0) {
         return left;
     }
 
-    let endsWithSeparator = isSeparator(charAt(left, length(left) - 1));
-    let startsWithSeparator = isSeparator(charAt(right, 0));
+    let endsWithSeparator = isSeparator(left.charAt(left.length() - 1));
+    let startsWithSeparator = isSeparator(right.charAt(0));
 
     if (endsWithSeparator && startsWithSeparator) {
-        return left + substring(right, 1, length(right) - 1);
+        return left + right.substring(1, right.length() - 1);
     }
     if (endsWithSeparator || startsWithSeparator) {
         return left + right;
@@ -118,9 +121,9 @@ pub fn joinPath(left: string, right: string): string {
 
 // The index after the last separator, or 0 when there is none.
 fn afterLastSeparator(path: string): int {
-    var i = length(path) - 1;
+    var i = path.length() - 1;
     while (i >= 0) {
-        if (isSeparator(charAt(path, i))) {
+        if (isSeparator(path.charAt(i))) {
             return i + 1;
         }
         i = i - 1;
@@ -131,7 +134,7 @@ fn afterLastSeparator(path: string): int {
 /// The last component. `"a/b/c.txt"` becomes `"c.txt"`.
 pub fn fileName(path: string): string {
     let start = afterLastSeparator(path);
-    return substring(path, start, length(path) - start);
+    return path.substring(start, path.length() - start);
 }
 
 /// Everything before the last separator, or `""` when there is none.
@@ -142,9 +145,9 @@ pub fn parentDir(path: string): string {
     }
     // The separator itself is dropped, except for "/x", where the parent is the root.
     if (start == 1) {
-        return substring(path, 0, 1);
+        return path.substring(0, 1);
     }
-    return substring(path, 0, start - 1);
+    return path.substring(0, start - 1);
 }
 
 /// The extension WITHOUT the dot. `""` when there is none.
@@ -153,12 +156,12 @@ pub fn parentDir(path: string): string {
 /// differs between languages, so it is stated here.
 pub fn extension(path: string): string {
     let name = fileName(path);
-    var i = length(name) - 1;
+    var i = name.length() - 1;
     while (i > 0) {
-        if (charAt(name, i) == '.') {
-            return substring(name, i + 1, length(name) - i - 1);
+        if (name.charAt(i) == '.') {
+            return name.substring(i + 1, name.length() - i - 1);
         }
-        if (isSeparator(charAt(name, i))) {
+        if (isSeparator(name.charAt(i))) {
             return "";
         }
         i = i - 1;
@@ -170,28 +173,28 @@ pub fn extension(path: string): string {
 pub fn stem(path: string): string {
     let name = fileName(path);
     let ext = extension(name);
-    if (length(ext) == 0) {
+    if (ext.length() == 0) {
         return name;
     }
-    return substring(name, 0, length(name) - length(ext) - 1);
+    return name.substring(0, name.length() - ext.length() - 1);
 }
 
 /// Replaces the extension. An empty extension removes it.
 pub fn withExtension(path: string, ext: string): string {
     let directory = parentDir(path);
     let base = stem(path);
-    let renamed = if (length(ext) == 0) base else base + "." + ext;
-    return if (length(directory) == 0) renamed else joinPath(directory, renamed);
+    let renamed = if (ext.length() == 0) base else base + "." + ext;
+    return if (directory.length() == 0) renamed else joinPath(directory, renamed);
 }
 
 /// Does the path start at the root? Recognises `/x` and `C:\x`.
 pub fn isAbsolute(path: string): bool {
-    if (length(path) == 0) {
+    if (path.length() == 0) {
         return false;
     }
-    if (isSeparator(charAt(path, 0))) {
+    if (isSeparator(path.charAt(0))) {
         return true;
     }
     // A drive letter: 'C:' at the start.
-    return length(path) >= 2 && charAt(path, 1) == ':';
+    return path.length() >= 2 && path.charAt(1) == ':';
 }

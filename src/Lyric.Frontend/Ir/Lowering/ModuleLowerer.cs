@@ -239,7 +239,11 @@ public static class ModuleLowerer
         // lowered: a lambda in the initializer (`let f = () => 1;`) would otherwise shift its own id.
         // All three kinds of downstream function share ONE counter: they grow simultaneously and without
         // bound, so none can reserve a range of its own.
-        var nextId = new FunctionIds(pending.Count + (globals.IsEmpty ? 0 : 1));
+        // No reserved slot for the global initializer anymore: it draws from this counter like
+        // every other downstream function. The old '+1 if globals' broke the moment PASS 2 both
+        // requested an extension AND created a global (a struct-return buffer does) — the
+        // initializer then landed on an id the extension already held.
+        var nextId = new FunctionIds(pending.Count);
         var coroutines = new CoroutineTable(nextId);
         var instances = new InstanceTable(nextId);
         var lambdas = new LambdaTable(nextId);
@@ -289,13 +293,17 @@ public static class ModuleLowerer
         // beyond saving. No partial result is returned.
         if (failed) return null;
 
+        // The initializer is BUILT here — its lambdas and instances must be requested before the
+        // drain rounds — but it lands in the downstream batch and merges by id like the rest.
         FunctionId? globalInit = null;
+        var downstreamSeed = new List<(FunctionId Id, IrFunction Function)>();
         if (!globals.IsEmpty)
         {
             try
             {
-                globalInit = new FunctionId(functions.Count);
-                functions.Add(GlobalInitializer.Build(globals, types, ids, imports, typeTable, lambdas, instances));
+                globalInit = nextId.Next();
+                downstreamSeed.Add((globalInit.Value,
+                    GlobalInitializer.Build(globals, types, ids, imports, typeTable, lambdas, instances)));
             }
             catch (UnsupportedConstructException ex)
             {
@@ -328,7 +336,10 @@ public static class ModuleLowerer
             return null;
         }
 
-        functions.AddRange(deferred.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
+        // NOT appended yet: BuildImpls below may request ids, and the late rounds may lower
+        // bodies whose ids interleave with these. Both batches merge by id at the end — the
+        // position in the list IS the id, and batch-wise appending broke that the first time a
+        // module carried enough extensions for the id ranges to overlap.
 
         // The vtable rows FIRST, because they can request an extension nobody has called yet:
         // 'extend A :: [I]' is needed as soon as an A lands in an I slot, even when the method appears
@@ -360,7 +371,19 @@ public static class ModuleLowerer
             return null;
         }
 
-        functions.AddRange(late.OrderBy(entry => entry.Id.Value).Select(entry => entry.Function));
+        // ONE merge over both downstream batches, by id. A gap would shift every function after
+        // it under a wrong id — the inliner and the vtable rows index the list by id — so a hole
+        // is an internal error with a name, never a silent mis-splice.
+        var downstream = downstreamSeed.Concat(deferred).Concat(late)
+            .OrderBy(entry => entry.Id.Value).ToList();
+        foreach (var (id, function) in downstream)
+        {
+            if (id.Value != functions.Count)
+                throw new InternalCompilationException(
+                    $"ir: downstream function '{function.Name}' has id {id.Value}, "
+                    + $"but slot {functions.Count} is next — the id space has a hole");
+            functions.Add(function);
+        }
 
         // The hidden out-buffers behind struct-returning natives: one object per import, built
         // BEFORE every other initializer, because a module-level 'let' may itself call such a
@@ -466,12 +489,20 @@ public static class ModuleLowerer
         while (node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
                && aliases.TryGetValue(named.Path[0], out var target) && guard++ < 16)
             node = target;
-        return node switch
+
+        // Rebuild a wrapper ONLY when something inside actually changed: downstream lookups go
+        // through the binding table BY NODE, and a needlessly fresh node has no entries there.
+        switch (node)
         {
-            NullableType opt => opt with { Inner = ResolveLocalAliases(opt.Inner, aliases)! },
-            ArrayType arr => arr with { Element = ResolveLocalAliases(arr.Element, aliases)! },
-            _ => node,
-        };
+            case NullableType opt:
+                var inner = ResolveLocalAliases(opt.Inner, aliases)!;
+                return ReferenceEquals(inner, opt.Inner) ? node : opt with { Inner = inner };
+            case ArrayType arr:
+                var element = ResolveLocalAliases(arr.Element, aliases)!;
+                return ReferenceEquals(element, arr.Element) ? node : arr with { Element = element };
+            default:
+                return node;
+        }
     }
 
     private static (IrType[] Flattened, ImportParam[] Shape) LowerNativeParameters(

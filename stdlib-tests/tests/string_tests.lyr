@@ -1,42 +1,30 @@
 import std.test { Test, assertEq, assertTrue };
-import std.string {
-    trim,
-    split,
-    join,
-    indexOf,
-    lastIndexOf,
-    replace,
-    count,
-    parseInt,
-    padStart,
-    isBlank,
-    StringBuilder,
-};
+import std.string { join, parseInt, StringBuilder };
 
 @Test
 pub fn trim_takes_both_ends(): void {
-    assertEq(trim("  ab  "), "ab");
-    assertEq(trim(""), "");
+    assertEq("  ab  ".trim(), "ab");
+    assertEq("".trim(), "");
 }
 
 @Test
 pub fn split_and_join_are_inverse(): void {
-    let parts = split("a,b,c", ",");
+    let parts = "a,b,c".split(",");
     assertEq(parts.length, 3);
     assertEq(join(parts, ","), "a,b,c");
 }
 
 @Test
 pub fn indexOf_answers_minus_one_for_absence(): void {
-    assertEq(indexOf("abc", "z"), -1);
-    assertEq(indexOf("abcabc", "bc"), 1);
-    assertEq(lastIndexOf("abcabc", "bc"), 4);
+    assertEq("abc".indexOf("z"), -1);
+    assertEq("abcabc".indexOf("bc"), 1);
+    assertEq("abcabc".lastIndexOf("bc"), 4);
 }
 
 @Test
 pub fn replace_takes_every_occurrence_without_overlap(): void {
-    assertEq(replace("aaa", "aa", "b"), "ba");
-    assertEq(count("aaa", "aa"), 1);
+    assertEq("aaa".replace("aa", "b"), "ba");
+    assertEq("aaa".count("aa"), 1);
 }
 
 @Test
@@ -50,14 +38,14 @@ pub fn parseInt_handles_signs_and_refuses_junk(): void {
 
 @Test
 pub fn padStart_never_truncates(): void {
-    assertEq(padStart("7", 3, '0'), "007");
-    assertEq(padStart("1234", 3, '0'), "1234");
+    assertEq("7".padStart(3, '0'), "007");
+    assertEq("1234".padStart(3, '0'), "1234");
 }
 
 @Test
 pub fn isBlank_sees_whitespace_only(): void {
-    assertTrue(isBlank("  \t"), "whitespace is blank");
-    assertTrue(!isBlank(" x "), "content is not blank");
+    assertTrue("  \t".isBlank(), "whitespace is blank");
+    assertTrue(!" x ".isBlank(), "content is not blank");
 }
 
 @Test
@@ -81,7 +69,7 @@ pub fn a_builder_with_many_pieces_builds_repeatably(): void {
     }
     let first = b.build();
     assertEq(first, b.build());
-    assertTrue(count(first, "x") == 100, "expected 100 pieces in the built string");
+    assertTrue(first.count("x") == 100, "expected 100 pieces in the built string");
 }
 
 @Test
@@ -93,6 +81,6 @@ pub fn join_weaves_the_separator_between_all_parts(): void {
 
 @Test
 pub fn replace_leaves_a_string_without_matches_untouched(): void {
-    assertEq(replace("abc", "zz", "y"), "abc");
-    assertEq(replace("start middle end", "middle", ""), "start  end");
+    assertEq("abc".replace("zz", "y"), "abc");
+    assertEq("start middle end".replace("middle", ""), "start  end");
 }

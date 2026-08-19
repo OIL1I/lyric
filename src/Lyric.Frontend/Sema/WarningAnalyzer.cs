@@ -353,7 +353,31 @@ internal sealed class WarningAnalyzer
         if (usedInFile is not null
             && (usedInFile.Contains(binding) || usedInFile.Contains(target))) return;
 
+        // A MODULE import is used when one of its extension methods resolved in this file:
+        // 'import std.string as strings;' exists exactly for 's.trim()' (v1.15), and no name of
+        // the module has to appear in the source for that.
+        if (target is ModuleSymbol targetModule && usedInFile is not null)
+            foreach (var used in usedInFile)
+                if (ExtensionOwners.TryGetValue(used, out var owner)
+                    && ReferenceEquals(owner, targetModule))
+                    return;
+
         _de.Report("LYR-SEM0072", Severity.Warning, span, $"import '{name}' is never used");
+    }
+
+    /// <summary>Which module each extension METHOD belongs to — the lookup behind the rule that
+    /// a used extension marks its module's import as used.</summary>
+    private Dictionary<Symbol, ModuleSymbol> ExtensionOwners => _extensionOwners ??= Build();
+
+    private Dictionary<Symbol, ModuleSymbol>? _extensionOwners;
+
+    private Dictionary<Symbol, ModuleSymbol> Build()
+    {
+        var owners = new Dictionary<Symbol, ModuleSymbol>(ReferenceEqualityComparer.Instance);
+        foreach (var block in _comp.Extensions.Blocks)
+            foreach (var method in block.Methods)
+                owners[method] = block.Module;
+        return owners;
     }
 
     // ─── unreachable statements ────────────────────────────────────────────

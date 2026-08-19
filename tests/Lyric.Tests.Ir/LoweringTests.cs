@@ -512,6 +512,49 @@ public class LoweringTests
     public void Out_of_scope_constructs_report_where_and_what(string source, string expected) =>
         AssertNotSupported(source, expected);
 
+    /// <summary>
+    /// The M24 probe result, pinned: a GENERIC default method on an interface is sema-legal and
+    /// refused by the lowering — a default body with its own type parameters has no
+    /// monomorphization path yet, and an interface value's instance interning cannot carry the
+    /// <c>fn(T) -&gt; U</c> slot signature either. This is why iterator method chaining is a
+    /// documented No (STATUS §Design decisions): both walls are milestone-sized. The pin keeps
+    /// today's refusal a visible decision instead of an accident.
+    /// </summary>
+    [Fact]
+    public void A_generic_interface_default_is_refused_by_the_lowering_not_the_sema()
+    {
+        var (ir, de) = TryLower("""
+            interface Producer {
+                mut fn next(): ?int;
+
+                fn firstMapped<U>(f: fn(int) -> U): ?U {
+                    let v = this.next();
+                    if (v == null) {
+                        return null;
+                    }
+                    return f(v);
+                }
+            }
+
+            class Counter :: [Producer] {
+                current: int,
+
+                pub mut fn next(): ?int {
+                    this.current = this.current + 1;
+                    return this.current;
+                }
+            }
+
+            fn f(): int {
+                let c = Counter { current = 0 };
+                return c.firstMapped<int>((n: int) => n * 10) ?? -1;
+            }
+            """);
+
+        Assert.Null(ir);
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-IR0001");
+    }
+
     /// <summary>What the lowering does not handle is valid Lyric, so it is a DIAGNOSTIC with file, line
     /// and column rather than a crash. The code <c>LYR-IR0001</c> is the stable category — "this compiler
     /// build cannot do that yet" — and the construct stands in the message.</summary>

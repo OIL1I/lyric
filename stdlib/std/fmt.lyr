@@ -37,7 +37,7 @@ pub fn formatString(value: string, spec: string): string;
 // Number bases and alignment. Neither needs a native edge: a base conversion is division with
 // remainder, and alignment is padding.
 
-import std.string { length, repeat, fromChar, padStart, padEnd, digitToChar };
+import std.string { repeat, fromChar, digitToChar };
 
 // ------------------------------------------------------------------------ number bases
 
@@ -96,26 +96,26 @@ pub fn formatOctal(value: int): string {
 /// Hexadecimal with a fixed number of digits and leading zeros: `formatHexPadded(255, 4)` is
 /// `"00ff"`, for addresses and colour values where the width carries meaning.
 pub fn formatHexPadded(value: int, width: int): string {
-    return padStart(formatHex(value), width, '0');
+    return formatHex(value).padStart(width, '0');
 }
 
 // ------------------------------------------------------------------ alignment
 
 /// Pads with spaces at the FRONT until `width` is reached; longer strings stay unchanged.
 pub fn padLeft(value: string, width: int): string {
-    return padStart(value, width, ' ');
+    return value.padStart(width, ' ');
 }
 
 /// Pads with spaces at the END until `width` is reached; longer strings stay unchanged.
 pub fn padRight(value: string, width: int): string {
-    return padEnd(value, width, ' ');
+    return value.padEnd(width, ' ');
 }
 
 /// Centres. On an odd remainder the extra character goes to the RIGHT.
 /// A decision rather than a matter of course, but without it the same input yields two different
 /// results depending on the implementation.
 pub fn center(value: string, width: int): string {
-    let missing = width - length(value);
+    let missing = width - value.length();
     if (missing <= 0) {
         return value;
     }
@@ -173,7 +173,7 @@ pub fn table(rows: string[][], separator: string): string {
     while (i < rows.length) {
         var j = 0;
         while (j < rows[i].length) {
-            let l = length(rows[i][j]);
+            let l = rows[i][j].length();
             if (l > widths[j]) {
                 widths[j] = l;
             }
@@ -196,7 +196,7 @@ pub fn table(rows: string[][], separator: string): string {
             }
             let cell = if (j < rows[i].length) rows[i][j] else "";
             // The last column is NOT padded, or invisible trailing spaces would remain.
-            result = result + (if (j == columns - 1) cell else padEnd(cell, widths[j], ' '));
+            result = result + (if (j == columns - 1) cell else cell.padEnd(widths[j], ' '));
             j = j + 1;
         }
         i = i + 1;
