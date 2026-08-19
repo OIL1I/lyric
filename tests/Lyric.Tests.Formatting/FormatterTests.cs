@@ -32,11 +32,12 @@ public class FormatterTests
     }
 
     [Fact]
-    public void Whitespace_is_normalized()
+    public void Whitespace_is_normalized_and_a_blank_line_survives_as_one()
     {
         Assert.Equal("""
             fn main(): int {
                 let x = 1;
+
                 return x;
             }
 

@@ -1,5 +1,6 @@
 using Lyric.AST;
 using Lyric.Core;
+using Lyric.Lexing;
 
 namespace Lyric.Formatting;
 
@@ -15,66 +16,220 @@ namespace Lyric.Formatting;
 /// parentheses were redundant loses them; one that needs them gets them back — the reparse
 /// invariant of the test suite is what holds that honest.</para>
 ///
-/// <para>Comments are not handled here yet; the caller decides what to do with the trivia
-/// list. Error nodes throw: the formatter runs only on files the parser accepted, and printing
-/// a recovery placeholder would write a hole into someone's file.</para>
+/// <para>COMMENTS travel beside the tree, not in it: a single source-ordered cursor over the
+/// merged comment stream (line, block and doc comments alike), consumed at the sequence
+/// boundaries — between statements, declarations, members and match arms. A comment on the same
+/// line as the element before it stays trailing; every other one stands on its own line, and
+/// the blank lines around it follow the source. A comment INSIDE an expression is not lost but
+/// surfaces at the next boundary — line-level fidelity, the gofmt trade.</para>
+///
+/// <para>BLANK LINES between elements are the user's, capped at one — except where the style
+/// has an opinion: a blank always follows the module header and separates top-level
+/// declarations and members with bodies, and imports sit together whatever the source did.
+/// Error nodes throw: the formatter runs only on files the parser accepted.</para>
 /// </summary>
 public sealed class AstFormatter
 {
+    /// <summary>What separates two adjacent elements of a sequence.</summary>
+    private enum Air
+    {
+        /// <summary>A blank line, whatever the source says.</summary>
+        Forced,
+
+        /// <summary>A blank line exactly when the source has one (or more).</summary>
+        User,
+
+        /// <summary>No blank line, whatever the source says.</summary>
+        Never,
+    }
+
     private readonly string _source;
+    private readonly IReadOnlyList<Trivia> _comments;
+    private readonly int[] _lineStarts;
+    private int _next;   // the comment cursor: everything before it is already printed
+    private int _lastEnd = -1; // source end of the last element printed at line level
 
-    private AstFormatter(string source) => _source = source;
+    private AstFormatter(string source, IReadOnlyList<Trivia> comments)
+    {
+        _source = source;
+        _comments = comments;
 
-    public static Doc Build(Module module, string source) =>
-        new AstFormatter(source).ModuleDoc(module);
+        var starts = new List<int> { 0 };
+        for (var i = 0; i < source.Length; i++)
+            if (source[i] == '\n')
+                starts.Add(i + 1);
+        _lineStarts = starts.ToArray();
+    }
+
+    /// <param name="comments">Every comment of the file, source-ordered — the lexer's trivia
+    /// plus the doc-comment tokens, merged by the caller.</param>
+    public static Doc Build(Module module, string source, IReadOnlyList<Trivia> comments) =>
+        new AstFormatter(source, comments).ModuleDoc(module);
+
+    // ------------------------------------------------------------------ lines and comments
+
+    private int LineOf(int offset)
+    {
+        var index = Array.BinarySearch(_lineStarts, offset);
+        return index >= 0 ? index : ~index - 1;
+    }
+
+    private bool BlankBetween(int endOffset, int startOffset) =>
+        LineOf(startOffset) - LineOf(endOffset) >= 2;
+
+    private bool AnyCommentBefore(int position) =>
+        _next < _comments.Count && _comments[_next].Span.Start < position;
+
+    // A multi-line block comment may carry CRLF inside; the output contract is LF-only.
+    private string CommentText(Trivia comment) =>
+        _source.Substring(comment.Span.Start, comment.Span.Length)
+            .Replace("\r\n", "\n").TrimEnd('\r');
+
+    /// <summary>A comment on the line the previous element ended on trails it after one
+    /// space; several chain. Bounded, so a comment behind the container's closing brace is not
+    /// pulled inside.</summary>
+    private void EmitTrailingComments(List<Doc> parts, int limit)
+    {
+        while (AnyCommentBefore(limit) && _lastEnd >= 0
+               && LineOf(_comments[_next].Span.Start) == LineOf(_lastEnd))
+        {
+            var comment = _comments[_next++];
+            parts.Add(Doc.From(" " + CommentText(comment)));
+            _lastEnd = comment.Span.End;
+        }
+    }
+
+    /// <summary>One comment on its own line, separated by what <paramref name="air"/> and the
+    /// source agree on.</summary>
+    private void EmitOwnLine(List<Doc> parts, Trivia comment, Air air)
+    {
+        if (parts.Count > 0)
+        {
+            parts.Add(Doc.NewLine);
+            if (air == Air.Forced
+                || (air == Air.User && _lastEnd >= 0 && BlankBetween(_lastEnd, comment.Span.Start)))
+                parts.Add(Doc.NewLine);
+        }
+
+        parts.Add(Doc.From(CommentText(comment)));
+        _lastEnd = comment.Span.End;
+    }
+
+    /// <summary>
+    /// The sequence engine every line-level container runs on.
+    ///
+    /// <para>Per item: the previous line's trailing comments, then the pending own-line
+    /// comments, then the item. The pending comments split into floating paragraphs, which
+    /// keep the user's blank lines, and the group GLUED to the item — no blank line anywhere
+    /// between it and the item — which travels with it: the air rule between two declarations
+    /// applies before the doc comment of the second, not between the comment and its
+    /// declaration. The container's tail comments follow the last item.</para>
+    /// </summary>
+    private Doc SequenceDoc<T>(IReadOnlyList<T> items, Func<T, Doc> print,
+        Func<T, T, Air> airOf, int containerEnd) where T : Node
+    {
+        var parts = new List<Doc>();
+        T? previous = default;
+
+        foreach (var item in items)
+        {
+            EmitTrailingComments(parts, item.Span.Start);
+
+            var pending = new List<Trivia>();
+            while (AnyCommentBefore(item.Span.Start)) pending.Add(_comments[_next++]);
+
+            // The glued suffix: walk back from the item while no blank line intervenes.
+            var glued = pending.Count;
+            var reach = item.Span.Start;
+            while (glued > 0 && !BlankBetween(pending[glued - 1].Span.End, reach))
+                reach = pending[--glued].Span.Start;
+
+            for (var i = 0; i < glued; i++) EmitOwnLine(parts, pending[i], Air.User);
+
+            var air = previous is not null ? airOf(previous, item) : Air.User;
+            if (glued < pending.Count)
+            {
+                EmitOwnLine(parts, pending[glued], air);
+                for (var i = glued + 1; i < pending.Count; i++)
+                    EmitOwnLine(parts, pending[i], Air.User);
+                air = Air.User; // the unit's separation is spent on its first comment
+            }
+
+            if (parts.Count > 0)
+            {
+                parts.Add(Doc.NewLine);
+                if (air == Air.Forced
+                    || (air == Air.User && _lastEnd >= 0 && BlankBetween(_lastEnd, item.Span.Start)))
+                    parts.Add(Doc.NewLine);
+            }
+
+            parts.Add(print(item));
+            _lastEnd = item.Span.End;
+            previous = item;
+        }
+
+        EmitTrailingComments(parts, containerEnd);
+        while (AnyCommentBefore(containerEnd)) EmitOwnLine(parts, _comments[_next++], Air.User);
+        return new Doc.Concat(parts);
+    }
+
+    /// <summary>A braced, indented body around a sequence — or <c>{ }</c> when there is truly
+    /// nothing, comments included, to put into it.</summary>
+    private Doc BracedDoc(Doc head, bool empty, Func<Doc> body)
+    {
+        if (empty) return Doc.Of(head, Doc.From("{ }"));
+        return Doc.Of(head, Doc.From("{"), Doc.IndentOf(Doc.NewLine, body()),
+            Doc.NewLine, Doc.From("}"));
+    }
 
     // ------------------------------------------------------------------ module and declarations
 
     private Doc ModuleDoc(Module module)
     {
-        var parts = new List<Doc>();
+        // Attributes, header and declarations in one sequence: the air rule knows the header
+        // gets a blank after it, imports sit together, and everything else breathes.
+        var items = new List<Node>();
+        items.AddRange(module.Attributes);
+        if (module.Header is { } header) items.Add(header);
+        items.AddRange(module.Declarations);
 
-        foreach (var attribute in module.Attributes)
+        var content = SequenceDoc(items, ItemDoc, ModuleAir, _source.Length);
+        return Doc.Of(content, Doc.NewLine); // the trailing newline of every formatted file
+
+        Doc ItemDoc(Node item) => item switch
         {
-            parts.Add(AttributeDoc(attribute));
-            parts.Add(Doc.NewLine);
-        }
-
-        if (module.Header is { } header)
-        {
-            parts.Add(Doc.From($"module {string.Join(".", header.Segments)};"));
-            parts.Add(Doc.NewLine);
-            if (module.Declarations.Length > 0) parts.Add(Doc.NewLine);
-        }
-
-        for (var i = 0; i < module.Declarations.Length; i++)
-        {
-            if (i > 0)
-            {
-                parts.Add(Doc.NewLine);
-                // Imports form one contiguous head; everything else breathes.
-                if (module.Declarations[i - 1] is not ImportDecl || module.Declarations[i] is not ImportDecl)
-                    parts.Add(Doc.NewLine);
-            }
-
-            parts.Add(DeclDoc(module.Declarations[i]));
-        }
-
-        parts.Add(Doc.NewLine); // the trailing newline of every formatted file
-        return new Doc.Concat(parts);
+            AttributeNode a => AttributeDoc(a),
+            ModulePath h => Doc.From($"module {string.Join(".", h.Segments)};"),
+            Decl d => DeclDoc(d),
+            _ => throw new InternalCompilationException($"unreachable: {item.GetType().Name} at top level"),
+        };
     }
+
+    private static Air ModuleAir(Node previous, Node next) => (previous, next) switch
+    {
+        (ModulePath, _) => Air.Forced,
+        (AttributeNode, _) => Air.Never,             // an attribute belongs to what follows it
+        (ImportDecl, ImportDecl) => Air.Never,       // imports form one contiguous head
+        (Decl, Decl) => Air.Forced,
+        _ => Air.User,
+    };
 
     private Doc DeclDoc(Decl decl) => decl switch
     {
         ImportDecl d => ImportDoc(d),
         FunctionDecl d => FunctionDoc(d),
         StructDecl d => TypeBodyDoc(Attributes(d.Attributes), d.IsPublic, "struct", d.Name,
-            d.Generics, d.Interfaces, d.Members),
+            d.Generics, d.Interfaces, d.Members, d.Span),
         ClassDecl d => TypeBodyDoc(Attributes(d.Attributes), d.IsPublic, "class", d.Name,
-            d.Generics, d.Interfaces, d.Members),
+            d.Generics, d.Interfaces, d.Members, d.Span),
         EnumDecl d => EnumDoc(d),
-        InterfaceDecl d => InterfaceDoc(d),
-        ExtendDecl d => ExtendDoc(d),
+        InterfaceDecl d => MethodBodyDoc(
+            Doc.Of(Pub(d.IsPublic), Doc.From($"interface {d.Name}"), GenericsDoc(d.Generics), Doc.Space),
+            d.Members, d.Span),
+        ExtendDecl d => MethodBodyDoc(
+            Doc.Of(Pub(d.IsPublic), Doc.From("extend "), TypeDoc(d.Target),
+                InterfaceListDoc(d.Interfaces), Doc.Space),
+            d.Methods, d.Span),
         GlobalBindingDecl d => Doc.Of(Pub(d.IsPublic), StmtDoc(d.Binding)),
         StaticBindingDecl d => Doc.Of(Pub(d.IsPublic), Doc.From("static "), StmtDoc(d.Binding)),
         TypeAliasDecl d => Doc.Of(Pub(d.IsPublic),
@@ -193,29 +348,18 @@ public sealed class AstFormatter
     }
 
     private Doc TypeBodyDoc(Doc attributes, bool isPublic, string keyword, string name,
-        GenericParam[] generics, TypeNode[] interfaces, Decl[] members)
+        GenericParam[] generics, TypeNode[] interfaces, Decl[] members, Span whole)
     {
         var head = Doc.Of(attributes, Pub(isPublic), Doc.From($"{keyword} {name}"),
-            GenericsDoc(generics), InterfaceListDoc(interfaces));
+            GenericsDoc(generics), InterfaceListDoc(interfaces), Doc.Space);
 
-        if (members.Length == 0) return Doc.Of(head, Doc.From(" { }"));
-
-        var body = new List<Doc>();
-        for (var i = 0; i < members.Length; i++)
-        {
-            if (i > 0)
-            {
-                body.Add(Doc.NewLine);
-                // A member with a body gets air; fields and constants sit together.
-                if (HasBody(members[i - 1]) || HasBody(members[i])) body.Add(Doc.NewLine);
-            }
-
-            body.Add(MemberDoc(members[i]));
-        }
-
-        return Doc.Of(head, Doc.From(" {"),
-            Doc.IndentOf(Doc.NewLine, new Doc.Concat(body)), Doc.NewLine, Doc.From("}"));
+        var closing = whole.End - 1;
+        return BracedDoc(head, members.Length == 0 && !AnyCommentBefore(closing),
+            () => SequenceDoc(members, MemberDoc, MemberAir, closing));
     }
+
+    private static Air MemberAir(Decl previous, Decl next) =>
+        HasBody(previous) || HasBody(next) ? Air.Forced : Air.User;
 
     private static bool HasBody(Decl member) => member is FunctionDecl { Body: not null };
 
@@ -249,32 +393,53 @@ public sealed class AstFormatter
     {
         var head = Doc.Of(Attributes(decl.Attributes), Pub(decl.IsPublic),
             Doc.From($"enum {decl.Name}"), GenericsDoc(decl.Generics),
-            InterfaceListDoc(decl.Interfaces));
+            InterfaceListDoc(decl.Interfaces), Doc.Space);
 
-        if (decl.Variants.Length == 0 && decl.Methods.Length == 0)
-            return Doc.Of(head, Doc.From(" { }"));
+        var closing = decl.Span.End - 1;
+        if (decl.Variants.Length == 0 && decl.Methods.Length == 0 && !AnyCommentBefore(closing))
+            return Doc.Of(head, Doc.From("{ }"));
 
-        var body = new List<Doc>();
-        for (var i = 0; i < decl.Variants.Length; i++)
+        return BracedDoc(head, empty: false, () =>
         {
-            if (i > 0) body.Add(Doc.NewLine);
-            body.Add(VariantDoc(decl.Variants[i]));
+            var parts = new List<Doc>();
 
-            // The ';' parts the variants from the methods; without methods every variant ends in
-            // ',' — the trailing one is the grammar's own permission.
-            var last = i == decl.Variants.Length - 1;
-            body.Add(Doc.From(last && decl.Methods.Length > 0 ? ";" : ","));
-        }
+            // The variants own their line up to its end, so a trailing comment stays theirs;
+            // a comment on a later line already belongs to the methods below.
+            var index = 0;
+            var variantsEnd = decl.Variants.Length == 0
+                ? closing
+                : LineEndOf(decl.Variants[^1].Span.End);
+            if (decl.Methods.Length == 0) variantsEnd = closing;
 
-        foreach (var method in decl.Methods)
-        {
-            body.Add(Doc.NewLine);
-            body.Add(Doc.NewLine);
-            body.Add(FunctionDoc(method));
-        }
+            parts.Add(SequenceDoc(decl.Variants, Variant, (_, _) => Air.User, variantsEnd));
 
-        return Doc.Of(head, Doc.From(" {"),
-            Doc.IndentOf(Doc.NewLine, new Doc.Concat(body)), Doc.NewLine, Doc.From("}"));
+            if (decl.Methods.Length > 0)
+            {
+                parts.Add(Doc.NewLine);
+                parts.Add(Doc.NewLine);
+                _lastEnd = variantsEnd;
+                parts.Add(SequenceDoc(decl.Methods, FunctionDoc, MethodAir, closing));
+            }
+
+            return new Doc.Concat(parts);
+
+            // The ';' parts the variants from the methods; without methods every variant ends
+            // in ',' — the trailing one is the grammar's own permission.
+            Doc Variant(EnumVariant variant)
+            {
+                var last = ++index == decl.Variants.Length;
+                return Doc.Of(VariantDoc(variant),
+                    Doc.From(last && decl.Methods.Length > 0 ? ";" : ","));
+            }
+        });
+    }
+
+    /// <summary>The offset just past the last character of the line <paramref name="offset"/>
+    /// lies on — before the newline itself.</summary>
+    private int LineEndOf(int offset)
+    {
+        var line = LineOf(offset);
+        return line + 1 < _lineStarts.Length ? _lineStarts[line + 1] - 1 : _source.Length;
     }
 
     private Doc VariantDoc(EnumVariant variant)
@@ -293,40 +458,15 @@ public sealed class AstFormatter
         return Doc.From(variant.Name);
     }
 
-    private Doc InterfaceDoc(InterfaceDecl decl)
-    {
-        var head = Doc.Of(Pub(decl.IsPublic), Doc.From($"interface {decl.Name}"),
-            GenericsDoc(decl.Generics));
-        return MethodBodyDoc(head, decl.Members);
-    }
-
-    private Doc ExtendDoc(ExtendDecl decl)
-    {
-        var head = Doc.Of(Pub(decl.IsPublic), Doc.From("extend "), TypeDoc(decl.Target),
-            InterfaceListDoc(decl.Interfaces));
-        return MethodBodyDoc(head, decl.Methods);
-    }
+    private static Air MethodAir(FunctionDecl previous, FunctionDecl next) =>
+        previous.Body is not null || next.Body is not null ? Air.Forced : Air.User;
 
     /// <summary>A body holding methods only — interface and extend share the shape.</summary>
-    private Doc MethodBodyDoc(Doc head, FunctionDecl[] methods)
+    private Doc MethodBodyDoc(Doc head, FunctionDecl[] methods, Span whole)
     {
-        if (methods.Length == 0) return Doc.Of(head, Doc.From(" { }"));
-
-        var body = new List<Doc>();
-        for (var i = 0; i < methods.Length; i++)
-        {
-            if (i > 0)
-            {
-                body.Add(Doc.NewLine);
-                if (methods[i - 1].Body is not null || methods[i].Body is not null)
-                    body.Add(Doc.NewLine);
-            }
-
-            body.Add(FunctionDoc(methods[i]));
-        }
-
-        return Doc.Of(head, Doc.From(" {"),
-            Doc.IndentOf(Doc.NewLine, new Doc.Concat(body)), Doc.NewLine, Doc.From("}"));
+        var closing = whole.End - 1;
+        return BracedDoc(head, methods.Length == 0 && !AnyCommentBefore(closing),
+            () => SequenceDoc(methods, FunctionDoc, MethodAir, closing));
     }
 
     // ------------------------------------------------------------------ statements
@@ -353,7 +493,7 @@ public sealed class AstFormatter
             : Doc.Of(Doc.From("yield "), ExprDoc(s.Value, Assign), Doc.From(";")),
         DeferStmt s => Doc.Of(Doc.From("defer "), StmtDoc(s.Body)),
         ThrowStmt s => Doc.Of(Doc.From("throw "), ExprDoc(s.Value, Assign), Doc.From(";")),
-        MatchStmt s => MatchDoc(s.Scrutinee, s.Arms),
+        MatchStmt s => MatchDoc(s.Scrutinee, s.Arms, s.Span),
         TryStmt s => TryDoc(s),
         ExprStmt s => Doc.Of(ExprDoc(s.Expr, Assign), Doc.From(";")),
         _ => throw new InternalCompilationException($"unreachable: unformatted {stmt.GetType().Name}"),
@@ -361,12 +501,9 @@ public sealed class AstFormatter
 
     private Doc BlockDoc(Block block)
     {
-        if (block.Statements.Length == 0) return Doc.From("{ }");
-
-        return Doc.Of(Doc.From("{"),
-            Doc.IndentOf(Doc.NewLine,
-                Doc.Join(Doc.NewLine, block.Statements.Select(StmtDoc).ToArray())),
-            Doc.NewLine, Doc.From("}"));
+        var closing = block.Span.End - 1;
+        return BracedDoc(Doc.Nil, block.Statements.Length == 0 && !AnyCommentBefore(closing),
+            () => SequenceDoc(block.Statements, StmtDoc, (_, _) => Air.User, closing));
     }
 
     private Doc BindingDoc(BindingStmt binding)
@@ -438,39 +575,35 @@ public sealed class AstFormatter
         return new Doc.Concat(parts);
     }
 
-    private Doc MatchDoc(Expr scrutinee, MatchArm[] arms)
+    private Doc MatchDoc(Expr scrutinee, MatchArm[] arms, Span whole)
     {
-        var body = new List<Doc>();
-        foreach (var arm in arms)
+        var head = Doc.Of(Doc.From("match ("), ExprDoc(scrutinee, Assign), Doc.From(") "));
+        var closing = whole.End - 1;
+        return BracedDoc(head, arms.Length == 0 && !AnyCommentBefore(closing),
+            () => SequenceDoc(arms, ArmDoc, (_, _) => Air.User, closing));
+    }
+
+    private Doc ArmDoc(MatchArm arm)
+    {
+        var line = new List<Doc> { PatternDoc(arm.Pattern) };
+        if (arm.Guard is { } guard)
         {
-            if (body.Count > 0) body.Add(Doc.NewLine);
-
-            var line = new List<Doc> { PatternDoc(arm.Pattern) };
-            if (arm.Guard is { } guard)
-            {
-                line.Add(Doc.From(" if "));
-                line.Add(ExprDoc(guard, Assign));
-            }
-
-            line.Add(Doc.From(" => "));
-            if (arm.Body is Block block)
-            {
-                line.Add(BlockDoc(block)); // a block arm closes itself; no comma
-            }
-            else
-            {
-                line.Add(ExprDoc((Expr)arm.Body, Assign));
-                line.Add(Doc.From(","));
-            }
-
-            body.Add(new Doc.Concat(line));
+            line.Add(Doc.From(" if "));
+            line.Add(ExprDoc(guard, Assign));
         }
 
-        var head = Doc.Of(Doc.From("match ("), ExprDoc(scrutinee, Assign), Doc.From(") {"));
-        if (arms.Length == 0) return Doc.Of(head, Doc.From(" }")); // parseable, if pointless
+        line.Add(Doc.From(" => "));
+        if (arm.Body is Block block)
+        {
+            line.Add(BlockDoc(block)); // a block arm closes itself; no comma
+        }
+        else
+        {
+            line.Add(ExprDoc((Expr)arm.Body, Assign));
+            line.Add(Doc.From(","));
+        }
 
-        return Doc.Of(head, Doc.IndentOf(Doc.NewLine, new Doc.Concat(body)),
-            Doc.NewLine, Doc.From("}"));
+        return new Doc.Concat(line);
     }
 
     // ------------------------------------------------------------------ expressions
@@ -482,7 +615,6 @@ public sealed class AstFormatter
     private const int Prefix = 2;
     private const int CastLevel = 3;
     private const int Range = 7;
-    private const int Coalesce = 15;
     private const int Assign = 16;
 
     private static (string Symbol, int Level) BinaryInfo(BinaryOp op) => op switch
@@ -509,7 +641,7 @@ public sealed class AstFormatter
         _ => throw new InternalCompilationException($"unreachable: unexpected {op}"),
     };
 
-    private int LevelOf(Expr expr) => expr switch
+    private static int LevelOf(Expr expr) => expr switch
     {
         BinaryExpr b => BinaryInfo(b.Operator).Level,
         UnaryExpr or ResumeExpr => Prefix,
@@ -566,7 +698,7 @@ public sealed class AstFormatter
         LambdaExpr l => LambdaDoc(l),
         IfExpr i => Doc.GroupOf(Doc.From("if ("), ExprDoc(i.Condition, Assign), Doc.From(") "),
             ExprDoc(i.Then, Assign), Doc.LineOrSpace, Doc.From("else "), ExprDoc(i.Else, Assign)),
-        MatchExpr m => MatchDoc(m.Scrutinee, m.Arms),
+        MatchExpr m => MatchDoc(m.Scrutinee, m.Arms, m.Span),
         StructInitExpr s => StructInitDoc(s),
 
         _ => throw new InternalCompilationException($"unreachable: unformatted {expr.GetType().Name}"),

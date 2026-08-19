@@ -6,6 +6,11 @@ public enum TriviaKind
 {
     LineComment,
     BlockComment,
+
+    /// <summary>Never produced by the lexer — a doc comment is a token. The formatter merges
+    /// doc comments into its comment stream under this kind, so one positional mechanism
+    /// carries all three comment forms.</summary>
+    DocComment,
 }
 
 /// <summary>
