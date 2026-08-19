@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.fmt — Lyric v1.10.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v1.10.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/" class="here">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.fmt</h1>
+<nav class="contents">
+<ul>
+<li><a href="#function-formatint">formatInt</a></li>
+<li><a href="#function-formatuint">formatUint</a></li>
+<li><a href="#function-formatfloat">formatFloat</a></li>
+<li><a href="#function-formatbool">formatBool</a></li>
+<li><a href="#function-formatchar">formatChar</a></li>
+<li><a href="#function-formatstring">formatString</a></li>
+<li><a href="#function-formatradix">formatRadix</a></li>
+<li><a href="#function-formathex">formatHex</a></li>
+<li><a href="#function-formatbinary">formatBinary</a></li>
+<li><a href="#function-formatoctal">formatOctal</a></li>
+<li><a href="#function-formathexpadded">formatHexPadded</a></li>
+<li><a href="#function-padleft">padLeft</a></li>
+<li><a href="#function-padright">padRight</a></li>
+<li><a href="#function-center">center</a></li>
+<li><a href="#function-formatbytes">formatBytes</a></li>
+<li><a href="#function-table">table</a></li>
+</ul>
+</nav>
+<section class="item" id="function-formatint">
+<h2><a href="#function-formatint">formatInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatInt(value: int, spec: string): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:20</p>
+</section>
+<section class="item" id="function-formatuint">
+<h2><a href="#function-formatuint">formatUint</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatUint(value: uint, spec: string): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:21</p>
+</section>
+<section class="item" id="function-formatfloat">
+<h2><a href="#function-formatfloat">formatFloat</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatFloat(value: float, spec: string): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:22</p>
+</section>
+<section class="item" id="function-formatbool">
+<h2><a href="#function-formatbool">formatBool</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatBool(value: bool, spec: string): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:23</p>
+</section>
+<section class="item" id="function-formatchar">
+<h2><a href="#function-formatchar">formatChar</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatChar(value: char, spec: string): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:24</p>
+</section>
+<section class="item" id="function-formatstring">
+<h2><a href="#function-formatstring">formatString</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatString(value: string, spec: string): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:28</p>
+</section>
+<section class="item" id="function-formatradix">
+<h2><a href="#function-formatradix">formatRadix</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatRadix(value: int, radix: int): string</code></pre>
+<p>To a base from 2 to 36. Letters from <code>a</code> for digit values above 9.</p>
+<p>The inverse of <code>std.string.parseIntRadix</code>. They live in different modules because parsing is
+text processing and formatting is output, and <code>std.string</code> must not import <code>std.fmt</code>.</p>
+<p class="source">stdlib/std/fmt.lyr:43</p>
+</section>
+<section class="item" id="function-formathex">
+<h2><a href="#function-formathex">formatHex</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatHex(value: int): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:77</p>
+</section>
+<section class="item" id="function-formatbinary">
+<h2><a href="#function-formatbinary">formatBinary</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatBinary(value: int): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:81</p>
+</section>
+<section class="item" id="function-formatoctal">
+<h2><a href="#function-formatoctal">formatOctal</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatOctal(value: int): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:85</p>
+</section>
+<section class="item" id="function-formathexpadded">
+<h2><a href="#function-formathexpadded">formatHexPadded</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatHexPadded(value: int, width: int): string</code></pre>
+<p>Hexadecimal with a fixed number of digits and leading zeros: <code>formatHexPadded(255, 4)</code> is
+<code>&quot;00ff&quot;</code>, for addresses and colour values where the width carries meaning.</p>
+<p class="source">stdlib/std/fmt.lyr:91</p>
+</section>
+<section class="item" id="function-padleft">
+<h2><a href="#function-padleft">padLeft</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn padLeft(value: string, width: int): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:97</p>
+</section>
+<section class="item" id="function-padright">
+<h2><a href="#function-padright">padRight</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn padRight(value: string, width: int): string</code></pre>
+<p class="source">stdlib/std/fmt.lyr:101</p>
+</section>
+<section class="item" id="function-center">
+<h2><a href="#function-center">center</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn center(value: string, width: int): string</code></pre>
+<p>Centres. On an odd remainder the extra character goes to the RIGHT.
+A decision rather than a matter of course, but without it the same input yields two different
+results depending on the implementation.</p>
+<p class="source">stdlib/std/fmt.lyr:108</p>
+</section>
+<section class="item" id="function-formatbytes">
+<h2><a href="#function-formatbytes">formatBytes</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn formatBytes(bytes: int): string</code></pre>
+<p>Bytes in readable form: <code>1536</code> becomes <code>&quot;1.5 KB&quot;</code>.</p>
+<p>Base 1024 with the prefixes without <code>i</code> (<code>KB</code> rather than <code>KiB</code>), the spelling operating
+systems and tools actually use.</p>
+<p class="source">stdlib/std/fmt.lyr:123</p>
+</section>
+<section class="item" id="function-table">
+<h2><a href="#function-table">table</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn table(rows: string[][], separator: string): string</code></pre>
+<p>Aligns columns. Each row is a <code>string[]</code>; short rows are padded with empty cells.</p>
+<p>No borders and no header handling: what a table means is the caller's business. This does the
+tedious part — two passes over the data, to know the column widths before printing.</p>
+<p class="source">stdlib/std/fmt.lyr:147</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.core/">std.core</a>
+<a class="next" href="../../stdlib/std.io.console/">std.io.console</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.10.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.10.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.10.0 — 2026-08-19</h2>
+<p>The compiler learns to speak below &quot;error&quot;. Four severities, warnings that matter, notes that
+point at places, and a CI gate. The language, the bytecode format (<strong>3.2</strong>) and the embedding
+API are unchanged; every program that compiled still compiles — some now hear about themselves.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>Warnings.</strong> A local binding, loop variable, catch binding or pattern binding that is never
+referenced (<code>LYR-SEM0071</code> — naming it <code>_</code> is the opt-out; parameters and the shorthand field
+pattern <code>Rect { w, h }</code> are deliberately exempt). An imported name nobody in the file uses
+(<code>LYR-SEM0072</code>). A statement control flow can never reach (<code>LYR-SEM0073</code>). And a static
+extension method called through an instance (<code>LYR-SEM0074</code>): that form is <strong>deprecated</strong> and
+becomes an error in the next major — the warning is the clock. Warnings stay silent over a
+program with errors, and never fail a build by themselves.</p>
+</li>
+<li><p><strong><code>--deny-warnings</code></strong> on <code>check</code> and <code>build</code>, for CI: the warnings keep their severity in the
+output, one closing error (<code>LYR-CLI0016</code>) carries the policy into the exit code, and a denied
+build writes no artifact. The <code>lyric.json</code> unknown-key warnings are real diagnostics now
+(<code>LYR-CLI0017</code>) and count toward the gate.</p>
+</li>
+<li><p><strong>Notes on diagnostics.</strong> A duplicate declaration points back at the first one, a missing
+interface method points at the member it fails (in whatever file it lives), an unknown name
+suggests the single closest candidate in scope, and an unknown member suggests from the same
+list completion offers. Rendered indented under the caret block in text — deliberately not in
+the head-line format a problem matcher reads — as a <code>notes</code> array in <code>--json</code> (only when
+present, so existing consumers read what they always read), and as related information in
+editors.</p>
+</li>
+<li><p><strong>The first hint.</strong> <code>LYR-SEM0075</code>: a <code>var</code> through which nothing is ever changed — no
+reassignment, no field or element write, no <code>mut</code> call, not handed over by reference — could
+be a <code>let</code>. A <code>var</code> that documents mutation keeps its <code>var</code>.</p>
+</li>
+<li><p><strong>An error that was silent misbehavior</strong>: two files claiming one module name is <code>LYR-RES0007</code>
+with a note at the first claim, instead of a shadow registration nothing could explain.</p>
+</li>
+<li><p><strong>Editors draw the difference</strong>: unused and unreachable code fades, the deprecated instance
+form is struck through, and every note is a click away. The severity <code>info</code> exists on the
+wire for what later versions will say at it.</p>
+</li>
+<li><p><strong>Guide chapter 19</strong> documents the contract: severities, codes as stable identifiers, the
+gate, and what warns today. The repository holds itself to it — the standard library, the
+examples and the templates check in silence, and a test keeps them there.</p>
+</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><p><strong>The editor clients live in their own repositories</strong> (<a href="https://github.com/lyriclang/vscode-lyric">vscode-lyric</a>,
+<a href="https://github.com/lyriclang/jetbrains-lyric">jetbrains-lyric</a>) and release their
+installables there, on their own cadence. Toolchain releases v1.8.0 through v1.9.1 carried
+them beside the archives; from this release on they are found there. The project moved to the
+<code>lyriclang</code> organization.</p>
+</li>
+<li><p>Two messages stopped promising futures: the duplicate-function hint lost its &quot;in v1&quot;
+(overloading was rejected for good in v1.5.0), and the block-lambda limit <code>LYR-SEM0046</code> now
+states the problem in the message and its way out in a note.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
