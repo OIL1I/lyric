@@ -33,6 +33,7 @@ public static class Program
             "build" => Build(args, selection),
             "pack" => Pack(args, selection),
             "fmt" => StripVerbAndForward(Tool.Fmt, selection, args),
+            "test" => StripVerbAndForward(Tool.Test, selection, args),
             "check" => Forward(Tool.Compiler, selection, args),
             "disasm" => Forward(Tool.Runtime, selection, args),
 
@@ -257,6 +258,7 @@ public static class Program
               build [<dir>]            Run the build.lyr there and compile what it declares
               pack <file> [-o <out>]   Compile and pack into one standalone executable
               fmt <path>... [--check]  Format .lyr files in place (--check only lists)
+              test [<dir>]             Run the @Test functions of the project's test root
               check <file>             Compile without writing a file
               disasm <file.lyrbc>      Print a readable disassembly
               repl                     Start a REPL session

@@ -28,7 +28,12 @@ public sealed record Tool(string Name, string Flag, string EnvironmentVariable)
     /// <summary>The formatter. It parses and prints; it neither resolves nor executes.</summary>
     public static readonly Tool Fmt = new("lyrfmt", "--fmt", "LYRIC_FMT");
 
-    public static readonly IReadOnlyList<Tool> All = [Compiler, Runtime, Repl, Builder, Packer, Fmt];
+    /// <summary>The test runner: compiles the project's test root and runs its <c>@Test</c>
+    /// functions. Holds both libraries for the same reason the REPL does.</summary>
+    public static readonly Tool Test = new("lyrtest", "--tester", "LYRIC_TEST");
+
+    public static readonly IReadOnlyList<Tool> All =
+        [Compiler, Runtime, Repl, Builder, Packer, Fmt, Test];
 
     /// <summary>Where the tool lives: <c>--flag &lt;path&gt;</c> beats the environment variable,
     /// which beats the executable next to this one.</summary>

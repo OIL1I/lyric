@@ -118,7 +118,7 @@ That is what a release ships, one archive per platform.
 
 | Binary | Role |
 |---|---|
-| `lyric` | Driver: `run`, `build`, `pack`, `fmt`, `check`, `disasm`, `repl` — dispatches to the tools below |
+| `lyric` | Driver: `run`, `build`, `pack`, `fmt`, `test`, `check`, `disasm`, `repl` — dispatches to the tools below |
 | `lyrc` | Compiler: `build`, `check`, and the `lower`/`parse`/`tokenize` dumps |
 | `lyrvm` | Runtime: `run`, `disasm`, `verify` on `.lyrbc` |
 | `lyrrepl` | Interactive prompt |
