@@ -95,8 +95,11 @@ The toolchain archive carries stubs under <code>stubs/&lt;rid&gt;/</code>, and <
 explicitly.</li>
 <li><strong>Size.</strong> The stub contains the whole runtime, so even <code>return 0;</code> is megabytes. The program
 on top costs what the module costs — usually kilobytes.</li>
-<li><strong>macOS re-verifies signatures.</strong> Appending bytes invalidates a code signature, so on macOS
-the packed file needs a re-sign before it ships: <code>codesign --force --sign - app</code>.</li>
+<li><strong>macOS cannot run packed programs yet.</strong> A Mach-O declares its own size, appended bytes put
+the file beyond it, and <code>codesign</code> refuses to bless the result — so the packed file is killed
+on start and cannot be re-signed either. Pack FOR macOS is planned (the payload has to become
+a real Mach-O segment); pack ON macOS for the other platforms works today, with their stubs
+and <code>--stub</code>.</li>
 <li><strong>Packing is not verification.</strong> <code>lyrpack</code> copies bytes and does not look inside the module;
 a broken module packs fine and reports at first start. <code>lyrvm verify</code> answers ahead of time.</li>
 </ul>

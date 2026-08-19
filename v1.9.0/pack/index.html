@@ -147,9 +147,13 @@ diagnostics. <code>lyrvm verify</code> answers the question ahead of time. <code
 and packs in one step.</li>
 <li><strong>Not linking.</strong> The module travels whole, the stub travels whole. There is no dead-code step
 beyond what the compiler already did, and two packed programs share nothing.</li>
-<li><strong>Not signing.</strong> Appending bytes invalidates an existing code signature on platforms that
-have one; macOS in particular re-verifies. Re-signing after the pack is the shipper's step —
-<code>codesign --force --sign - &lt;file&gt;</code> for the ad-hoc case.</li>
+<li><strong>Not macOS-runnable — yet.</strong> A Mach-O declares its own extent in its load commands, and
+appended bytes put the file beyond it: the existing ad-hoc signature stops validating, and
+<code>codesign</code> refuses to write a new one over the layout (&quot;main executable failed strict
+validation&quot;) — measured by the release pipeline, which is how this limit was found. Packing
+WORKS on macOS; running the result does not, until the payload becomes a real Mach-O segment
+the way deno and Node's SEA do it. Windows (PE) and Linux (ELF) do not validate the file
+tail and are unaffected.</li>
 </ul>
 <h2 id="failure-duties">Failure duties</h2>
 <p><code>lyrpack</code> refuses to overwrite either of its inputs, and a pack that fails midway deletes its

@@ -87,9 +87,9 @@ same runtime, same bytes, same backtraces as <code>lyric run</code>.</p>
 the runtime half of a packed program. The release archives hold the platform's stub under
 <code>stubs/&lt;rid&gt;/</code>; a bare stub started directly explains itself instead of failing obscurely,
 and a truncated pack is reported as damaged rather than executed. The format is specified in
-<a href="/v1.9.0/pack/"><code>docs/Pack.md</code></a>, the guide's chapter 17 says what to know before shipping —
-including that macOS requires an ad-hoc re-sign after packing, which the release pipeline
-itself performs and verifies on every platform.</p>
+<a href="/v1.9.0/pack/"><code>docs/Pack.md</code></a>, the guide's chapter 17 says what to know before shipping.
+The release pipeline packs an example and RUNS the result on Windows and Linux before an
+archive exists.</p>
 </li>
 <li><p><strong><code>lyric fmt</code> — the formatter.</strong> In place for files and directories, <code>--check</code> for CI (writes
 nothing, exits nonzero when anything would change), <code>--stdin</code> for editors. No style options.</p>
@@ -110,6 +110,10 @@ reformatted sources compile to the same programs.</li>
 </ul>
 <h3 id="not-in-this-release">Not in this release</h3>
 <ul>
+<li><strong>Packed executables that run on macOS.</strong> A Mach-O declares its own extent; appended bytes
+put the file beyond it, and <code>codesign</code> refuses the result — found by the release pipeline's
+own gate, recorded in <a href="/v1.9.0/pack/"><code>docs/Pack.md</code></a>. The fix is a real Mach-O segment for
+the payload, deno's route; until then macOS packs for the OTHER platforms via <code>--stub</code>.</li>
 <li><strong>Cross-platform packing sugar</strong>: a pack is for one platform, and a foreign platform packs
 via <code>--stub</code> with that platform's stub out of its archive. No <code>--target</code> until someone
 needs it.</li>
