@@ -10,6 +10,19 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v1.9.1 — 2026-08-19
+
+The formatter reaches the editor. `textDocument/formatting` is served by the language server —
+format on save works wherever the editor offers it, in VS Code and the JetBrains IDEs alike,
+with no client update needed.
+
+The answer is one whole-document edit off the buffer as it stands, an empty list when the file
+already has the shape, and NO edits for a buffer that does not parse: the formatter never
+writes a guess over broken text, behind the editor's gesture either. The editor's tab settings
+are deliberately ignored — one shape is the tool's contract, in every surface it has.
+
+The toolchain is otherwise unchanged.
+
 ## v1.9.0 — 2026-08-19
 
 Two tools. `lyric pack` turns a program into one standalone executable, and `lyric fmt` gives
