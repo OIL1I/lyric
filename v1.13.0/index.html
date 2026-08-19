@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.13.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.13.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.13.0 — 2026-08-19</h2>
+<p>The language gaps close. Interface inheritance arrives — one parent, implied through the whole
+chain — compound assignment reaches through the operator interfaces, block lambdas infer their
+return type, and <code>std.core</code> becomes the import-free root of the library. One question got its
+documented No: heterogeneous operator arithmetic. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>Interface inheritance</strong>: an interface may declare one parent — <code>interface Labeled :: [Named]</code>.
+Conforming to the child implies conforming to the whole chain: implementing types provide the
+chain's abstract members (a missing one names the implying interface), inherit its default
+methods, satisfy parent constraints, and carry into parent-typed interface values. A value of
+the child's interface type answers the parent's members too. The rules: at most one parent
+(several requirements side by side are constraints: <code>&lt;T :: [A, B]&gt;</code>), only interfaces, no
+cycles (<code>LYR-SEM0078</code>), and no redeclaring a chain member (<code>LYR-SEM0079</code>) — an inherited
+member keeps its declaring interface, so the same call cannot dispatch two ways. What a chain
+does NOT add: a child interface <em>value</em> does not convert to the parent's type — conformance is
+implied for the implementing type; take the concrete value through the parent directly.
+<code>std.core</code> does not adopt <code>Hashable :: [Equatable]</code> yet: changing what every conforming type
+must implement is a breaking cut reserved for 2.0.</p>
+</li>
+<li><p><strong>Compound assignment reaches through the operator interfaces</strong>: <code>v += w</code> on a type conforming
+to <code>Add&lt;T&gt;</code> now compiles for variable targets (locals, captured variables) instead of
+reporting <code>LYR-SEM0003</code>. Field and element targets stay written out — the desugaring would
+evaluate the object or the index twice, and that stays visible in source.</p>
+</li>
+<li><p><strong>Block lambdas infer their return type</strong>: <code>(x: int) =&gt; { return x * 2; }</code> needs neither an
+annotation nor a context anymore — the type comes from the body's <code>return</code> statements,
+unified like match arms (<code>return null;</code> widens to the optional). This also closes the
+open-generic case: <code>apply(5, (n) =&gt; { … })</code> binds <code>U</code> from the block. A non-void inferred
+lambda still needs return coverage, and disagreeing returns are one error at the lambda.</p>
+</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><p><strong><code>LYR-PAR0039</code> retired</strong>: <code>interface B :: [A]</code> parses since this release; everything the
+parent list may not be is a semantic message now, not a parse error.</p>
+</li>
+<li><p><strong><code>newStringBuilder</code> warns as deprecated</strong> — the piece v1.12 had to leave out. <code>std.core</code>
+imports nothing anymore: its extensions use private duplicates of six string natives
+(<code>fromInt</code> through <code>charAt</code>; the registry binds both names to the same host function), which
+makes <code>std.core</code> the library's root — and <code>import std.core { Deprecated }</code> inside
+<code>std.string</code> legal. Public API is unchanged; existing bytecode keeps running.</p>
+</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong><code>@Deprecated</code> keeps its promise</strong>: it emits no metadata row and roots nothing. Previously a
+non-generic deprecated function survived dead-code pruning in every importing program — dead
+code carried along exactly because it was marked for removal.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
