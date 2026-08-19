@@ -22,10 +22,10 @@ The standard library is written in Lyric and ships as source alongside the toolc
 
 ```lyr
 import std.io.console { println };
-import std.collections { emptyList };
+import std.collections { List };
 
 fn main(): int {
-    let items = emptyList<string>();
+    let items = List<string>.empty();
     items.push("first");
     items.push("second");
 
@@ -83,3 +83,22 @@ iterator per call, so two loops over the same collection do not interfere.
 `std.io.file`, `std.io.net` and `std.os` require a capability. A standalone run grants
 everything; a host grants explicitly, and a module that requires more than it is granted is
 rejected before it runs.
+
+## Constructors live on the types
+
+A container comes from its type: `List<int>.empty()`, `Map<string, int>.empty()`,
+`Set<int>.empty()`, `StringBuilder.new()`, `Random.seeded(42)`. The old free functions
+(`emptyList`, `emptyMap`, `emptySet`, `newRandom`) still work and warn as deprecated; they
+disappear with the next major version.
+
+## Editing the standard library
+
+The toolchain reads the standard library from **beside its own binary** — a copy made at build
+time — or from `LYRIC_STDLIB` when that is set. Editing the sources in the repository therefore
+changes nothing until the next `dotnet build` refreshes the copies, and a published toolchain
+froze its copy when it was packaged. When an edit "is not found", it is almost always this:
+point `LYRIC_STDLIB` at the repository's `stdlib/` while working on it.
+
+The library also holds itself accountable: every public item is documented (a test pins
+completeness), every file is formatted and compiles without a single diagnostic, and
+`stdlib-tests/` carries its behavioral tests — written in Lyric, run by `lyric test`.

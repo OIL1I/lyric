@@ -118,6 +118,31 @@ public class DeprecatedTests
     }
 
     [Fact]
+    public void A_generic_declaration_may_carry_Deprecated()
+    {
+        // The one exception to LYR-SEM0067: the compiler-read attribute needs no metadata row,
+        // so one-row-many-instances never arises. The lowering emits no row for it.
+        var de = Check(Import
+            + "@Deprecated { message = \"use the static\" }\npub fn oldMake<T>(v: T): T {\n    return v;\n}\n\n"
+            + "fn main(): int {\n    return oldMake<int>(1);\n}\n");
+        Assert.False(de.HasErrors);
+        Assert.DoesNotContain(de.Diagnostics, d => d.Code == "LYR-SEM0067");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0076"
+            && d.Message.Contains("'oldMake' is deprecated"));
+    }
+
+    [Fact]
+    public void Any_other_attribute_on_a_generic_declaration_stays_refused()
+    {
+        var de = Check(
+            "import std.core { OnFunction };\n\n"
+            + "pub struct Marked :: [OnFunction] { }\n\n"
+            + "@Marked\npub fn generic<T>(v: T): T {\n    return v;\n}\n\n"
+            + "fn main(): int {\n    return generic<int>(1);\n}\n");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0067");
+    }
+
+    [Fact]
     public void Every_use_site_warns_not_just_the_first()
     {
         var de = Check(Import

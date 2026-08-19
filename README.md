@@ -24,7 +24,7 @@ Current version: **1.11.0**, bytecode format **3.2**.
 
 ```lyr
 import std.io.console { println };
-import std.collections { emptyList };
+import std.collections { List };
 
 enum Shape {
     Circle(float),
@@ -39,7 +39,7 @@ enum Shape {
 }
 
 fn main(): int {
-    let shapes = emptyList<Shape>();
+    let shapes = List<Shape>.empty();
     shapes.push(Shape.Circle(2.5));
     shapes.push(Shape.Rectangle(3.0, 4.0));
 

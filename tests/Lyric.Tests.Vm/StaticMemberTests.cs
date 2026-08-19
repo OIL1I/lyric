@@ -64,6 +64,52 @@ public class StaticMemberTests
         return de.Diagnostics.Select(d => d.Code).ToArray();
     }
 
+    // ------------------------------------------------- statics of a generic type, generically
+
+    [Fact]
+    public void A_generic_static_call_with_a_concrete_instance_runs()
+    {
+        Assert.Equal(7, Run("""
+            class Box<T> {
+                item: ?T,
+
+                pub static fn empty(): Box<T> {
+                    let hole: ?T = null;
+                    return Box<T> { item = hole };
+                }
+            }
+            fn main(): int {
+                let b = Box<int>.empty();
+                return if (b.item == null) 7 else 0;
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_generic_static_call_inside_a_generic_function_substitutes_the_callers_T()
+    {
+        // The regression the standard library's constructor rework found: in 'make<T>' the call
+        // 'Box<T>.empty()' names the CALLER's T, and the static dispatch handed the instance to
+        // the monomorphizer unsubstituted — the type table then met a bare parameter and threw.
+        Assert.Equal(9, Run("""
+            class Box<T> {
+                item: ?T,
+
+                pub static fn empty(): Box<T> {
+                    let hole: ?T = null;
+                    return Box<T> { item = hole };
+                }
+            }
+            fn make<T>(): Box<T> {
+                return Box<T>.empty();
+            }
+            fn main(): int {
+                let b = make<int>();
+                return if (b.item == null) 9 else 0;
+            }
+            """));
+    }
+
     // ------------------------------------------------------------------ enum
 
     [Fact]

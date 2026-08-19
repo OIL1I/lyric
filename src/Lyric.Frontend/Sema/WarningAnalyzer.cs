@@ -68,9 +68,49 @@ internal sealed class WarningAnalyzer
         WarnUnusedLocals();
         HintNeverReassigned();
         WarnUnusedImports();
+        WarnBuiltinShadowingImports();
 
         CollectDeprecated();
         WarnDeprecatedUses();
+    }
+
+    /// <summary>
+    /// An import that binds a name a BUILTIN TYPE carries: <c>import std.string;</c> binds
+    /// <c>string</c>, and from then on the type annotation resolves to the module. Legal by the
+    /// scoping rules — module members shadow the builtin root scope like any parent — and almost
+    /// never meant, so it warns at the import with the way out.
+    /// </summary>
+    private void WarnBuiltinShadowingImports()
+    {
+        foreach (var module in _comp.Modules)
+        {
+            if (_comp.IsNative(module)) continue;
+            foreach (var decl in _comp.AstOf(module).Declarations)
+            {
+                if (decl is not ImportDecl import) continue;
+                switch (import.Clause)
+                {
+                    case null when import.Path.Length > 0:
+                        WarnIfShadowsBuiltin(import.Path[^1], import.Span);
+                        break;
+                    case ImportAlias alias:
+                        WarnIfShadowsBuiltin(alias.Alias, alias.Span);
+                        break;
+                    case ImportSelective selective:
+                        for (var i = 0; i < selective.Names.Length; i++)
+                            WarnIfShadowsBuiltin(selective.Names[i], selective.NameSpans[i]);
+                        break;
+                }
+            }
+        }
+    }
+
+    private void WarnIfShadowsBuiltin(string name, Span span)
+    {
+        if (_comp.Builtins.LookupLocal(name) is not TypeSymbol) return;
+        _de.Report("LYR-SEM0077", Severity.Warning, span,
+            $"this import binds '{name}', shadowing the builtin type — the annotation "
+            + $"'{name}' then names the import; import selectively, or rename it with 'as'");
     }
 
     // ─── deprecated uses ───────────────────────────────────────────────────

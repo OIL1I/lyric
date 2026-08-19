@@ -5,27 +5,28 @@
 module std.collections;
 
 import std.iter { Iterator, Iterable };
-import std.core { Hashable, Equatable, Ordered };
+import std.core { Hashable, Equatable, Ordered, Deprecated };
 
-// What can be read and written with `[i]`.
-//
-// The same model as `Iterator<T>` for `for-in`: the compiler knows one built-in form — the array —
-// and binds everything else to an interface from the standard library, so there is no special case
-// per container type.
-//
-// `set` is `mut`, which costs nothing: `let` binds the name, not the contents, so a container
-// behind a `let` is writable like a class field.
-//
-// `get` and `set` are O(1). That is a requirement, not a description: an implementation with O(n)
-// access must not satisfy this interface, or an index loop would be quadratic without showing it.
-// `string` has no index operator for the same reason.
+/// What can be read and written with `[i]`.
+///
+/// The same model as `Iterator<T>` for `for-in`: the compiler knows one built-in form — the array —
+/// and binds everything else to an interface from the standard library, so there is no special case
+/// per container type.
+///
+/// `get` and `set` are O(1). That is a requirement, not a description: an implementation with O(n)
+/// access must not satisfy this interface, or an index loop would be quadratic without showing it.
+/// `string` has no index operator for the same reason.
 pub interface Indexable<T> {
+    /// The value at `index`.
     fn get(index: int): T;
+    /// Replaces the value at `index`.
     mut fn set(index: int, value: T): void;
 }
 
-// A growing list.
-//
+/// A growing list; a `T[]` has a fixed length, this does not.
+///
+/// Growing doubles and shrinking halves at a quarter, so `push` is amortized O(1) and a list
+/// oscillating around a boundary does not copy on every step.
 // Written in Lyric rather than native. Natives are registered monomorphically, so a generic one
 // would need a marshalling layer of its own.
 //
@@ -38,24 +39,34 @@ pub interface Indexable<T> {
 // growth would be O(n) per call. The shrink threshold is a quarter rather than a half so a list
 // oscillating around the boundary does not copy on every `push`/`pop`.
 pub class List<T> :: [Indexable<T>, Iterable<T>] {
+    /// The backing slots; optional so a popped slot can actually release its value.
     data: (?T)[],
+    /// How many slots are filled.
     count: int,
 
+    /// How many values are in it.
     pub fn length(): int {
         return this.count;
     }
 
-    // A fresh cursor on every call, so two loops over the same list do not disturb each other.
+    /// An empty list.
+    pub static fn empty(): List<T> {
+        let hole: ?T = null;
+        return List<T> { data = [hole] * 0, count = 0 };
+    }
+
+    /// A fresh cursor on every call, so two loops over the same list do not disturb each other.
     pub fn iter(): Iterator<T> {
         return ListIterator<T> { source = this, index = 0 };
     }
 
-    // How many slots are allocated, empty ones included. For tests and for anyone measuring what
-    // the list costs; `length` is the truth for everything else.
+    /// Whether nothing is in it.
     pub fn isEmpty(): bool {
         return this.count == 0;
     }
 
+    /// How many slots are allocated, empty ones included. For tests and for anyone measuring what
+    /// the list costs; `length` is the truth for everything else.
     pub fn capacity(): int {
         return this.data.length;
     }
@@ -72,6 +83,7 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         this.data = moved;
     }
 
+    /// Appends at the end; amortized O(1).
     pub mut fn push(value: T): void {
         if (this.count >= this.data.length) {
             if (this.data.length == 0) {
@@ -84,9 +96,8 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         this.count = this.count + 1;
     }
 
-    // The last value, or `null` for an empty list. Not a panic: an empty list is an ordinary
-    // state, unlike an index out of range.
-    //
+    /// Removes and returns the last value, or `null` for an empty list — an ordinary state,
+    /// unlike an index out of range.
     // The slot is cleared rather than skipped, or the list would keep the object alive and a
     // `get` there would read it back.
     pub mut fn pop(): ?T {
@@ -105,10 +116,8 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         return value;
     }
 
-    // An index out of range is a panic, as for an array: a programming error rather than a state.
-    //
-    // Checked against `count`, not against `data.length`: behind it are the empty slots from
-    // doubling.
+    /// The value at `index`. Out of range is a panic, as for an array: a programming error
+    /// rather than a state.
     pub fn get(index: int): T {
         if (index < 0 || index >= this.count) {
             panic("list index out of range");
@@ -117,6 +126,7 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         return this.data[index]!;
     }
 
+    /// Replaces the value at `index`. Out of range is a panic, as in `get`.
     pub mut fn set(index: int, value: T): void {
         if (index < 0 || index >= this.count) {
             panic("list index out of range");
@@ -124,14 +134,15 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         this.data[index] = value;
     }
 
+    /// Empties the list and releases every slot.
     pub mut fn clear(): void {
         let hole: ?T = null;
         this.count = 0;
         this.data = [hole] * 0;
     }
 
-    // A copy as a real array. The return type is `T[]` rather than `?T[]`: within `count` every
-    // slot is filled.
+    /// A copy as a real array.
+    // The return type is `T[]` rather than `?T[]`: within `count` every slot is filled.
     //
     // Built as a `T[]` from the start. There is no reinterpretation of a `?T[]`: `!` unwraps a
     // single value, not an array elementwise, and `?T[]` is an array of optionals. The initial fill
@@ -155,22 +166,20 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
     }
 }
 
-// An empty list. A free function rather than a `static fn`, originally because a static method on
-// a generic instance was not expressible.
-//
-// It would be writable as `List<int>.empty()` now. It stays a free function because the change
-// would cost every caller and buys nothing this form cannot do.
+/// An empty list.
+@Deprecated { message = "use List.empty()" }
 pub fn emptyList<T>(): List<T> {
-    let hole: ?T = null;
-    return List<T> { data = [hole] * 0, count = 0 };
+    return List<T>.empty();
 }
 
-// Walks a list. Like `ArrayIterator` it holds its own index, so two loops over the same list do
-// not disturb each other.
+/// Walks a list; each loop holds its own cursor.
 pub class ListIterator<T> :: [Iterator<T>] {
+    /// The list being walked.
     source: List<T>,
+    /// The next slot to look at.
     index: int,
 
+    /// The next value, or `null` at the end.
     pub mut fn next(): ?T {
         if (this.index >= this.source.length()) {
             return null;
@@ -187,7 +196,7 @@ pub class ListIterator<T> :: [Iterator<T>] {
 /// `std.iter`, not the reverse. `std.iter.collectArray` is the variant without that dependency,
 /// and it is quadratic because a `T[]` copies on every append. This one doubles and is linear.
 pub fn collect<T>(source: Iterator<T>): List<T> {
-    var result = emptyList<T>();
+    var result = List<T>.empty();
     var value = source.next();
     while (value != null) {
         result.push(value);
@@ -196,7 +205,7 @@ pub fn collect<T>(source: Iterator<T>): List<T> {
     return result;
 }
 
-// ============================================================== Map<K, V> (M8b/S4, ADR-024)
+// ============================================================== Map<K, V>
 //
 // Open addressing with linear probing: one flat array per column rather than a bucket per slot, and
 // a collision moves to the next index. A chain per bucket would need an object and a pointer per
@@ -209,17 +218,27 @@ pub fn collect<T>(source: Iterator<T>): List<T> {
 // **Load factor 3/4**, measured over occupied AND deleted slots: tombstones cost search time like
 // occupied slots, so they have to count. They disappear on a grow.
 
+/// A hash map: open addressing, linear probing, load factor 3/4. The key type says how to
+/// hash and how to compare — `[Hashable<K>, Equatable<K>]` — and the iteration order is
+/// UNSPECIFIED.
 pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
+    /// The key column; `states` says which slots are real.
     keys: (?K)[],
+    /// The value column, parallel to `keys`.
     values: (?V)[],
+    /// Per slot: 0 empty, 1 occupied, 2 tombstone.
     states: int[],
-    count: int, // the occupied ones only
-    used: int, // belegte + Grabsteine
+    /// The occupied slots alone.
+    count: int,
+    /// Occupied plus tombstones — what the load factor is measured over.
+    used: int,
 
+    /// How many values are in it.
     pub fn length(): int {
         return this.count;
     }
 
+    /// Whether nothing is in it.
     pub fn isEmpty(): bool {
         return this.count == 0;
     }
@@ -237,29 +256,44 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
     fn findSlot(key: K): int {
         var i = this.slotOf(key);
         let n = this.keys.length;
-        var schritte = 0;
+        var steps = 0;
 
-        while (schritte < n) {
+        while (steps < n) {
             if (this.states[i] == 0) {
                 return -1; // empty: this is where it would have been
             }
             if (this.states[i] == 1) {
-                let vorhanden = this.keys[i];
-                if (vorhanden != null && vorhanden.equals(key)) {
+                let present = this.keys[i];
+                if (present != null && present.equals(key)) {
                     return i;
                 }
             }
             // Tombstone (2): keep going, the chain has not ended.
             i = (i + 1) % n;
-            schritte = schritte + 1;
+            steps = steps + 1;
         }
         return -1;
     }
 
+    /// An empty map, with room for the first insertions before a growth.
+    pub static fn empty(): Map<K, V> {
+        let keyHole: ?K = null;
+        let valueHole: ?V = null;
+        return Map<K, V> {
+            keys = [keyHole] * 8,
+            values = [valueHole] * 8,
+            states = [0] * 8,
+            count = 0,
+            used = 0,
+        };
+    }
+
+    /// Whether the key is in the map.
     pub fn containsKey(key: K): bool {
         return this.findSlot(key) >= 0;
     }
 
+    /// The value for the key, or `null` when the key is absent.
     pub fn get(key: K): ?V {
         let i = this.findSlot(key);
         if (i < 0) {
@@ -268,6 +302,7 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
         return this.values[i];
     }
 
+    /// Inserts, or overwrites the existing entry for an equal key.
     pub mut fn set(key: K, value: V): void {
         if ((this.used + 1) * 4 > this.keys.length * 3) {
             this.resize(this.keys.length * 2);
@@ -275,29 +310,29 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
 
         var i = this.slotOf(key);
         let n = this.keys.length;
-        var grabstein = -1;
+        var tombstone = -1;
 
         while (true) {
             if (this.states[i] == 0) {
                 // First free slot. A tombstone seen earlier is preferable: it shortens future
                 // searches and does not raise `used`.
-                let ziel = if (grabstein >= 0) grabstein else i;
-                this.keys[ziel] = key;
-                this.values[ziel] = value;
-                this.states[ziel] = 1;
+                let target = if (tombstone >= 0) tombstone else i;
+                this.keys[target] = key;
+                this.values[target] = value;
+                this.states[target] = 1;
                 this.count = this.count + 1;
-                if (grabstein < 0) {
+                if (tombstone < 0) {
                     this.used = this.used + 1;
                 }
                 return;
             }
             if (this.states[i] == 2) {
-                if (grabstein < 0) {
-                    grabstein = i;
+                if (tombstone < 0) {
+                    tombstone = i;
                 }
             } else {
-                let vorhanden = this.keys[i];
-                if (vorhanden != null && vorhanden.equals(key)) {
+                let present = this.keys[i];
+                if (present != null && present.equals(key)) {
                     this.values[i] = value; // overwrite, not a new entry
                     return;
                 }
@@ -306,25 +341,26 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
         }
     }
 
-    // Removes and returns the old value. The slot becomes a tombstone rather than empty, which
-    // would break the probe chain and hide a key behind it.
+    /// Removes and returns the old value, or `null` when the key was absent.
+    // The slot becomes a tombstone rather than empty, which would break the probe chain and
+    // hide a key behind it.
     pub mut fn remove(key: K): ?V {
         let i = this.findSlot(key);
         if (i < 0) {
             return null;
         }
-        let alt = this.values[i];
+        let old = this.values[i];
         this.keys[i] = null;
         this.values[i] = null;
         this.states[i] = 2;
         this.count = this.count - 1;
-        return alt;
+        return old;
     }
 
     mut fn resize(capacity: int): void {
-        let alteKeys = this.keys;
-        let alteValues = this.values;
-        let alteStates = this.states;
+        let oldKeys = this.keys;
+        let oldValues = this.values;
+        let oldStates = this.states;
 
         let keyHole: ?K = null;
         let valueHole: ?V = null;
@@ -336,12 +372,11 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
 
         // Reinsert rather than copy: the slots depend on the capacity, and tombstones disappear
         // in the process.
-        // ausloest.
         var i = 0;
-        while (i < alteStates.length) {
-            if (alteStates[i] == 1) {
-                let k = alteKeys[i];
-                let v = alteValues[i];
+        while (i < oldStates.length) {
+            if (oldStates[i] == 1) {
+                let k = oldKeys[i];
+                let v = oldValues[i];
                 if (k != null && v != null) {
                     this.set(k, v);
                 }
@@ -351,18 +386,10 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
     }
 }
 
+/// An empty map.
+@Deprecated { message = "use Map.empty()" }
 pub fn emptyMap<K :: [Hashable<K>, Equatable<K>], V>(): Map<K, V> {
-    let keyHole: ?K = null;
-    let valueHole: ?V = null;
-    // Eight slots to start: small enough that an empty map costs little, large enough that the
-    // first insertions do not trigger two doublings.
-    return Map<K, V> {
-        keys = [keyHole] * 8,
-        values = [valueHole] * 8,
-        states = [0] * 8,
-        count = 0,
-        used = 0,
-    };
+    return Map<K, V>.empty();
 }
 
 // ================================================================ sorting
@@ -404,9 +431,9 @@ pub fn sortListBy<T>(xs: List<T>, less: fn(T, T) -> bool): void {
         var start = 0;
         while (start < n) {
             // Two adjacent, already sorted runs: [start, middle) and [middle, end).
-            let mitte = min(start + width, n);
-            let ende = min(start + width * 2, n);
-            mergeRuns<T>(xs, buffer, start, mitte, ende, less);
+            let middle = min(start + width, n);
+            let end = min(start + width * 2, n);
+            mergeRuns<T>(xs, buffer, start, middle, end, less);
             start = start + width * 2;
         }
 
@@ -430,41 +457,41 @@ fn mergeRuns<T>(
     xs: List<T>,
     buffer: (?T)[],
     start: int,
-    mitte: int,
-    ende: int,
+    middle: int,
+    end: int,
     less: fn(T, T) -> bool
 ): void {
-    var links = start;
-    var rechts = mitte;
-    var ziel = start;
+    var left = start;
+    var right = middle;
+    var target = start;
 
-    while (links < mitte && rechts < ende) {
-        let a = xs.get(links);
-        let b = xs.get(rechts);
+    while (left < middle && right < end) {
+        let a = xs.get(left);
+        let b = xs.get(right);
 
         // `less(b, a)` rather than `less(a, b)`: on a tie the result is `false`, so the LEFT
         // side wins, and the left side is what came earlier. Stability hangs on this.
         let p = less;
         if (p(b, a)) {
-            buffer[ziel] = b;
-            rechts = rechts + 1;
+            buffer[target] = b;
+            right = right + 1;
         } else {
-            buffer[ziel] = a;
-            links = links + 1;
+            buffer[target] = a;
+            left = left + 1;
         }
-        ziel = ziel + 1;
+        target = target + 1;
     }
 
-    while (links < mitte) {
-        buffer[ziel] = xs.get(links);
-        links = links + 1;
-        ziel = ziel + 1;
+    while (left < middle) {
+        buffer[target] = xs.get(left);
+        left = left + 1;
+        target = target + 1;
     }
 
-    while (rechts < ende) {
-        buffer[ziel] = xs.get(rechts);
-        rechts = rechts + 1;
-        ziel = ziel + 1;
+    while (right < end) {
+        buffer[target] = xs.get(right);
+        right = right + 1;
+        target = target + 1;
     }
 }
 
@@ -472,23 +499,31 @@ fn min(a: int, b: int): int {
     return if (a < b) a else b;
 }
 
-// ================================================================== Set<T> (M8b/S4)
+// ================================================================== Set<T>
 //
 // The same probing as `Map`, only without the value column.
 //
 // Not built as a `Map<T, bool>`, which would waste an array and make `add(x)` read as
 // `set(x, true)`. The duplicated probing logic is the more honest price.
 
+/// A hash set: the same probing as `Map`, without the value column. Iteration order is
+/// UNSPECIFIED.
 pub class Set<T :: [Hashable<T>, Equatable<T>]> {
+    /// The element column; `states` says which slots are real.
     items: (?T)[],
+    /// Per slot: 0 empty, 1 occupied, 2 tombstone.
     states: int[],
+    /// The occupied slots alone.
     count: int,
+    /// Occupied plus tombstones — what the load factor is measured over.
     used: int,
 
+    /// How many values are in it.
     pub fn length(): int {
         return this.count;
     }
 
+    /// Whether nothing is in it.
     pub fn isEmpty(): bool {
         return this.count == 0;
     }
@@ -502,24 +537,31 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
     fn findSlot(value: T): int {
         var i = this.slotOf(value);
         let n = this.items.length;
-        var schritte = 0;
+        var steps = 0;
 
-        while (schritte < n) {
+        while (steps < n) {
             if (this.states[i] == 0) {
                 return -1;
             }
             if (this.states[i] == 1) {
-                let vorhanden = this.items[i];
-                if (vorhanden != null && vorhanden.equals(value)) {
+                let present = this.items[i];
+                if (present != null && present.equals(value)) {
                     return i;
                 }
             }
             i = (i + 1) % n;
-            schritte = schritte + 1;
+            steps = steps + 1;
         }
         return -1;
     }
 
+    /// An empty set.
+    pub static fn empty(): Set<T> {
+        let hole: ?T = null;
+        return Set<T> { items = [hole] * 8, states = [0] * 8, count = 0, used = 0 };
+    }
+
+    /// Whether the value is in the set.
     pub fn contains(value: T): bool {
         return this.findSlot(value) >= 0;
     }
@@ -534,26 +576,26 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
 
         var i = this.slotOf(value);
         let n = this.items.length;
-        var grabstein = -1;
+        var tombstone = -1;
 
         while (true) {
             if (this.states[i] == 0) {
-                let ziel = if (grabstein >= 0) grabstein else i;
-                this.items[ziel] = value;
-                this.states[ziel] = 1;
+                let target = if (tombstone >= 0) tombstone else i;
+                this.items[target] = value;
+                this.states[target] = 1;
                 this.count = this.count + 1;
-                if (grabstein < 0) {
+                if (tombstone < 0) {
                     this.used = this.used + 1;
                 }
                 return true;
             }
             if (this.states[i] == 2) {
-                if (grabstein < 0) {
-                    grabstein = i;
+                if (tombstone < 0) {
+                    tombstone = i;
                 }
             } else {
-                let vorhanden = this.items[i];
-                if (vorhanden != null && vorhanden.equals(value)) {
+                let present = this.items[i];
+                if (present != null && present.equals(value)) {
                     return false; // already present
                 }
             }
@@ -573,13 +615,14 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
         return true;
     }
 
+    /// A fresh cursor on every call.
     pub fn iter(): Iterator<T> {
         return SetIterator<T> { source = this, index = 0 };
     }
 
     mut fn resize(capacity: int): void {
-        let alteItems = this.items;
-        let alteStates = this.states;
+        let oldItems = this.items;
+        let oldStates = this.states;
 
         let hole: ?T = null;
         this.items = [hole] * capacity;
@@ -588,9 +631,9 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
         this.used = 0;
 
         var i = 0;
-        while (i < alteStates.length) {
-            if (alteStates[i] == 1) {
-                let v = alteItems[i];
+        while (i < oldStates.length) {
+            if (oldStates[i] == 1) {
+                let v = oldItems[i];
                 if (v != null) {
                     this.add(v);
                 }
@@ -600,12 +643,15 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
     }
 }
 
-// Walks the occupied slots. The order follows the hashes and is therefore UNSPECIFIED; a caller
-// that needs one sorts.
+/// Walks the occupied slots. The order follows the hashes and is therefore UNSPECIFIED; a
+/// caller that needs one sorts.
 pub class SetIterator<T :: [Hashable<T>, Equatable<T>]> :: [Iterator<T>] {
+    /// The set being walked.
     source: Set<T>,
+    /// The next slot to look at.
     index: int,
 
+    /// The next value, or `null` at the end.
     pub mut fn next(): ?T {
         while (this.index < this.source.states.length) {
             let i = this.index;
@@ -618,15 +664,17 @@ pub class SetIterator<T :: [Hashable<T>, Equatable<T>]> :: [Iterator<T>] {
     }
 }
 
+/// An empty set.
+@Deprecated { message = "use Set.empty()" }
 pub fn emptySet<T :: [Hashable<T>, Equatable<T>]>(): Set<T> {
-    let hole: ?T = null;
-    return Set<T> { items = [hole] * 8, states = [0] * 8, count = 0, used = 0 };
+    return Set<T>.empty();
 }
 
 // --- Set operations. All return a NEW set; none changes its arguments. ---
 
+/// Everything in either set, as a NEW set; neither argument changes.
 pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
-    let result = emptySet<T>();
+    let result = Set<T>.empty();
     for (v in a.iter()) {
         result.add(v);
     }
@@ -636,21 +684,23 @@ pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
     return result;
 }
 
+/// Everything in both sets, as a NEW set; neither argument changes.
 pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
-    let result = emptySet<T>();
+    let result = Set<T>.empty();
     // Walk the SMALLER one: the number of probes depends on it.
-    let klein = if (a.length() <= b.length()) a else b;
-    let gross = if (a.length() <= b.length()) b else a;
-    for (v in klein.iter()) {
-        if (gross.contains(v)) {
+    let small = if (a.length() <= b.length()) a else b;
+    let large = if (a.length() <= b.length()) b else a;
+    for (v in small.iter()) {
+        if (large.contains(v)) {
             result.add(v);
         }
     }
     return result;
 }
 
+/// Everything in `a` that is not in `b`, as a NEW set; neither argument changes.
 pub fn difference<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
-    let result = emptySet<T>();
+    let result = Set<T>.empty();
     for (v in a.iter()) {
         if (!b.contains(v)) {
             result.add(v);
@@ -659,6 +709,7 @@ pub fn difference<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T
     return result;
 }
 
+/// Whether every element of `a` is in `b`.
 pub fn isSubset<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): bool {
     if (a.length() > b.length()) {
         return false;
@@ -671,7 +722,7 @@ pub fn isSubset<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): bool {
     return true;
 }
 
-// ------------------------------------------------- Map durchlaufen (M8b/S4, Nachtrag)
+// ------------------------------------------------- walking a Map
 //
 // Without these three a `Map` could not be walked: values went in and came out, but there was no
 // way to know what it held.
@@ -679,10 +730,14 @@ pub fn isSubset<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): bool {
 // The order follows the hashes and is therefore UNSPECIFIED. A caller that needs one collects and
 // sorts.
 
+/// Walks the keys; the order follows the hashes and is UNSPECIFIED.
 pub class MapKeyIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<K>] {
+    /// The map being walked.
     source: Map<K, V>,
+    /// The next slot to look at.
     index: int,
 
+    /// The next key, or `null` at the end.
     pub mut fn next(): ?K {
         while (this.index < this.source.states.length) {
             let i = this.index;
@@ -695,10 +750,14 @@ pub class MapKeyIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<K>] {
     }
 }
 
+/// Walks the values; the order follows the hashes and is UNSPECIFIED.
 pub class MapValueIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<V>] {
+    /// The map being walked.
     source: Map<K, V>,
+    /// The next slot to look at.
     index: int,
 
+    /// The next value, or `null` at the end.
     pub mut fn next(): ?V {
         while (this.index < this.source.states.length) {
             let i = this.index;
@@ -711,10 +770,12 @@ pub class MapValueIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<V>]
     }
 }
 
+/// A fresh cursor over the keys.
 pub fn keys<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<K> {
     return MapKeyIterator<K, V> { source = m, index = 0 };
 }
 
+/// A fresh cursor over the values.
 pub fn values<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<V> {
     return MapValueIterator<K, V> { source = m, index = 0 };
 }
@@ -725,6 +786,7 @@ pub fn values<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<V> {
 // the CLASS would make `List<T>` unusable for every type without equality. A constraint belongs
 // where it is needed.
 
+/// Whether the value occurs, by `equals`; O(n).
 pub fn listContains<T :: [Equatable<T>]>(xs: List<T>, value: T): bool {
     var i = 0;
     while (i < xs.length()) {

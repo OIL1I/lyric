@@ -93,7 +93,9 @@ pub fn toArray<T>(o: ?T): T[] {
 
 /// The iterator `iter` hands out: yields the value once, if there is one.
 pub class OptionIterator<T> :: [Iterator<T>] {
+    /// The single value, if it was there.
     value: ?T,
+    /// Whether the single value was already yielded.
     done: bool,
 
     /// The value on the first call, `null` on every one after it.

@@ -15,16 +15,21 @@
 
 module std.fmt;
 
-// An invalid specifier is a panic rather than an error value: it is a literal in the source and
-// does not depend on the input.
+/// An `int` through a .NET numeric specifier (`N0`, `D5`, `X`, ...). An invalid specifier is a
+/// panic rather than an error value: it is a literal in the source and does not depend on the
+/// input.
 pub fn formatInt(value: int, spec: string): string;
+/// A `uint` through a .NET numeric specifier; large values stay positive.
 pub fn formatUint(value: uint, spec: string): string;
+/// A `float` through a .NET numeric specifier (`N2`, `F3`, `E2`, `P1`, ...).
 pub fn formatFloat(value: float, spec: string): string;
+/// A `bool` through a .NET specifier.
 pub fn formatBool(value: bool, spec: string): string;
+/// A `char` through a .NET specifier.
 pub fn formatChar(value: char, spec: string): string;
 
-// .NET has no standard formats for strings, so here the specifier is a width: padding on the
-// right (`{name:10}`) or, with a leading minus, on the left (`{name:-10}`).
+/// A string at a width: padding on the right (`{name:10}`) or, with a leading minus, on the
+/// left (`{name:-10}`).
 pub fn formatString(value: string, spec: string): string;
 
 // ================================================================== written in Lyric
@@ -50,38 +55,40 @@ pub fn formatRadix(value: int, radix: int): string {
 
     // The magnitude is taken first and the sign appended at the end: `%` follows the sign of
     // the dividend, so a negative number would produce negative digits.
-    let negativ = value < 0;
-    var rest = if (negativ) 0 - value else value;
+    let negative = value < 0;
+    var remaining = if (negative) 0 - value else value;
 
-    var ziffern = "";
-    while (rest > 0) {
-        let stelle = rest % radix;
-        ziffern = ziffernZeichen(stelle) + ziffern;
-        rest = rest / radix;
+    var digits = "";
+    while (remaining > 0) {
+        let digit = remaining % radix;
+        digits = digitChar(digit) + digits;
+        remaining = remaining / radix;
     }
 
-    return if (negativ) "-" + ziffern else ziffern;
+    return if (negative) "-" + digits else digits;
 }
 
 // 0..9 becomes '0'..'9', from 10 on 'a'..'z'.
-fn ziffernZeichen(value: int): string {
+fn digitChar(value: int): string {
     if (value < 10) {
         let c = digitToChar(value);
         // The short form works because the `if` expression narrows `c` in the else branch.
-        // `char`.
         return if (c == null) "?" else fromChar(c);
     }
     return fromChar(('a' as int + value - 10) as char);
 }
 
+/// Hexadecimal, lower case, no prefix.
 pub fn formatHex(value: int): string {
     return formatRadix(value, 16);
 }
 
+/// Binary, no prefix.
 pub fn formatBinary(value: int): string {
     return formatRadix(value, 2);
 }
 
+/// Octal, no prefix.
 pub fn formatOctal(value: int): string {
     return formatRadix(value, 8);
 }
@@ -94,10 +101,12 @@ pub fn formatHexPadded(value: int, width: int): string {
 
 // ------------------------------------------------------------------ alignment
 
+/// Pads with spaces at the FRONT until `width` is reached; longer strings stay unchanged.
 pub fn padLeft(value: string, width: int): string {
     return padStart(value, width, ' ');
 }
 
+/// Pads with spaces at the END until `width` is reached; longer strings stay unchanged.
 pub fn padRight(value: string, width: int): string {
     return padEnd(value, width, ' ');
 }
@@ -106,12 +115,12 @@ pub fn padRight(value: string, width: int): string {
 /// A decision rather than a matter of course, but without it the same input yields two different
 /// results depending on the implementation.
 pub fn center(value: string, width: int): string {
-    let fehlend = width - length(value);
-    if (fehlend <= 0) {
+    let missing = width - length(value);
+    if (missing <= 0) {
         return value;
     }
-    let links = fehlend / 2;
-    return repeat(" ", links) + value + repeat(" ", fehlend - links);
+    let links = missing / 2;
+    return repeat(" ", links) + value + repeat(" ", missing - links);
 }
 
 // ------------------------------------------------------------------ Groessen

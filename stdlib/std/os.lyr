@@ -5,19 +5,18 @@
 
 module std.os;
 
-// "windows", "linux", "macos" or "unknown".
+/// `"windows"`, `"linux"`, `"macos"` or `"unknown"`.
 pub fn platform(): string;
 
-// An environment variable, or `null` when it is not set. Not a `panic`: whether a variable exists
-// is an ordinary question about the environment.
+/// An environment variable, or `null` when it is not set — an ordinary question about the
+/// environment, not a panic.
 pub fn env(name: string): ?string;
 
-// The current working directory.
+/// The current working directory.
 pub fn currentDir(): string;
 
-// Ends the process immediately with this code. No `defer` runs and no `catch` applies. The return
-// type is `void` rather than `never`, which would let the compiler treat the following code as
-// unreachable. To exit cleanly, return from `main`.
+/// Ends the process immediately with this code. No `defer` runs and no `catch` applies. To
+/// exit cleanly, return from `main`.
 pub fn exit(code: int): void;
 
 // ----------------------------------------------------------------------------------
@@ -32,8 +31,11 @@ pub fn args(): string[];
 /// not.
 pub fn setEnv(name: string, value: string): bool;
 
+/// The machine's name, or `null` when the system does not say.
 pub fn hostName(): ?string;
+/// The current user's name, or `null` when the system does not say.
 pub fn userName(): ?string;
+/// The user's home directory, or `null` when the system does not say.
 pub fn homeDir(): ?string;
 
 /// How many cores the machine has, for programs that split their work. The VM itself is

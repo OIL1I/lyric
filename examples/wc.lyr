@@ -13,7 +13,7 @@
 import std.io.file { readText };
 import std.io.console { println, eprintln };
 import std.string { length, split, trim };
-import std.collections { emptyList };
+import std.collections { List };
 
 // The three numbers of a file. A `struct`, because it is a value: two counts with the same numbers
 // are the same result, and nobody mutates it afterwards.
@@ -71,7 +71,7 @@ fn main(args: string[]): int {
         return 2;
     }
 
-    let results = emptyList<Counts>();
+    let results = List<Counts>.empty();
     var missing = 0;
 
     for (path in args) {

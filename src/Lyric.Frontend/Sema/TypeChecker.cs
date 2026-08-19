@@ -2359,7 +2359,10 @@ public sealed class TypeChecker
             return ts;
         }
 
-        if (targetIsGeneric)
+        // One exception: the compiler-read @Deprecated. Its consumer is the sema, not a
+        // metadata row, so the one-row-many-instances conflict does not arise — the lowering
+        // emits NO row for an attribute on a generic declaration.
+        if (targetIsGeneric && !IsCanonicalDeprecated(ts))
             _de.Report("LYR-SEM0067", Severity.Error, attribute.PathSpan,
                 "an attribute cannot sit on a generic declaration — there is one metadata row "
                 + "and as many instances as the program creates");
@@ -3716,7 +3719,7 @@ public sealed class TypeChecker
                 if (sym is TypeSymbol { Kind: not (TypeSymbolKind.Builtin or TypeSymbolKind.Alias) } gts
                     && (gts.Generics.Length > 0 || n.TypeArguments.Length > 0))
                     return MakeGenericInstance(gts, n, scope);
-                return SymbolToType(sym, scope);
+                return SymbolToType(sym, scope, n.Span);
             case NullableType nn: return new Optional(ResolveType(nn.Inner, scope));
             case ArrayType a: return new ArrayOf(ResolveType(a.Element, scope), a.Size is { } sz ? (int)sz.Value : null);
             case TupleType t: return new TupleOf(t.Elements.Select(e => ResolveType(e, scope)).ToArray());
@@ -3751,14 +3754,29 @@ public sealed class TypeChecker
         finally { _expanding.Remove(alias); }
     }
 
-    private LyrType SymbolToType(Symbol sym, SymbolTable scope) => sym switch
+    private LyrType SymbolToType(Symbol sym, SymbolTable scope, Span span) => sym switch
     {
         TypeSymbol { Kind: TypeSymbolKind.Builtin } t => TypeFacts.FromBuiltinName(t.Name) ?? LyrType.Error,
         TypeSymbol { Kind: TypeSymbolKind.Alias } t => ExpandAlias(t, scope),
         GenericParamSymbol g => new TypeParamType(g),
         TypeSymbol t => new NamedRef(t),
-        ImportBindingSymbol ib => SymbolToType(ib.Target, scope),
-        _ => LyrType.Error // external, error or non-type: opaque
+        ImportBindingSymbol ib => SymbolToType(ib.Target, scope, span),
+
+        // Deliberately silent: an external import is opaque by design, and an error symbol was
+        // reported where the resolution failed.
+        ExternalSymbol => LyrType.Error,
+        ErrorSymbol => LyrType.Error,
+
+        // A name that resolved to something that is NOT a type — a module, a function, a
+        // constant. Reported HERE, because an ErrorType may only ever mean "already reported":
+        // the silent branch this replaces let 'import std.string;' plus 'let s: string' reach
+        // the lowering with an unreported error type, and the lowering threw. The module case
+        // names the common trap: a bare import binds the module under its last segment, which
+        // can shadow a builtin type.
+        ModuleSymbol m => Report(span, "LYR-SEM0011",
+            $"'{m.FullName}' is a module, not a type — its import binds the name "
+            + $"'{m.Name}'; import selectively or use 'as' to keep the type reachable"),
+        _ => Report(span, "LYR-SEM0011", $"'{sym.Name}' is not a type"),
     };
 
     // Stack<int> becomes a GenericInstance. The arity is checked here; constraint satisfaction runs
@@ -3792,6 +3810,12 @@ public sealed class TypeChecker
 
     private static LyrType FloatSuffixType(FloatSuffix s) =>
         new PrimitiveType(s == FloatSuffix.F32 ? PrimitiveKind.Float32 : PrimitiveKind.Float64);
+
+    /// <summary>Whether this is THE <c>Deprecated</c> struct of <c>std.core</c> — by identity,
+    /// the same rule the WarningAnalyzer applies when it reads the attribute.</summary>
+    private bool IsCanonicalDeprecated(TypeSymbol ts) =>
+        ReferenceEquals(ts,
+            _comp.FindModule(["std", "core"])?.Members.LookupLocal("Deprecated"));
 
     private LyrType Report(Span span, string code, string message)
     {

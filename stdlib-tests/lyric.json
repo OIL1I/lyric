@@ -1,0 +1,4 @@
+{
+  // The standard library's own tests, in Lyric, run by `lyric test` from this directory.
+  "testRoot": "tests",
+}

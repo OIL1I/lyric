@@ -3,7 +3,7 @@
 // nullable return, composition over std.collections.List, and a while loop.
 
 import std.io.console { println };
-import std.collections { List, emptyList };
+import std.collections { List };
 
 pub interface Container<T> {
     mut fn add(item: T);
@@ -36,7 +36,7 @@ pub class Stack<T> :: [Container<T>] {
 }
 
 fn newStack<T>(): Stack<T> {
-    return Stack<T> { items = emptyList<T>() };
+    return Stack<T> { items = List<T>.empty() };
 }
 
 fn main(): int {
