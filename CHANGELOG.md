@@ -27,12 +27,19 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 - **`std.iter` gains `flatMap`, `chunks`, `reduce` and `first`.**
 
+- **Arrays cross the native boundary as parameters** — the bytecode format always allowed it
+  (§3 type grammar; format stays **3.2**), the registry just never used it. On top of it:
+  `std.io.file.writeBytes` and `appendBytes` (the write side readBytes was waiting for),
+  `std.string.utf8Encode` and `utf8Decode` — the strict bridge: invalid bytes answer `null`
+  instead of the U+FFFD replacement `readText` documents — and `fromChars` became one native
+  call instead of one string per character.
+
 ### Fixed
 
-- **`std.string` stops being quadratic.** `StringBuilder.build`, `join` and `fromChars` reduce
-  balanced instead of folding left; `replace` moves untouched stretches as whole substrings;
-  the searches, parsers and trims index a character array instead of calling O(n) `charAt` per
-  position. Same results, different cost curve.
+- **`std.string` stops being quadratic.** `StringBuilder.build` and `join` folded left and
+  copied the whole result once per piece — both are one native join now; `replace` moves
+  untouched stretches as whole substrings; the searches, parsers and trims index a character
+  array instead of calling O(n) `charAt` per position. Same results, different cost curve.
 
 - Audit rests: `std.fmt` loses its German locals, `std.io.file` a torn doc fragment, and
   `std.io.console` sorts a native above the "written in Lyric" divider it contradicted.

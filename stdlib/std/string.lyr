@@ -82,6 +82,28 @@ pub fn split(value: string, separator: string): string[];
 /// The characters as an array, in one O(n) pass — what `for (c in s)` uses.
 pub fn toChars(value: string): char[];
 
+/// The characters joined back into one string — the inverse of `toChars`. Native since v1.14:
+/// one call instead of one string per character.
+pub fn fromChars(chars: char[]): string;
+
+// --- the byte bridge (v1.14) --------------------------------------------------------------
+//
+// The first natives whose PARAMETER is an array. The format always allowed it (§3 of the
+// bytecode specification); the registry and this module simply never used it before.
+
+/// The string as UTF-8 bytes — the inverse of `utf8Decode`, and what a file or a socket
+/// actually carries.
+pub fn utf8Encode(value: string): uint8[];
+
+/// The bytes as a string, STRICTLY: invalid UTF-8 answers `null` rather than a U+FFFD quietly
+/// standing in for the data — the difference to `readText`, whose replacement decoding is
+/// documented there.
+pub fn utf8Decode(bytes: uint8[]): ?string;
+
+// Behind `join` and `StringBuilder.build`: one native call instead of a copy cascade. Private —
+// `join` IS the public name for this.
+fn joinAll(parts: string[], separator: string): string;
+
 // ================================================================== written in Lyric
 //
 // Nothing below is native. Everything builds on the primitives above — `length`, `charAt`,
@@ -248,64 +270,10 @@ pub fn count(value: string, needle: string): int {
 
 // ------------------------------------------------------------------ splitting and joining
 
-// Balanced pairwise reduction over the first `count` entries: each character is copied
-// O(log n) times rather than O(n), which is what makes `join`, `fromChars` and
-// `StringBuilder.build` linear-ish instead of quadratic. A native join-all would beat it, but
-// an array has never crossed the native boundary as a parameter.
-//
-// The rounds run in a scratch copy — the caller's array stays untouched, so a builder can
-// `build()` twice.
-fn concatBalanced(parts: string[], count: int): string {
-    if (count == 0) {
-        return "";
-    }
-
-    var buffer = [""] * count;
-    var i = 0;
-    while (i < count) {
-        buffer[i] = parts[i];
-        i = i + 1;
-    }
-
-    var n = count;
-    while (n > 1) {
-        var target = 0;
-        var pair = 0;
-        while (pair + 1 < n) {
-            buffer[target] = buffer[pair] + buffer[pair + 1];
-            target = target + 1;
-            pair = pair + 2;
-        }
-        if (pair < n) {
-            buffer[target] = buffer[pair];
-            target = target + 1;
-        }
-        n = target;
-    }
-    return buffer[0];
-}
-
-/// Joins the parts with a separator: the inverse of `split`.
-// The separator is woven into a flat array first, then reduced balanced — a left fold would
-// copy the whole result once per part.
+/// Joins the parts with a separator: the inverse of `split`. One native call — a left fold
+/// would copy the whole result once per part.
 pub fn join(parts: string[], separator: string): string {
-    if (parts.length == 0) {
-        return "";
-    }
-    if (length(separator) == 0) {
-        return concatBalanced(parts, parts.length);
-    }
-
-    var woven = [""] * (parts.length * 2 - 1);
-    var i = 0;
-    while (i < parts.length) {
-        woven[i * 2] = parts[i];
-        if (i * 2 + 1 < woven.length) {
-            woven[i * 2 + 1] = separator;
-        }
-        i = i + 1;
-    }
-    return concatBalanced(woven, woven.length);
+    return joinAll(parts, separator);
 }
 
 /// Splits at line breaks. Both `\r\n` and `\n` count.
@@ -572,17 +540,6 @@ fn absFloat(value: float): float {
 
 // ------------------------------------------------------------------ building
 
-/// The characters joined back into one string — the inverse of `toChars`.
-pub fn fromChars(chars: char[]): string {
-    var parts = [""] * chars.length;
-    var i = 0;
-    while (i < chars.length) {
-        parts[i] = fromChar(chars[i]);
-        i = i + 1;
-    }
-    return concatBalanced(parts, parts.length);
-}
-
 /// Builds a string piece by piece.
 ///
 /// `s = s + part` in a loop is quadratic: every step copies the whole string so far. The builder
@@ -634,11 +591,18 @@ pub class StringBuilder {
         this.append(fromChar(value));
     }
 
-    /// The pieces joined once — the point of collecting them. Balanced rather than a left
-    /// fold: the fold would copy the whole result once per piece, the exact cost the builder
-    /// exists to avoid.
+    /// The pieces joined once — the point of collecting them. One native call over the filled
+    /// slice; a left fold would copy the whole result once per piece, the exact cost the
+    /// builder exists to avoid. Reads and never consumes: building twice yields the same
+    /// string.
     pub fn build(): string {
-        return concatBalanced(this.parts, this.count);
+        var filled = [""] * this.count;
+        var i = 0;
+        while (i < this.count) {
+            filled[i] = this.parts[i];
+            i = i + 1;
+        }
+        return joinAll(filled, "");
     }
 }
 

@@ -27,7 +27,7 @@ public sealed class NativeRegistry
         TypeTag[] ParamTypes, TypeTag ReturnType, Func<LyrValue[], LyrValue> Implementation,
         TypeTag? ReturnElement = null,
         BytecodeType[]? FullParamTypes = null, BytecodeType? FullReturnType = null,
-        TypeTag[]? StructResult = null);
+        TypeTag[]? StructResult = null, TypeTag?[]? ParamElements = null);
 
     public void Register(string name, TypeTag[] paramTypes, TypeTag returnType,
         Func<LyrValue[], LyrValue> implementation) =>
@@ -53,6 +53,21 @@ public sealed class NativeRegistry
     public void RegisterOptionalReturning(string name, TypeTag[] paramTypes, TypeTag inner,
         Func<LyrValue[], LyrValue> implementation) =>
         _natives[name] = new Native(paramTypes, TypeTag.Optional, implementation, inner);
+
+    /// <summary>A native with array PARAMETERS (v1.14) — an array crossing the boundary INTO the
+    /// host, the direction <c>readBytes</c> never needed. The implementation reads the argument
+    /// as <c>(LyrValue[])args[i].AsObject</c>, under the loan contract of the class.
+    ///
+    /// <para><paramref name="paramElements"/> runs parallel to <paramref name="paramTypes"/>:
+    /// the element tag for an array parameter, <c>null</c> for a scalar one. Checked while
+    /// binding, as for an array return — without it <c>string[]</c> and <c>char[]</c> would be
+    /// indistinguishable. <paramref name="returnElement"/> carries the element or inner tag when
+    /// the return type itself is an array or an optional.</para></summary>
+    public void RegisterWithArrayParams(string name, TypeTag[] paramTypes,
+        TypeTag?[] paramElements, TypeTag returnType, Func<LyrValue[], LyrValue> implementation,
+        TypeTag? returnElement = null) =>
+        _natives[name] = new Native(paramTypes, returnType, implementation, returnElement,
+            ParamElements: paramElements);
 
     /// <summary>
     /// A native whose signature contains host types.
@@ -113,7 +128,7 @@ public sealed class NativeRegistry
                 throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
                     $"no native implementation for '{import.Name}'");
 
-            // Natives take scalars only, so comparing tags suffices; a reference signature is
+            // Tags first; elements where a tag alone is ambiguous. A reference signature is
             // rejected because no native declares one.
             if (!native.ParamTypes.SequenceEqual(import.ParamTypes.Select(p => p.Tag)) ||
                 native.ReturnType != import.ReturnType.Tag)
@@ -126,6 +141,14 @@ public sealed class NativeRegistry
                 throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
                     $"native '{import.Name}' returns a different array element type than the "
                     + "module expects");
+
+            // The same ambiguity for array PARAMETERS (v1.14): the element tag has to match too.
+            if (native.ParamElements is { } elements)
+                for (var p = 0; p < elements.Length; p++)
+                    if (elements[p] is { } el && import.ParamTypes[p].Element?.Tag != el)
+                        throw new LyricRuntimeException(VmDiagnostics.ImportsNotBound,
+                            $"native '{import.Name}': parameter {p + 1} has a different array "
+                            + "element type than the module expects");
 
             // A struct-returning native writes fields by position, and the layout is the
             // module's. Checking it here turns a host/SDK disagreement into a load error with a
@@ -287,6 +310,54 @@ public sealed class NativeRegistry
 
         Both("charAt", new[] { TypeTag.String, TypeTag.I64 }, TypeTag.Char,
             args => LyrValue.FromBits((ulong)CodepointAt(args[0].AsString, args[1].AsI64)));
+
+        // --- the byte bridge and the array-parameter joiners (v1.14) ---------------------
+
+        registry.RegisterArrayReturning("std.string.utf8Encode", str, TypeTag.U8,
+            args => Bytes(System.Text.Encoding.UTF8.GetBytes(args[0].AsString)));
+
+        // STRICT, unlike readText: invalid bytes are the caller's question here, and the answer
+        // is null rather than a U+FFFD quietly standing in for the data.
+        registry.RegisterWithArrayParams("std.string.utf8Decode",
+            new[] { TypeTag.Array }, new TypeTag?[] { TypeTag.U8 },
+            TypeTag.Optional, args =>
+            {
+                try
+                {
+                    return LyrValue.FromString(new System.Text.UTF8Encoding(
+                        encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true)
+                        .GetString(ToBytes(args[0])));
+                }
+                catch (ArgumentException)
+                {
+                    return default;
+                }
+            }, returnElement: TypeTag.String);
+
+        // Behind std.string.join and StringBuilder.build: one native call instead of a copy
+        // cascade the language cannot avoid without preallocating strings.
+        registry.RegisterWithArrayParams("std.string.joinAll",
+            new[] { TypeTag.Array, TypeTag.String }, new TypeTag?[] { TypeTag.String, null },
+            TypeTag.String, args =>
+            {
+                var parts = (LyrValue[])args[0].AsObject;
+                var texts = new string[parts.Length];
+                for (var i = 0; i < parts.Length; i++) texts[i] = parts[i].AsString;
+                return LyrValue.FromString(string.Join(args[1].AsString, texts));
+            });
+
+        // The inverse of toChars, native since v1.14: one call instead of one string per
+        // character.
+        registry.RegisterWithArrayParams("std.string.fromChars",
+            new[] { TypeTag.Array }, new TypeTag?[] { TypeTag.Char },
+            TypeTag.String, args =>
+            {
+                var chars = (LyrValue[])args[0].AsObject;
+                var builder = new System.Text.StringBuilder(chars.Length);
+                for (var i = 0; i < chars.Length; i++)
+                    builder.Append(char.ConvertFromUtf32((int)chars[i].Bits));
+                return LyrValue.FromString(builder.ToString());
+            });
 
         registry.Register("std.string.substring",
             new[] { TypeTag.String, TypeTag.I64, TypeTag.I64 }, TypeTag.String,
@@ -461,6 +532,28 @@ public sealed class NativeRegistry
         // that needs the difference asks 'exists' first.
         registry.RegisterArrayReturning("std.io.file.readBytes", str, TypeTag.U8,
             args => Bytes(TryIoBytes(() => File.ReadAllBytes(args[0].AsString))));
+
+        // The write side (v1.14) — the first natives with an ARRAY parameter. The failure model
+        // is writeText's: a bool, through the same broad TryIo.
+        registry.RegisterWithArrayParams("std.io.file.writeBytes",
+            new[] { TypeTag.String, TypeTag.Array }, new TypeTag?[] { null, TypeTag.U8 },
+            TypeTag.Bool, args => LyrValue.FromBool(
+                TryIo(() =>
+                {
+                    File.WriteAllBytes(args[0].AsString, ToBytes(args[1]));
+                    return "";
+                }) is not null));
+
+        registry.RegisterWithArrayParams("std.io.file.appendBytes",
+            new[] { TypeTag.String, TypeTag.Array }, new TypeTag?[] { null, TypeTag.U8 },
+            TypeTag.Bool, args => LyrValue.FromBool(
+                TryIo(() =>
+                {
+                    using var stream = new FileStream(args[0].AsString, FileMode.Append,
+                        FileAccess.Write);
+                    stream.Write(ToBytes(args[1]));
+                    return "";
+                }) is not null));
 
         // ------------------------------------------------------------ std.io.file, continued
         //
@@ -735,6 +828,16 @@ public sealed class NativeRegistry
         var values = new LyrValue[content.Length];
         for (var i = 0; i < content.Length; i++) values[i] = LyrValue.FromBits(content[i]);
         return LyrValue.FromObject(values);
+    }
+
+    /// <summary>A <c>uint8[]</c> argument as host bytes — the inverse of <see cref="Bytes"/>,
+    /// copied out under the loan contract.</summary>
+    private static byte[] ToBytes(LyrValue argument)
+    {
+        var values = (LyrValue[])argument.AsObject;
+        var bytes = new byte[values.Length];
+        for (var i = 0; i < values.Length; i++) bytes[i] = (byte)values[i].Bits;
+        return bytes;
     }
 
     private static LyrValue Lines(string? content)

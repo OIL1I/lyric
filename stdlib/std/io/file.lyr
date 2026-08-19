@@ -31,9 +31,15 @@ pub fn remove(path: string): bool;
 
 /// The raw bytes, undecoded — what `readText` cannot give: its UTF-8 decoding turns invalid
 /// bytes into U+FFFD. An unreadable file reads as empty, the `readLines` convention; a caller
-/// that needs the difference asks `exists` first. Writing bytes is not here yet: an array has
-/// never crossed the native boundary as a PARAMETER, and that machinery is its own change.
+/// that needs the difference asks `exists` first.
 pub fn readBytes(path: string): uint8[];
+
+/// Writes raw bytes, replacing an existing file. `true` on success — the `writeText`
+/// convention. (v1.14: the first native whose parameter is an array.)
+pub fn writeBytes(path: string, data: uint8[]): bool;
+
+/// Appends raw bytes to an existing file or creates it. `true` on success.
+pub fn appendBytes(path: string, data: uint8[]): bool;
 
 /// The lines of a file, or an empty array when it is not readable. Terminators are removed,
 /// so whether the file used CRLF or LF is no longer visible.

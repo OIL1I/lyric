@@ -1775,11 +1775,33 @@
           "Kind": "Function",
           "Name": "readBytes",
           "Signature": "pub fn readBytes(path: string): uint8[]",
-          "Doc": "The raw bytes, undecoded — what `readText` cannot give: its UTF-8 decoding turns invalid\nbytes into U+FFFD. An unreadable file reads as empty, the `readLines` convention; a caller\nthat needs the difference asks `exists` first. Writing bytes is not here yet: an array has\nnever crossed the native boundary as a PARAMETER, and that machinery is its own change.",
+          "Doc": "The raw bytes, undecoded — what `readText` cannot give: its UTF-8 decoding turns invalid\nbytes into U+FFFD. An unreadable file reads as empty, the `readLines` convention; a caller\nthat needs the difference asks `exists` first.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 36
+            "Line": 35
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "writeBytes",
+          "Signature": "pub fn writeBytes(path: string, data: uint8[]): bool",
+          "Doc": "Writes raw bytes, replacing an existing file. `true` on success — the `writeText`\nconvention. (v1.14: the first native whose parameter is an array.)",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 39
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "appendBytes",
+          "Signature": "pub fn appendBytes(path: string, data: uint8[]): bool",
+          "Doc": "Appends raw bytes to an existing file or creates it. `true` on success.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/io/file.lyr",
+            "Line": 42
           }
         },
         {
@@ -1790,7 +1812,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 40
+            "Line": 46
           }
         },
         {
@@ -1801,7 +1823,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 50
+            "Line": 56
           }
         },
         {
@@ -1812,7 +1834,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 52
+            "Line": 58
           }
         },
         {
@@ -1823,7 +1845,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 54
+            "Line": 60
           }
         },
         {
@@ -1834,7 +1856,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 57
+            "Line": 63
           }
         },
         {
@@ -1845,7 +1867,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 60
+            "Line": 66
           }
         },
         {
@@ -1856,7 +1878,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 63
+            "Line": 69
           }
         },
         {
@@ -1867,7 +1889,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 66
+            "Line": 72
           }
         },
         {
@@ -1878,7 +1900,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 70
+            "Line": 76
           }
         },
         {
@@ -1889,7 +1911,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 76
+            "Line": 82
           }
         },
         {
@@ -1900,7 +1922,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 79
+            "Line": 85
           }
         },
         {
@@ -1911,7 +1933,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 93
+            "Line": 99
           }
         },
         {
@@ -1922,7 +1944,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 126
+            "Line": 132
           }
         },
         {
@@ -1933,7 +1955,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 132
+            "Line": 138
           }
         },
         {
@@ -1944,7 +1966,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 148
+            "Line": 154
           }
         },
         {
@@ -1955,7 +1977,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 164
+            "Line": 170
           }
         },
         {
@@ -1966,7 +1988,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 174
+            "Line": 180
           }
         },
         {
@@ -1977,7 +1999,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/io/file.lyr",
-            "Line": 182
+            "Line": 188
           }
         }
       ]
@@ -4054,13 +4076,46 @@
         },
         {
           "Kind": "Function",
+          "Name": "fromChars",
+          "Signature": "pub fn fromChars(chars: char[]): string",
+          "Doc": "The characters joined back into one string — the inverse of `toChars`. Native since v1.14:\none call instead of one string per character.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 87
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "utf8Encode",
+          "Signature": "pub fn utf8Encode(value: string): uint8[]",
+          "Doc": "The string as UTF-8 bytes — the inverse of `utf8Decode`, and what a file or a socket\nactually carries.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 96
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "utf8Decode",
+          "Signature": "pub fn utf8Decode(bytes: uint8[]): ?string",
+          "Doc": "The bytes as a string, STRICTLY: invalid UTF-8 answers `null` rather than a U+FFFD quietly\nstanding in for the data — the difference to `readText`, whose replacement decoding is\ndocumented there.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/string.lyr",
+            "Line": 101
+          }
+        },
+        {
+          "Kind": "Function",
           "Name": "isDigit",
           "Signature": "pub fn isDigit(c: char): bool",
           "Doc": "`'0'` through `'9'`.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 103
+            "Line": 125
           }
         },
         {
@@ -4071,7 +4126,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 109
+            "Line": 131
           }
         },
         {
@@ -4082,7 +4137,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 114
+            "Line": 136
           }
         },
         {
@@ -4093,7 +4148,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 119
+            "Line": 141
           }
         },
         {
@@ -4104,7 +4159,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 124
+            "Line": 146
           }
         },
         {
@@ -4115,7 +4170,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 129
+            "Line": 151
           }
         },
         {
@@ -4126,7 +4181,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 136
+            "Line": 158
           }
         },
         {
@@ -4137,7 +4192,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 144
+            "Line": 166
           }
         },
         {
@@ -4148,7 +4203,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 154
+            "Line": 176
           }
         },
         {
@@ -4159,7 +4214,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 161
+            "Line": 183
           }
         },
         {
@@ -4170,7 +4225,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 190
+            "Line": 212
           }
         },
         {
@@ -4181,7 +4236,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 208
+            "Line": 230
           }
         },
         {
@@ -4192,18 +4247,18 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 229
+            "Line": 251
           }
         },
         {
           "Kind": "Function",
           "Name": "join",
           "Signature": "pub fn join(parts: string[], separator: string): string",
-          "Doc": "Joins the parts with a separator: the inverse of `split`.",
+          "Doc": "Joins the parts with a separator: the inverse of `split`. One native call — a left fold\nwould copy the whole result once per part.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 291
+            "Line": 275
           }
         },
         {
@@ -4214,7 +4269,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 312
+            "Line": 280
           }
         },
         {
@@ -4225,7 +4280,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 318
+            "Line": 286
           }
         },
         {
@@ -4236,7 +4291,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 331
+            "Line": 299
           }
         },
         {
@@ -4247,7 +4302,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 365
+            "Line": 333
           }
         },
         {
@@ -4258,7 +4313,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 378
+            "Line": 346
           }
         },
         {
@@ -4269,7 +4324,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 388
+            "Line": 356
           }
         },
         {
@@ -4280,7 +4335,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 399
+            "Line": 367
           }
         },
         {
@@ -4291,7 +4346,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 409
+            "Line": 377
           }
         },
         {
@@ -4302,7 +4357,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 426
+            "Line": 394
           }
         },
         {
@@ -4313,7 +4368,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 460
+            "Line": 428
           }
         },
         {
@@ -4324,7 +4379,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 505
+            "Line": 473
           }
         },
         {
@@ -4335,18 +4390,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 518
-          }
-        },
-        {
-          "Kind": "Function",
-          "Name": "fromChars",
-          "Signature": "pub fn fromChars(chars: char[]): string",
-          "Doc": "The characters joined back into one string — the inverse of `toChars`.",
-          "Members": [],
-          "Source": {
-            "File": "stdlib/std/string.lyr",
-            "Line": 576
+            "Line": 486
           }
         },
         {
@@ -4363,7 +4407,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 595
+                "Line": 552
               }
             },
             {
@@ -4374,7 +4418,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 597
+                "Line": 554
               }
             },
             {
@@ -4385,7 +4429,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 600
+                "Line": 557
               }
             },
             {
@@ -4396,7 +4440,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 607
+                "Line": 564
               }
             },
             {
@@ -4407,7 +4451,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 612
+                "Line": 569
               }
             },
             {
@@ -4418,7 +4462,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 627
+                "Line": 584
               }
             },
             {
@@ -4429,24 +4473,24 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 633
+                "Line": 590
               }
             },
             {
               "Kind": "Method",
               "Name": "build",
               "Signature": "pub fn build(): string",
-              "Doc": "The pieces joined once — the point of collecting them. Balanced rather than a left\nfold: the fold would copy the whole result once per piece, the exact cost the builder\nexists to avoid.",
+              "Doc": "The pieces joined once — the point of collecting them. One native call over the filled\nslice; a left fold would copy the whole result once per piece, the exact cost the\nbuilder exists to avoid. Reads and never consumes: building twice yields the same\nstring.",
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 640
+                "Line": 598
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 593
+            "Line": 550
           }
         },
         {
@@ -4457,7 +4501,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 646
+            "Line": 610
           }
         }
       ]
