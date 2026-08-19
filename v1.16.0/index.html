@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.16.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.16.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.16.0 — 2026-08-19</h2>
+<p>The language has a specification: <code>lyriclang/lyric-spec</code> holds twelve chapters and a
+conformance suite, non-normative until 2.0 — and from this release on the semantics are
+FROZEN. Two toolchain fixes came out of writing it. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><p><strong><code>{{</code> and <code>}}</code> in f-strings produce a literal brace</strong> — promised by the grammar since 1.0,
+honored by the lexer since this release: <code>f&quot;json: {{\&quot;k\&quot;: {n}}}&quot;</code> renders braces instead
+of a parse error. A lone <code>}</code> in the text stays ordinary text. Found by the spec audit.</p>
+</li>
+<li><p><strong><code>catch (e: Throwable)</code> catches now.</strong> It compiled — the exception analysis treats an
+interface catch as handling — and then never caught: the handler carried the interface's
+type id and the runtime compared it against the thrown CLASS, so the exception flew past a
+clause the compiler had accepted. Found by the conformance suite on its first run. The
+explicit <code>Throwable</code> catch is the catch-all now, identical to <code>catch (e)</code>; a catch naming
+any OTHER interface is refused with a diagnostic until the handler table can express a
+conformance test — the alternative was a clause that silently caught nothing.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
