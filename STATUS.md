@@ -191,8 +191,8 @@ where it was declared, a program followed across its files, documentation on hov
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
 4307 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **1.16.0**; the conformance suite stands at 43 cases in
-`lyriclang/lyric-spec`.
+plus `lyrembed.dll`, version **1.16.0**; the conformance suite stands at 45 cases in
+`lyriclang/lyric-spec`, pinned to the 1.16.0 release.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
