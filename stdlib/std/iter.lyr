@@ -13,17 +13,23 @@ module std.iter;
 // nothing.
 import std.core { Ordered };
 
+/// A cursor: `next()` yields values until `null` says the end. That is the whole interface —
+/// there is no `hasNext` beside it that could fall out of step.
 pub interface Iterator<T> {
-    // 'mut', because an iterator advances its own position.
+    /// The next value, or `null` at the end. `mut`, because an iterator advances its own
+    /// position.
     mut fn next(): ?T;
 }
 
-// A numeric range. 'a..b' and 'a..=b' differ only in the end value the compiler substitutes,
-// so there is one adapter rather than two.
+/// A numeric range. `a..b` and `a..=b` differ only in the end value the compiler substitutes,
+/// so there is one adapter rather than two.
 pub class RangeIterator :: [Iterator<int>] {
+    /// The next value to yield.
     current: int,
+    /// The first value NOT yielded.
     end: int,
 
+    /// The next value, or `null` at the end.
     pub mut fn next(): ?int {
         if (this.current >= this.end) {
             return null;
@@ -34,12 +40,15 @@ pub class RangeIterator :: [Iterator<int>] {
     }
 }
 
-// An array. The index belongs to the iterator, not to the array, so two loops over the same
-// array do not disturb each other.
+/// An array. The index belongs to the iterator, not to the array, so two loops over the same
+/// array do not disturb each other.
 pub class ArrayIterator<T> :: [Iterator<T>] {
+    /// The array being walked.
     source: T[],
+    /// The next position.
     index: int,
 
+    /// The next value, or `null` at the end.
     pub mut fn next(): ?T {
         if (this.index >= this.source.length) {
             return null;
@@ -50,13 +59,15 @@ pub class ArrayIterator<T> :: [Iterator<T>] {
     }
 }
 
-// A string. It walks the code points that 'toChars' extracts once, rather than calling
-// 'charAt', which would count from the start each time and make the loop quadratic. The cost is
-// one array per loop.
+/// A string, walked over the code points `toChars` extracted once — `charAt` per step would
+/// make the loop quadratic. The cost is one array per loop.
 pub class StringIterator :: [Iterator<char>] {
+    /// The code points, extracted once.
     chars: char[],
+    /// The next position.
     index: int,
 
+    /// The next character, or `null` at the end.
     pub mut fn next(): ?char {
         if (this.index >= this.chars.length) {
             return null;
@@ -67,19 +78,13 @@ pub class StringIterator :: [Iterator<char>] {
     }
 }
 
-// What can be walked.
-//
-// A container SAYS how to walk it rather than being the cursor itself. Were 'List<T>' its own
-// 'Iterator<T>', it would carry a built-in position and two loops over the same list would push
-// each other along.
-//
-// 'for (x in e)' therefore asks forwards: if 'e' satisfies this interface, 'iter()' is called. The
-// compiler does not search backwards for an iterator taking 'e' as its source, which would be
-// ambiguous with two candidates.
-//
-// The three built-in forms are the exception: they have no declaration to attach a conformance to,
-// so the compiler builds their adapter itself.
+/// What can be walked: `for (x in e)` calls `iter()` on anything satisfying this.
+///
+/// A container SAYS how to walk it rather than being the cursor itself — were `List<T>` its own
+/// `Iterator<T>`, two loops over the same list would push each other along. Every call hands out
+/// a FRESH cursor.
 pub interface Iterable<T> {
+    /// A fresh cursor over this value.
     fn iter(): Iterator<T>;
 }
 
@@ -95,10 +100,14 @@ pub interface Iterable<T> {
 // The adapters hold their source as `Iterator<T>`, a fat pointer, which costs one virtual call per
 // element. The alternative would be a second type parameter per adapter.
 
+/// The lazy machinery behind `map`.
 pub class MapIterator<T, U> :: [Iterator<U>] {
+    /// The values being transformed.
     source: Iterator<T>,
+    /// The transformation, applied per element.
     f: fn(T) -> U,
 
+    /// The next transformed value, or `null` at the end.
     pub mut fn next(): ?U {
         let value = this.source.next();
         if (value == null) {
@@ -109,14 +118,19 @@ pub class MapIterator<T, U> :: [Iterator<U>] {
     }
 }
 
+/// Each element through `f`, lazily: nothing runs before someone asks.
 pub fn map<T, U>(source: Iterator<T>, f: fn(T) -> U): Iterator<U> {
     return MapIterator<T, U> { source = source, f = f };
 }
 
+/// The lazy machinery behind `filter`.
 pub class FilterIterator<T> :: [Iterator<T>] {
+    /// The values being sifted.
     source: Iterator<T>,
+    /// Decides what passes.
     keep: fn(T) -> bool,
 
+    /// The next passing value, or `null` at the end.
     pub mut fn next(): ?T {
         var value = this.source.next();
         while (value != null) {
@@ -130,14 +144,19 @@ pub class FilterIterator<T> :: [Iterator<T>] {
     }
 }
 
+/// Only the elements `keep` accepts, lazily.
 pub fn filter<T>(source: Iterator<T>, keep: fn(T) -> bool): Iterator<T> {
     return FilterIterator<T> { source = source, keep = keep };
 }
 
+/// The lazy machinery behind `take`.
 pub class TakeIterator<T> :: [Iterator<T>] {
+    /// The values being limited.
     source: Iterator<T>,
+    /// How many may still pass.
     remaining: int,
 
+    /// The next value while the budget lasts, then `null`.
     pub mut fn next(): ?T {
         if (this.remaining <= 0) {
             return null;
@@ -147,16 +166,20 @@ pub class TakeIterator<T> :: [Iterator<T>] {
     }
 }
 
-// The first `count` elements. A negative `count` yields nothing rather than panicking: it is an
-// empty selection, not a broken promise.
+/// The first `count` elements, lazily. A negative `count` yields nothing rather than
+/// panicking: it is an empty selection, not a broken promise.
 pub fn take<T>(source: Iterator<T>, count: int): Iterator<T> {
     return TakeIterator<T> { source = source, remaining = count };
 }
 
+/// The lazy machinery behind `skip`.
 pub class SkipIterator<T> :: [Iterator<T>] {
+    /// The values being shortened.
     source: Iterator<T>,
+    /// How many are still to be dropped, at the first `next`.
     pending: int,
 
+    /// The next value past the dropped front, or `null` at the end.
     pub mut fn next(): ?T {
         // Skipped at the first `next`, not while building, or the adapter would be eager.
         while (this.pending > 0) {
@@ -169,15 +192,21 @@ pub class SkipIterator<T> :: [Iterator<T>] {
     }
 }
 
+/// Everything after the first `count` elements, lazily. A negative `count` skips nothing.
 pub fn skip<T>(source: Iterator<T>, count: int): Iterator<T> {
     return SkipIterator<T> { source = source, pending = count };
 }
 
+/// The lazy machinery behind `takeWhile`.
 pub class TakeWhileIterator<T> :: [Iterator<T>] {
+    /// The values being cut off.
     source: Iterator<T>,
+    /// Decides where the front ends.
     keep: fn(T) -> bool,
+    /// Set at the first refusal; from then on everything is `null`.
     done: bool = false,
 
+    /// The next value of the accepted front, then `null` forever.
     pub mut fn next(): ?T {
         if (this.done) {
             return null;
@@ -198,14 +227,20 @@ pub class TakeWhileIterator<T> :: [Iterator<T>] {
     }
 }
 
+/// The longest front `keep` accepts; it ends at the FIRST refusal, even if `true` would come
+/// again — that is what separates it from `filter`.
 pub fn takeWhile<T>(source: Iterator<T>, keep: fn(T) -> bool): Iterator<T> {
     return TakeWhileIterator<T> { source = source, keep = keep };
 }
 
+/// The lazy machinery behind `enumerate`.
 pub class EnumerateIterator<T> :: [Iterator<(int, T)>] {
+    /// The values being numbered.
     source: Iterator<T>,
+    /// The number the next value gets.
     index: int = 0,
 
+    /// The next `(position, value)` pair, or `null` at the end.
     pub mut fn next(): ?(int, T) {
         let value = this.source.next();
         if (value == null) {
@@ -222,10 +257,14 @@ pub fn enumerate<T>(source: Iterator<T>): Iterator<(int, T)> {
     return EnumerateIterator<T> { source = source };
 }
 
+/// The lazy machinery behind `zip`.
 pub class ZipIterator<A, B> :: [Iterator<(A, B)>] {
+    /// The first column.
     left: Iterator<A>,
+    /// The second column.
     right: Iterator<B>,
 
+    /// The next pair, or `null` when either side ends.
     pub mut fn next(): ?(A, B) {
         let a = this.left.next();
         if (a == null) {
@@ -247,11 +286,16 @@ pub fn zip<A, B>(left: Iterator<A>, right: Iterator<B>): Iterator<(A, B)> {
     return ZipIterator<A, B> { left = left, right = right };
 }
 
+/// The lazy machinery behind `chain`.
 pub class ChainIterator<T> :: [Iterator<T>] {
+    /// The front half.
     first: Iterator<T>,
+    /// The back half.
     second: Iterator<T>,
+    /// Whether the front half is still being walked.
     onFirst: bool = true,
 
+    /// The next value, first half first, or `null` when both end.
     pub mut fn next(): ?T {
         if (this.onFirst) {
             let value = this.first.next();
@@ -264,6 +308,7 @@ pub class ChainIterator<T> :: [Iterator<T>] {
     }
 }
 
+/// First everything of `first`, then everything of `second`, lazily.
 pub fn chain<T>(first: Iterator<T>, second: Iterator<T>): Iterator<T> {
     return ChainIterator<T> { first = first, second = second };
 }
@@ -292,6 +337,7 @@ pub fn fold<T, A>(source: Iterator<T>, seed: A, step: fn(A, T) -> A): A {
     return acc;
 }
 
+/// How many elements the iterator yields; drains it.
 pub fn count<T>(source: Iterator<T>): int {
     var n = 0;
     var value = source.next();
@@ -302,8 +348,8 @@ pub fn count<T>(source: Iterator<T>): int {
     return n;
 }
 
-// `sum` and `sumFloat` are separate: there is no overloading and no `Addable` interface. Such an
-// interface belongs with operator overloading.
+/// The sum of an `int` iterator.
+// `sum` and `sumFloat` are separate: there is no overloading.
 pub fn sum(source: Iterator<int>): int {
     var total = 0;
     var value = source.next();
@@ -314,6 +360,7 @@ pub fn sum(source: Iterator<int>): int {
     return total;
 }
 
+/// The sum of a `float` iterator.
 pub fn sumFloat(source: Iterator<float>): float {
     var total = 0.0;
     var value = source.next();
@@ -351,6 +398,7 @@ pub fn all<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
     return true;
 }
 
+/// Whether nothing matches: `!any`.
 pub fn none<T>(source: Iterator<T>, test: fn(T) -> bool): bool {
     return !any<T>(source, test);
 }
@@ -415,6 +463,7 @@ pub fn minValue<T :: [Ordered<T>]>(source: Iterator<T>): ?T {
     return best;
 }
 
+/// The largest element, or `null` for an empty source.
 pub fn maxValue<T :: [Ordered<T>]>(source: Iterator<T>): ?T {
     var best = source.next();
     if (best == null) {

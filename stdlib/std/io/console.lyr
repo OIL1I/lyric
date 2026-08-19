@@ -102,6 +102,7 @@ pub fn prompt(text: string): ?string {
 
 /// The iterator `lines` hands out. Yields each line of standard input until it ends.
 pub class LineIterator :: [Iterator<string>] {
+    /// Set once `readLine` answered `null`; from then on the iterator ends.
     done: bool = false,
 
     /// The next line, or `null` once the input has ended. Ends for good after the first `null`.

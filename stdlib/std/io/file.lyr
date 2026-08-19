@@ -12,23 +12,25 @@ module std.io.file;
 // For the path helpers below. 'std.string' imports nothing, so there is no cycle.
 import std.string { length, charAt, substring };
 
-// The whole content as text (UTF-8), or `null` when the file does not exist or is not
-// readable.
+/// The whole content as text, decoded as UTF-8 — bytes that are not valid UTF-8 become
+/// U+FFFD. For binary data use `readBytes`. `null` when the file does not exist or is not
+/// readable.
 pub fn readText(path: string): ?string;
 
-// Writes text (UTF-8), replacing an existing file. `true` on success.
+/// Writes text (UTF-8), replacing an existing file. `true` on success.
 pub fn writeText(path: string, content: string): bool;
 
-// Appends to an existing file or creates it. `true` on success.
+/// Appends to an existing file or creates it. `true` on success.
 pub fn appendText(path: string, content: string): bool;
 
+/// Whether something — file or directory — exists at the path.
 pub fn exists(path: string): bool;
 
-// `true` when the file is gone afterwards, including when it never existed.
+/// `true` when the file is gone afterwards, including when it never existed.
 pub fn remove(path: string): bool;
 
-// The lines of a file, or an empty array when it is not readable. Terminators are removed, so
-// whether the file used CRLF or LF is no longer visible.
+/// The lines of a file, or an empty array when it is not readable. Terminators are removed,
+/// so whether the file used CRLF or LF is no longer visible.
 pub fn readLines(path: string): string[];
 
 // ------------------------------------------------------------------------------------------
@@ -38,8 +40,11 @@ pub fn readLines(path: string): string[];
 //
 // The capability hangs off the module name, so no individual function has to state it.
 
+/// The size in bytes, or `null` when the file does not exist.
 pub fn size(path: string): ?int;
+/// Whether the path names an existing FILE.
 pub fn isFile(path: string): bool;
+/// Whether the path names an existing DIRECTORY.
 pub fn isDirectory(path: string): bool;
 
 /// Copies. `false` when the source is missing or the target is not writable.
@@ -48,6 +53,7 @@ pub fn copy(from: string, to: string): bool;
 /// Moves or renames; the same operation on every file system.
 pub fn move(from: string, to: string): bool;
 
+/// Creates one directory; the parent must exist. `createDirAll` creates the chain.
 pub fn createDir(path: string): bool;
 
 /// Creates missing parent directories too. An existing directory counts as success.
@@ -73,36 +79,36 @@ pub fn tempDir(): string;
 
 /// Both separators count. Windows understands `/`, and a script running on both systems should
 /// not have to guess which one applies.
-fn istTrenner(c: char): bool {
+fn isSeparator(c: char): bool {
     return c == '/' || c == '\\';
 }
 
 /// Joins two path parts, with neither a doubled nor a missing separator.
-pub fn joinPath(links: string, rechts: string): string {
-    if (length(links) == 0) {
-        return rechts;
+pub fn joinPath(left: string, right: string): string {
+    if (length(left) == 0) {
+        return right;
     }
-    if (length(rechts) == 0) {
-        return links;
+    if (length(right) == 0) {
+        return left;
     }
 
-    let endetMitTrenner = istTrenner(charAt(links, length(links) - 1));
-    let beginntMitTrenner = istTrenner(charAt(rechts, 0));
+    let endsWithSeparator = isSeparator(charAt(left, length(left) - 1));
+    let startsWithSeparator = isSeparator(charAt(right, 0));
 
-    if (endetMitTrenner && beginntMitTrenner) {
-        return links + substring(rechts, 1, length(rechts) - 1);
+    if (endsWithSeparator && startsWithSeparator) {
+        return left + substring(right, 1, length(right) - 1);
     }
-    if (endetMitTrenner || beginntMitTrenner) {
-        return links + rechts;
+    if (endsWithSeparator || startsWithSeparator) {
+        return left + right;
     }
-    return links + "/" + rechts;
+    return left + "/" + right;
 }
 
 // The index after the last separator, or 0 when there is none.
-fn nachLetztemTrenner(path: string): int {
+fn afterLastSeparator(path: string): int {
     var i = length(path) - 1;
     while (i >= 0) {
-        if (istTrenner(charAt(path, i))) {
+        if (isSeparator(charAt(path, i))) {
             return i + 1;
         }
         i = i - 1;
@@ -112,13 +118,13 @@ fn nachLetztemTrenner(path: string): int {
 
 /// The last component. `"a/b/c.txt"` becomes `"c.txt"`.
 pub fn fileName(path: string): string {
-    let start = nachLetztemTrenner(path);
+    let start = afterLastSeparator(path);
     return substring(path, start, length(path) - start);
 }
 
 /// Everything before the last separator, or `""` when there is none.
 pub fn parentDir(path: string): string {
-    let start = nachLetztemTrenner(path);
+    let start = afterLastSeparator(path);
     if (start == 0) {
         return "";
     }
@@ -141,7 +147,7 @@ pub fn extension(path: string): string {
         if (charAt(name, i) == '.') {
             return substring(name, i + 1, length(name) - i - 1);
         }
-        if (istTrenner(charAt(name, i))) {
+        if (isSeparator(charAt(name, i))) {
             return "";
         }
         i = i - 1;
@@ -161,10 +167,10 @@ pub fn stem(path: string): string {
 
 /// Replaces the extension. An empty extension removes it.
 pub fn withExtension(path: string, ext: string): string {
-    let ordner = parentDir(path);
-    let basis = stem(path);
-    let neu = if (length(ext) == 0) basis else basis + "." + ext;
-    return if (length(ordner) == 0) neu else joinPath(ordner, neu);
+    let directory = parentDir(path);
+    let base = stem(path);
+    let renamed = if (length(ext) == 0) base else base + "." + ext;
+    return if (length(directory) == 0) renamed else joinPath(directory, renamed);
 }
 
 /// Does the path start at the root? Recognises `/x` and `C:\x`.
@@ -172,9 +178,9 @@ pub fn isAbsolute(path: string): bool {
     if (length(path) == 0) {
         return false;
     }
-    if (istTrenner(charAt(path, 0))) {
+    if (isSeparator(charAt(path, 0))) {
         return true;
     }
-    // Laufwerksbuchstabe: 'C:' am Anfang.
+    // A drive letter: 'C:' at the start.
     return length(path) >= 2 && charAt(path, 1) == ':';
 }

@@ -69,6 +69,7 @@ pub fn unreachable(message: string): void {
 
 /// The ready-made `Throwable` for throwing a message: `throw Exception { text = "…" };`.
 pub class Exception :: [Throwable] {
+    /// What `message()` returns.
     text: string,
 
     /// The text this exception was built with.
@@ -478,6 +479,7 @@ pub interface OnFunction { }
 /// use instead. The first attribute the compiler itself reads — it changes diagnostics and
 /// nothing else, so a program that ignores the warning runs unchanged.
 pub struct Deprecated :: [OnModule, OnType, OnFunction] {
+    /// What to use instead; shown in the warning at every use site.
     message: string = "",
 }
 

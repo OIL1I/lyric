@@ -10,28 +10,43 @@
 
 module std.math;
 
+/// The circle constant π.
 pub let pi: float = 3.141592653589793;
 
+/// Euler's number, the base of the natural logarithm.
 pub let e: float = 2.718281828459045;
 
+/// The square root. A negative value yields NaN (IEEE 754), not a panic.
 pub fn sqrt(value: float): float;
+/// The absolute value.
 pub fn abs(value: float): float;
 
 // Rounding: `floor` down, `ceil` up, `round` to even on .5 (IEEE 754 round-half-to-even, which
 // avoids the systematic bias of always rounding up).
+/// Rounds down, towards negative infinity.
 pub fn floor(value: float): float;
+/// Rounds up, towards positive infinity.
 pub fn ceil(value: float): float;
+/// Rounds to the nearest whole number; a .5 goes to the EVEN neighbour (IEEE 754), which
+/// avoids the bias of always rounding up.
 pub fn round(value: float): float;
 
+/// The smaller of the two.
 pub fn min(a: float, b: float): float;
+/// The larger of the two.
 pub fn max(a: float, b: float): float;
+/// `base` raised to `exponent`.
 pub fn pow(base: float, exponent: float): float;
 
+/// The sine of an angle in radians.
 pub fn sin(radians: float): float;
+/// The cosine of an angle in radians.
 pub fn cos(radians: float): float;
+/// The tangent of an angle in radians.
 pub fn tan(radians: float): float;
 
 // Natural logarithm. For other bases: `log(x) / log(base)`.
+/// The natural logarithm; `logBase` covers every other base.
 pub fn log(value: float): float;
 
 // The inverse trigonometric functions. These four are the only new native edges in this module;
@@ -40,13 +55,18 @@ pub fn log(value: float): float;
 //
 // A series expansion in Lyric would be imprecise at the edges, and precision is the point of these
 // functions.
+/// The inverse sine, in radians. Outside `[-1, 1]` the result is NaN.
 pub fn asin(value: float): float;
+/// The inverse cosine, in radians. Outside `[-1, 1]` the result is NaN.
 pub fn acos(value: float): float;
+/// The inverse tangent, in radians.
 pub fn atan(value: float): float;
+/// The angle of the point `(x, y)` in radians — the quadrant-aware inverse tangent.
 pub fn atan2(y: float, x: float): float;
 
 // ================================================================== written in Lyric
 
+/// The full turn: 2π.
 pub let tau: float = 6.283185307179586;
 
 // ------------------------------------------------------------------------------ integers
@@ -54,14 +74,18 @@ pub let tau: float = 6.283185307179586;
 // Distinct names rather than overloading: `absInt` beside `abs` is two functions, because `int`
 // and `float` are two types.
 
+/// The absolute value. The most negative `int` has no positive twin and comes back
+/// unchanged — arithmetic wraps.
 pub fn absInt(value: int): int {
     return if (value < 0) 0 - value else value;
 }
 
+/// The smaller of the two.
 pub fn minInt(a: int, b: int): int {
     return if (a < b) a else b;
 }
 
+/// The larger of the two.
 pub fn maxInt(a: int, b: int): int {
     return if (a > b) a else b;
 }
@@ -74,6 +98,7 @@ pub fn clampInt(value: int, lo: int, hi: int): int {
     return if (value > hi) hi else value;
 }
 
+/// `-1`, `0` or `1`, matching the sign.
 pub fn signInt(value: int): int {
     if (value > 0) {
         return 1;
@@ -111,17 +136,17 @@ pub fn powInt(base: int, exponent: int): ?int {
         return null;
     }
 
-    var ergebnis = 1;
+    var result = 1;
     var b = base;
     var e = exponent;
     while (e > 0) {
         if (e % 2 == 1) {
-            ergebnis = ergebnis * b;
+            result = result * b;
         }
         b = b * b;
         e = e / 2;
     }
-    return ergebnis;
+    return result;
 }
 
 /// Division rounding towards negative infinity rather than towards zero.
@@ -147,8 +172,9 @@ pub fn modFloor(a: int, b: int): int {
     return rest;
 }
 
-// ------------------------------------------------------------------ Fliesskomma
+// ------------------------------------------------------------------ floating point
 
+/// Clamps to `[lo, hi]`. A `lo > hi` yields `lo`; the bounds are the caller's business.
 pub fn clamp(value: float, lo: float, hi: float): float {
     if (value < lo) {
         return lo;
@@ -156,6 +182,7 @@ pub fn clamp(value: float, lo: float, hi: float): float {
     return if (value > hi) hi else value;
 }
 
+/// `-1.0`, `0.0` or `1.0`, matching the sign. NaN yields `0.0`.
 pub fn sign(value: float): float {
     if (value > 0.0) {
         return 1.0;
@@ -174,6 +201,7 @@ pub fn isNaN(value: float): bool {
     return value != value;
 }
 
+/// Whether the value is positive or negative infinity. NaN is neither.
 pub fn isInfinite(value: float): bool {
     if (isNaN(value)) {
         return false;
@@ -182,20 +210,24 @@ pub fn isInfinite(value: float): bool {
     return value != 0.0 && value * 2.0 == value;
 }
 
+/// Whether the value is neither NaN nor infinite.
 pub fn isFinite(value: float): bool {
     return !isNaN(value) && !isInfinite(value);
 }
 
+/// `e` raised to `value`.
 pub fn exp(value: float): float {
     return pow(e, value);
 }
 
 // Native although `log(x) / log(base)` expresses them: the derived form gave 2.9999999999999996
 // for `log10(1000.0)`, which `as int` turns into 2.
+/// The base-2 logarithm.
 pub fn log2(value: float): float;
+/// The base-10 logarithm.
 pub fn log10(value: float): float;
 
-/// Logarithmus zu beliebiger Basis.
+/// The logarithm to an arbitrary base.
 pub fn logBase(value: float, base: float): float {
     return log(value) / log(base);
 }
@@ -216,22 +248,27 @@ pub fn hypot(a: float, b: float): float {
     return sqrt(a * a + b * b);
 }
 
+/// The hyperbolic sine.
 pub fn sinh(value: float): float {
     return (exp(value) - exp(0.0 - value)) / 2.0;
 }
 
+/// The hyperbolic cosine.
 pub fn cosh(value: float): float {
     return (exp(value) + exp(0.0 - value)) / 2.0;
 }
 
+/// The hyperbolic tangent.
 pub fn tanh(value: float): float {
     return sinh(value) / cosh(value);
 }
 
+/// Degrees to radians.
 pub fn toRadians(degrees: float): float {
     return degrees * pi / 180.0;
 }
 
+/// Radians to degrees.
 pub fn toDegrees(radians: float): float {
     return radians * 180.0 / pi;
 }
@@ -246,9 +283,11 @@ pub fn toDegrees(radians: float): float {
 // **The seed comes from the caller**: there is no `newRandom()` without an argument.
 // There is no default seed: it would make a run irreproducible, and silently so. A caller wanting
 // per-run randomness takes the time from `std.os` and says so.
-// hin.
 
+/// A deterministic pseudo-random generator (xorshift64*): one `int` of state, seeded by the
+/// caller. Not cryptographic — keys need a source from the operating system.
 pub class Random {
+    /// The generator state; every draw replaces it.
     state: int,
 
     /// The next raw value. It may have either sign.
@@ -277,6 +316,7 @@ pub class Random {
         return bits as float / 9007199254740992.0;
     }
 
+    /// True or false, from the next draw's parity.
     pub mut fn nextBool(): bool {
         return this.nextInt() % 2 == 0;
     }
