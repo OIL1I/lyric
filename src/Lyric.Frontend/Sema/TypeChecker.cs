@@ -409,7 +409,15 @@ public sealed class TypeChecker
 
         foreach (var node in interfaces)
         {
-            if (Conformance.InterfaceOf(node, _binding) is not { } direct) continue;
+            if (Conformance.InterfaceOf(node, _binding) is not { } direct)
+            {
+                // Without this the entry would pass unchecked: every conformance walk skips what
+                // InterfaceOf cannot answer for, and 'struct S :: [int]' would compile commentless.
+                if (KnownNonInterface(node))
+                    _de.Report("LYR-SEM0080", Severity.Error, NodeSpan(node),
+                        $"only an interface can stand in the conformance list of '{name}'");
+                continue;
+            }
             foreach (var (iface, subst) in ClosureOfNode(node, seen))
             {
                 if (iface.Declaration is not InterfaceDecl idecl) continue;
@@ -433,6 +441,17 @@ public sealed class TypeChecker
                 }
             }
         }
+    }
+
+    // A list entry that names something KNOWN and yet no interface — the case the resolver stays
+    // silent on: an unknown name was its RES0002 already, and a recovery node carries an
+    // ErrorSymbol. Shapes without a symbol (arrays, tuples, function types) stay outside; they
+    // never resolve to anything a conformance could name.
+    private bool KnownNonInterface(TypeNode node)
+    {
+        var s = node is NamedType nt ? _binding.Resolve(nt) : null;
+        if (s is ImportBindingSymbol ib) s = ib.Target;
+        return s is not null and not ErrorSymbol;
     }
 
     // The parent list of an interface: every entry an interface, no chain back to the declaring
@@ -459,9 +478,7 @@ public sealed class TypeChecker
             {
                 // An unknown name was the resolver's error already; a known one that is not an
                 // interface is this one.
-                var s = node is NamedType nt ? _binding.Resolve(nt) : null;
-                if (s is ImportBindingSymbol ib) s = ib.Target;
-                if (s is not null and not ErrorSymbol)
+                if (KnownNonInterface(node))
                     _de.Report("LYR-SEM0078", Severity.Error, NodeSpan(node),
                         $"only an interface can stand in the parent list of '{decl.Name}'");
                 continue;

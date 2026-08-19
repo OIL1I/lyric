@@ -10,6 +10,16 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Added
+
+- **A conformance list refuses non-interfaces** (`LYR-SEM0080`): a known name that is no
+  interface in the list of a struct, class, enum or extend block — `struct S :: [int]` — is an
+  error now. Previously such an entry passed without any diagnostic, because every conformance
+  walk skips what it cannot answer for. The counterpart of the parent-list rule `LYR-SEM0078`;
+  an unknown name stays the resolver's error (`LYR-RES0002`).
+
 ## v1.13.0 — 2026-08-19
 
 The language gaps close. Interface inheritance arrives — one parent, implied through the whole
