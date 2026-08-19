@@ -1,0 +1,40 @@
+import std.test { Test, assertEq, assertTrue };
+import std.time { Instant, Duration };
+
+@Test
+pub fn durations_add_and_convert(): void {
+    let d = Duration.ofSeconds(90).plus(Duration.ofMillis(500));
+    assertEq(d.totalMillis(), 90500);
+    assertEq(d.totalSeconds(), 90);
+    assertEq(Duration.ofMinutes(2).minus(Duration.ofSeconds(30)).totalSeconds(), 90);
+}
+
+@Test
+pub fn instants_measure_their_distance(): void {
+    let a = Instant.ofEpochMillis(1000);
+    let b = Instant.ofEpochMillis(4500);
+    assertEq(b.since(a).totalMillis(), 3500);
+    assertEq(a.since(b).totalMillis(), -3500);
+    assertEq(a.plus(Duration.ofSeconds(3)).epochMillis(), 4000);
+}
+
+@Test
+pub fn iso_renders_utc_with_millisecond_precision(): void {
+    assertEq(Instant.ofEpochMillis(0).iso(), "1970-01-01T00:00:00.000Z");
+    assertEq(Instant.ofEpochMillis(86400000).iso(), "1970-01-02T00:00:00.000Z");
+    // 2000-03-01: the leap-year edge the civil-from-days algorithm has to get right.
+    assertEq(Instant.ofEpochMillis(951868800000).iso(), "2000-03-01T00:00:00.000Z");
+}
+
+@Test
+pub fn iso_lands_pre_epoch_instants_in_the_right_day(): void {
+    // Floor division, not truncation: one millisecond before the epoch is the LAST millisecond
+    // of 1969, not a negative time on day zero.
+    assertEq(Instant.ofEpochMillis(-1).iso(), "1969-12-31T23:59:59.999Z");
+}
+
+@Test
+pub fn the_clock_moves_forward(): void {
+    let now = Instant.now();
+    assertTrue(now.epochMillis() > 1500000000000, "the wall clock stands after 2017");
+}

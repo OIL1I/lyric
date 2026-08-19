@@ -134,11 +134,94 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
         this.data[index] = value;
     }
 
-    /// Empties the list and releases every slot.
+    /// Empties the list. Every slot is released — nothing inserted stays alive — but the
+    /// backing array is KEPT: a buffer emptied once per frame must not reallocate on every
+    /// refill.
     pub mut fn clear(): void {
-        let hole: ?T = null;
+        var i = 0;
+        while (i < this.count) {
+            this.data[i] = null;
+            i = i + 1;
+        }
         this.count = 0;
-        this.data = [hole] * 0;
+    }
+
+    /// The first value, or `null` for an empty list.
+    pub fn first(): ?T {
+        if (this.count == 0) {
+            return null;
+        }
+        return this.data[0];
+    }
+
+    /// The last value, or `null` for an empty list.
+    pub fn last(): ?T {
+        if (this.count == 0) {
+            return null;
+        }
+        return this.data[this.count - 1];
+    }
+
+    /// Inserts at `index`, shifting everything from there one to the right. `index == length()`
+    /// appends. Out of range is a panic, as in `get`.
+    pub mut fn insert(index: int, value: T): void {
+        if (index < 0 || index > this.count) {
+            panic("list index out of range");
+        }
+        // Through `push` for the growth, then shift the tail right over the appended slot.
+        this.push(value);
+        var i = this.count - 1;
+        while (i > index) {
+            this.data[i] = this.data[i - 1];
+            i = i - 1;
+        }
+        this.data[index] = value;
+    }
+
+    /// Removes and returns the value at `index`, shifting the rest left. Out of range is a
+    /// panic, as in `get`.
+    pub mut fn removeAt(index: int): T {
+        if (index < 0 || index >= this.count) {
+            panic("list index out of range");
+        }
+        // Cannot fail: within `count` there is always a value, as in `get`.
+        let removed = this.data[index]!;
+
+        var i = index;
+        while (i + 1 < this.count) {
+            this.data[i] = this.data[i + 1];
+            i = i + 1;
+        }
+        // Release through `pop`'s own path, which also owns the shrink rule.
+        this.count = this.count - 1;
+        this.data[this.count] = null;
+        if (this.data.length > 4 && this.count * 4 < this.data.length) {
+            this.resize(this.data.length / 2);
+        }
+        return removed;
+    }
+
+    /// Reverses in place.
+    pub mut fn reverse(): void {
+        var left = 0;
+        var right = this.count - 1;
+        while (left < right) {
+            let held = this.data[left];
+            this.data[left] = this.data[right];
+            this.data[right] = held;
+            left = left + 1;
+            right = right - 1;
+        }
+    }
+
+    /// Exchanges two positions. Out of range is a panic, as in `get`.
+    pub mut fn swap(a: int, b: int): void {
+        if (a < 0 || a >= this.count || b < 0 || b >= this.count) {
+            panic("list index out of range");
+        }
+        let held = this.data[a];
+        this.data[a] = this.data[b];
+        this.data[b] = held;
     }
 
     /// A copy as a real array.
@@ -341,6 +424,27 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
         }
     }
 
+    /// The value for the key, or `fallback` when the key is absent — one probe instead of a
+    /// `containsKey` before every `get`.
+    pub fn getOr(key: K, fallback: V): V {
+        let found = this.get(key);
+        return found ?? fallback;
+    }
+
+    /// Empties the map. The backing arrays are KEPT, as in `List.clear`; the tombstones vanish
+    /// with everything else.
+    pub mut fn clear(): void {
+        var i = 0;
+        while (i < this.states.length) {
+            this.keys[i] = null;
+            this.values[i] = null;
+            this.states[i] = 0;
+            i = i + 1;
+        }
+        this.count = 0;
+        this.used = 0;
+    }
+
     /// Removes and returns the old value, or `null` when the key was absent.
     // The slot becomes a tombstone rather than empty, which would break the probe chain and
     // hide a key behind it.
@@ -507,8 +611,8 @@ fn min(a: int, b: int): int {
 // `set(x, true)`. The duplicated probing logic is the more honest price.
 
 /// A hash set: the same probing as `Map`, without the value column. Iteration order is
-/// UNSPECIFIED.
-pub class Set<T :: [Hashable<T>, Equatable<T>]> {
+/// UNSPECIFIED. `Iterable`, so `for (v in set)` walks it directly.
+pub class Set<T :: [Hashable<T>, Equatable<T>]> :: [Iterable<T>] {
     /// The element column; `states` says which slots are real.
     items: (?T)[],
     /// Per slot: 0 empty, 1 occupied, 2 tombstone.
@@ -613,6 +717,19 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
         this.states[i] = 2;
         this.count = this.count - 1;
         return true;
+    }
+
+    /// Empties the set. The backing arrays are KEPT, as in `List.clear`; the tombstones vanish
+    /// with everything else.
+    pub mut fn clear(): void {
+        var i = 0;
+        while (i < this.states.length) {
+            this.items[i] = null;
+            this.states[i] = 0;
+            i = i + 1;
+        }
+        this.count = 0;
+        this.used = 0;
     }
 
     /// A fresh cursor on every call.
@@ -770,6 +887,33 @@ pub class MapValueIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<V>]
     }
 }
 
+/// Walks key and value TOGETHER; the order follows the hashes and is UNSPECIFIED.
+///
+/// Without this, walking both meant iterating `keys` and paying a second probe per key
+/// through `get`.
+pub class MapEntryIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<(K, V)>] {
+    /// The map being walked.
+    source: Map<K, V>,
+    /// The next slot to look at.
+    index: int,
+
+    /// The next `(key, value)` pair, or `null` at the end.
+    pub mut fn next(): ?(K, V) {
+        while (this.index < this.source.states.length) {
+            let i = this.index;
+            this.index = this.index + 1;
+            if (this.source.states[i] == 1) {
+                let k = this.source.keys[i];
+                let v = this.source.values[i];
+                if (k != null && v != null) {
+                    return (k, v);
+                }
+            }
+        }
+        return null;
+    }
+}
+
 /// A fresh cursor over the keys.
 pub fn keys<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<K> {
     return MapKeyIterator<K, V> { source = m, index = 0 };
@@ -778,6 +922,13 @@ pub fn keys<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<K> {
 /// A fresh cursor over the values.
 pub fn values<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<V> {
     return MapValueIterator<K, V> { source = m, index = 0 };
+}
+
+/// A fresh cursor over `(key, value)` pairs:
+///
+///     for (entry in entries(m)) { let (k, v) = entry; … }
+pub fn entries<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<(K, V)> {
+    return MapEntryIterator<K, V> { source = m, index = 0 };
 }
 
 // ------------------------------------------------------- searching a List

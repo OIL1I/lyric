@@ -10,6 +10,52 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Added
+
+- **`print`, `println`, `eprint` and `eprintln` take any `Display` value**: `println(42)`,
+  `println(true)`. The string forms keep working unchanged — a string displays as itself — and
+  `write`/`writeln` warn as **deprecated**; they were the same thing under a second name.
+  Bytecode compiled before this release keeps running.
+
+- **Collections round out**: `List` gains `insert`, `removeAt`, `first`, `last`, `reverse` and
+  `swap`; `Map` gains `getOr`, `clear` and `entries` — key and value in ONE walk, without the
+  second probe per key; `Set` gains `clear` and is `Iterable`, so `for (v in set)` walks it
+  directly. `clear` on all three keeps the backing for reuse; the values are released all the
+  same.
+
+- **`std.iter` gains `flatMap`, `chunks`, `reduce` and `first`.**
+
+- **Arrays cross the native boundary as parameters** — the bytecode format always allowed it
+  (§3 type grammar; format stays **3.2**), the registry just never used it. On top of it:
+  `std.io.file.writeBytes` and `appendBytes` (the write side readBytes was waiting for),
+  `std.string.utf8Encode` and `utf8Decode` — the strict bridge: invalid bytes answer `null`
+  instead of the U+FFFD replacement `readText` documents — and `fromChars` became one native
+  call instead of one string per character.
+
+- **`std.random`**: the generator moved out of `std.math` — randomness is not arithmetic —
+  and gained what it was missing there: `shuffle` (Fisher–Yates over a `List`), `choice` and
+  `nextGaussian`. Deterministic, seeded by the caller, no capability. The `std.math.Random`
+  twin stays one release as a deprecated migration path.
+
+- **`std.time`**: `Instant` and `Duration` as value structs over epoch milliseconds —
+  `b.since(a)`, `a.plus(d)`, and `iso()` rendering UTC ISO 8601 with floor semantics, so an
+  instant before 1970 lands in the right day. Gated by `osAccess`, the same bit as `std.os`:
+  reading the clock is a question to the environment, and a new bit would be a contract change.
+  The subtraction is a named method, not an operator — `Instant - Instant` yields a Duration,
+  and the operator interfaces are homogeneous by the v1.13 decision.
+
+### Fixed
+
+- **`std.string` stops being quadratic.** `StringBuilder.build` and `join` folded left and
+  copied the whole result once per piece — both are one native join now; `replace` moves
+  untouched stretches as whole substrings; the searches, parsers and trims index a character
+  array instead of calling O(n) `charAt` per position. Same results, different cost curve.
+
+- Audit rests: `std.fmt` loses its German locals, `std.io.file` a torn doc fragment, and
+  `std.io.console` sorts a native above the "written in Lyric" divider it contradicted.
+
 ## v1.13.0 — 2026-08-19
 
 The language gaps close. Interface inheritance arrives — one parent, implied through the whole

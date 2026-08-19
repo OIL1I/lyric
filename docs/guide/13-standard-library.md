@@ -11,9 +11,11 @@ The standard library is written in Lyric and ships as source alongside the toolc
 | `std.collections` | `List<T>`, `Map<K, V>`, `Set<T>`, `Indexable<T>`, sorting |
 | `std.iter` | `Iterator<T>`, `Iterable<T>`, adapters, `sum` |
 | `std.option` | `map`, `andThen`, `filter`, `zip`, `contains`, `toArray`, `iter`, `expect` |
-| `std.io.console` | `print`, `println`, `readLine` |
+| `std.io.console` | `print`, `println`, `readLine` — the writers take any `Display` value: `println(42)` |
 | `std.io.file` | reading and writing files — requires `fileAccess` |
 | `std.os` | environment, process, exit — requires `osAccess` |
+| `std.random` | `Random.seeded`, `shuffle`, `choice`, `nextGaussian` — deterministic, no capability |
+| `std.time` | `Instant`, `Duration`, ISO 8601 — requires `osAccess` |
 | `std.build` | `addExecutable` — only a `build.lyr` run by `lyric build` can use it |
 
 ## Collections
@@ -87,9 +89,10 @@ rejected before it runs.
 ## Constructors live on the types
 
 A container comes from its type: `List<int>.empty()`, `Map<string, int>.empty()`,
-`Set<int>.empty()`, `StringBuilder.new()`, `Random.seeded(42)`. The old free functions
-(`emptyList`, `emptyMap`, `emptySet`, `newRandom`) still work and warn as deprecated; they
-disappear with the next major version.
+`Set<int>.empty()`, `StringBuilder.new()`, `Random.seeded(42)` — the latter from `std.random`
+since v1.14, where `shuffle`, `choice` and `nextGaussian` live beside it. The old free functions
+(`emptyList`, `emptyMap`, `emptySet`, `newRandom`) and the `std.math.Random` twin still work and
+warn as deprecated; they disappear with the next major version.
 
 ## Editing the standard library
 

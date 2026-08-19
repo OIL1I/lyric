@@ -82,6 +82,28 @@ pub fn split(value: string, separator: string): string[];
 /// The characters as an array, in one O(n) pass — what `for (c in s)` uses.
 pub fn toChars(value: string): char[];
 
+/// The characters joined back into one string — the inverse of `toChars`. Native since v1.14:
+/// one call instead of one string per character.
+pub fn fromChars(chars: char[]): string;
+
+// --- the byte bridge (v1.14) --------------------------------------------------------------
+//
+// The first natives whose PARAMETER is an array. The format always allowed it (§3 of the
+// bytecode specification); the registry and this module simply never used it before.
+
+/// The string as UTF-8 bytes — the inverse of `utf8Decode`, and what a file or a socket
+/// actually carries.
+pub fn utf8Encode(value: string): uint8[];
+
+/// The bytes as a string, STRICTLY: invalid UTF-8 answers `null` rather than a U+FFFD quietly
+/// standing in for the data — the difference to `readText`, whose replacement decoding is
+/// documented there.
+pub fn utf8Decode(bytes: uint8[]): ?string;
+
+// Behind `join` and `StringBuilder.build`: one native call instead of a copy cascade. Private —
+// `join` IS the public name for this.
+fn joinAll(parts: string[], separator: string): string;
+
 // ================================================================== written in Lyric
 //
 // Nothing below is native. Everything builds on the primitives above — `length`, `charAt`,
@@ -156,11 +178,13 @@ pub fn isEmpty(value: string): bool {
 }
 
 /// Empty or whitespace only.
+// Over `toChars` rather than `charAt` per position: `charAt` is O(n), and the loop around it
+// would be quadratic. The same pattern holds for everything below that walks characters.
 pub fn isBlank(value: string): bool {
+    let chars = toChars(value);
     var i = 0;
-    let n = length(value);
-    while (i < n) {
-        if (!isWhitespace(charAt(value, i))) {
+    while (i < chars.length) {
+        if (!isWhitespace(chars[i])) {
             return false;
         }
         i = i + 1;
@@ -170,17 +194,31 @@ pub fn isBlank(value: string): bool {
 
 // ------------------------------------------------------------------ searching
 
+// Whether `needle` stands at `at` in `chars` — the window comparison the searches below share.
+fn matchesAt(chars: char[], needle: char[], at: int): bool {
+    var j = 0;
+    while (j < needle.length) {
+        if (chars[at + j] != needle[j]) {
+            return false;
+        }
+        j = j + 1;
+    }
+    return true;
+}
+
 /// Searches from a position. `-1` when nothing is found, as in `indexOf`.
+// One `toChars` per side and a window comparison per position: the old form compared a fresh
+// `substring` copy per position, which multiplied two O(n) costs.
 pub fn indexOfFrom(value: string, needle: string, start: int): int {
-    let n = length(value);
-    let m = length(needle);
-    if (m == 0) {
-        return if (start <= n) start else -1;
+    let chars = toChars(value);
+    let pattern = toChars(needle);
+    if (pattern.length == 0) {
+        return if (start <= chars.length) start else -1;
     }
 
     var i = if (start < 0) 0 else start;
-    while (i + m <= n) {
-        if (substring(value, i, m) == needle) {
+    while (i + pattern.length <= chars.length) {
+        if (matchesAt(chars, pattern, i)) {
             return i;
         }
         i = i + 1;
@@ -190,15 +228,15 @@ pub fn indexOfFrom(value: string, needle: string, start: int): int {
 
 /// The LAST occurrence.
 pub fn lastIndexOf(value: string, needle: string): int {
-    let n = length(value);
-    let m = length(needle);
-    if (m == 0) {
-        return n;
+    let chars = toChars(value);
+    let pattern = toChars(needle);
+    if (pattern.length == 0) {
+        return chars.length;
     }
 
-    var i = n - m;
+    var i = chars.length - pattern.length;
     while (i >= 0) {
-        if (substring(value, i, m) == needle) {
+        if (matchesAt(chars, pattern, i)) {
             return i;
         }
         i = i - 1;
@@ -211,34 +249,31 @@ pub fn lastIndexOf(value: string, needle: string): int {
 /// Overlapping occurrences are not counted: `count("aaa", "aa")` is 1, not 2. This matches
 /// `replace`.
 pub fn count(value: string, needle: string): int {
-    if (length(needle) == 0) {
+    let chars = toChars(value);
+    let pattern = toChars(needle);
+    if (pattern.length == 0) {
         return 0;
     }
 
     var n = 0;
-    var i = indexOfFrom(value, needle, 0);
-    while (i >= 0) {
-        n = n + 1;
-        i = indexOfFrom(value, needle, i + length(needle));
+    var i = 0;
+    while (i + pattern.length <= chars.length) {
+        if (matchesAt(chars, pattern, i)) {
+            n = n + 1;
+            i = i + pattern.length;
+        } else {
+            i = i + 1;
+        }
     }
     return n;
 }
 
 // ------------------------------------------------------------------ splitting and joining
 
-/// Joins the parts with a separator: the inverse of `split`.
+/// Joins the parts with a separator: the inverse of `split`. One native call — a left fold
+/// would copy the whole result once per part.
 pub fn join(parts: string[], separator: string): string {
-    if (parts.length == 0) {
-        return "";
-    }
-
-    var result = parts[0];
-    var i = 1;
-    while (i < parts.length) {
-        result = result + separator + parts[i];
-        i = i + 1;
-    }
-    return result;
+    return joinAll(parts, separator);
 }
 
 /// Splits at line breaks. Both `\r\n` and `\n` count.
@@ -259,26 +294,39 @@ pub fn splitFirst(value: string, separator: string): string[] {
 }
 
 /// Every non-overlapping occurrence of `needle` replaced. An empty needle changes nothing.
+// Untouched stretches travel as WHOLE substrings into a builder rather than character by
+// character into a growing string: the old form copied the entire result once per character.
 pub fn replace(value: string, needle: string, replacement: string): string {
-    if (length(needle) == 0) {
+    let chars = toChars(value);
+    let pattern = toChars(needle);
+    if (pattern.length == 0) {
         return value;
     }
 
-    var result = "";
+    var out = StringBuilder.new();
+    var segmentStart = 0;
     var i = 0;
-    let n = length(value);
-    let m = length(needle);
 
-    while (i < n) {
-        if (i + m <= n && substring(value, i, m) == needle) {
-            result = result + replacement;
-            i = i + m;
+    while (i + pattern.length <= chars.length) {
+        if (matchesAt(chars, pattern, i)) {
+            if (i > segmentStart) {
+                out.append(substring(value, segmentStart, i - segmentStart));
+            }
+            out.append(replacement);
+            i = i + pattern.length;
+            segmentStart = i;
         } else {
-            result = result + fromChar(charAt(value, i));
             i = i + 1;
         }
     }
-    return result;
+
+    if (segmentStart == 0) {
+        return value; // nothing matched, nothing copied
+    }
+    if (segmentStart < chars.length) {
+        out.append(substring(value, segmentStart, chars.length - segmentStart));
+    }
+    return out.build();
 }
 
 /// The first occurrence replaced; without one the string comes back unchanged.
@@ -296,18 +344,19 @@ pub fn replaceFirst(value: string, needle: string, replacement: string): string 
 
 /// Without leading whitespace.
 pub fn trimStart(value: string): string {
+    let chars = toChars(value);
     var i = 0;
-    let n = length(value);
-    while (i < n && isWhitespace(charAt(value, i))) {
+    while (i < chars.length && isWhitespace(chars[i])) {
         i = i + 1;
     }
-    return substring(value, i, n - i);
+    return substring(value, i, chars.length - i);
 }
 
 /// Without trailing whitespace.
 pub fn trimEnd(value: string): string {
-    var n = length(value);
-    while (n > 0 && isWhitespace(charAt(value, n - 1))) {
+    let chars = toChars(value);
+    var n = chars.length;
+    while (n > 0 && isWhitespace(chars[n - 1])) {
         n = n - 1;
     }
     return substring(value, 0, n);
@@ -343,14 +392,15 @@ pub fn padEnd(value: string, width: int, fill: char): string {
 /// No overflow protection: a number beyond `int64` wraps rather than yielding `null`. Detecting
 /// it would need a division per digit.
 pub fn parseInt(value: string): ?int {
-    let n = length(value);
+    let chars = toChars(value);
+    let n = chars.length;
     if (n == 0) {
         return null;
     }
 
     var i = 0;
     var negative = false;
-    let first = charAt(value, 0);
+    let first = chars[0];
     if (first == '-' || first == '+') {
         negative = first == '-';
         i = 1;
@@ -363,7 +413,7 @@ pub fn parseInt(value: string): ?int {
 
     var result = 0;
     while (i < n) {
-        let digit = charToDigit(charAt(value, i));
+        let digit = charToDigit(chars[i]);
         if (digit == null) {
             return null;
         }
@@ -380,14 +430,15 @@ pub fn parseIntRadix(value: string, radix: int): ?int {
         return null;
     }
 
-    let n = length(value);
+    let chars = toChars(value);
+    let n = chars.length;
     if (n == 0) {
         return null;
     }
 
     var i = 0;
     var negative = false;
-    let first = charAt(value, 0);
+    let first = chars[0];
     if (first == '-' || first == '+') {
         negative = first == '-';
         i = 1;
@@ -398,7 +449,7 @@ pub fn parseIntRadix(value: string, radix: int): ?int {
 
     var result = 0;
     while (i < n) {
-        let c = charAt(value, i);
+        let c = chars[i];
         var digitValue = -1;
         if (isDigit(c)) {
             digitValue = c as int - '0' as int;
@@ -464,11 +515,12 @@ pub fn parseFloat(value: string): ?float {
     }
 
     // The fractional digits one at a time, so no sign gets into them.
+    let tailChars = toChars(tail);
     var fraction = 0.0;
     var divisor = 1.0;
     var i = 0;
-    while (i < length(tail)) {
-        let digit = charToDigit(charAt(tail, i));
+    while (i < tailChars.length) {
+        let digit = charToDigit(tailChars[i]);
         if (digit == null) {
             return null;
         }
@@ -488,17 +540,6 @@ fn absFloat(value: float): float {
 
 // ------------------------------------------------------------------ building
 
-/// The characters joined back into one string — the inverse of `toChars`.
-pub fn fromChars(chars: char[]): string {
-    var result = "";
-    var i = 0;
-    while (i < chars.length) {
-        result = result + fromChar(chars[i]);
-        i = i + 1;
-    }
-    return result;
-}
-
 /// Builds a string piece by piece.
 ///
 /// `s = s + part` in a loop is quadratic: every step copies the whole string so far. The builder
@@ -517,7 +558,9 @@ pub class StringBuilder {
         return StringBuilder { parts = [""] * 4, count = 0 };
     }
 
-    /// How many pieces were appended — the PIECE count, not the character count.
+    /// How many pieces were appended — the PIECE count, an implementation detail, NOT the
+    /// character count. Measure the built string instead. (It would carry `@Deprecated`, but an
+    /// attribute cannot sit on a member yet; the removal is planned for 2.0 regardless.)
     pub fn length(): int {
         return this.count;
     }
@@ -548,15 +591,18 @@ pub class StringBuilder {
         this.append(fromChar(value));
     }
 
-    /// The pieces joined once — the point of collecting them.
+    /// The pieces joined once — the point of collecting them. One native call over the filled
+    /// slice; a left fold would copy the whole result once per piece, the exact cost the
+    /// builder exists to avoid. Reads and never consumes: building twice yields the same
+    /// string.
     pub fn build(): string {
-        var result = "";
+        var filled = [""] * this.count;
         var i = 0;
         while (i < this.count) {
-            result = result + this.parts[i];
+            filled[i] = this.parts[i];
             i = i + 1;
         }
-        return result;
+        return joinAll(filled, "");
     }
 }
 

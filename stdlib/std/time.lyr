@@ -1,0 +1,131 @@
+// std.time — instants, durations, and the ISO form.
+//
+// Capability-gated like `std.os` (osAccess): reading the clock is a question to the environment,
+// and an embedded host may not want to answer it.
+//
+// The MEANING layer over the raw numbers `std.os` exposes: an `Instant` is a point on the wall
+// clock, a `Duration` a distance between two, both in whole milliseconds. Calendars and time
+// zones stay out — `iso()` renders UTC, and what a local wall shows is a host question.
+//
+// The subtraction is a named method (`a.since(b)`), not an operator: `Instant - Instant` yields
+// a DURATION, and the operator interfaces are homogeneous by decision (see the design notes to
+// v1.13).
+
+module std.time;
+
+import std.math { divFloor, modFloor };
+import std.string { padStart, fromInt };
+
+// The clock behind `Instant.now`. The same host function `std.os.nowMillis` reads — two names,
+// one truth — but private here: the meaning layer is the public face of this module.
+fn nowMillis(): int;
+
+/// A distance between two instants, in whole milliseconds. May be negative: `a.since(b)` with
+/// `b` later than `a` says so rather than hiding it.
+pub struct Duration {
+    /// The distance in milliseconds; the sign is the direction.
+    millis: int,
+
+    /// A duration of whole milliseconds.
+    pub static fn ofMillis(value: int): Duration {
+        return Duration { millis = value };
+    }
+
+    /// A duration of whole seconds.
+    pub static fn ofSeconds(value: int): Duration {
+        return Duration { millis = value * 1000 };
+    }
+
+    /// A duration of whole minutes.
+    pub static fn ofMinutes(value: int): Duration {
+        return Duration { millis = value * 60000 };
+    }
+
+    /// The whole distance in milliseconds.
+    pub fn totalMillis(): int {
+        return this.millis;
+    }
+
+    /// The whole distance in seconds, truncated towards zero.
+    pub fn totalSeconds(): int {
+        return this.millis / 1000;
+    }
+
+    /// The two added.
+    pub fn plus(other: Duration): Duration {
+        return Duration { millis = this.millis + other.millis };
+    }
+
+    /// The other subtracted from this one.
+    pub fn minus(other: Duration): Duration {
+        return Duration { millis = this.millis - other.millis };
+    }
+}
+
+/// A point on the wall clock: milliseconds since 1970-01-01 UTC.
+pub struct Instant {
+    /// Milliseconds since the epoch; negative is before 1970.
+    millis: int,
+
+    /// The wall clock, now.
+    pub static fn now(): Instant {
+        return Instant { millis = nowMillis() };
+    }
+
+    /// The instant at these epoch milliseconds — for stored timestamps and for tests, which
+    /// want a clock that stands still.
+    pub static fn ofEpochMillis(value: int): Instant {
+        return Instant { millis = value };
+    }
+
+    /// Milliseconds since the epoch — the raw number back, for storing.
+    pub fn epochMillis(): int {
+        return this.millis;
+    }
+
+    /// The distance from `earlier` to this instant. Negative when `earlier` is actually later.
+    pub fn since(earlier: Instant): Duration {
+        return Duration { millis = this.millis - earlier.millis };
+    }
+
+    /// This instant moved by a duration; a negative one moves backwards.
+    pub fn plus(d: Duration): Instant {
+        return Instant { millis = this.millis + d.totalMillis() };
+    }
+
+    /// ISO 8601 in UTC, millisecond precision: `1970-01-01T00:00:00.000Z`.
+    ///
+    /// `divFloor`/`modFloor` rather than `/` and `%`, so an instant BEFORE the epoch lands in
+    /// the right day — truncation would round the day towards 1970 and hand the rest a negative
+    /// time.
+    pub fn iso(): string {
+        let day = divFloor(this.millis, 86400000);
+        let msOfDay = modFloor(this.millis, 86400000);
+
+        // Civil-from-days (Howard Hinnant's algorithm): era = 400 years = 146097 days. After
+        // the floor division everything here is non-negative, so plain `/` is exact.
+        let z = day + 719468;
+        let era = divFloor(z, 146097);
+        let doe = z - era * 146097;
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if (mp < 10) mp + 3 else mp - 9;
+        let y = yoe + era * 400 + (if (m <= 2) 1 else 0);
+
+        let hour = msOfDay / 3600000;
+        let minute = msOfDay / 60000 % 60;
+        let second = msOfDay / 1000 % 60;
+        let ms = msOfDay % 1000;
+
+        let date = padStart(fromInt(y), 4, '0') + "-" + two(m) + "-" + two(d);
+        let clock = two(hour) + ":" + two(minute) + ":" + two(second);
+        return date + "T" + clock + "." + padStart(fromInt(ms), 3, '0') + "Z";
+    }
+}
+
+// Two digits, zero-padded — the ISO field width.
+fn two(value: int): string {
+    return padStart(fromInt(value), 2, '0');
+}

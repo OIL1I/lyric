@@ -1,0 +1,27 @@
+import std.test { Test, assertEq, assertTrue };
+import std.io.file { writeBytes, appendBytes, readBytes, remove, exists, tempDir, joinPath };
+import std.string { utf8Encode, utf8Decode };
+
+// The byte bridge (v1.14): bytes out, bytes in, and the strict decode that refuses what
+// readText would silently replace.
+
+@Test
+pub fn bytes_round_trip_through_a_file(): void {
+    let path = joinPath(tempDir(), "lyric_stdlib_file_tests.bin");
+
+    let data = utf8Encode("Grüße");
+    assertEq(data.length, 7);
+    assertTrue(writeBytes(path, data), "writeBytes must succeed in the temp directory");
+    assertTrue(appendBytes(path, [255 as uint8]), "appendBytes must succeed");
+
+    let back = readBytes(path);
+    assertEq(back.length, 8);
+    assertTrue(remove(path), "the probe file must go away");
+    assertTrue(!exists(path), "the probe file must be gone");
+}
+
+@Test
+pub fn utf8Decode_is_strict_where_readText_replaces(): void {
+    assertEq(utf8Decode(utf8Encode("Grüße 👋")) ?? "(invalid)", "Grüße 👋");
+    assertTrue(utf8Decode([255 as uint8]) == null, "0xFF alone is not UTF-8");
+}

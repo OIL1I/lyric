@@ -313,6 +313,84 @@ pub fn chain<T>(first: Iterator<T>, second: Iterator<T>): Iterator<T> {
     return ChainIterator<T> { first = first, second = second };
 }
 
+/// The lazy machinery behind `flatMap`.
+pub class FlatMapIterator<T, U> :: [Iterator<U>] {
+    /// The values each of which becomes a sequence.
+    source: Iterator<T>,
+    /// Builds the sequence for one value.
+    f: fn(T) -> Iterator<U>,
+    /// The sequence currently being drained, or `null` before the first and after the last.
+    current: ?Iterator<U> = null,
+
+    /// The next value of the current sequence, moving to the next source value when one ends.
+    pub mut fn next(): ?U {
+        while (true) {
+            let inner = this.current;
+            if (inner != null) {
+                let value = inner.next();
+                if (value != null) {
+                    return value;
+                }
+            }
+            let outer = this.source.next();
+            if (outer == null) {
+                return null;
+            }
+            let g = this.f;
+            this.current = g(outer);
+        }
+    }
+}
+
+/// Each element becomes a sequence, and the sequences run back to back — lazily on both
+/// levels: `flatMap(lines, words)` reads no second line before the first is drained.
+pub fn flatMap<T, U>(source: Iterator<T>, f: fn(T) -> Iterator<U>): Iterator<U> {
+    return FlatMapIterator<T, U> { source = source, f = f };
+}
+
+/// The lazy machinery behind `chunks`.
+pub class ChunksIterator<T> :: [Iterator<T[]>] {
+    /// The values being grouped.
+    source: Iterator<T>,
+    /// The group size; the last group may be shorter.
+    size: int,
+
+    /// The next group, or `null` when the source is spent.
+    // The group is built by array append, which copies per element — quadratic in the group
+    // SIZE, not in the stream length. Groups are small; a group large enough to hurt wants
+    // `std.collections.collect` on the raw iterator instead.
+    pub mut fn next(): ?T[] {
+        var group: T[] = [];
+        while (group.length < this.size) {
+            let value = this.source.next();
+            if (value == null) {
+                return if (group.length == 0) null else group;
+            }
+            group = group + [value];
+        }
+        return group;
+    }
+}
+
+/// Groups of `size` back to back; the last one may be shorter, and never empty. A size below
+/// one yields nothing rather than panicking, the `take` convention.
+pub fn chunks<T>(source: Iterator<T>, size: int): Iterator<T[]> {
+    // A non-positive size would loop forever on a non-empty source; it becomes the empty
+    // iterator by draining nothing and sizing the guard to zero elements per group.
+    return ChunksIterator<T> {
+        source = if (size < 1) EmptyIterator<T> { } else source,
+        size = if (size < 1) 1 else size,
+    };
+}
+
+/// The iterator with nothing in it — what an empty selection collapses to.
+pub class EmptyIterator<T> :: [Iterator<T>] {
+    /// Always `null`.
+    pub mut fn next(): ?T {
+        return null;
+    }
+}
+
 // =============================================================================== terminators
 //
 // A terminator drains the iterator and produces a value. A chain ends there, and that is where
@@ -335,6 +413,28 @@ pub fn fold<T, A>(source: Iterator<T>, seed: A, step: fn(A, T) -> A): A {
         value = source.next();
     }
     return acc;
+}
+
+/// Folds without a seed: the first element starts the accumulator, so the result carries the
+/// element type — and `null` says the source was empty, the case a seed would have answered.
+pub fn reduce<T>(source: Iterator<T>, step: fn(T, T) -> T): ?T {
+    var acc = source.next();
+    if (acc == null) {
+        return null;
+    }
+    var value = source.next();
+    while (value != null) {
+        let f = step;
+        acc = f(acc, value);
+        value = source.next();
+    }
+    return acc;
+}
+
+/// The first element, or `null` for an empty source. One `next`, named for the chain that ends
+/// on it.
+pub fn first<T>(source: Iterator<T>): ?T {
+    return source.next();
 }
 
 /// How many elements the iterator yields; drains it.

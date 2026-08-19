@@ -277,17 +277,13 @@ pub fn toDegrees(radians: float): float {
 
 // ------------------------------------------------------------------ randomness
 //
-// xorshift64*, in Lyric. The state is a single `int` and three shifts.
-//
-// Not cryptographic. Generating keys needs a source from the operating system, which belongs to
-// `std.os`. For simulations, games and test data this is enough and fast.
-//
-// **The seed comes from the caller**: there is no `newRandom()` without an argument.
-// There is no default seed: it would make a run irreproducible, and silently so. A caller wanting
-// per-run randomness takes the time from `std.os` and says so.
+// MOVED to `std.random` in v1.14: randomness is not arithmetic, and the new module carries the
+// helpers — `shuffle`, `choice`, `nextGaussian` — that want imports a math module has no
+// business having. This twin stays one release as the migration path and goes with 2.0.
 
-/// A deterministic pseudo-random generator (xorshift64*): one `int` of state, seeded by the
-/// caller. Not cryptographic — keys need a source from the operating system.
+/// A deterministic pseudo-random generator. Moved to `std.random`, where `shuffle`, `choice`
+/// and `nextGaussian` live beside it; this twin goes with 2.0.
+@Deprecated { message = "use std.random.Random" }
 pub class Random {
     /// The generator state; every draw replaces it.
     state: int,
@@ -332,7 +328,7 @@ pub class Random {
 }
 
 /// A generator with an explicit seed.
-@Deprecated { message = "use Random.seeded()" }
+@Deprecated { message = "use std.random.Random.seeded()" }
 pub fn newRandom(seed: int): Random {
     return Random.seeded(seed);
 }

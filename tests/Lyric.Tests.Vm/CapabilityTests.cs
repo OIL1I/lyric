@@ -63,6 +63,15 @@ public class CapabilityTests
         Assert.Equal((ulong)Capability.OsAccess, Compile(UsesOs).Capabilities);
 
     [Fact]
+    public void Std_time_rides_the_os_bit_rather_than_a_new_one() =>
+        // Deliberate (v1.14): reading the clock is a question to the environment, and a NEW bit
+        // would be a contract change every older runtime rejects.
+        Assert.Equal((ulong)Capability.OsAccess, Compile("""
+            import std.time { Instant };
+            fn main(): int { return Instant.now().epochMillis() % 2; }
+            """).Capabilities);
+
+    [Fact]
     public void The_requirement_survives_a_round_trip() =>
         // It really stands IN the module rather than being kept alongside; the test goes through the writer
         // and the reader.

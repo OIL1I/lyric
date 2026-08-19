@@ -14,6 +14,10 @@ import std.iter {
     find,
     minValue,
     maxValue,
+    flatMap,
+    chunks,
+    reduce,
+    first,
 };
 import std.collections { List, collect };
 
@@ -72,4 +76,54 @@ pub fn min_and_max_answer_null_on_empty(): void {
     assertEq(minValue<int>(upTo(5).iter())!, 1);
     assertEq(maxValue<int>(upTo(5).iter())!, 5);
     assertTrue(minValue<int>(upTo(0).iter()) == null, "an empty source has no minimum");
+}
+
+// --- v1.14: flatMap, chunks, reduce, first ---
+
+@Test
+pub fn flatMap_runs_the_sequences_back_to_back(): void {
+    let total = fold<int, int>(
+        flatMap<int, int>(upTo(3).iter(), (n: int) => pairOf(n).iter()),
+        0,
+        (acc: int, v: int) => acc + v
+    );
+    // 1+10 + 2+20 + 3+30
+    assertEq(total, 66);
+}
+
+fn pairOf(n: int): List<int> {
+    let xs = List<int>.empty();
+    xs.push(n);
+    xs.push(n * 10);
+    return xs;
+}
+
+@Test
+pub fn chunks_groups_and_the_last_may_be_shorter(): void {
+    var shape = 0;
+    for (c in chunks<int>(upTo(7).iter(), 3)) {
+        shape = shape * 10 + c.length;
+    }
+    assertEq(shape, 331);
+
+    var nothing = 0;
+    for (c in chunks<int>(upTo(3).iter(), 0)) {
+        nothing = nothing + 1;
+    }
+    assertEq(nothing, 0);
+}
+
+@Test
+pub fn reduce_folds_without_a_seed_and_reports_emptiness(): void {
+    assertEq(reduce<int>(upTo(4).iter(), (a: int, b: int) => a + b) ?? -1, 10);
+    assertTrue(
+        reduce<int>(upTo(0).iter(), (a: int, b: int) => a + b) == null,
+        "an empty source reduces to null"
+    );
+}
+
+@Test
+pub fn first_takes_one_element_or_null(): void {
+    assertEq(first<int>(upTo(9).iter()) ?? -1, 1);
+    assertTrue(first<int>(upTo(0).iter()) == null, "an empty source has no first");
 }

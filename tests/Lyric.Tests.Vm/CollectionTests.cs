@@ -473,13 +473,14 @@ public class CollectionTests
             """));
 
     /// <summary>
-    /// <c>clear</c> really releases the backing rather than leaving it behind <c>count</c> — the same
-    /// promise as for <c>pop</c> and for the same reason: otherwise the list would keep every object ever
-    /// inserted alive.
+    /// <c>clear</c> keeps the backing array (v1.14): a buffer emptied once per frame must not
+    /// reallocate on every refill. The VALUES are still released — the slots are nulled, so
+    /// nothing inserted stays alive — but that is invisible from Lyric; what is visible is the
+    /// kept capacity.
     /// </summary>
     [Fact]
-    public void Clear_releases_the_backing_array() =>
-        Assert.Equal(0, Run("""
+    public void Clear_keeps_the_capacity_for_reuse() =>
+        Assert.Equal(4, Run("""
             import std.collections;
 
             fn main(): int {

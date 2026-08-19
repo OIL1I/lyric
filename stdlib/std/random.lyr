@@ -1,0 +1,93 @@
+// std.random — deterministic pseudo-randomness.
+//
+// Moved out of `std.math` in v1.14: randomness is not arithmetic, and the module wants imports —
+// `List<T>` for shuffling and drawing — that a math module has no business carrying. The class
+// there remains one release as a deprecated twin.
+//
+// No capability required: the generator is deterministic and reaches nothing.
+//
+// **The seed comes from the caller**: there is no `Random.new()` without an argument. A default
+// seed would make a run irreproducible, and silently so. A caller wanting per-run randomness
+// takes the time from `std.os` and says so.
+
+module std.random;
+
+import std.collections { List };
+import std.math { absInt, sqrt, log, cos, tau };
+
+/// A deterministic pseudo-random generator (xorshift64*): one `int` of state, seeded by the
+/// caller. Not cryptographic — keys need a source from the operating system.
+pub class Random {
+    /// The generator state; every draw replaces it.
+    state: int,
+
+    /// A generator with an explicit seed. A seed of 0 is a fixed point for xorshift — the
+    /// sequence would stay 0 forever — so it is replaced silently rather than panicking on a
+    /// plausible input.
+    pub static fn seeded(seed: int): Random {
+        return Random { state = if (seed == 0) 0x2545F4914F6CDD1D else seed };
+    }
+
+    /// The next raw value. It may have either sign.
+    pub mut fn nextInt(): int {
+        var x = this.state;
+        x = x ^ x << 13;
+        x = x ^ x >> 7;
+        x = x ^ x << 17;
+        this.state = x;
+        return x;
+    }
+
+    /// Uniformly distributed in `[lo, hi)`. An empty range yields `lo`.
+    pub mut fn nextIntRange(lo: int, hi: int): int {
+        if (hi <= lo) {
+            return lo;
+        }
+        // Magnitude first, then modulo: a negative raw value would otherwise land below `lo`.
+        return lo + absInt(this.nextInt()) % (hi - lo);
+    }
+
+    /// Uniformly distributed in `[0, 1)`.
+    pub mut fn nextFloat(): float {
+        // 53 bits are exactly the mantissa of a float64; more would not be representable.
+        let bits = absInt(this.nextInt()) % 9007199254740992;
+        return bits as float / 9007199254740992.0;
+    }
+
+    /// True or false, from the next draw's parity.
+    pub mut fn nextBool(): bool {
+        return this.nextInt() % 2 == 0;
+    }
+
+    /// Normally distributed, mean 0 and deviation 1 (Box–Muller).
+    pub mut fn nextGaussian(): float {
+        // log(0) is -infinity; the draw is nudged off the one value of [0, 1) that breaks it.
+        var u1 = this.nextFloat();
+        if (u1 == 0.0) {
+            u1 = 0.0000000001;
+        }
+        let u2 = this.nextFloat();
+        return sqrt(0.0 - 2.0 * log(u1)) * cos(tau * u2);
+    }
+}
+
+// Free functions rather than methods, for the same reason `sortList` is one: they want
+// `List<T>`, and a constraintless generic helper does not belong on the class.
+
+/// Shuffles in place, Fisher–Yates: every permutation equally likely, one draw per element.
+pub fn shuffle<T>(random: Random, xs: List<T>): void {
+    var i = xs.length() - 1;
+    while (i > 0) {
+        let j = random.nextIntRange(0, i + 1);
+        xs.swap(i, j);
+        i = i - 1;
+    }
+}
+
+/// One element drawn uniformly, or `null` from an empty list.
+pub fn choice<T>(random: Random, xs: List<T>): ?T {
+    if (xs.isEmpty()) {
+        return null;
+    }
+    return xs.get(random.nextIntRange(0, xs.length()));
+}
