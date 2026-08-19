@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v1.14.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v1.14.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v1.14.0 — 2026-08-19</h2>
+<p>The std polish, born from a line-by-line audit. The string module stops being quadratic, the
+print family collapses to one generic concept, the collections learn the operations daily use
+kept reaching for, arrays cross the native boundary as parameters for the first time — and two
+new modules arrive: <code>std.random</code> and <code>std.time</code>. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong><code>print</code>, <code>println</code>, <code>eprint</code> and <code>eprintln</code> take any <code>Display</code> value</strong>: <code>println(42)</code>,
+<code>println(true)</code>. The string forms keep working unchanged — a string displays as itself — and
+<code>write</code>/<code>writeln</code> warn as <strong>deprecated</strong>; they were the same thing under a second name.
+Bytecode compiled before this release keeps running.</p>
+</li>
+<li><p><strong>Collections round out</strong>: <code>List</code> gains <code>insert</code>, <code>removeAt</code>, <code>first</code>, <code>last</code>, <code>reverse</code> and
+<code>swap</code>; <code>Map</code> gains <code>getOr</code>, <code>clear</code> and <code>entries</code> — key and value in ONE walk, without the
+second probe per key; <code>Set</code> gains <code>clear</code> and is <code>Iterable</code>, so <code>for (v in set)</code> walks it
+directly. <code>clear</code> on all three keeps the backing for reuse; the values are released all the
+same.</p>
+</li>
+<li><p><strong><code>std.iter</code> gains <code>flatMap</code>, <code>chunks</code>, <code>reduce</code> and <code>first</code>.</strong></p>
+</li>
+<li><p><strong>Arrays cross the native boundary as parameters</strong> — the bytecode format always allowed it
+(§3 type grammar; format stays <strong>3.2</strong>), the registry just never used it. On top of it:
+<code>std.io.file.writeBytes</code> and <code>appendBytes</code> (the write side readBytes was waiting for),
+<code>std.string.utf8Encode</code> and <code>utf8Decode</code> — the strict bridge: invalid bytes answer <code>null</code>
+instead of the U+FFFD replacement <code>readText</code> documents — and <code>fromChars</code> became one native
+call instead of one string per character.</p>
+</li>
+<li><p><strong><code>std.random</code></strong>: the generator moved out of <code>std.math</code> — randomness is not arithmetic —
+and gained what it was missing there: <code>shuffle</code> (Fisher–Yates over a <code>List</code>), <code>choice</code> and
+<code>nextGaussian</code>. Deterministic, seeded by the caller, no capability. The <code>std.math.Random</code>
+twin stays one release as a deprecated migration path.</p>
+</li>
+<li><p><strong><code>std.time</code></strong>: <code>Instant</code> and <code>Duration</code> as value structs over epoch milliseconds —
+<code>b.since(a)</code>, <code>a.plus(d)</code>, and <code>iso()</code> rendering UTC ISO 8601 with floor semantics, so an
+instant before 1970 lands in the right day. Gated by <code>osAccess</code>, the same bit as <code>std.os</code>:
+reading the clock is a question to the environment, and a new bit would be a contract change.
+The subtraction is a named method, not an operator — <code>Instant - Instant</code> yields a Duration,
+and the operator interfaces are homogeneous by the v1.13 decision.</p>
+</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><p><strong><code>std.string</code> stops being quadratic.</strong> <code>StringBuilder.build</code> and <code>join</code> folded left and
+copied the whole result once per piece — both are one native join now; <code>replace</code> moves
+untouched stretches as whole substrings; the searches, parsers and trims index a character
+array instead of calling O(n) <code>charAt</code> per position. Same results, different cost curve.</p>
+</li>
+<li><p>Audit rests: <code>std.fmt</code> loses its German locals, <code>std.io.file</code> a torn doc fragment, and
+<code>std.io.console</code> sorts a native above the &quot;written in Lyric&quot; divider it contradicted.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

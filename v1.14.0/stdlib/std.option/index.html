@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.option — Lyric v1.14.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v1.14.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/" class="here">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.option</h1>
+<nav class="contents">
+<ul>
+<li><a href="#function-map">map</a></li>
+<li><a href="#function-andthen">andThen</a></li>
+<li><a href="#function-filter">filter</a></li>
+<li><a href="#function-zip">zip</a></li>
+<li><a href="#function-contains">contains</a></li>
+<li><a href="#function-toarray">toArray</a></li>
+<li><a href="#class-optioniterator">OptionIterator</a></li>
+<li><a href="#function-iter">iter</a></li>
+<li><a href="#function-expect">expect</a></li>
+</ul>
+</nav>
+<p>Computing with <code>?T</code> without testing first.</p>
+<p>There is no <code>Option&lt;T&gt;</code> here — <code>?T</code> is it, and these are functions over the built-in type.
+Absent on purpose, because the language already has them: <code>unwrap</code> is <code>o!</code>, <code>unwrapOr</code> is
+<code>o ?? fallback</code>, and <code>isSome</code>/<code>isNone</code> are <code>o != null</code>/<code>o == null</code>, which is what flow narrowing
+keys on. A function would cut that off: after <code>if (isSome(o))</code>, <code>o</code> would still be a <code>?T</code>.</p>
+<section class="item" id="function-map">
+<h2><a href="#function-map">map</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn map&lt;T, U&gt;(o: ?T, f: fn(T) -&gt; U): ?U</code></pre>
+<p>Applies <code>f</code> to the value when there is one, and answers <code>null</code> when there is not.</p>
+<p class="source">stdlib/std/option.lyr:34</p>
+</section>
+<section class="item" id="function-andthen">
+<h2><a href="#function-andthen">andThen</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn andThen&lt;T, U&gt;(o: ?T, f: fn(T) -&gt; ?U): ?U</code></pre>
+<p>As <code>map</code>, but <code>f</code> may itself come back empty.</p>
+<p>This takes the place of <code>flatten</code>: a <code>map</code> whose <code>f</code> returned <code>?U</code> would produce a <code>??U</code>, which
+is not a type. Here <code>f</code> already returns <code>?U</code> and the result is that same <code>?U</code>.</p>
+<p class="source">stdlib/std/option.lyr:45</p>
+</section>
+<section class="item" id="function-filter">
+<h2><a href="#function-filter">filter</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn filter&lt;T&gt;(o: ?T, pred: fn(T) -&gt; bool): ?T</code></pre>
+<p>Keeps the value only when <code>pred</code> accepts it, and answers <code>null</code> otherwise.</p>
+<p class="source">stdlib/std/option.lyr:53</p>
+</section>
+<section class="item" id="function-zip">
+<h2><a href="#function-zip">zip</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn zip&lt;T, U&gt;(a: ?T, b: ?U): ?(T, U)</code></pre>
+<p>Both present yields a tuple, otherwise <code>null</code>.</p>
+<p>The result is taken apart with <code>let (a, b) = …</code>.</p>
+<p class="source">stdlib/std/option.lyr:66</p>
+</section>
+<section class="item" id="function-contains">
+<h2><a href="#function-contains">contains</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn contains&lt;T :: [Equatable&lt;T&gt;]&gt;(o: ?T, value: T): bool</code></pre>
+<p>Whether a value is present and equals <code>value</code>.</p>
+<p class="source">stdlib/std/option.lyr:77</p>
+</section>
+<section class="item" id="function-toarray">
+<h2><a href="#function-toarray">toArray</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn toArray&lt;T&gt;(o: ?T): T[]</code></pre>
+<p>Zero or one element — the bridge to anything that takes an array.</p>
+<p class="source">stdlib/std/option.lyr:87</p>
+</section>
+<section class="item" id="class-optioniterator">
+<h2><a href="#class-optioniterator">OptionIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class OptionIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<p>The iterator <code>iter</code> hands out: yields the value once, if there is one.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">value: ?T</code></pre>
+<p>The single value, if it was there.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">done: bool</code></pre>
+<p>Whether the single value was already yielded.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
+<p>The value on the first call, <code>null</code> on every one after it.</p>
+</div>
+</div>
+<p class="source">stdlib/std/option.lyr:95</p>
+</section>
+<section class="item" id="function-iter">
+<h2><a href="#function-iter">iter</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn iter&lt;T&gt;(o: ?T): OptionIterator&lt;T&gt;</code></pre>
+<p>An iterator over zero or one value.</p>
+<p>Every adapter in <code>std.iter</code> then works on an optional, without <code>std.iter</code> knowing anything about
+<code>?T</code>.</p>
+<p class="source">stdlib/std/option.lyr:117</p>
+</section>
+<section class="item" id="function-expect">
+<h2><a href="#function-expect">expect</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn expect&lt;T&gt;(o: ?T, message: string): T</code></pre>
+<p>The value, or a panic carrying <code>message</code>.</p>
+<p>As <code>o!</code>, but with a message of your own: <code>LYR-VM0007</code> reports that a value was missing, never
+which one.</p>
+<p class="source">stdlib/std/option.lyr:127</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.math/">std.math</a>
+<a class="next" href="../../stdlib/std.os/">std.os</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
