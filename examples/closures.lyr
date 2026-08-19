@@ -14,7 +14,10 @@ fn scaler(factor: int): fn(int) -> int {
 // A captured 'var' is shared. It lives in a cell on the heap rather than in the frame.
 fn counter(): fn() -> int {
     var n = 0;
-    return (): int => { n += 1; return n; };
+    return (): int => {
+        n += 1;
+        return n;
+    };
 }
 
 // A closure as a parameter: the case function types exist for.
@@ -35,7 +38,9 @@ fn main(): int {
 
     // Two closures, one variable.
     var total = 0;
-    let add = (x: int) => { total = total + x; };
+    let add = (x: int) => {
+        total = total + x;
+    };
     let read = (): int => total;
     add(10);
     add(30);

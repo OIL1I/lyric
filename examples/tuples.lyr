@@ -27,7 +27,9 @@ fn main(): int {
 
     // A 'match' decomposes the same way: the same pattern, the same mechanism.
     let point = (3, 4);
-    let sum = match (point) { (a, b) => a + b };
+    let sum = match (point) {
+        (a, b) => a + b,
+    };
     console.println(f"3 + 4 = {sum}");
 
     // 3 + 1 + 15 + 7 = 26

@@ -41,8 +41,8 @@ fn main(): int {
     acc.deposit(50);
 
     try {
-        acc.withdraw(30);    // ok  -> 120
-        acc.withdraw(200);   // throws InsufficientFunds
+        acc.withdraw(30); // ok  -> 120
+        acc.withdraw(200); // throws InsufficientFunds
     } catch (e: InsufficientFunds) {
         eprintln(f"Fehler: {e.message()}");
     }

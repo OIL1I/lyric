@@ -77,7 +77,8 @@ public sealed class ArchitectureTests
         Assert.Contains("lyrvm.dll", shipped);   // because it looks for them there
         Assert.Contains("lyrrepl.dll", shipped);  // the REPL
         Assert.Contains("lyrbuild.dll", shipped); // the build runner
-        Assert.Contains("lyrpack.dll", shipped);  // and the packer
+        Assert.Contains("lyrpack.dll", shipped);  // the packer
+        Assert.Contains("lyrfmt.dll", shipped);   // and the formatter
     }
 
     [Fact]
@@ -89,8 +90,17 @@ public sealed class ArchitectureTests
         var shipped = LyricAssemblies("Lyric.Cli");
 
         foreach (var tool in new[] { "lyrc.dll", "lyrvm.dll", "lyrrepl.dll", "lyrbuild.dll",
-                     "lyrpack.dll" })
+                     "lyrpack.dll", "lyrfmt.dll" })
             Assert.Contains(tool, shipped);
+    }
+
+    [Fact]
+    public void The_formatter_ships_the_front_end_and_no_runtime()
+    {
+        // The formatter PARSES, so it needs what the compiler needs and executes nothing. The
+        // stdlib directory lands beside it too — it travels with the front-end reference, and
+        // carving an exception out of that wiring would be machinery for a few kilobytes.
+        AssertShips("Lyrfmt", Shared, Frontend, "lyrfmt.dll");
     }
 
     [Fact]

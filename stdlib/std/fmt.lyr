@@ -71,7 +71,7 @@ fn ziffernZeichen(value: int): string {
         // `char`.
         return if (c == null) "?" else fromChar(c);
     }
-    return fromChar((('a' as int) + value - 10) as char);
+    return fromChar(('a' as int + value - 10) as char);
 }
 
 pub fn formatHex(value: int): string {
@@ -144,7 +144,7 @@ pub fn formatBytes(bytes: int): string {
 ///
 /// No borders and no header handling: what a table means is the caller's business. This does the
 /// tedious part — two passes over the data, to know the column widths before printing.
-pub fn table(rows: (string[])[], separator: string): string {
+pub fn table(rows: string[][], separator: string): string {
     if (rows.length == 0) {
         return "";
     }

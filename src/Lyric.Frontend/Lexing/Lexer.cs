@@ -44,7 +44,13 @@ public sealed class Lexer
     private readonly DiagnosticEngine _diagnostics;
     private readonly FileId _file;
     private readonly string _source;
+    private readonly List<Trivia>? _trivia;
     private int _pos;
+
+    /// <summary>The comments this lexer skipped, in source order — empty unless the lexer was
+    /// created with <c>collectTrivia</c>. The formatter is the consumer: it prints from the AST,
+    /// and the AST does not carry comments.</summary>
+    public IReadOnlyList<Trivia> CollectedTrivia => _trivia ?? (IReadOnlyList<Trivia>)[];
 
     private ModeFrame CurrentFrame => _modeStack.Peek();
     private LexMode CurrentMode => _modeStack.Peek().Mode;
@@ -119,13 +125,19 @@ public sealed class Lexer
         ["f32", "f64"];
 
 
-    public Lexer(SourceManager pSourceManager, FileId fileId, DiagnosticEngine pDiagnosticEngine)
+    /// <param name="collectTrivia">Keep the comments <see cref="SkipTrivia"/> consumes, for a
+    /// consumer that reproduces source rather than compiling it. Off by default: every token of
+    /// the compile path stays byte-identical, and nothing is allocated for a list nobody
+    /// reads.</param>
+    public Lexer(SourceManager pSourceManager, FileId fileId, DiagnosticEngine pDiagnosticEngine,
+        bool collectTrivia = false)
     {
         _modeStack.Push(new ModeFrame { Mode = LexMode.Normal });
         _sources = pSourceManager ?? throw new ArgumentNullException(nameof(pSourceManager));
         _diagnostics = pDiagnosticEngine ?? throw new ArgumentNullException(nameof(pDiagnosticEngine));
         _file = fileId;
         _source = _sources.GetText(_file);
+        _trivia = collectTrivia ? [] : null;
         _pos = 0;
     }
 
@@ -258,12 +270,14 @@ public sealed class Lexer
 
             if (Current == '/' && PeekAt(1) == '/' && PeekAt(2) != '/')
             {
+                var commentStart = _pos;
                 _pos += 2; // Consume '//'
                 while (Current != '\n' && Current != '\0')
                 {
                     _pos++;
                 }
 
+                _trivia?.Add(new Trivia(TriviaKind.LineComment, new Span(_file, commentStart, _pos)));
                 continue;
             }
 
@@ -296,6 +310,7 @@ public sealed class Lexer
                         new Span(_file, commentStart, _pos), "unterminated block comment"));
                 }
 
+                _trivia?.Add(new Trivia(TriviaKind.BlockComment, new Span(_file, commentStart, _pos)));
                 continue;
             }
 

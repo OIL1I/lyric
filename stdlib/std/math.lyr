@@ -11,6 +11,7 @@
 module std.math;
 
 pub let pi: float = 3.141592653589793;
+
 pub let e: float = 2.718281828459045;
 
 pub fn sqrt(value: float): float;
@@ -131,7 +132,7 @@ pub fn powInt(base: int, exponent: int): ?int {
 pub fn divFloor(a: int, b: int): int {
     let q = a / b;
     // Remainder non-zero AND signs differing: the division rounded up.
-    if (a % b != 0 && ((a < 0) != (b < 0))) {
+    if (a % b != 0 && a < 0 != b < 0) {
         return q - 1;
     }
     return q;
@@ -140,7 +141,7 @@ pub fn divFloor(a: int, b: int): int {
 /// The remainder matching `divFloor`, always carrying the sign of `b`.
 pub fn modFloor(a: int, b: int): int {
     let rest = a % b;
-    if (rest != 0 && ((rest < 0) != (b < 0))) {
+    if (rest != 0 && rest < 0 != b < 0) {
         return rest + b;
     }
     return rest;
@@ -250,12 +251,12 @@ pub fn toDegrees(radians: float): float {
 pub class Random {
     state: int,
 
-/// The next raw value. It may have either sign.
+    /// The next raw value. It may have either sign.
     pub mut fn nextInt(): int {
         var x = this.state;
-        x = x ^ (x << 13);
-        x = x ^ (x >> 7);
-        x = x ^ (x << 17);
+        x = x ^ x << 13;
+        x = x ^ x >> 7;
+        x = x ^ x << 17;
         this.state = x;
         return x;
     }
@@ -273,7 +274,7 @@ pub class Random {
     pub mut fn nextFloat(): float {
         // 53 bits are exactly the mantissa of a float64; more would not be representable.
         let bits = absInt(this.nextInt()) % 9007199254740992;
-        return (bits as float) / 9007199254740992.0;
+        return bits as float / 9007199254740992.0;
     }
 
     pub mut fn nextBool(): bool {

@@ -80,7 +80,7 @@ pub fn isDigit(c: char): bool {
 
 // ASCII only. A full Unicode category would need the tables from the standard.
 pub fn isAlpha(c: char): bool {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z';
 }
 
 pub fn isAlphanumeric(c: char): bool {
@@ -106,14 +106,14 @@ pub fn charToDigit(c: char): ?int {
     if (!isDigit(c)) {
         return null;
     }
-    return (c as int) - ('0' as int);
+    return c as int - '0' as int;
 }
 
 pub fn digitToChar(value: int): ?char {
     if (value < 0 || value > 9) {
         return null;
     }
-    return (('0' as int) + value) as char;
+    return ('0' as int + value) as char;
 }
 
 // ------------------------------------------------------------------ Praedikate
@@ -221,8 +221,7 @@ pub fn splitFirst(value: string, separator: string): string[] {
         return [value];
     }
     let davor = substring(value, 0, i);
-    let danach = substring(value, i + length(separator),
-                           length(value) - i - length(separator));
+    let danach = substring(value, i + length(separator), length(value) - i - length(separator));
     return [davor, danach];
 }
 
@@ -254,8 +253,7 @@ pub fn replaceFirst(value: string, needle: string, ersatz: string): string {
         return value;
     }
     let davor = substring(value, 0, i);
-    let danach = substring(value, i + length(needle),
-                           length(value) - i - length(needle));
+    let danach = substring(value, i + length(needle), length(value) - i - length(needle));
     return davor + ersatz + danach;
 }
 
@@ -364,11 +362,11 @@ pub fn parseIntRadix(value: string, radix: int): ?int {
         let c = charAt(value, i);
         var wert = -1;
         if (isDigit(c)) {
-            wert = (c as int) - ('0' as int);
+            wert = c as int - '0' as int;
         } else if (isLower(c)) {
-            wert = (c as int) - ('a' as int) + 10;
+            wert = c as int - 'a' as int + 10;
         } else if (isUpper(c)) {
-            wert = (c as int) - ('A' as int) + 10;
+            wert = c as int - 'A' as int + 10;
         }
 
         if (wert < 0 || wert >= radix) {
@@ -435,7 +433,7 @@ pub fn parseFloat(value: string): ?float {
             return null;
         }
         teiler = teiler * 10.0;
-        bruch = bruch + (ziffer as float) / teiler;
+        bruch = bruch + ziffer as float / teiler;
         i = i + 1;
     }
 

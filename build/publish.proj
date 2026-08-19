@@ -66,6 +66,7 @@
     <Binary Include="..\src\Lyrrepl\Lyrrepl.csproj" />
     <Binary Include="..\src\Lyrbuild\Lyrbuild.csproj" />
     <Binary Include="..\src\Lyrpack\Lyrpack.csproj" />
+    <Binary Include="..\src\Lyrfmt\Lyrfmt.csproj" />
 
     <!--
       The language server. Not a tool of the driver — an editor starts it directly and it owns its

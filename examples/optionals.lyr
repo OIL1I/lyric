@@ -8,7 +8,7 @@ import std.io.console { println };
 
 class Account {
     owner: string,
-    balance: int
+    balance: int,
 }
 
 // No hit is a normal outcome rather than an error, hence `?Account` and not `throws`.
@@ -37,7 +37,7 @@ fn balanceOf(accounts: Account[], owner: string): int {
 fn main(): int {
     let accounts = [
         Account { owner = "Olivier", balance = 120 },
-        Account { owner = "Mara", balance = 80 }
+        Account { owner = "Mara", balance = 80 },
     ];
 
     let mara = balanceOf(accounts, "Mara");

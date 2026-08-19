@@ -32,6 +32,7 @@ public static class Program
             "new" => NewProject.Run(args),
             "build" => Build(args, selection),
             "pack" => Pack(args, selection),
+            "fmt" => StripVerbAndForward(Tool.Fmt, selection, args),
             "check" => Forward(Tool.Compiler, selection, args),
             "disasm" => Forward(Tool.Runtime, selection, args),
 
@@ -209,6 +210,15 @@ public static class Program
         return Tool.Run(selection.PathOf(tool), args, Console.Error);
     }
 
+    /// <summary>Like <see cref="Forward"/>, minus the verb: it is the driver's word for which
+    /// tool to start, not an argument the tool itself takes — the build runner's pattern.
+    /// </summary>
+    private static int StripVerbAndForward(Tool tool, ToolSelection selection, string[] args)
+    {
+        if (Missing(selection, tool) is { } error) return error;
+        return Tool.Run(selection.PathOf(tool), args[1..], Console.Error);
+    }
+
     private static int? Missing(ToolSelection selection, Tool tool)
     {
         var path = selection.PathOf(tool);
@@ -246,6 +256,7 @@ public static class Program
               build <file> [-o <out>]  Compile .lyr to .lyrbc
               build [<dir>]            Run the build.lyr there and compile what it declares
               pack <file> [-o <out>]   Compile and pack into one standalone executable
+              fmt <path>... [--check]  Format .lyr files in place (--check only lists)
               check <file>             Compile without writing a file
               disasm <file.lyrbc>      Print a readable disassembly
               repl                     Start a REPL session

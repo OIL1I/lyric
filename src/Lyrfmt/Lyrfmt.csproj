@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrfmt</AssemblyName>
+    <RootNamespace>Lyric.Cli.Fmt</RootNamespace>
+    <Description>The Lyric formatter: one shape for every file, no options about it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The compiler's two references, because the formatter PARSES — and nothing more: it resolves
+      no imports and executes nothing, so no runtime and no stdlib lie next to it.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />
+  </ItemGroup>
+
+</Project>
