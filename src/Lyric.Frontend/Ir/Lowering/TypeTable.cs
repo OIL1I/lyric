@@ -631,6 +631,11 @@ internal sealed class TypeTable
         NamedRef { Symbol.Kind: TypeSymbolKind.Enum } n => EnumOf(n.Symbol),
         NamedRef { Symbol.Kind: TypeSymbolKind.Interface } n => InterfaceOf(n.Symbol),
 
+        // An opaque alias IS its underlying at runtime; identity is the sema's business alone.
+        // This one line is why 'x as Entity' costs nothing and why the value crosses the native
+        // boundary unchanged.
+        Sema.OpaqueRef o => Lower(o.Underlying, span),
+
         // A function type carries its signature structurally and therefore needs no entry in this table,
         // unlike every named type. Lowered recursively, because parameters and the return may themselves
         // be classes, enums or functions again.

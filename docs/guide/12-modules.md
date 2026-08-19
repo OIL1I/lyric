@@ -143,3 +143,26 @@ fn main(): int { return describe(1); }
 ```
 
 An alias is a name for a type, not a new type: `Id` and `int` are interchangeable.
+
+An **opaque** alias is the opposite: a new identity over the same layout. Nothing converts
+implicitly, the explicit `as` to exactly the underlying and back is the one door, and equality
+works within the alias — everything else is refused:
+
+```lyr
+opaque type Ticket = int;
+
+fn issue(raw: int): Ticket {
+    return raw as Ticket;
+}
+
+fn main(): int {
+    let a = issue(7);
+    let b = issue(7);
+    // a + 1, a < b, or 'let t: Ticket = 7;' would all be compile errors.
+    return if (a == b) a as int else 0;
+}
+```
+
+The point is the wall: an SDK declares `pub opaque type Entity = int;` beside its natives, a
+script holds and returns the handle — and can neither forge one from a literal nor leak it into
+arithmetic. On the wire the handle is its underlying number.

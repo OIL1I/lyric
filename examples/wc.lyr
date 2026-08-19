@@ -11,8 +11,10 @@
 // text but without a trailing break has zero lines for POSIX. Here it has one.
 
 import std.io.file { readText };
+// For the string METHODS alone: the extensions come with the module, and the alias
+// avoids shadowing the builtin type name.
+import std.string as strings;
 import std.io.console { println, eprintln };
-import std.string { length, split, trim };
 import std.collections { List };
 
 // The three numbers of a file. A `struct`, because it is a value: two counts with the same numbers
@@ -28,8 +30,8 @@ struct Counts {
 // discarded here.
 fn countWords(line: string): int {
     var n = 0;
-    for (part in split(line, " ")) {
-        if (length(trim(part)) > 0) {
+    for (part in line.split(" ")) {
+        if (part.trim().length() > 0) {
             n = n + 1;
         }
     }
@@ -40,7 +42,7 @@ fn count(content: string): Counts {
     // Walking the lines rather than taking `readLines`: the characters have to count the FILE,
     // including the line breaks. `readLines` throws them away, and `chars` would then be smaller
     // than the file is.
-    let lines = split(content, "\n");
+    let lines = content.split("\n");
 
     var lineCount = 0;
     var wordCount = 0;
@@ -52,11 +54,11 @@ fn count(content: string): Counts {
     // A file ending in a break has no empty last line after it. `split` yields one anyway, the same
     // rule as in `std.io.file.readLines`.
     lineCount = lines.length;
-    if (lines.length > 0 && length(lines[lines.length - 1]) == 0) {
+    if (lines.length > 0 && lines[lines.length - 1].length() == 0) {
         lineCount = lineCount - 1;
     }
 
-    return Counts { lines = lineCount, words = wordCount, chars = length(content) };
+    return Counts { lines = lineCount, words = wordCount, chars = content.length() };
 }
 
 fn report(name: string, c: Counts): void {

@@ -110,6 +110,7 @@ public static class TypeFacts
                 _ => "?"
             };
             case NamedRef n: return n.Symbol.Name;
+            case OpaqueRef o: return o.Symbol.Name;
             case TypeParamType tp: return tp.Param.Name;
             case GenericInstance gi: return gi.Definition.Name + "<" + string.Join(", ", gi.Arguments.Select(Display)) + ">";
             case Optional o: return "?" + Display(o.Inner);

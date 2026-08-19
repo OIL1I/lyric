@@ -159,7 +159,15 @@ public sealed partial class Parser
                 if (AtContextual("type"))
                 {
                     RejectAttributes(attributes, "a type alias");
-                    return ParseTypeAlias(isPublic, start);
+                    return ParseTypeAlias(isPublic, isOpaque: false, start);
+                }
+                // 'opaque type X = int;' — contextual like 'type' itself: neither word is a
+                // keyword, so neither is taken from anyone's identifiers.
+                if (AtContextual("opaque") && PeekContextual(1, "type"))
+                {
+                    RejectAttributes(attributes, "a type alias");
+                    _buffer.Advance(); // 'opaque'
+                    return ParseTypeAlias(isPublic, isOpaque: true, start);
                 }
                 if (attributes.Length > 0)
                 {
@@ -612,14 +620,14 @@ public sealed partial class Parser
             { NameSpan = parsed.Span with { End = parsed.Span.Start } };
     }
 
-    private Decl ParseTypeAlias(bool isPublic, Span start)
+    private Decl ParseTypeAlias(bool isPublic, bool isOpaque, Span start)
     {
         _buffer.Advance(); // contextual 'type'
         var name = ExpectNamed("LYR-PAR0026", "type alias name");
         _buffer.Expect(TokenKind.Equal, "LYR-PAR0028", "expected '=' in type alias");
         var aliased = ParseType();
         var semi = ExpectSemicolon();
-        return new TypeAliasDecl(isPublic, name.Name, aliased, Span.Union(start, semi.Span))
+        return new TypeAliasDecl(isPublic, isOpaque, name.Name, aliased, Span.Union(start, semi.Span))
             { NameSpan = name.Span };
     }
 
@@ -691,4 +699,10 @@ public sealed partial class Parser
     /// 'type').</summary>
     private bool AtContextual(string word) =>
         _buffer.Check(TokenKind.Identifier) && _sm.Slice(_buffer.Current.Span).SequenceEqual(word);
+
+    private bool PeekContextual(int offset, string word)
+    {
+        var token = _buffer.Peek(offset);
+        return token.TokenKind == TokenKind.Identifier && _sm.Slice(token.Span).SequenceEqual(word);
+    }
 }

@@ -14,7 +14,7 @@
 module std.time;
 
 import std.math { divFloor, modFloor };
-import std.string { padStart, fromInt };
+import std.string { fromInt };
 
 // The clock behind `Instant.now`. The same host function `std.os.nowMillis` reads — two names,
 // one truth — but private here: the meaning layer is the public face of this module.
@@ -119,13 +119,13 @@ pub struct Instant {
         let second = msOfDay / 1000 % 60;
         let ms = msOfDay % 1000;
 
-        let date = padStart(fromInt(y), 4, '0') + "-" + two(m) + "-" + two(d);
+        let date = fromInt(y).padStart(4, '0') + "-" + two(m) + "-" + two(d);
         let clock = two(hour) + ":" + two(minute) + ":" + two(second);
-        return date + "T" + clock + "." + padStart(fromInt(ms), 3, '0') + "Z";
+        return date + "T" + clock + "." + fromInt(ms).padStart(3, '0') + "Z";
     }
 }
 
 // Two digits, zero-padded — the ISO field width.
 fn two(value: int): string {
-    return padStart(fromInt(value), 2, '0');
+    return fromInt(value).padStart(2, '0');
 }

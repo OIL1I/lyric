@@ -343,6 +343,17 @@ public class FormatterTests
     }
 
     [Fact]
+    public void An_opaque_type_alias_round_trips()
+    {
+        Assert.Equal("""
+            opaque type Entity = int;
+
+            pub type Meters = int;
+
+            """, Format("opaque   type Entity=int;\npub type Meters = int;"));
+    }
+
+    [Fact]
     public void An_interface_parent_list_round_trips()
     {
         Assert.Equal("""

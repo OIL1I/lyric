@@ -17,6 +17,25 @@ v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables
 split the editor clients release from their own repositories, and a toolchain release carries
 the archives alone.
 
+**M24 — the freeze prep — is BUILT** (2026-08-19, branch `feature/m24-freeze-prep`, four
+slices, ships as v1.15.0). The design leftovers settled BEFORE the semantics freeze. The
+delivery list:
+
+- [x] `opaque type`: a new identity over the same layout — explicit `as` is the one crossing,
+      equality within one alias, everything else refused; native signatures resolve
+      module-local aliases, so an SDK handle crosses as a plain number scripts cannot forge.
+      Erato's A4, answered end to end (slice 1)
+- [x] the string METHOD API: 26 methods via `extend string`, free forms deprecated toward 2.0;
+      concat/repeat stay free as operator backing; `import std.string as strings;` is the
+      idiom, and an import whose extensions are used counts as used (slice 2)
+- [x] a latent lowering bug fell with it: the global initializer could collide with a
+      downstream function id once struct-return buffers and extension requests met in one
+      compile; ids merge from one counter now, and holes are a named internal error (slice 2)
+- [x] iterator method chaining: probed, documented No — sema-legal, refused by the lowering on
+      both paths; see §Design decisions, pinned in LoweringTests (slice 3)
+- [x] Grammar §TypeAlias, guides 12 and 13, Erato register A4 updated, CHANGELOG as
+      Unreleased (slice 4)
+
 **M23 — the std polish — is BUILT** (2026-08-19, branch `feature/m23-std-polish`, four slices,
 ships as v1.14.0). Born from a full audit of the actual std, not a wishlist. The delivery list:
 
@@ -189,6 +208,13 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **M24 — the freeze prep** (2026-08-19, four slices, `feature/m24-freeze-prep`). The
+  three design leftovers settled before the spec freezes semantics: `opaque type` answers
+  Erato's A4 (a handle scripts cannot forge, free at runtime), the string API became methods
+  with the free forms on the 2.0 deprecation clock, and iterator chaining got its honest No
+  with the probe pinned. The build surfaced a latent function-id collision between the global
+  initializer and downstream functions — found by the new density check, fixed at the counter.
+
 - [x] **M23 — the std polish** (2026-08-19, four slices, `feature/m23-std-polish`). The audit
   the extension list forced: std.string stopped being quadratic (builder/join were left folds —
   the exact cost the builder existed to avoid), the print family collapsed to one generic
@@ -207,22 +233,6 @@ out of them and hands its own functions, types and value structs in.
   lambdas infer their return type. One deliberate No: heterogeneous arithmetic (§Design
   decisions). One regression the probe itself caught: instance-keyed, not symbol-keyed,
   dedup across conformance lists.
-
-- [x] **M21 — the std rework** (2026-08-19, four slices, `feature/m21-std-rework`, 4228 tests
-  green). All 370 public items documented with the ratchet pinning completeness; constructors on
-  the types with the first real @Deprecated wave and the whole corpus migrated in the same
-  commit; readBytes against the U+FFFD limitation; the import-std.string crash became a
-  diagnostic; and stdlib-tests/ — the library tested by the language it is written in, through
-  the runner the toolchain ships. Two language fixes forced by the wave: @Deprecated on
-  generics (row-less), and generic static calls substituting the caller's T.
-
-- [x] **M20 — attributes become load-bearing** (2026-08-19, three slices,
-  `feature/m20-attributes`, 4208 tests green). One attribute read by the compiler, one by a new
-  tool, and zero new mechanisms: `@Deprecated` rides the WarningAnalyzer's use tables, `lyrtest`
-  rides the embedding API's attribute rows and call handles — its first consumer that is not a
-  test of it. Tests live in a root of their own (the Go shape), so `@Test` never touches a
-  production build and no build rule hangs off an attribute. A fresh instance per test makes
-  state leaks structurally impossible rather than discouraged.
 
 ## Measurements
 
@@ -310,7 +320,9 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M23 is merged and released as v1.14.0** (PR #61) — the std polish. The scope came
+**M24 is built on `feature/m24-freeze-prep`** — the freeze prep, ships as v1.15.0. With it the
+pre-freeze design space is closed; next is v1.16, the spec draft (non-normative) plus the seed
+of the conformance suite, and the semantics freeze begins there. The scope came
 from a line-by-line audit of the standard library after the first extension list turned out to
 describe modules that already existed. Deferred by decision: the string method API via `extend`
 and iterator chaining (each needs its own design round plus a probe), the three-convention
@@ -488,6 +500,15 @@ answer yet, and it belongs asked before E4 starts.
   differently through the child and through the parent. A child interface VALUE does not convert to
   the parent's type; implication holds for implementing types. `std.core` adopts
   `Hashable :: [Equatable]` at 2.0, not before.
+- **Iterator method chaining: documented No for now** (M24 probe). `xs.iter().map(f).take(3)`
+  wants generic default methods on `Iterator<T>`. The sema ACCEPTS them already; the lowering
+  refuses on both paths — an interface VALUE fails at instance interning (`fn(T) -> U` in the
+  slot signatures, the same wall as generic interface values over struct arguments), and even
+  the monomorphized constraint path has no lowering for a default body with its own type
+  parameters. Building both means interface-instance layout work plus monomorphized defaults,
+  with an open vtable question (there are no generic slots — such defaults could never be
+  overridden). Milestone-sized; the spec documents free adapters as THE form, and an
+  `IrPinTests` entry keeps today's refusal visible instead of accidental.
 - **Heterogeneous operator arithmetic: documented No** (M22 probe). Two facts cap it below
   usefulness: a type conforms to `Mul` ONCE (`Mul<Vec2>` beside `Mul<float>` fails the signature
   check — one `mul`, two wanted signatures), and Lyric has no overloading, so `mul(other: float)`

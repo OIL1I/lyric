@@ -692,6 +692,27 @@ public sealed class NativeRegistry
             });
 
 
+        // v1.15: the string METHOD API. Inside 'extend string' a method shadows the free
+        // function of the same name, so the methods call raw* twins; the old public names stay
+        // bound for bytecode compiled before the change. Same entries, second name each.
+        void StringRaw(string name) =>
+            registry._natives["std.string.raw" + char.ToUpperInvariant(name[0]) + name[1..]] =
+                registry._natives["std.string." + name];
+
+        StringRaw("length");
+        StringRaw("charAt");
+        StringRaw("substring");
+        StringRaw("indexOf");
+        StringRaw("contains");
+        StringRaw("startsWith");
+        StringRaw("endsWith");
+        StringRaw("trim");
+        StringRaw("toUpper");
+        StringRaw("toLower");
+        StringRaw("split");
+        StringRaw("toChars");
+        StringRaw("utf8Encode");
+
         return registry;
     }
 

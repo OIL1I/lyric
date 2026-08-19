@@ -1001,7 +1001,19 @@ public sealed class TypeChecker
             case ArrayLitExpr arr: return CheckArrayLit(arr, scope, expected);
             case TupleLitExpr tu: return new TupleOf(tu.Elements.Select(e => CheckExpr(e, scope)).ToArray());
             case InterpolatedStringExpr fs:
-                foreach (var seg in fs.Segments) if (seg is InterpHole h) CheckExpr(h.Expr, scope);
+                foreach (var seg in fs.Segments)
+                    if (seg is InterpHole h)
+                    {
+                        var hole = CheckExpr(h.Expr, scope);
+                        // An opaque value does not render: the converter would print the
+                        // underlying and leak exactly what the wall hides. The way through is
+                        // explicit, like every other crossing.
+                        if (hole is OpaqueRef opaque)
+                            _de.Report("LYR-SEM0006", Severity.Error, h.Expr.Span,
+                                $"'{TypeFacts.Display(hole)}' is opaque and does not render in "
+                                + "an f-string — convert explicitly: "
+                                + $"'{{value as {TypeFacts.Display(opaque.Underlying)}}}'");
+                    }
                 return LyrType.String;
             case ErrorExpr: return LyrType.Error;
 
@@ -1222,6 +1234,14 @@ public sealed class TypeChecker
     {
         if (l is NullType || r is NullType) return;
         if (l is PrimitiveType or ErrorType) return;
+
+        // Two values of the SAME opaque alias compare like their underlying — a handle must be
+        // able to find itself. Everything else about the alias stays walled off: mixed-type
+        // equality already failed the Equal test before this method, arithmetic and ordering
+        // never reach an opcode, and the lowering sees the underlying scalar here.
+        if (l is OpaqueRef lo && r is OpaqueRef && LyrType.Equal(l, r)
+            && lo.Underlying is PrimitiveType)
+            return;
 
         var op = b.Operator is BinaryOp.Eq ? "==" : "!=";
 
@@ -1531,6 +1551,12 @@ public sealed class TypeChecker
         var target = ResolveType(c.Type, scope);
         if (op.IsError || target.IsError) return target;
         if (TypeFacts.IsNumeric(op) && TypeFacts.IsNumeric(target)) return target; // numeric to numeric only
+
+        // An opaque alias converts to EXACTLY its underlying and back — the one door in its
+        // wall, and it is explicit by construction: this cast is the only way through. At
+        // runtime the value is untouched; the lowering emits nothing for it.
+        if (op is OpaqueRef from && LyrType.Equal(from.Underlying, target)) return target;
+        if (target is OpaqueRef to && LyrType.Equal(op, to.Underlying)) return target;
 
         if (_into is { } into && (CanConform(op) || op is PrimitiveType)
             && Satisfies(op, into, new GenericInstance(into, [target])))
@@ -2034,6 +2060,7 @@ public sealed class TypeChecker
     private static bool ContainsError(LyrType type) => type switch
     {
         ErrorType => true,
+        OpaqueRef oq => ContainsError(oq.Underlying),
         Optional o => ContainsError(o.Inner),
         ArrayOf a => ContainsError(a.Element),
         TupleOf t => t.Elements.Any(ContainsError),
@@ -2110,6 +2137,11 @@ public sealed class TypeChecker
 
         PrimitiveType prim when BuiltinSymbol(prim) is { } builtin =>
             ImplementsWithExtensions(builtin, iface, wanted, EmptySubst),
+
+        // An OPAQUE alias satisfies nothing: it has no conformance list, and falling into the
+        // permissive default below would let 'Map<Entity, V>' compile against members the type
+        // walled off. Convert to the underlying where a constraint is needed.
+        OpaqueRef => false,
         _ => true // external or error: pass through opaquely
     };
 
@@ -3922,7 +3954,18 @@ public sealed class TypeChecker
             return LyrType.Error;
         }
 
-        try { return ResolveType(decl.Aliased, scope); }
+        try
+        {
+            var underlying = ResolveType(decl.Aliased, scope);
+            if (!decl.IsOpaque) return underlying;
+            if (underlying.IsError) return LyrType.Error;
+
+            // An OPAQUE alias (v1.15) keeps its identity instead of expanding: the underlying
+            // travels along for the layout and for 'as', but nothing else looks through. An
+            // opaque over an opaque flattens to the innermost layout under THIS identity.
+            var layout = underlying is OpaqueRef o ? o.Underlying : underlying;
+            return new OpaqueRef(alias, layout);
+        }
         finally { _expanding.Remove(alias); }
     }
 
