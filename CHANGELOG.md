@@ -10,6 +10,51 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Added
+
+- **Interface inheritance**: an interface may declare one parent — `interface Labeled :: [Named]`.
+  Conforming to the child implies conforming to the whole chain: implementing types provide the
+  chain's abstract members (a missing one names the implying interface), inherit its default
+  methods, satisfy parent constraints, and carry into parent-typed interface values. A value of
+  the child's interface type answers the parent's members too. The rules: at most one parent
+  (several requirements side by side are constraints: `<T :: [A, B]>`), only interfaces, no
+  cycles (`LYR-SEM0078`), and no redeclaring a chain member (`LYR-SEM0079`) — an inherited
+  member keeps its declaring interface, so the same call cannot dispatch two ways. What a chain
+  does NOT add: a child interface *value* does not convert to the parent's type — conformance is
+  implied for the implementing type; take the concrete value through the parent directly.
+  `std.core` does not adopt `Hashable :: [Equatable]` yet: changing what every conforming type
+  must implement is a breaking cut reserved for 2.0.
+
+- **Compound assignment reaches through the operator interfaces**: `v += w` on a type conforming
+  to `Add<T>` now compiles for variable targets (locals, captured variables) instead of
+  reporting `LYR-SEM0003`. Field and element targets stay written out — the desugaring would
+  evaluate the object or the index twice, and that stays visible in source.
+
+- **Block lambdas infer their return type**: `(x: int) => { return x * 2; }` needs neither an
+  annotation nor a context anymore — the type comes from the body's `return` statements,
+  unified like match arms (`return null;` widens to the optional). This also closes the
+  open-generic case: `apply(5, (n) => { … })` binds `U` from the block. A non-void inferred
+  lambda still needs return coverage, and disagreeing returns are one error at the lambda.
+
+### Changed
+
+- **`LYR-PAR0039` retired**: `interface B :: [A]` parses since this release; everything the
+  parent list may not be is a semantic message now, not a parse error.
+
+- **`newStringBuilder` warns as deprecated** — the piece v1.12 had to leave out. `std.core`
+  imports nothing anymore: its extensions use private duplicates of six string natives
+  (`fromInt` through `charAt`; the registry binds both names to the same host function), which
+  makes `std.core` the library's root — and `import std.core { Deprecated }` inside
+  `std.string` legal. Public API is unchanged; existing bytecode keeps running.
+
+### Fixed
+
+- **`@Deprecated` keeps its promise**: it emits no metadata row and roots nothing. Previously a
+  non-generic deprecated function survived dead-code pruning in every importing program — dead
+  code carried along exactly because it was marked for removal.
+
 ## v1.12.0 — 2026-08-19
 
 The standard library grows up. Every public item is documented, constructors live on the types,

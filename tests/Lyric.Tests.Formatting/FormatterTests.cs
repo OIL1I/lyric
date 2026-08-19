@@ -341,4 +341,19 @@ public class FormatterTests
         Assert.Contains("fn total<T :: [Add<T>]>(values: T[], zero: T): T", formatted);
         Assert.Contains("total<int>([1, 2, 3], 0)", formatted);
     }
+
+    [Fact]
+    public void An_interface_parent_list_round_trips()
+    {
+        Assert.Equal("""
+            interface Named {
+                fn name(): string;
+            }
+
+            interface Labeled :: [Named] {
+                fn label(): string;
+            }
+
+            """, Format("interface Named{fn name():string;}\ninterface Labeled::[Named]{fn label():string;}"));
+    }
 }

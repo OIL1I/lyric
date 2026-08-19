@@ -11,9 +11,10 @@
 /// reach them.
 module std.core;
 
-// For the Display extensions below. 'std.string' does not import 'std.core', so there is no cycle,
-// and even one would terminate because the loader registers before descending.
-import std.string { fromInt, fromFloat, fromBool, fromChar, length, charAt };
+// No imports, deliberately: 'std.core' is the library's root, and any module it imported could
+// never import 'std.core' back (LYR-RES0005) — which is exactly what 'std.string' needs for
+// '@Deprecated'. The extensions below therefore use PRIVATE duplicates of six string natives,
+// declared at the end of this file; the registry binds both names to the same host function.
 
 /// Ends the program with `message` and a backtrace.
 ///
@@ -136,7 +137,8 @@ extend string :: [Display] {
 // interface VALUE, and a scalar cannot be one. `extend int :: [Equatable]` would be impossible and
 // there would be no `Map<int, V>`. With `Equatable<T>` both sides carry the concrete type.
 //
-// `Hashable` does not inherit from `Equatable`: there is no interface inheritance. A caller that
+// `Hashable` does not declare `Equatable` as its parent yet: adopting the implication changes what
+// every conforming type must implement, a breaking cut reserved for 2.0. Until then a caller that
 // needs both requires both: `K :: [Hashable<K>, Equatable<K>]`.
 
 /// Values of this type can be compared for equality.
@@ -154,8 +156,8 @@ pub interface Equatable<T> {
 /// **Equal values must produce equal hashes.** No compiler checks it and every hash table depends on
 /// it. The reverse does not hold — two different values may collide.
 ///
-/// It does not imply `Equatable`; there is no interface inheritance. A caller needing both requires
-/// both: `K :: [Hashable<K>, Equatable<K>]`.
+/// It does not imply `Equatable` yet — that adoption is a breaking change reserved for 2.0. A
+/// caller needing both requires both: `K :: [Hashable<K>, Equatable<K>]`.
 pub interface Hashable<T> {
     /// The hash of this value.
     fn hash(): int;
@@ -491,3 +493,17 @@ pub struct Deprecated :: [OnModule, OnType, OnFunction] {
 // obviously right one, and a wrong default here would surface only as a map losing values.
 //
 // `Equatable` and `Ordered` remain: there `NaN != NaN` is the expected behaviour.
+
+// --- private string natives ---------------------------------------------------------------
+//
+// Duplicates of `std.string` declarations, private and for the extensions above only. This
+// module is the library's root and imports nothing — with an import of `std.string` here, no
+// module could import `std.core` back (LYR-RES0005). The registry binds both names to the same
+// host function, so behavior has one truth.
+
+fn fromInt(value: int): string;
+fn fromFloat(value: float): string;
+fn fromBool(value: bool): string;
+fn fromChar(value: char): string;
+fn length(text: string): int;
+fn charAt(text: string, index: int): char;

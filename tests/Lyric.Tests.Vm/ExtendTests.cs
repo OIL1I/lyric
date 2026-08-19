@@ -351,10 +351,13 @@ public class ExtendTests
         // 'std.string' has its own Lyric bodies (parseInt, replace, isDigit, …), and they drag their
         // natives along as soon as the module is loaded, even when nobody calls them. That is the missing
         // reachability analysis rather than a regression in the Display machinery this is about.
+        // Since v1.13 the extensions call std.core's PRIVATE native duplicates, so both spellings
+        // must stay absent.
         var importe = ir.Imports.Select(i => i.Name).ToArray();
+        Assert.DoesNotContain("std.core.fromInt", importe);
+        Assert.DoesNotContain("std.core.fromBool", importe);
+        Assert.DoesNotContain("std.core.fromChar", importe);
         Assert.DoesNotContain("std.string.fromInt", importe);
-        Assert.DoesNotContain("std.string.fromBool", importe);
-        Assert.DoesNotContain("std.string.fromChar", importe);
     }
 
     [Fact]
@@ -370,7 +373,8 @@ public class ExtendTests
             """);
 
         Assert.Contains(ir.Functions, f => f.Name.Contains("<extend>.int.show"));
-        Assert.Contains(ir.Imports, i => i.Name == "std.string.fromInt");
+        // std.core's private duplicate since v1.13 — the module imports nothing anymore.
+        Assert.Contains(ir.Imports, i => i.Name == "std.core.fromInt");
 
         // Only the type used: 'float' and 'bool' satisfy 'Display' just as well but are not called here.
         Assert.DoesNotContain(ir.Functions, f => f.Name.Contains("<extend>.float.show"));

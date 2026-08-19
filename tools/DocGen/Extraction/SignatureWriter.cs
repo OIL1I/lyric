@@ -60,7 +60,7 @@ public static class SignatureWriter
         TypeHead(d.IsPublic, "enum", d.Name, d.Generics, d.Interfaces);
 
     public static string Interface(InterfaceDecl d) =>
-        TypeHead(d.IsPublic, "interface", d.Name, d.Generics, []);
+        TypeHead(d.IsPublic, "interface", d.Name, d.Generics, d.Interfaces);
 
     public static string Extend(ExtendDecl d)
     {

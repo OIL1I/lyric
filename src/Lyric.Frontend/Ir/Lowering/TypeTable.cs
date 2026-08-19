@@ -546,7 +546,7 @@ internal sealed class TypeTable
                 $"interface '{symbol.Name}' has no declaration to read its methods from",
                 SpanOf(symbol));
 
-        var slots = decl.Members.OfType<FunctionDecl>().Select(m => m.Name).ToArray();
+        var slots = SlotNames(symbol, decl);
         if (slots.Length == 0)
             throw new UnsupportedConstructException(
                 $"interface '{symbol.Name}' declares no methods; an empty interface has nothing "
@@ -560,6 +560,19 @@ internal sealed class TypeTable
 
         _defs.Add(new IrTypeDef(name, [], []) { MethodSlots = slots });
         return id;
+    }
+
+    /// <summary>Chain-prefix layout: the parent's slots first, own members after. A parent's
+    /// default method runs with a CHILD's method table behind <c>this</c>; the prefix keeps the
+    /// parent's slot indexes valid there — the reason the parent list holds at most one entry.
+    /// Names are unique along a chain (LYR-SEM0079), so the name-to-index lookup stays exact.</summary>
+    private string[] SlotNames(TypeSymbol symbol, InterfaceDecl decl)
+    {
+        var own = decl.Members.Select(m => m.Name);
+        if (Conformance.ParentsOf(symbol, _binding).FirstOrDefault() is
+            { Declaration: InterfaceDecl parentDecl } parent)
+            return [.. SlotNames(parent, parentDecl), .. own];
+        return own.ToArray();
     }
 
     private TypeId InternVariant(string ownerName, EnumVariant variant)

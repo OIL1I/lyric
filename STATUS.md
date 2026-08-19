@@ -17,6 +17,28 @@ v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables
 split the editor clients release from their own repositories, and a toolchain release carries
 the archives alone.
 
+**M22 — the language gaps — is BUILT** (2026-08-19, branch `feature/m22-language-gaps`, four
+slices, ships as v1.13.0). The delivery list:
+
+- [x] compound assignment reaches through the operator interfaces for variable targets; field
+      and element targets stay diagnosed — the shorthand would evaluate the object or index
+      twice (slice 1)
+- [x] interface inheritance: ONE parent, implication-only — conformance, constraints,
+      defaults, throwability and interface values all reach through the chain; the
+      chain-prefix slot layout keeps a parent's default valid behind a child receiver
+      (slice 2)
+- [x] the parent-list rules: only interfaces, no cycles, at most one entry (LYR-SEM0078), no
+      redeclaring a chain member (LYR-SEM0079); LYR-PAR0039 retired from error to feature
+      (slice 2)
+- [x] `std.core` is the library's root — it imports nothing; `newStringBuilder` got its
+      @Deprecated, and the attribute keeps its promise now: no metadata row, no DCE root
+      (slice 3)
+- [x] heterogeneous arithmetic: the probe ran, the answer is a documented No — see §Design
+      decisions (slice 3)
+- [x] block lambdas infer their return type from their returns, unified like match arms; the
+      open-generic case binds U from the block (slice 4)
+- [x] Grammar §3.5, guides 3 and 7, CHANGELOG as Unreleased (slice 4)
+
 **M21 — the std rework — is BUILT** (2026-08-19, branch `feature/m21-std-rework`, four
 slices, ships as v1.12.0). The delivery list:
 
@@ -145,6 +167,16 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **M22 — the language gaps** (2026-08-19, four slices, `feature/m22-language-gaps`).
+  Compound assignment through the operator interfaces; interface inheritance with ONE parent
+  and implication-only semantics — the chain-prefix slot layout is what lets a parent's
+  default run behind a child receiver, and the redeclaration ban is what keeps static and
+  dynamic dispatch from splitting; `std.core` became the import-free root, which let
+  `newStringBuilder` deprecate and forced `@Deprecated` to keep its no-row promise; block
+  lambdas infer their return type. One deliberate No: heterogeneous arithmetic (§Design
+  decisions). One regression the probe itself caught: instance-keyed, not symbol-keyed,
+  dedup across conformance lists.
+
 - [x] **M21 — the std rework** (2026-08-19, four slices, `feature/m21-std-rework`, 4228 tests
   green). All 370 public items documented with the ratchet pinning completeness; constructors on
   the types with the first real @Deprecated wave and the whole corpus migrated in the same
@@ -160,21 +192,6 @@ out of them and hands its own functions, types and value structs in.
   test of it. Tests live in a root of their own (the Go shape), so `@Test` never touches a
   production build and no build rule hangs off an attribute. A fresh instance per test makes
   state leaks structurally impossible rather than discouraged.
-
-- [x] **M19 — diagnostics** (2026-08-19, four slices, `feature/m19-diagnostics`, 4183 tests
-  green in Release). The compiler learns to speak below "error", with no lint framework: the
-  analyses consume the tables the checker and resolver already built, `Flow.AlwaysExits`
-  answers reachability, and severity belongs to the CODE — the catalogue rule the spec will
-  inherit.
-  - **The gate keeps its honesty**: `--deny-warnings` fails the run through the exit code and
-    one closing error; the warnings keep their severity in the output. Deliberately not rustc's
-    relabeling.
-  - **The hint learned restraint the corpus taught**: field writes through `let` happen to
-    compile, so the never-reassigned hint counts every touch — writes, `mut` calls, by-reference
-    handover — and the conservative rule declared every existing corpus `var` legitimate.
-  - **Two long-standing entries closed on the way**: the static-extension asymmetry is a
-    deprecation warning now, and duplicate module names are an error with a note at the first
-    claim. The corpus checks in silence, and a test holds it there.
 
 ## Measurements
 
@@ -262,12 +279,11 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M21 is merged and released as v1.12.0** (PR #58). The std rework the plan promised: documented to the last item,
-constructors on the types, the first deprecation clocks running, the library testing itself in
-Lyric. Two compiler gaps fell on the way and are fixed with regression tests. Next in the v2
-sequence: v1.13, the language gaps — compound assignment through the operator interfaces,
-the heterogeneous-arithmetic decision, interface inheritance (decide, then build), the
-block-lambda inference, and the attribute-visibility question newStringBuilder filed.
+**M22 is built on `feature/m22-language-gaps`** — the language gaps of the v2 sequence, ships
+as v1.13.0. Every planned point landed or got its documented decision; the details stand in
+the milestone block above and under §Design decisions. Next in the sequence: v1.14, the std
+extension — the `std.io.net`/`std.time`/`std.random` choice (issues decide which), plus the
+Erato embedding answers (A4/E4).
 
 **The repository moved and the clients moved out** (2026-08-19): the project lives in the
 `lyriclang` org — `lyriclang/lyric` is the toolchain, ONE repository with ONE version, and the
@@ -433,6 +449,20 @@ answer yet, and it belongs asked before E4 starts.
   criterion alone.** M5 and M6 each silently failed to deliver part of their items; the gap disguised
   itself as a clean diagnostic. For the same reason **six** gates were re-cut in M7, because they
   required language features of later slices.
+- **Interface inheritance is single-parent and implication-only** (M22): a parent's default method
+  runs behind a child-typed receiver, and only the chain-prefix slot layout keeps the parent's slot
+  indexes valid there — several parents would need thunks. Redeclaring a chain member is refused
+  instead of getting override semantics: without vtable overriding, the same call would dispatch
+  differently through the child and through the parent. A child interface VALUE does not convert to
+  the parent's type; implication holds for implementing types. `std.core` adopts
+  `Hashable :: [Equatable]` at 2.0, not before.
+- **Heterogeneous operator arithmetic: documented No** (M22 probe). Two facts cap it below
+  usefulness: a type conforms to `Mul` ONCE (`Mul<Vec2>` beside `Mul<float>` fails the signature
+  check — one `mul`, two wanted signatures), and Lyric has no overloading, so `mul(other: float)`
+  beside `mul(other: Vec2)` cannot exist either. A two-parameter `Mul<Rhs, Out>` would break every
+  existing conformance and still buy only ONE right-hand type per type — `Vec2 * float` OR
+  `Vec2 * Vec2`, never both. Real heterogeneity needs overloading or multi-conformance with
+  signature dispatch; that is a v3-class question, not a 2.0 item.
 
 ## Last relevant commit
 

@@ -113,17 +113,8 @@ public class SuggestionAndNoteTests
         Assert.True(note.Location.File.IsValid);
     }
 
-    // ─── the block-lambda limit carries its way out as a note ──────────────
-
-    [Fact]
-    public void The_block_lambda_error_suggests_the_annotation_in_a_note()
-    {
-        var de = Check(
-            "fn main(): int {\n    let f = (n: int) => { return n; };\n    return f(1);\n}\n");
-        var error = de.Diagnostics.First(d => d.Code == "LYR-SEM0046");
-        Assert.NotNull(error.Notes);
-        Assert.Contains(error.Notes!, n => n.Message.Contains("return type annotation"));
-    }
+    // The block-lambda annotation note is gone with its error: since v1.13 the annotation-free
+    // form infers its return type (LambdaTests pin the inference itself).
 
     // ─── the never-reassigned hint (LYR-SEM0075) ───────────────────────────
 

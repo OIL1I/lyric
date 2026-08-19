@@ -134,9 +134,10 @@ public class InferenceDiagnosticTests
 /// <c>fn(int) -&gt; &lt;error&gt;</c> — intact outside, broken inside — passed and produced follow-up
 /// messages that buried the actual cause.</para>
 ///
-/// <para>Noticed on a block lambda without a return type annotation: THREE diagnostics for one error,
-/// and the only one with a usable hint (<c>LYR-SEM0046</c>, "add a return type annotation") stood at
-/// the bottom.</para>
+/// <para>Noticed on a block lambda without a return type annotation, back when that was an error:
+/// THREE diagnostics for one cause, and the only usable one stood at the bottom. Since v1.13 the
+/// annotation-free form infers and compiles; the fixture that keeps the poison rule honest is a
+/// lambda whose returns DISAGREE — the same <c>fn(int) -&gt; &lt;error&gt;</c> shape.</para>
 /// </summary>
 public class DiagnosticNoiseTests
 {
@@ -153,16 +154,16 @@ public class DiagnosticNoiseTests
 
     private const string BlockLambda = """
         pub fn anwenden<T, U>(v: T, f: fn(T) -> U): U { let g = f; return g(v); }
-        fn main(): int { let b = anwenden(3, (n: int) => { return n * 2; }); return 0; }
+        fn main(): int { let b = anwenden(3, (n: int) => { if (n < 0) { return "s"; } return n * 2; }); return 0; }
         """;
 
     [Fact]
-    public void A_block_lambda_without_annotation_reports_the_helpful_code() =>
-        Assert.Contains("LYR-SEM0046", Codes(BlockLambda));
+    public void A_lambda_with_disagreeing_returns_reports_the_cause() =>
+        Assert.Contains("LYR-SEM0016", Codes(BlockLambda));
 
     [Fact]
     public void It_does_not_also_complain_about_the_type_argument() =>
-        // LYR-SEM0060 would be noise here: the cause stands in SEM0046, with instructions.
+        // LYR-SEM0060 would be noise here: the cause stands in SEM0016, at the lambda.
         Assert.DoesNotContain("LYR-SEM0060", Codes(BlockLambda));
 
     [Fact]
@@ -171,11 +172,10 @@ public class DiagnosticNoiseTests
         Assert.DoesNotContain("LYR-SEM0001", Codes(BlockLambda));
 
     [Fact]
-    public void The_annotated_form_compiles_cleanly() =>
-        // The counter-check: what the message suggests has to work, or the hint is wrong, and that is
-        // worse than no hint.
+    public void The_annotation_free_form_infers_and_compiles_cleanly() =>
+        // v1.13: the fixture that used to be THE motivating error now just works.
         Assert.Empty(Codes("""
             pub fn anwenden<T, U>(v: T, f: fn(T) -> U): U { let g = f; return g(v); }
-            fn main(): int { return anwenden(3, (n: int): int => { return n * 2; }); }
+            fn main(): int { return anwenden(3, (n: int) => { return n * 2; }); }
             """));
 }

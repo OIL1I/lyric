@@ -846,7 +846,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 22
+            "Line": 23
           }
         },
         {
@@ -857,7 +857,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 29
+            "Line": 30
           }
         },
         {
@@ -868,7 +868,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 43
+            "Line": 44
           }
         },
         {
@@ -879,7 +879,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 51
+            "Line": 52
           }
         },
         {
@@ -890,7 +890,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 59
+            "Line": 60
           }
         },
         {
@@ -907,7 +907,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 73
+                "Line": 74
               }
             },
             {
@@ -918,13 +918,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 76
+                "Line": 77
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 71
+            "Line": 72
           }
         },
         {
@@ -941,13 +941,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 96
+                "Line": 97
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 94
+            "Line": 95
           }
         },
         {
@@ -964,20 +964,20 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 149
+                "Line": 151
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 147
+            "Line": 149
           }
         },
         {
           "Kind": "Interface",
           "Name": "Hashable",
           "Signature": "pub interface Hashable<T>",
-          "Doc": "Values of this type can be hashed, which is what a `Map` key and a `Set` element need.\n\n**Equal values must produce equal hashes.** No compiler checks it and every hash table depends on\nit. The reverse does not hold — two different values may collide.\n\nIt does not imply `Equatable`; there is no interface inheritance. A caller needing both requires\nboth: `K :: [Hashable<K>, Equatable<K>]`.",
+          "Doc": "Values of this type can be hashed, which is what a `Map` key and a `Set` element need.\n\n**Equal values must produce equal hashes.** No compiler checks it and every hash table depends on\nit. The reverse does not hold — two different values may collide.\n\nIt does not imply `Equatable` yet — that adoption is a breaking change reserved for 2.0. A\ncaller needing both requires both: `K :: [Hashable<K>, Equatable<K>]`.",
           "Members": [
             {
               "Kind": "Method",
@@ -987,13 +987,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 161
+                "Line": 163
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 159
+            "Line": 161
           }
         },
         {
@@ -1010,13 +1010,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 170
+                "Line": 172
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 167
+            "Line": 169
           }
         },
         {
@@ -1033,13 +1033,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 347
+                "Line": 349
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 345
+            "Line": 347
           }
         },
         {
@@ -1056,13 +1056,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 353
+                "Line": 355
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 351
+            "Line": 353
           }
         },
         {
@@ -1079,13 +1079,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 359
+                "Line": 361
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 357
+            "Line": 359
           }
         },
         {
@@ -1102,13 +1102,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 366
+                "Line": 368
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 363
+            "Line": 365
           }
         },
         {
@@ -1125,13 +1125,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 462
+                "Line": 464
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 460
+            "Line": 462
           }
         },
         {
@@ -1142,7 +1142,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 470
+            "Line": 472
           }
         },
         {
@@ -1153,7 +1153,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 473
+            "Line": 475
           }
         },
         {
@@ -1164,7 +1164,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 476
+            "Line": 478
           }
         },
         {
@@ -1181,13 +1181,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/core.lyr",
-                "Line": 483
+                "Line": 485
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/core.lyr",
-            "Line": 481
+            "Line": 483
           }
         }
       ]
@@ -3528,7 +3528,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 15
+            "Line": 19
           }
         },
         {
@@ -3539,7 +3539,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 18
+            "Line": 22
           }
         },
         {
@@ -3550,7 +3550,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 23
+            "Line": 27
           }
         },
         {
@@ -3561,7 +3561,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 25
+            "Line": 29
           }
         },
         {
@@ -3572,7 +3572,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 27
+            "Line": 31
           }
         },
         {
@@ -3583,7 +3583,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 29
+            "Line": 33
           }
         },
         {
@@ -3594,7 +3594,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 34
+            "Line": 38
           }
         },
         {
@@ -3605,7 +3605,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 45
+            "Line": 49
           }
         },
         {
@@ -3616,7 +3616,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 47
+            "Line": 51
           }
         },
         {
@@ -3627,7 +3627,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 49
+            "Line": 53
           }
         },
         {
@@ -3638,7 +3638,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 55
+            "Line": 59
           }
         },
         {
@@ -3649,7 +3649,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 57
+            "Line": 61
           }
         },
         {
@@ -3660,7 +3660,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 59
+            "Line": 63
           }
         },
         {
@@ -3671,7 +3671,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 61
+            "Line": 65
           }
         },
         {
@@ -3682,7 +3682,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 64
+            "Line": 68
           }
         },
         {
@@ -3693,7 +3693,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 68
+            "Line": 72
           }
         },
         {
@@ -3704,7 +3704,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 70
+            "Line": 74
           }
         },
         {
@@ -3715,7 +3715,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 75
+            "Line": 79
           }
         },
         {
@@ -3726,7 +3726,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 79
+            "Line": 83
           }
         },
         {
@@ -3737,7 +3737,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 99
+            "Line": 103
           }
         },
         {
@@ -3748,7 +3748,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 105
+            "Line": 109
           }
         },
         {
@@ -3759,7 +3759,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 110
+            "Line": 114
           }
         },
         {
@@ -3770,7 +3770,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 115
+            "Line": 119
           }
         },
         {
@@ -3781,7 +3781,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 120
+            "Line": 124
           }
         },
         {
@@ -3792,7 +3792,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 125
+            "Line": 129
           }
         },
         {
@@ -3803,7 +3803,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 132
+            "Line": 136
           }
         },
         {
@@ -3814,7 +3814,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 140
+            "Line": 144
           }
         },
         {
@@ -3825,7 +3825,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 150
+            "Line": 154
           }
         },
         {
@@ -3836,7 +3836,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 155
+            "Line": 159
           }
         },
         {
@@ -3847,7 +3847,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 170
+            "Line": 174
           }
         },
         {
@@ -3858,7 +3858,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 188
+            "Line": 192
           }
         },
         {
@@ -3869,7 +3869,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 209
+            "Line": 213
           }
         },
         {
@@ -3880,7 +3880,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 226
+            "Line": 230
           }
         },
         {
@@ -3891,7 +3891,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 241
+            "Line": 245
           }
         },
         {
@@ -3902,7 +3902,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 247
+            "Line": 251
           }
         },
         {
@@ -3913,7 +3913,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 258
+            "Line": 262
           }
         },
         {
@@ -3924,7 +3924,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 281
+            "Line": 285
           }
         },
         {
@@ -3935,7 +3935,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 294
+            "Line": 298
           }
         },
         {
@@ -3946,7 +3946,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 304
+            "Line": 308
           }
         },
         {
@@ -3957,7 +3957,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 314
+            "Line": 318
           }
         },
         {
@@ -3968,7 +3968,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 324
+            "Line": 328
           }
         },
         {
@@ -3979,7 +3979,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 341
+            "Line": 345
           }
         },
         {
@@ -3990,7 +3990,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 374
+            "Line": 378
           }
         },
         {
@@ -4001,7 +4001,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 418
+            "Line": 422
           }
         },
         {
@@ -4012,7 +4012,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 431
+            "Line": 435
           }
         },
         {
@@ -4023,7 +4023,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 488
+            "Line": 492
           }
         },
         {
@@ -4040,7 +4040,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 507
+                "Line": 511
               }
             },
             {
@@ -4051,7 +4051,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 509
+                "Line": 513
               }
             },
             {
@@ -4062,7 +4062,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 512
+                "Line": 516
               }
             },
             {
@@ -4073,7 +4073,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 517
+                "Line": 521
               }
             },
             {
@@ -4084,7 +4084,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 522
+                "Line": 526
               }
             },
             {
@@ -4095,7 +4095,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 537
+                "Line": 541
               }
             },
             {
@@ -4106,7 +4106,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 543
+                "Line": 547
               }
             },
             {
@@ -4117,24 +4117,24 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/string.lyr",
-                "Line": 548
+                "Line": 552
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 505
+            "Line": 509
           }
         },
         {
           "Kind": "Function",
           "Name": "newStringBuilder",
           "Signature": "pub fn newStringBuilder(): StringBuilder",
-          "Doc": "An empty builder. Prefer `StringBuilder.new()`; deprecating this one waits on attribute\nvisibility — `@Deprecated` lives in `std.core`, and importing that here would be a cycle.",
+          "Doc": "An empty builder.",
           "Members": [],
           "Source": {
             "File": "stdlib/std/string.lyr",
-            "Line": 561
+            "Line": 564
           }
         }
       ]

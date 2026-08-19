@@ -113,7 +113,7 @@ public sealed record EnumVariant(string Name, TypeNode[]? TupleFields, FieldDecl
     public required Span NameSpan { get; init; }
 }
 
-public sealed record InterfaceDecl(bool IsPublic, string Name, GenericParam[] Generics, FunctionDecl[] Members, Span Span) : Decl(Span), INamedDecl
+public sealed record InterfaceDecl(bool IsPublic, string Name, GenericParam[] Generics, TypeNode[] Interfaces, FunctionDecl[] Members, Span Span) : Decl(Span), INamedDecl
 {
     public required Span NameSpan { get; init; }
 }

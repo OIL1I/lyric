@@ -231,7 +231,8 @@ public sealed class AstFormatter
             d.Generics, d.Interfaces, d.Members, d.Span),
         EnumDecl d => EnumDoc(d),
         InterfaceDecl d => MethodBodyDoc(
-            Doc.Of(Pub(d.IsPublic), Doc.From($"interface {d.Name}"), GenericsDoc(d.Generics), Doc.Space),
+            Doc.Of(Pub(d.IsPublic), Doc.From($"interface {d.Name}"), GenericsDoc(d.Generics),
+                InterfaceListDoc(d.Interfaces), Doc.Space),
             d.Members, d.Span),
         ExtendDecl d => MethodBodyDoc(
             Doc.Of(Pub(d.IsPublic), Doc.From("extend "), TypeDoc(d.Target),

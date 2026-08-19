@@ -192,10 +192,11 @@ public class OperatorArithmeticTests
     }
 
     [Fact]
-    public void A_compound_through_the_interface_is_a_diagnostic_not_a_miscompile()
+    public void A_compound_through_the_interface_works_on_a_variable_target()
     {
-        // 'v += w' would have to evaluate the target's address once and route through the call;
-        // the compound lowering cannot yet, so the sema says so instead of double-evaluating.
+        // The limit v1.5.0 recorded here is closed: 'v += w' on an identifier target IS the
+        // stored operator call, lowered whole. CompoundOperatorTests carries the full set —
+        // captured variables, the field-target diagnostic, the untouched repetition opcode.
         var sm = new SourceManager();
         var id = sm.AddVirtual("test.lyr", Vec2 + """
             fn main(): int {
@@ -212,7 +213,7 @@ public class OperatorArithmeticTests
         comp.AddModule(new Parser(sm, id, de).ParseModule());
         Semantics.Analyze(comp, comp.Resolve(), de);
 
-        Assert.Contains(de.Diagnostics,
-            d => d.Code == "LYR-SEM0003" && d.Message.Contains("write it out"));
+        Assert.False(de.HasErrors, string.Join("; ",
+            de.Diagnostics.Select(d => d.Code + ": " + d.Message)));
     }
 }

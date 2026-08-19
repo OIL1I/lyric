@@ -191,4 +191,27 @@ public class FunctionValueTests
                 return 0;
             }
             """).Out);
+
+    [Fact]
+    public void A_block_lambda_without_annotation_infers_and_runs() =>
+        // v1.13: no return type, no context — the type comes from the body's returns, including
+        // through an open generic (U binds to what the block returns).
+        Assert.Equal(48L, Run("""
+            fn apply<T, U>(x: T, f: fn(T) -> U): U {
+                return f(x);
+            }
+
+            fn main(): int {
+                let double = (x: int) => {
+                    if (x > 100) {
+                        return x;
+                    }
+                    return x * 2;
+                };
+                let viaGeneric = apply(5, (n: int) => {
+                    return n + 1;
+                });
+                return double(21) + viaGeneric;
+            }
+            """).Exit);
 }
