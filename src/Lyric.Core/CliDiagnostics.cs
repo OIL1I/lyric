@@ -64,6 +64,16 @@ public static class CliDiagnostics
     /// <c>stubs/&lt;rid&gt;/</c> beside the binary) ended empty-handed.</summary>
     public const string StubNotFound = "LYR-CLI0015";
 
+    /// <summary>The run reported warnings and <c>--deny-warnings</c> was given. The warnings keep
+    /// their severity in the output; this error is what carries the policy into the exit
+    /// code.</summary>
+    public const string WarningsDenied = "LYR-CLI0016";
+
+    /// <summary>A <c>lyric.json</c> holds something tolerable but suspect, such as a key nobody
+    /// knows. Tolerated so a file written for a later version still loads; warned so a typo is
+    /// not silent.</summary>
+    public const string ProjectFileSuspect = "LYR-CLI0017";
+
     /// <summary>Reports a CLI diagnostic and renders it immediately. It has no source span, so
     /// there is nothing to collect or order.</summary>
     public static int Fail(TextWriter error, string code, string message, int exitCode)
@@ -72,5 +82,14 @@ public static class CliDiagnostics
         engine.Report(code, Severity.Error, default, message);
         engine.RenderText(error);
         return exitCode;
+    }
+
+    /// <summary>As <see cref="Fail"/>, at warning severity: rendered immediately, no exit
+    /// code — a warning by itself ends nothing.</summary>
+    public static void Warn(TextWriter error, string code, string message)
+    {
+        var engine = new DiagnosticEngine(new SourceManager());
+        engine.Report(code, Severity.Warning, default, message);
+        engine.RenderText(error);
     }
 }

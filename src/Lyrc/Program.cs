@@ -60,9 +60,10 @@ public static class Program
         var output = Flag(args, "-o") ?? Flag(args, "--output")
             ?? Path.ChangeExtension(path, ".lyrbc");
 
-        var result = SourceCompiler.Compile(path, Options(path, args, terminal));
+        var result = SourceCompiler.Compile(path, Options(path, args, terminal, out var suspect));
         terminal.Render(result.Diagnostics);
         if (!result.Ok || result.Bytes is null) return ExitCodes.Failure;
+        if (DeniedWarnings(args, result, suspect) is { } denied) return denied;
 
         try
         {
@@ -81,19 +82,37 @@ public static class Program
     /// <summary>Everything a build does except writing the file.</summary>
     private static int Check(string path, string[] args, TerminalOutput terminal)
     {
-        var result = SourceCompiler.Check(path, Options(path, args, terminal));
+        var result = SourceCompiler.Check(path, Options(path, args, terminal, out var suspect));
         terminal.Render(result.Diagnostics);
         if (!result.Ok) return ExitCodes.Failure;
+        if (DeniedWarnings(args, result, suspect) is { } denied) return denied;
 
         terminal.Info($"{path}: ok");
         return ExitCodes.Success;
+    }
+
+    /// <summary>
+    /// The <c>--deny-warnings</c> gate, AFTER the render: the warnings keep their severity in the
+    /// output, and one error at the end carries the policy into the exit code. Deliberately not
+    /// rustc's way (<c>-D</c> relabels them as errors) — what a diagnostic IS must not depend on a
+    /// flag.
+    /// </summary>
+    private static int? DeniedWarnings(string[] args, CompileResult result, int suspect)
+    {
+        var warnings = result.Diagnostics.WarningCount + suspect;
+        if (warnings == 0 || !Present(args, "--deny-warnings")) return null;
+
+        return CliDiagnostics.Fail(Console.Error, CliDiagnostics.WarningsDenied,
+            warnings == 1 ? "1 warning denied by --deny-warnings"
+                : $"{warnings} warnings denied by --deny-warnings",
+            ExitCodes.Failure);
     }
 
     /// <summary>Debug output of the mid-level IR. Lowers only when sema reported no errors.
     /// </summary>
     private static int Lower(string path, string[] args, TerminalOutput terminal)
     {
-        var result = SourceCompiler.Lower(path, Options(path, args, terminal));
+        var result = SourceCompiler.Lower(path, Options(path, args, terminal, out _));
         terminal.Render(result.Diagnostics);
         if (!result.Ok || result.Ir is null) return ExitCodes.Failure;
 
@@ -138,15 +157,19 @@ public static class Program
     /// Without one nothing changes: the entry file's directory is the root, as it was before the
     /// file existed.</para>
     /// </summary>
-    private static CompilerOptions Options(string path, string[] args, TerminalOutput terminal)
+    private static CompilerOptions Options(string path, string[] args, TerminalOutput terminal,
+        out int suspect)
     {
         var project = ProjectFile.Discover(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".");
 
         // A key nobody knows is tolerated, so a file written for a later version still loads — the
         // same rule the bytecode reader follows for a section it does not know. The warning is what
-        // keeps a typo from being silent.
+        // keeps a typo from being silent. It counts for --deny-warnings like any other, which is
+        // why the count travels out.
+        suspect = project?.Warnings.Count ?? 0;
         foreach (var warning in project?.Warnings ?? [])
-            Console.Error.WriteLine($"warning: {Path.Combine(project!.Directory, ProjectFile.FileName)}: {warning}");
+            CliDiagnostics.Warn(Console.Error, CliDiagnostics.ProjectFileSuspect,
+                $"{Path.Combine(project!.Directory, ProjectFile.FileName)}: {warning}");
 
         return new CompilerOptions
         {
@@ -209,6 +232,7 @@ public static class Program
         Console.Out.WriteLine("Options:");
         Console.Out.WriteLine("  --stdlib <dir>           Where the stdlib lives (beats $LYRIC_STDLIB)");
         Console.Out.WriteLine("  --no-source-map          Omit line numbers; a panic names the function");
+        Console.Out.WriteLine("  --deny-warnings          Exit nonzero when the run reports warnings (CI)");
         Console.Out.WriteLine("  --json                   Diagnostics as JSON on stderr");
         Console.Out.WriteLine("  --quiet, -q              Suppress success messages");
         Console.Out.WriteLine("  --verbose                Print a per-phase timing breakdown");

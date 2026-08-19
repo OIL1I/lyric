@@ -263,18 +263,146 @@ public class DiagnosticEngineTests
     }
 
     [Fact]
-    public void RenderText_renders_all_three_severities()
+    public void RenderText_renders_all_four_severities()
     {
         var de = new DiagnosticEngine(new SourceManager());
         de.Report("E", Severity.Error,   default, "err");
         de.Report("W", Severity.Warning, default, "warn");
+        de.Report("I", Severity.Info,    default, "info");
         de.Report("H", Severity.Hint,    default, "hint");
         var sw = NewWriter();
         de.RenderText(sw);
         var s = sw.ToString();
         Assert.Contains("error[E]: err",     s);
         Assert.Contains("warning[W]: warn",  s);
+        Assert.Contains("info[I]: info",     s);
         Assert.Contains("hint[H]: hint",     s);
+    }
+
+    [Fact]
+    public void WarningCount_counts_only_warnings()
+    {
+        var de = new DiagnosticEngine(new SourceManager());
+        de.Report("E", Severity.Error,   default, "");
+        de.Report("W", Severity.Warning, default, "");
+        de.Report("W", Severity.Warning, default, "");
+        de.Report("I", Severity.Info,    default, "");
+        de.Report("H", Severity.Hint,    default, "");
+        Assert.Equal(2, de.WarningCount);
+    }
+
+    // ─── notes ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RenderText_note_with_location_renders_indented_with_position()
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", "let x = 1;\nlet x = 2;");
+        var de = new DiagnosticEngine(sm);
+        de.Report("D", Severity.Error, new Span(id, 15, 16), "'x' is already defined",
+            new DiagnosticNote(new Span(id, 4, 5), "previous definition"));
+        var sw = NewWriter();
+        de.RenderText(sw);
+        var expected =
+            "test.lyr:2:5: error[D]: 'x' is already defined\n" +
+            "let x = 2;\n" +
+            "    ^\n" +
+            "  note: previous definition — test.lyr:1:5\n\n";
+        Assert.Equal(expected, sw.ToString());
+    }
+
+    [Fact]
+    public void RenderText_note_without_location_renders_text_alone()
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", "abc");
+        var de = new DiagnosticEngine(sm);
+        de.Report("X", Severity.Error, new Span(id, 0, 1), "msg",
+            new DiagnosticNote("try an annotation"));
+        var sw = NewWriter();
+        de.RenderText(sw);
+        var expected =
+            "test.lyr:1:1: error[X]: msg\n" +
+            "abc\n" +
+            "^\n" +
+            "  note: try an annotation\n\n";
+        Assert.Equal(expected, sw.ToString());
+    }
+
+    [Fact]
+    public void RenderText_no_file_diagnostic_carries_its_notes_too()
+    {
+        var de = new DiagnosticEngine(new SourceManager());
+        de.Report("X", Severity.Error, default, "no input",
+            new DiagnosticNote("a note"));
+        var sw = NewWriter();
+        de.RenderText(sw);
+        Assert.Equal("error[X]: no input\n  note: a note\n\n", sw.ToString());
+    }
+
+    [Fact]
+    public void RenderText_note_lines_never_match_the_head_format()
+    {
+        // The head line 'path:line:col: severity[CODE]: message' is the contract of every
+        // problem matcher built on this output. A note that matched it would turn one problem
+        // into two in an editor's Problems panel.
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", "abc");
+        var de = new DiagnosticEngine(sm);
+        de.Report("X", Severity.Warning, new Span(id, 0, 1), "msg",
+            new DiagnosticNote(new Span(id, 2, 3), "elsewhere"));
+        var sw = NewWriter();
+        de.RenderText(sw);
+
+        var head = new System.Text.RegularExpressions.Regex(
+            @"^(.+):(\d+):(\d+): (error|warning)\[([A-Z0-9-]+)\]: (.+)$");
+        var matches = sw.ToString().Split('\n').Count(line => head.IsMatch(line));
+        Assert.Equal(1, matches);
+    }
+
+    [Fact]
+    public void RenderJson_notes_render_with_their_positions()
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", "abc");
+        var de = new DiagnosticEngine(sm);
+        de.Report("X", Severity.Error, new Span(id, 1, 2), "msg",
+            new DiagnosticNote(new Span(id, 0, 1), "here"));
+        var sw = NewWriter();
+        de.RenderJson(sw);
+        var expected =
+            "{\"diagnostics\":[" +
+            "{\"code\":\"X\",\"severity\":\"error\"," +
+            "\"file\":\"test.lyr\"," +
+            "\"start\":{\"line\":1,\"column\":2,\"offset\":1}," +
+            "\"end\":{\"line\":1,\"column\":3,\"offset\":2}," +
+            "\"notes\":[{\"file\":\"test.lyr\"," +
+            "\"start\":{\"line\":1,\"column\":1,\"offset\":0}," +
+            "\"end\":{\"line\":1,\"column\":2,\"offset\":1}," +
+            "\"message\":\"here\"}]," +
+            "\"message\":\"msg\"}" +
+            "]}";
+        Assert.Equal(expected, sw.ToString());
+    }
+
+    [Fact]
+    public void RenderJson_locationless_note_is_message_alone()
+    {
+        var de = new DiagnosticEngine(new SourceManager());
+        de.Report("X", Severity.Error, default, "msg", new DiagnosticNote("bare"));
+        var sw = NewWriter();
+        de.RenderJson(sw);
+        Assert.Contains("\"notes\":[{\"message\":\"bare\"}]", sw.ToString());
+    }
+
+    [Fact]
+    public void RenderJson_note_free_diagnostic_has_no_notes_key()
+    {
+        var de = new DiagnosticEngine(new SourceManager());
+        de.Report("X", Severity.Error, default, "msg");
+        var sw = NewWriter();
+        de.RenderJson(sw);
+        Assert.DoesNotContain("notes", sw.ToString());
     }
 
     [Fact]
@@ -407,17 +535,19 @@ public class DiagnosticEngineTests
     }
 
     [Fact]
-    public void RenderJson_all_three_severities_as_strings()
+    public void RenderJson_all_four_severities_as_strings()
     {
         var de = new DiagnosticEngine(new SourceManager());
         de.Report("E", Severity.Error,   default, "");
         de.Report("W", Severity.Warning, default, "");
+        de.Report("I", Severity.Info,    default, "");
         de.Report("H", Severity.Hint,    default, "");
         var sw = NewWriter();
         de.RenderJson(sw);
         var s = sw.ToString();
         Assert.Contains("\"severity\":\"error\"",   s);
         Assert.Contains("\"severity\":\"warning\"", s);
+        Assert.Contains("\"severity\":\"info\"",    s);
         Assert.Contains("\"severity\":\"hint\"",    s);
     }
 
