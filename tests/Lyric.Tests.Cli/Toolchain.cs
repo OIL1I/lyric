@@ -63,6 +63,10 @@ public static class Toolchain
 
     public static ToolResult Lyrfmt(params string[] args) => Run(LyrfmtPath, args);
 
+    public static string LyrtestPath => BinaryPath("Lyrtest", "lyrtest");
+
+    public static ToolResult Lyrtest(params string[] args) => Run(LyrtestPath, args);
+
     /// <summary>The single-file stub the Lyrpack build publishes beside the packer — the same one
     /// lyrpack resolves on its own, named here so tests can run and manipulate it directly.
     /// </summary>

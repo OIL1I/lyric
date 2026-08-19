@@ -299,6 +299,7 @@ public sealed class LangVm
         var result = SourceCompiler.Compile(source, new CompilerOptions
         {
             StdlibRoot = _options.StdlibRoot,
+            SourceRoot = _options.SourceRoot,
             NativeRoots = _options.NativeRoots,
             NativeModules = HostModuleSource is { } host
                 ? new Dictionary<string, string>(StringComparer.Ordinal) { [HostModule] = host }

@@ -4072,6 +4072,45 @@
           }
         }
       ]
+    },
+    {
+      "Path": "std.test",
+      "Doc": "Marking tests, and the assertions that fail them. `lyric test` runs every function marked\n`@Test` in the project's test root; a test fails by panicking, which is what the assertions\nhere do.",
+      "Items": [
+        {
+          "Kind": "Struct",
+          "Name": "Test",
+          "Signature": "pub struct Test :: [OnFunction]",
+          "Doc": "Marks a top-level function as a test. `lyric test` finds it through the attribute row and\nruns it in a fresh instance; the function takes no parameters and returns nothing.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/test.lyr",
+            "Line": 16
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "assertTrue",
+          "Signature": "pub fn assertTrue(condition: bool, message: string): void",
+          "Doc": "Fails the test with `message` when `condition` is false.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/test.lyr",
+            "Line": 19
+          }
+        },
+        {
+          "Kind": "Function",
+          "Name": "assertEq",
+          "Signature": "pub fn assertEq<T :: [Equatable<T>, Display]>(actual: T, expected: T): void",
+          "Doc": "Fails the test when the two values differ, naming both.",
+          "Members": [],
+          "Source": {
+            "File": "stdlib/std/test.lyr",
+            "Line": 26
+          }
+        }
+      ]
     }
   ]
 }

@@ -32,6 +32,11 @@ public sealed record ProjectFile
     /// <see cref="Directory"/>.</summary>
     public required string SourceRoot { get; init; }
 
+    /// <summary>Where the tests live, absolute — the directory only <c>lyric test</c> compiles.
+    /// <c>null</c> when the file names none; the runner then tries <c>tests/</c> under
+    /// <see cref="Directory"/> and treats its absence as "no tests".</summary>
+    public string? TestRoot { get; init; }
+
     /// <summary>Module path segment to directory, absolute. Empty when the file names none.</summary>
     public required IReadOnlyDictionary<string, string> NativeRoots { get; init; }
 
@@ -100,6 +105,7 @@ public sealed record ProjectFile
 
             var warnings = new List<string>();
             var sourceRoot = directory;
+            string? testRoot = null;
             var nativeRoots = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var property in document.RootElement.EnumerateObject())
@@ -112,6 +118,10 @@ public sealed record ProjectFile
 
                     case "nativeRoots":
                         ReadNativeRoots(full, directory, property.Value, nativeRoots);
+                        break;
+
+                    case "testRoot":
+                        testRoot = Resolve(full, directory, "testRoot", property.Value);
                         break;
 
                     // Tolerated rather than rejected, for the same reason the bytecode reader skips
@@ -127,6 +137,7 @@ public sealed record ProjectFile
             {
                 Directory = directory,
                 SourceRoot = sourceRoot,
+                TestRoot = testRoot,
                 NativeRoots = nativeRoots,
                 Warnings = warnings,
             };

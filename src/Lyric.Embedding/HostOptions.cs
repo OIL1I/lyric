@@ -29,6 +29,16 @@ public sealed record HostOptions
     /// </summary>
     public IReadOnlyDictionary<string, string>? NativeRoots { get; init; }
 
+    /// <summary>
+    /// Where a script's OWN modules are looked up. <c>null</c> means the directory of the entry
+    /// file, as everywhere else.
+    ///
+    /// <para>What lets a host compile a file that imports the project's modules from somewhere
+    /// other than beside itself — a test runner compiling <c>tests/</c> against <c>src/</c> is
+    /// the case that added it.</para>
+    /// </summary>
+    public string? SourceRoot { get; init; }
+
     /// <summary>Where a script writes. Defaults to <see cref="TextWriter.Null"/>.</summary>
     public TextWriter? Output { get; init; }
 
