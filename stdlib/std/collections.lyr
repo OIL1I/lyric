@@ -5,7 +5,7 @@
 module std.collections;
 
 import std.iter { Iterator, Iterable };
-import std.core { Hashable, Equatable, Ordered };
+import std.core { Hashable, Equatable, Ordered, Deprecated };
 
 /// What can be read and written with `[i]`.
 ///
@@ -47,6 +47,12 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
     /// How many values are in it.
     pub fn length(): int {
         return this.count;
+    }
+
+    /// An empty list.
+    pub static fn empty(): List<T> {
+        let hole: ?T = null;
+        return List<T> { data = [hole] * 0, count = 0 };
     }
 
     /// A fresh cursor on every call, so two loops over the same list do not disturb each other.
@@ -161,14 +167,9 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
 }
 
 /// An empty list.
-// A free function rather than a `static fn`, originally because a static method on
-// a generic instance was not expressible.
-//
-// It would be writable as `List<int>.empty()` now. It stays a free function because the change
-// would cost every caller and buys nothing this form cannot do.
+@Deprecated { message = "use List.empty()" }
 pub fn emptyList<T>(): List<T> {
-    let hole: ?T = null;
-    return List<T> { data = [hole] * 0, count = 0 };
+    return List<T>.empty();
 }
 
 /// Walks a list; each loop holds its own cursor.
@@ -195,7 +196,7 @@ pub class ListIterator<T> :: [Iterator<T>] {
 /// `std.iter`, not the reverse. `std.iter.collectArray` is the variant without that dependency,
 /// and it is quadratic because a `T[]` copies on every append. This one doubles and is linear.
 pub fn collect<T>(source: Iterator<T>): List<T> {
-    var result = emptyList<T>();
+    var result = List<T>.empty();
     var value = source.next();
     while (value != null) {
         result.push(value);
@@ -272,6 +273,19 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
             steps = steps + 1;
         }
         return -1;
+    }
+
+    /// An empty map, with room for the first insertions before a growth.
+    pub static fn empty(): Map<K, V> {
+        let keyHole: ?K = null;
+        let valueHole: ?V = null;
+        return Map<K, V> {
+            keys = [keyHole] * 8,
+            values = [valueHole] * 8,
+            states = [0] * 8,
+            count = 0,
+            used = 0,
+        };
     }
 
     /// Whether the key is in the map.
@@ -373,18 +387,9 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
 }
 
 /// An empty map.
+@Deprecated { message = "use Map.empty()" }
 pub fn emptyMap<K :: [Hashable<K>, Equatable<K>], V>(): Map<K, V> {
-    let keyHole: ?K = null;
-    let valueHole: ?V = null;
-    // Eight slots to start: small enough that an empty map costs little, large enough that the
-    // first insertions do not trigger two doublings.
-    return Map<K, V> {
-        keys = [keyHole] * 8,
-        values = [valueHole] * 8,
-        states = [0] * 8,
-        count = 0,
-        used = 0,
-    };
+    return Map<K, V>.empty();
 }
 
 // ================================================================ sorting
@@ -550,6 +555,12 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> {
         return -1;
     }
 
+    /// An empty set.
+    pub static fn empty(): Set<T> {
+        let hole: ?T = null;
+        return Set<T> { items = [hole] * 8, states = [0] * 8, count = 0, used = 0 };
+    }
+
     /// Whether the value is in the set.
     pub fn contains(value: T): bool {
         return this.findSlot(value) >= 0;
@@ -654,16 +665,16 @@ pub class SetIterator<T :: [Hashable<T>, Equatable<T>]> :: [Iterator<T>] {
 }
 
 /// An empty set.
+@Deprecated { message = "use Set.empty()" }
 pub fn emptySet<T :: [Hashable<T>, Equatable<T>]>(): Set<T> {
-    let hole: ?T = null;
-    return Set<T> { items = [hole] * 8, states = [0] * 8, count = 0, used = 0 };
+    return Set<T>.empty();
 }
 
 // --- Set operations. All return a NEW set; none changes its arguments. ---
 
 /// Everything in either set, as a NEW set; neither argument changes.
 pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
-    let result = emptySet<T>();
+    let result = Set<T>.empty();
     for (v in a.iter()) {
         result.add(v);
     }
@@ -675,7 +686,7 @@ pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
 
 /// Everything in both sets, as a NEW set; neither argument changes.
 pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
-    let result = emptySet<T>();
+    let result = Set<T>.empty();
     // Walk the SMALLER one: the number of probes depends on it.
     let small = if (a.length() <= b.length()) a else b;
     let large = if (a.length() <= b.length()) b else a;
@@ -689,7 +700,7 @@ pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T>
 
 /// Everything in `a` that is not in `b`, as a NEW set; neither argument changes.
 pub fn difference<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
-    let result = emptySet<T>();
+    let result = Set<T>.empty();
     for (v in a.iter()) {
         if (!b.contains(v)) {
             result.add(v);

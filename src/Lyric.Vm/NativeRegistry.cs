@@ -438,6 +438,12 @@ public sealed class NativeRegistry
         registry.RegisterArrayReturning("std.io.file.readLines", str, TypeTag.String,
             args => Lines(TryIo(() => File.ReadAllText(args[0].AsString))));
 
+        // The raw bytes, undecoded — the answer readText cannot give: its UTF-8 decoding turns
+        // invalid bytes into U+FFFD. Empty when unreadable, the readLines convention; a caller
+        // that needs the difference asks 'exists' first.
+        registry.RegisterArrayReturning("std.io.file.readBytes", str, TypeTag.U8,
+            args => Bytes(TryIoBytes(() => File.ReadAllBytes(args[0].AsString))));
+
         // ------------------------------------------------------------ std.io.file, continued
         //
         // Everything here runs through 'TryIo': a missing file, a locked directory or a full disk
@@ -690,6 +696,29 @@ public sealed class NativeRegistry
 
     /// <summary>Lines without their terminators, so the result does not depend on whether the
     /// file was written with CRLF or LF.</summary>
+    /// <summary>As <see cref="TryIo"/>, for an operation whose answer is bytes.</summary>
+    private static byte[]? TryIoBytes(Func<byte[]> operation)
+    {
+        try
+        {
+            return operation();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                                       or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The bytes as a <c>uint8[]</c> value; unreadable reads as empty.</summary>
+    private static LyrValue Bytes(byte[]? content)
+    {
+        if (content is null) return LyrValue.FromObject(Array.Empty<LyrValue>());
+        var values = new LyrValue[content.Length];
+        for (var i = 0; i < content.Length; i++) values[i] = LyrValue.FromBits(content[i]);
+        return LyrValue.FromObject(values);
+    }
+
     private static LyrValue Lines(string? content)
     {
         if (content is null) return LyrValue.FromObject([]);

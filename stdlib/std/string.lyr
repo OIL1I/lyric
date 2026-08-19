@@ -508,6 +508,11 @@ pub class StringBuilder {
     /// How many entries of `parts` are real.
     count: int,
 
+    /// An empty builder.
+    pub static fn new(): StringBuilder {
+        return StringBuilder { parts = [""] * 4, count = 0 };
+    }
+
     /// How many pieces were appended — the PIECE count, not the character count.
     pub fn length(): int {
         return this.count;
@@ -551,7 +556,8 @@ pub class StringBuilder {
     }
 }
 
-/// An empty builder.
+/// An empty builder. Prefer `StringBuilder.new()`; deprecating this one waits on attribute
+/// visibility — `@Deprecated` lives in `std.core`, and importing that here would be a cycle.
 pub fn newStringBuilder(): StringBuilder {
-    return StringBuilder { parts = [""] * 4, count = 0 };
+    return StringBuilder.new();
 }

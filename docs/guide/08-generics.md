@@ -16,10 +16,10 @@ Type arguments are inferred from the arguments where possible. Where the argumen
 determine them, write them at the call:
 
 ```lyr
-import std.collections { emptyList };
+import std.collections { List };
 
 fn main(): int {
-    let numbers = emptyList<int>();
+    let numbers = List<int>.empty();
     numbers.push(3);
     return numbers.length();
 }

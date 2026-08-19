@@ -63,7 +63,7 @@ fn main(): int {
 
 ```lyr
 import std.io.console { println };
-import std.collections { emptyList };
+import std.collections { List };
 
 fn main(): int {
     let names = ["Ada", "Grace"];
@@ -71,7 +71,7 @@ fn main(): int {
         println(name);
     }
 
-    let numbers = emptyList<int>();
+    let numbers = List<int>.empty();
     numbers.push(1);
     numbers.push(2);
     for (n in numbers) {

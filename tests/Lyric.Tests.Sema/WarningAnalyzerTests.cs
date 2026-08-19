@@ -197,6 +197,38 @@ public class WarningAnalyzerTests
             withStdlib: true));
     }
 
+    // ─── builtin-shadowing imports (LYR-SEM0077) ───────────────────────────
+
+    [Fact]
+    public void A_bare_import_binding_a_builtin_type_name_warns()
+    {
+        var de = Check("import std.string;\n\nfn main(): int {\n    return 0;\n}\n",
+            withStdlib: true);
+        AssertWarns(de, "LYR-SEM0077");
+        Assert.Contains(de.Diagnostics, d => d.Message.Contains("shadowing the builtin type"));
+    }
+
+    [Fact]
+    public void A_selective_import_of_the_same_module_is_silent()
+    {
+        AssertSilent(Check(
+            "import std.string { length };\n\nfn main(): int {\n    return length(\"ab\");\n}\n",
+            withStdlib: true));
+    }
+
+    [Fact]
+    public void Using_the_shadowed_type_as_an_annotation_is_the_module_error()
+    {
+        // The crash this replaced: the local-annotation path produced an ErrorType WITHOUT
+        // reporting, and the lowering threw on it. Now it is LYR-SEM0011 naming the trap.
+        var de = Check(
+            "import std.string;\n\nfn main(): int {\n    let s: string = \"x\";\n    return 0;\n}\n",
+            withStdlib: true);
+        Assert.True(de.HasErrors);
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0011"
+            && d.Message.Contains("is a module, not a type"));
+    }
+
     // ─── unreachable statements (LYR-SEM0073) ──────────────────────────────
 
     [Fact]

@@ -53,9 +53,18 @@ public class CorpusWarningTests
                 options)
             : SourceCompiler.Check(Path.Combine(RepoRoot(), relativePath), options);
 
-        Assert.True(result.Diagnostics.Count == 0,
+        // The probe's own line may warn — a bare 'import std.string;' shadows the builtin type,
+        // by design. That is the harness's noise, not the module's; only diagnostics OUTSIDE the
+        // probe file speak about the corpus.
+        var findings = result.Diagnostics.Diagnostics.Where(d =>
+                !d.Span.File.IsValid
+                || !result.Sources.GetPath(d.Span.File)
+                    .EndsWith("corpus_probe.lyr", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.True(findings.Count == 0,
             $"{relativePath} does not check in silence:\n" + string.Join("\n",
-                result.Diagnostics.Diagnostics.Select(d =>
+                findings.Select(d =>
                     $"{d.Severity.ToDisplayString()}[{d.Code}]: {d.Message}")));
     }
 

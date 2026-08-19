@@ -23,7 +23,7 @@ import std.collections as coll;            // alias
 
 fn main(): int {
     console.println(f"{sqrt(4.0)}");
-    let list = coll.emptyList<int>();
+    let list = coll.List<int>.empty();
     return list.length();
 }
 ```

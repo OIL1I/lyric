@@ -540,6 +540,15 @@ public static class ModuleLowerer
             {
                 switch (decl)
                 {
+                    // A GENERIC declaration emits no row: there is one row and as many instances
+                    // as the program creates. The sema admits only the compiler-read @Deprecated
+                    // there, and its consumer is the sema itself — nothing downstream misses it.
+                    case FunctionDecl { Attributes.Length: > 0, Generics.Length: > 0 }:
+                    case StructDecl { Attributes.Length: > 0, Generics.Length: > 0 }:
+                    case ClassDecl { Attributes.Length: > 0, Generics.Length: > 0 }:
+                    case EnumDecl { Attributes.Length: > 0, Generics.Length: > 0 }:
+                        break;
+
                     case FunctionDecl { Attributes.Length: > 0 } fn:
                         if (module.Members.LookupLocal(fn.Name) is not FunctionSymbol fs
                             || !ids.TryGetValue(fs, out var fid))

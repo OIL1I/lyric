@@ -3542,7 +3542,12 @@ internal sealed class FunctionLowerer
             case MemberExpr { Target: TypePathExpr } member
                 when _types.TypeOf(((MemberExpr)expr.Callee).Target)
                      is Sema.NonValueType { Instance: { } owner }:
-                return LowerGenericStaticCall(member, owner, expr);
+                // Through the OWN substitution, as the instance-method dispatch below does: in
+                // 'fn make<T>()' the call 'List<T>.empty()' names the CALLER's T, and which type
+                // that is only the enclosing instantiation knows. Unsubstituted it reached the
+                // type table as a bare parameter and threw.
+                return LowerGenericStaticCall(member,
+                    SubstituteType(owner) as GenericInstance ?? owner, expr);
 
             // The receiver is an interface value: which implementation runs is settled only at runtime.
             // That is the language's only dynamic dispatch.

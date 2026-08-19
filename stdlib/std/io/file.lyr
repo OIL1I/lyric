@@ -29,6 +29,12 @@ pub fn exists(path: string): bool;
 /// `true` when the file is gone afterwards, including when it never existed.
 pub fn remove(path: string): bool;
 
+/// The raw bytes, undecoded — what `readText` cannot give: its UTF-8 decoding turns invalid
+/// bytes into U+FFFD. An unreadable file reads as empty, the `readLines` convention; a caller
+/// that needs the difference asks `exists` first. Writing bytes is not here yet: an array has
+/// never crossed the native boundary as a PARAMETER, and that machinery is its own change.
+pub fn readBytes(path: string): uint8[];
+
 /// The lines of a file, or an empty array when it is not readable. Terminators are removed,
 /// so whether the file used CRLF or LF is no longer visible.
 pub fn readLines(path: string): string[];

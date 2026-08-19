@@ -10,6 +10,8 @@
 
 module std.math;
 
+import std.core { Deprecated };
+
 /// The circle constant π.
 pub let pi: float = 3.141592653589793;
 
@@ -316,6 +318,13 @@ pub class Random {
         return bits as float / 9007199254740992.0;
     }
 
+    /// A generator with an explicit seed. A seed of 0 is a fixed point for xorshift — the
+    /// sequence would stay 0 forever — so it is replaced silently rather than panicking on a
+    /// plausible input.
+    pub static fn seeded(seed: int): Random {
+        return Random { state = if (seed == 0) 0x2545F4914F6CDD1D else seed };
+    }
+
     /// True or false, from the next draw's parity.
     pub mut fn nextBool(): bool {
         return this.nextInt() % 2 == 0;
@@ -323,9 +332,7 @@ pub class Random {
 }
 
 /// A generator with an explicit seed.
-///
-/// A seed of 0 is a fixed point for xorshift — the sequence would stay 0 forever — so it is
-/// replaced silently rather than panicking on a plausible input.
+@Deprecated { message = "use Random.seeded()" }
 pub fn newRandom(seed: int): Random {
-    return Random { state = if (seed == 0) 0x2545F4914F6CDD1D else seed };
+    return Random.seeded(seed);
 }

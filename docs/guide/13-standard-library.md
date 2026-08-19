@@ -22,10 +22,10 @@ The standard library is written in Lyric and ships as source alongside the toolc
 
 ```lyr
 import std.io.console { println };
-import std.collections { emptyList };
+import std.collections { List };
 
 fn main(): int {
-    let items = emptyList<string>();
+    let items = List<string>.empty();
     items.push("first");
     items.push("second");
 
