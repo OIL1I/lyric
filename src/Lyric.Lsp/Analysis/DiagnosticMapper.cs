@@ -58,12 +58,54 @@ public static class DiagnosticMapper
             Severity = ToSeverity(diagnostic.Severity),
             Code = diagnostic.Code,
             Message = diagnostic.Message,
+            RelatedInformation = MapNotes(sources, diagnostic),
+            Tags = TagsFor(diagnostic.Code),
         };
+
+    /// <summary>
+    /// The presentation a code asks for: unused and unreachable code fades, the deprecated
+    /// instance form is struck through. By CODE rather than by a flag on the diagnostic — the
+    /// severity catalogue rule again: what a code means includes how it is drawn.
+    /// </summary>
+    private static IReadOnlyList<LspDiagnosticTag>? TagsFor(string code) => code switch
+    {
+        "LYR-SEM0071" or "LYR-SEM0072" or "LYR-SEM0073" => [LspDiagnosticTag.Unnecessary],
+        "LYR-SEM0074" => [LspDiagnosticTag.Deprecated],
+        _ => null,
+    };
+
+    /// <summary>
+    /// The notes as the protocol's related information. A note without a place of its own is
+    /// anchored at the diagnostic — the protocol requires a location, and the diagnostic's own is
+    /// the honest one.
+    /// </summary>
+    private static IReadOnlyList<LspDiagnosticRelatedInformation>? MapNotes(
+        SourceManager sources, Diagnostic diagnostic)
+    {
+        if (diagnostic.Notes is not { Count: > 0 } notes) return null;
+
+        var mapped = new List<LspDiagnosticRelatedInformation>(notes.Count);
+        foreach (var note in notes)
+        {
+            var location = note.Location.File.IsValid ? note.Location : diagnostic.Span;
+            mapped.Add(new LspDiagnosticRelatedInformation
+            {
+                Location = new Location
+                {
+                    Uri = Documents.DocumentUri.FromFilePath(sources.GetPath(location.File)),
+                    Range = SpanMapper.ToVisibleRange(sources, location),
+                },
+                Message = note.Message,
+            });
+        }
+        return mapped;
+    }
 
     private static LspSeverity ToSeverity(Severity severity) => severity switch
     {
         Severity.Error => LspSeverity.Error,
         Severity.Warning => LspSeverity.Warning,
+        Severity.Info => LspSeverity.Information,
         Severity.Hint => LspSeverity.Hint,
 
         // Total over today's severities. A new one is a decision about how an editor should draw

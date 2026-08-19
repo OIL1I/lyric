@@ -17,6 +17,22 @@ v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables
 split the editor clients release from their own repositories, and a toolchain release carries
 the archives alone.
 
+**M19 — diagnostics — is BUILT** (2026-08-19, branch `feature/m19-diagnostics`, four slices,
+the first milestone of the v2 sequence: v1.10.0). The delivery list, ticked point by point:
+
+- [x] four severities — Info joins — render in text, JSON and over the protocol (slice 1)
+- [x] a diagnostic carries notes; the problem-matcher head format is pinned by test (slice 1)
+- [x] `--deny-warnings` on check and build; a denied build writes no artifact (slice 1)
+- [x] warnings: unused locals/loop/catch/pattern bindings, unused imports, unreachable
+      statements, static-extension-through-instance as the deprecation clock; duplicate module
+      names are an error with a note (slice 2)
+- [x] did-you-mean, previous-declaration and declared-here notes; LYR-SEM0046 carries its way
+      out as a note (slice 3)
+- [x] the first hint: a `var` through which nothing is ever changed (slice 3)
+- [x] editors fade unused code and strike through the deprecated form (slice 4)
+- [x] the corpus checks in SILENCE, held by a test the way the formatter holds its shape (slice 4)
+- [x] guide chapter 19; CHANGELOG prepared as Unreleased (slice 4)
+
 **M18 — the formatter — is BUILT** (2026-08-19, branch `feature/m18-lyrfmt`, stacked on M17,
 four slices). The delivery list, ticked point by point as the milestone rule demands:
 
@@ -76,9 +92,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4125 tests green **in Debug and Release**, bytecode format **3.2**, **nine** binaries
-(`lyrstub`, `lyrpack` and `lyrfmt` are the three new ones) plus `lyrembed.dll`, version
-**1.9.0**.
+4183 tests green **in Debug and Release**, bytecode format **3.2**, **nine** binaries
+plus `lyrembed.dll`, version **1.9.1** (M19 pending review as v1.10.0).
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -94,6 +109,21 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M19 — diagnostics** (2026-08-19, four slices, `feature/m19-diagnostics`, 4183 tests
+  green in Release). The compiler learns to speak below "error", with no lint framework: the
+  analyses consume the tables the checker and resolver already built, `Flow.AlwaysExits`
+  answers reachability, and severity belongs to the CODE — the catalogue rule the spec will
+  inherit.
+  - **The gate keeps its honesty**: `--deny-warnings` fails the run through the exit code and
+    one closing error; the warnings keep their severity in the output. Deliberately not rustc's
+    relabeling.
+  - **The hint learned restraint the corpus taught**: field writes through `let` happen to
+    compile, so the never-reassigned hint counts every touch — writes, `mut` calls, by-reference
+    handover — and the conservative rule declared every existing corpus `var` legitimate.
+  - **Two long-standing entries closed on the way**: the static-extension asymmetry is a
+    deprecation warning now, and duplicate module names are an error with a note at the first
+    claim. The corpus checks in silence, and a test holds it there.
 
 - [x] **M18 — the formatter** (2026-08-19, four slices, `feature/m18-lyrfmt`, 4125 tests green
   in Debug and Release). gofmt's shape for Lyric: parse, print from the tree, no style options.
@@ -134,42 +164,6 @@ out of them and hands its own functions, types and value structs in.
   - **The release gates itself**: both workflows publish, pack `examples/hello.lyr` and RUN the
     result on each platform — on macOS after the ad-hoc re-sign the guide documents, so the
     documented shipping workflow is executed, not merely written down.
-
-- [x] **M16 slice 6 — the JetBrains thin plugin, and the milestone closes** (2026-08-18, stacked
-  on #47). `tooling/jetbrains-lyric`: ~200 lines of Kotlin, and every one of them is wiring.
-  - **The plan's verification came first and corrected the baseline**: the platform's LSP
-    integration gained find references and semantic tokens in 2024.2, folding and inlay hints in
-    2025.2, signature help and workspace symbols in 2025.3, rename in **2026.1** — so the
-    baseline is 2026.1 (`sinceBuild 261`), not the 2023.2 the plan guessed; that floor would have
-    kept only diagnostics, completion and the jump. Commercial IDEs only (`com.intellij.modules.lsp`);
-    LSP4IJ deliberately unsupported.
-  - The DEPRECATED API names (`LspServerSupportProvider`) on purpose: documented as preserved and
-    fully functional, while the renamed successor exists only from 2026.1.4 — pinning to a point
-    release for a rename of the same API would be baseline for nothing.
-  - **The grammar has one home**: the build copies the TextMate bundle from `../vscode-lyric` at
-    packaging time (the test suite pins that copy against the lexer) and the provider extracts it
-    for the IDE's TextMate machinery at runtime. One setting — the toolchain directory, else
-    PATH, the extension's own ladder.
-  - **Verified by building**: the 17 KB zip holds the jar, the grammar and no Kotlin stdlib
-    (`compileOnly` — the IDE ships its own, a second copy is a classloader conflict on a timer).
-    `verifyPluginStructure` green; the runtime behavior is a manual checklist in the plugin's
-    README, because headless IDE tests cost more harness than this plugin has code. CI builds it
-    on every push; the release attaches `jetbrains-lyric-<version>.zip`.
-
-- [x] **M16 slice 5 — the VS Code extension rounded off** (2026-08-18, stacked on #46). No server
-  change; the extension catches up with what the server can do, and the release learns to ship it.
-  - **`lyric.restartServer`** over the existing restart chain — the way out of a hung or updated
-    server without a window reload. A **language status item** shows starting/running-with-version/
-    failed; a failed start stops being an invisible toast, and clicking the item retries.
-  - **A task provider** (`lyric: build`) for every workspace folder with a `lyric.json`: runs the
-    project's `build.lyr` through the driver, diagnostics land in the Problems panel via the
-    `$lyric` problem matcher. The matcher's regex was verified against `DiagnosticEngine.RenderText`
-    first — `path:line:col: severity[CODE]: message` — the precondition the plan named.
-  - **Snippets** for the declaration forms, written against the grammar (`match (x) { P => v, }`),
-    and **`vsce package` in the release workflow**: from the next tag every release carries an
-    installable `vscode-lyric-<version>.vsix` beside the archives — verified by a local dry run
-    (324 files, 471 KB), including the LICENSE copy vsce insists on. Marketplace publishing stays
-    a separate decision; the release asset is the distribution.
 
 ## Measurements
 
@@ -257,17 +251,23 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
+**M19 is built and awaits review** (branch `feature/m19-diagnostics`, four slice commits, PR to
+follow). It is the first milestone of the agreed v2 sequence — next in line: v1.11 "attributes
+become load-bearing" (`@Deprecated` compiler-read, `@Test`/lyrtest tool-read). The severity of a
+code is contract from here on; the future spec's catalogue lists code → severity, and nothing
+configures it. Deliberately NOT in M19: suppression (would be a compiler-read attribute — a
+v1.11 decision), per-lint levels (config surface without an ecosystem to need it),
+machine-applicable fixes (need an edit representation; quick-fix material for later).
+
 **The repository moved and the clients moved out** (2026-08-19): the project lives in the
 `lyriclang` org — `lyriclang/lyric` is the toolchain, ONE repository with ONE version, and the
 editor clients are their own repositories (`vscode-lyric`, `jetbrains-lyric`), split with their
 history, versioned on their own cadence, releasing their own installables. The TextMate
 grammar's canonical home is `tooling/textmate` HERE, beside the lexer `GrammarTests` pins it
 against; each client carries a working copy its `grammar-sync` CI job diffs against this one.
-The extension's manifest tests moved with the extension (`scripts/check-manifest.mjs` there,
-`ExtensionTests.cs` gone here). **Open from the move**: the next release's changelog entry says
-where the installables went; the clients' `grammar-sync` fallback to the old path goes once this
-lands; Erato pins checked-in binaries (`lib/lyric`), so nothing breaks — its README names the
-repository and gets the new URL with the next pin update.
+The changelog note about where the installables went is written (Unreleased entry); Erato pins
+checked-in binaries (`lib/lyric`), so nothing breaks — its README gets the new URL with the
+next pin update.
 
 **M17 and M18 shipped together as v1.9.0** (2026-08-19) — the PR stack #50 (packing) ← #51
 (formatter), merged in that order; release commit and annotated tag explicitly delegated for
@@ -302,11 +302,12 @@ every time). Worth a look before it becomes a CI lottery.
 **M16 is closed and released as v1.8.0.** What remains from it: the first manual run of the
 JetBrains checklist (plugin README) against the released zip, in a 2026.1+ IDE.
 
-The open points for the **2026-09-06 scope check** stand unchanged: heterogeneous arithmetic,
-compound assignment through the interfaces, the static-extension asymmetry, the first
-compiler-read attribute, the `for-in` peephole, Erato's A4 (an opaque `Entity`) and the E4-side
-adoption — plus, new from this milestone: parameter-name inlay hints, semantic-token deltas if a
-measurement ever asks, and a duplicate-module diagnostic for two files claiming one name.
+The open points for the **2026-09-06 scope check**: heterogeneous arithmetic, compound
+assignment through the interfaces, the first compiler-read attribute (v1.11 material), the
+`for-in` peephole, Erato's A4 (an opaque `Entity`) and the E4-side adoption — plus, from M16:
+parameter-name inlay hints and semantic-token deltas if a measurement ever asks. M19 closed two
+former entries: the static-extension asymmetry warns as a deprecation now (the error lands with
+2.0), and duplicate module names are `LYR-RES0007`.
 
 **Not renameable, recorded**: a module (rename the file), an enum variant's payload field (no
 symbol exists for it), anything whose declaring module is native. Renaming across `build.lyr` is
@@ -361,16 +362,11 @@ answer yet, and it belongs asked before E4 starts.
     and a host calling an unexported function through the embedding API would then find it missing.
   - It is the point at which a binary library would carry half a standard library with it, so it
     belongs answered before that is ever a goal.
-- **A STATIC extension method is callable through an INSTANCE.** `p.make()` compiles when `make` is
-  a `static fn` in an `extend` block, because the lookup's instance path falls through to the
-  extension without checking — while the type path rejects a non-static extension explicitly with
-  `LYR-SEM0055`. The asymmetry reads as an oversight rather than a rule; completion does not offer
-  it. Measured by a test that records the current direction, so changing it starts there.
-- **`TypeResult._refs` still holds declarations beside uses**, because the definite-assignment
+- **`TypeResult._refs` holds declarations beside uses**, because the definite-assignment
   analysis binds a `BindingStmt`, a `Param`, a `ForInStmt` and the pattern bindings to the symbol
-  they themselves declare. Splitting the two apart has **no consumer**: the lowering matches on
-  symbol kind, the server compares `symbol.Declaration` against the node. Recorded so the next reader
-  of that table knows what is in it, not as work waiting to be done.
+  they themselves declare. Since M19 the separation rule has its first consumer: the
+  `WarningAnalyzer` splits the two by `ReferenceEquals(symbol.Declaration, node)`, exactly as the
+  table's own documentation prescribes. No split table needed after all.
   - *The receiver-kind question is out of it since v1.4.0 slice 1*, which is what made the table safe
     to add to.
 - **Section byte sizes are missing from `lyrvm info`**: the reader discards them after parsing.

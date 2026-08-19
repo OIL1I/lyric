@@ -409,7 +409,8 @@ public sealed class TypeChecker
                 {
                     if (im.Body is null) // abstract and not implemented
                         _de.Report("LYR-SEM0020", Severity.Error, NodeSpan(node),
-                            $"'{name}' does not implement abstract method '{im.Name}' of interface '{iface.Name}'");
+                            $"'{name}' does not implement abstract method '{im.Name}' of interface '{iface.Name}'",
+                            new DiagnosticNote(im.Span, $"'{im.Name}' is declared here"));
                     continue; // a default method is inherited
                 }
                 var want = (FnType)Substitute(FnTypeOf(FnSym(iface, im.Name)!), subst);
@@ -959,7 +960,9 @@ public sealed class TypeChecker
     private LyrType CheckIdentifier(IdentifierExpr id, SymbolTable scope)
     {
         var sym = scope.Lookup(id.Name);
-        if (sym is null) return Report(id.Span, "LYR-SEM0002", $"unknown identifier '{id.Name}'");
+        if (sym is null)
+            return Report(id.Span, "LYR-SEM0002", $"unknown identifier '{id.Name}'",
+                NameSuggestion.Note(id.Name, NamesIn(scope, typesOnly: false)));
         _result.BindRef(id, sym);
         if (_narrowed.TryGetValue(sym, out var narrowed)) return narrowed; // ?T is T inside the narrowed region
         // A selective import (import std.io.console { println }) binds to a shell; the target is what
@@ -2093,9 +2096,23 @@ public sealed class TypeChecker
 
                 _ => (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null)
             };
-        if (ExtensionMember(ts, member, span) is { } ext) return (FnTypeOf(ext), ext);
+        if (ExtensionMember(ts, member, span) is { } ext)
+        {
+            // The instance path used to fall through to a STATIC extension without checking — the
+            // asymmetry the type path never had. Recorded as an accident, warned now, an error
+            // with the next major: the warning is the deprecation clock.
+            if (ext.IsStatic)
+                _de.Report("LYR-SEM0074", Severity.Warning, span,
+                    $"'{member}' is a static extension and belongs to the type — "
+                    + $"call '{ts.Name}.{member}(…)'; the instance form is deprecated "
+                    + "and becomes an error");
+            return (FnTypeOf(ext), ext);
+        }
         if (DefaultMember(ts, member, span) is { } def) return def;
-        return (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'"), null);
+        return (Report(span, "LYR-SEM0012", $"'{ts.Name}' has no member '{member}'",
+            NameSuggestion.Note(member, MemberFacts
+                .OfInstance(_comp, _binding, ts, _currentModule)
+                .Select(candidate => candidate.Symbol.Name))), null);
     }
 
     // A visible extension method of this name, meaning the declaring module is the current one or is
@@ -2216,7 +2233,8 @@ public sealed class TypeChecker
                     $"call it on a value, or declare it 'static fn {member}(…)'"), ext),
 
                 null => (Report(span, "LYR-SEM0012",
-                    $"'{ts.Name}' has no static member '{member}'"), null),
+                    $"'{ts.Name}' has no static member '{member}'",
+                    NameSuggestion.Note(member, ts.Members.Symbols.Select(s => s.Name))), null),
             }
         };
     }
@@ -2300,7 +2318,10 @@ public sealed class TypeChecker
         var written = string.Join('.', attribute.Path);
         if (sym is null)
         {
-            _de.Report("LYR-SEM0011", Severity.Error, attribute.PathSpan, $"unknown type '{written}'");
+            Report(attribute.PathSpan, "LYR-SEM0011", $"unknown type '{written}'",
+                attribute.Path is [var single]
+                    ? NameSuggestion.Note(single, NamesIn(scope, typesOnly: true))
+                    : null);
             foreach (var f in attribute.Fields) CheckExpr(f.Value, scope);
             return null;
         }
@@ -2409,7 +2430,11 @@ public sealed class TypeChecker
 
         if (sym is not TypeSymbol ts)
         {
-            if (sym is null) _de.Report("LYR-SEM0011", Severity.Error, si.Span, $"unknown type '{string.Join('.', si.Path)}'");
+            if (sym is null)
+                Report(si.Span, "LYR-SEM0011", $"unknown type '{string.Join('.', si.Path)}'",
+                    si.Path is [var single]
+                        ? NameSuggestion.Note(single, NamesIn(scope, typesOnly: true))
+                        : null);
             foreach (var f in si.Fields) CheckExpr(f.Value, scope);
             return LyrType.Error;
         }
@@ -2509,7 +2534,10 @@ public sealed class TypeChecker
         if (sym is not TypeSymbol ts)
         {
             foreach (var a in tp.TypeArguments) ResolveType(a, scope);
-            return Report(tp.Span, "LYR-SEM0011", $"unknown type '{string.Join('.', tp.Path)}'");
+            return Report(tp.Span, "LYR-SEM0011", $"unknown type '{string.Join('.', tp.Path)}'",
+                tp.Path is [var single]
+                    ? NameSuggestion.Note(single, NamesIn(scope, typesOnly: true))
+                    : null);
         }
 
         _result.BindRef(tp, ts);
@@ -3320,8 +3348,10 @@ public sealed class TypeChecker
                 else if (contextRet is null || openGeneric)
                 {
                     ret = Report(lam.Span, "LYR-SEM0046", openGeneric
-                        ? "cannot infer a generic return type for a block lambda — add a return type annotation"
-                        : "a block lambda that returns a value needs a return type annotation or a context type");
+                            ? "cannot infer a generic return type for a block lambda"
+                            : "the return type of this block lambda is not known here",
+                        new DiagnosticNote(
+                            "add a return type annotation, or give the lambda a context type"));
                     _currentReturn = LyrType.Error; // do not let returns in the body cascade
                     CheckBlock(b, lambdaScope);
                 }
@@ -3767,6 +3797,28 @@ public sealed class TypeChecker
     {
         _de.Report(code, Severity.Error, span, message);
         return LyrType.Error;
+    }
+
+    /// <summary>As <see cref="Report"/>, with an optional note — the shape a "did you mean"
+    /// arrives in, which is a note or nothing.</summary>
+    private LyrType Report(Span span, string code, string message, DiagnosticNote? note)
+    {
+        if (note is { } n) _de.Report(code, Severity.Error, span, message, n);
+        else _de.Report(code, Severity.Error, span, message);
+        return LyrType.Error;
+    }
+
+    /// <summary>Every name visible from a scope, outermost last. For an unknown TYPE the
+    /// candidates narrow to what could stand in a type position.</summary>
+    private static IEnumerable<string> NamesIn(SymbolTable scope, bool typesOnly)
+    {
+        for (var table = scope; table is not null; table = table.Parent)
+            foreach (var symbol in table.Symbols)
+            {
+                var target = symbol is ImportBindingSymbol shell ? shell.Target : symbol;
+                if (!typesOnly || target is TypeSymbol or GenericParamSymbol or ExternalSymbol)
+                    yield return symbol.Name;
+            }
     }
 
     private void BadOp(Span span, string op, LyrType t) =>

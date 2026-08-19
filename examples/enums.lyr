@@ -21,7 +21,7 @@ pub enum Shape {
 
     fn name(): string {
         return match (this) {
-            Circle(r) => "Kreis",
+            Circle(_) => "Kreis",
             Rect { w, h } => "Rechteck",
             Empty => "Leer",
         };

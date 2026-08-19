@@ -18,6 +18,10 @@ public static class Semantics
         var types = new TypeChecker(compilation, binding, de).Check();
         new SemaRules(compilation, binding, types, de, singleProgram).Run();
         new ExceptionAnalyzer(compilation, binding, types, de).Run(); // throws propagation
+
+        // Warnings describe a program that compiles. Over a broken one the reference tables are
+        // partial, and a warning computed from half a table is a guess with a confident tone.
+        if (!de.HasErrors) new WarningAnalyzer(compilation, binding, types, de).Run();
         return types;
     }
 }

@@ -30,8 +30,7 @@ public sealed record Range
     public required Position End { get; init; }
 }
 
-/// <summary>The four levels an editor renders. Lyric knows three of them; there is no
-/// <c>Information</c> in <see cref="Core.Severity"/>.</summary>
+/// <summary>The four levels an editor renders, one per compiler severity.</summary>
 public enum LspSeverity
 {
     Error = 1,
@@ -53,6 +52,31 @@ public sealed record LspDiagnostic
     /// one file.</summary>
     public string Source => "lyric";
 
+    public required string Message { get; init; }
+
+    /// <summary>The diagnostic's notes: other places that belong to the same finding. Editors
+    /// list them under the message and jump on click.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<LspDiagnosticRelatedInformation>? RelatedInformation { get; init; }
+
+    /// <summary>How the editor draws it beyond the squiggle: unnecessary code fades, deprecated
+    /// code is struck through.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<LspDiagnosticTag>? Tags { get; init; }
+}
+
+/// <summary>The protocol's two presentation tags, by their wire numbers.</summary>
+public enum LspDiagnosticTag
+{
+    Unnecessary = 1,
+    Deprecated = 2,
+}
+
+/// <summary>One note of a diagnostic, as the protocol wants it: a place and what it has to do
+/// with the finding.</summary>
+public sealed record LspDiagnosticRelatedInformation
+{
+    public required Location Location { get; init; }
     public required string Message { get; init; }
 }
 
