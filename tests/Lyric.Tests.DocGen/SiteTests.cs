@@ -40,13 +40,15 @@ public class SiteTests
         Assert.Contains("Attributes", changes.Html);
     }
 
-    /// <summary>A nightly has no entry of its own; the welcome page then shows the newest one,
-    /// because "what changed last" is still the question it answers.</summary>
+    /// <summary>A nightly shows the newest entry — the Unreleased section while one stands in
+    /// the changelog (a nightly CONTAINS those changes), the latest release entry otherwise.
+    /// "What changed last" is the question either way.</summary>
     [Fact]
     public void The_recent_changes_of_a_nightly_are_the_newest_entry()
     {
         var changes = Build("nightly").Changes;
-        Assert.StartsWith("v", changes.Title);
+        Assert.True(changes.Title == "Unreleased" || changes.Title.StartsWith("v"),
+            $"the nightly's changes carry the newest entry, not '{changes.Title}'");
     }
 
     [Fact]
@@ -54,8 +56,8 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("guide/getting-started/", guide.Pages[0].SitePath);
-        Assert.Equal("guide/formatting/", guide.Pages[^1].SitePath);
-        Assert.Equal(18, guide.Pages.Length);
+        Assert.Equal("guide/diagnostics/", guide.Pages[^1].SitePath);
+        Assert.Equal(19, guide.Pages.Length);
         Assert.Equal("guide/attributes/", guide.Pages[14].SitePath);
     }
 
@@ -64,7 +66,7 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("Getting started", guide.Pages[0].Title);
-        Assert.Equal("Formatting", guide.Pages[^1].Title);
+        Assert.Equal("Diagnostics", guide.Pages[^1].Title);
     }
 
     [Fact]

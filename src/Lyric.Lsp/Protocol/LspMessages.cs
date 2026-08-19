@@ -58,6 +58,18 @@ public sealed record LspDiagnostic
     /// list them under the message and jump on click.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<LspDiagnosticRelatedInformation>? RelatedInformation { get; init; }
+
+    /// <summary>How the editor draws it beyond the squiggle: unnecessary code fades, deprecated
+    /// code is struck through.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<LspDiagnosticTag>? Tags { get; init; }
+}
+
+/// <summary>The protocol's two presentation tags, by their wire numbers.</summary>
+public enum LspDiagnosticTag
+{
+    Unnecessary = 1,
+    Deprecated = 2,
 }
 
 /// <summary>One note of a diagnostic, as the protocol wants it: a place and what it has to do

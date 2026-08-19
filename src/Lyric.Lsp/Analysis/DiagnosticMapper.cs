@@ -59,7 +59,20 @@ public static class DiagnosticMapper
             Code = diagnostic.Code,
             Message = diagnostic.Message,
             RelatedInformation = MapNotes(sources, diagnostic),
+            Tags = TagsFor(diagnostic.Code),
         };
+
+    /// <summary>
+    /// The presentation a code asks for: unused and unreachable code fades, the deprecated
+    /// instance form is struck through. By CODE rather than by a flag on the diagnostic — the
+    /// severity catalogue rule again: what a code means includes how it is drawn.
+    /// </summary>
+    private static IReadOnlyList<LspDiagnosticTag>? TagsFor(string code) => code switch
+    {
+        "LYR-SEM0071" or "LYR-SEM0072" or "LYR-SEM0073" => [LspDiagnosticTag.Unnecessary],
+        "LYR-SEM0074" => [LspDiagnosticTag.Deprecated],
+        _ => null,
+    };
 
     /// <summary>
     /// The notes as the protocol's related information. A note without a place of its own is

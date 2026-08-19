@@ -10,6 +10,62 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+The compiler learns to speak below "error". Four severities, warnings that matter, notes that
+point at places, and a CI gate. The language, the bytecode format (**3.2**) and the embedding
+API are unchanged; every program that compiled still compiles — some now hear about themselves.
+
+### Added
+
+- **Warnings.** A local binding, loop variable, catch binding or pattern binding that is never
+  referenced (`LYR-SEM0071` — naming it `_` is the opt-out; parameters and the shorthand field
+  pattern `Rect { w, h }` are deliberately exempt). An imported name nobody in the file uses
+  (`LYR-SEM0072`). A statement control flow can never reach (`LYR-SEM0073`). And a static
+  extension method called through an instance (`LYR-SEM0074`): that form is **deprecated** and
+  becomes an error in the next major — the warning is the clock. Warnings stay silent over a
+  program with errors, and never fail a build by themselves.
+
+- **`--deny-warnings`** on `check` and `build`, for CI: the warnings keep their severity in the
+  output, one closing error (`LYR-CLI0016`) carries the policy into the exit code, and a denied
+  build writes no artifact. The `lyric.json` unknown-key warnings are real diagnostics now
+  (`LYR-CLI0017`) and count toward the gate.
+
+- **Notes on diagnostics.** A duplicate declaration points back at the first one, a missing
+  interface method points at the member it fails (in whatever file it lives), an unknown name
+  suggests the single closest candidate in scope, and an unknown member suggests from the same
+  list completion offers. Rendered indented under the caret block in text — deliberately not in
+  the head-line format a problem matcher reads — as a `notes` array in `--json` (only when
+  present, so existing consumers read what they always read), and as related information in
+  editors.
+
+- **The first hint.** `LYR-SEM0075`: a `var` through which nothing is ever changed — no
+  reassignment, no field or element write, no `mut` call, not handed over by reference — could
+  be a `let`. A `var` that documents mutation keeps its `var`.
+
+- **An error that was silent misbehavior**: two files claiming one module name is `LYR-RES0007`
+  with a note at the first claim, instead of a shadow registration nothing could explain.
+
+- **Editors draw the difference**: unused and unreachable code fades, the deprecated instance
+  form is struck through, and every note is a click away. The severity `info` exists on the
+  wire for what later versions will say at it.
+
+- **Guide chapter 19** documents the contract: severities, codes as stable identifiers, the
+  gate, and what warns today. The repository holds itself to it — the standard library, the
+  examples and the templates check in silence, and a test keeps them there.
+
+### Changed
+
+- **The editor clients live in their own repositories** ([vscode-lyric](https://github.com/lyriclang/vscode-lyric),
+  [jetbrains-lyric](https://github.com/lyriclang/jetbrains-lyric)) and release their
+  installables there, on their own cadence. Toolchain releases v1.8.0 through v1.9.1 carried
+  them beside the archives; from this release on they are found there. The project moved to the
+  `lyriclang` organization.
+
+- Two messages stopped promising futures: the duplicate-function hint lost its "in v1"
+  (overloading was rejected for good in v1.5.0), and the block-lambda limit `LYR-SEM0046` now
+  states the problem in the message and its way out in a note.
+
 ## v1.9.1 — 2026-08-19
 
 The formatter reaches the editor. `textDocument/formatting` is served by the language server —

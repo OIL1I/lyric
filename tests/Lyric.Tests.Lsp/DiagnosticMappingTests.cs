@@ -64,6 +64,25 @@ public sealed class DiagnosticMappingTests
     }
 
     [Fact]
+    public void Unused_and_unreachable_codes_carry_the_unnecessary_tag()
+    {
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("map.lyr", "abcdef");
+        var de = new DiagnosticEngine(sm);
+        de.Report("LYR-SEM0071", Severity.Warning, new Span(id, 0, 1), "unused");
+        de.Report("LYR-SEM0073", Severity.Warning, new Span(id, 1, 2), "unreachable");
+        de.Report("LYR-SEM0074", Severity.Warning, new Span(id, 2, 3), "deprecated form");
+        de.Report("LYR-SEM0001", Severity.Error,   new Span(id, 3, 4), "plain error");
+
+        var mapped = DiagnosticMapper.ForFile(sm, de.SortedSnapshot(), id);
+
+        Assert.Equal([LspDiagnosticTag.Unnecessary], mapped[0].Tags);
+        Assert.Equal([LspDiagnosticTag.Unnecessary], mapped[1].Tags);
+        Assert.Equal([LspDiagnosticTag.Deprecated], mapped[2].Tags);
+        Assert.Null(mapped[3].Tags);
+    }
+
+    [Fact]
     public void A_note_free_diagnostic_carries_no_related_information()
     {
         // null rather than empty: the serializer omits the key, and the wire stays what it was
