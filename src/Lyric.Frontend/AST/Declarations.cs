@@ -66,7 +66,9 @@ public sealed record FunctionDecl(
 {
     public required Span NameSpan { get; init; }
 
-    /// <summary>Only set on a TOP-LEVEL function: the parser rejects attributes on members.</summary>
+    /// <summary>Set on a top-level function, and (since 2.1) on a method of a struct, class,
+    /// enum or extend block — where the sema admits only the row-less <c>@Deprecated</c>.
+    /// Interface members stay attribute-free: the parser rejects the list there.</summary>
     public AttributeNode[] Attributes { get; init; } = [];
 }
 
@@ -79,11 +81,17 @@ public sealed record StaticBindingDecl(bool IsPublic, BindingStmt Binding, Span 
     public string Name => Binding.Name;
 
     public Span NameSpan => Binding.NameSpan;
+
+    /// <summary>Since 2.1; the sema admits only <c>@Deprecated</c> on a member.</summary>
+    public AttributeNode[] Attributes { get; init; } = [];
 }
 
 public sealed record FieldDecl(string Name, TypeNode Type, Expr? Default, Span Span) : Decl(Span), INamedDecl
 {
     public required Span NameSpan { get; init; }
+
+    /// <summary>Since 2.1; the sema admits only <c>@Deprecated</c> on a member.</summary>
+    public AttributeNode[] Attributes { get; init; } = [];
 }
 
 // --- type declarations ---

@@ -271,6 +271,19 @@ public sealed class TypeChecker
         var isInterface = ts.Kind == TypeSymbolKind.Interface;
         foreach (var m in members)
         {
+            // Member attributes (2.1): the list parses on struct/class members; only the
+            // row-less '@Deprecated' passes (the Member target above). Interface members
+            // never carry one — the parser rejected the list.
+            var memberAttributes = m switch
+            {
+                FunctionDecl mf => mf.Attributes,
+                StaticBindingDecl msb => msb.Attributes,
+                FieldDecl mfd => mfd.Attributes,
+                _ => [],
+            };
+            CheckAttributes(memberAttributes, AttributeTarget.Member,
+                targetIsGeneric: ts.Generics.Length > 0, ts.Members, "a member");
+
             if (m is StaticBindingDecl sb)
             {
                 CheckStaticBinding(sb, ts);
@@ -358,7 +371,12 @@ public sealed class TypeChecker
     {
         if (module.Members.LookupLocal(e.Name) is not TypeSymbol ts) return;
         var thisType = SelfType(ts);
-        foreach (var fn in e.Methods) CheckFunction(fn, ts.Members, thisType);
+        foreach (var fn in e.Methods)
+        {
+            CheckAttributes(fn.Attributes, AttributeTarget.Member,
+                targetIsGeneric: ts.Generics.Length > 0, ts.Members, "a member");
+            CheckFunction(fn, ts.Members, thisType);
+        }
     }
 
     // `this` inside a method: for a generic type the self-instance Stack<T>, with the type parameters
@@ -393,7 +411,12 @@ public sealed class TypeChecker
             var thisType = block.Target.Kind == TypeSymbolKind.Builtin
                 ? TypeFacts.FromBuiltinName(block.Target.Name)
                 : new NamedRef(block.Target);
-            foreach (var fn in block.Decl.Methods) CheckFunction(fn, block.MethodScope, thisType);
+            foreach (var fn in block.Decl.Methods)
+            {
+                CheckAttributes(fn.Attributes, AttributeTarget.Member,
+                    targetIsGeneric: false, block.MethodScope, "a member");
+                CheckFunction(fn, block.MethodScope, thisType);
+            }
 
             CheckOrphanRule(block);
             CheckTypeConformance(block.Target, block.Decl.Interfaces, block.Module, block.Target.Name);
@@ -2500,7 +2523,7 @@ public sealed class TypeChecker
 
     // --- attributes ---
 
-    private enum AttributeTarget { Module, Type, Function }
+    private enum AttributeTarget { Module, Type, Function, Member }
 
     private static string MarkerName(AttributeTarget target) => target switch
     {
@@ -2576,18 +2599,35 @@ public sealed class TypeChecker
             return ts;
         }
 
-        var marker = target switch
+        // A MEMBER carries only the row-less '@Deprecated' (§4.7): the module format has no
+        // member targets, so any attribute that would need a row has no slot to land in. The
+        // marker test is bypassed — 'Deprecated' declares no OnMember, and inventing one for
+        // a single permitted attribute would be a marker without a second customer.
+        if (target == AttributeTarget.Member)
         {
-            AttributeTarget.Module => _onModule,
-            AttributeTarget.Type => _onType,
-            _ => _onFunction,
-        };
-        if (marker is null || !Satisfies(new NamedRef(ts), marker, new NamedRef(marker)))
+            if (!IsCanonicalDeprecated(ts))
+            {
+                _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
+                    $"'@{ts.Name}' cannot sit on {targetDescription} — only '@Deprecated' may: "
+                    + "the module format has no member rows for anything else");
+                return ts;
+            }
+        }
+        else
         {
-            _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
-                $"'@{ts.Name}' cannot sit on {targetDescription} — declare '{ts.Name}' with "
-                + $"':: [{MarkerName(target)}]' to allow it here");
-            return ts;
+            var marker = target switch
+            {
+                AttributeTarget.Module => _onModule,
+                AttributeTarget.Type => _onType,
+                _ => _onFunction,
+            };
+            if (marker is null || !Satisfies(new NamedRef(ts), marker, new NamedRef(marker)))
+            {
+                _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
+                    $"'@{ts.Name}' cannot sit on {targetDescription} — declare '{ts.Name}' with "
+                    + $"':: [{MarkerName(target)}]' to allow it here");
+                return ts;
+            }
         }
 
         // One exception: the compiler-read @Deprecated. Its consumer is the sema, not a

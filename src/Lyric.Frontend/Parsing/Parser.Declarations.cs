@@ -192,8 +192,8 @@ public sealed partial class Parser
     {
         if (attributes.Length == 0) return;
         _de.Report("LYR-PAR0042", Severity.Error, attributes[0].Span,
-            $"an attribute cannot sit on {what} — only a function, a struct, a class, an enum "
-            + "or the module header carries one");
+            $"an attribute cannot sit on {what} — a function, a struct, a class, an enum, "
+            + "a member of one, or the module header carries one");
     }
 
     private static Decl WithAttributes(Decl decl, AttributeNode[] attributes) => decl switch
@@ -203,6 +203,15 @@ public sealed partial class Parser
         ClassDecl c => c with { Attributes = attributes },
         EnumDecl e => e with { Attributes = attributes },
         _ => decl, // recovery produced an ErrorDecl; the list is lost with the declaration
+    };
+
+    private static Decl WithMemberAttributes(Decl member, AttributeNode[] attributes) => member switch
+    {
+        _ when attributes.Length == 0 => member,
+        FunctionDecl f => f with { Attributes = attributes },
+        StaticBindingDecl sb => sb with { Attributes = attributes },
+        FieldDecl fd => fd with { Attributes = attributes },
+        _ => member, // recovery; the list is lost with the member
     };
 
     /// <summary>Recovery: consumes tokens up to the next plausible declaration start (a keyword,
@@ -357,14 +366,13 @@ public sealed partial class Parser
         var members = new List<Decl>();
         while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
         {
-            // An attribute sits on top-level declarations only. Without this guard the '@' would be
-            // read as a field name and the member lost; the whole list is parsed and dropped so
-            // that recovery lands cleanly on the member behind it.
-            if (_buffer.Check(TokenKind.AtIdentifier))
-                RejectAttributes(ParseAttributeList(), "a member");
+            // Since 2.1 a member CARRIES its attribute list — the sema admits only the
+            // row-less '@Deprecated' there, but which attributes exist where is its call,
+            // not the grammar's.
+            var attributes = _buffer.Check(TokenKind.AtIdentifier) ? ParseAttributeList() : [];
 
             var before = _buffer.Position;
-            var member = ParseTypeMember();
+            var member = WithMemberAttributes(ParseTypeMember(), attributes);
             members.Add(member);
             if (_buffer.Position == before) { _buffer.Advance(); continue; } // force progress
 
@@ -499,7 +507,7 @@ public sealed partial class Parser
 
         _buffer.Expect(TokenKind.LBrace, "LYR-PAR0017", "expected '{' to open interface body");
         var members = new List<FunctionDecl>();
-        ParseMethodSequence(members, allowStatic: false);
+        ParseMethodSequence(members, allowStatic: false, allowAttributes: false);
         var close = _buffer.Expect(TokenKind.RBrace, "LYR-PAR0018", "expected '}' to close interface body");
         return new InterfaceDecl(isPublic, name.Name, generics, interfaces, members.ToArray(), Span.Union(start, close.Span))
             { NameSpan = name.Span };
@@ -527,10 +535,22 @@ public sealed partial class Parser
     /// </summary>
     /// <param name="allowStatic">False in an interface body, where a member is dispatched on a
     /// receiver and a static one has none.</param>
-    private void ParseMethodSequence(List<FunctionDecl> methods, bool allowStatic)
+    /// <param name="allowAttributes">False in an interface body: deprecating an abstract member
+    /// would raise conformance questions (do implementations inherit the clock?) nobody has
+    /// answered — refused until someone needs it. Extend and enum methods carry attributes
+    /// since 2.1, the sema admitting only '@Deprecated'.</param>
+    private void ParseMethodSequence(List<FunctionDecl> methods, bool allowStatic,
+        bool allowAttributes = true)
     {
         while (!_buffer.Check(TokenKind.RBrace) && !_buffer.AtEnd)
         {
+            var attributes = _buffer.Check(TokenKind.AtIdentifier) ? ParseAttributeList() : [];
+            if (attributes.Length > 0 && !allowAttributes)
+            {
+                RejectAttributes(attributes, "an interface member");
+                attributes = [];
+            }
+
             var before = _buffer.Position;
             var start = _buffer.Current.Span;
             var isPublic = _buffer.Check(TokenKind.Pub)
@@ -563,7 +583,7 @@ public sealed partial class Parser
                 isStatic = allowStatic;
             }
 
-            methods.Add(ParseFunctionDecl(isPublic, start, isStatic));
+            methods.Add(ParseFunctionDecl(isPublic, start, isStatic) with { Attributes = attributes });
             if (_buffer.Position == before) _buffer.Advance(); // force progress
         }
     }

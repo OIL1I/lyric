@@ -159,6 +159,36 @@ It changes diagnostics and nothing else — a program that ignores the warning c
 same module, and a deprecated function may keep calling itself and its deprecated siblings
 without the compiler nagging the one place allowed not to care.
 
+Since 2.1 the same attribute — and only it — may sit on a MEMBER: a method, a field or a
+`static let` of a struct, class or enum, and on an extend method. Every other attribute
+there is refused, because the compiled module has no metadata rows for members and
+`@Deprecated` is the one attribute that needs none. Interface members carry no attributes at
+all: deprecating an abstract member would raise questions about implementations nobody has
+answered yet.
+
+```lyr
+import std.core { Deprecated };
+
+class Counter {
+    n: int,
+
+    @Deprecated { message = "use tick()" }
+    pub mut fn bump(): void {
+        this.n = this.n + 1;
+    }
+
+    pub mut fn tick(): void {
+        this.n = this.n + 1;
+    }
+}
+
+fn main(): int {
+    var c = Counter { n = 0 };
+    c.tick();
+    return c.n;
+}
+```
+
 The compiler-read set is part of the language's contract, which is why it grows by decision
 rather than by convention: `@Deprecated` is in it, `@Inline` and its kind are not. Everything
 else stays inert — an attribute the compiler does not know describes, and does nothing.

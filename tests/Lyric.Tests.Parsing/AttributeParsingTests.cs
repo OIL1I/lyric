@@ -110,13 +110,27 @@ public class AttributeParsingTests
     }
 
     [Fact]
-    public void An_attribute_on_a_member_is_rejected_and_the_member_survives()
+    public void An_attribute_on_a_member_parses_and_attaches()
     {
+        // Since 2.1 the member CARRIES the list; which attributes are admissible there is the
+        // sema's call (only @Deprecated), not the grammar's.
         var module = Parse("struct S { @A\nv: int }", out var diagnostics);
 
-        Assert.Contains(diagnostics, d => d.Code == "LYR-PAR0042");
+        Assert.DoesNotContain(diagnostics, d => d.Code == "LYR-PAR0042");
         var s = Assert.IsType<StructDecl>(module.Declarations[0]);
-        Assert.Equal("v", Assert.IsType<FieldDecl>(Assert.Single(s.Members)).Name);
+        var field = Assert.IsType<FieldDecl>(Assert.Single(s.Members));
+        Assert.Equal("v", field.Name);
+        Assert.Equal("A", Assert.Single(field.Attributes).Path.Single());
+    }
+
+    [Fact]
+    public void An_attribute_on_an_interface_member_stays_rejected()
+    {
+        var module = Parse("interface I { @A\nfn f(): int; }", out var diagnostics);
+
+        Assert.Contains(diagnostics, d => d.Code == "LYR-PAR0042");
+        var i = Assert.IsType<InterfaceDecl>(module.Declarations[0]);
+        Assert.Equal("f", Assert.Single(i.Members).Name); // the member survives the rejection
     }
 
     [Fact]
