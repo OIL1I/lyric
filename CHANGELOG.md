@@ -10,10 +10,10 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v2.0.1 — 2026-08-20
 
 The first harvest of the deep audit: seven bugs measured against the now-normative
-specification, fixed as one wave. Six new conformance cases activate with this release
+specification, fixed as one wave. Seven new conformance cases activate with this release
 (`//! since: 2.0.1`); the suite stands at 78.
 
 ### Fixed

@@ -190,9 +190,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4311 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **2.0.0**; the specification in `lyriclang/lyric-spec` is
-**NORMATIVE**, its suite stands at 54 cases, and the toolchain's own CI runs it against the
+4322 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **2.0.1**; the specification in `lyriclang/lyric-spec` is
+**NORMATIVE**, its suite stands at 78 cases, and the toolchain's own CI runs it against the
 working tree.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
@@ -209,6 +209,17 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M27 — the deep audit and its patch wave** (2026-08-20, `fix/v2.0.1-audit-wave`,
+  PR #65, released as v2.0.1). Probe-first through numerics, control flow, the type system
+  and the runtime boundary: 24 new conformance cases, and seven measured bugs fixed as one
+  wave — `..=max` ran zero times (inclusive ranges got their own adapter with a done flag),
+  small-width and uint ranges got their own carriers (they were malformed IR under the
+  verifier, and uint compared signed beyond 2⁶³), defer became the block affair §7.5 always
+  claimed (per iteration, break/continue drain what they leave), `let x = null;`/`let xs
+  = [];` report instead of crashing, oversized literals stopped reinterpreting, int-to-float
+  adaptation is exact, and `throws` on main is refused. Plus the §11 registry ratchet
+  (std.build is host-bound, now said) and two diagnosis-QoI fixes. 4322 tests, 78/78.
 
 - [x] **M26 — v2.0.0** (2026-08-20, five slices, `feature/m26-v2`, PR #64). The specification
   turned NORMATIVE and the clocks ran out: Appendix A catalogues all 180 diagnostic codes
@@ -234,15 +245,6 @@ out of them and hands its own functions, types and value structs in.
   with the free forms on the 2.0 deprecation clock, and iterator chaining got its honest No
   with the probe pinned. The build surfaced a latent function-id collision between the global
   initializer and downstream functions — found by the new density check, fixed at the counter.
-
-- [x] **M23 — the std polish** (2026-08-19, four slices, `feature/m23-std-polish`). The audit
-  the extension list forced: std.string stopped being quadratic (builder/join were left folds —
-  the exact cost the builder existed to avoid), the print family collapsed to one generic
-  concept, the collections got the operations daily use kept reaching for, and arrays crossed
-  the native boundary as PARAMETERS for the first time — the format always allowed it, only the
-  registry never could. On top: the byte bridge (writeBytes, strict utf8Decode), std.random
-  (moved out of math, plus shuffle/choice/gaussian) and std.time (Instant/Duration, iso() with
-  floor semantics). Doc ratchet 370 → 430.
 
 ## Measurements
 
@@ -330,11 +332,12 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**The 1.x line is closed.** v2.0.0 is released: the specification is normative, the
-deprecation clocks have run out, and the conformance gate runs the suite against every
-working-tree change. The deep audit toward the spec continues as standing work — FlowAnalyzer
-and the diagnostic catalogue are done; what remains is walking the remaining sema rules and
-the VM chapters at the same depth, case by case. The next milestone is the maintainer's call.
+**The deep audit is FINISHED and its patch wave is released as v2.0.1.** The audit walked
+numerics, control flow, the type system's rest and the runtime boundary probe-first — spec
+sentence and conformance case before every fix — and everything it caught shipped as one
+wave. The conformance gate earned its keep on day one: it caught a case pinned to a
+diagnosis the wave itself had (rightly) removed, which a stale local build had let through.
+The next milestone is the maintainer's call.
 
 **M24 was merged and released as v1.15.0** (PR #62) — the freeze prep. With it the
 pre-freeze design space is closed; next is v1.16, the spec draft (non-normative) plus the seed
@@ -530,8 +533,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`ci, release: the conformance gate, and the tree claims 2.0.0`
-(closes M26's delivery list; released as v2.0.0 — the spec is normative)
+`sema, ir, stdlib: the audit's patch wave — seven bugs, one release`
+(closes M27; released as v2.0.1 — the audit's first harvest)
 
 ---
 
