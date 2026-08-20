@@ -2523,7 +2523,12 @@ public sealed class TypeChecker
             FunctionSymbol fn => (FnTypeOf(fn), fn),
             GlobalSymbol g => (TypeOfGlobalReference(g, span), g),
             ExternalSymbol ex => (LyrType.Error, ex),
-            TypeSymbol tsym => (LyrType.Error, tsym), // a type as a value has no expression type
+
+            // The qualified name stands for the type itself, as the bare name does: as a member
+            // TARGET it carries on ('random.Random.seeded(…)' dispatches like 'Random.seeded(…)'),
+            // and in value position CheckExpr reports LYR-SEM0052. An Error here instead poisoned
+            // the whole chain silently — no diagnostic, and the lowering threw on the <error> type.
+            TypeSymbol tsym => (new NonValueType(tsym, "type"), tsym),
             _ => (Report(span, "LYR-SEM0012", $"module '{mod.FullName}' has no member '{member}'"), null)
         };
 

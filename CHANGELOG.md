@@ -10,6 +10,18 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- **A static call through a module-qualified type works.** `import std.random;` followed by
+  `random.Random.seeded(1234)` crashed the compiler with an internal error out of the lowering
+  ("type not lowerable") — the qualified type name got an unreported error type instead of a
+  diagnostic. The form now compiles and dispatches exactly like `Random.seeded(1234)` after a
+  selective import; a qualified type name standing alone in value position reports
+  `LYR-SEM0052`, and a qualified generic without type arguments reports `LYR-SEM0063`, both as
+  the bare name always has.
+
 ## v2.1.0 — 2026-08-20
 
 The ergonomics wave: two additive changes the audit measured the edges of. Four conformance
