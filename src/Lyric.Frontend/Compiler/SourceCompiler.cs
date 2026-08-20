@@ -128,7 +128,8 @@ public static class SourceCompiler
         // ModuleLowerer.VerifyByDefault still decides whether verification runs. The split exists
         // so the two durations can be measured separately.
         report?.BeginPhase(Phase.Lower);
-        var ir = ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: false);
+        var ir = ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: false,
+            libraryRoots: true);
         if (ir is not null) report?.UpdateDetail(FunctionCount(ir));
         report?.EndPhase();
         if (ir is null || stage == Stage.Lower)
@@ -271,7 +272,8 @@ public static class SourceCompiler
         if (diagnostics.HasErrors)
             return new CompileResult(sources, diagnostics, null, null, model);
 
-        var ir = ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: false);
+        var ir = ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: false,
+            libraryRoots: true);
         if (ir is null) return new CompileResult(sources, diagnostics, null, null, model);
 
         if (ModuleLowerer.VerifyByDefault) IrVerifier.VerifyOrThrow(ir);

@@ -41,6 +41,11 @@ takes is the ability to write the old forms in new code.
 - **`docs/Grammar.md` and `docs/Bytecode.md` are checked mirrors.** The canonical home of both
   is `lyriclang/lyric-spec` (chapters 02 and 13); CI diffs the copies here against the
   specification, so drift fails the build.
+- **A library prunes from its `pub` surface.** A compile without an entry point takes the
+  `pub` functions of the compiled modules as reachability roots — a library's surface decides
+  its contents, and the standard library no longer ships whole inside every library or
+  embedded script. Observable at the host boundary: a private function nothing public reaches
+  is not in the module (`Defines` says so), which is why this waited for the major.
 
 ## v1.16.0 — 2026-08-19
 
