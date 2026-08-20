@@ -81,6 +81,37 @@ jobs:
           check docs/Bytecode.md spec-repo/spec/13-bytecode.md
           exit "$status"
 
+  conformance:
+    # The specification's suite runs against the WORKING TREE, not only against releases: the
+    # tree is the candidate for the next release, and a candidate that breaks a spec sentence
+    # should fail here, not after tagging. The version from Directory.Build.props decides which
+    # '//! since:' cases apply — the tree claims what it is.
+    name: Conformance gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Checkout the specification
+        uses: actions/checkout@v7
+        with:
+          repository: lyriclang/lyric-spec
+          path: spec-repo
+
+      - name: Build the toolchain
+        run: dotnet build --configuration Release
+
+      - name: Run the suite against the working tree
+        run: |
+          VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props)
+          echo "working tree claims $VERSION"
+          python3 spec-repo/tools/run_conformance.py \
+            --lyrc src/Lyric.Cli/bin/Release/net10.0/lyrc \
+            --lyrvm src/Lyric.Cli/bin/Release/net10.0/lyrvm \
+            --stdlib stdlib \
+            --toolchain-version "$VERSION"
+
   publish:
     # Runs after the tests so no artifact is produced from a red build.
     name: Publish toolchain
