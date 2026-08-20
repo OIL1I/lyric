@@ -107,6 +107,48 @@ public class MemberReceiverTests
             + string.Join("\n", de.Diagnostics.Select(d => $"{d.Code}: {d.Message}")));
     }
 
+    [Fact]
+    public void A_static_member_through_a_module_qualified_type_is_a_static_access()
+    {
+        // The crash regression: 'random.Random' resolved through MemberOfModule, which returned a
+        // bare ErrorType for a type — no diagnostic, and the <error> reached the lowering, which
+        // threw. The qualified name now yields the same NonValueType the bare name does, so the
+        // member access dispatches as a static access.
+        var de = Check(
+            "import std.random;\nfn main(): int {\n"
+            + "    let r = random.Random.seeded(1234);\n    return 0;\n}\n",
+            withStdlib: true);
+
+        Assert.False(de.HasErrors,
+            "expected this to check clean, but got:\n"
+            + string.Join("\n", de.Diagnostics.Select(d => $"{d.Code}: {d.Message}")));
+    }
+
+    [Fact]
+    public void A_module_qualified_type_in_value_position_is_reported()
+    {
+        // Standing alone, the qualified name is the same error the bare name gives — reported
+        // where the value is needed, not silently poisoned.
+        var de = Check(
+            "import std.random;\nfn main(): int {\n    let t = random.Random;\n    return 0;\n}\n",
+            withStdlib: true);
+
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0052");
+    }
+
+    [Fact]
+    public void A_generic_type_through_a_module_qualifier_still_wants_its_arguments()
+    {
+        // The qualified form takes the same route as the bare one, including its diagnostics:
+        // a generic static needs written type arguments (there is no field inference).
+        var de = Check(
+            "import std.collections;\nfn main(): int {\n"
+            + "    let xs = collections.List.empty();\n    return 0;\n}\n",
+            withStdlib: true);
+
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0063");
+    }
+
     // ------------------------------------------------------------------ the errors stay errors
 
     [Fact]

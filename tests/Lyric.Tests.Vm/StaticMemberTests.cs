@@ -202,6 +202,25 @@ public class StaticMemberTests
             """));
     }
 
+    // ------------------------------------------------------------------ module-qualified type
+
+    [Fact]
+    public void A_static_call_through_a_module_qualified_type_runs()
+    {
+        // The crash regression from the Erato re-pin: 'random.Random.seeded(…)' gave the inner
+        // member access an unreported ErrorType, and the lowering threw on the <error> type
+        // ("type not lowerable"). End to end, because the sema staying quiet WAS the bug —
+        // only the run shows the qualified form reaching the same function as the bare one.
+        Assert.Equal(3, Run("""
+            import std.random;
+
+            fn main(): int {
+                var r = random.Random.seeded(1234);
+                return r.nextIntRange(3, 4);
+            }
+            """));
+    }
+
     // ------------------------------------------------------------------ counter-checks
 
     [Fact]
