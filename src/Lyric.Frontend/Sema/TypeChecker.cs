@@ -1959,6 +1959,21 @@ public sealed class TypeChecker
         // Indexable and Iterator.
         if (baseType is ArrayOf && mem.Member == "length") return LyrType.Int;
 
+        // 'next' on a coroutine is built in the same way: the safe pull beside the panicking
+        // 'resume', same word and shape as Iterator<T>.next. '?T' answers value-or-done; a
+        // coroutine yielding void answers bool (advanced?), and one yielding an optional is
+        // refused — a null result would mean two different things there.
+        if (baseType is CoroutineOf co && mem.Member == "next")
+        {
+            if (co.Yield is Optional)
+                return Report(mem.Span, "LYR-SEM0080",
+                    $"'next()' on '{TypeFacts.Display(baseType)}' cannot tell an exhausted "
+                    + "coroutine from a yielded null; drive it with 'resume' and an explicit "
+                    + "protocol instead");
+            return new FnType([],
+                TypeFacts.IsVoid(co.Yield) ? LyrType.Bool : new Optional(co.Yield));
+        }
+
         if (InstanceMemberOf(baseType, mem, mem.Span) is { } mt)
             return mem.IsOptional ? Optionalized(mt) : mt;
         if (targetType.IsError) return LyrType.Error;

@@ -55,7 +55,47 @@ fn main(): int {
 ```
 
 `resume` on an exhausted coroutine is a panic. A caller either knows how many values there are, or
-uses an infinite coroutine and stops itself.
+uses an infinite coroutine and stops itself — or pulls with `next()`:
+
+```lyr
+import std.io.console { println };
+
+fn three(): Coroutine<int> {
+    yield 10;
+    yield 20;
+    yield 30;
+}
+
+fn main(): int {
+    let co = three();
+    var sum = 0;
+    var live = true;
+    while (live) {
+        let v = co.next();
+        if (v == null) {
+            live = false;
+        } else {
+            sum += v;
+        }
+    }
+    println(f"sum: {sum}");
+    return sum;
+}
+```
+
+`co.next()` is the safe form of the same pull: it advances the coroutine exactly like `resume`
+and answers `?T` — the value, or `null` once the body has run to its end. After the end it stays
+`null` on every further call; `resume` on the same coroutine still panics, because leniency
+belongs to the call, not to the state. The name and shape are `Iterator<T>.next()`'s on purpose.
+
+Two yield types change the answer's form, for the same reason: a `Coroutine<void>` has no value
+to wrap, so its `next()` returns `bool` — did it advance? — and `while (p.next()) { }` drives it
+to the end. A `Coroutine<?T>` refuses `next()` outright (`LYR-SEM0080`): a `null` there would
+mean both "yielded null" and "done", so such a coroutine is driven with `resume` and a protocol
+of its own.
+
+A coroutine may also end itself early with a bare `return;` — the next pull is then the panic or
+the `null`, exactly as if the body had run through.
 
 A coroutine is an ordinary value: it can be a parameter, a local, a field of a class or struct,
 or a type argument — a driver that steps a stored `List<Coroutine<float>>` every frame holds

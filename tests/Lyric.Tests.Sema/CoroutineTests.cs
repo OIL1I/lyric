@@ -212,4 +212,39 @@ public class CoroutineTests
         AssertClean(de);
         AssertType(new CoroutineOf(LyrType.Int), t); // T = Coroutine<int>
     }
+
+    // --- next(): the safe pull (v2.2) ---
+
+    [Fact]
+    public void Next_yields_the_optional_of_the_element_type()
+    {
+        var (t, de) = LastInit("fn u() { let co = fibonacci(); let v = co.next(); }");
+        AssertClean(de);
+        AssertType(new Optional(LyrType.Int), t);
+    }
+
+    [Fact]
+    public void Next_on_a_void_coroutine_answers_bool()
+    {
+        var (t, de) = LastInit("fn u() { let t = ticker(); let advanced = t.next(); }");
+        AssertClean(de);
+        AssertType(LyrType.Bool, t);
+    }
+
+    [Fact]
+    public void Next_on_an_optional_yield_is_refused()
+    {
+        // '?T' from next and a yielded null would be indistinguishable; SEM0080 names the way out.
+        Assert.Contains(Diags("""
+            fn maybe(): Coroutine<?int> { yield null; yield 1; }
+            fn u() { let co = maybe(); let v = co.next(); }
+            """).Diagnostics, d => d.Code == "LYR-SEM0080");
+    }
+
+    [Fact]
+    public void A_member_other_than_next_stays_unknown()
+    {
+        Assert.Contains(Diags("fn u() { let co = fibonacci(); let v = co.isDone(); }").Diagnostics,
+            d => d.Code == "LYR-SEM0012");
+    }
 }

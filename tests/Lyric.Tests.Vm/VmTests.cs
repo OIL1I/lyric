@@ -1161,6 +1161,133 @@ public class VmTests
     }
 
     [Fact]
+    public void Next_delivers_values_and_then_null() =>
+        // The safe pull: every value once, then null — and null STAYS the answer, where a
+        // further 'resume' would panic. 30 + 40 + 0 (null coalesced twice) = 70.
+        Assert.Equal(70, Coroutine("""
+            fn two(): Coroutine<int> { yield 30; yield 40; }
+            fn main(): int {
+                let co = two();
+                var sum = 0;
+                sum += co.next() ?? 0;
+                sum += co.next() ?? 0;
+                sum += co.next() ?? 0;
+                sum += co.next() ?? 0;
+                return sum;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void Next_on_a_void_coroutine_answers_whether_it_advanced() =>
+        Assert.Equal(3, Coroutine("""
+            fn pulse(): Coroutine<void> { yield; yield; yield; }
+            fn main(): int {
+                let p = pulse();
+                var beats = 0;
+                while (p.next()) { beats += 1; }
+                return beats;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void Resume_still_panics_after_next_saw_the_end()
+    {
+        // The two forms stay two forms: 'next' answered null, and the very next 'resume' gets
+        // the panic the specification promises — leniency belongs to the call, not the state.
+        var panic = PanicFromCoroutine("""
+            fn one(): Coroutine<int> { yield 1; }
+            fn main(): int {
+                let co = one();
+                co.next();
+                co.next();
+                return resume co;
+            }
+            """);
+
+        Assert.Contains("already finished", panic.Message);
+    }
+
+    [Fact]
+    public void A_bare_return_ends_the_coroutine_for_resume()
+    {
+        // The A8-3 find: 'return;' mid-body emitted a valueless 'ret' from a T-returning body —
+        // an internal verifier error instead of a program. It is the run-through exit now.
+        var panic = PanicFromCoroutine("""
+            fn cut(): Coroutine<int> {
+                yield 1;
+                if (true) { return; }
+                yield 99;
+            }
+            fn main(): int {
+                let co = cut();
+                resume co;
+                resume co;
+                return 0;
+            }
+            """);
+
+        Assert.Contains("already finished", panic.Message);
+    }
+
+    [Fact]
+    public void A_bare_return_is_null_through_next() =>
+        Assert.Equal(7, Coroutine("""
+            fn cut(): Coroutine<int> {
+                yield 7;
+                if (true) { return; }
+                yield 99;
+            }
+            fn main(): int {
+                let co = cut();
+                let first = co.next() ?? -1;
+                let second = co.next() ?? 0;
+                return first + second;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void A_coroutine_that_never_yields_answers_null_on_the_first_next() =>
+        // The zero-yield edge: the body runs through on the very first pull. The lenient exit
+        // reads the never-written zero field, and the caller sees only the null.
+        Assert.Equal(-5, Coroutine("""
+            fn nothing(flag: bool): Coroutine<int> {
+                if (flag) { yield 1; }
+            }
+            fn main(): int {
+                let co = nothing(false);
+                return co.next() ?? -5;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void Next_drives_a_stored_coroutine_field() =>
+        // Both A8 halves together: the driver holds its coroutine as a field and steps it with
+        // the safe pull — the engine.task shape without the closure idiom and without the
+        // in-band end marker.
+        Assert.Equal(12, Coroutine("""
+            fn burst(n: int): Coroutine<int> {
+                var i = 0;
+                while (i < n) { yield i; i += 1; }
+            }
+            class Task {
+                co: Coroutine<int>,
+                fn drain(): int {
+                    var sum = 0;
+                    var live = true;
+                    while (live) {
+                        let v = this.co.next();
+                        if (v == null) { live = false; } else { sum += v; }
+                    }
+                    return sum;
+                }
+            }
+            fn main(): int {
+                let t = Task { co = burst(4) };
+                return t.drain() * 2;
+            }
+            """).AsI64);
+
+    [Fact]
     public void A_coroutine_lives_in_a_class_field() =>
         // The A8-1 edge from Erato's register: 'co: Coroutine<int>' as a field type used to be
         // LYR-IR0001 while the same type worked as a parameter and a local. A driver holding its

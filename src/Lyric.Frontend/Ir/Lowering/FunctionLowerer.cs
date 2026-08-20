@@ -312,8 +312,10 @@ internal sealed class FunctionLowerer
         _returnType = yieldType;
 
         // Slot 0 holds the state object. It is the only thing living in a frame slot; everything else has
-        // to survive the next 'yield' and therefore lives inside it.
+        // to survive the next 'yield' and therefore lives inside it. Slot 1 is the lenient flag:
+        // 'resume' passes false, 'next()' passes true, and the exhausted exits branch on it.
         _stateSlot = _slots.Declare("<state>", new IrRefType(state));
+        _lenientSlot = _slots.Declare("<lenient>", BoolType);
 
         // Field 0 is the re-entry point. It belongs to no symbol, so it stands here rather than in
         // _stateFields.
@@ -354,6 +356,14 @@ internal sealed class FunctionLowerer
 
     /// <summary>The slot holding the state object: parameter 0 in coroutine mode.</summary>
     private LocalId _stateSlot;
+
+    /// <summary>The slot holding the lenient flag: parameter 1 in coroutine mode.</summary>
+    private LocalId _lenientSlot;
+
+    /// <summary>The state field a lenient done-exit reads its value from — never written, so it
+    /// holds the zero value <c>newobj</c> gave it. Created on the first exit that needs it;
+    /// a void coroutine never does.</summary>
+    private int? _zeroField;
 
     /// <summary>Symbol to field index in the state object. Grows during the lowering; the layout is
     /// supplied afterwards (see <see cref="TypeTable.CompleteCoroutineState"/>).</summary>
@@ -400,6 +410,59 @@ internal sealed class FunctionLowerer
     private void StoreStateField(int field, TempId value, Core.Span span) =>
         _b.Emit(new StoreField(LoadState(span), _coroutineState!.Value, new FieldId(field), value,
             span));
+
+    /// <summary>
+    /// The ONE exhausted exit of a coroutine, shared by all three ways there: the body running
+    /// through, a bare <c>return;</c>, and a call on an already-finished coroutine. It seals the
+    /// current block.
+    ///
+    /// <para>The lenient flag decides what exhaustion IS at this call: <c>resume</c> passed false
+    /// and gets the panic the specification promises; <c>next()</c> passed true and gets a
+    /// delivered value the caller discards after reading the done state back. The delivered value
+    /// is a state field NOTHING ever writes — <c>newobj</c> zeroed it, which answers every yield
+    /// type uniformly, interfaces and function values included, without manufacturing one.</para>
+    /// </summary>
+    /// <param name="mark">Whether to write the end marker first. The dispatch's already-finished
+    /// path finds it written; the two body exits write it here.</param>
+    private void EmitCoroutineDoneExit(bool mark, Core.Span span)
+    {
+        if (mark)
+        {
+            var i32 = new IrScalarType(IrScalar.I32);
+            var done = _slots.NewTemp(i32);
+            // -1 as two's complement in 32 bits: the verifier checks the declared width
+            _b.Emit(new Const(done, i32, new IntConst(unchecked((ulong)(uint)-1)), span));
+            StoreStateField(0, done, span);
+        }
+
+        var lenient = _slots.NewTemp(BoolType);
+        _b.Emit(new LoadLocal(lenient, _lenientSlot, BoolType, span));
+
+        var deliver = _b.NewBlock();
+        var panic = _b.NewBlock();
+        _b.Seal(new CondBranch(lenient, deliver, panic, span));
+
+        _b.SwitchTo(deliver);
+        if (IsVoid(_returnType)) _b.Seal(new Return(null, span));
+        else
+        {
+            _zeroField ??= DeclareZeroField();
+            _b.Seal(new Return(LoadStateField(_zeroField.Value, span), span));
+        }
+
+        _b.SwitchTo(panic);
+        CallHelper("std.core.coroutineEnded", span);
+        _b.Seal(new Unreachable(span));
+    }
+
+    /// <summary>The never-written field behind the lenient exits. Symbol-less, like field 0.</summary>
+    private int DeclareZeroField()
+    {
+        var index = _stateTypes.Count;
+        _stateTypes.Add(_returnType);
+        _stateNames.Add("<zero>");
+        return index;
+    }
 
     // ------------------------------------------------------------------ closures
 
@@ -622,26 +685,19 @@ internal sealed class FunctionLowerer
 
         if (LowerScope(body))
         {
-            // The body ran through. The state remembers that for later calls, and THIS call already
-            // throws, because it has no value to deliver: there is no 'yield' left, so there is nothing
-            // to return. Inventing a null value would give the language one it does not have. Python
-            // reports StopIteration here for the same reason.
-            var i32 = new IrScalarType(IrScalar.I32);
-            var done = _slots.NewTemp(i32);
-            // -1 as two's complement in 32 bits: the verifier checks the declared width
-            _b.Emit(new Const(done, i32, new IntConst(unchecked((ulong)(uint)-1)), body.Span));
-            StoreStateField(0, done, body.Span);
-
-            CallHelper("std.core.coroutineEnded", body.Span);
-            _b.Seal(new Unreachable(body.Span));
+            // The body ran through: no 'yield' is left, so this call has no value of its own. What
+            // that means depends on how it was called — the shared exit branches on the lenient
+            // flag. Python reports StopIteration here for the same reason 'resume' panics.
+            EmitCoroutineDoneExit(mark: true, body.Span);
         }
 
         BuildResumeDispatch(dispatch, start, body.Span);
         _typeTable.CompleteCoroutineState(_coroutineState!.Value,
             _stateTypes.ToArray(), _stateNames.ToArray());
 
-        // One parameter: the state object. Everything else sits inside it.
-        return new IrFunction(_name, _returnType, 1, _slots.Locals, _slots.Temps, _blocks)
+        // Two parameters: the state object and the lenient flag. Everything else sits inside the
+        // state.
+        return new IrFunction(_name, _returnType, 2, _slots.Locals, _slots.Temps, _blocks)
         {
             Entry = dispatch, Handlers = _handlers,
         };
@@ -1115,6 +1171,17 @@ internal sealed class FunctionLowerer
 
     private bool LowerReturn(ReturnStmt stmt)
     {
+        // A bare 'return;' in a coroutine ends it (§10): the same exit as the body running
+        // through, from the middle. Without this case it emitted a valueless 'ret' from a
+        // T-returning body — malformed IR the Debug verifier caught and Release ran. A valued
+        // return in a coroutine is LYR-SEM0039 and never reaches this point.
+        if (InCoroutine)
+        {
+            EmitAllPendingDefers();
+            EmitCoroutineDoneExit(mark: true, stmt.Span);
+            return false;
+        }
+
         // The return value is evaluated BEFORE the defer bodies: a 'defer' must not change the value a
         // 'return' has already determined. Go behaves the same way.
         var returned = stmt.Value is null ? null : (TempId?)LowerExprAs(stmt.Value, _returnType);
@@ -1939,9 +2006,79 @@ internal sealed class FunctionLowerer
         if (LowerType(_types.TypeOf(expr.Coroutine), expr.Span) is not IrFunctionType signature)
             throw Bug("'resume' on a value that is not a coroutine");
 
+        // Lenient = false: exhaustion panics, the form the specification promises for 'resume'.
         var coroutine = LowerExpr(expr.Coroutine);
+        var strict = EmitConst(new BoolConst(false), BoolType, expr.Span);
         var dest = _slots.NewTemp(signature.Return);
-        _b.Emit(new CallIndirect(dest, coroutine, [], signature.Return, expr.Span));
+        _b.Emit(new CallIndirect(dest, coroutine, [strict], signature.Return, expr.Span));
+        _fresh.Add(dest);
+        return dest;
+    }
+
+    /// <summary>
+    /// <c>co.next()</c> — pull with the lenient flag set, then read the done state back through
+    /// the compiler-bound native <c>std.core.coroutineIsDone</c>.
+    ///
+    /// <para>The pull comes FIRST: 'next' advances, and the question is whether THAT pull found
+    /// the end. The import is interned per signature — the yield type stands in it, so the
+    /// verifier checks the argument like any other, and the emitted entries bind against one
+    /// registry implementation that compares tags. An older runtime rejects at binding with the
+    /// import's name in the message, the format's designed forward path; a module that never
+    /// calls 'next' carries no such import and keeps loading everywhere.</para>
+    /// </summary>
+    private TempId LowerCoroutineNext(MemberExpr member, CoroutineOf type, Core.Span span)
+    {
+        var yield = LowerType(type.Yield, span);
+        var signature = TypeTable.CoroutineSignature(yield);
+
+        var coroutine = LowerExpr(member.Target);
+        var lenient = EmitConst(new BoolConst(true), BoolType, span);
+        var raw = IsVoid(yield) ? (TempId?)null : _slots.NewTemp(yield);
+        _b.Emit(new CallIndirect(raw, coroutine, [lenient], yield, span));
+
+        var import = _imports.Intern(
+            new IrImport("std.core.coroutineIsDone", [signature], BoolType));
+        var done = _slots.NewTemp(BoolType);
+        _b.Emit(new CallImport(done, import, [coroutine], span));
+
+        // A void coroutine has no value to wrap; its 'next' answers whether it advanced.
+        if (IsVoid(yield))
+        {
+            var advanced = _slots.NewTemp(BoolType);
+            _b.Emit(new UnOp(advanced, IrUnKind.Not, BoolType, done, span));
+            _fresh.Add(advanced);
+            return advanced;
+        }
+
+        // '?T' assembles across blocks; the value crosses through a synthetic local — the rule
+        // this IR replaces phi nodes with.
+        var result = new IrOptionalType(yield);
+        var slot = _slots.Declare("<next>", result);
+        var carried = _slots.Declare("<pulled>", yield);
+        _b.Emit(new StoreLocal(carried, raw!.Value, span));
+
+        var none = _b.NewBlock();
+        var some = _b.NewBlock();
+        var join = _b.NewBlock();
+        _b.Seal(new CondBranch(done, none, some, span));
+
+        _b.SwitchTo(none);
+        var empty = _slots.NewTemp(result);
+        _b.Emit(new OptNone(empty, yield, span));
+        _b.Emit(new StoreLocal(slot, empty, span));
+        _b.Seal(new Branch(join, span));
+
+        _b.SwitchTo(some);
+        var value = _slots.NewTemp(yield);
+        _b.Emit(new LoadLocal(value, carried, yield, span));
+        var wrapped = _slots.NewTemp(result);
+        _b.Emit(new OptSome(wrapped, value, yield, span));
+        _b.Emit(new StoreLocal(slot, wrapped, span));
+        _b.Seal(new Branch(join, span));
+
+        _b.SwitchTo(join);
+        var dest = _slots.NewTemp(result);
+        _b.Emit(new LoadLocal(dest, slot, result, span));
         _fresh.Add(dest);
         return dest;
     }
@@ -1999,9 +2136,9 @@ internal sealed class FunctionLowerer
         var i32 = new IrScalarType(IrScalar.I32);
         var current = LoadStateField(0, span);
 
-        // The end state first: -1 means "the body ran through", and a further 'resume' is then an error.
-        // Without this check the comparison chain would run into nothing and the coroutine would start
-        // over — silently and wrongly.
+        // The end state first: -1 means "the body ran through", and what a further call gets is
+        // the lenient flag's decision. Without this check the comparison chain would run into
+        // nothing and the coroutine would start over — silently and wrongly.
         var ended = _slots.NewTemp(i32);
         _b.Emit(new Const(ended, i32, new IntConst(unchecked((ulong)(uint)-1)), span));
 
@@ -2013,8 +2150,7 @@ internal sealed class FunctionLowerer
         _b.Seal(new CondBranch(isEnded, endedBlock, live, span));
 
         _b.SwitchTo(endedBlock);
-        CallHelper("std.core.coroutineEnded", span);
-        _b.Seal(new Unreachable(span));
+        EmitCoroutineDoneExit(mark: false, span);
 
         _b.SwitchTo(live);
 
@@ -3603,6 +3739,13 @@ internal sealed class FunctionLowerer
         if (expr.Callee is MemberExpr { IsOptional: true } chained
             && !_chainReceivers.ContainsKey(chained.Target))
             return LowerOptionalCall(expr, chained);
+
+        // 'co.next()' — the safe pull on a coroutine, built in like '.length' on an array. Before
+        // the indirect-call check: the sema types the member as a function type with no symbol
+        // behind it, which is exactly what the value-call test matches.
+        if (expr.Callee is MemberExpr { Member: "next" } pull
+            && SubstituteType(_types.TypeOf(pull.Target)) is CoroutineOf pulled)
+            return LowerCoroutineNext(pull, pulled, expr.Span);
 
         // The receiver is parameter 0. For `p.get()` the 'p' therefore becomes the first argument; for
         // `P.new(…)` there is none and the call is an ordinary one. Both forms then run through the same
