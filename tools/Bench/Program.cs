@@ -101,7 +101,20 @@ internal static class Program
     /// host takes.</remarks>
     private static Func<long> Prepare(LangVm vm, Case c)
     {
-        var module = vm.Compile(c.Source, "bench");
+        ScriptModule module;
+        try
+        {
+            module = vm.Compile(c.Source, "bench");
+        }
+        catch (EmbeddingException ex)
+        {
+            // Name the case and the diagnostics: a harness that dies with a bare count sends
+            // whoever broke a snippet into the debugger instead of to the line.
+            Console.Error.WriteLine($"case '{c.Name}' did not compile:");
+            foreach (var diagnostic in ex.Diagnostics)
+                Console.Error.WriteLine($"  {diagnostic.Code}: {diagnostic.Message}");
+            throw;
+        }
 
         if (!c.RawNatives) return () => vm.Run(module);
 
@@ -403,10 +416,10 @@ internal static class Program
         // dynamically. The setup (1000 adds) is inside the measurement and constant across
         // toolchain versions; the figure is a gate, not an absolute.
         yield return new Case("set_iter", 100_000, "while_range", """
-            import std.collections { emptySet };
+            import std.collections { Set };
 
             fn main(): int {
-                var s = emptySet<int>();
+                var s = Set<int>.empty();
                 var k = 0;
                 while (k < 1000) {
                     s.add(k);
