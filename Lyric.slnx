@@ -13,6 +13,8 @@
     <Project Path="src/Lyrstub/Lyrstub.csproj" />
     <Project Path="src/Lyrpack/Lyrpack.csproj" />
     <Project Path="src/Lyrfmt/Lyrfmt.csproj" />
+    <Project Path="src/Lyric.Dap/Lyric.Dap.csproj" />
+    <Project Path="src/Lyrdbg/Lyrdbg.csproj" />
     <Project Path="src/Lyrtest/Lyrtest.csproj" />
     <Project Path="src/Lyric.Cli/Lyric.Cli.csproj" />
   </Folder>
@@ -30,6 +32,7 @@
     <Project Path="tests/Lyric.Tests.Embedding/Lyric.Tests.Embedding.csproj" />
     <Project Path="tests/Lyric.Tests.Lsp/Lyric.Tests.Lsp.csproj" />
     <Project Path="tests/Lyric.Tests.DocGen/Lyric.Tests.DocGen.csproj" />
+    <Project Path="tests/Lyric.Tests.Dap/Lyric.Tests.Dap.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Bench/Bench.csproj" />

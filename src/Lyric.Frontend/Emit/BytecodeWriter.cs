@@ -20,7 +20,11 @@ public static class BytecodeWriter
     /// <param name="sourceMap">Where the spans point. Without it no SourceMap section is written —
     /// line numbers cannot be produced from an <see cref="IrModule"/> alone, and a caller that has
     /// no sources has nothing to say about positions.</param>
-    public static byte[] Write(IrModule module, SourceMapContext? sourceMap = null)
+    /// <param name="debugInfo">Whether the DebugInfo section (slot names) and the Names entries no
+    /// attribute row demands are written. Stripping them leaves a valid module; a debugger then
+    /// shows slot indices.</param>
+    public static byte[] Write(IrModule module, SourceMapContext? sourceMap = null,
+        bool debugInfo = true)
     {
         var strings = new StringPool();
         var layouts = new List<FunctionLayout>(module.Functions.Count);
@@ -54,6 +58,13 @@ public static class BytecodeWriter
         // The file names go into the pool here, for the same reason the type names do above: the
         // Strings section is serialized below, long before section 6 is written.
         positions?.InternNames(strings.Intern);
+
+        // Slot names per function and global names, or null when debug info is stripped or
+        // nothing is named. A list's length always matches the slot table it describes; a
+        // compiler-created slot carries the empty string, which is the section's statement that a
+        // person never bound it.
+        var slotNames = debugInfo ? CollectSlotNames(module, layouts, strings) : null;
+        var globalNames = debugInfo ? CollectGlobalNames(module, strings) : null;
 
         var writer = new ByteWriter();
         writer.Raw(Format.Magic);
@@ -201,7 +212,6 @@ public static class BytecodeWriter
             });
 
         if (module.Attributes.Count > 0)
-        {
             WriteSection(writer, SectionId.Attributes, s =>
             {
                 s.ULeb(module.Attributes.Count);
@@ -216,33 +226,120 @@ public static class BytecodeWriter
                 }
             });
 
-            // Field names for every type a row references — the attribute types themselves and the
-            // attributed type targets. Only here does a name enter the bytecode: a host reading
-            // '@Component struct Health' needs 'value' and 'max', or it has learned a shape it
-            // cannot name. Ascending by type index, so the output is deterministic.
-            var referenced = new SortedSet<int>();
-            foreach (var row in module.Attributes)
-            {
-                referenced.Add(row.Type.Value);
-                if (row.TargetKind == IrAttributeTarget.Type) referenced.Add(row.Target);
-            }
-            referenced.RemoveWhere(t => module.Types[t].FieldNames.Length == 0);
-
-            if (referenced.Count > 0)
-                WriteSection(writer, SectionId.Names, s =>
-                {
-                    s.ULeb(referenced.Count);
-                    foreach (var typeIndex in referenced)
-                    {
-                        s.ULeb(typeIndex);
-                        var names = module.Types[typeIndex].FieldNames;
-                        s.ULeb(names.Length);
-                        foreach (var name in names) s.String(name);
-                    }
-                });
+        // Field names. The types an attribute row references are the REQUIRED entries: a host
+        // reading '@Component struct Health' needs 'value' and 'max', or it has learned a shape it
+        // cannot name. With debug info on, every named type joins them — a debugger expanding an
+        // object needs the same names. Ascending by type index, so the output is deterministic.
+        var referenced = new SortedSet<int>();
+        foreach (var row in module.Attributes)
+        {
+            referenced.Add(row.Type.Value);
+            if (row.TargetKind == IrAttributeTarget.Type) referenced.Add(row.Target);
         }
+        if (debugInfo)
+            for (var i = 0; i < module.Types.Count; i++) referenced.Add(i);
+        referenced.RemoveWhere(t => module.Types[t].FieldNames.Length == 0);
+
+        if (referenced.Count > 0)
+            WriteSection(writer, SectionId.Names, s =>
+            {
+                s.ULeb(referenced.Count);
+                foreach (var typeIndex in referenced)
+                {
+                    s.ULeb(typeIndex);
+                    var names = module.Types[typeIndex].FieldNames;
+                    s.ULeb(names.Length);
+                    foreach (var name in names) s.String(name);
+                }
+            });
+
+        // The slot and global names. Left out entirely when nothing anywhere is named — a module
+        // of spilled temps only would carry a section saying nothing.
+        if (slotNames is not null || globalNames is not null)
+            WriteSection(writer, SectionId.DebugInfo, s =>
+            {
+                s.ULeb(module.Functions.Count);
+                for (var f = 0; f < module.Functions.Count; f++)
+                {
+                    var names = slotNames?[f] ?? [];
+                    s.ULeb(names.Length);
+                    foreach (var name in names) s.ULeb(strings.Intern(name));
+                }
+
+                s.ULeb(globalNames?.Length ?? 0);
+                foreach (var name in globalNames ?? []) s.ULeb(strings.Intern(name));
+            });
 
         return writer.ToArray();
+    }
+
+    /// <summary>The global slots' names, or <c>null</c> when there are none or none is visible —
+    /// the same rules as for locals.</summary>
+    private static string[]? CollectGlobalNames(IrModule module, StringPool strings)
+    {
+        if (module.Globals.Count == 0) return null;
+
+        var named = false;
+        var names = new string[module.Globals.Count];
+        for (var i = 0; i < names.Length; i++)
+        {
+            names[i] = Visible(module.Globals[i].Name);
+            named |= names[i].Length != 0;
+        }
+
+        if (!named) return null;
+        foreach (var name in names) strings.Intern(name);
+        return names;
+    }
+
+    /// <summary>A source-derived name survives; a compiler-created one (<c>$…</c> from the
+    /// lowering, <c>__inl_…</c> from the inliner) becomes the empty string.</summary>
+    private static string Visible(string name) =>
+        name.StartsWith('$') || name.StartsWith("__inl_", StringComparison.Ordinal) ? "" : name;
+
+    /// <summary>
+    /// The name of every slot of every function: the IR local's name where the slot is one, the
+    /// empty string for spilled temps and for locals the compiler made (<c>$…</c> from the
+    /// lowering, <c>__inl_…</c> from the inliner). A scalar-replacement name (<c>v.x</c>) is kept:
+    /// it derives from a source binding, and showing the pieces is what makes the replaced
+    /// variable inspectable at all.
+    ///
+    /// <para>Returns <c>null</c> when not a single slot is named; the section is then left out.
+    /// Per function the list is either empty (nothing named there) or full length, the same
+    /// either-or the format demands. The names are interned HERE because the Strings section is
+    /// serialized long before section 13 is written.</para>
+    /// </summary>
+    private static string[][]? CollectSlotNames(IrModule module,
+        IReadOnlyList<FunctionLayout> layouts, StringPool strings)
+    {
+        var perFunction = new string[module.Functions.Count][];
+        var anything = false;
+
+        for (var f = 0; f < module.Functions.Count; f++)
+        {
+            var function = module.Functions[f];
+            var slotCount = layouts[f].SlotTypes.Count;
+
+            var named = false;
+            var names = new string[slotCount];
+            for (var slot = 0; slot < slotCount; slot++)
+            {
+                names[slot] = slot < function.Locals.Count
+                    ? Visible(function.Locals[slot].Name)
+                    : "";
+                named |= names[slot].Length != 0;
+            }
+
+            perFunction[f] = named ? names : [];
+            anything |= named;
+        }
+
+        if (!anything) return null;
+
+        foreach (var names in perFunction)
+            foreach (var name in names)
+                strings.Intern(name);
+        return perFunction;
     }
 
     /// <summary>One attribute value: the field's tag, then the payload in the encoding the

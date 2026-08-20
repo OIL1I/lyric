@@ -152,9 +152,12 @@ public class AttributeSectionTests
     }
 
     [Fact]
-    public void A_module_without_attributes_carries_neither_new_section()
+    public void A_module_without_attributes_carries_no_attribute_section()
     {
-        var bytes = BytecodeWriter.Write(Lower("module app;\nfn main(): int { return 0; }"));
+        // Names is no longer tied to attributes since 3.3: with debug info on it may carry any
+        // named type. Stripped, the 3.2 shape returns — no attributes, no names.
+        var bytes = BytecodeWriter.Write(Lower("module app;\nfn main(): int { return 0; }"),
+            debugInfo: false);
 
         Assert.DoesNotContain((byte)SectionId.Attributes, RawSectionIds(bytes));
         Assert.DoesNotContain((byte)SectionId.Names, RawSectionIds(bytes));

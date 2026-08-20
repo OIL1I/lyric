@@ -56,8 +56,8 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("guide/getting-started/", guide.Pages[0].SitePath);
-        Assert.Equal("guide/testing/", guide.Pages[^1].SitePath);
-        Assert.Equal(20, guide.Pages.Length);
+        Assert.Equal("guide/debugging/", guide.Pages[^1].SitePath);
+        Assert.Equal(21, guide.Pages.Length);
         Assert.Equal("guide/attributes/", guide.Pages[14].SitePath);
     }
 
@@ -66,7 +66,7 @@ public class SiteTests
     {
         var guide = Build().Sections[0];
         Assert.Equal("Getting started", guide.Pages[0].Title);
-        Assert.Equal("Testing", guide.Pages[^1].Title);
+        Assert.Equal("Debugging", guide.Pages[^1].Title);
     }
 
     [Fact]

@@ -83,6 +83,10 @@
     -->
     <Binary Include="..\src\Lyrls\Lyrls.csproj" />
 
+    <!-- The debug adapter: the same standing as the language server — an editor starts it, it
+         owns its stdio, and it lives beside the driver so the extension finds it. -->
+    <Binary Include="..\src\Lyrdbg\Lyrdbg.csproj" />
+
     <!--
       Not an executable but the library a HOST builds against. It belongs here because no binary
       references it, so without this entry it lands in no shipping directory at all.

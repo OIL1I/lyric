@@ -129,7 +129,7 @@ public static class SourceCompiler
         // so the two durations can be measured separately.
         report?.BeginPhase(Phase.Lower);
         var ir = ModuleLowerer.Lower(compilation, binding, types, diagnostics, verify: false,
-            libraryRoots: true);
+            optimize: options.Optimize, libraryRoots: true);
         if (ir is not null) report?.UpdateDetail(FunctionCount(ir));
         report?.EndPhase();
         if (ir is null || stage == Stage.Lower)
@@ -150,7 +150,7 @@ public static class SourceCompiler
         report?.BeginPhase(Phase.Emit, FunctionCount(ir));
         var bytes = BytecodeWriter.Write(ir, options.SourceMap
             ? new SourceMapContext(sources, source.BaseDirectory)
-            : null);
+            : null, options.DebugInfo);
         report?.EndPhase();
 
         return new CompileResult(sources, diagnostics, ir, bytes, model);
@@ -409,6 +409,16 @@ public sealed record CompilerOptions
     /// which is what makes stripping a decision with no other consequence.</para>
     /// </summary>
     public bool SourceMap { get; init; } = true;
+
+    /// <summary>Whether the DebugInfo section (slot names) and the Names entries no attribute row
+    /// demands are written. On by default for the same reason the source map is: the moment a
+    /// debugger is attached is the moment nobody planned for it.</summary>
+    public bool DebugInfo { get; init; } = true;
+
+    /// <summary>Whether the IR optimizations (inlining, scalar replacement, devirtualization)
+    /// run. A debugger turns them off: an inlined callee has no frame to show, and a
+    /// scalar-replaced struct no longer exists as one value.</summary>
+    public bool Optimize { get; init; } = true;
 }
 
 /// <summary>

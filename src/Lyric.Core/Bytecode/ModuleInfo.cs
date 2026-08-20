@@ -28,6 +28,8 @@ public static class ModuleInfo
         sb.AppendLine($"  functions       {module.Functions.Count}");
         if (module.Attributes.Count > 0)
             sb.AppendLine($"  attributes      {module.Attributes.Count}");
+        sb.AppendLine($"  source map      {(module.SourceMap is null ? "no" : "yes")}");
+        sb.AppendLine($"  debug info      {(module.SlotNames is null ? "no" : "yes")}");
         sb.AppendLine($"  code            {TotalCodeBytes(module)} bytes");
 
         if (module.Imports.Count > 0)
@@ -64,6 +66,8 @@ public static class ModuleInfo
           .Append(",\"functions\":").Append(module.Functions.Count)
           .Append(",\"attributes\":").Append(module.Attributes.Count)
           .Append(",\"codeBytes\":").Append(TotalCodeBytes(module)).Append('}');
+        sb.Append(",\"sourceMap\":").Append(module.SourceMap is null ? "false" : "true");
+        sb.Append(",\"debugInfo\":").Append(module.SlotNames is null ? "false" : "true");
 
         sb.Append(",\"imports\":[");
         for (var i = 0; i < module.Imports.Count; i++)

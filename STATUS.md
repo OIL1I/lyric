@@ -11,6 +11,33 @@
 
 ## Current milestone
 
+**M30 — the debugger — is BUILT** (2026-08-20, branch `feature/m30-debugger`, four slices,
+ships as v2.3.0). The delivery list:
+
+- [x] format 3.3: the DebugInfo section (id 13) — local and global slot names, strippable like
+      the source map, `--no-debug-info` strips it; Names (id 12) loosened from attribute-only to
+      any named type. Spec chapter 13 amended in `lyriclang/lyric-spec`, mirror synced (slice 1)
+- [x] the policy-generic interpreter loop: one loop source, two JIT specializations; the release
+      hook inlines to nothing — allocations unchanged at 0 B, timings within same-day run
+      variance (the machine was ~2× noisier than the 2026-08-18 baseline in BOTH directions of
+      the A/B; worth a re-measure on a quiet machine) (slice 2)
+- [x] `DebugController` in Lyric.Vm: breakpoints via source-map rows (a blank line slides down),
+      line-granular stepping with the standard depth rules, pause, and — while parked — stack,
+      locals, globals, expansion by static type, dotted-path evaluate. 15 VM-level tests, no
+      protocol involved (slice 2)
+- [x] `lyrdbg`, the ELEVENTH binary: a DAP server that compiles the program itself in the debug
+      shape (source map + debug info + `Optimize=false` — the new `CompilerOptions` knobs) and
+      runs it in-process; debuggee output travels as output events. Tested in-process over piped
+      streams — deliberately no process spawns (slice 3)
+- [x] `vscode-lyric` 1.3.0 wires F5: debug type, breakpoints, adapter lookup beside the driver;
+      guide chapter 21; CHANGELOG v2.3.0 (slice 4)
+
+**Deliberate limits, stated in guide 21**: the global initializer runs before the debugger
+attaches; stdlib lines are not steppable (bare names in the map); evaluate is name paths, not
+expressions; a panic reports output + exit 101 rather than a stopped-on-exception state.
+**Open on the editor side**: jetbrains-lyric has no DAP wiring yet — its DAP story is
+IDE-version-gated and belongs to that repository's cadence.
+
 **v1.0.0 through v2.0.0 are released** — annotated tags on the remote, each with a release page.
 M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
 v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables; since the org
@@ -190,8 +217,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4351 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **2.2.1**; the specification in `lyriclang/lyric-spec` is
+4400 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.3.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 85 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -331,6 +358,15 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**M30 — the debugger — is RELEASED as v2.3.0** (2026-08-20). Details under §Current milestone.
+Found on the way and fixed in its own commit: `tools/Bench` had not compiled since the 2.0
+deprecation removal (`set_iter` still imported `emptySet`) — every bench run died before the
+first number, which is also why the bench gate for the policy loop had no pre-existing baseline
+to lean on.
+
+Next: the file-error design round (A) — small vs. big unification — whenever the maintainer
+calls it. Erato-side: engine.task and engine.assets rework; jetbrains-lyric DAP wiring.
 
 **A9 — the imported-alias fix — is RELEASED as v2.2.1** (2026-08-20): Erato's register filed
 A9 the day of the 2.2.0 re-pin — an opaque type imported from a sibling SDK module did not

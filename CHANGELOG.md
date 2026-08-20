@@ -10,6 +10,46 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.3.0 — 2026-08-20
+
+M30: the toolchain learns to debug. Breakpoints, stepping, the call stack and the variables
+panel, in any editor that speaks the Debug Adapter Protocol — the VS Code extension wires it to
+F5. The bytecode format goes **3.2 → 3.3**; the change is one strippable section, so a 3.2
+runtime loads a 3.3 module unchanged, and every 2.x module keeps loading here.
+
+### Added
+
+- **`lyrdbg`, the debug adapter — the eleventh binary.** An editor launches it over stdio. It
+  compiles the program itself, in the debug shape — source map, debug info, optimizations OFF,
+  because an inlined callee has no frame to show — so what you debug is always the file in the
+  editor; a prebuilt `.lyrbc` launches as it is. Breakpoints stop before the line runs, slide
+  from a blank line to the next mapped one, and hit on every loop pass; stepping is
+  line-granular with the standard over/in/out rules; a pause lands before the next instruction.
+  The panels show the real frame stack with source lines, the locals of any frame, a Globals
+  scope, and structured values expanded — struct and class fields by name, enum variants with
+  their payload, arrays by index, interface values as their concrete type. Hover and the debug
+  console evaluate dotted name paths (`player.pos.x`); expressions are out by design — half an
+  expression compiler answers wrongly. The program's own stdout/stderr arrive as labeled output
+  events; a panic ends the session with its message, backtrace and exit code 101.
+- **Bytecode format 3.3: the DebugInfo section (id 13).** The names of local and global slots,
+  strippable like the source map, written by default; a compiler-created slot carries the empty
+  string and is never shown. The Names section (id 12) becomes a floor instead of a ceiling:
+  with debug info on it carries field names for ANY named type, so a debugger can expand an
+  object. `lyrc build --no-debug-info` strips both back to the 3.2 shape; `lyrvm info` reports
+  `source map` and `debug info` presence.
+- **`CompilerOptions.DebugInfo` and `CompilerOptions.Optimize`** in the frontend library: the
+  debug shape is available to any host that compiles.
+- **Guide chapter 21 — Debugging**, including the three stated limits: the global initializer
+  runs before the debugger attaches, standard-library lines are not steppable, and optimized
+  bytecode shows the optimizer's world.
+
+### Fixed
+
+- **`tools/Bench` compiles again.** The 2.0 deprecation removal took `std.collections.emptySet`
+  with it and the harness's `set_iter` case was never migrated; every run died before the first
+  number. The case uses `Set<int>.empty()` now, and a case that fails to compile names itself
+  and its diagnostics.
+
 ## v2.2.1 — 2026-08-20
 
 One fix, found by the embedder the same day: the specification's §3.5 promises that an opaque

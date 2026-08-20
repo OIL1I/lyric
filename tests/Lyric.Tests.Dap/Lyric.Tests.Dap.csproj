@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <!--
+      The adapter is tested IN-PROCESS over piped streams rather than by spawning lyrdbg: the
+      protocol machine is the same object either way, and process-spawning tests have a record
+      of failing under full-suite load in this repository. The one thing a spawn would add —
+      Program.Main's argument handling — is a handful of lines the Cli tests cover by pattern.
+    -->
+    <ProjectReference Include="..\..\src\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\..\src\Lyric.Frontend\Lyric.Frontend.csproj" />
+    <ProjectReference Include="..\..\src\Lyric.Vm\Lyric.Vm.csproj" />
+    <ProjectReference Include="..\..\src\Lyric.Dap\Lyric.Dap.csproj" />
+  </ItemGroup>
+</Project>

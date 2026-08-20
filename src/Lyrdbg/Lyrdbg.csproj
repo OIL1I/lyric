@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lyrdbg</AssemblyName>
+    <RootNamespace>Lyric.Cli.Debugger</RootNamespace>
+    <Description>The debug adapter binary: speaks the Debug Adapter Protocol over stdio.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Dap\Lyric.Dap.csproj" />
+  </ItemGroup>
+
+</Project>
