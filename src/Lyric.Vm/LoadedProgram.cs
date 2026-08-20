@@ -1,5 +1,6 @@
 using Lyric.Bytecode;
 using Lyric.Core;
+using Lyric.Vm.Debugging;
 
 namespace Lyric.Vm;
 
@@ -90,9 +91,23 @@ public sealed class LoadedProgram
     /// <summary>Does this module have an entry point?</summary>
     public bool HasEntryPoint => _module.Start is not null;
 
+    /// <summary>The decoded functions, for the debugger: breakpoints address instruction indices,
+    /// which exist only in the decoded form.</summary>
+    internal Interpreter.Prepared[] PreparedFunctions => _prepared;
+
+    /// <summary>The global slots, for the debugger's Globals scope.</summary>
+    internal LyrValue[] GlobalSlots => _globals;
+
+    /// <summary>Runs <c>main</c> under a debugger. The controller's hook sees every instruction;
+    /// everything else — arguments, entry forms, exit value — is <see cref="RunEntry"/>.</summary>
+    public LyrValue RunEntry(IReadOnlyList<string> arguments, DebugController debug) =>
+        RunEntryCore(arguments, debug);
+
     /// <summary>Runs <c>main</c> and returns its value.</summary>
     /// <exception cref="LyricRuntimeException">No entry point.</exception>
-    public LyrValue RunEntry(IReadOnlyList<string> arguments)
+    public LyrValue RunEntry(IReadOnlyList<string> arguments) => RunEntryCore(arguments, null);
+
+    private LyrValue RunEntryCore(IReadOnlyList<string> arguments, DebugController? debug)
     {
         if (_module.Start is not { } start)
             throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
@@ -112,7 +127,7 @@ public sealed class LoadedProgram
             ? []
             : [Interpreter.ArgumentArray(arguments)];
 
-        return Execute(entry, entryArgs);
+        return Execute(entry, entryArgs, debug);
     }
 
     /// <summary>
@@ -134,7 +149,8 @@ public sealed class LoadedProgram
     /// parameter slots; the caller checks arity and types against the function table.</summary>
     public LyrValue Invoke(int index, params LyrValue[] arguments) => Execute(index, arguments);
 
-    private LyrValue Execute(int index, LyrValue[]? arguments = null) =>
+    private LyrValue Execute(int index, LyrValue[]? arguments = null,
+        DebugController? debug = null) =>
         Interpreter.Execute(_prepared, index, _module.Strings, _module.Types, _dispatch,
-            _natives, _globals, _arguments, arguments, _module.SourceMap);
+            _natives, _globals, _arguments, arguments, _module.SourceMap, debug);
 }

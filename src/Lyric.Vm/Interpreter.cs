@@ -1,7 +1,39 @@
 using Lyric.Bytecode;
 using Lyric.Core;
+using Lyric.Vm.Debugging;
 
 namespace Lyric.Vm;
+
+/// <summary>
+/// What runs between two instructions. The loop is generic over it with a struct constraint, so
+/// the JIT emits one specialization per policy: the release one inlines an empty method into
+/// NOTHING — the hot path stays byte-identical to the loop before the hook existed — and only the
+/// debug specialization pays for the checks it needs.
+///
+/// <para>One loop source, two machine-code bodies. A second, hand-copied debug loop would be
+/// silently wrong at the first new opcode.</para>
+/// </summary>
+internal interface IExecutionPolicy
+{
+    /// <summary>Called before each instruction. <c>frame.Ip</c> still points AT the instruction
+    /// about to execute; <c>frames.Count</c> is the call depth below it.</summary>
+    void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame);
+}
+
+/// <summary>The production policy: nothing. Every method body is empty and disappears at JIT
+/// time.</summary>
+internal readonly struct ReleasePolicy : IExecutionPolicy
+{
+    public void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame) { }
+}
+
+/// <summary>The debugging policy: hands every instruction boundary to the controller, which
+/// checks breakpoints, stepping and pause requests there.</summary>
+internal readonly struct DebugPolicy(DebugController controller) : IExecutionPolicy
+{
+    public void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame) =>
+        controller.OnInstruction(frames, frame);
+}
 
 /// <summary>
 /// Executes a loaded <see cref="BytecodeModule"/>.
@@ -50,7 +82,7 @@ public static class Interpreter
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
         DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals,
         ArgumentPool arguments, LyrValue[]? entryArguments = null,
-        BytecodeSourceMap? sourceMap = null)
+        BytecodeSourceMap? sourceMap = null, DebugController? debug = null)
     {
         var frames = new Stack<Frame>();
         var frame = prepared[startIndex].Rent();
@@ -62,8 +94,12 @@ public static class Interpreter
 
         try
         {
-            return Loop(prepared, strings, types, dispatch, natives, globals, arguments, frames,
-                ref frame);
+            // Two JIT specializations of one loop; the release one carries no trace of the hook.
+            return debug is null
+                ? Loop(prepared, strings, types, dispatch, natives, globals, arguments, frames,
+                    ref frame, default(ReleasePolicy))
+                : Loop(prepared, strings, types, dispatch, natives, globals, arguments, frames,
+                    ref frame, new DebugPolicy(debug));
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
@@ -98,13 +134,16 @@ public static class Interpreter
         return at is null ? name : $"{name} ({at})";
     }
 
-    private static LyrValue Loop(Prepared[] prepared, IReadOnlyList<string> strings,
+    private static LyrValue Loop<TPolicy>(Prepared[] prepared, IReadOnlyList<string> strings,
         IReadOnlyList<BytecodeTypeDef> types, DispatchTable dispatch,
         NativeRegistry.BoundNative[] natives, LyrValue[] globals, ArgumentPool arguments,
-        Stack<Frame> frames, ref Frame frame)
+        Stack<Frame> frames, ref Frame frame, TPolicy policy)
+        where TPolicy : struct, IExecutionPolicy
     {
         while (true)
         {
+            policy.BeforeInstruction(frames, frame);
+
             var instruction = frame.Fn.Instructions[frame.Ip++];
 
             switch (instruction.Opcode)
