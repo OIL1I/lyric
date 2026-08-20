@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diagnostics — Lyric v2.0.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.0.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/" class="here">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+</ul>
+</nav>
+<main>
+<h1>Diagnostics</h1>
+<nav class="contents">
+<ul>
+<li><a href="#warnings">Warnings</a></li>
+<li><a href="#hints">Hints</a></li>
+<li><a href="#notes">Notes</a></li>
+</ul>
+</nav>
+<p>The compiler speaks at four severities. An <strong>error</strong> rejects the program. A <strong>warning</strong> means
+the program compiles and something about it deserves fixing. An <strong>info</strong> is neutral
+information, and a <strong>hint</strong> is a suggestion: the program is fine, a clearer form exists.</p>
+<p>Every diagnostic carries a stable code — <code>LYR-SEM0071</code> and its kind. A code keeps its meaning
+and its severity forever: a retired code is never reused, and no flag turns a warning into
+something else. What changes with a flag is at most the exit code.</p>
+<h2 id="warnings">Warnings</h2>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    let unused = 42;
+    println(&quot;the program runs all the same&quot;);
+    return 0;
+}
+</code></pre>
+<pre><code>main.lyr:4:9: warning[LYR-SEM0071]: 'unused' is never used
+    let unused = 42;
+        ^
+  note: name it '_' when the value is deliberately unused
+</code></pre>
+<p>What warns today: a local binding, loop variable, catch binding or pattern binding that is
+never referenced (<code>LYR-SEM0071</code>); an imported name nobody in the file uses (<code>LYR-SEM0072</code>); a
+statement that can never run because control flow always leaves the block before it
+(<code>LYR-SEM0073</code>); a static extension method called through an instance (<code>LYR-SEM0074</code>) — that
+form is deprecated and becomes an error in a future major version; and every use of something
+marked <code>@Deprecated</code> (<code>LYR-SEM0076</code>), with the attribute's message naming the way forward.</p>
+<p>Naming a binder <code>_</code> says the value is deliberately unused, and no warning fires. Parameters
+never warn — a signature is often fixed by an interface — and neither does the shorthand field
+pattern <code>Rect { w, h }</code>, whose names belong to the fields rather than to you.</p>
+<p>Warnings never fail a build by themselves. In CI you can make them:</p>
+<pre><code class="language-bash">lyric check src/main.lyr --deny-warnings
+</code></pre>
+<p>The warnings keep their severity in the output; one closing error carries the policy into the
+exit code, and a denied <code>build</code> writes no file.</p>
+<h2 id="hints">Hints</h2>
+<p><code>LYR-SEM0075</code> is a hint: a <code>var</code> through which nothing is ever changed — no reassignment, no
+field or element write, no <code>mut</code> method call — could be a <code>let</code>. A <code>var</code> that documents
+mutation keeps its <code>var</code>; the hint only speaks when the mutability says nothing.</p>
+<h2 id="notes">Notes</h2>
+<p>A diagnostic may carry notes: other places that belong to the same finding. A duplicate
+declaration points back at the first one, a missing interface method points at the member it
+fails — in whatever file that member lives — and an unknown name suggests the closest one in
+scope when there is exactly one close candidate:</p>
+<pre><code>main.lyr:3:12: error[LYR-SEM0002]: unknown identifier 'coutn'
+    return coutn;
+           ^^^^^
+  note: did you mean 'count'?
+</code></pre>
+<p>In an editor, notes appear under the message and jump to their place on click; unused and
+unreachable code renders faded, and the deprecated instance form is struck through.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/formatting/">Formatting</a>
+<a class="next" href="../../guide/testing/">Testing</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

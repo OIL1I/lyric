@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.0.1</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.0.1</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.0.1 — 2026-08-20</h2>
+<p>The first harvest of the deep audit: seven bugs measured against the now-normative
+specification, fixed as one wave. Seven new conformance cases activate with this release
+(<code>//! since: 2.0.1</code>); the suite stands at 78.</p>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong><code>a..=hi</code> reaches the type's maximum.</strong> The inclusive range desugared to <code>..hi+1</code>, which
+wraps at the bound — <code>for (_ in max-2..=max)</code> ran ZERO times. Inclusive ranges ride their
+own adapter with a done flag now; no arithmetic touches the bound.</li>
+<li><strong>Ranges over every width and signedness.</strong> A range over <code>uint8</code>/<code>int16</code>/… produced
+malformed IR that only the Release verifier-skip let run; a <code>uint</code> range crossing 2⁶³
+compared SIGNED and ran dry. Bounds now widen into a signed or unsigned carrier, and the
+loop variable converts back at its own width.</li>
+<li><strong><code>defer</code> belongs to the block.</strong> A defer in a loop body registered once into the function
+scope: it fired once, with the last iteration's values, after the code following the loop.
+Loop bodies are scopes now — the defer runs at every iteration's end, <code>continue</code> and
+<code>break</code> included, draining exactly the scopes being left.</li>
+<li><strong><code>let x = null;</code> and <code>let xs = [];</code> report instead of crashing.</strong> Both drove an unhandled
+internal exception through the lowering. They are <code>LYR-SEM0010</code> now: the initializer fixes
+no type, the binding needs an annotation.</li>
+<li><strong>An oversized literal no longer reinterprets.</strong> <code>let x = 9223372036854775808;</code> compiled
+and held −9223372036854775808 — the magnitude's raw bits. A literal that stays at the
+default <code>int</code> must fit <code>int</code>; the same magnitude still adapts to annotated <code>uint</code>
+positions.</li>
+<li><strong>An integer literal meets a float exactly.</strong> <code>let g: float = 9007199254740993;</code> (2⁵³+1)
+adapted with a silent rounding; &quot;fits&quot; is exact now, for <code>float</code> and <code>float32</code> alike.</li>
+<li><strong>A <code>throws</code> clause on <code>main</code> is refused</strong> (<code>LYR-SEM0021</code>). It compiled, and a thrown
+exception left the program as the <code>LYR-VM0010</code> panic the specification calls unreachable
+from source.</li>
+</ul>
+<h3 id="improved">Improved</h3>
+<ul>
+<li>&quot;cannot assign 'T' to 'T'&quot; names its cause: when the two displays collide, the message says
+the types differ by identity — declared in different scopes, or a generic call
+instantiating itself at a larger type, which monomorphization refuses.</li>
+<li>A contextless generic construction reports <code>LYR-SEM0026</code> once, without a follow-up
+&quot;cannot assign&quot; per field.</li>
+<li>A new test pins the §11 contract: every native the shipped stdlib declares is bound by the
+default registry (<code>std.build</code> excepted — the build runner is its host, now said in §11).</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

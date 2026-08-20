@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Attributes — Lyric v2.0.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.0.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/" class="here">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+</ul>
+</nav>
+<main>
+<h1>Attributes</h1>
+<nav class="contents">
+<ul>
+<li><a href="#an-attribute-is-a-struct">An attribute is a struct</a></li>
+<li><a href="#arguments-are-literals">Arguments are literals</a></li>
+<li><a href="#the-module-header">The module header</a></li>
+<li><a href="#what-ends-up-in-the-module-and-who-reads-it">What ends up in the module, and who reads it</a></li>
+<li><a href="#where-the-vocabulary-comes-from">Where the vocabulary comes from</a></li>
+<li><a href="#the-one-attribute-the-compiler-reads">The one attribute the compiler reads</a></li>
+</ul>
+</nav>
+<p>An attribute attaches data to a declaration — data the program never reads, but a tool outside it
+can. A game engine finds the functions it should call each frame; a mod loader reads a module's
+name and version before running anything; an editor shows what a script declares.</p>
+<pre><code class="language-lyr">import std.core { OnType, OnFunction };
+
+pub struct Component :: [OnType] { }
+pub struct System :: [OnFunction] { order: int = 0 }
+
+@Component
+pub struct Health { value: int, max: int }
+
+@System { order = 10 }
+pub fn damageTick(dt: float): void { }
+</code></pre>
+<p>An attribute <strong>describes; it does nothing</strong>. <code>damageTick</code> runs exactly as it would without the
+<code>@System</code> line — no wrapping, no renaming, no changed behaviour. What a host makes of the row is
+the host's business.</p>
+<h2 id="an-attribute-is-a-struct">An attribute is a struct</h2>
+<p>There is no separate attribute declaration form. <code>System</code> above is an ordinary struct: it can be
+constructed, passed around and read like any other. What makes it usable <em>as</em> an attribute is the
+marker interface it declares:</p>
+<table>
+<thead>
+<tr>
+<th>Marker</th>
+<th>Allows <code>@Name</code> before</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>OnFunction</code></td>
+<td>a top-level function</td>
+</tr>
+<tr>
+<td><code>OnType</code></td>
+<td>a struct, class or enum</td>
+</tr>
+<tr>
+<td><code>OnModule</code></td>
+<td>the module header</td>
+</tr>
+</tbody>
+</table>
+<p>All three live in <code>std.core</code> and are empty — nothing is dispatched through them, so they cost
+nothing. Conformance decides, not the name: a struct that never declares <code>:: [OnFunction]</code> cannot
+sit on a function, however plausible it sounds. That is the same nominal rule the operators
+follow, and it exists for the same reason — nothing becomes an attribute by accident.</p>
+<p>A struct may declare more than one marker and then sits on both kinds of target:</p>
+<pre><code class="language-lyr">import std.core { OnType, OnFunction };
+
+pub struct Tag :: [OnFunction, OnType] { }
+</code></pre>
+<h2 id="arguments-are-literals">Arguments are literals</h2>
+<p>The block after the name is the struct initializer, restricted to literals — numbers (a sign is
+allowed), strings, chars and bools:</p>
+<pre><code class="language-lyr">import std.core { OnFunction };
+
+pub struct Retry :: [OnFunction] { limit: int = 3, label: string = &quot;&quot; }
+
+@Retry { limit = -1 }
+pub fn fetch(): void { }
+</code></pre>
+<p>The restriction is not taste: the values are written into the compiled module, and what stands in
+a file has to be a value at compile time. <code>limit = 1 + 2</code> is rejected, and so is <code>null</code>.</p>
+<p>A field you do not write carries its default — <code>label</code> above is <code>&quot;&quot;</code> without anyone writing it.
+That only works when the default itself is a literal; a field with a computed default and no
+written value is an error at the use site, because there would be nothing to write into the
+module.</p>
+<p>Two more rules, both diagnosed where they happen: the same attribute may not sit on one target
+twice, and neither a generic attribute struct nor a generic target is allowed — the compiled
+module holds one row, and one row cannot stand for every instance.</p>
+<h2 id="the-module-header">The module header</h2>
+<p>An attribute before <code>module</code> describes the file as a whole:</p>
+<pre><code class="language-lyr">@Plugin { name = &quot;mymod&quot;, api = 2 }
+module mymod;
+
+import std.core { OnModule };
+
+pub struct Plugin :: [OnModule] { name: string, api: int }
+</code></pre>
+<p>This is the row a host reads <strong>before</strong> deciding to run anything — identity and required API
+version for mods and downloaded scripts. A file without a <code>module</code> header cannot carry module
+attributes; an attribute at the top of such a file belongs to the first declaration.</p>
+<h2 id="what-ends-up-in-the-module-and-who-reads-it">What ends up in the module, and who reads it</h2>
+<p>The compiled <code>.lyrbc</code> carries one row per attribute: the target, the attribute type and one value
+per field. For every type a row references, the module also carries the <strong>field names</strong> — which is
+worth pausing on, because otherwise field names never appear in compiled code. It is what lets an
+engine read</p>
+<pre><code class="language-lyr">import std.core { OnType };
+
+pub struct Component :: [OnType] { }
+
+@Component
+pub struct Health { value: int, max: int }
+</code></pre>
+<p>and learn not just that <code>Health</code> has two <code>int</code> fields, but which is <code>value</code> and which is <code>max</code> —
+enough to allocate its own storage for a type the script declared.</p>
+<p>A function carrying an attribute is never removed as dead code, even if nothing in the script
+calls it: the row is a promise that the function exists, and the host is a caller the compiler
+cannot see.</p>
+<p>How a C# host asks these questions — enumerating rows, calling the functions they name, reading a
+type's shape — is the embedding chapter's topic: see
+<a href="/v2.0.1/guide/embedding/#attributes-what-a-script-says-about-itself">Attributes: what a script says about itself</a>.</p>
+<h2 id="where-the-vocabulary-comes-from">Where the vocabulary comes from</h2>
+<p>The markers make a struct <em>placeable</em>; they say nothing about which attributes exist. That
+vocabulary belongs to whoever reads the rows — an engine ships <code>Component</code> and <code>System</code> in its
+SDK the same way it ships its native functions, and a script imports them:</p>
+<pre><code class="language-lyr">import engine.ecs { System };
+
+@System { order = 10 }
+pub fn hunt(dt: float): void { }
+</code></pre>
+<p>Attribute names are unqualified in the compiled module: <code>System</code>, not <code>engine.ecs.System</code>. An SDK
+owns its attribute names the way it owns its native names.</p>
+<h2 id="the-one-attribute-the-compiler-reads">The one attribute the compiler reads</h2>
+<p>Exactly one attribute means something to the compiler itself: <code>@Deprecated</code>, from <code>std.core</code>.
+It marks a function, a type or a module, and every use of the marked thing warns
+(<code>LYR-SEM0076</code>) with the message naming the way forward:</p>
+<pre><code class="language-lyr">import std.core { Deprecated };
+
+@Deprecated { message = &quot;use renew&quot; }
+pub fn old(): int {
+    return 1;
+}
+
+pub fn renew(): int {
+    return 2;
+}
+
+fn main(): int {
+    return renew();
+}
+</code></pre>
+<p>It changes diagnostics and nothing else — a program that ignores the warning compiles to the
+same module, and a deprecated function may keep calling itself and its deprecated siblings
+without the compiler nagging the one place allowed not to care.</p>
+<p>The compiler-read set is part of the language's contract, which is why it grows by decision
+rather than by convention: <code>@Deprecated</code> is in it, <code>@Inline</code> and its kind are not. Everything
+else stays inert — an attribute the compiler does not know describes, and does nothing.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/embedding/">Embedding</a>
+<a class="next" href="../../guide/building/">Building a project</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
