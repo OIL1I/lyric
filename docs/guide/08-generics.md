@@ -68,8 +68,9 @@ fn main(): int {
 }
 ```
 
-Several constraints stand side by side: `<K :: [Hashable<K>, Equatable<K>]>`. A constraint may
-mention its own parameter.
+Several constraints stand side by side: `<T :: [Ordered<T>, Display]>`. A constraint may
+mention its own parameter, and an interface chain counts once: `Hashable<K>` implies
+`Equatable<K>`, so a `Map` key needs only `<K :: [Hashable<K>]>`.
 
 ## Monomorphization
 

@@ -89,9 +89,9 @@ rejected before it runs.
 ## Strings have methods
 
 Since v1.15 the string API is method-shaped: `s.trim()`, `s.split(",")`, `s.contains(x)`,
-`s.length()`. The free forms (`trim(s)`, …) still work and warn as deprecated; they go with the
-next major. `concat` and `repeat` stay free — they back `+` and `*` — and the type-directed
-families (`fromInt`, `parseInt`, …) keep their names.
+`s.length()`. The deprecated free forms (`trim(s)`, …) went with 2.0. `concat` and `repeat`
+stay free — they back `+` and `*` — and the type-directed families (`fromInt`, `parseInt`, …)
+keep their names.
 
 The methods come with the module: any `import std.string { … }` makes them visible, and a file
 that needs no free name imports the module under an alias, which avoids shadowing the builtin
@@ -113,9 +113,9 @@ promise a stored answer this type does not have — and every method returns a N
 
 A container comes from its type: `List<int>.empty()`, `Map<string, int>.empty()`,
 `Set<int>.empty()`, `StringBuilder.new()`, `Random.seeded(42)` — the latter from `std.random`
-since v1.14, where `shuffle`, `choice` and `nextGaussian` live beside it. The old free functions
-(`emptyList`, `emptyMap`, `emptySet`, `newRandom`) and the `std.math.Random` twin still work and
-warn as deprecated; they disappear with the next major version.
+since v1.14, where `shuffle`, `choice` and `nextGaussian` live beside it. The old free
+functions (`emptyList`, `emptyMap`, `emptySet`, `newRandom`) and the `std.math.Random` twin
+went with 2.0.
 
 ## Editing the standard library
 

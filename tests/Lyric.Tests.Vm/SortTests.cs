@@ -49,7 +49,7 @@ public class SortTests
     }
 
     private const string Head = """
-        import std.collections { List, emptyList, sortList, sortListBy };
+        import std.collections { List, sortList, sortListBy };
 
         // 1 when sorted ascending
         fn istSortiert(xs: List<int>): int {
@@ -62,7 +62,7 @@ public class SortTests
         }
 
         fn ausZahlen(werte: int[]): List<int> {
-            let xs = emptyList<int>();
+            let xs = List<int>.empty();
             for (v in werte) { xs.push(v); }
             return xs;
         }
@@ -117,7 +117,7 @@ public class SortTests
         // 128. Short lists never exercise the outer rounds.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 var i = 100;
                 while (i > 0) { xs.push(i); i = i - 1; }
                 sortList(xs);
@@ -140,12 +140,12 @@ public class SortTests
     [Fact]
     public void Equal_elements_keep_their_input_order() =>
         Assert.Equal(1, Run("""
-            import std.collections { emptyList, sortListBy };
+            import std.collections { List, sortListBy };
 
             pub struct Eintrag { schluessel: int, marke: int }
 
             fn main(): int {
-                let xs = emptyList<Eintrag>();
+                let xs = List<Eintrag>.empty();
                 xs.push(Eintrag { schluessel = 2, marke = 1 });
                 xs.push(Eintrag { schluessel = 1, marke = 2 });
                 xs.push(Eintrag { schluessel = 2, marke = 3 });
@@ -186,12 +186,12 @@ public class SortTests
     [Fact]
     public void A_comparator_may_sort_by_a_field() =>
         Assert.Equal(1, Run("""
-            import std.collections { emptyList, sortListBy };
+            import std.collections { List, sortListBy };
 
             pub struct Person { name: string, alter: int }
 
             fn main(): int {
-                let xs = emptyList<Person>();
+                let xs = List<Person>.empty();
                 xs.push(Person { name = "c", alter = 30 });
                 xs.push(Person { name = "a", alter = 10 });
                 xs.push(Person { name = "b", alter = 20 });

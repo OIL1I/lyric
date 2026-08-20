@@ -50,7 +50,7 @@ public class SetTests
     }
 
     private const string Head =
-        "import std.collections { Set, emptySet, union, intersect, difference, isSubset };\n";
+        "import std.collections { Set, union, intersect, difference, isSubset };\n";
 
     // ------------------------------------------------------------------ Grundlagen
 
@@ -58,7 +58,7 @@ public class SetTests
     public void A_set_starts_empty() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let s = emptySet<int>();
+                let s = Set<int>.empty();
                 return if (s.length() == 0 && s.isEmpty()) 1 else 0;
             }
             """));
@@ -69,7 +69,7 @@ public class SetTests
         // put a 'contains' in front of, probing twice.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let s = emptySet<int>();
+                let s = Set<int>.empty();
                 let ersteMal = s.add(7);
                 let zweiteMal = s.add(7);
                 return if (ersteMal && !zweiteMal && s.length() == 1) 1 else 0;
@@ -80,7 +80,7 @@ public class SetTests
     public void Remove_reports_whether_the_value_was_there() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let s = emptySet<int>();
+                let s = Set<int>.empty();
                 s.add(7);
                 let weg = s.remove(7);
                 let nochmal = s.remove(7);
@@ -94,7 +94,7 @@ public class SetTests
         // counted twice.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let s = emptySet<int>();
+                let s = Set<int>.empty();
                 var i = 0;
                 while (i < 200) { s.add(i); i = i + 1; }
 
@@ -114,7 +114,7 @@ public class SetTests
         // exchange.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let s = emptySet<int>();
+                let s = Set<int>.empty();
                 var i = 1;
                 while (i <= 10) { s.add(i); i = i + 1; }
 
@@ -132,9 +132,9 @@ public class SetTests
     public void Union_contains_both_sides_without_duplicates() =>
         Assert.Equal(4, Run(Head + """
             fn main(): int {
-                let a = emptySet<int>();
+                let a = Set<int>.empty();
                 a.add(1); a.add(2);
-                let b = emptySet<int>();
+                let b = Set<int>.empty();
                 b.add(2); b.add(3); b.add(4);
                 return union(a, b).length();
             }
@@ -144,9 +144,9 @@ public class SetTests
     public void Intersect_keeps_only_what_both_have() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let a = emptySet<int>();
+                let a = Set<int>.empty();
                 a.add(1); a.add(2);
-                let b = emptySet<int>();
+                let b = Set<int>.empty();
                 b.add(2); b.add(3);
                 let s = intersect(a, b);
                 return if (s.length() == 1 && s.contains(2)) 1 else 0;
@@ -159,9 +159,9 @@ public class SetTests
         // both directions yield the same; the swap is exactly the place one gets wrong.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let klein = emptySet<int>();
+                let klein = Set<int>.empty();
                 klein.add(5);
-                let gross = emptySet<int>();
+                let gross = Set<int>.empty();
                 var i = 0;
                 while (i < 20) { gross.add(i); i = i + 1; }
 
@@ -176,9 +176,9 @@ public class SetTests
     public void Difference_removes_what_the_other_has() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let a = emptySet<int>();
+                let a = Set<int>.empty();
                 a.add(1); a.add(2); a.add(3);
-                let b = emptySet<int>();
+                let b = Set<int>.empty();
                 b.add(2);
                 let s = difference(a, b);
                 return if (s.length() == 2 && s.contains(1) && s.contains(3) && !s.contains(2))
@@ -192,9 +192,9 @@ public class SetTests
         // chain.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let a = emptySet<int>();
+                let a = Set<int>.empty();
                 a.add(1); a.add(2);
-                let b = emptySet<int>();
+                let b = Set<int>.empty();
                 b.add(2); b.add(3);
 
                 union(a, b);
@@ -209,9 +209,9 @@ public class SetTests
     public void IsSubset_checks_containment_in_both_directions() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let klein = emptySet<int>();
+                let klein = Set<int>.empty();
                 klein.add(1);
-                let gross = emptySet<int>();
+                let gross = Set<int>.empty();
                 gross.add(1); gross.add(2);
                 return if (isSubset(klein, gross) && !isSubset(gross, klein)) 1 else 0;
             }
@@ -232,10 +232,10 @@ public class SetTests
     [Fact]
     public void A_map_can_be_walked_by_keys_and_values() =>
         Assert.Equal(1, Run("""
-            import std.collections { emptyMap, keys, values };
+            import std.collections { Map, keys, values };
 
             fn main(): int {
-                let m = emptyMap<string, int>();
+                let m = Map<string, int>.empty();
                 m.set("a", 1); m.set("b", 2); m.set("c", 3);
 
                 var anzahlKeys = 0;
@@ -254,10 +254,10 @@ public class SetTests
         // The tombstones must not appear while walking: 'states[i] == 1' is the condition, and '!= 0'
         // would be the obvious wrong one.
         Assert.Equal(1, Run("""
-            import std.collections { emptyMap, keys };
+            import std.collections { Map, keys };
 
             fn main(): int {
-                let m = emptyMap<int, int>();
+                let m = Map<int, int>.empty();
                 var i = 0;
                 while (i < 10) { m.set(i, i); i = i + 1; }
                 i = 0;
@@ -273,10 +273,10 @@ public class SetTests
     public void A_list_knows_whether_it_is_empty() =>
         // Map and Set had this from their first day, List did not.
         Assert.Equal(1, Run("""
-            import std.collections { emptyList };
+            import std.collections { List };
 
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 let vorher = xs.isEmpty();
                 xs.push(1);
                 return if (vorher && !xs.isEmpty()) 1 else 0;
@@ -288,10 +288,10 @@ public class SetTests
         // Free functions rather than methods: they need 'Equatable<T>', and that constraint on the CLASS
         // would make 'List<T>' unusable for every type without equality, including where nobody searches.
         Assert.Equal(1, Run("""
-            import std.collections { emptyList, listContains, listIndexOf };
+            import std.collections { List, listContains, listIndexOf };
 
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(10); xs.push(20); xs.push(30);
 
                 let hat = listContains(xs, 20);

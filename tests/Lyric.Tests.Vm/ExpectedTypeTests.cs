@@ -231,10 +231,10 @@ public class ExpectedTypeTests
         // an i64 would land in a string slot. Both come from the context here, not from a written
         // argument.
         Assert.Equal(1, Run("""
-            import std.string { length };
+            import std.string as strings;
             struct P<T> { v: T, }
             fn takesInt(p: P<int>): int { return p.v; }
-            fn takesString(p: P<string>): int { return length(p.v); }
+            fn takesString(p: P<string>): int { return p.v.length(); }
             fn main(): int { return takesInt(P { v = 4 }) - takesString(P { v = "abc" }); }
             """));
     }

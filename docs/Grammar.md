@@ -1,3 +1,9 @@
+> **Mirror.** The canonical home of this document is
+> [`lyriclang/lyric-spec` → `spec/02-grammar.md`](https://github.com/lyriclang/lyric-spec/blob/main/spec/02-grammar.md).
+> This copy exists for the toolchain's tests and doc site; CI diffs everything below the
+> marker against the canonical body. Edit it there, mirror it here.
+
+<!-- sync:body -->
 # Lyric Grammar
 
 The formal grammar of the Lyric language. This document defines the syntax only; it says nothing

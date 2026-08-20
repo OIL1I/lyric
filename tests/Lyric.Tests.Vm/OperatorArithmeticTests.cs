@@ -154,7 +154,7 @@ public class OperatorArithmeticTests
         // The stdlib conforms the numerics and string to Add, so one generic 'total' takes an int,
         // a float-free string concat, and a user vector — monomorphized three ways.
         Assert.Equal(1, Run(Vec2 + """
-            import std.string { length };
+            import std.string as strings;
 
             fn total<T :: [Add<T>]>(a: T, b: T, c: T): T {
                 return a + b + c;
@@ -167,7 +167,7 @@ public class OperatorArithmeticTests
                     Vec2 { x = 1, y = 0 },
                     Vec2 { x = 2, y = 0 },
                     Vec2 { x = 3, y = 0 });
-                return if (n == 6 && length(s) == 3 && v.x == 6) 1 else 0;
+                return if (n == 6 && s.length() == 3 && v.x == 6) 1 else 0;
             }
             """));
     }
@@ -178,14 +178,14 @@ public class OperatorArithmeticTests
     public void Numeric_and_string_arithmetic_are_untouched()
     {
         Assert.Equal(1, Run("""
-            import std.string { length };
+            import std.string as strings;
             fn main(): int {
                 let n = 2 + 3 * 4;
                 let f = 10.0 / 4.0;
                 let s = "ab" + "cd";
                 let r = "x" * 3;
                 let xs = [1] + [2, 3];
-                return if (n == 14 && f == 2.5 && length(s) == 4 && length(r) == 3
+                return if (n == 14 && f == 2.5 && s.length() == 4 && r.length() == 3
                     && xs.length == 3) 1 else 0;
             }
             """));

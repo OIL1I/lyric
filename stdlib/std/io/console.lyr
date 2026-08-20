@@ -12,7 +12,7 @@
 /// satisfies `Display`: `println(42)`, `println(true)`, `println("hi")`.
 module std.io.console;
 
-import std.core { Deprecated, Display };
+import std.core { Display };
 import std.iter { Iterator };
 
 // The native writers take `string`, which is the boundary to the host. They are PRIVATE since
@@ -62,18 +62,6 @@ pub fn eprint<T :: [Display]>(value: T): void {
 /// them into the data.
 pub fn eprintln<T :: [Display]>(value: T): void {
     rawEprintln(value.show());
-}
-
-/// Writes any displayable value without a line break.
-@Deprecated { message = "use print — it takes any Display value since v1.14" }
-pub fn write<T :: [Display]>(value: T): void {
-    print(value);
-}
-
-/// Writes any displayable value, followed by a line break.
-@Deprecated { message = "use println — it takes any Display value since v1.14" }
-pub fn writeln<T :: [Display]>(value: T): void {
-    println(value);
 }
 
 // ------------------------------------------------------------------------------ input

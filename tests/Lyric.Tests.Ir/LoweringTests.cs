@@ -228,17 +228,21 @@ public class LoweringTests
     [Fact]
     public void A_deprecated_declaration_is_neither_a_row_nor_a_root()
     {
+        // Since 2.0 the stdlib carries no @Deprecated itself, so the fixture brings its own:
+        // an uncalled deprecated function must not survive into the module, and no attribute
+        // row may exist at all.
         var module = LowerWithStdlib("""
-            import std.string { toUpper };
+            import std.core { Deprecated };
+
+            @Deprecated { message = "old" }
+            fn veraltet(): int { return 1; }
+
             fn main(): int {
-                let _ = toUpper("x");
                 return 0;
             }
             """);
 
-        // 'newStringBuilder' carries @Deprecated in std.string; it must not survive into a
-        // program that never calls it, and no attribute row may exist at all.
-        Assert.DoesNotContain(module.Functions, f => f.Name.Contains("newStringBuilder"));
+        Assert.DoesNotContain(module.Functions, f => f.Name.Contains("veraltet"));
         Assert.Empty(module.Attributes);
     }
 

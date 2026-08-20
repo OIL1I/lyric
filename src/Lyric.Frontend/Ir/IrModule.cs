@@ -222,4 +222,15 @@ public class IrModule(List<IrFunction> Functions)
     /// <summary>The attribute rows, in declaration order. They land as section 11; the types they
     /// reference additionally get their field names into section 12.</summary>
     public List<IrAttribute> Attributes { get; init; } = new();
+
+    /// <summary>
+    /// The reachability roots of a LIBRARY compile: the `pub` functions of the compiled (non-stdlib)
+    /// modules. Since 2.0 a module without an entry point prunes from these — a library's surface
+    /// decides its contents (§4.6 of the specification).
+    ///
+    /// <para>COMPILE-INTERNAL: the list feeds <see cref="Reachability"/> and never reaches the
+    /// bytecode — the format has no section for it and needs none. Left empty by callers that lower
+    /// bare snippets (tests), whose functions would otherwise vanish.</para>
+    /// </summary>
+    public List<FunctionId> ExportRoots { get; init; } = new();
 }

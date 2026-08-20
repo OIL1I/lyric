@@ -21,11 +21,13 @@ internal static class Reachability
     /// <summary>
     /// Deletes unreachable functions and imports and renumbers the remaining ones.
     /// </summary>
-    /// <remarks>Without an entry point, meaning a library module, NOTHING happens: there every public
-    /// function is a possible root, and which one the host calls is unknown to the compiler.</remarks>
+    /// <remarks>Without an entry point, meaning a library module, the `pub` functions of the
+    /// compiled modules are the roots (<see cref="IrModule.ExportRoots"/>) — since 2.0 a library's
+    /// surface decides its contents. A library lowered WITHOUT export roots (a bare test snippet
+    /// through the raw API) is left whole, as every library was before 2.0.</remarks>
     public static void Prune(IrModule module)
     {
-        if (module.EntryFunction is null) return;
+        if (module.EntryFunction is null && module.ExportRoots.Count == 0) return;
 
         var erreichbar = Collect(module);
 
@@ -65,9 +67,12 @@ internal static class Reachability
         module.Imports.Clear();
         module.Imports.AddRange(importe);
 
-        module.EntryFunction = new FunctionId(neueId[module.EntryFunction.Value.Value]);
+        if (module.EntryFunction is { } start)
+            module.EntryFunction = new FunctionId(neueId[start.Value]);
         if (module.GlobalInit is { } init && neueId.TryGetValue(init.Value, out var initNeu))
             module.GlobalInit = new FunctionId(initNeu);
+        for (var i = 0; i < module.ExportRoots.Count; i++)
+            module.ExportRoots[i] = new FunctionId(neueId[module.ExportRoots[i].Value]);
 
         // The attribute rows follow the renumbering. Their function targets are roots above, so
         // the lookup cannot miss; type targets are untouched, the table keeps every entry.
@@ -116,6 +121,7 @@ internal static class Reachability
 
         Wurzel(module.EntryFunction);
         Wurzel(module.GlobalInit);
+        foreach (var export in module.ExportRoots) Wurzel(export);
 
         // An attributed function is a root: the row in section 11 is a promise to the host that
         // this function exists, and the host calls it by that index — a caller this analysis

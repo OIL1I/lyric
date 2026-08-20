@@ -321,7 +321,31 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M25 — the spec draft — is BUILT** (2026-08-19, ships as v1.16.0; the substance lives in
+**M26 — v2.0.0 — is BUILT** (2026-08-20, branch `feature/m26-v2`, five slices). The
+specification turns normative and the deprecation clocks run out. The delivery list:
+
+- [x] the deep audit toward the normative spec: Appendix A — all 180 diagnostic codes across
+      ten families, severity and cause verified against the emission sites, retired numbers
+      recorded (PAR0024/0039, CLI0007; SEM0048/49 never issued); the full narrowing model and
+      a new §7.7 definite assignment in chapter 7 (six new conformance cases, one of them the
+      checked-unwrap answer to stale lambda proofs); §4.7 gives attributes the home
+      SEM0065–0069 never had (slice 1)
+- [x] the subsumption: the EBNF and the `.lyrbc` format are canonical IN THE SPEC (chapters
+      02 and 13); `docs/Grammar.md` and `docs/Bytecode.md` stay as byte-identical mirrors
+      below a sync marker, and a CI job diffs them — the grammar-sync model, reused (slice 2)
+- [x] the cut: all 34 `@Deprecated` declarations gone (free string forms, free constructors,
+      the math Random twin, write/writeln) plus StringBuilder.length; the registry keeps the
+      old native names so 1.x bytecode loads; SEM0074 warning → error, the one severity
+      change of the major; `Hashable<T> :: [Equatable<T>]` and every key constraint shrinks
+      to one entry; doc floor 430 → 389 of 389 — completeness holds (slice 3)
+- [x] pub-roots: a library prunes from the `pub` functions of its compiled modules; the
+      stdlib no longer ships whole inside every library or embedded script; observable at the
+      host boundary and pinned there (slice 4)
+- [x] the conformance gate: the toolchain's own CI runs the spec suite against the WORKING
+      TREE; cases carry `//! since:` and activate by version, ending the deferred-case dance
+      — 54/54 against the candidate (slice 5)
+
+**M25 — the spec draft — was BUILT** (2026-08-19, shipped as v1.16.0; the substance lives in
 `lyriclang/lyric-spec`). The delivery list:
 
 - [x] twelve chapters, non-normative until 2.0: lexical contract, grammar framing (EBNF stays

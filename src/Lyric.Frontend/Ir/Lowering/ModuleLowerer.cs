@@ -62,8 +62,11 @@ public static class ModuleLowerer
     /// <param name="optimize">Whether the inliner runs. On everywhere except in tests that pin
     /// the SHAPE of lowered code — a test about monomorphization asserts an instance the inliner
     /// would fold away, and turning the optimizer off there keeps the test about its subject.</param>
+    /// <param name="libraryRoots">Whether a compile WITHOUT an entry point prunes from its `pub`
+    /// functions (§4.6 of the specification, since 2.0). The drivers pass <c>true</c>; the default
+    /// stays <c>false</c> so a test lowering a bare snippet keeps every function it wrote.</param>
     public static IrModule? Lower(Compilation compilation, BindingResult binding, TypeResult types,
-        DiagnosticEngine de, bool? verify = null, bool optimize = true)
+        DiagnosticEngine de, bool? verify = null, bool optimize = true, bool libraryRoots = false)
     {
         // Receiver == null means a free function or a 'static fn'. Otherwise the type whose instance is
         // passed as parameter 0.
@@ -72,6 +75,7 @@ public static class ModuleLowerer
         var imports = new ImportTable();
         var typeTable = new TypeTable(binding) { Compilation = compilation };
         var globals = new GlobalTable();
+        var exportRoots = new List<FunctionId>();
         FunctionId? entry = null;
         var failed = false;
 
@@ -132,6 +136,12 @@ public static class ModuleLowerer
                 var id = new FunctionId(pending.Count);
                 ids[symbol] = id;
                 pending.Add((function, NameMangling.ForFunction(module, function.Name), null, null));
+
+                // A library's surface: the pub functions of the COMPILED modules, never the standard
+                // library's — its pubs rooting would keep every program whole. Ids in 'pending' are
+                // final (position is the id), so recording them here is safe.
+                if (libraryRoots && function.IsPublic && !compilation.IsNative(module))
+                    exportRoots.Add(id);
 
                 // The entry contract: exactly one 'main' per executable. The sema checked that it is
                 // unique; here it is only recorded.
@@ -424,6 +434,7 @@ public static class ModuleLowerer
             Capabilities = RequiredCapabilities(compilation),
             Impls = impls,
             Attributes = attributes,
+            ExportRoots = exportRoots,
         };
         if (failed) return null;
 

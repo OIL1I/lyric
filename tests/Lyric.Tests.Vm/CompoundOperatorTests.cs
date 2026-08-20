@@ -125,12 +125,12 @@ public class CompoundOperatorTests
     {
         // 's *= 3' rides an opcode, not an interface; the operator path must not swallow it.
         Assert.Equal(6, Run("""
-            import std.string { length };
+            import std.string as strings;
 
             fn main(): int {
                 var s = "ab";
                 s *= 3;
-                return length(s);
+                return s.length();
             }
             """));
     }

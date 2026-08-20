@@ -35,6 +35,26 @@ public class CallTests
             .Call<long>("add", 10, 20));
 
     /// <summary>
+    /// The pub-roots rule at the host boundary (since 2.0): a script is a library, and its `pub`
+    /// surface decides its contents. A private function the surface does not reach is not in the
+    /// module — the host looking for it finds nothing, which is the observable half of §4.6.
+    /// (Whether a REACHED private helper survives as its own function is the inliner's business,
+    /// deliberately unpinned here.)
+    /// </summary>
+    [Fact]
+    public void An_unexported_unreachable_function_does_not_ship()
+    {
+        var instance = Instance("""
+            pub fn visible(): int { return hidden(); }
+            fn hidden(): int { return 5; }
+            fn orphan(): int { return 6; }
+            """);
+
+        Assert.Equal(5, instance.Call<long>("visible"));
+        Assert.False(instance.Defines("orphan"));
+    }
+
+    /// <summary>
     /// The reason for the qualification: a module's function table also carries everything dragged in
     /// from the stdlib. Without the module prefix, <c>length</c> would find <c>std.string.length</c> just
     /// as well, and depending on the order sometimes one and sometimes the other.
@@ -43,8 +63,8 @@ public class CallTests
     public void A_stdlib_function_of_the_same_name_is_not_reachable()
     {
         var instance = Instance("""
-            import std.string { length };
-            pub fn length2(s: string): int { return length(s) * 2; }
+            import std.string as strings;
+            pub fn length2(s: string): int { return s.length() * 2; }
             """);
 
         Assert.True(instance.Defines("length2"));

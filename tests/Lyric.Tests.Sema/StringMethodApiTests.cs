@@ -63,8 +63,10 @@ public class StringMethodApiTests
     }
 
     [Fact]
-    public void The_free_forms_warn_as_deprecated()
+    public void The_free_forms_are_gone()
     {
+        // Deprecated through 1.x, removed with 2.0: the import no longer finds the names. The
+        // registry still binds them for old bytecode — the SOURCE surface is what the cut took.
         var de = Check(
             """
             import std.string { trim, length };
@@ -73,8 +75,7 @@ public class StringMethodApiTests
                 return length(trim("  x  "));
             }
             """);
-        Assert.False(de.HasErrors);
-        Assert.Equal(2, de.Diagnostics.Count(d => d.Code == "LYR-SEM0076"));
+        Assert.Equal(2, de.Diagnostics.Count(d => d.Code == "LYR-RES0004"));
     }
 
     [Fact]
