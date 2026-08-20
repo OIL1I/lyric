@@ -10,7 +10,10 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v2.1.1 — 2026-08-20
+
+One fix, found the day of 2.1.0 by the first embedder to re-pin: a compiler crash on a form
+the language always meant to allow.
 
 ### Fixed
 

@@ -190,8 +190,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4331 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **2.1.0**; the specification in `lyriclang/lyric-spec` is
+4335 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **2.1.1**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 81 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -539,8 +539,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`sema, release: the variadic expectation keeps its element — and the tree claims 2.1.0`
-(closes M28; released as v2.1.0 — the ergonomics wave)
+`sema: a module-qualified type is a name, not a poisoned value`
+(PR #67; released as v2.1.1 — the crash the first re-pin found)
 
 ---
 
