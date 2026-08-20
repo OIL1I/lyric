@@ -18,6 +18,11 @@ internal sealed class LoopScope(BlockBuilder blocks)
     private BlockId? _continue;
     private BlockId? _break;
 
+    /// <summary>The defer-stack depth OUTSIDE this loop. A <c>break</c> or <c>continue</c> leaves
+    /// every scope above it and runs their defers first (§7.5) — without the mark it would either
+    /// skip them or drain the scopes it does not leave.</summary>
+    public int DeferDepth { get; init; }
+
     /// <summary>
     /// For <c>while</c> and <c>for-in</c>, where both blocks are ALWAYS reachable: the condition through
     /// the entry edge, the exit through its false edge. They also have to exist beforehand, because the

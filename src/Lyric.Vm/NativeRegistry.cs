@@ -33,6 +33,12 @@ public sealed class NativeRegistry
         Func<LyrValue[], LyrValue> implementation) =>
         _natives[name] = new Native(paramTypes, returnType, implementation);
 
+    /// <summary>Whether this registry binds <paramref name="name"/>. The §11 contract check:
+    /// the set a runtime must implement is exactly what the shipped stdlib declares bodiless,
+    /// and a test holds this registry to it — registration runs through loops, so no static
+    /// inspection can.</summary>
+    public bool Binds(string name) => _natives.ContainsKey(name);
+
     /// <summary>A native returning a <c>T[]</c>.
     ///
     /// <para>An array has no layout: it is a homogeneous sequence whose element type is named in

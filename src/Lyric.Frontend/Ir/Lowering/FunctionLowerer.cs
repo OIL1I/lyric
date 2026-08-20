@@ -989,6 +989,14 @@ internal sealed class FunctionLowerer
         foreach (var scope in _defers.ToArray()) EmitDefers(scope);
     }
 
+    /// <summary>The defers of every scope ABOVE the given stack depth, innermost first — what a
+    /// <c>break</c> or <c>continue</c> owes the scopes it leaves, and only those.</summary>
+    private void EmitPendingDefersAbove(int depth)
+    {
+        var scopes = _defers.ToArray(); // top-down; a copy for the same reentrancy reason as above
+        for (var i = 0; i < scopes.Length - depth; i++) EmitDefers(scopes[i]);
+    }
+
     private bool LowerBinding(BindingStmt binding)
     {
         if (_types.RefOf(binding) is not LocalSymbol local)
@@ -1118,14 +1126,18 @@ internal sealed class FunctionLowerer
     private bool LowerBreak(BreakStmt stmt)
     {
         if (_loops.Count == 0) throw Bug($"'break' outside a loop at {stmt.Span}");
-        _b.Seal(new Branch(_loops.Peek().BreakTarget, stmt.Span));
+        var loop = _loops.Peek();
+        EmitPendingDefersAbove(loop.DeferDepth); // break leaves the body scope — its defers run first
+        _b.Seal(new Branch(loop.BreakTarget, stmt.Span));
         return false;
     }
 
     private bool LowerContinue(ContinueStmt stmt)
     {
         if (_loops.Count == 0) throw Bug($"'continue' outside a loop at {stmt.Span}");
-        _b.Seal(new Branch(_loops.Peek().ContinueTarget, stmt.Span));
+        var loop = _loops.Peek();
+        EmitPendingDefersAbove(loop.DeferDepth); // continue ends the iteration — same exit path
+        _b.Seal(new Branch(loop.ContinueTarget, stmt.Span));
         return false;
     }
 
@@ -1190,8 +1202,11 @@ internal sealed class FunctionLowerer
         if (_types.RefOf(stmt) is not LocalSymbol loopVar)
             throw Bug($"loop variable '{stmt.Variable}' was not bound by the type checker");
 
-        var (iterator, iteratorType, owner) = BuildIterator(stmt);
+        var (iterator, iteratorType, owner, yieldOverride) = BuildIterator(stmt);
         var elementType = LowerType(loopVar.Type, stmt.Span);
+        // What the iterator PRODUCES: the range adapters carry i64/u64 regardless of the
+        // range's width, and the value converts back to the element type below.
+        var yieldType = yieldOverride ?? elementType;
 
         // The iterator lives in a slot: it is read on every pass and changes while doing so, and a temp
         // would no longer be valid after the first block.
@@ -1205,7 +1220,7 @@ internal sealed class FunctionLowerer
         var current = _slots.NewTemp(iteratorType);
         _b.Emit(new LoadLocal(current, slot, iteratorType, stmt.Span));
 
-        var optional = new IrOptionalType(elementType);
+        var optional = new IrOptionalType(yieldType);
         var produced = _slots.NewTemp(optional);
         EmitNextCall(produced, current, iteratorType, owner, optional, stmt.Span);
 
@@ -1220,14 +1235,26 @@ internal sealed class FunctionLowerer
 
         // The 'optget' cannot panic: it stands behind the 'optissome' that carried the proof — the same
         // division of labour as in flow narrowing.
-        var value = _slots.NewTemp(elementType);
-        _b.Emit(new OptGet(value, produced, elementType, stmt.Span));
+        var value = _slots.NewTemp(yieldType);
+        _b.Emit(new OptGet(value, produced, yieldType, stmt.Span));
+
+        // A range over a smaller width gets its values back at that width; the values fit by
+        // construction (the bounds came from the element type).
+        if (!yieldType.Equals(elementType))
+        {
+            var narrowed = _slots.NewTemp(elementType);
+            _b.Emit(new Lyric.Ir.Convert(narrowed, yieldType, elementType, value, stmt.Span));
+            value = narrowed;
+        }
 
         var variable = _slots.DeclareFor(loopVar, elementType);
         _b.Emit(new StoreLocal(variable, value, stmt.Span));
 
-        _loops.Push(new LoopScope(_b, condBlock, exitBlock));
-        if (LowerStatements(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
+        _loops.Push(new LoopScope(_b, condBlock, exitBlock) { DeferDepth = _defers.Count });
+        // Through LowerScope, not LowerStatements: the loop body is a SCOPE, and a defer in it
+        // runs at every iteration's end (§7.5) — registered into the enclosing function it ran
+        // once, with the last iteration's values (the 2.0.1 bug).
+        if (LowerScope(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
         _loops.Pop();
 
         _b.SwitchTo(exitBlock);
@@ -1240,7 +1267,10 @@ internal sealed class FunctionLowerer
     /// <para>A value that satisfies <c>Iterator&lt;T&gt;</c> itself is used directly. The built-in forms
     /// get an adapter from <c>std.iter</c>: they have no declaration a conformance could hang on.</para>
     /// </summary>
-    private (TempId Value, IrType Type, GenericInstance? Owner) BuildIterator(ForInStmt stmt)
+    // 'Yield' is what the ITERATOR produces when that differs from the loop variable's element
+    // type — the range adapters carry i64/u64 while the range may be over a smaller width; the
+    // loop converts at the edges. Null everywhere else.
+    private (TempId Value, IrType Type, GenericInstance? Owner, IrType? Yield) BuildIterator(ForInStmt stmt)
     {
         // Substituted, because a 'for-in' can stand in a monomorphized instance:
         // 'fn total<T :: [P]>(xs: T[]) { for (x in xs) … }'. Without the substitution the ArrayIterator
@@ -1282,7 +1312,7 @@ internal sealed class FunctionLowerer
 
             var cursor = _slots.NewTemp(cursorType);
             _b.Emit(new Call(cursor, target, [LowerExpr(stmt.Iterable)], stmt.Span));
-            return (cursor, cursorType, null);
+            return (cursor, cursorType, null, null);
         }
 
         if (source is ArrayOf array)
@@ -1297,7 +1327,7 @@ internal sealed class FunctionLowerer
             _b.Emit(new NewObject(instance, type, new IrRefType(type), stmt.Span));
             _b.Emit(new StoreField(instance, type, new FieldId(0), LowerExpr(stmt.Iterable), stmt.Span));
             _b.Emit(new StoreField(instance, type, new FieldId(1), IntConstant(0, stmt.Span), stmt.Span));
-            return (instance, new IrRefType(type), owner);
+            return (instance, new IrRefType(type), owner, null);
         }
 
         // A string is walked over its code points, since a 'char' IS a code point. The adapter gets them
@@ -1319,35 +1349,54 @@ internal sealed class FunctionLowerer
             _b.Emit(new StoreField(instance, type, new FieldId(0), chars, stmt.Span));
             _b.Emit(new StoreField(instance, type, new FieldId(1), IntConstant(0, stmt.Span),
                 stmt.Span));
-            return (instance, new IrRefType(type), null);
+            return (instance, new IrRefType(type), null, null);
         }
 
-        if (source is RangeOf && stmt.Iterable is RangeExpr range)
+        if (source is RangeOf ro && stmt.Iterable is RangeExpr range)
         {
-            var symbol = _types.RangeIterator ?? throw NotSupported(
-                "iterating a range (std.iter is not on the module path)", stmt.Span);
+            // Four adapters, not one. Folding 'a..=b' into 'a..b+1' was the 2.0.1 bug — at the
+            // type's maximum the '+1' wraps and the loop runs zero times (§7.2); the inclusive
+            // adapters carry a done flag instead of arithmetic on the bound. And a full-width
+            // uint range cannot ride the SIGNED adapters — a bound beyond 2^63 reinterprets
+            // and the comparison calls a range crossing the sign bit empty — so uint has its
+            // own pair. Smaller widths embed into the carrier order-preserving; the loop head
+            // converts the yielded value back (Yield below).
+            var unsigned = ro.Element is PrimitiveType { Kind: PrimitiveKind.Uint or PrimitiveKind.Uint64 };
+            var symbol = (range.IsInclusive, unsigned) switch
+            {
+                (false, false) => _types.RangeIterator,
+                (true, false) => _types.InclusiveRangeIterator,
+                (false, true) => _types.UnsignedRangeIterator,
+                (true, true) => _types.InclusiveUnsignedRangeIterator,
+            } ?? throw NotSupported("iterating a range (std.iter is not on the module path)", stmt.Span);
 
             var type = _typeTable.Intern(symbol);
+            var carrierType = new IrScalarType(unsigned ? IrScalar.U64 : IrScalar.I64);
+            var boundType = LowerType(ro.Element, stmt.Span);
 
-            var low = LowerExprAs(range.Low, new IrScalarType(IrScalar.I64));
-            var high = LowerExprAs(range.High, new IrScalarType(IrScalar.I64));
-
-            // An inclusive range ends one later. Converted here rather than through a second adapter:
-            // 'a..b' and 'a..=b' differ in the end value alone.
-            if (range.IsInclusive)
+            TempId Bound(Expr e)
             {
-                var one = IntConstant(1, stmt.Span);
-                var shifted = _slots.NewTemp(new IrScalarType(IrScalar.I64));
-                _b.Emit(new BinOp(shifted, IrBinKind.Add, new IrScalarType(IrScalar.I64),
-                    high, one, stmt.Span));
-                high = shifted;
+                var raw = LowerExprAs(e, boundType);
+                if (boundType.Equals(carrierType)) return raw;
+                var widened = _slots.NewTemp(carrierType);
+                _b.Emit(new Lyric.Ir.Convert(widened, boundType, carrierType, raw, stmt.Span));
+                return widened;
             }
+
+            var low = Bound(range.Low);
+            var high = Bound(range.High);
 
             var instance = _slots.NewTemp(new IrRefType(type));
             _b.Emit(new NewObject(instance, type, new IrRefType(type), stmt.Span));
             _b.Emit(new StoreField(instance, type, new FieldId(0), low, stmt.Span));
             _b.Emit(new StoreField(instance, type, new FieldId(1), high, stmt.Span));
-            return (instance, new IrRefType(type), null);
+            if (range.IsInclusive)
+            {
+                var notDone = _slots.NewTemp(BoolType);
+                _b.Emit(new Const(notDone, BoolType, new BoolConst(false), stmt.Span));
+                _b.Emit(new StoreField(instance, type, new FieldId(2), notDone, stmt.Span));
+            }
+            return (instance, new IrRefType(type), null, carrierType);
         }
 
         if (source is PrimitiveType { Kind: PrimitiveKind.String })
@@ -1358,7 +1407,7 @@ internal sealed class FunctionLowerer
         // A user-written iterator is used directly.
         var own = LowerType(source, stmt.Span);
         return (LowerExpr(stmt.Iterable), own,
-            SubstituteType(source) as GenericInstance);
+            SubstituteType(source) as GenericInstance, null);
     }
 
     /// <summary>The <c>next()</c> call: virtual when the iterator is available through its interface,
@@ -1424,8 +1473,11 @@ internal sealed class FunctionLowerer
         _b.SealBlock(condExit, new CondBranch(condition, bodyBlock, exitBlock, stmt.Condition.Span));
 
         _b.SwitchTo(bodyBlock);
-        _loops.Push(new LoopScope(_b, condBlock, exitBlock));
-        if (LowerStatements(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
+        _loops.Push(new LoopScope(_b, condBlock, exitBlock) { DeferDepth = _defers.Count });
+        // Through LowerScope, not LowerStatements: the loop body is a SCOPE, and a defer in it
+        // runs at every iteration's end (§7.5) — registered into the enclosing function it ran
+        // once, with the last iteration's values (the 2.0.1 bug).
+        if (LowerScope(stmt.Body)) _b.Seal(new Branch(condBlock, stmt.Body.Span));
         _loops.Pop();
 
         _b.SwitchTo(exitBlock);
@@ -1449,9 +1501,9 @@ internal sealed class FunctionLowerer
         _b.Seal(new Branch(bodyBlock, stmt.Span));
 
         _b.SwitchTo(bodyBlock);
-        var loop = new LoopScope(_b);
+        var loop = new LoopScope(_b) { DeferDepth = _defers.Count };
         _loops.Push(loop);
-        var fallsThrough = LowerStatements(stmt.Body);
+        var fallsThrough = LowerScope(stmt.Body);
         _loops.Pop();
 
         // The condition is needed when the body falls through OR a 'continue' jumps to it. Otherwise it

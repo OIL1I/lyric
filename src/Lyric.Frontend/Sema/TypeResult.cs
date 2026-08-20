@@ -135,6 +135,9 @@ public sealed class TypeResult
     public TypeSymbol? IteratorInterface { get; set; }
     public TypeSymbol? ArrayIterator { get; set; }
     public TypeSymbol? RangeIterator { get; set; }
+    public TypeSymbol? InclusiveRangeIterator { get; set; }
+    public TypeSymbol? UnsignedRangeIterator { get; set; }
+    public TypeSymbol? InclusiveUnsignedRangeIterator { get; set; }
     public TypeSymbol? StringIterator { get; set; }
 
     /// <summary>'Indexable&lt;T&gt;' from std.collections, what '[i]' dispatches to.</summary>

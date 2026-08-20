@@ -10,6 +10,48 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+The first harvest of the deep audit: seven bugs measured against the now-normative
+specification, fixed as one wave. Six new conformance cases activate with this release
+(`//! since: 2.0.1`); the suite stands at 78.
+
+### Fixed
+
+- **`a..=hi` reaches the type's maximum.** The inclusive range desugared to `..hi+1`, which
+  wraps at the bound — `for (_ in max-2..=max)` ran ZERO times. Inclusive ranges ride their
+  own adapter with a done flag now; no arithmetic touches the bound.
+- **Ranges over every width and signedness.** A range over `uint8`/`int16`/… produced
+  malformed IR that only the Release verifier-skip let run; a `uint` range crossing 2⁶³
+  compared SIGNED and ran dry. Bounds now widen into a signed or unsigned carrier, and the
+  loop variable converts back at its own width.
+- **`defer` belongs to the block.** A defer in a loop body registered once into the function
+  scope: it fired once, with the last iteration's values, after the code following the loop.
+  Loop bodies are scopes now — the defer runs at every iteration's end, `continue` and
+  `break` included, draining exactly the scopes being left.
+- **`let x = null;` and `let xs = [];` report instead of crashing.** Both drove an unhandled
+  internal exception through the lowering. They are `LYR-SEM0010` now: the initializer fixes
+  no type, the binding needs an annotation.
+- **An oversized literal no longer reinterprets.** `let x = 9223372036854775808;` compiled
+  and held −9223372036854775808 — the magnitude's raw bits. A literal that stays at the
+  default `int` must fit `int`; the same magnitude still adapts to annotated `uint`
+  positions.
+- **An integer literal meets a float exactly.** `let g: float = 9007199254740993;` (2⁵³+1)
+  adapted with a silent rounding; "fits" is exact now, for `float` and `float32` alike.
+- **A `throws` clause on `main` is refused** (`LYR-SEM0021`). It compiled, and a thrown
+  exception left the program as the `LYR-VM0010` panic the specification calls unreachable
+  from source.
+
+### Improved
+
+- "cannot assign 'T' to 'T'" names its cause: when the two displays collide, the message says
+  the types differ by identity — declared in different scopes, or a generic call
+  instantiating itself at a larger type, which monomorphization refuses.
+- A contextless generic construction reports `LYR-SEM0026` once, without a follow-up
+  "cannot assign" per field.
+- A new test pins the §11 contract: every native the shipped stdlib declares is bound by the
+  default registry (`std.build` excepted — the build runner is its host, now said in §11).
+
 ## v2.0.0 — 2026-08-20
 
 The specification is **normative** from this release on: `lyriclang/lyric-spec` defines the
