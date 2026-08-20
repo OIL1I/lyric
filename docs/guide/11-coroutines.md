@@ -57,4 +57,9 @@ fn main(): int {
 `resume` on an exhausted coroutine is a panic. A caller either knows how many values there are, or
 uses an infinite coroutine and stops itself.
 
+A coroutine is an ordinary value: it can be a parameter, a local, a field of a class or struct,
+or a type argument — a driver that steps a stored `List<Coroutine<float>>` every frame holds
+them like anything else. Copying the value copies a reference to the same suspended state; two
+holders drive one coroutine.
+
 Send values (`resume c, v`) do not exist.

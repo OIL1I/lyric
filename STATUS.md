@@ -332,6 +332,22 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
+**M29 — the A8 wave** (started 2026-08-20, branch `feature/m29-a8-wave`, ships as v2.2.0).
+Both coroutine edges Erato's register filed under A8, found building `engine.task`:
+
+- [ ] slice 1: `Coroutine<T>` lowers as a FIELD type — the AST path `TypeTable.Lower(TypeNode)`
+      learns the special case the sema and the LyrType path always had; `List<Coroutine<T>>`
+      through the type-argument path too. The closure idiom stops being mandatory.
+- [ ] slice 2: `co.next()` — the safe pull beside the panicking `resume`. `?T` (bool for
+      `Coroutine<void>`); refused on `Coroutine<?T>`, where null is ambiguous. The body takes a
+      lenient flag; its done-exits read a zeroed state field instead of manufacturing values;
+      the marker is read from outside by the compiler-bound native `std.core.coroutineIsDone`
+      (per-signature import entries — format stays 3.2, an old runtime rejects at binding with
+      the import's name, the designed forward path). `resume` semantics, frames and panic are
+      UNTOUCHED; `isDone` alone was probed and rejected — a pull coroutine cannot answer
+      "will there be another value" without pulling (no mainstream generator API has hasNext).
+      Spec §10 amended, conformance cases `//! since: 2.2.0`.
+
 **M28 — the ergonomics wave — is RELEASED as v2.1.0** (2026-08-20, PR #66). Two additive changes the audit measured before they were built:
 
 - [x] `@Deprecated` reaches members: methods, fields, static lets, extend methods — the ONE

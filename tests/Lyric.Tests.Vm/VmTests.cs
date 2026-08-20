@@ -1160,6 +1160,73 @@ public class VmTests
         Assert.Contains("already finished", panic.Message);
     }
 
+    [Fact]
+    public void A_coroutine_lives_in_a_class_field() =>
+        // The A8-1 edge from Erato's register: 'co: Coroutine<int>' as a field type used to be
+        // LYR-IR0001 while the same type worked as a parameter and a local. A driver holding its
+        // coroutine across method calls is the case that found it.
+        Assert.Equal(3, Coroutine("""
+            fn counter(): Coroutine<int> { var n = 0; while (true) { yield n; n += 1; } }
+            class Driver {
+                co: Coroutine<int>,
+                fn step(): int { return resume this.co; }
+            }
+            fn main(): int {
+                let d = Driver { co = counter() };
+                d.step(); d.step(); d.step();
+                return d.step();
+            }
+            """).AsI64);
+
+    [Fact]
+    public void A_coroutine_field_survives_generic_instantiation() =>
+        // 'Coroutine<T>' in a generic layout: the field's type argument is a type parameter and
+        // resolves through the instance's substitution.
+        Assert.Equal(11, Coroutine("""
+            fn ticks(from: int): Coroutine<int> { var n = from; while (true) { yield n; n += 1; } }
+            class Box<T> { co: Coroutine<T> }
+            fn main(): int {
+                let b = Box<int> { co = ticks(10) };
+                resume b.co;
+                return resume b.co;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void A_coroutine_sits_in_a_struct_field_and_the_state_is_shared() =>
+        // A struct copy copies the REFERENCE to the coroutine's state, like any function value:
+        // both copies drive the same coroutine. That is the closure rule, stated by a test.
+        Assert.Equal(1, Coroutine("""
+            fn counter(): Coroutine<int> { var n = 0; while (true) { yield n; n += 1; } }
+            struct Holder { co: Coroutine<int> }
+            fn main(): int {
+                let a = Holder { co = counter() };
+                let b = a;
+                resume a.co;
+                return resume b.co;
+            }
+            """).AsI64);
+
+    [Fact]
+    public void A_list_of_coroutines_drives_each_independently() =>
+        // 'Coroutine<int>' as a TYPE ARGUMENT takes the other lowering path (Resolve, not Lower);
+        // the engine.task shape — many stored tasks, stepped in a loop — is exactly this.
+        Assert.Equal(33, Coroutine("""
+            import std.collections { List };
+            fn steps(by: int): Coroutine<int> { var n = by; while (true) { yield n; n += by; } }
+            fn main(): int {
+                var tasks = List<Coroutine<int>>.empty();
+                tasks.push(steps(1));
+                tasks.push(steps(10));
+                var sum = 0;
+                for (i in 0..2) {
+                    sum += resume tasks.get(0);
+                    sum += resume tasks.get(1);
+                }
+                return sum;
+            }
+            """).AsI64);
+
     // ------------------------------------------------------------------ P8: Generics
 
     [Fact]

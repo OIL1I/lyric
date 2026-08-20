@@ -727,6 +727,14 @@ internal sealed class TypeTable
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
 
+            // 'Coroutine<T>' is a builtin, not a declared generic: it has no layout to intern.
+            // A coroutine value is a function value over its state, so the written form lowers
+            // exactly like the sema's CoroutineOf — the case the LyrType path always had.
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Builtin, Name: "Coroutine" }
+                && named.TypeArguments.Length == 1)
+                return new IrFunctionType([],
+                    Lower(named.TypeArguments[0], named.TypeArguments[0].Span));
+
             // Written type arguments ('Box<int>' as a field or parameter type) are lowered BEFORE the
             // instance is interned: an argument may itself be a type parameter of the surrounding
             // instance ('Box<T>' in 'Pair<T>').
@@ -831,6 +839,13 @@ internal sealed class TypeTable
         {
             var definition = _binding.Resolve(generic);
             if (definition is ImportBindingSymbol imported) definition = imported.Target;
+
+            // 'List<Coroutine<int>>': the builtin has no definition to intern an instance of, so it
+            // becomes the sema's CoroutineOf here, the same normalization ResolveType applies.
+            if (definition is TypeSymbol { Kind: TypeSymbolKind.Builtin, Name: "Coroutine" }
+                && generic.TypeArguments.Length == 1)
+                return new CoroutineOf(Resolve(generic.TypeArguments[0], span));
+
             if (definition is TypeSymbol generictype)
                 return new GenericInstance(generictype,
                     generic.TypeArguments.Select(argument => Resolve(argument, span)).ToArray());
