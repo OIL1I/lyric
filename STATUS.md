@@ -190,9 +190,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4322 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **2.0.1**; the specification in `lyriclang/lyric-spec` is
-**NORMATIVE**, its suite stands at 78 cases, and the toolchain's own CI runs it against the
+4331 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **2.1.0**; the specification in `lyriclang/lyric-spec` is
+**NORMATIVE**, its suite stands at 81 cases, and the toolchain's own CI runs it against the
 working tree.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
@@ -332,8 +332,7 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M28 — the ergonomics wave — is BUILT** (2026-08-20, branch `feature/m28-ergonomics`, ships
-as v2.1.0). Two additive changes the audit measured before they were built:
+**M28 — the ergonomics wave — is RELEASED as v2.1.0** (2026-08-20, PR #66). Two additive changes the audit measured before they were built:
 
 - [x] `@Deprecated` reaches members: methods, fields, static lets, extend methods — the ONE
       attribute a member admits (no member rows in the format); interface members refused;
@@ -540,8 +539,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`sema, ir, stdlib: the audit's patch wave — seven bugs, one release`
-(closes M27; released as v2.0.1 — the audit's first harvest)
+`sema, release: the variadic expectation keeps its element — and the tree claims 2.1.0`
+(closes M28; released as v2.1.0 — the ergonomics wave)
 
 ---
 

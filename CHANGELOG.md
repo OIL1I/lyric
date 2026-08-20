@@ -10,7 +10,7 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v2.1.0 — 2026-08-20
 
 The ergonomics wave: two additive changes the audit measured the edges of. Four conformance
 cases activate with this release (`//! since: 2.1.0`); one 2.0 case pinning the old
