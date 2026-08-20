@@ -1,3 +1,9 @@
+> **Mirror.** The canonical home of this document is
+> [`lyriclang/lyric-spec` → `spec/13-bytecode.md`](https://github.com/lyriclang/lyric-spec/blob/main/spec/13-bytecode.md).
+> This copy exists for the toolchain's tests and doc site; CI diffs everything below the
+> marker against the canonical body. Edit it there, mirror it here.
+
+<!-- sync:body -->
 # Lyric `.lyrbc` Bytecode Format 3.2
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
