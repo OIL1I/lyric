@@ -615,7 +615,7 @@ public sealed class TypeChecker
             scope.TryDeclare(ps);
             _result.BindRef(p, ps); // for definite-assignment analysis
             if (p.Default is not null)
-                CheckAssignable(p.Default, CheckExpr(p.Default, scope), pt, p.Span);
+                CheckAssignable(p.Default, CheckExpr(p.Default, scope, pt), pt, p.Span);
         }
         _currentReturn = fn.ReturnType is not null ? ResolveType(fn.ReturnType, scope) : LyrType.Void;
         // Coroutine: the body never produces the coroutine value, which the runtime builds at the
@@ -1081,8 +1081,14 @@ public sealed class TypeChecker
             case MemberExpr mem: return CheckMember(mem, scope, expected);
             case StructInitExpr si: return CheckStructInit(si, scope, expected);
             case TypePathExpr tp: return CheckTypePath(tp, scope);
-            case IfExpr iff: return CheckIfExpr(iff, scope);
-            case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
+            case IfExpr iff: return CheckIfExpr(iff, scope, expected);
+            case MatchExpr ma:
+            {
+                var armTypes = CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true, expected);
+                // With a context the arms were checked against it inside; the match HAS it.
+                if (expected is not null && !expected.IsError) return expected;
+                return UnifyArms(armTypes, ma.Span);
+            }
             case LambdaExpr lam: return CheckLambda(lam, scope, expected);
             case ResumeExpr re: return CheckResume(re, scope);
             // An attribute is not an expression: it describes the declaration it precedes and has
@@ -1676,6 +1682,17 @@ public sealed class TypeChecker
         var elemExpected = expected is ArrayOf ea ? ea.Element : null;
         if (arr.Elements.Length == 0)
             return new ArrayOf(elemExpected ?? LyrType.Error, null); // empty: the element type comes from the context alone
+        // With a context the elements check AGAINST it (§3.1 since 2.1): an unsuffixed literal
+        // adapts, a misfit is the ordinary assignment error per element, and the array has the
+        // context's element type. Without one the elements unify among themselves, as always.
+        if (elemExpected is not null && !elemExpected.IsError)
+        {
+            foreach (var element in arr.Elements)
+                CheckAssignable(element, CheckExpr(element, scope, elemExpected), elemExpected,
+                    element.Span);
+            return new ArrayOf(elemExpected, null);
+        }
+
         var first = CheckExpr(arr.Elements[0], scope, elemExpected);
         for (var i = 1; i < arr.Elements.Length; i++)
         {
@@ -1858,7 +1875,10 @@ public sealed class TypeChecker
         var variadic = ps is { Length: > 0 } && ps[^1].IsParams;
         var fixedCount = variadic ? ps!.Length - 1 : fn.Parameters.Length;
         if (i < fixedCount && i < fn.Parameters.Length) return fn.Parameters[i];
-        if (variadic && fn.Parameters[^1] is ArrayOf elem) return elem.Element;
+        // The variadic position offers NO expectation: the argument may be one element or the
+        // whole array — the argument's own type decides (PassesWholeArray) — and since 2.1 an
+        // expectation PROPAGATES into an array literal, so offering the element type here
+        // would force the element reading and take the whole-array form with it.
         return null;
     }
 
@@ -2956,7 +2976,7 @@ public sealed class TypeChecker
     /// (<c>LYR-SEM0001</c>) although the statement form <c>if (a == null) { return 0; } return a;</c>
     /// works next to it, for the same proof about the same value.</para>
     /// </remarks>
-    private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope)
+    private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope, LyrType? expected = null)
     {
         CheckCondition(iff.Condition, scope);
 
@@ -2964,15 +2984,26 @@ public sealed class TypeChecker
         var snapshot = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
 
         Apply(thenFacts);
-        var thenT = CheckExpr(iff.Then, scope);
+        var thenT = CheckExpr(iff.Then, scope, expected);
 
         // Back to the state BEFORE the then branch: what held there is precisely what does not hold
         // in the else branch.
         _narrowed = new Dictionary<Symbol, LyrType>(snapshot, ReferenceEqualityComparer.Instance);
         Apply(elseFacts);
-        var elseT = CheckExpr(iff.Else, scope);
+        var elseT = CheckExpr(iff.Else, scope, expected);
 
         _narrowed = snapshot;
+
+        // With a context the arms check AGAINST it and the expression HAS it (§3.1/§6.9 since
+        // 2.1): an unsuffixed literal arm adapts, and each arm meets the context as an
+        // ordinary assignment. Unification among the arms is the contextless rule.
+        if (expected is not null && !expected.IsError)
+        {
+            CheckAssignable(iff.Then, thenT, expected, iff.Then.Span);
+            CheckAssignable(iff.Else, elseT, expected, iff.Else.Span);
+            return expected;
+        }
+
         return Unify(iff.Then, thenT, iff.Else, elseT, iff.Span);
     }
 
@@ -3017,7 +3048,8 @@ public sealed class TypeChecker
         return a;
     }
 
-    private List<LyrType> CheckMatch(Node match, Expr scrutinee, MatchArm[] arms, SymbolTable scope, bool asExpression)
+    private List<LyrType> CheckMatch(Node match, Expr scrutinee, MatchArm[] arms, SymbolTable scope, bool asExpression,
+        LyrType? expected = null)
     {
         var st = CheckExpr(scrutinee, scope);
         var bodies = new List<LyrType>();
@@ -3040,7 +3072,12 @@ public sealed class TypeChecker
                             "a block arm of a match expression must return or throw on every path (blocks have no value)");
                     break;
                 case Expr e:
-                    bodies.Add(CheckExpr(e, armScope));
+                    var bt = CheckExpr(e, armScope, expected);
+                    // With a context the arm checks AGAINST it (§3.1/§6.9 since 2.1): a
+                    // literal arm adapts, a misfit is the assignment error at the arm.
+                    if (expected is not null && !expected.IsError)
+                        CheckAssignable(e, bt, expected, e.Span);
+                    bodies.Add(bt);
                     break;
             }
         }
