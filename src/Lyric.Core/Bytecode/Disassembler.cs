@@ -100,24 +100,30 @@ public static class Disassembler
             sb.Append($"  names {module.Types[entry.Type].Name}" +
                       $"({string.Join(", ", entry.Names)})\n");
 
-        foreach (var function in module.Functions)
+        for (var f = 0; f < module.Functions.Count; f++)
         {
-            if (filter is not null && function.Name != filter) continue;
+            if (filter is not null && module.Functions[f].Name != filter) continue;
             sb.Append('\n');
-            WriteFunction(sb, module, function);
+            WriteFunction(sb, module, module.Functions[f], f);
         }
 
         return sb.ToString();
     }
 
-    private static void WriteFunction(StringBuilder sb, BytecodeModule module, BytecodeFunction function)
+    private static void WriteFunction(StringBuilder sb, BytecodeModule module,
+        BytecodeFunction function, int index)
     {
+        // Empty when the module carries no debug info, or none for this function; a slot line
+        // then shows the type alone, exactly as it did before the section existed.
+        var names = module.SlotNames is { } all && index < all.Count ? all[index] : [];
+
         sb.Append($"fn {function.Name} -> {TypeName(module, function.ReturnType)} {{\n");
         sb.Append($"  params: {N(function.ParamCount)}\n");
         sb.Append($"  maxstack: {N(function.MaxStack)}\n");
         sb.Append("  slots:\n");
         for (var i = 0; i < function.SlotTypes.Count; i++)
-            sb.Append($"    l{N(i)}: {TypeName(module, function.SlotTypes[i])}\n");
+            sb.Append($"    l{N(i)}: {TypeName(module, function.SlotTypes[i])}" +
+                      $"{(i < names.Count && names[i].Length > 0 ? $" ; {names[i]}" : "")}\n");
 
         var instructions = CodeDecoder.Decode(function.Code);
         var blockAt = new Dictionary<int, int>();

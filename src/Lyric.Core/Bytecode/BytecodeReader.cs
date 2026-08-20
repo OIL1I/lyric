@@ -57,6 +57,8 @@ public static class BytecodeReader
         BytecodeSourceMap? sourceMap = null;
         IReadOnlyList<BytecodeAttribute> attributes = Array.Empty<BytecodeAttribute>();
         IReadOnlyList<BytecodeFieldNames> fieldNames = Array.Empty<BytecodeFieldNames>();
+        IReadOnlyList<IReadOnlyList<string>>? slotNames = null;
+        IReadOnlyList<string> globalNames = Array.Empty<string>();
 
         var previousId = -1;
         while (!reader.AtEnd)
@@ -101,6 +103,12 @@ public static class BytecodeReader
                     attributes = ReadAttributes(payload, strings, types, functions.Count);
                     break;
                 case SectionId.Names: fieldNames = ReadFieldNames(payload, types); break;
+                // Reads after Functions and Globals, which the ids guarantee: each name list is
+                // checked against the slot table it describes.
+                case SectionId.DebugInfo:
+                    (slotNames, globalNames) =
+                        ReadDebugInfo(payload, strings, functions, globals.Count);
+                    break;
                 // Unknown or reserved: skipped, which is what the length is for. The payload has to
                 // be consumed rather than merely ignored, or the trailing-byte check below rejects
                 // exactly the section it is meant to let through — and with it the forward
@@ -132,6 +140,8 @@ public static class BytecodeReader
             SourceMap = sourceMap,
             Attributes = attributes,
             FieldNames = fieldNames,
+            SlotNames = slotNames,
+            GlobalNames = globalNames,
         };
 
         Validate(module);
@@ -288,6 +298,65 @@ public static class BytecodeReader
             entries.Add(new BytecodeFieldNames { Type = type, Names = names });
         }
         return entries;
+    }
+
+    /// <summary>Section 13: one name list per function, then the global names. A count is either
+    /// 0 or exactly the slot count it describes — the position IS the slot index, and a partial
+    /// list would name the wrong slots.</summary>
+    private static (IReadOnlyList<IReadOnlyList<string>>, IReadOnlyList<string>) ReadDebugInfo(
+        ByteReader payload, IReadOnlyList<string> strings,
+        IReadOnlyList<BytecodeFunction> functions, int globalCount)
+    {
+        var functionCount = payload.ULebAsCount();
+        if (functionCount != functions.Count)
+            throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                $"debug info covers {functionCount} function(s), the module has {functions.Count}");
+
+        var perFunction = new List<IReadOnlyList<string>>(functionCount);
+        for (var f = 0; f < functionCount; f++)
+        {
+            var nameCount = payload.ULebAsCount();
+            if (nameCount == 0)
+            {
+                perFunction.Add([]);
+                continue;
+            }
+
+            if (nameCount != functions[f].SlotTypes.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"debug info for '{functions[f].Name}' carries {nameCount} name(s) for " +
+                    $"{functions[f].SlotTypes.Count} slot(s)");
+
+            var names = new List<string>(nameCount);
+            for (var i = 0; i < nameCount; i++)
+            {
+                var index = payload.ULebAsCount();
+                if (index >= strings.Count)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"debug info for '{functions[f].Name}' names string {index}, " +
+                        $"the pool holds {strings.Count}");
+                names.Add(strings[index]);
+            }
+            perFunction.Add(names);
+        }
+
+        var globalNameCount = payload.ULebAsCount();
+        if (globalNameCount != 0 && globalNameCount != globalCount)
+            throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                $"debug info carries {globalNameCount} global name(s) for {globalCount} global(s)");
+
+        var globalNames = new List<string>(globalNameCount);
+        for (var i = 0; i < globalNameCount; i++)
+        {
+            var index = payload.ULebAsCount();
+            if (index >= strings.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"debug info names string {index} for global {i}, " +
+                    $"the pool holds {strings.Count}");
+            globalNames.Add(strings[index]);
+        }
+
+        return (perFunction, globalNames);
     }
 
     private static BytecodeSourceMap ReadSourceMap(ByteReader payload, IReadOnlyList<string> strings,

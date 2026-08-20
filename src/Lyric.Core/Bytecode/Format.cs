@@ -12,7 +12,7 @@ public static class Format
     /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
     /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
-    public const ushort VersionMinor = 2;
+    public const ushort VersionMinor = 3;
 }
 
 /// <summary>
@@ -83,12 +83,22 @@ public enum SectionId : byte
     Attributes = 11,
 
     /// <summary>
-    /// Field names, new in 3.2, and ONLY for types an attribute row references. Everywhere else
-    /// the rule of the Types section stands — field names are not in the bytecode — but a host
-    /// reading <c>@Component struct Health</c> needs <c>value</c> and <c>max</c>, or it has
-    /// learned a shape it cannot name.
+    /// Field names, new in 3.2. Required for types an attribute row references — a host reading
+    /// <c>@Component struct Health</c> needs <c>value</c> and <c>max</c>, or it has learned a
+    /// shape it cannot name. Since 3.3 permitted for ANY type: a debugger expanding an object
+    /// needs the same names. Everywhere else the rule of the Types section stands — field names
+    /// are not in the bytecode.
     /// </summary>
     Names = 12,
+
+    /// <summary>
+    /// Local slot names per function, new in 3.3 — what a debugger writes beside a value.
+    /// A compiler-created slot carries the empty string and is not shown.
+    ///
+    /// <para>Strippable like the source map: no other section refers to it, and a module without
+    /// it is valid — a debugger then shows slot indices.</para>
+    /// </summary>
+    DebugInfo = 13,
 }
 
 /// <summary>

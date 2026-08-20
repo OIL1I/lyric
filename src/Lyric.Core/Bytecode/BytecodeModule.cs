@@ -45,9 +45,21 @@ public sealed class BytecodeModule
     /// none, and empty in every module a 3.1 compiler wrote.</summary>
     public IReadOnlyList<BytecodeAttribute> Attributes { get; init; } = [];
 
-    /// <summary>Field names from section 12 (format 3.2), only for types an attribute row
-    /// references. Everywhere else field names stay out of the bytecode.</summary>
+    /// <summary>Field names from section 12 (format 3.2). Required for types an attribute row
+    /// references, permitted for any since 3.3; everywhere else field names stay out of the
+    /// bytecode.</summary>
     public IReadOnlyList<BytecodeFieldNames> FieldNames { get; init; } = [];
+
+    /// <summary>Local slot names from the DebugInfo section (id 13, format 3.3), one list per
+    /// function, or <c>null</c> when the module carries none. A per-function list is either empty
+    /// (the function says nothing) or exactly as long as its slot table; a compiler-created slot
+    /// carries the empty string.</summary>
+    public IReadOnlyList<IReadOnlyList<string>>? SlotNames { get; init; }
+
+    /// <summary>Global slot names from the DebugInfo section, empty when the module carries no
+    /// section or the section says nothing about globals; otherwise exactly as long as
+    /// <see cref="Globals"/>.</summary>
+    public IReadOnlyList<string> GlobalNames { get; init; } = [];
 }
 
 /// <summary>What an attribute row describes.</summary>

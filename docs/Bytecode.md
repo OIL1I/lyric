@@ -4,7 +4,7 @@
 > marker against the canonical body. Edit it there, mirror it here.
 
 <!-- sync:body -->
-# Lyric `.lyrbc` Bytecode Format 3.2
+# Lyric `.lyrbc` Bytecode Format 3.3
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.
@@ -12,10 +12,17 @@ or a second runtime can be written from this document alone.
 Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.
 
-Format version **3.2** covers: scalars, locals, module-internal and native calls, structured
+Format version **3.3** covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
-value semantics, exceptions, global constants, closures, host objects, source positions, and
-attributes.
+value semantics, exceptions, global constants, closures, host objects, source positions,
+attributes, and debug information.
+
+**3.3 against 3.2**: one new section — DebugInfo (id 13), the names of local and global
+slots — and one loosened producer rule: Names (id 12) may carry field names for any type, where
+3.2 allowed entries only for types an Attributes row references. Both directions stay compatible:
+a 3.2 reader skips the unknown section, and its Names rules never depended on the restriction, so
+it loads a 3.3 module unchanged — the only difference is whether a debugger can name a slot or a
+field.
 
 **3.2 against 3.1**: two new sections — Attributes (id 11) and Names (id 12). Both are skippable:
 no other section refers to either, and a runtime that ignores them runs the program unchanged,
@@ -87,7 +94,8 @@ minor version may only add skippable sections.
 | 9 | Handlers | no | protected regions per function |
 | 10 | Globals | no | global slots and their initializer |
 | 11 | Attributes | no | attribute rows: which struct describes which target, with literal values |
-| 12 | Names | no | field names, only for types an Attributes row references |
+| 12 | Names | no | field names: required for types an Attributes row references, permitted for any |
+| 13 | DebugInfo | no | strippable: local and global slot names |
 
 A missing section counts as empty.
 
@@ -394,9 +402,13 @@ tag at its position, a string index outside the pool, and a value of a non-liter
 
 ### Names (Id 12)
 
-New in 3.2. Field names, ONLY for types an Attributes row references — the attribute types
-themselves and the attributed type targets. Everywhere else the rule of the Types section stands:
-field names are not in the bytecode.
+New in 3.2. Field names, for types an Attributes row references — the attribute types
+themselves and the attributed type targets. Those entries are REQUIRED whenever such a type has
+fields. Since 3.3 the restriction is a floor rather than a ceiling: a compiler may write an entry
+for ANY type — a debugger expanding an object needs its field names the same way a host reading
+an attribute row does. Stripping debug information (§DebugInfo) removes the entries no Attributes
+row demands; everywhere else the rule of the Types section stands: field names are not in the
+bytecode.
 
 ```
 count            uleb128
@@ -417,6 +429,41 @@ exists only in the source.
 
 A reader must reject: a type index outside the table, the same type twice, and a name count
 differing from that type's field count.
+
+### DebugInfo (Id 13)
+
+New in 3.3. The name of each local and global slot — what a debugger writes beside a value.
+
+```
+functionCount    uleb128               must equal the count in Functions (Id 5)
+functions        functionCount × {
+                   nameCount  uleb128   0, or that function's slotCount
+                   names      nameCount × uleb128   index into the string pool
+                 }
+globalNameCount  uleb128               0, or the count in Globals (Id 10)
+globalNames      globalNameCount × uleb128   index into the string pool
+```
+
+`names[i]` names slot `i`, so the first `paramCount` entries name the parameters;
+`globalNames[i]` names global slot `i`. The names go through the string pool rather than inline:
+`i`, `x` and `this` repeat across functions, and the pool is where repetition pays.
+
+A slot the compiler created — a spilled intermediate, a value crossing a block boundary, a result
+buffer — carries the empty string. A consumer does not show such a slot: which slots exist is the
+format's business; which of them mean anything to a person is the compiler's statement, made
+here.
+
+`nameCount` `0` means the function says nothing about its slots. A count that is neither `0` nor
+the function's `slotCount` is malformed: the position IS the slot index, and a partial list would
+name the wrong slots.
+
+**Strippable.** No other section refers to this one, so removing it — together with the Names
+entries no Attributes row demands — leaves a valid module. A debugger then shows slot indices,
+the same way a panic without a SourceMap names a function instead of a line.
+
+A reader must reject: a `functionCount` differing from the Functions section, a `nameCount` that
+is neither `0` nor that function's slot count, a `globalNameCount` that is neither `0` nor the
+Globals count, and a string index outside the pool.
 
 ---
 
@@ -783,13 +830,14 @@ fn main.add -> i64 {
 }
 ```
 
-A minimal module containing only that function, 46 bytes. The compiler writes a SourceMap by
-default; this is the stripped form, which is why section 6 is absent:
+A minimal module containing only that function, 46 bytes. The compiler writes a SourceMap and a
+DebugInfo section by default; this is the stripped form, which is why sections 6 and 13 are
+absent:
 
 ```
 4C 59 52 42                  magic "LYRB"
 03 00                        version.major = 3
-02 00                        version.minor = 2
+03 00                        version.minor = 3
 
 01                           § section 1 — Capabilities
 01                             byteLength = 1

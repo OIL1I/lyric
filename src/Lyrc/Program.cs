@@ -176,6 +176,7 @@ public static class Program
             StdlibRoot = Flag(args, "--stdlib"),
             Progress = terminal,
             SourceMap = !Present(args, "--no-source-map"),
+            DebugInfo = !Present(args, "--no-debug-info"),
             SourceRoot = project?.SourceRoot,
             NativeRoots = project?.NativeRoots,
         };
@@ -232,6 +233,7 @@ public static class Program
         Console.Out.WriteLine("Options:");
         Console.Out.WriteLine("  --stdlib <dir>           Where the stdlib lives (beats $LYRIC_STDLIB)");
         Console.Out.WriteLine("  --no-source-map          Omit line numbers; a panic names the function");
+        Console.Out.WriteLine("  --no-debug-info          Omit slot names; a debugger shows indices");
         Console.Out.WriteLine("  --deny-warnings          Exit nonzero when the run reports warnings (CI)");
         Console.Out.WriteLine("  --json                   Diagnostics as JSON on stderr");
         Console.Out.WriteLine("  --quiet, -q              Suppress success messages");
