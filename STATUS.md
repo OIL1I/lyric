@@ -190,8 +190,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4350 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **2.2.0**; the specification in `lyriclang/lyric-spec` is
+4351 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **2.2.1**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 85 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -331,6 +331,15 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**A9 — the imported-alias fix — is RELEASED as v2.2.1** (2026-08-20): Erato's register filed
+A9 the day of the 2.2.0 re-pin — an opaque type imported from a sibling SDK module did not
+resolve in a native signature (`LYR-IR0001`), while §3.5 promises the resolution without a
+module restriction; the A4 mechanism was purely syntactic and module-local. Fixed with a
+binding fallback in `ResolveLocalAliases`: selective and qualified imports, scalar and array
+positions, alias chains across modules. Structs in native signatures stay module-local by
+design. No spec change — the spec was already right; pinned by an Embedding test (a
+conformance case cannot express native roots).
 
 **M29 — the A8 wave — is RELEASED as v2.2.0** (2026-08-20, PR #68). Both coroutine edges
 Erato's register filed under A8, plus one the work uncovered:
@@ -561,8 +570,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`lang: co.next() — the safe pull beside the panicking resume`
-(PR #68; released as v2.2.0 — the A8 wave)
+`ir: an imported opaque alias resolves in a native signature`
+(released as v2.2.1 — Erato's A9, filed and fixed the same day)
 
 ---
 

@@ -10,6 +10,23 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.2.1 — 2026-08-20
+
+One fix, found by the embedder the same day: the specification's §3.5 promises that an opaque
+alias resolves to its underlying in a native signature — without restricting where the alias
+was declared. The toolchain under-delivered.
+
+### Fixed
+
+- **An imported opaque type resolves in a native signature.** An SDK of several modules
+  declares its handle type once (`engine.world` owns `TextureId`) and names it in a sibling's
+  natives (`engine.assets`: `pub fn load(name: string): TextureId;`) — that was `LYR-IR0001`
+  ("non-primitive type in a declared signature") while the same alias resolved fine in the
+  declaring module and in every ordinary signature. Both import forms work now, selective and
+  module-qualified, in scalar and array positions; transparent aliases resolve the same way.
+  Value structs stay module-local in native signatures — that restriction is documented and
+  deliberate, an alias has nothing to flatten.
+
 ## v2.2.0 — 2026-08-20
 
 The A8 wave: both coroutine edges Erato's register filed after building its cutscene driver,
