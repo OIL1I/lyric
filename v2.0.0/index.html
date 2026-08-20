@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.0.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.0.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.0.0 — 2026-08-20</h2>
+<p>The specification is <strong>normative</strong> from this release on: <code>lyriclang/lyric-spec</code> defines the
+language, the toolchain implements it, and a divergence is a toolchain bug. The major cuts the
+SOURCE surface — everything the 1.x deprecation clocks announced — while the bytecode format
+stays <strong>3.2</strong> and bytecode compiled against 1.x keeps loading.</p>
+<h3 id="removed-the-2.0-cut">Removed — the 2.0 cut</h3>
+<p>Everything <code>@Deprecated</code> announced through 1.x is gone from the source surface. The registry
+still binds the old NATIVE names, so bytecode compiled against 1.x keeps loading; what the cut
+takes is the ability to write the old forms in new code.</p>
+<ul>
+<li><strong>The free string forms</strong> (<code>length(s)</code>, <code>trim(s)</code>, <code>toUpper(s)</code>, … — 27 declarations): the
+method API (<code>s.length()</code>, v1.15) is the one form. <code>concat</code> and <code>repeat</code> stay free — they
+back <code>+</code> and <code>*</code> — and the <code>fromXxx</code>/<code>parseXxx</code> families keep their names.</li>
+<li><strong>The free constructors</strong> <code>emptyList</code>, <code>emptyMap</code>, <code>emptySet</code>, <code>newStringBuilder</code>:
+constructors live on the types (<code>List&lt;T&gt;.empty()</code>, <code>StringBuilder.new()</code>, v1.12).</li>
+<li><strong><code>std.math.Random</code> and <code>newRandom</code></strong>: randomness lives in <code>std.random</code> (v1.14).</li>
+<li><strong><code>write</code>/<code>writeln</code></strong>: <code>print</code>/<code>println</code> take any <code>Display</code> value (v1.14).</li>
+<li><strong><code>StringBuilder.length()</code></strong>: it counted appended PIECES, an implementation detail; measure
+the built string. (It never carried <code>@Deprecated</code> — an attribute cannot sit on a member —
+its doc announced the 2.0 removal instead.)</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><strong><code>Hashable&lt;T&gt;</code> declares <code>Equatable&lt;T&gt;</code> as its parent.</strong> A hash table cannot exist without
+equality; demanding the hash without the comparison was a lie by omission. A key constraint
+is <code>K :: [Hashable&lt;K&gt;]</code> alone — <code>Map</code>, <code>Set</code> and their helpers dropped the second
+constraint. A type conforming to <code>Hashable</code> now implements <code>hash</code> AND <code>equals</code>.</li>
+<li><strong><code>LYR-SEM0074</code> is an error.</strong> Calling a static extension method through an instance was a
+warning through 1.x with the message announcing this change; the clock has run out. The one
+1.x→2.0 severity change, recorded as such in the specification (§12.1).</li>
+<li><strong><code>docs/Grammar.md</code> and <code>docs/Bytecode.md</code> are checked mirrors.</strong> The canonical home of both
+is <code>lyriclang/lyric-spec</code> (chapters 02 and 13); CI diffs the copies here against the
+specification, so drift fails the build.</li>
+<li><strong>A library prunes from its <code>pub</code> surface.</strong> A compile without an entry point takes the
+<code>pub</code> functions of the compiled modules as reachability roots — a library's surface decides
+its contents, and the standard library no longer ships whole inside every library or
+embedded script. Observable at the host boundary: a private function nothing public reaches
+is not in the module (<code>Defines</code> says so), which is why this waited for the major.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

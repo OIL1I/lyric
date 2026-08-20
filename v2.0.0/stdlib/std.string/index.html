@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.string — Lyric v2.0.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.0.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
+<li><a href="../../stdlib/std.string/" class="here">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.string</h1>
+<nav class="contents">
+<ul>
+<li><a href="#function-concat">concat</a></li>
+<li><a href="#function-fromint">fromInt</a></li>
+<li><a href="#function-fromuint">fromUint</a></li>
+<li><a href="#function-fromfloat">fromFloat</a></li>
+<li><a href="#function-frombool">fromBool</a></li>
+<li><a href="#function-fromchar">fromChar</a></li>
+<li><a href="#function-repeat">repeat</a></li>
+<li><a href="#function-fromchars">fromChars</a></li>
+<li><a href="#function-utf8decode">utf8Decode</a></li>
+<li><a href="#function-isdigit">isDigit</a></li>
+<li><a href="#function-isalpha">isAlpha</a></li>
+<li><a href="#function-isalphanumeric">isAlphanumeric</a></li>
+<li><a href="#function-iswhitespace">isWhitespace</a></li>
+<li><a href="#function-isupper">isUpper</a></li>
+<li><a href="#function-islower">isLower</a></li>
+<li><a href="#function-chartodigit">charToDigit</a></li>
+<li><a href="#function-digittochar">digitToChar</a></li>
+<li><a href="#function-join">join</a></li>
+<li><a href="#function-parseint">parseInt</a></li>
+<li><a href="#function-parseintradix">parseIntRadix</a></li>
+<li><a href="#function-parsebool">parseBool</a></li>
+<li><a href="#function-parsefloat">parseFloat</a></li>
+<li><a href="#class-stringbuilder">StringBuilder</a></li>
+</ul>
+</nav>
+<section class="item" id="function-concat">
+<h2><a href="#function-concat">concat</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn concat(a: string, b: string): string</code></pre>
+<p>The two joined — what <code>+</code> on strings compiles to.</p>
+<p class="source">stdlib/std/string.lyr:15</p>
+</section>
+<section class="item" id="function-fromint">
+<h2><a href="#function-fromint">fromInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn fromInt(value: int): string</code></pre>
+<p>The decimal text of the value.</p>
+<p class="source">stdlib/std/string.lyr:18</p>
+</section>
+<section class="item" id="function-fromuint">
+<h2><a href="#function-fromuint">fromUint</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn fromUint(value: uint): string</code></pre>
+<p>The decimal text of an unsigned value.</p>
+<p class="source">stdlib/std/string.lyr:23</p>
+</section>
+<section class="item" id="function-fromfloat">
+<h2><a href="#function-fromfloat">fromFloat</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn fromFloat(value: float): string</code></pre>
+<p>The decimal text of the value.</p>
+<p class="source">stdlib/std/string.lyr:25</p>
+</section>
+<section class="item" id="function-frombool">
+<h2><a href="#function-frombool">fromBool</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn fromBool(value: bool): string</code></pre>
+<p><code>&quot;true&quot;</code> or <code>&quot;false&quot;</code>.</p>
+<p class="source">stdlib/std/string.lyr:27</p>
+</section>
+<section class="item" id="function-fromchar">
+<h2><a href="#function-fromchar">fromChar</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn fromChar(value: char): string</code></pre>
+<p>The character as a one-character string.</p>
+<p class="source">stdlib/std/string.lyr:29</p>
+</section>
+<section class="item" id="function-repeat">
+<h2><a href="#function-repeat">repeat</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn repeat(value: string, count: int): string</code></pre>
+<p>The string repeated <code>count</code> times — what <code>s * n</code> compiles to.</p>
+<p class="source">stdlib/std/string.lyr:34</p>
+</section>
+<section class="item" id="function-fromchars">
+<h2><a href="#function-fromchars">fromChars</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn fromChars(chars: char[]): string</code></pre>
+<p>The characters joined back into one string — the inverse of <code>toChars</code>. Native since v1.14:
+one call instead of one string per character.</p>
+<p class="source">stdlib/std/string.lyr:46</p>
+</section>
+<section class="item" id="function-utf8decode">
+<h2><a href="#function-utf8decode">utf8Decode</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn utf8Decode(bytes: uint8[]): ?string</code></pre>
+<p>The bytes as a string, STRICTLY: invalid UTF-8 answers <code>null</code> rather than a U+FFFD quietly
+standing in for the data — the difference to <code>readText</code>, whose replacement decoding is
+documented there.</p>
+<p class="source">stdlib/std/string.lyr:56</p>
+</section>
+<section class="item" id="function-isdigit">
+<h2><a href="#function-isdigit">isDigit</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isDigit(c: char): bool</code></pre>
+<p><code>'0'</code> through <code>'9'</code>.</p>
+<p class="source">stdlib/std/string.lyr:365</p>
+</section>
+<section class="item" id="function-isalpha">
+<h2><a href="#function-isalpha">isAlpha</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isAlpha(c: char): bool</code></pre>
+<p>An ASCII letter.</p>
+<p class="source">stdlib/std/string.lyr:371</p>
+</section>
+<section class="item" id="function-isalphanumeric">
+<h2><a href="#function-isalphanumeric">isAlphanumeric</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isAlphanumeric(c: char): bool</code></pre>
+<p>An ASCII letter or a digit.</p>
+<p class="source">stdlib/std/string.lyr:376</p>
+</section>
+<section class="item" id="function-iswhitespace">
+<h2><a href="#function-iswhitespace">isWhitespace</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isWhitespace(c: char): bool</code></pre>
+<p>Space, tab, <code>\n</code> or <code>\r</code>.</p>
+<p class="source">stdlib/std/string.lyr:381</p>
+</section>
+<section class="item" id="function-isupper">
+<h2><a href="#function-isupper">isUpper</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isUpper(c: char): bool</code></pre>
+<p><code>'A'</code> through <code>'Z'</code>.</p>
+<p class="source">stdlib/std/string.lyr:386</p>
+</section>
+<section class="item" id="function-islower">
+<h2><a href="#function-islower">isLower</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isLower(c: char): bool</code></pre>
+<p><code>'a'</code> through <code>'z'</code>.</p>
+<p class="source">stdlib/std/string.lyr:391</p>
+</section>
+<section class="item" id="function-chartodigit">
+<h2><a href="#function-chartodigit">charToDigit</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn charToDigit(c: char): ?int</code></pre>
+<p>The numeric value of a digit, or <code>null</code> when it is not one.</p>
+<p><code>?int</code> rather than <code>-1</code>: a failure the caller has to handle belongs in the type.</p>
+<p class="source">stdlib/std/string.lyr:398</p>
+</section>
+<section class="item" id="function-digittochar">
+<h2><a href="#function-digittochar">digitToChar</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn digitToChar(value: int): ?char</code></pre>
+<p>The digit as a character, or <code>null</code> outside <code>0..9</code>.</p>
+<p class="source">stdlib/std/string.lyr:406</p>
+</section>
+<section class="item" id="function-join">
+<h2><a href="#function-join">join</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn join(parts: string[], separator: string): string</code></pre>
+<p>Joins the parts with a separator: the inverse of <code>split</code>. One native call — a left fold
+would copy the whole result once per part.</p>
+<p class="source">stdlib/std/string.lyr:433</p>
+</section>
+<section class="item" id="function-parseint">
+<h2><a href="#function-parseint">parseInt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn parseInt(value: string): ?int</code></pre>
+<p><code>&quot;-42&quot;</code> becomes <code>-42</code>, anything else <code>null</code>.</p>
+<p>No overflow protection: a number beyond <code>int64</code> wraps rather than yielding <code>null</code>. Detecting
+it would need a division per digit.</p>
+<p class="source">stdlib/std/string.lyr:448</p>
+</section>
+<section class="item" id="function-parseintradix">
+<h2><a href="#function-parseintradix">parseIntRadix</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn parseIntRadix(value: string, radix: int): ?int</code></pre>
+<p>From a base of 2 to 36. Letters continue from <code>a</code>/<code>A</code>.</p>
+<p class="source">stdlib/std/string.lyr:482</p>
+</section>
+<section class="item" id="function-parsebool">
+<h2><a href="#function-parsebool">parseBool</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn parseBool(value: string): ?bool</code></pre>
+<p>Exactly <code>&quot;true&quot;</code> or <code>&quot;false&quot;</code>; anything else is <code>null</code>.</p>
+<p class="source">stdlib/std/string.lyr:527</p>
+</section>
+<section class="item" id="function-parsefloat">
+<h2><a href="#function-parsefloat">parseFloat</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn parseFloat(value: string): ?float</code></pre>
+<p><code>&quot;3.5&quot;</code>, <code>&quot;-0.25&quot;</code> and <code>&quot;42&quot;</code> become floating point; everything else is <code>null</code>.</p>
+<p>Without exponent notation (<code>1e9</code>), which would need a state machine of its own.</p>
+<p class="source">stdlib/std/string.lyr:540</p>
+</section>
+<section class="item" id="class-stringbuilder">
+<h2><a href="#class-stringbuilder">StringBuilder</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class StringBuilder</code></pre>
+<p>Builds a string piece by piece.</p>
+<p><code>s = s + part</code> in a loop is quadratic: every step copies the whole string so far. The builder
+collects the parts and joins them once.</p>
+<p>The backing is a doubling <code>string[]</code>, written by hand because this module must not import
+<code>std.collections</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">parts: string[]</code></pre>
+<p>The collected pieces; <code>count</code> says how many are filled.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">count: int</code></pre>
+<p>How many entries of <code>parts</code> are real.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub static fn new(): StringBuilder</code></pre>
+<p>An empty builder.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn append(value: string): void</code></pre>
+<p>Adds a piece; the backing array doubles when full.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn appendLine(value: string): void</code></pre>
+<p>Adds the piece and a <code>\n</code>.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn appendChar(value: char): void</code></pre>
+<p>Adds one character.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn build(): string</code></pre>
+<p>The pieces joined once — the point of collecting them. One native call over the filled
+slice; a left fold would copy the whole result once per piece, the exact cost the
+builder exists to avoid. Reads and never consumes: building twice yields the same
+string.</p>
+</div>
+</div>
+<p class="source">stdlib/std/string.lyr:604</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.random/">std.random</a>
+<a class="next" href="../../stdlib/std.test/">std.test</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Embedding — Lyric v2.0.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.0.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/" class="here">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+</ul>
+</nav>
+<main>
+<h1>Embedding</h1>
+<nav class="contents">
+<ul>
+<li><a href="#compiling-and-running">Compiling and running</a></li>
+<li><a href="#reloading">Reloading</a></li>
+<li><a href="#registering-functions">Registering functions</a></li>
+<li><a href="#an-sdk-of-your-own">An SDK of your own</a></li>
+<li><a href="#value-types-across-the-boundary">Value types across the boundary</a></li>
+<li><a href="#registering-types">Registering types</a></li>
+<li><a href="#attributes-what-a-script-says-about-itself">Attributes: what a script says about itself</a></li>
+<li><a href="#errors">Errors</a></li>
+</ul>
+</nav>
+<p><code>lyrembed.dll</code> lets a C# host compile and run Lyric. Reference it and create a VM:</p>
+<pre><code class="language-csharp">using Lyric.Embedding;
+
+var vm = new LangVm(new HostOptions
+{
+    StdlibRoot = &quot;stdlib&quot;,
+    Capabilities = Capability.None,
+});
+</code></pre>
+<p><code>HostOptions</code> decides what scripts may reach: the standard library location, the granted
+capabilities, and where their output goes. A module that requires a capability it was not granted
+is rejected at load time, before any instruction runs.</p>
+<h2 id="compiling-and-running">Compiling and running</h2>
+<pre><code class="language-csharp">var module = vm.Compile(source, &quot;game&quot;);
+var exitCode = vm.Run(module);
+</code></pre>
+<p><code>Compile</code> takes the source and the module name. The name is not optional; it is what the script's
+own declarations are qualified with.</p>
+<p>To call individual functions instead of running a <code>main</code>, create an instance:</p>
+<pre><code class="language-csharp">var instance = vm.Instantiate(module);
+
+instance.CallVoid(&quot;onStart&quot;);
+var next = instance.Call&lt;long&gt;(&quot;onUpdate&quot;, 16L);
+</code></pre>
+<p>An instance holds the globals. Two instances of the same module do not share state. <code>Instantiate</code>
+is what a host uses for scripts that have no entry point at all — the common case for embedded
+code.</p>
+<h2 id="reloading">Reloading</h2>
+<pre><code class="language-csharp">var reloaded = instance.Reload();
+</code></pre>
+<p><code>Reload()</code> produces a fresh instance from the same module with its globals initialized again. The
+old instance stays valid; nothing about it changes.</p>
+<h2 id="registering-functions">Registering functions</h2>
+<pre><code class="language-csharp">vm.RegisterFunction(&quot;playSound&quot;, (string name) =&gt; audio.Play(name));
+vm.RegisterFunction(&quot;random&quot;, (long limit) =&gt; rng.NextInt64(limit));
+</code></pre>
+<p>A script reaches them through the <code>host</code> module:</p>
+<pre><code class="language-lyr">import host { playSound, random };
+
+fn main(): int {
+    playSound(&quot;hit&quot;);
+    return random(6) as int;
+}
+</code></pre>
+<p>There is no implicit namespace: without the import the names are unknown.</p>
+<h2 id="an-sdk-of-your-own">An SDK of your own</h2>
+<p><code>RegisterFunction</code> generates the declaration from the delegate, which is right for a handful of
+functions. For an engine with a hundred of them the signature ends up in two places: in the C# call
+and in whatever documents the API.</p>
+<p>A <strong>native root</strong> is a directory whose modules may declare functions without a body. The declarations
+are ordinary <code>.lyr</code> files you ship and version:</p>
+<pre><code class="language-text">// sdk/engine/input.lyr
+module engine.input;
+
+pub fn keyDown(key: int): bool;
+
+pub fn anyKey(): bool { return keyDown(32) || keyDown(27); }
+</code></pre>
+<pre><code class="language-csharp">var vm = new LangVm(new HostOptions
+{
+    NativeRoots = new Dictionary&lt;string, string&gt; { [&quot;engine&quot;] = &quot;sdk&quot; },
+});
+
+vm.RegisterNative(&quot;engine.input.keyDown&quot;, (long key) =&gt; input.IsDown(key));
+</code></pre>
+<pre><code class="language-lyr">import engine.input { anyKey };
+
+fn main(): int { return if (anyKey()) 1 else 0; }
+</code></pre>
+<p>Three things follow from how it is keyed:</p>
+<ul>
+<li><strong>The root decides, not the file.</strong> The same file outside a native root is a missing body and an
+error. Whether a module may reach into the host follows where it came from, so naming a file well
+enough is not a way in.</li>
+<li><strong>The segment belongs to the root.</strong> <code>engine</code> is taken out of the program's own directory, so which
+file answers an import is never a question of precedence.</li>
+<li><strong>A declaration needs an implementation under the same qualified name.</strong> <code>RegisterNative</code> writes no
+declaration — that is the file's job — and a declaration nobody implements fails when the script is
+instantiated, not at the call site.</li>
+</ul>
+<p>A module in a native root may hold ordinary Lyric code beside its declarations; <code>anyKey</code> above is
+compiled like any other function.</p>
+<h2 id="value-types-across-the-boundary">Value types across the boundary</h2>
+<p>A native signature may use a <code>struct</code> declared <strong>in the same native module</strong>, with scalar and
+string fields only. The declaration stays fully typed on the script side; on the wire the struct
+is <strong>flattened</strong>:</p>
+<pre><code class="language-text">// sdk/engine/geo.lyr
+module engine.geo;
+
+pub struct Vec2 { x: float, y: float }
+
+pub fn setPosition(entity: int, at: Vec2);
+
+pub fn positionOf(entity: int): Vec2;
+</code></pre>
+<p>A struct <strong>parameter</strong> crosses as its fields. The host registers exactly the delegate it would
+have written for scalar parameters — <code>setPosition</code> above binds against <code>(long, double, double)</code>:</p>
+<pre><code class="language-csharp">vm.RegisterNative(&quot;engine.geo.setPosition&quot;,
+    (long entity, double x, double y) =&gt; world.SetPosition(entity, x, y));
+</code></pre>
+<p>A struct <strong>return</strong> comes back through a buffer the runtime owns: the implementation receives
+the ordinary arguments plus the buffer's slots and fills one value per field, in field order.
+That is the <code>NativeRegistry</code> surface a game host uses:</p>
+<pre><code class="language-csharp">natives.RegisterStructReturning(&quot;engine.geo.positionOf&quot;,
+    [TypeTag.I64], [TypeTag.F64, TypeTag.F64],
+    (args, result) =&gt;
+    {
+        var p = world.PositionOf(args[0].AsI64);
+        result[0] = LyrValue.FromF64(p.X);
+        result[1] = LyrValue.FromF64(p.Y);
+    });
+</code></pre>
+<p>On the script side nothing special happens — <code>let p = positionOf(e);</code> binds an ordinary value
+with value semantics, and mutating <code>p</code> afterwards changes nothing the host sees. The point of
+the arrangement is what it costs: <strong>nothing allocates</strong>. A <code>Vec2</code> built fresh and passed in, or
+received back in a loop of a hundred thousand iterations, measures 0 bytes per call — the fields
+travel as scalars, and the result buffer exists once per program.</p>
+<p>Registration checks the layout at load time: a host that fills three fields against a struct the
+SDK declares with two is rejected with the import's name in the message, before any instruction
+runs.</p>
+<h2 id="registering-types">Registering types</h2>
+<p><code>RegisterType</code> exposes a C# class to scripts. Scripts receive such an object and pass it on; they
+cannot construct one and cannot read its fields.</p>
+<pre><code class="language-csharp">vm.RegisterType&lt;Player&gt;(&quot;Player&quot;, t =&gt; t
+    .Getter(&quot;name&quot;, (Player p) =&gt; p.Name)
+    .Getter(&quot;health&quot;, (Player p) =&gt; p.Health)
+    .Method(&quot;damage&quot;, (Player p, long amount) =&gt; p.Damage(amount), mutates: true));
+
+vm.RegisterFunction(&quot;hero&quot;, () =&gt; world.Hero);
+</code></pre>
+<p>On the script side a host value looks like any other:</p>
+<pre><code class="language-lyr">import host { hero, playSound };
+
+fn main(): int {
+    let player = hero();
+
+    if (player.health() &gt; 0) {
+        player.damage(10);
+        playSound(&quot;ouch&quot;);
+    }
+    return player.health() as int;
+}
+</code></pre>
+<p>A host member is read as a call — <code>player.name()</code>, not <code>player.name</code>. A host type has no field
+layout the script could index into, so every access is a method.</p>
+<p>The object travels; it is not copied. The .NET garbage collector keeps it alive as long as a Lyric
+value can reach it. There is no release or revocation protocol.</p>
+<h2 id="attributes-what-a-script-says-about-itself">Attributes: what a script says about itself</h2>
+<p>An attribute is a struct; where it may sit is the marker interface it declares — <code>OnModule</code>,
+<code>OnType</code> or <code>OnFunction</code>, all from <code>std.core</code>. An SDK declares the vocabulary, a script uses it,
+and the host reads the result:</p>
+<pre><code class="language-lyr">import std.core { OnModule, OnType, OnFunction };
+
+pub struct Plugin :: [OnModule] { name: string, api: int }
+pub struct Component :: [OnType] { }
+pub struct System :: [OnFunction] { order: int = 0 }
+
+@Component
+pub struct Health { value: int, max: int }
+
+@System { order = 10 }
+pub fn damageTick(dt: float): void { }
+</code></pre>
+<p>The arguments are literals, and a field the script does not write carries its default, so a row is
+always complete. An attribute <strong>describes; it does nothing</strong>: a runtime that ignores the rows runs
+the program unchanged, and no attribute in this vocabulary means anything to the compiler.</p>
+<p>On the host side the rows hang off the compiled module and off an instance, joined and ready to
+ask:</p>
+<pre><code class="language-csharp">var module = vm.Compile(source, &quot;game&quot;);
+
+foreach (var plugin in module.Attributes.OnModule)
+    Console.WriteLine($&quot;{plugin.Value(&quot;name&quot;)?.Text} wants API {plugin.Value(&quot;api&quot;)?.AsInt}&quot;);
+
+var instance = vm.Instantiate(module);
+foreach (var system in instance.Attributes.OnFunctions(&quot;System&quot;))
+    instance.CallVoid(system, 0.016);   // the use carries the function index; nothing is
+                                        // resolved by name again
+</code></pre>
+<p>Three details carry the weight:</p>
+<ul>
+<li><strong><code>module.Attributes</code> works before <code>Instantiate</code>.</strong> For foreign bytes — mods, downloaded
+scripts — the module row is how a host decides whether to load at all.</li>
+<li><strong>A hit is a handle.</strong> <code>CallVoid(use, …)</code> calls by the index the row carries, so the per-frame
+path stays the raw one. A typo in the script is now a compile error (<code>unknown type</code>), not a
+function nobody finds.</li>
+<li><strong>An attributed type reports its shape.</strong> <code>module.Attributes.FieldsOf(use.Target)</code> yields the
+field names and types of <code>Health</code> — the bytecode carries field names exactly for types an
+attribute references, and for nothing else.</li>
+</ul>
+<p>Attribute names are unqualified: <code>System</code>, not <code>engine.ecs.System</code>. An SDK owns its attribute
+names the way it owns its native names.</p>
+<h2 id="errors">Errors</h2>
+<p>A script that fails throws on the host side:</p>
+<table>
+<thead>
+<tr>
+<th>Exception</th>
+<th>Cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ScriptException</code></td>
+<td>compilation or a runtime error inside the script</td>
+</tr>
+<tr>
+<td><code>ScriptPanicException</code></td>
+<td>the script panicked</td>
+</tr>
+<tr>
+<td><code>EmbeddingException</code></td>
+<td>the host used the API wrongly — an unknown function, a signature mismatch</td>
+</tr>
+</tbody>
+</table>
+<p>These are declared in <code>Lyric.Embedding</code>; a host does not reference the runtime assembly to catch
+them.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/standard-library/">The standard library</a>
+<a class="next" href="../../guide/attributes/">Attributes</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

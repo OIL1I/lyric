@@ -1,0 +1,1470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric .lyrbc Bytecode Format 3.2 — Lyric v2.0.0</title>
+<link rel="stylesheet" href="../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../">Lyric</a>
+<nav class="areas">
+<a href="../guide/getting-started/">Guide</a>
+<a class="current" href="../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.0.0</span>
+<nav class="switcher" data-versions="../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../grammar/">Lyric Grammar</a></li>
+<li><a href="../bytecode/" class="here">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../stdlib/std.build/">std.build</a></li>
+<li><a href="../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../stdlib/std.core/">std.core</a></li>
+<li><a href="../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../stdlib/std.math/">std.math</a></li>
+<li><a href="../stdlib/std.option/">std.option</a></li>
+<li><a href="../stdlib/std.os/">std.os</a></li>
+<li><a href="../stdlib/std.random/">std.random</a></li>
+<li><a href="../stdlib/std.string/">std.string</a></li>
+<li><a href="../stdlib/std.test/">std.test</a></li>
+<li><a href="../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>Lyric .lyrbc Bytecode Format 3.2</h1>
+<nav class="contents">
+<ul>
+<li><a href="#encoding">1. Encoding</a></li>
+<li><a href="#file-layout">2. File layout</a></li>
+<li><a href="#type-tags">3. Type tags</a></li>
+<li><a href="#execution-model">4. Execution model</a></li>
+<li><a href="#instructions">5. Instructions</a></li>
+<li><a href="#load-time-validation">6. Load-time validation</a></li>
+<li><a href="#example">7. Example</a></li>
+<li><a href="#runner-contract">8. Runner contract</a></li>
+</ul>
+</nav>
+<blockquote>
+<p><strong>Mirror.</strong> The canonical home of this document is
+<a href="https://github.com/lyriclang/lyric-spec/blob/main/spec/13-bytecode.md"><code>lyriclang/lyric-spec</code> → <code>spec/13-bytecode.md</code></a>.
+This copy exists for the toolchain's tests and doc site; CI diffs everything below the
+marker against the canonical body. Edit it there, mirror it here.</p>
+</blockquote>
+<!-- sync:body -->
+<p>This document is normative. The C# serializer implements it; it does not define it. A disassembler
+or a second runtime can be written from this document alone.</p>
+<p>Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
+migration path. A stability promise begins at v1.0.</p>
+<p>Format version <strong>3.2</strong> covers: scalars, locals, module-internal and native calls, structured
+control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
+value semantics, exceptions, global constants, closures, host objects, source positions, and
+attributes.</p>
+<p><strong>3.2 against 3.1</strong>: two new sections — Attributes (id 11) and Names (id 12). Both are skippable:
+no other section refers to either, and a runtime that ignores them runs the program unchanged,
+because an attribute describes and does nothing. A 3.1 reader therefore loads a 3.2 module; the
+only difference is whether a host can read the attributes.</p>
+<p><strong>3.1 against 3.0</strong>: the SourceMap section (id 6) has a payload. It is skippable, so a 3.0 reader
+loads a 3.1 module and a 3.1 reader loads a 3.0 module; the only difference is whether a panic can
+name a line.</p>
+<hr />
+<h2 id="encoding">1. Encoding</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Rule</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fixed-width integers</td>
+<td>little-endian, explicitly — not host byte order</td>
+</tr>
+<tr>
+<td>Variable integers</td>
+<td>LEB128, unsigned, at most 10 groups (64 bits)</td>
+</tr>
+<tr>
+<td>Strings</td>
+<td>byte length as LEB128, then UTF-8 without BOM and without terminator</td>
+</tr>
+<tr>
+<td>Floats</td>
+<td>IEEE-754 bit pattern, little-endian (4 or 8 bytes)</td>
+</tr>
+<tr>
+<td>Bool</td>
+<td>one byte, <code>0x00</code> is false, anything else is true</td>
+</tr>
+</tbody>
+</table>
+<p><strong>LEB128 (unsigned)</strong>: seven payload bits per byte, least significant first. Bit 7 (<code>0x80</code>) set
+means another byte follows. A reader that consumes more than ten bytes must reject the file.</p>
+<p><strong>Determinism</strong>: the same compiler input produces byte-identical output.</p>
+<ul>
+<li>The string pool is in first-use order.</li>
+<li>Sections appear at most once, in ascending id order.</li>
+<li>No timestamps, no absolute paths.</li>
+</ul>
+<hr />
+<h2 id="file-layout">2. File layout</h2>
+<pre><code>magic            4 bytes   'L' 'Y' 'R' 'B'  (0x4C 0x59 0x52 0x42)
+version.major    u16       little-endian
+version.minor    u16       little-endian
+sections         *         any number, see below
+</code></pre>
+<p>A section:</p>
+<pre><code>id               u8
+byteLength       uleb128   length of the payload, excluding id and this field
+payload          byteLength bytes
+</code></pre>
+<p>A reader must skip a section with an unknown id and must reject a file whose section ids do not
+strictly ascend.</p>
+<p><strong>Versioning</strong>: an unknown major version is rejected. An unknown minor version is tolerated; a new
+minor version may only add skippable sections.</p>
+<h3 id="section-ids">Section ids</h3>
+<table>
+<thead>
+<tr>
+<th>Id</th>
+<th>Name</th>
+<th>Required</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Capabilities</td>
+<td>no</td>
+<td><code>uleb128</code> bitset</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Strings</td>
+<td>no</td>
+<td>constant pool, strings only</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Types</td>
+<td>no</td>
+<td>layouts of composite types</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Imports</td>
+<td>no</td>
+<td>host and native functions</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Functions</td>
+<td>no</td>
+<td>defined functions with their code</td>
+</tr>
+<tr>
+<td>6</td>
+<td>SourceMap</td>
+<td>no</td>
+<td>strippable: byte offset to file and line</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Start</td>
+<td>no</td>
+<td>entry point: <code>uleb128</code> function index</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Impls</td>
+<td>no</td>
+<td>interface implementations (vtables)</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Handlers</td>
+<td>no</td>
+<td>protected regions per function</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Globals</td>
+<td>no</td>
+<td>global slots and their initializer</td>
+</tr>
+<tr>
+<td>11</td>
+<td>Attributes</td>
+<td>no</td>
+<td>attribute rows: which struct describes which target, with literal values</td>
+</tr>
+<tr>
+<td>12</td>
+<td>Names</td>
+<td>no</td>
+<td>field names, only for types an Attributes row references</td>
+</tr>
+</tbody>
+</table>
+<p>A missing section counts as empty.</p>
+<h3 id="types-id-3">Types (Id 3)</h3>
+<p><code>uleb128</code> count, then per type:</p>
+<pre><code>nameIndex        uleb128   index into the string pool
+kind             u8        0 = layout, 1 = enum, 2 = interface, 3 = struct
+</code></pre>
+<p><strong>kind 0 — layout</strong> (class, struct, and each individual enum variant):</p>
+<pre><code>fieldCount       uleb128
+fieldTypes       fieldCount × type (§3), in declaration order
+</code></pre>
+<p><strong>kind 1 — enum</strong>: names its variants, each of which is its own layout entry.</p>
+<pre><code>variantCount     uleb128
+variantTypes     variantCount × uleb128   index into this table
+</code></pre>
+<p>Slot 0 of every variant is its tag: the <code>i64</code> index of the variant in its enum's <code>variantTypes</code>
+list, zero-based in declaration order. Payload fields start at slot 1.</p>
+<p><strong>kind 3 — struct</strong>: the same field layout as kind 0, with value semantics.</p>
+<pre><code>fieldCount       uleb128
+fieldTypes       fieldCount × type (§3), in declaration order
+</code></pre>
+<p>A struct value is the same slot sequence as a class object at runtime; <code>ldfld</code> and <code>stfld</code> operate
+on it unchanged. Value semantics live entirely in <code>structcopy</code> (§5).</p>
+<p>A struct must not contain itself as a field, directly or indirectly. Recursion through a class, an
+array or an interface is permitted; those are references.</p>
+<p><strong>kind 2 — interface</strong>: names its method slots instead of fields.</p>
+<pre><code>slotCount        uleb128   at least 1
+slotNames        slotCount × string
+</code></pre>
+<p>The index into this list is the slot that <code>callvirt</code> addresses. <code>slotCount</code> must be at least 1. An
+interface must not appear on the left of an Impls row.</p>
+<p>The field index is the position in the field list; field names do not appear in the bytecode. The
+type name is present for diagnostics and disassembly.</p>
+<p>A reader must reject: a field type of <code>void</code>, a type index outside the table, and an enum whose
+variant is not a layout. A type may name itself as a field type, including forward.</p>
+<h3 id="capabilities-id-1">Capabilities (Id 1)</h3>
+<p>A <code>uleb128</code> bitset stating what the module requires.</p>
+<table>
+<thead>
+<tr>
+<th>Bit</th>
+<th>Value</th>
+<th>Capability</th>
+<th>Module</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>0x1</code></td>
+<td><code>fileAccess</code></td>
+<td><code>std.io.file</code></td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>0x2</code></td>
+<td><code>networkAccess</code></td>
+<td><code>std.io.net</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>0x4</code></td>
+<td><code>osAccess</code></td>
+<td><code>std.os</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>0x8</code></td>
+<td><code>hostAccess</code></td>
+<td>reserved</td>
+</tr>
+</tbody>
+</table>
+<p><code>0</code> means the module requires nothing. Submodules inherit: <code>std.os.env</code> requires <code>osAccess</code>.</p>
+<p>Enforcement happens at load time. A module that requires more than the runtime grants is rejected
+(<code>LYR-CAP0001</code>) before any instruction runs.</p>
+<h3 id="strings-id-2">Strings (Id 2)</h3>
+<pre><code>count            uleb128
+values           count × string
+</code></pre>
+<h3 id="imports-id-4">Imports (Id 4)</h3>
+<pre><code>count            uleb128
+entries          count × {
+                   name         string
+                   paramCount   uleb128
+                   paramTypes   paramCount × type tag
+                   returnType   type tag
+                 }
+</code></pre>
+<p>Host functions are referenced symbolically by name and signature. Binding to implementations
+happens at load time.</p>
+<p>Parameter and return types use the general type grammar of §3. Two composite forms carry a
+convention with them:</p>
+<ul>
+<li><strong>A struct-typed parameter in LAST position</strong> may be a <strong>result buffer</strong>: the compiler wires a
+native declared <code>fn f(...): S</code> as <code>f(..., out: S): void</code>, the runtime passes a module-owned
+instance of <code>S</code>, and the implementation fills one value per field in field order. Which imports
+follow this convention is the host's knowledge, carried by its registration — the format only
+provides the shape.</li>
+<li>Whether a runtime can BIND a given signature is the registry's question, not the reader's: a
+reader accepts any well-formed type here, and a runtime without an implementation for the name
+and signature rejects the module at load time. That is what keeps this section forward-open —
+a module using conventions a runtime predates fails at binding, with the import's name in the
+message, never by misreading.</li>
+</ul>
+<h3 id="functions-id-5">Functions (Id 5)</h3>
+<pre><code>count            uleb128
+entries          count × {
+                   nameIndex    uleb128   index into the string pool
+                   paramCount   uleb128
+                   returnType   type tag
+                   slotCount    uleb128
+                   slotTypes    slotCount × type tag
+                   maxStack     uleb128
+                   blockCount   uleb128
+                   blockOffsets blockCount × uleb128   byte offset into 'code'
+                   codeLength   uleb128
+                   code         codeLength bytes
+                 }
+</code></pre>
+<ul>
+<li>The first <code>paramCount</code> slots are the parameters, in declaration order. <code>paramCount ≤ slotCount</code>.</li>
+<li><code>maxStack</code> is the maximum operand stack depth in this function. A runtime may size its frame
+from it and omit runtime overflow checks.</li>
+<li><code>blockOffsets[i]</code> is the byte offset of block <code>i</code> in <code>code</code>. Every offset must fall on an
+instruction boundary.</li>
+<li>Block 0 is the entry block. Execution begins at <code>blockOffsets[0]</code>.</li>
+</ul>
+<h3 id="sourcemap-id-6">SourceMap (Id 6)</h3>
+<p>Byte offset to source position, one table per function.</p>
+<pre><code>fileCount        uleb128
+files            fileCount × uleb128   index into the string pool
+functionCount    uleb128               must equal the count in Functions (Id 5)
+functions        functionCount × {
+                   rowCount   uleb128
+                   rows       rowCount × {
+                     offsetDelta  uleb128   bytes since the previous row of this function
+                     fileIndex    uleb128   index into the file table above
+                     line         uleb128   1-based; 0 means no line is known
+                   }
+                 }
+</code></pre>
+<p><strong>Strippable.</strong> No other section refers to this one, so removing it leaves a valid module. A module
+without it is valid too; the only consequence is that a panic names a function instead of a line.</p>
+<p>The offsets are byte offsets into that function's <code>code</code>, the same coordinate <code>blockOffsets</code> uses.
+The first row of a function carries its offset outright; every later row carries the difference to
+the one before. The offsets therefore ascend, and only the first row may have a delta of <code>0</code>.</p>
+<p>A row states the position from its own offset up to the next row's. <strong>To resolve an offset, take the
+last row whose offset is less than or equal to it</strong>; before the first row there is no position.</p>
+<p><strong>A row is written only where the position changes.</strong> A loop body is dozens of instructions across a
+handful of lines, and a row per instruction would make this the largest section in the file.</p>
+<p>A function may carry <code>rowCount</code> <code>0</code>. Its code then has no position at all, which is what a runtime
+reports for it.</p>
+<p><strong>Why byte offsets and not instruction indices.</strong> An instruction index is not a notion of this
+format: it presupposes that a runtime decodes the code into an array before running it. A runtime
+that walks the bytes directly would have to count instructions to answer a question the format can
+answer in its own coordinates.</p>
+<p><strong>The row carries no column.</strong> A minor version may only add skippable sections, so the shape of this
+one is fixed until a major: a column cannot be added here later, and adding it beside this section
+would be a second mechanism for the same thing.</p>
+<p>A reader must reject: a <code>functionCount</code> that differs from the Functions section, a file index outside
+the file table, a string index outside the pool, an offset that does not lie inside that function's
+<code>code</code> — a row marks where an instruction begins, so <code>offset == codeLength</code> is already outside — and
+a delta of <code>0</code> on any row but the first.</p>
+<h3 id="start-id-7">Start (Id 7)</h3>
+<pre><code>functionIndex    uleb128   into the shared index space: imports first, then functions
+</code></pre>
+<p>The entry point. A runtime calls it without arguments unless its signature takes <code>string[]</code> (§8);
+its return value is the process exit code, masked with <code>&amp; 0xFF</code>.</p>
+<p>Without this section the module is a library and has no entry point.</p>
+<h3 id="impls-id-8">Impls (Id 8)</h3>
+<p>The vtables: which function fills which method slot of which interface for which type.</p>
+<pre><code>implCount        uleb128
+implCount × {
+  typeIndex      uleb128   the implementing type (class or enum)
+  interfaceIndex uleb128   an interface entry
+  methodCount    uleb128   must equal the interface's slotCount
+  methods        methodCount × uleb128, each an index into the shared call
+                 index space (imports first, then functions)
+}
+</code></pre>
+<p>One row per (type, interface) pair; the same pair twice is an error. A type that is neither class
+nor enum must not appear on the left.</p>
+<p>All implementations of the same slot share a signature. A runtime may derive the argument count
+from any row of the interface, and must, because <code>callvirt</code> takes its receiver off the stack
+before the target function is known.</p>
+<h3 id="handlers-id-9">Handlers (Id 9)</h3>
+<p>The protected regions: which block range of a function is covered by which handler.</p>
+<pre><code>handlerCount     uleb128
+handlerCount × {
+  function       uleb128   index into the Functions section
+  startBlock     uleb128   first protected block
+  endBlock       uleb128   first block no longer protected
+  kind           u8        0 = catch, 1 = finally
+  catchType      uleb128   0 = catches everything; otherwise type index + 1
+  handlerBlock   uleb128   where control transfers
+  slot           uleb128   0 = binds nothing; otherwise slot index + 1
+}
+</code></pre>
+<p>Ranges are block indices, not byte ranges.</p>
+<p><strong>The order is the contract: innermost region first.</strong> While unwinding, a runtime takes the first
+entry whose range covers the fault site and whose type matches.</p>
+<p>The caught value goes into a slot, not onto the stack. When entering a handler the operand stack
+is cleared.</p>
+<p>A runtime must reject: a range outside the block count, <code>startBlock &gt;= endBlock</code>, a handler block
+inside its own range, a type or slot index outside its table, and a <code>finally</code> region carrying a
+type or a slot.</p>
+<h3 id="globals-id-10">Globals (Id 10)</h3>
+<pre><code>globalCount      uleb128
+globalTypes      globalCount × type (§3)
+initFunction     uleb128   0 = none; otherwise index + 1 into the shared call
+                 index space (imports first, then functions)
+</code></pre>
+<p>A runtime must call the initializer before the entry point. It takes no arguments, returns
+nothing, and leaves the slots filled. The order within its body is the initialization order.</p>
+<p>A reader must reject: a global type of <code>void</code>, an init index outside the call space, and a
+non-empty global list without an init function.</p>
+<p>A slot of type <code>string</code> starts as the empty string, not as an empty reference.</p>
+<h3 id="attributes-id-11">Attributes (Id 11)</h3>
+<p>New in 3.2. Which struct type describes which function, type or the module, with literal values.</p>
+<pre><code>count            uleb128
+rows             count × {
+                   targetKind   u8        0 = function, 1 = type, 2 = module
+                   target       uleb128   into Functions (kind 0) or Types (kind 1); 0 for kind 2
+                   type         uleb128   the attribute's struct type: an index into Types
+                   valueCount   uleb128   must equal the struct's fieldCount
+                   values       valueCount × ConstValue
+                 }
+
+ConstValue       = tag u8, then by tag:
+                   integers, char     uleb128    two's complement, widened to 64 bits
+                   f32 / f64          4 / 8 bytes IEEE-754 bit pattern, little-endian
+                   bool               u8
+                   string             uleb128    index into the string pool
+</code></pre>
+<p><strong>A row is complete</strong>: one value per field of the attribute type, in field declaration order — a
+field the source did not write carries the field's literal default, filled in by the compiler. The
+position IS the field index, which is why no index is stored, and each value's tag must equal the
+tag of the field at its position.</p>
+<p>The rows stand in declaration order: modules in compilation order, targets in source order, the
+attributes of one target in the order written.</p>
+<p><strong>Skippable, and inert by design.</strong> No other section refers to this one, and a runtime that
+ignores it runs the program unchanged: an attribute describes its target, it does nothing. What a
+host makes of a row is the host's business.</p>
+<p>A compiler must keep an attributed function alive: the row is a promise that the index is valid,
+and the host is a caller the reachability analysis cannot see — the same standing as the entry
+point.</p>
+<p>A reader must reject: an unknown target kind, a target or type index outside its table, a nonzero
+target for a module row, a type that is not a struct, the same (targetKind, target, type) triple
+twice, a value count differing from the struct's field count, a value tag differing from the field
+tag at its position, a string index outside the pool, and a value of a non-literal type.</p>
+<h3 id="names-id-12">Names (Id 12)</h3>
+<p>New in 3.2. Field names, ONLY for types an Attributes row references — the attribute types
+themselves and the attributed type targets. Everywhere else the rule of the Types section stands:
+field names are not in the bytecode.</p>
+<pre><code>count            uleb128
+entries          count × {
+                   type         uleb128   index into Types
+                   nameCount    uleb128   must equal that type's fieldCount
+                   names        nameCount × string
+                 }
+</code></pre>
+<p>The names stand in field order, so <code>names[i]</code> names the field <code>fieldTypes[i]</code> describes — and for
+an attribute type, the value at position <code>i</code> of every row that references it. Entries ascend by
+type index; a referenced type with zero fields has no entry.</p>
+<p>Without this section a host reading <code>@Component struct Health { value, max }</code> would learn a shape
+it cannot name: the layout gives field types and the row gives values, but which field means what
+exists only in the source.</p>
+<p>A reader must reject: a type index outside the table, the same type twice, and a name count
+differing from that type's field count.</p>
+<hr />
+<h2 id="type-tags">3. Type tags</h2>
+<p>One byte.</p>
+<table>
+<thead>
+<tr>
+<th>Tag</th>
+<th>Type</th>
+<th></th>
+<th>Tag</th>
+<th>Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x01</code></td>
+<td><code>i8</code></td>
+<td></td>
+<td><code>0x08</code></td>
+<td><code>u64</code></td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td><code>i16</code></td>
+<td></td>
+<td><code>0x09</code></td>
+<td><code>f32</code></td>
+</tr>
+<tr>
+<td><code>0x03</code></td>
+<td><code>i32</code></td>
+<td></td>
+<td><code>0x0A</code></td>
+<td><code>f64</code></td>
+</tr>
+<tr>
+<td><code>0x04</code></td>
+<td><code>i64</code></td>
+<td></td>
+<td><code>0x0B</code></td>
+<td><code>bool</code></td>
+</tr>
+<tr>
+<td><code>0x05</code></td>
+<td><code>u8</code></td>
+<td></td>
+<td><code>0x0C</code></td>
+<td><code>char</code></td>
+</tr>
+<tr>
+<td><code>0x06</code></td>
+<td><code>u16</code></td>
+<td></td>
+<td><code>0x0D</code></td>
+<td><code>string</code></td>
+</tr>
+<tr>
+<td><code>0x07</code></td>
+<td><code>u32</code></td>
+<td></td>
+<td><code>0x0E</code></td>
+<td><code>void</code></td>
+</tr>
+</tbody>
+</table>
+<p>Composite types from <code>0x40</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Tag</th>
+<th>Meaning</th>
+<th>Followed by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x40</code></td>
+<td>reference to a Types entry</td>
+<td><code>uleb128</code> type index</td>
+</tr>
+<tr>
+<td><code>0x41</code></td>
+<td>array</td>
+<td>the element type, again as a type (§3)</td>
+</tr>
+<tr>
+<td><code>0x42</code></td>
+<td>optional (<code>?T</code>)</td>
+<td>the inner type, again as a type (§3)</td>
+</tr>
+<tr>
+<td><code>0x43</code></td>
+<td>enum</td>
+<td><code>uleb128</code> index of an enum entry</td>
+</tr>
+<tr>
+<td><code>0x44</code></td>
+<td>interface</td>
+<td><code>uleb128</code> index of an interface entry</td>
+</tr>
+<tr>
+<td><code>0x45</code></td>
+<td>struct (value semantics)</td>
+<td><code>uleb128</code> index of a struct entry</td>
+</tr>
+<tr>
+<td><code>0x46</code></td>
+<td>function value</td>
+<td><code>uleb128</code> parameter count, the parameter types, then the return type, all inline</td>
+</tr>
+<tr>
+<td><code>0x47</code></td>
+<td>host object</td>
+<td>the registered type name, inline as a length-prefixed UTF-8 string</td>
+</tr>
+</tbody>
+</table>
+<p>An array's element type is inline rather than a table index: <code>int[][]</code> is <code>0x41 0x41 0x04</code>. An
+array type cannot be recursive, so it needs no table entry.</p>
+<p><code>void</code> is valid only as a return type, never as a slot, field or value type.</p>
+<p>A value tagged <code>0x40</code> is a reference: assignment copies the reference. A value tagged <code>0x45</code> is a
+value type: the same slot sequence, but every binding copies.</p>
+<p>Lyric's <code>int</code>, <code>uint</code> and <code>float</code> are aliases for <code>i64</code>, <code>u64</code> and <code>f64</code> and appear as those.</p>
+<hr />
+<h2 id="execution-model">4. Execution model</h2>
+<p>A stack machine with two separate stores per call:</p>
+<ul>
+<li><strong>Local slots</strong> — indexed, typed, readable and writable in any order.</li>
+<li><strong>Operand stack</strong> — what the instructions work on.</li>
+</ul>
+<h3 id="the-invariant">The invariant</h3>
+<blockquote>
+<p>The operand stack is empty at every block boundary.</p>
+</blockquote>
+<p>Values that cross blocks travel through local slots. It follows that stack depth at any point is
+statically determined without data-flow analysis, that a reader can verify it at load time and
+omit every runtime check afterwards, and that jumps need no stack adjustment.</p>
+<h3 id="jump-targets">Jump targets</h3>
+<p>Jumps name block indices, not byte offsets. The function header carries the offset table. A target
+is checked with <code>index &lt; blockCount</code>.</p>
+<hr />
+<h2 id="instructions">5. Instructions</h2>
+<p>Every instruction starts with an opcode byte. <code>T</code> denotes a type tag byte (§3). The type travels
+as a tag next to the opcode, not encoded into it; the tag is in the instruction stream, not in the
+runtime value, so dispatch stays static.</p>
+<h3 id="values-and-slots">Values and slots</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x01</code></td>
+<td><code>const</code></td>
+<td><code>T</code>, immediate</td>
+<td>+1</td>
+<td>load a constant, see below</td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td><code>ldloc</code></td>
+<td><code>uleb128</code> slot</td>
+<td>+1</td>
+<td>read a slot</td>
+</tr>
+<tr>
+<td><code>0x03</code></td>
+<td><code>stloc</code></td>
+<td><code>uleb128</code> slot</td>
+<td>−1</td>
+<td>store the top value into the slot</td>
+</tr>
+<tr>
+<td><code>0x04</code></td>
+<td><code>pop</code></td>
+<td>—</td>
+<td>−1</td>
+<td>discard the top value</td>
+</tr>
+</tbody>
+</table>
+<p><code>const</code> immediate by tag:</p>
+<table>
+<thead>
+<tr>
+<th>Tag</th>
+<th>Immediate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>i8</code>…<code>i64</code>, <code>u8</code>…<code>u64</code></td>
+<td><code>uleb128</code> of the two's-complement bit pattern, zero-extended to 64 bits</td>
+</tr>
+<tr>
+<td><code>f32</code></td>
+<td>4 bytes IEEE-754, little-endian</td>
+</tr>
+<tr>
+<td><code>f64</code></td>
+<td>8 bytes IEEE-754, little-endian</td>
+</tr>
+<tr>
+<td><code>bool</code></td>
+<td>1 byte</td>
+</tr>
+<tr>
+<td><code>char</code></td>
+<td><code>uleb128</code> Unicode code point</td>
+</tr>
+<tr>
+<td><code>string</code></td>
+<td><code>uleb128</code> index into the string pool</td>
+</tr>
+</tbody>
+</table>
+<p>The value must fit the width of the tag. <code>const void</code> is invalid.</p>
+<h3 id="arithmetic-and-bit-operations">Arithmetic and bit operations</h3>
+<p>Each takes two values of the same type and leaves one of that type (−2 +1). The tag names the
+operand type.</p>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th></th>
+<th>Opcode</th>
+<th>Mnemonic</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x10</code></td>
+<td><code>add T</code></td>
+<td></td>
+<td><code>0x15</code></td>
+<td><code>shl T</code></td>
+</tr>
+<tr>
+<td><code>0x11</code></td>
+<td><code>sub T</code></td>
+<td></td>
+<td><code>0x16</code></td>
+<td><code>shr T</code></td>
+</tr>
+<tr>
+<td><code>0x12</code></td>
+<td><code>mul T</code></td>
+<td></td>
+<td><code>0x17</code></td>
+<td><code>and T</code></td>
+</tr>
+<tr>
+<td><code>0x13</code></td>
+<td><code>div T</code></td>
+<td></td>
+<td><code>0x18</code></td>
+<td><code>or T</code></td>
+</tr>
+<tr>
+<td><code>0x14</code></td>
+<td><code>rem T</code></td>
+<td></td>
+<td><code>0x19</code></td>
+<td><code>xor T</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>add</code> through <code>rem</code> require a numeric type, <code>shl</code> through <code>xor</code> an integer type. Signed and
+unsigned are distinct operations. There is no string concatenation instruction; it lowers to a
+call.</p>
+<h3 id="comparisons">Comparisons</h3>
+<p>Two values of the same type produce a <code>bool</code> (−2 +1). The tag names the operand type, not the
+result type.</p>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th></th>
+<th>Opcode</th>
+<th>Mnemonic</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x20</code></td>
+<td><code>lt T</code></td>
+<td></td>
+<td><code>0x23</code></td>
+<td><code>ge T</code></td>
+</tr>
+<tr>
+<td><code>0x21</code></td>
+<td><code>le T</code></td>
+<td></td>
+<td><code>0x24</code></td>
+<td><code>eq T</code></td>
+</tr>
+<tr>
+<td><code>0x22</code></td>
+<td><code>gt T</code></td>
+<td></td>
+<td><code>0x25</code></td>
+<td><code>ne T</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>lt</code>, <code>le</code>, <code>gt</code> and <code>ge</code> require a numeric type. <code>eq</code> and <code>ne</code> are additionally valid on <code>bool</code>,
+<code>char</code> and <code>string</code>.</p>
+<h3 id="unary-operations-and-conversion">Unary operations and conversion</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x30</code></td>
+<td><code>neg</code></td>
+<td><code>T</code></td>
+<td>−1 +1</td>
+<td>negation, numeric</td>
+</tr>
+<tr>
+<td><code>0x31</code></td>
+<td><code>not</code></td>
+<td>—</td>
+<td>−1 +1</td>
+<td>logical not</td>
+</tr>
+<tr>
+<td><code>0x32</code></td>
+<td><code>bitnot</code></td>
+<td><code>T</code></td>
+<td>−1 +1</td>
+<td>bitwise not, integer</td>
+</tr>
+<tr>
+<td><code>0x33</code></td>
+<td><code>conv</code></td>
+<td><code>T_from</code>, <code>T_to</code></td>
+<td>−1 +1</td>
+<td>numeric conversion</td>
+</tr>
+</tbody>
+</table>
+<p><code>not</code> carries no type tag; only <code>bool</code> is valid. It is the only exception to the tag rule.</p>
+<p><code>conv</code> is valid between numeric types only, with <code>T_from ≠ T_to</code>.</p>
+<h3 id="calls-and-control-flow">Calls and control flow</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x40</code></td>
+<td><code>call</code></td>
+<td><code>uleb128</code> index</td>
+<td>−n [+1]</td>
+<td>call, see below</td>
+</tr>
+<tr>
+<td><code>0x41</code></td>
+<td><code>ret</code></td>
+<td>—</td>
+<td>0</td>
+<td>return without a value</td>
+</tr>
+<tr>
+<td><code>0x42</code></td>
+<td><code>retval</code></td>
+<td>—</td>
+<td>−1</td>
+<td>return the top value</td>
+</tr>
+<tr>
+<td><code>0x43</code></td>
+<td><code>br</code></td>
+<td><code>uleb128</code> block</td>
+<td>0</td>
+<td>unconditional jump</td>
+</tr>
+<tr>
+<td><code>0x44</code></td>
+<td><code>condbr</code></td>
+<td><code>uleb128</code> ifTrue, <code>uleb128</code> ifFalse</td>
+<td>−1</td>
+<td>branch on the top <code>bool</code></td>
+</tr>
+<tr>
+<td><code>0x45</code></td>
+<td><code>unreachable</code></td>
+<td>—</td>
+<td>0</td>
+<td>must never be reached</td>
+</tr>
+</tbody>
+</table>
+<p><code>call</code> takes <code>paramCount</code> values off the stack, the first parameter lowest, and leaves one value
+exactly when the return type is not <code>void</code>.</p>
+<p>The index addresses a shared index space: all imports first, then all defined functions.</p>
+<p><code>ret</code> and <code>retval</code> must match the function's return type. Every block ends with exactly one of
+<code>ret</code>, <code>retval</code>, <code>br</code>, <code>condbr</code>, <code>unreachable</code>, <code>throw</code> or <code>endfinally</code>.</p>
+<h3 id="objects">Objects</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x50</code></td>
+<td><code>newobj</code></td>
+<td><code>uleb128</code> type</td>
+<td>+1</td>
+<td>allocate an instance, fields at their zero value</td>
+</tr>
+<tr>
+<td><code>0x51</code></td>
+<td><code>ldfld</code></td>
+<td><code>uleb128</code> type, <code>uleb128</code> field</td>
+<td>−1 +1</td>
+<td>replace the reference with the field value</td>
+</tr>
+<tr>
+<td><code>0x52</code></td>
+<td><code>stfld</code></td>
+<td><code>uleb128</code> type, <code>uleb128</code> field</td>
+<td>−2</td>
+<td>store the field</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Stack order for <code>stfld</code></strong>: the reference lies below the value. Push the reference first, then the
+value.</p>
+<p>The type index accompanies <code>ldfld</code> and <code>stfld</code> so a reader can check the field index against a
+layout at load time without data-flow analysis.</p>
+<p><strong>Zero value of a field</strong>: numbers <code>0</code>, <code>bool</code> false, <code>char</code> U+0000, <code>string</code> the empty string,
+references the null reference. No field is ever uninitialized.</p>
+<h3 id="arrays">Arrays</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x58</code></td>
+<td><code>newarr</code></td>
+<td>element type (§3), <code>uleb128</code> count</td>
+<td>−n +1</td>
+<td>take <code>n</code> values off the stack and build an array</td>
+</tr>
+<tr>
+<td><code>0x59</code></td>
+<td><code>ldelem</code></td>
+<td>—</td>
+<td>−2 +1</td>
+<td>array, index → element</td>
+</tr>
+<tr>
+<td><code>0x5A</code></td>
+<td><code>stelem</code></td>
+<td>—</td>
+<td>−3</td>
+<td>array, index, value</td>
+</tr>
+<tr>
+<td><code>0x5B</code></td>
+<td><code>arrlen</code></td>
+<td>—</td>
+<td>−1 +1</td>
+<td>length as <code>i64</code></td>
+</tr>
+<tr>
+<td><code>0x5C</code></td>
+<td><code>arrcat</code></td>
+<td>—</td>
+<td>−2 +1</td>
+<td>concatenate two arrays into a new one</td>
+</tr>
+<tr>
+<td><code>0x5D</code></td>
+<td><code>arrrep</code></td>
+<td>—</td>
+<td>−2 +1</td>
+<td>array, count → new array, repeated</td>
+</tr>
+</tbody>
+</table>
+<p><code>newarr</code> takes the element count as an immediate after the element type, then that many values off
+the stack, the first element lowest.</p>
+<p>An index violation is a panic, not undefined behaviour. This applies to <code>ldelem</code> and <code>stelem</code>. An
+element index is a runtime value and is not checkable at load time.</p>
+<p>An array does not grow; its length is fixed at creation. <code>arrcat</code> and <code>arrrep</code> each produce a new
+array and leave their operands unchanged. <code>arrrep</code> with count <code>0</code> yields an empty array; a negative
+count is a panic.</p>
+<h3 id="optionals">Optionals</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x60</code></td>
+<td><code>optnone</code></td>
+<td>inner type (§3)</td>
+<td>+1</td>
+<td>push &quot;no value&quot;</td>
+</tr>
+<tr>
+<td><code>0x61</code></td>
+<td><code>optsome</code></td>
+<td>inner type (§3)</td>
+<td>−1 +1</td>
+<td>wrap the top value</td>
+</tr>
+<tr>
+<td><code>0x62</code></td>
+<td><code>optissome</code></td>
+<td>—</td>
+<td>−1 +1</td>
+<td><code>bool</code>: is a value present?</td>
+</tr>
+<tr>
+<td><code>0x63</code></td>
+<td><code>optget</code></td>
+<td>—</td>
+<td>−1 +1</td>
+<td>unwrap; panics when there is no value</td>
+</tr>
+</tbody>
+</table>
+<p>An optional does not nest. A reader must reject an inner type tagged <code>0x42</code>.</p>
+<p><strong>Representation.</strong> A value is &quot;no value&quot; exactly when its reference is empty. For <code>?string</code>,
+<code>?T[]</code> and <code>?class</code> this coincides with the natural representation. For <code>?int</code>, <code>?bool</code> and
+<code>?char</code> there is no free bit pattern, so a runtime must carry a marker distinguishable from the
+payload and hold the number beside it. A runtime must not reserve a bit pattern as null: <code>?int</code>
+must carry all 2^64 <code>int</code> values.</p>
+<h3 id="enums">Enums</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x68</code></td>
+<td><code>newvariant</code></td>
+<td><code>uleb128</code> variantType</td>
+<td>−n +1</td>
+<td>allocate a variant; <code>n</code> is its payload field count</td>
+</tr>
+<tr>
+<td><code>0x69</code></td>
+<td><code>enumtag</code></td>
+<td>—</td>
+<td>−1 +1</td>
+<td>the variant's tag as <code>i64</code></td>
+</tr>
+<tr>
+<td><code>0x6A</code></td>
+<td><code>enumas</code></td>
+<td><code>uleb128</code> variantType</td>
+<td>−1 +1</td>
+<td>narrow to a variant; panics on a mismatched tag</td>
+</tr>
+</tbody>
+</table>
+<p><code>newvariant</code> takes the payload fields off the stack, the first lowest, and sets slot 0 to the tag
+itself.</p>
+<p><code>match</code> has no opcode. It reads the tag with <code>enumtag</code> and branches on it; after the branch
+<code>enumas</code> produces a value of the variant's type, and field access is an ordinary <code>ldfld</code> against
+the variant's layout.</p>
+<h3 id="interfaces">Interfaces</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x70</code></td>
+<td><code>mkiface</code></td>
+<td><code>uleb128</code> concreteType, <code>uleb128</code> interfaceType</td>
+<td>−1 +1</td>
+<td>lift an object reference to its interface type</td>
+</tr>
+<tr>
+<td><code>0x71</code></td>
+<td><code>callvirt</code></td>
+<td><code>uleb128</code> interfaceType, <code>uleb128</code> slot</td>
+<td>−n +0/1</td>
+<td>call the slot's implementation for the receiver's concrete type</td>
+</tr>
+</tbody>
+</table>
+<p><code>mkiface</code> carries both indices so a loader can check the implementation relation against the Impls
+section without data-flow analysis.</p>
+<p><code>callvirt</code> expects the receiver as argument 0, lowest on the stack. <code>n</code> is the slot's argument
+count including the receiver.</p>
+<p>There is no downcast; an interface value cannot be narrowed back to its class.</p>
+<p><strong>Representation.</strong> A value tagged <code>0x44</code> carries two things: the object reference and the index of
+its concrete type in the Types section. How a runtime stores that is its own choice. Reading the
+concrete type out of the object is not permitted — an object carries no type tag in this format,
+and <code>mkiface</code> is the only point at which the concrete type is known.</p>
+<h3 id="structs">Structs</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x72</code></td>
+<td><code>structcopy</code></td>
+<td><code>uleb128</code> structType</td>
+<td>−1 +1</td>
+<td>produce an independent copy of a struct value</td>
+</tr>
+</tbody>
+</table>
+<p>There is no <code>newstruct</code>; a struct value is created with <code>newobj</code>.</p>
+<p>The copy is recursive across nested structs and shallow across everything else. A field of class,
+array or interface type carries a reference, and that reference is shared. A field of struct type
+is itself a value and is copied. The recursion terminates without cycle detection because a struct
+cannot contain itself.</p>
+<p>A compiler must emit <code>structcopy</code> wherever a struct value is bound into a new location:
+initialization, assignment, argument, return, field and element assignment. A freshly created
+value — from <code>newobj</code> or as the result of a call — does not need one.</p>
+<p>A reader must reject <code>structcopy</code> on a type that is not a struct entry.</p>
+<h3 id="exceptions">Exceptions</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x73</code></td>
+<td><code>throw</code></td>
+<td><code>uleb128</code> concreteType</td>
+<td>−1</td>
+<td>begin unwinding; terminator</td>
+</tr>
+<tr>
+<td><code>0x74</code></td>
+<td><code>endfinally</code></td>
+<td>—</td>
+<td>0</td>
+<td>end of a <code>finally</code> region; terminator</td>
+</tr>
+</tbody>
+</table>
+<p><code>throw</code> carries the concrete type of the thrown value as type index + 1, or <code>0</code> when the type is
+known only at runtime — the value is then interface-typed and carries its type with it.</p>
+<p>The type comparison while unwinding is equality, not a subtype test: the language has no
+inheritance, so the type at the throw site is the type a <code>catch</code> compares against.</p>
+<p><code>endfinally</code> returns control to the point where unwinding was interrupted; the search continues at
+the next handler of the same function with the same origin block. A <code>finally</code> region is entered
+only while unwinding; <code>endfinally</code> without an active unwind is an error.</p>
+<p>An exception that leaves the entry point uncaught aborts the runtime like a panic.</p>
+<h3 id="globals">Globals</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x75</code></td>
+<td><code>ldglobal</code></td>
+<td><code>uleb128</code> index</td>
+<td>+1</td>
+<td>read a global slot</td>
+</tr>
+<tr>
+<td><code>0x76</code></td>
+<td><code>stglobal</code></td>
+<td><code>uleb128</code> index</td>
+<td>−1</td>
+<td>write a global slot</td>
+</tr>
+</tbody>
+</table>
+<p>As <code>ldloc</code> and <code>stloc</code>, but module-wide instead of frame-wide. The index is checked at load time
+and the access is unchecked at runtime.</p>
+<h3 id="closures">Closures</h3>
+<table>
+<thead>
+<tr>
+<th>Opcode</th>
+<th>Mnemonic</th>
+<th>Operands</th>
+<th>Stack</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0x77</code></td>
+<td><code>mkclosure</code></td>
+<td><code>uleb128</code> target≪1 | hasEnv</td>
+<td>−(0/1) +1</td>
+<td>build a function value</td>
+</tr>
+<tr>
+<td><code>0x78</code></td>
+<td><code>callind</code></td>
+<td><code>uleb128</code> argc≪1 | retval</td>
+<td>−(1+argc) +(0/1)</td>
+<td>call a function value</td>
+</tr>
+</tbody>
+</table>
+<p>A function value is a pair of environment reference and function index. A closure without captures
+carries no reference and costs no allocation.</p>
+<p><code>mkclosure</code> takes its environment off the stack; <code>callind</code> passes it as argument 0, the position a
+receiver occupies for a method.</p>
+<p>Both operands carry a flag in the lowest bit, with the value from bit 1 upward, so that the stack
+effect of each instruction is known at load time: a closure either has an environment or not, and a
+function value does not carry its signature in the instruction stream.</p>
+<p>The function index is stored incremented by one, so that a closure over function 0 without an
+environment is distinguishable from &quot;no value&quot;.</p>
+<p>A reader must reject a <code>mkclosure</code> target index outside the call space.</p>
+<hr />
+<h2 id="load-time-validation">6. Load-time validation</h2>
+<p>A runtime must validate a module completely before executing it, and may then run it without
+safety checks.</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LYR-BC0001</code></td>
+<td>magic missing — not a <code>.lyrbc</code> file</td>
+</tr>
+<tr>
+<td><code>LYR-BC0002</code></td>
+<td>unknown major version</td>
+</tr>
+<tr>
+<td><code>LYR-BC0003</code></td>
+<td>file ends inside a structure; section length does not match its contents</td>
+</tr>
+<tr>
+<td><code>LYR-BC0004</code></td>
+<td>index out of range: string pool, function, block, slot, type or field</td>
+</tr>
+<tr>
+<td><code>LYR-BC0005</code></td>
+<td>unknown opcode, unknown type tag, sections not ascending</td>
+</tr>
+<tr>
+<td><code>LYR-BC0006</code></td>
+<td>stack discipline: underflow, depth ≠ 0 at a block boundary, depth &gt; <code>maxStack</code></td>
+</tr>
+</tbody>
+</table>
+<p>For <code>newobj</code>, <code>ldfld</code> and <code>stfld</code>, load-time checking means: the type index lies within the Types
+section, and for <code>ldfld</code> and <code>stfld</code> the field index lies within the field count of that exact
+type. Field access at runtime is then an unchecked array access.</p>
+<p>The reader stops at the first finding.</p>
+<hr />
+<h2 id="example">7. Example</h2>
+<p>Source:</p>
+<pre><code class="language-lyr">fn add(a: int, b: int): int {
+    return a + b;
+}
+</code></pre>
+<p>Disassembly:</p>
+<pre><code>fn main.add -&gt; i64 {
+  params: 2
+  maxstack: 2
+  slots:
+    l0: i64
+    l1: i64
+  bb0:
+    ldloc 0
+    ldloc 1
+    add i64
+    retval
+}
+</code></pre>
+<p>A minimal module containing only that function, 46 bytes. The compiler writes a SourceMap by
+default; this is the stripped form, which is why section 6 is absent:</p>
+<pre><code>4C 59 52 42                  magic &quot;LYRB&quot;
+03 00                        version.major = 3
+02 00                        version.minor = 2
+
+01                           § section 1 — Capabilities
+01                             byteLength = 1
+00                             bitset = 0
+
+02                           § section 2 — Strings
+0A                             byteLength = 10
+01                             count = 1
+08                             [0] length = 8 bytes
+6D 61 69 6E 2E 61 64 64          &quot;main.add&quot;
+
+04                           § section 4 — Imports
+01                             byteLength = 1
+00                             count = 0
+
+05                           § section 5 — Functions
+12                             byteLength = 18
+01                             count = 1
+00                             nameIndex = 0            -&gt; &quot;main.add&quot;
+02                             paramCount = 2
+04                             returnType = i64
+02                             slotCount = 2
+04 04                          slotTypes = i64, i64
+02                             maxStack = 2
+01                             blockCount = 1
+00                             blockOffsets[0] = 0
+07                             codeLength = 7
+02 00                            ldloc 0
+02 01                            ldloc 1
+10 04                            add i64
+42                               retval
+</code></pre>
+<p>The slot table has two entries: intermediate values stay on the operand stack and need no slot. An
+emitter that writes every intermediate into a slot is also conformant.</p>
+<hr />
+<h2 id="runner-contract">8. Runner contract</h2>
+<p>This section is normative for any runtime used as <code>lyric --vm &lt;path&gt;</code>.</p>
+<h3 id="invocation">8.1 Invocation</h3>
+<pre><code>&lt;vm&gt; run &lt;file.lyrbc&gt; [-- &lt;program-args&gt;]
+</code></pre>
+<p>The first parameter is literally <code>run</code>. Everything after the first <code>--</code> belongs to the Lyric
+program. A runtime may offer further commands.</p>
+<h3 id="exit-codes">8.2 Exit codes</h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code>–<code>255</code></td>
+<td>return value of <code>main</code>, masked with <code>&amp; 0xFF</code></td>
+</tr>
+<tr>
+<td><code>101</code></td>
+<td>panic</td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>load, validation or IO error — the program never started</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>invocation error: missing argument, unknown command, wrong file kind</td>
+</tr>
+</tbody>
+</table>
+<p><code>101</code>, <code>1</code> and <code>2</code> collide with a program returning those values. Callers that need the
+distinction read stderr.</p>
+<h3 id="streams">8.3 Streams</h3>
+<ul>
+<li><strong>stdout</strong> carries the output of the Lyric program only.</li>
+<li><strong>stderr</strong> carries diagnostics, panic messages and backtraces only.</li>
+</ul>
+<p>No mixing in either direction.</p>
+<h3 id="version-output">8.4 Version output</h3>
+<pre><code>&lt;vm&gt; --version
+</code></pre>
+<p>produces free-form text on stdout and exit code <code>0</code>. The driver passes it through and does not
+interpret it.</p>
+<h3 id="program-arguments">8.5 Program arguments</h3>
+<p>Everything after the first <code>--</code> belongs to the Lyric program. A runtime delivers it to the entry
+point when its signature calls for it:</p>
+<table>
+<thead>
+<tr>
+<th>Entry point</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fn main(): int</code></td>
+<td>arguments are ignored</td>
+</tr>
+<tr>
+<td><code>fn main(args: string[]): int</code></td>
+<td>the runtime builds a <code>string[]</code> into parameter slot 0</td>
+</tr>
+</tbody>
+</table>
+<p>Which form is present is read from the signature in the function table.</p>
+<p>A reader must reject an entry point with more than one parameter, and one whose single parameter
+is not <code>string[]</code>.</p>
+<h3 id="modules-without-an-entry-point">8.6 Modules without an entry point</h3>
+<p>A module without a Start section is a library: valid bytecode, not a program. <code>run</code> on it is an
+error (<code>LYR-VM0001</code>); <code>verify</code> and <code>info</code> are not.</p>
+<h3 id="conformance">8.7 Conformance</h3>
+<p>For a given module,</p>
+<pre><code>lyrvm verify &lt;file.lyrbc&gt;
+</code></pre>
+<p>answers whether this runtime would accept it — format validation (§6) and import binding, without
+executing an instruction.</p>
+<nav class="neighbours">
+<a class="prev" href="../grammar/">Lyric Grammar</a>
+<a class="next" href="../pack/">The Pack Format</a>
+</nav>
+</main>
+</div>
+<script src="../site.js"></script>
+</body>
+</html>
