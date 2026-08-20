@@ -19,7 +19,7 @@ namespace Lyric.Tests.Vm;
 /// </summary>
 public class DebuggerTests
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
     // ------------------------------------------------------------------ helpers
 

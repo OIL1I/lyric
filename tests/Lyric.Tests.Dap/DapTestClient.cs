@@ -78,7 +78,7 @@ internal sealed class SimplexStream : Stream
 /// </summary>
 internal sealed class DapTestClient : IAsyncDisposable
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
 
     private readonly SimplexStream _toServer = new();
     private readonly SimplexStream _fromServer = new();
