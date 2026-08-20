@@ -9,15 +9,15 @@ Module [0..88)
     NamedType int [84..87)
 
 === diagnostics ===
-attr_bad_target.lyr:1:1: error[LYR-PAR0042]: an attribute cannot sit on an interface — only a function, a struct, a class, an enum or the module header carries one
+attr_bad_target.lyr:1:1: error[LYR-PAR0042]: an attribute cannot sit on an interface — a function, a struct, a class, an enum, a member of one, or the module header carries one
 @Component
 ^^^^^^^^^^
 
-attr_bad_target.lyr:4:1: error[LYR-PAR0042]: an attribute cannot sit on a global binding — only a function, a struct, a class, an enum or the module header carries one
+attr_bad_target.lyr:4:1: error[LYR-PAR0042]: an attribute cannot sit on a global binding — a function, a struct, a class, an enum, a member of one, or the module header carries one
 @Component
 ^^^^^^^^^^
 
-attr_bad_target.lyr:7:1: error[LYR-PAR0042]: an attribute cannot sit on a type alias — only a function, a struct, a class, an enum or the module header carries one
+attr_bad_target.lyr:7:1: error[LYR-PAR0042]: an attribute cannot sit on a type alias — a function, a struct, a class, an enum, a member of one, or the module header carries one
 @Component
 ^^^^^^^^^^
 

@@ -271,6 +271,19 @@ public sealed class TypeChecker
         var isInterface = ts.Kind == TypeSymbolKind.Interface;
         foreach (var m in members)
         {
+            // Member attributes (2.1): the list parses on struct/class members; only the
+            // row-less '@Deprecated' passes (the Member target above). Interface members
+            // never carry one — the parser rejected the list.
+            var memberAttributes = m switch
+            {
+                FunctionDecl mf => mf.Attributes,
+                StaticBindingDecl msb => msb.Attributes,
+                FieldDecl mfd => mfd.Attributes,
+                _ => [],
+            };
+            CheckAttributes(memberAttributes, AttributeTarget.Member,
+                targetIsGeneric: ts.Generics.Length > 0, ts.Members, "a member");
+
             if (m is StaticBindingDecl sb)
             {
                 CheckStaticBinding(sb, ts);
@@ -358,7 +371,12 @@ public sealed class TypeChecker
     {
         if (module.Members.LookupLocal(e.Name) is not TypeSymbol ts) return;
         var thisType = SelfType(ts);
-        foreach (var fn in e.Methods) CheckFunction(fn, ts.Members, thisType);
+        foreach (var fn in e.Methods)
+        {
+            CheckAttributes(fn.Attributes, AttributeTarget.Member,
+                targetIsGeneric: ts.Generics.Length > 0, ts.Members, "a member");
+            CheckFunction(fn, ts.Members, thisType);
+        }
     }
 
     // `this` inside a method: for a generic type the self-instance Stack<T>, with the type parameters
@@ -393,7 +411,12 @@ public sealed class TypeChecker
             var thisType = block.Target.Kind == TypeSymbolKind.Builtin
                 ? TypeFacts.FromBuiltinName(block.Target.Name)
                 : new NamedRef(block.Target);
-            foreach (var fn in block.Decl.Methods) CheckFunction(fn, block.MethodScope, thisType);
+            foreach (var fn in block.Decl.Methods)
+            {
+                CheckAttributes(fn.Attributes, AttributeTarget.Member,
+                    targetIsGeneric: false, block.MethodScope, "a member");
+                CheckFunction(fn, block.MethodScope, thisType);
+            }
 
             CheckOrphanRule(block);
             CheckTypeConformance(block.Target, block.Decl.Interfaces, block.Module, block.Target.Name);
@@ -592,7 +615,7 @@ public sealed class TypeChecker
             scope.TryDeclare(ps);
             _result.BindRef(p, ps); // for definite-assignment analysis
             if (p.Default is not null)
-                CheckAssignable(p.Default, CheckExpr(p.Default, scope), pt, p.Span);
+                CheckAssignable(p.Default, CheckExpr(p.Default, scope, pt), pt, p.Span);
         }
         _currentReturn = fn.ReturnType is not null ? ResolveType(fn.ReturnType, scope) : LyrType.Void;
         // Coroutine: the body never produces the coroutine value, which the runtime builds at the
@@ -1058,8 +1081,14 @@ public sealed class TypeChecker
             case MemberExpr mem: return CheckMember(mem, scope, expected);
             case StructInitExpr si: return CheckStructInit(si, scope, expected);
             case TypePathExpr tp: return CheckTypePath(tp, scope);
-            case IfExpr iff: return CheckIfExpr(iff, scope);
-            case MatchExpr ma: return UnifyArms(CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true), ma.Span);
+            case IfExpr iff: return CheckIfExpr(iff, scope, expected);
+            case MatchExpr ma:
+            {
+                var armTypes = CheckMatch(ma, ma.Scrutinee, ma.Arms, scope, asExpression: true, expected);
+                // With a context the arms were checked against it inside; the match HAS it.
+                if (expected is not null && !expected.IsError) return expected;
+                return UnifyArms(armTypes, ma.Span);
+            }
             case LambdaExpr lam: return CheckLambda(lam, scope, expected);
             case ResumeExpr re: return CheckResume(re, scope);
             // An attribute is not an expression: it describes the declaration it precedes and has
@@ -1653,6 +1682,17 @@ public sealed class TypeChecker
         var elemExpected = expected is ArrayOf ea ? ea.Element : null;
         if (arr.Elements.Length == 0)
             return new ArrayOf(elemExpected ?? LyrType.Error, null); // empty: the element type comes from the context alone
+        // With a context the elements check AGAINST it (§3.1 since 2.1): an unsuffixed literal
+        // adapts, a misfit is the ordinary assignment error per element, and the array has the
+        // context's element type. Without one the elements unify among themselves, as always.
+        if (elemExpected is not null && !elemExpected.IsError)
+        {
+            foreach (var element in arr.Elements)
+                CheckAssignable(element, CheckExpr(element, scope, elemExpected), elemExpected,
+                    element.Span);
+            return new ArrayOf(elemExpected, null);
+        }
+
         var first = CheckExpr(arr.Elements[0], scope, elemExpected);
         for (var i = 1; i < arr.Elements.Length; i++)
         {
@@ -1725,7 +1765,7 @@ public sealed class TypeChecker
         // something the inference is supposed to determine from this very argument.
         for (var i = 0; i < args.Length; i++)
             if (args[i] is not LambdaExpr)
-                argTypes[i] = CheckExpr(args[i], scope, ConcreteExpectation(fn, decl, i));
+                argTypes[i] = CheckExpr(args[i], scope, ConcreteExpectation(fn, decl, i, args[i]));
 
         // Phase B: type arguments from the eagerly typed arguments.
         Dictionary<GenericParamSymbol, LyrType>? map = null;
@@ -1770,7 +1810,7 @@ public sealed class TypeChecker
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] is not LambdaExpr) continue;
-            argTypes[i] = CheckExpr(args[i], scope, ExpectedParamAt(substituted, decl, i));
+            argTypes[i] = CheckExpr(args[i], scope, ExpectedParamAt(substituted, decl, i, args[i]));
             if (map is not null && i < fn.Parameters.Length)
                 UnifyInfer(Substitute(fn.Parameters[i], map), argTypes[i], map);
         }
@@ -1813,8 +1853,9 @@ public sealed class TypeChecker
     /// <c>T</c> makes no such statement — it is the question the inference answers from the argument
     /// — and passing it down would answer that question with itself.</para>
     /// </summary>
-    private static LyrType? ConcreteExpectation(FnType fn, FunctionDecl? decl, int i) =>
-        ExpectedParamAt(fn, decl, i) is { } t && !MentionsTypeParam(t) ? t : null;
+    private static LyrType? ConcreteExpectation(FnType fn, FunctionDecl? decl, int i,
+        Expr argument) =>
+        ExpectedParamAt(fn, decl, i, argument) is { } t && !MentionsTypeParam(t) ? t : null;
 
     /// <summary>Does this type still carry a type parameter anywhere inside it?</summary>
     private static bool MentionsTypeParam(LyrType type) => type switch
@@ -1829,13 +1870,19 @@ public sealed class TypeChecker
         _ => false,
     };
 
-    private static LyrType? ExpectedParamAt(FnType fn, FunctionDecl? decl, int i)
+    private static LyrType? ExpectedParamAt(FnType fn, FunctionDecl? decl, int i, Expr argument)
     {
         var ps = decl?.Parameters;
         var variadic = ps is { Length: > 0 } && ps[^1].IsParams;
         var fixedCount = variadic ? ps!.Length - 1 : fn.Parameters.Length;
         if (i < fixedCount && i < fn.Parameters.Length) return fn.Parameters[i];
-        if (variadic && fn.Parameters[^1] is ArrayOf elem) return elem.Element;
+        // The variadic position expects the ELEMENT — that is what names an enum variant's
+        // instance in 'f(Opt.Some(1))'. EXCEPT for an array-literal argument: it may be one
+        // element or the whole array, the literal's own shape decides (PassesWholeArray), and
+        // since 2.1 an expectation PROPAGATES into the literal — offering the element type
+        // would force the element reading and take the whole-array form with it.
+        if (variadic && argument is not ArrayLitExpr && fn.Parameters[^1] is ArrayOf elem)
+            return elem.Element;
         return null;
     }
 
@@ -2500,7 +2547,7 @@ public sealed class TypeChecker
 
     // --- attributes ---
 
-    private enum AttributeTarget { Module, Type, Function }
+    private enum AttributeTarget { Module, Type, Function, Member }
 
     private static string MarkerName(AttributeTarget target) => target switch
     {
@@ -2576,18 +2623,35 @@ public sealed class TypeChecker
             return ts;
         }
 
-        var marker = target switch
+        // A MEMBER carries only the row-less '@Deprecated' (§4.7): the module format has no
+        // member targets, so any attribute that would need a row has no slot to land in. The
+        // marker test is bypassed — 'Deprecated' declares no OnMember, and inventing one for
+        // a single permitted attribute would be a marker without a second customer.
+        if (target == AttributeTarget.Member)
         {
-            AttributeTarget.Module => _onModule,
-            AttributeTarget.Type => _onType,
-            _ => _onFunction,
-        };
-        if (marker is null || !Satisfies(new NamedRef(ts), marker, new NamedRef(marker)))
+            if (!IsCanonicalDeprecated(ts))
+            {
+                _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
+                    $"'@{ts.Name}' cannot sit on {targetDescription} — only '@Deprecated' may: "
+                    + "the module format has no member rows for anything else");
+                return ts;
+            }
+        }
+        else
         {
-            _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
-                $"'@{ts.Name}' cannot sit on {targetDescription} — declare '{ts.Name}' with "
-                + $"':: [{MarkerName(target)}]' to allow it here");
-            return ts;
+            var marker = target switch
+            {
+                AttributeTarget.Module => _onModule,
+                AttributeTarget.Type => _onType,
+                _ => _onFunction,
+            };
+            if (marker is null || !Satisfies(new NamedRef(ts), marker, new NamedRef(marker)))
+            {
+                _de.Report("LYR-SEM0065", Severity.Error, attribute.PathSpan,
+                    $"'@{ts.Name}' cannot sit on {targetDescription} — declare '{ts.Name}' with "
+                    + $"':: [{MarkerName(target)}]' to allow it here");
+                return ts;
+            }
         }
 
         // One exception: the compiler-read @Deprecated. Its consumer is the sema, not a
@@ -2916,7 +2980,7 @@ public sealed class TypeChecker
     /// (<c>LYR-SEM0001</c>) although the statement form <c>if (a == null) { return 0; } return a;</c>
     /// works next to it, for the same proof about the same value.</para>
     /// </remarks>
-    private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope)
+    private LyrType CheckIfExpr(IfExpr iff, SymbolTable scope, LyrType? expected = null)
     {
         CheckCondition(iff.Condition, scope);
 
@@ -2924,15 +2988,26 @@ public sealed class TypeChecker
         var snapshot = new Dictionary<Symbol, LyrType>(_narrowed, ReferenceEqualityComparer.Instance);
 
         Apply(thenFacts);
-        var thenT = CheckExpr(iff.Then, scope);
+        var thenT = CheckExpr(iff.Then, scope, expected);
 
         // Back to the state BEFORE the then branch: what held there is precisely what does not hold
         // in the else branch.
         _narrowed = new Dictionary<Symbol, LyrType>(snapshot, ReferenceEqualityComparer.Instance);
         Apply(elseFacts);
-        var elseT = CheckExpr(iff.Else, scope);
+        var elseT = CheckExpr(iff.Else, scope, expected);
 
         _narrowed = snapshot;
+
+        // With a context the arms check AGAINST it and the expression HAS it (§3.1/§6.9 since
+        // 2.1): an unsuffixed literal arm adapts, and each arm meets the context as an
+        // ordinary assignment. Unification among the arms is the contextless rule.
+        if (expected is not null && !expected.IsError)
+        {
+            CheckAssignable(iff.Then, thenT, expected, iff.Then.Span);
+            CheckAssignable(iff.Else, elseT, expected, iff.Else.Span);
+            return expected;
+        }
+
         return Unify(iff.Then, thenT, iff.Else, elseT, iff.Span);
     }
 
@@ -2977,7 +3052,8 @@ public sealed class TypeChecker
         return a;
     }
 
-    private List<LyrType> CheckMatch(Node match, Expr scrutinee, MatchArm[] arms, SymbolTable scope, bool asExpression)
+    private List<LyrType> CheckMatch(Node match, Expr scrutinee, MatchArm[] arms, SymbolTable scope, bool asExpression,
+        LyrType? expected = null)
     {
         var st = CheckExpr(scrutinee, scope);
         var bodies = new List<LyrType>();
@@ -3000,7 +3076,12 @@ public sealed class TypeChecker
                             "a block arm of a match expression must return or throw on every path (blocks have no value)");
                     break;
                 case Expr e:
-                    bodies.Add(CheckExpr(e, armScope));
+                    var bt = CheckExpr(e, armScope, expected);
+                    // With a context the arm checks AGAINST it (§3.1/§6.9 since 2.1): a
+                    // literal arm adapts, a misfit is the assignment error at the arm.
+                    if (expected is not null && !expected.IsError)
+                        CheckAssignable(e, bt, expected, e.Span);
+                    bodies.Add(bt);
                     break;
             }
         }

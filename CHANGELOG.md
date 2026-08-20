@@ -10,6 +10,26 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+The ergonomics wave: two additive changes the audit measured the edges of. Four conformance
+cases activate with this release (`//! since: 2.1.0`); one 2.0 case pinning the old
+non-context rule retires with its sentence.
+
+### Added
+
+- **`@Deprecated` reaches members.** A method, field or `static let` of a struct, class or
+  enum — and an extend method — may carry `@Deprecated`; every use warns at the use site,
+  exactly like a deprecated free function. Only this one attribute is admitted there: the
+  module format has no member rows, and `@Deprecated` is the attribute that needs none.
+  Interface members stay attribute-free — deprecating an abstract member would raise
+  conformance questions nobody has answered.
+- **The adaptation context propagates structurally.** `let xs: int64[] = [1, 2, 3];`,
+  `let i: int64 = if (c) 4 else 5;` and the match twin compile now: in a §3.1 context the
+  array elements and the arms check against the context type, an unsuffixed literal adapts,
+  and a misfit errors at the element or arm. Without a context, elements and arms unify among
+  themselves as before. Parameter defaults thread their context too.
+
 ## v2.0.1 — 2026-08-20
 
 The first harvest of the deep audit: seven bugs measured against the now-normative

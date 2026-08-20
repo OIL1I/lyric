@@ -76,4 +76,51 @@ public class LiteralEdgeTests
         var de = Check("fn main(): int throws {\n    return 0;\n}\n");
         Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0021");
     }
+
+    // ─── context propagation (2.1) ─────────────────────────────────────────
+
+    [Fact]
+    public void The_context_reaches_array_elements_and_arms()
+    {
+        // §3.1 since 2.1: the adaptation context propagates structurally. Every position
+        // below held "cannot assign 'int' to 'int64'" before.
+        var de = Check(
+            "fn takes(xs: int64[]): int64 {\n    return xs[0];\n}\n\n"
+            + "fn main(): int {\n"
+            + "    let xs: int64[] = [1, 2, 3];\n"
+            + "    let c = 1 < 2;\n"
+            + "    let i: int64 = if (c) 4 else 5;\n"
+            + "    let m: int64 = match (2) {\n        1 => 6,\n        _ => 7,\n    };\n"
+            + "    let _ = xs[0] + i + m + takes([9, 10]);\n"
+            + "    return 0;\n}\n");
+        Assert.False(de.HasErrors, string.Join("\n", de.Diagnostics.Select(d => d.Message)));
+    }
+
+    [Fact]
+    public void The_context_carries_no_forgiveness()
+    {
+        // A misfitting element errors AT the element, and a variable arm that is the wrong
+        // type errors at the arm — propagation moves the checkpoint, not the rule.
+        var de = Check(
+            "fn main(): int {\n"
+            + "    let xs: int8[] = [1, 200, 3];\n"
+            + "    let n = 5;\n"
+            + "    let c = 1 < 2;\n"
+            + "    let i: int64 = if (c) n else 4;\n"
+            + "    let _ = xs[0];\n    let _ = i;\n"
+            + "    return 0;\n}\n");
+        Assert.Equal(2, de.Diagnostics.Count(d => d.Code == "LYR-SEM0001"));
+    }
+
+    [Fact]
+    public void Without_a_context_arms_still_unify()
+    {
+        // The contextless rule is untouched: disagreeing arms are the one SEM0016.
+        var de = Check(
+            "fn main(): int {\n"
+            + "    let c = 1 < 2;\n"
+            + "    let x = if (c) 1 else \"a\";\n"
+            + "    let _ = x;\n    return 0;\n}\n");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-SEM0016");
+    }
 }

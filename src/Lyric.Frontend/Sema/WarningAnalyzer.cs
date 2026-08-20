@@ -145,12 +145,40 @@ internal sealed class WarningAnalyzer
                     EnumDecl e => e.Attributes,
                     _ => [],
                 };
-                if (FindDeprecated(attributes, canonical) is not { } info) continue;
-                _deprecatedDecls[decl] = info;
-                _deprecatedExtents.Add((decl.Span.File, decl.Span));
+                if (FindDeprecated(attributes, canonical) is { } info)
+                {
+                    _deprecatedDecls[decl] = info;
+                    _deprecatedExtents.Add((decl.Span.File, decl.Span));
+                }
+
+                // MEMBERS carry '@Deprecated' since 2.1. The table is keyed by declaration
+                // node, and the warn pass matches any symbol declaring from that node — a
+                // member symbol does exactly that, so collecting is the whole extension.
+                foreach (var member in MembersOf(decl))
+                {
+                    AttributeNode[] memberAttributes = member switch
+                    {
+                        FunctionDecl mf => mf.Attributes,
+                        StaticBindingDecl sb => sb.Attributes,
+                        FieldDecl fd => fd.Attributes,
+                        _ => [],
+                    };
+                    if (FindDeprecated(memberAttributes, canonical) is not { } memberInfo) continue;
+                    _deprecatedDecls[member] = memberInfo;
+                    _deprecatedExtents.Add((member.Span.File, member.Span));
+                }
             }
         }
     }
+
+    private static IEnumerable<Decl> MembersOf(Decl decl) => decl switch
+    {
+        StructDecl s => s.Members,
+        ClassDecl c => c.Members,
+        EnumDecl e => e.Methods,
+        ExtendDecl x => x.Methods,
+        _ => [],
+    };
 
     private (string Message, Span AttributeSpan)? FindDeprecated(
         AttributeNode[] attributes, TypeSymbol canonical)

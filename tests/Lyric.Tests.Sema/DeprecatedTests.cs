@@ -150,4 +150,85 @@ public class DeprecatedTests
             + "fn main(): int {\n    return old() + old();\n}\n");
         Assert.Equal(2, de.Diagnostics.Count(d => d.Code == "LYR-SEM0076"));
     }
+
+    // ─── members (2.1) ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_deprecated_method_warns_at_the_call()
+    {
+        var de = Check(Import
+            + "class Counter {\n    n: int,\n\n"
+            + "    @Deprecated { message = \"use tick()\" }\n"
+            + "    pub mut fn bump(): void {\n        this.n = this.n + 1;\n    }\n}\n\n"
+            + "fn main(): int {\n    var c = Counter { n = 0 };\n    c.bump();\n    return c.n;\n}\n");
+        Assert.False(de.HasErrors);
+        var warning = Assert.Single(de.Diagnostics, d => d.Code == "LYR-SEM0076");
+        Assert.Equal("'bump' is deprecated: use tick()", warning.Message);
+    }
+
+    [Fact]
+    public void A_deprecated_field_static_and_extension_method_warn_too()
+    {
+        var de = Check(Import
+            + "struct K {\n"
+            + "    @Deprecated { message = \"use limit\" }\n    alt: int,\n    limit: int,\n\n"
+            + "    @Deprecated { message = \"use K.max\" }\n    static let alterMax: int = 9;\n}\n\n"
+            + "extend int {\n"
+            + "    @Deprecated { message = \"use v + 1\" }\n"
+            + "    pub fn nachfolger(): int {\n        return this + 1;\n    }\n}\n\n"
+            + "fn main(): int {\n"
+            + "    let k = K { alt = 1, limit = 2 };\n"
+            + "    return k.limit + K.alterMax + 4.nachfolger() - k.alt;\n}\n");
+        Assert.False(de.HasErrors);
+        // 'alt' warns twice — the initializer writes it, the read uses it — plus the static
+        // and the extension method: four sites.
+        Assert.Equal(4, de.Diagnostics.Count(d => d.Code == "LYR-SEM0076"));
+    }
+
+    [Fact]
+    public void Any_other_attribute_on_a_member_is_refused()
+    {
+        var de = Check(
+            "import std.core { OnFunction };\n\n"
+            + "struct Marker :: [OnFunction] { }\n\n"
+            + "struct P {\n    x: int,\n\n    @Marker { }\n"
+            + "    pub fn f(): int {\n        return 1;\n    }\n}\n\n"
+            + "fn main(): int {\n    return 0;\n}\n");
+        var refusal = Assert.Single(de.Diagnostics, d => d.Code == "LYR-SEM0065");
+        Assert.Contains("only '@Deprecated' may", refusal.Message);
+    }
+
+    [Fact]
+    public void An_interface_member_still_carries_no_attribute()
+    {
+        var de = Check(Import
+            + "interface I {\n    @Deprecated\n    fn f(): int;\n}\n\n"
+            + "fn main(): int {\n    return 0;\n}\n");
+        Assert.Contains(de.Diagnostics, d => d.Code == "LYR-PAR0042");
+    }
+
+    [Fact]
+    public void A_deprecated_member_emits_no_metadata_row()
+    {
+        // The member exception exists BECAUSE the format has no member targets; the promise
+        // that @Deprecated changes diagnostics only has to hold here too.
+        var sm = new SourceManager();
+        var id = sm.AddVirtual("test.lyr", Import
+            + "struct P {\n    x: int,\n\n    @Deprecated\n"
+            + "    pub fn f(): int {\n        return 1;\n    }\n}\n\n"
+            + "fn main(): int {\n    return P { x = 1 }.f();\n}\n");
+        var de = new DiagnosticEngine(sm);
+        var comp = new Compilation(sm, de)
+        {
+            ModuleLoader = StdlibLoader.ForRoot(Path.Combine(RepoRoot(), "stdlib"), sm, de),
+        };
+        comp.AddModule(new Parser(sm, id, de).ParseModule());
+        var binding = comp.Resolve();
+        var types = Semantics.Analyze(comp, binding, de);
+        Assert.False(de.HasErrors);
+
+        var ir = Lyric.Ir.Lowering.ModuleLowerer.Lower(comp, binding, types, de, verify: true);
+        Assert.NotNull(ir);
+        Assert.Empty(ir!.Attributes);
+    }
 }

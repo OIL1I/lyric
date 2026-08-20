@@ -332,12 +332,19 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**The deep audit is FINISHED and its patch wave is released as v2.0.1.** The audit walked
-numerics, control flow, the type system's rest and the runtime boundary probe-first — spec
-sentence and conformance case before every fix — and everything it caught shipped as one
-wave. The conformance gate earned its keep on day one: it caught a case pinned to a
-diagnosis the wave itself had (rightly) removed, which a stale local build had let through.
-The next milestone is the maintainer's call.
+**M28 — the ergonomics wave — is BUILT** (2026-08-20, branch `feature/m28-ergonomics`, ships
+as v2.1.0). Two additive changes the audit measured before they were built:
+
+- [x] `@Deprecated` reaches members: methods, fields, static lets, extend methods — the ONE
+      attribute a member admits (no member rows in the format); interface members refused;
+      no metadata row, pinned (slice 1)
+- [x] the adaptation context propagates structurally: array elements and match/if arms check
+      against a §3.1 context, literals adapt, misfits error AT the element or arm; the
+      contexted mismatch diagnosis moved from SEM0016 to SEM0001 at the arm; array literals
+      at a variadic position keep their shape-decides rule by taking no expectation (slice 2)
+
+Next after the release: the file-error design round (A) — small vs. big unification —
+whenever the maintainer calls it.
 
 **M24 was merged and released as v1.15.0** (PR #62) — the freeze prep. With it the
 pre-freeze design space is closed; next is v1.16, the spec draft (non-normative) plus the seed

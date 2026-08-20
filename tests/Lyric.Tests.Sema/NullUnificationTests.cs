@@ -77,11 +77,14 @@ public class NullUnificationTests
     /// </summary>
     [Fact]
     public void Two_unrelated_branch_types_are_still_an_error() =>
+        // Since 2.1 the return position is a CONTEXT (§3.1): the arms check against 'int',
+        // and the string arm is the assignment error AT THE ARM — a sharper pointer than the
+        // old whole-expression SEM0016, which remains the contextless diagnosis.
         Rejects("""
             fn f(c: bool): int {
                 return if (c) 1 else "eins";
             }
-            """, "LYR-SEM0016");
+            """, "LYR-SEM0001");
 
     // ------------------------------------------------------------------ match-Ausdruck
 
@@ -98,6 +101,8 @@ public class NullUnificationTests
 
     [Fact]
     public void Two_unrelated_match_arms_are_still_an_error() =>
+        // As above: the return context moves the diagnosis to the offending arm (SEM0001);
+        // SEM0016 stays the contextless unification error.
         Rejects("""
             fn f(n: int): int {
                 return match (n) {
@@ -105,5 +110,5 @@ public class NullUnificationTests
                     _ => 99,
                 };
             }
-            """, "LYR-SEM0016");
+            """, "LYR-SEM0001");
 }
