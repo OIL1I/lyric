@@ -76,6 +76,72 @@ public sealed class OpaqueHandleTests : IDisposable
         Assert.Equal([42L], destroyed);
     }
 
+    /// <summary>Erato's A9: an SDK is several modules, and its handle types want to cross
+    /// module boundaries — one module owns the type, a sibling names it in its natives.</summary>
+    private void MultiModuleSdk()
+    {
+        Directory.CreateDirectory(Path.Combine(_dir, "engine"));
+        File.WriteAllText(Path.Combine(_dir, "engine", "world.lyr"), """
+            module engine.world;
+
+            /// A handle to a texture, owned by the world module.
+            pub opaque type TextureId = int;
+            """);
+        File.WriteAllText(Path.Combine(_dir, "engine", "assets.lyr"), """
+            module engine.assets;
+
+            import engine.world { TextureId };
+
+            pub fn load(name: string): TextureId;
+            pub fn unload(t: TextureId): bool;
+            pub fn loaded(): TextureId[];
+            """);
+        File.WriteAllText(Path.Combine(_dir, "engine", "atlas.lyr"), """
+            module engine.atlas;
+
+            import engine.world;
+
+            pub fn first(): world.TextureId;
+            """);
+    }
+
+    [Fact]
+    public void An_imported_opaque_type_resolves_in_a_native_signature()
+    {
+        MultiModuleSdk();
+        var vm = new LangVm(new HostOptions
+        {
+            StdlibRoot = Path.Combine(RepoRoot(), "stdlib"),
+            NativeRoots = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["engine"] = _dir,
+            },
+        });
+
+        var unloaded = new List<long>();
+        vm.RegisterNative("engine.assets.load", (string name) => (long)name.Length);
+        vm.RegisterNative("engine.assets.unload", (long t) => { unloaded.Add(t); return true; });
+        vm.RegisterNative("engine.atlas.first", () => 7L);
+
+        // Every native declaration of the SDK is lowered when a script compiles against it, used
+        // or not — so 'loaded(): TextureId[]' proves the ARRAY form resolves without needing a
+        // binding here; only what the script calls has to be registered.
+        var instance = vm.Instantiate(vm.Compile("""
+            import engine.world { TextureId };
+            import engine.assets { load, unload };
+            import engine.atlas { first };
+
+            pub fn probe(): bool {
+                let grass: TextureId = load("grass");
+                unload(grass);
+                return unload(first());
+            }
+            """, "game"));
+
+        Assert.True(instance.Call<bool>("probe"));
+        Assert.Equal([5L, 7L], unloaded);
+    }
+
     [Fact]
     public void A_forged_handle_is_refused_at_compile_time()
     {

@@ -165,4 +165,6 @@ fn main(): int {
 
 The point is the wall: an SDK declares `pub opaque type Entity = int;` beside its natives, a
 script holds and returns the handle — and can neither forge one from a literal nor leak it into
-arithmetic. On the wire the handle is its underlying number.
+arithmetic. On the wire the handle is its underlying number. The wall spans modules: an SDK of
+several files declares the handle once and imports it wherever a native signature names it —
+selectively or module-qualified, in scalar and array positions alike.
