@@ -1765,7 +1765,7 @@ public sealed class TypeChecker
         // something the inference is supposed to determine from this very argument.
         for (var i = 0; i < args.Length; i++)
             if (args[i] is not LambdaExpr)
-                argTypes[i] = CheckExpr(args[i], scope, ConcreteExpectation(fn, decl, i));
+                argTypes[i] = CheckExpr(args[i], scope, ConcreteExpectation(fn, decl, i, args[i]));
 
         // Phase B: type arguments from the eagerly typed arguments.
         Dictionary<GenericParamSymbol, LyrType>? map = null;
@@ -1810,7 +1810,7 @@ public sealed class TypeChecker
         for (var i = 0; i < args.Length; i++)
         {
             if (args[i] is not LambdaExpr) continue;
-            argTypes[i] = CheckExpr(args[i], scope, ExpectedParamAt(substituted, decl, i));
+            argTypes[i] = CheckExpr(args[i], scope, ExpectedParamAt(substituted, decl, i, args[i]));
             if (map is not null && i < fn.Parameters.Length)
                 UnifyInfer(Substitute(fn.Parameters[i], map), argTypes[i], map);
         }
@@ -1853,8 +1853,9 @@ public sealed class TypeChecker
     /// <c>T</c> makes no such statement — it is the question the inference answers from the argument
     /// — and passing it down would answer that question with itself.</para>
     /// </summary>
-    private static LyrType? ConcreteExpectation(FnType fn, FunctionDecl? decl, int i) =>
-        ExpectedParamAt(fn, decl, i) is { } t && !MentionsTypeParam(t) ? t : null;
+    private static LyrType? ConcreteExpectation(FnType fn, FunctionDecl? decl, int i,
+        Expr argument) =>
+        ExpectedParamAt(fn, decl, i, argument) is { } t && !MentionsTypeParam(t) ? t : null;
 
     /// <summary>Does this type still carry a type parameter anywhere inside it?</summary>
     private static bool MentionsTypeParam(LyrType type) => type switch
@@ -1869,16 +1870,19 @@ public sealed class TypeChecker
         _ => false,
     };
 
-    private static LyrType? ExpectedParamAt(FnType fn, FunctionDecl? decl, int i)
+    private static LyrType? ExpectedParamAt(FnType fn, FunctionDecl? decl, int i, Expr argument)
     {
         var ps = decl?.Parameters;
         var variadic = ps is { Length: > 0 } && ps[^1].IsParams;
         var fixedCount = variadic ? ps!.Length - 1 : fn.Parameters.Length;
         if (i < fixedCount && i < fn.Parameters.Length) return fn.Parameters[i];
-        // The variadic position offers NO expectation: the argument may be one element or the
-        // whole array — the argument's own type decides (PassesWholeArray) — and since 2.1 an
-        // expectation PROPAGATES into an array literal, so offering the element type here
+        // The variadic position expects the ELEMENT — that is what names an enum variant's
+        // instance in 'f(Opt.Some(1))'. EXCEPT for an array-literal argument: it may be one
+        // element or the whole array, the literal's own shape decides (PassesWholeArray), and
+        // since 2.1 an expectation PROPAGATES into the literal — offering the element type
         // would force the element reading and take the whole-array form with it.
+        if (variadic && argument is not ArrayLitExpr && fn.Parameters[^1] is ArrayOf elem)
+            return elem.Element;
         return null;
     }
 
