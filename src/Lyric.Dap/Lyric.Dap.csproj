@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>lyrdap</AssemblyName>
+    <RootNamespace>Lyric.Dap</RootNamespace>
+    <Description>The debug adapter: compiles, runs and steers a program over the Debug Adapter Protocol.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The adapter is the third binary-side consumer with BOTH ends of the pipeline: it COMPILES
+      the program (debug shape: unoptimized, with source map and debug info) and RUNS it under
+      the VM's DebugController. Lyric.Lsp is referenced for the base-protocol framing alone —
+      DAP frames messages exactly as LSP does, and the one implementation of Content-Length
+      lives there.
+    -->
+    <ProjectReference Include="..\Lyric.Core\Lyric.Core.csproj" />
+    <ProjectReference Include="..\Lyric.Frontend\Lyric.Frontend.csproj" />
+    <ProjectReference Include="..\Lyric.Vm\Lyric.Vm.csproj" />
+    <ProjectReference Include="..\Lyric.Lsp\Lyric.Lsp.csproj" />
+  </ItemGroup>
+
+</Project>

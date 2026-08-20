@@ -92,11 +92,13 @@ lyrpack.exe                        packs a module into one executable
 lyrfmt.exe                         formatter
 lyrtest.exe                        runs a project's @Test functions
 lyrls.exe                          language server, for editors
+lyrdbg.exe                         debug adapter, for editors
 lyrcore.dll                        diagnostics and the bytecode reader
 lyrfe.dll                          lexer through emitter
 lyrrt.dll                          interpreter
 lyrembed.dll                       host API
 lyrlsp.dll                         language server protocol
+lyrdap.dll                         debug adapter protocol
 *.runtimeconfig.json               framework version to load
 stdlib/                            standard library, as .lyr source
 stubs/<rid>/lyrstub.exe            what lyrpack packs a program into
@@ -127,6 +129,7 @@ That is what a release ships, one archive per platform.
 | `lyrfmt` | The formatter: in place, `--check` for CI, `--stdin` for editors — no style options |
 | `lyrtest` | Runs every function marked `@Test` in the project's test root, one fresh instance per test |
 | `lyrls` | Language server over stdio, started by an editor: diagnostics, hover, go to definition, outline, find references, completion, formatting |
+| `lyrdbg` | Debug adapter over stdio, started by an editor: breakpoints, stepping, stack and variables |
 
 `lyrembed.dll` is the host library: compile and run Lyric from C#.
 
@@ -159,6 +162,8 @@ lyric/
 │   ├── Lyrrepl/          → lyrrepl.exe
 │   ├── Lyrbuild/         → lyrbuild.exe
 │   ├── Lyrls/            → lyrls.exe
+│   ├── Lyric.Dap/        → lyrdap.dll    debug adapter protocol
+│   ├── Lyrdbg/           → lyrdbg.exe    debug adapter, for editors
 │   ├── Lyrpack/          → lyrpack.exe   packs a module into one executable
 │   ├── Lyrstub/          → lyrstub.exe   the runtime half of a packed program
 │   ├── Lyrfmt/           → lyrfmt.exe    formatter
