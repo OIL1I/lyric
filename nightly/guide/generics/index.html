@@ -37,6 +37,9 @@
 <li><a href="../../guide/attributes/">Attributes</a></li>
 <li><a href="../../guide/building/">Building a project</a></li>
 <li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
 </ul>
 </nav>
 <main>
@@ -59,10 +62,10 @@ fn main(): int {
 </code></pre>
 <p>Type arguments are inferred from the arguments where possible. Where the arguments do not
 determine them, write them at the call:</p>
-<pre><code class="language-lyr">import std.collections { emptyList };
+<pre><code class="language-lyr">import std.collections { List };
 
 fn main(): int {
-    let numbers = emptyList&lt;int&gt;();
+    let numbers = List&lt;int&gt;.empty();
     numbers.push(3);
     return numbers.length();
 }

@@ -37,6 +37,9 @@
 <li><a href="../../guide/attributes/">Attributes</a></li>
 <li><a href="../../guide/building/">Building a project</a></li>
 <li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
 </ul>
 </nav>
 <main>
@@ -44,6 +47,7 @@
 <nav class="contents">
 <ul>
 <li><a href="#default-methods">Default methods</a></li>
+<li><a href="#interface-inheritance">Interface inheritance</a></li>
 <li><a href="#extending-a-type">Extending a type</a></li>
 <li><a href="#operators-through-interfaces">Operators through interfaces</a></li>
 </ul>
@@ -77,7 +81,7 @@ fn main(): int {
 </code></pre>
 <p>A value used through its interface dispatches dynamically. That is the only dynamic dispatch in
 the language.</p>
-<p>There is no inheritance and no interface inheritance. A type that needs two contracts lists both:</p>
+<p>There is no class inheritance. A type that needs two contracts lists both:</p>
 <pre><code class="language-lyr">interface Named { fn name(): string; }
 interface Sized { fn size(): int; }
 
@@ -113,6 +117,44 @@ fn main(): int {
     return 0;
 }
 </code></pre>
+<h2 id="interface-inheritance">Interface inheritance</h2>
+<p>An interface may name one <strong>parent</strong>. Conforming to the child implies conforming to the parent:
+the implementing type provides the abstract members of the whole chain, inherits its default
+methods, and satisfies a constraint on the parent wherever one is required.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+interface Named {
+    fn name(): string;
+}
+
+interface Labeled :: [Named] {
+    fn label(): string { return &quot;[&quot; + this.name() + &quot;]&quot;; }
+}
+
+struct Tag :: [Labeled] {
+    fn name(): string { return &quot;tag&quot;; }
+}
+
+fn describe&lt;T :: [Named]&gt;(x: T): string {
+    return x.name();
+}
+
+fn main(): int {
+    let t = Tag { };
+    println(t.label());          // the inherited default calls the parent's member
+    println(describe(t));        // 'Labeled' satisfies a 'Named' constraint
+    let n: Named = t;            // the implied conformance carries the value into the parent
+    println(n.name());
+    return 0;
+}
+</code></pre>
+<p>The parent list holds exactly one entry — several requirements side by side are what constraints
+are for (<code>&lt;T :: [A, B]&gt;</code>). The chain cannot be circular, and a member of the chain cannot be
+redeclared: an inherited member keeps its declaring interface.</p>
+<p>A value of interface type reaches the members of its whole chain (<code>Labeled</code> values answer
+<code>name()</code>). What it does not do is convert to the parent's type: <code>Named</code> in the example is built
+from the concrete <code>Tag</code>, not from a <code>Labeled</code> value. Where a parent-typed value is needed, take
+the concrete value through the parent directly.</p>
 <h2 id="extending-a-type">Extending a type</h2>
 <p><code>extend</code> adds methods to a type you did not declare, including a built-in one.</p>
 <pre><code class="language-lyr">import std.io.console { println };
@@ -253,9 +295,12 @@ fn main(): int {
     return total(40, 2) - 42;
 }
 </code></pre>
-<p>A mixed form such as <code>Vec2 * float</code> does not exist yet: the interfaces are homogeneous by design,
-and <code>%</code> stays numeric-only. Compound assignment (<code>v += w</code>) does not reach through the interfaces
-either — write <code>v = v + w</code>.</p>
+<p>A mixed form such as <code>Vec2 * float</code> does not exist, by decision: a type conforms to <code>Mul</code> once,
+and without overloading a second <code>mul</code> for a second right-hand type cannot exist either — the
+form would buy one fixed partner type and nothing more. <code>%</code> stays numeric-only. Compound
+assignment (<code>v += w</code>) reaches through the interfaces for variable targets since v1.13; a field or
+element target stays written out (<code>p.v = p.v + w</code>), because the shorthand would evaluate the
+object or the index twice.</p>
 <p>The last operator is <code>as</code>. Beyond the numeric casts, which keep their built-in meaning, a cast is a
 conversion the operand's type declared through <code>Into</code>:</p>
 <pre><code class="language-lyr">import std.core { Into };

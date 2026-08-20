@@ -37,6 +37,9 @@
 <li><a href="../../guide/attributes/" class="here">Attributes</a></li>
 <li><a href="../../guide/building/">Building a project</a></li>
 <li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
 </ul>
 </nav>
 <main>
@@ -48,6 +51,7 @@
 <li><a href="#the-module-header">The module header</a></li>
 <li><a href="#what-ends-up-in-the-module-and-who-reads-it">What ends up in the module, and who reads it</a></li>
 <li><a href="#where-the-vocabulary-comes-from">Where the vocabulary comes from</a></li>
+<li><a href="#the-one-attribute-the-compiler-reads">The one attribute the compiler reads</a></li>
 </ul>
 </nav>
 <p>An attribute attaches data to a declaration — data the program never reads, but a tool outside it
@@ -164,8 +168,31 @@ pub fn hunt(dt: float): void { }
 </code></pre>
 <p>Attribute names are unqualified in the compiled module: <code>System</code>, not <code>engine.ecs.System</code>. An SDK
 owns its attribute names the way it owns its native names.</p>
-<p>No attribute means anything to the compiler itself. There is no <code>@Inline</code>, no <code>@Deprecated</code> — the
-set stays open precisely because every attribute is inert.</p>
+<h2 id="the-one-attribute-the-compiler-reads">The one attribute the compiler reads</h2>
+<p>Exactly one attribute means something to the compiler itself: <code>@Deprecated</code>, from <code>std.core</code>.
+It marks a function, a type or a module, and every use of the marked thing warns
+(<code>LYR-SEM0076</code>) with the message naming the way forward:</p>
+<pre><code class="language-lyr">import std.core { Deprecated };
+
+@Deprecated { message = &quot;use renew&quot; }
+pub fn old(): int {
+    return 1;
+}
+
+pub fn renew(): int {
+    return 2;
+}
+
+fn main(): int {
+    return renew();
+}
+</code></pre>
+<p>It changes diagnostics and nothing else — a program that ignores the warning compiles to the
+same module, and a deprecated function may keep calling itself and its deprecated siblings
+without the compiler nagging the one place allowed not to care.</p>
+<p>The compiler-read set is part of the language's contract, which is why it grows by decision
+rather than by convention: <code>@Deprecated</code> is in it, <code>@Inline</code> and its kind are not. Everything
+else stays inert — an attribute the compiler does not know describes, and does nothing.</p>
 <nav class="neighbours">
 <a class="prev" href="../../guide/embedding/">Embedding</a>
 <a class="next" href="../../guide/building/">Building a project</a>

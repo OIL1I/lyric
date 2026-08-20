@@ -40,7 +40,10 @@
 <li><a href="../../stdlib/std.math/">std.math</a></li>
 <li><a href="../../stdlib/std.option/" class="here">std.option</a></li>
 <li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
 <li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
 </ul>
 </nav>
 <main>
@@ -109,9 +112,11 @@ is not a type. Here <code>f</code> already returns <code>?U</code> and the resul
 <div class="members">
 <div class="member">
 <pre class="signature"><code class="language-lyr">value: ?T</code></pre>
+<p>The single value, if it was there.</p>
 </div>
 <div class="member">
 <pre class="signature"><code class="language-lyr">done: bool</code></pre>
+<p>Whether the single value was already yielded.</p>
 </div>
 <div class="member">
 <pre class="signature"><code class="language-lyr">pub mut fn next(): ?T</code></pre>
@@ -126,7 +131,7 @@ is not a type. Here <code>f</code> already returns <code>?U</code> and the resul
 <p>An iterator over zero or one value.</p>
 <p>Every adapter in <code>std.iter</code> then works on an optional, without <code>std.iter</code> knowing anything about
 <code>?T</code>.</p>
-<p class="source">stdlib/std/option.lyr:115</p>
+<p class="source">stdlib/std/option.lyr:117</p>
 </section>
 <section class="item" id="function-expect">
 <h2><a href="#function-expect">expect</a> <span class="kind">function</span></h2>
@@ -134,7 +139,7 @@ is not a type. Here <code>f</code> already returns <code>?U</code> and the resul
 <p>The value, or a panic carrying <code>message</code>.</p>
 <p>As <code>o!</code>, but with a message of your own: <code>LYR-VM0007</code> reports that a value was missing, never
 which one.</p>
-<p class="source">stdlib/std/option.lyr:125</p>
+<p class="source">stdlib/std/option.lyr:127</p>
 </section>
 <nav class="neighbours">
 <a class="prev" href="../../stdlib/std.math/">std.math</a>

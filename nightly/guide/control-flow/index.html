@@ -37,6 +37,9 @@
 <li><a href="../../guide/attributes/">Attributes</a></li>
 <li><a href="../../guide/building/">Building a project</a></li>
 <li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
 </ul>
 </nav>
 <main>
@@ -99,7 +102,7 @@ fn main(): int {
 </code></pre>
 <p><code>for-in</code> walks a range, an array, or anything that implements <code>Iterable&lt;T&gt;</code>:</p>
 <pre><code class="language-lyr">import std.io.console { println };
-import std.collections { emptyList };
+import std.collections { List };
 
 fn main(): int {
     let names = [&quot;Ada&quot;, &quot;Grace&quot;];
@@ -107,7 +110,7 @@ fn main(): int {
         println(name);
     }
 
-    let numbers = emptyList&lt;int&gt;();
+    let numbers = List&lt;int&gt;.empty();
     numbers.push(1);
     numbers.push(2);
     for (n in numbers) {

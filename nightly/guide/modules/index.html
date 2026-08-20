@@ -37,6 +37,9 @@
 <li><a href="../../guide/attributes/">Attributes</a></li>
 <li><a href="../../guide/building/">Building a project</a></li>
 <li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
 </ul>
 </nav>
 <main>
@@ -67,7 +70,7 @@ import std.collections as coll;            // alias
 
 fn main(): int {
     console.println(f&quot;{sqrt(4.0)}&quot;);
-    let list = coll.emptyList&lt;int&gt;();
+    let list = coll.List&lt;int&gt;.empty();
     return list.length();
 }
 </code></pre>
@@ -158,6 +161,25 @@ fn describe(id: Id): int {
 fn main(): int { return describe(1); }
 </code></pre>
 <p>An alias is a name for a type, not a new type: <code>Id</code> and <code>int</code> are interchangeable.</p>
+<p>An <strong>opaque</strong> alias is the opposite: a new identity over the same layout. Nothing converts
+implicitly, the explicit <code>as</code> to exactly the underlying and back is the one door, and equality
+works within the alias — everything else is refused:</p>
+<pre><code class="language-lyr">opaque type Ticket = int;
+
+fn issue(raw: int): Ticket {
+    return raw as Ticket;
+}
+
+fn main(): int {
+    let a = issue(7);
+    let b = issue(7);
+    // a + 1, a &lt; b, or 'let t: Ticket = 7;' would all be compile errors.
+    return if (a == b) a as int else 0;
+}
+</code></pre>
+<p>The point is the wall: an SDK declares <code>pub opaque type Entity = int;</code> beside its natives, a
+script holds and returns the handle — and can neither forge one from a literal nor leak it into
+arithmetic. On the wire the handle is its underlying number.</p>
 <nav class="neighbours">
 <a class="prev" href="../../guide/coroutines/">Coroutines</a>
 <a class="next" href="../../guide/standard-library/">The standard library</a>

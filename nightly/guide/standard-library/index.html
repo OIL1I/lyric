@@ -37,6 +37,9 @@
 <li><a href="../../guide/attributes/">Attributes</a></li>
 <li><a href="../../guide/building/">Building a project</a></li>
 <li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
 </ul>
 </nav>
 <main>
@@ -46,6 +49,9 @@
 <li><a href="#collections">Collections</a></li>
 <li><a href="#iteration">Iteration</a></li>
 <li><a href="#capabilities">Capabilities</a></li>
+<li><a href="#strings-have-methods">Strings have methods</a></li>
+<li><a href="#constructors-live-on-the-types">Constructors live on the types</a></li>
+<li><a href="#editing-the-standard-library">Editing the standard library</a></li>
 </ul>
 </nav>
 <p>The standard library is written in Lyric and ships as source alongside the toolchain.</p>
@@ -87,7 +93,7 @@
 </tr>
 <tr>
 <td><code>std.io.console</code></td>
-<td><code>print</code>, <code>println</code>, <code>readLine</code></td>
+<td><code>print</code>, <code>println</code>, <code>readLine</code> — the writers take any <code>Display</code> value: <code>println(42)</code></td>
 </tr>
 <tr>
 <td><code>std.io.file</code></td>
@@ -98,6 +104,14 @@
 <td>environment, process, exit — requires <code>osAccess</code></td>
 </tr>
 <tr>
+<td><code>std.random</code></td>
+<td><code>Random.seeded</code>, <code>shuffle</code>, <code>choice</code>, <code>nextGaussian</code> — deterministic, no capability</td>
+</tr>
+<tr>
+<td><code>std.time</code></td>
+<td><code>Instant</code>, <code>Duration</code>, ISO 8601 — requires <code>osAccess</code></td>
+</tr>
+<tr>
 <td><code>std.build</code></td>
 <td><code>addExecutable</code> — only a <code>build.lyr</code> run by <code>lyric build</code> can use it</td>
 </tr>
@@ -106,10 +120,10 @@
 <h2 id="collections">Collections</h2>
 <p><code>List&lt;T&gt;</code> grows; <code>T[]</code> does not.</p>
 <pre><code class="language-lyr">import std.io.console { println };
-import std.collections { emptyList };
+import std.collections { List };
 
 fn main(): int {
-    let items = emptyList&lt;string&gt;();
+    let items = List&lt;string&gt;.empty();
     items.push(&quot;first&quot;);
     items.push(&quot;second&quot;);
 
@@ -160,6 +174,38 @@ iterator per call, so two loops over the same collection do not interfere.</p>
 <p><code>std.io.file</code>, <code>std.io.net</code> and <code>std.os</code> require a capability. A standalone run grants
 everything; a host grants explicitly, and a module that requires more than it is granted is
 rejected before it runs.</p>
+<h2 id="strings-have-methods">Strings have methods</h2>
+<p>Since v1.15 the string API is method-shaped: <code>s.trim()</code>, <code>s.split(&quot;,&quot;)</code>, <code>s.contains(x)</code>,
+<code>s.length()</code>. The free forms (<code>trim(s)</code>, …) still work and warn as deprecated; they go with the
+next major. <code>concat</code> and <code>repeat</code> stay free — they back <code>+</code> and <code>*</code> — and the type-directed
+families (<code>fromInt</code>, <code>parseInt</code>, …) keep their names.</p>
+<p>The methods come with the module: any <code>import std.string { … }</code> makes them visible, and a file
+that needs no free name imports the module under an alias, which avoids shadowing the builtin
+type name:</p>
+<pre><code class="language-lyr">import std.string as strings;
+
+fn main(): int {
+    return &quot;  Grüße  &quot;.trim().length();
+}
+</code></pre>
+<p>Two things worth knowing: <code>s.length()</code> is a call BECAUSE it costs O(n) — a property would
+promise a stored answer this type does not have — and every method returns a NEW string;
+<code>s.trim();</code> as a statement does nothing, because a Lyric string has nothing to mutate.</p>
+<h2 id="constructors-live-on-the-types">Constructors live on the types</h2>
+<p>A container comes from its type: <code>List&lt;int&gt;.empty()</code>, <code>Map&lt;string, int&gt;.empty()</code>,
+<code>Set&lt;int&gt;.empty()</code>, <code>StringBuilder.new()</code>, <code>Random.seeded(42)</code> — the latter from <code>std.random</code>
+since v1.14, where <code>shuffle</code>, <code>choice</code> and <code>nextGaussian</code> live beside it. The old free functions
+(<code>emptyList</code>, <code>emptyMap</code>, <code>emptySet</code>, <code>newRandom</code>) and the <code>std.math.Random</code> twin still work and
+warn as deprecated; they disappear with the next major version.</p>
+<h2 id="editing-the-standard-library">Editing the standard library</h2>
+<p>The toolchain reads the standard library from <strong>beside its own binary</strong> — a copy made at build
+time — or from <code>LYRIC_STDLIB</code> when that is set. Editing the sources in the repository therefore
+changes nothing until the next <code>dotnet build</code> refreshes the copies, and a published toolchain
+froze its copy when it was packaged. When an edit &quot;is not found&quot;, it is almost always this:
+point <code>LYRIC_STDLIB</code> at the repository's <code>stdlib/</code> while working on it.</p>
+<p>The library also holds itself accountable: every public item is documented (a test pins
+completeness), every file is formatted and compiles without a single diagnostic, and
+<code>stdlib-tests/</code> carries its behavioral tests — written in Lyric, run by <code>lyric test</code>.</p>
 <nav class="neighbours">
 <a class="prev" href="../../guide/modules/">Modules</a>
 <a class="next" href="../../guide/embedding/">Embedding</a>

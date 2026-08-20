@@ -40,7 +40,10 @@
 <li><a href="../stdlib/std.math/">std.math</a></li>
 <li><a href="../stdlib/std.option/">std.option</a></li>
 <li><a href="../stdlib/std.os/">std.os</a></li>
+<li><a href="../stdlib/std.random/">std.random</a></li>
 <li><a href="../stdlib/std.string/">std.string</a></li>
+<li><a href="../stdlib/std.test/">std.test</a></li>
+<li><a href="../stdlib/std.time/">std.time</a></li>
 </ul>
 </nav>
 <main>
@@ -181,7 +184,8 @@ BoolLit         = 'true' | 'false' .
 NullLit         = 'null' .
 </code></pre>
 <p>Inside an interpolated string, <code>{{</code> and <code>}}</code> produce a literal brace. <code>FormatSpec</code> runs to the
-matching <code>}</code>, tracking nested braces, parentheses and brackets.</p>
+matching <code>}</code>, tracking nested braces, parentheses and brackets. A <code>\u{…}</code> escape carries at
+most eight hex digits and must name a Unicode scalar value.</p>
 <h3 id="operators-and-punctuation">1.6 Operators and punctuation</h3>
 <pre><code class="language-text">(   )   {   }   [   ]
 ,   .   ;   :   ::  -&gt;  =&gt;
@@ -226,8 +230,17 @@ TopLevelDecl    = ImportDecl
                             | TypeAlias ) .
 
 GlobalBinding   = BindingStmt .                   (* 'let' only *)
-TypeAlias       = 'type' IDENTIFIER '=' TypeExpr ';' .
+TypeAlias       = [ 'opaque' ] 'type' IDENTIFIER '=' TypeExpr ';' .
 </code></pre>
+<p>Neither <code>type</code> nor <code>opaque</code> is a keyword; both are contextual, so both remain usable as
+identifiers.</p>
+<p>A plain alias is a name for a type, not a new type. An <strong>opaque</strong> alias (since v1.15) is a new
+IDENTITY over the same layout: nothing converts implicitly in either direction, an explicit <code>as</code>
+to exactly the underlying type and back is the one crossing, <code>==</code>/<code>!=</code> compare within one alias,
+and everything else — arithmetic, ordering, constraint satisfaction, f-string rendering — is
+refused. At runtime an opaque value is its underlying value; in a native signature the alias
+resolves to the underlying, which is how a handle crosses the host boundary as a plain number
+while scripts cannot forge one.</p>
 <p>The module header is optional. In an entry file the name then comes from the file name; in a file
 reached through an <code>import</code>, the name is the imported path, and a header that disagrees with it is
 an error.</p>
@@ -282,11 +295,20 @@ StructVariant   = '{' Field { ',' Field } [ ',' ] '}' .
 <p>The <code>;</code> separates the variant list from the method list.</p>
 <h3 id="interfaces">3.5 Interfaces</h3>
 <pre><code class="language-ebnf">InterfaceDecl   = [ 'pub' ] 'interface' IDENTIFIER [ GenericParams ]
+                  [ '::' InterfaceList ]
                   '{' { InterfaceMember } '}' .
 InterfaceMember = FunctionDecl .
 </code></pre>
-<p>An interface member with a body is a default implementation. An interface declares no interface
-list; there is no interface inheritance.</p>
+<p>An interface member with a body is a default implementation.</p>
+<p>The interface list names the <strong>parent</strong>: whoever conforms to the interface conforms to the parent
+too, transitively — abstract members of the whole chain must be implemented, default methods of the
+whole chain are inherited, and a constraint on the parent is satisfied by the child. Semantic
+rules, not syntactic ones: the list holds at most <strong>one</strong> entry (several requirements side by side
+are what constraints are for: <code>&lt;T :: [A, B]&gt;</code>), the entry names an interface, the chain is acyclic,
+and a member of the chain cannot be redeclared — an inherited member keeps its declaring interface.</p>
+<p>A value of interface type reaches the members of its whole chain. It does not, however, convert to
+a value of the parent's type: conformance is implied for the <em>implementing</em> type, so take the
+concrete value through the parent where a parent-typed value is needed.</p>
 <p>A member carries no <code>static</code>: it is reached through a vtable slot, which takes a receiver, and a
 static member has none. Declare it on the implementing type instead.</p>
 <h3 id="extend-blocks">3.6 Extend blocks</h3>
