@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.2.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.2.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.2.0 — 2026-08-20</h2>
+<p>The A8 wave: both coroutine edges Erato's register filed after building its cutscene driver,
+plus one the fix uncovered. The bytecode format stays <strong>3.2</strong>; a module that never calls
+<code>next()</code> loads on every 2.x runtime. Four conformance cases activate with this release
+(<code>//! since: 2.2.0</code>); the suite stands at 85.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong><code>co.next()</code> — the safe pull.</strong> It advances a coroutine exactly like <code>resume</code> and answers
+<code>?T</code>: the value, or <code>null</code> once the body has run to its end — and <code>null</code> stays the answer on
+every further call, where <code>resume</code> keeps its promised panic. A <code>Coroutine&lt;void&gt;</code> answers
+<code>bool</code> (did it advance?), so <code>while (p.next()) { }</code> drives it out; a <code>Coroutine&lt;?T&gt;</code> refuses
+the form (<code>LYR-SEM0080</code>) because <code>null</code> would mean two things there — drive it with <code>resume</code>
+and a protocol of your own. The name and shape are <code>Iterator&lt;T&gt;.next()</code>'s on purpose.</p>
+<p>A query that does NOT pull (<code>isDone</code>) was probed and rejected: a pull-based coroutine cannot
+know whether another value comes without running the body, which is why no generator API in
+Python, JavaScript or C# has one. The pull with an end signal is the honest form.</p>
+<p>On the wire, exhaustion is read back through the compiler-bound native
+<code>std.core.coroutineIsDone</code>; an older runtime rejects a module that uses <code>next()</code> at load time
+with that name in the message — the format's designed forward path.</p>
+</li>
+</ul>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong><code>Coroutine&lt;T&gt;</code> works as a field type.</strong> A class or struct field, and a type argument
+(<code>List&lt;Coroutine&lt;T&gt;&gt;</code>), used to be refused with <code>LYR-IR0001</code> (&quot;type 'Coroutine' (not a
+class)&quot;) while the same type worked as a parameter and a local. A driver now holds its
+coroutines directly instead of hiding each behind a captured closure.</li>
+<li><strong>A bare <code>return;</code> in the middle of a coroutine body works.</strong> It compiled to a valueless
+return from a value-yielding body — an internal compiler error in Debug, malformed bytecode in
+Release, and the coroutine was never marked exhausted. It is now exactly the run-through exit:
+the next <code>resume</code> panics, the next <code>next()</code> answers <code>null</code>. (<code>return;</code> in tail position, the
+common form, was always fine.)</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

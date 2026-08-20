@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.random — Lyric v2.2.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.2.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/" class="here">std.random</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.random</h1>
+<nav class="contents">
+<ul>
+<li><a href="#class-random">Random</a></li>
+<li><a href="#function-shuffle">shuffle</a></li>
+<li><a href="#function-choice">choice</a></li>
+</ul>
+</nav>
+<section class="item" id="class-random">
+<h2><a href="#class-random">Random</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class Random</code></pre>
+<p>A deterministic pseudo-random generator (xorshift64*): one <code>int</code> of state, seeded by the
+caller. Not cryptographic — keys need a source from the operating system.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">state: int</code></pre>
+<p>The generator state; every draw replaces it.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub static fn seeded(seed: int): Random</code></pre>
+<p>A generator with an explicit seed. A seed of 0 is a fixed point for xorshift — the
+sequence would stay 0 forever — so it is replaced silently rather than panicking on a
+plausible input.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextInt(): int</code></pre>
+<p>The next raw value. It may have either sign.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextIntRange(lo: int, hi: int): int</code></pre>
+<p>Uniformly distributed in <code>[lo, hi)</code>. An empty range yields <code>lo</code>.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextFloat(): float</code></pre>
+<p>Uniformly distributed in <code>[0, 1)</code>.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextBool(): bool</code></pre>
+<p>True or false, from the next draw's parity.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn nextGaussian(): float</code></pre>
+<p>Normally distributed, mean 0 and deviation 1 (Box–Muller).</p>
+</div>
+</div>
+<p class="source">stdlib/std/random.lyr:20</p>
+</section>
+<section class="item" id="function-shuffle">
+<h2><a href="#function-shuffle">shuffle</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn shuffle&lt;T&gt;(random: Random, xs: List&lt;T&gt;): void</code></pre>
+<p>Shuffles in place, Fisher–Yates: every permutation equally likely, one draw per element.</p>
+<p class="source">stdlib/std/random.lyr:78</p>
+</section>
+<section class="item" id="function-choice">
+<h2><a href="#function-choice">choice</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn choice&lt;T&gt;(random: Random, xs: List&lt;T&gt;): ?T</code></pre>
+<p>One element drawn uniformly, or <code>null</code> from an empty list.</p>
+<p class="source">stdlib/std/random.lyr:88</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.os/">std.os</a>
+<a class="next" href="../../stdlib/std.string/">std.string</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
