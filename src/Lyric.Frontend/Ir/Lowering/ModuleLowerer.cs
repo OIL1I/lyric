@@ -104,12 +104,12 @@ public static class ModuleLowerer
                         var host = HostTypeResolver(module, compilation);
                         var aliases = LocalAliases(compilation, module);
                         var (flattened, parameters) = LowerNativeParameters(module, function,
-                            host, typeTable, aliases);
+                            host, typeTable, aliases, binding);
 
                         // A struct RETURN wires as void plus a trailing out-parameter of the
                         // struct's type; the call site passes a hidden buffer and copies the
                         // value out. See ImportReturn.
-                        var returnNode = ResolveLocalAliases(function.ReturnType, aliases);
+                        var returnNode = ResolveLocalAliases(function.ReturnType, aliases, binding);
                         var returned = NativeStructParameter(module, returnNode, typeTable);
                         var wireReturn = returned is { } r
                             ? new IrScalarType(IrScalar.Void)
@@ -492,24 +492,44 @@ public static class ModuleLowerer
             .ToDictionary(g => g.Key, g => g.First().Aliased, StringComparer.Ordinal);
 
     private static TypeNode? ResolveLocalAliases(TypeNode? node,
-        Dictionary<string, TypeNode> aliases)
+        Dictionary<string, TypeNode> aliases, BindingResult binding)
     {
         if (node is null) return null;
         // The guard bounds a cyclic alias pair; the sema diagnoses the cycle itself.
         var guard = 0;
-        while (node is NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
-               && aliases.TryGetValue(named.Path[0], out var target) && guard++ < 16)
-            node = target;
+        while (node is NamedType { TypeArguments.Length: 0 } named && guard++ < 16)
+        {
+            if (named.Path.Length == 1 && aliases.TryGetValue(named.Path[0], out var target))
+            {
+                node = target;
+                continue;
+            }
+
+            // An IMPORTED alias — selective ('TextureId') or module-qualified
+            // ('world.TextureId'). §3.5 restricts the resolution to no module: the wire carries
+            // the LAYOUT, and an alias IS its underlying, so a sibling module's handle type
+            // resolves exactly like a local one (Erato's A9). The resolver bound the name; the
+            // aliased node then resolves in ITS module's terms on the next round.
+            var bound = binding.Resolve(named);
+            if (bound is ImportBindingSymbol imported) bound = imported.Target;
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Alias, Declaration: TypeAliasDecl aliased })
+            {
+                node = aliased.Aliased;
+                continue;
+            }
+
+            break;
+        }
 
         // Rebuild a wrapper ONLY when something inside actually changed: downstream lookups go
         // through the binding table BY NODE, and a needlessly fresh node has no entries there.
         switch (node)
         {
             case NullableType opt:
-                var inner = ResolveLocalAliases(opt.Inner, aliases)!;
+                var inner = ResolveLocalAliases(opt.Inner, aliases, binding)!;
                 return ReferenceEquals(inner, opt.Inner) ? node : opt with { Inner = inner };
             case ArrayType arr:
-                var element = ResolveLocalAliases(arr.Element, aliases)!;
+                var element = ResolveLocalAliases(arr.Element, aliases, binding)!;
                 return ReferenceEquals(element, arr.Element) ? node : arr with { Element = element };
             default:
                 return node;
@@ -518,14 +538,14 @@ public static class ModuleLowerer
 
     private static (IrType[] Flattened, ImportParam[] Shape) LowerNativeParameters(
         ModuleSymbol module, FunctionDecl function, Func<TypeNode, string?> host,
-        TypeTable typeTable, Dictionary<string, TypeNode> aliases)
+        TypeTable typeTable, Dictionary<string, TypeNode> aliases, BindingResult binding)
     {
         var flattened = new List<IrType>(function.Parameters.Length);
         var shape = new ImportParam[function.Parameters.Length];
 
         for (var i = 0; i < function.Parameters.Length; i++)
         {
-            var node = ResolveLocalAliases(function.Parameters[i].Type, aliases)!;
+            var node = ResolveLocalAliases(function.Parameters[i].Type, aliases, binding)!;
             if (NativeStructParameter(module, node, typeTable) is { } flat)
             {
                 shape[i] = flat;
