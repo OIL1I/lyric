@@ -1596,7 +1596,7 @@ public sealed class TypeChecker
             PrimitiveType { Kind: PrimitiveKind.String } =>
                 Report(ix.Span, "LYR-SEM0007",
                     "a string cannot be indexed — a codepoint position costs O(n), so an index "
-                    + "loop would be quadratic. Use 'std.string.charAt(s, i)' if you really need "
+                    + "loop would be quadratic. Use 's.charAt(i)' if you really need "
                     + "one position, or 'for (c in s)' to walk all of them"),
 
             ErrorType => LyrType.Error,
@@ -2248,13 +2248,13 @@ public sealed class TypeChecker
         if (ExtensionMember(ts, member, span) is { } ext)
         {
             // The instance path used to fall through to a STATIC extension without checking — the
-            // asymmetry the type path never had. Recorded as an accident, warned now, an error
-            // with the next major: the warning is the deprecation clock.
+            // asymmetry the type path never had. Recorded as an accident, a warning through 1.x,
+            // an error since 2.0: the clock its message announced has run out. The member still
+            // returns so the rest of the expression types.
             if (ext.IsStatic)
-                _de.Report("LYR-SEM0074", Severity.Warning, span,
+                _de.Report("LYR-SEM0074", Severity.Error, span,
                     $"'{member}' is a static extension and belongs to the type — "
-                    + $"call '{ts.Name}.{member}(…)'; the instance form is deprecated "
-                    + "and becomes an error");
+                    + $"call '{ts.Name}.{member}(…)'; the instance form is an error since 2.0");
             return (FnTypeOf(ext), ext);
         }
         if (DefaultMember(ts, member, span) is { } def) return def;

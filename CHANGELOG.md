@@ -10,6 +10,38 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+### Removed — the 2.0 cut
+
+Everything `@Deprecated` announced through 1.x is gone from the source surface. The registry
+still binds the old NATIVE names, so bytecode compiled against 1.x keeps loading; what the cut
+takes is the ability to write the old forms in new code.
+
+- **The free string forms** (`length(s)`, `trim(s)`, `toUpper(s)`, … — 27 declarations): the
+  method API (`s.length()`, v1.15) is the one form. `concat` and `repeat` stay free — they
+  back `+` and `*` — and the `fromXxx`/`parseXxx` families keep their names.
+- **The free constructors** `emptyList`, `emptyMap`, `emptySet`, `newStringBuilder`:
+  constructors live on the types (`List<T>.empty()`, `StringBuilder.new()`, v1.12).
+- **`std.math.Random` and `newRandom`**: randomness lives in `std.random` (v1.14).
+- **`write`/`writeln`**: `print`/`println` take any `Display` value (v1.14).
+- **`StringBuilder.length()`**: it counted appended PIECES, an implementation detail; measure
+  the built string. (It never carried `@Deprecated` — an attribute cannot sit on a member —
+  its doc announced the 2.0 removal instead.)
+
+### Changed
+
+- **`Hashable<T>` declares `Equatable<T>` as its parent.** A hash table cannot exist without
+  equality; demanding the hash without the comparison was a lie by omission. A key constraint
+  is `K :: [Hashable<K>]` alone — `Map`, `Set` and their helpers dropped the second
+  constraint. A type conforming to `Hashable` now implements `hash` AND `equals`.
+- **`LYR-SEM0074` is an error.** Calling a static extension method through an instance was a
+  warning through 1.x with the message announcing this change; the clock has run out. The one
+  1.x→2.0 severity change, recorded as such in the specification (§12.1).
+- **`docs/Grammar.md` and `docs/Bytecode.md` are checked mirrors.** The canonical home of both
+  is `lyriclang/lyric-spec` (chapters 02 and 13); CI diffs the copies here against the
+  specification, so drift fails the build.
+
 ## v1.16.0 — 2026-08-19
 
 The language has a specification: `lyriclang/lyric-spec` holds twelve chapters and a

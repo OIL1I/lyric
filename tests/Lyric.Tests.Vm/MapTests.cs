@@ -48,19 +48,19 @@ public class MapTests
             NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
-    private const string Head = "import std.collections { Map, emptyMap };\n";
+    private const string Head = "import std.collections { Map };\n";
 
     // ------------------------------------------------------------------ Grundlagen
 
     [Fact]
     public void A_map_starts_empty() =>
-        Assert.Equal(0, Run(Head + "fn main(): int { return emptyMap<string, int>().length(); }"));
+        Assert.Equal(0, Run(Head + "fn main(): int { return Map<string, int>.empty().length(); }"));
 
     [Fact]
     public void Set_and_get_round_trip() =>
         Assert.Equal(7, Run(Head + """
             fn main(): int {
-                let m = emptyMap<string, int>();
+                let m = Map<string, int>.empty();
                 m.set("a", 7);
                 return m.get("a") ?? -1;
             }
@@ -70,7 +70,7 @@ public class MapTests
     public void A_missing_key_is_null() =>
         Assert.Equal(-1, Run(Head + """
             fn main(): int {
-                let m = emptyMap<string, int>();
+                let m = Map<string, int>.empty();
                 m.set("a", 7);
                 return m.get("b") ?? -1;
             }
@@ -81,7 +81,7 @@ public class MapTests
         // The length must NOT change; otherwise every overwrite would be a leak.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let m = emptyMap<string, int>();
+                let m = Map<string, int>.empty();
                 m.set("a", 1);
                 m.set("a", 2);
                 if (m.length() == 1 && (m.get("a") ?? -1) == 2) { return 1; }
@@ -93,7 +93,7 @@ public class MapTests
     public void Remove_returns_the_old_value_and_shrinks() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let m = emptyMap<string, int>();
+                let m = Map<string, int>.empty();
                 m.set("a", 5);
                 let alt = m.remove("a") ?? -1;
                 if (alt == 5 && m.length() == 0 && !m.containsKey("a")) { return 1; }
@@ -105,7 +105,7 @@ public class MapTests
     public void Removing_a_missing_key_is_null_and_changes_nothing() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let m = emptyMap<string, int>();
+                let m = Map<string, int>.empty();
                 m.set("a", 5);
                 if (m.remove("weg") == null && m.length() == 1) { return 1; }
                 return 0;
@@ -124,7 +124,7 @@ public class MapTests
     public void Everything_survives_several_resizes() =>
         Assert.Equal(0, Run(Head + """
             fn main(): int {
-                let m = emptyMap<int, int>();
+                let m = Map<int, int>.empty();
                 var i = 0;
                 while (i < 200) { m.set(i, i * i); i = i + 1; }
 
@@ -149,7 +149,7 @@ public class MapTests
     public void Deleted_slots_do_not_break_the_probe_chain() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let m = emptyMap<int, int>();
+                let m = Map<int, int>.empty();
                 var i = 0;
                 while (i < 200) { m.set(i, i * i); i = i + 1; }
 
@@ -182,7 +182,7 @@ public class MapTests
         // without bound although it never holds more than 200 entries.
         Assert.Equal(200, Run(Head + """
             fn main(): int {
-                let m = emptyMap<int, int>();
+                let m = Map<int, int>.empty();
                 var runde = 0;
                 while (runde < 3) {
                     var j = 0;
@@ -203,7 +203,7 @@ public class MapTests
     public void A_user_type_works_as_a_key() =>
         // What the constraints were built for: 'Point' satisfies both of them itself.
         Assert.Equal(1, Run("""
-            import std.collections { emptyMap };
+            import std.collections { Map };
             import std.core { Hashable, Equatable };
 
             pub struct Punkt :: [Equatable<Punkt>, Hashable<Punkt>] {
@@ -214,7 +214,7 @@ public class MapTests
             }
 
             fn main(): int {
-                let m = emptyMap<Punkt, int>();
+                let m = Map<Punkt, int>.empty();
                 m.set(Punkt { x = 1, y = 2 }, 42);
                 let gefunden = m.get(Punkt { x = 1, y = 2 }) ?? -1;
                 let fehlt = m.get(Punkt { x = 9, y = 9 }) ?? -1;
@@ -233,7 +233,7 @@ public class MapTests
     [Fact]
     public void Colliding_keys_stay_apart() =>
         Assert.Equal(1, Run("""
-            import std.collections { emptyMap };
+            import std.collections { Map };
             import std.core { Hashable, Equatable };
 
             pub struct Schlecht :: [Equatable<Schlecht>, Hashable<Schlecht>] {
@@ -243,7 +243,7 @@ public class MapTests
             }
 
             fn main(): int {
-                let m = emptyMap<Schlecht, int>();
+                let m = Map<Schlecht, int>.empty();
                 var i = 0;
                 while (i < 50) { m.set(Schlecht { n = i }, i * 3); i = i + 1; }
 
@@ -264,7 +264,7 @@ public class MapTests
         // Strings are therefore the case that panics immediately without taking the absolute value.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let m = emptyMap<string, int>();
+                let m = Map<string, int>.empty();
                 m.set("hallo", 1);
                 m.set("welt", 2);
                 m.set("noch einer mit laengerem text", 3);

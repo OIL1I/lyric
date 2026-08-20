@@ -21,6 +21,10 @@ namespace Lyric.Tests.Vm;
 /// <para>THE MOST EXPENSIVE TEST IN THE FILE IS THEREFORE THE ONE WITH THE EMOJI. All the others stay
 /// green even if the implementation secretly counts UTF-16 units — ASCII makes no difference. Only a
 /// character outside the BMP separates the two models.</para>
+///
+/// <para>Since 2.0 the API is METHODS ONLY — the deprecated free forms went with the cut — so every
+/// fixture imports the module under an alias (`import std.string as strings;`), the idiom that makes
+/// the extensions visible without binding a single free name.</para>
 /// </summary>
 public class StringTests
 {
@@ -53,8 +57,8 @@ public class StringTests
         return (exit, output.ToString().ReplaceLineEndings("\n"));
     }
 
-    private static long Eval(string imports, string body) =>
-        Run($"import std.string {{ {imports} }};\nfn main(): int {{ {body} }}").Exit;
+    private static long Eval(string body) =>
+        Run($"import std.string as strings;\nfn main(): int {{ {body} }}").Exit;
 
     // ------------------------------------------------------------------ Codepoints
 
@@ -62,7 +66,7 @@ public class StringTests
     public void Length_counts_codepoints_not_utf16_units() =>
         // The core test. "a😀b" is three code points and four UTF-16 units; C# says 4 here.
         // Without this case every other promise of this file would be compatible with both models.
-        Assert.Equal(3, Eval("length", "return length(\"a\\u{1F600}b\");"));
+        Assert.Equal(3, Eval("return \"a\\u{1F600}b\".length();"));
 
     [Fact]
     public void An_astral_codepoint_is_one_character() =>
@@ -70,14 +74,18 @@ public class StringTests
         // a surrogate pair would come out — a character without a partner that becomes U+FFFD on output.
         // Measured through the output, because 'char as int' is not an allowed cast in Lyric.
         Assert.Equal("\U0001F600\n", Run("""
-            import std.string { charAt };
+            import std.string as strings;
             import std.io.console { println };
-            fn main(): int { println(f"{charAt("a\u{1F600}b", 1)}"); return 0; }
+            fn main(): int {
+                let s = "a\u{1F600}b";
+                println(f"{s.charAt(1)}");
+                return 0;
+            }
             """).Out);
 
     [Fact]
     public void Iteration_visits_codepoints() =>
-        Assert.Equal(3, Eval("length", """
+        Assert.Equal(3, Eval("""
             var n = 0;
             for (c in "a\u{1F600}b") { n = n + 1; }
             return n;
@@ -87,50 +95,50 @@ public class StringTests
     public void Substring_cuts_at_codepoint_boundaries() =>
         // Cuts through the middle of a surrogate pair would yield a broken string here; measured through
         // the length of the result, because that compares stably.
-        Assert.Equal(2, Eval("length, substring", "return length(substring(\"a\\u{1F600}b\", 1, 2));"));
+        Assert.Equal(2, Eval("return \"a\\u{1F600}b\".substring(1, 2).length();"));
 
     [Fact]
     public void IndexOf_returns_a_codepoint_position() =>
         // The return value has to serve as an argument for charAt and substring; with a position in UTF-16
         // units or bytes it would not.
-        Assert.Equal(2, Eval("indexOf", "return indexOf(\"a\\u{1F600}b\", \"b\");"));
+        Assert.Equal(2, Eval("return \"a\\u{1F600}b\".indexOf(\"b\");"));
 
     // ------------------------------------------------------------------ the usual cases
 
     [Fact]
     public void Basic_queries_work() =>
-        Assert.Equal(10, Eval("length", "return length(\"Hallo Welt\");"));
+        Assert.Equal(10, Eval("return \"Hallo Welt\".length();"));
 
     [Fact]
     public void Substring_takes_a_start_and_a_count() =>
         Assert.Equal(0, Run("""
-            import std.string { substring };
+            import std.string as strings;
             import std.io.console { println };
-            fn main(): int { println(substring("Hallo Welt", 6, 4)); return 0; }
+            fn main(): int { println("Hallo Welt".substring(6, 4)); return 0; }
             """).Exit);
 
     [Fact]
     public void Substring_produces_the_expected_text() =>
         Assert.Equal("Welt\n", Run("""
-            import std.string { substring };
+            import std.string as strings;
             import std.io.console { println };
-            fn main(): int { println(substring("Hallo Welt", 6, 4)); return 0; }
+            fn main(): int { println("Hallo Welt".substring(6, 4)); return 0; }
             """).Out);
 
     [Fact]
     public void IndexOf_reports_minus_one_when_absent() =>
-        Assert.Equal(-1, Eval("indexOf", "return indexOf(\"abc\", \"z\");"));
+        Assert.Equal(-1, Eval("return \"abc\".indexOf(\"z\");"));
 
     [Fact]
     public void Split_returns_the_parts() =>
-        Assert.Equal(3, Eval("split", "return split(\"a,b,c\", \",\").length;"));
+        Assert.Equal(3, Eval("return \"a,b,c\".split(\",\").length;"));
 
     [Fact]
     public void Split_keeps_the_parts_in_order() =>
         Assert.Equal("b\n", Run("""
-            import std.string { split };
+            import std.string as strings;
             import std.io.console { println };
-            fn main(): int { println(split("a,b,c", ",")[1]); return 0; }
+            fn main(): int { println("a,b,c".split(",")[1]); return 0; }
             """).Out);
 
     [Fact]
@@ -139,26 +147,26 @@ public class StringTests
         // culture-dependent conversion would turn an 'i' into an 'İ' — the classic that breaks software on
         // some machines only.
         Assert.Equal("TITLE\n", Run("""
-            import std.string { toUpper };
+            import std.string as strings;
             import std.io.console { println };
-            fn main(): int { println(toUpper("title")); return 0; }
+            fn main(): int { println("title".toUpper()); return 0; }
             """).Out);
 
     [Fact]
     public void Trim_removes_surrounding_whitespace() =>
         Assert.Equal("x\n", Run("""
-            import std.string { trim };
+            import std.string as strings;
             import std.io.console { println };
-            fn main(): int { println(trim("   x   ")); return 0; }
+            fn main(): int { println("   x   ".trim()); return 0; }
             """).Out);
 
     [Fact]
     public void Predicates_answer_both_ways()
     {
-        Assert.Equal(1, Eval("startsWith", "if (startsWith(\"abc\", \"ab\")) { return 1; } return 0;"));
-        Assert.Equal(0, Eval("startsWith", "if (startsWith(\"abc\", \"bc\")) { return 1; } return 0;"));
-        Assert.Equal(1, Eval("endsWith", "if (endsWith(\"abc\", \"bc\")) { return 1; } return 0;"));
-        Assert.Equal(0, Eval("contains", "if (contains(\"abc\", \"z\")) { return 1; } return 0;"));
+        Assert.Equal(1, Eval("if (\"abc\".startsWith(\"ab\")) { return 1; } return 0;"));
+        Assert.Equal(0, Eval("if (\"abc\".startsWith(\"bc\")) { return 1; } return 0;"));
+        Assert.Equal(1, Eval("if (\"abc\".endsWith(\"bc\")) { return 1; } return 0;"));
+        Assert.Equal(0, Eval("if (\"abc\".contains(\"z\")) { return 1; } return 0;"));
     }
 
     // ------------------------------------------------------------------ what does NOT work

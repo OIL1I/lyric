@@ -52,7 +52,8 @@ public class MathTests
     private const string Head = """
         import std.math { gcd, lcm, powInt, divFloor, modFloor, clampInt, signInt, absInt,
                           minInt, maxInt, isNaN, isInfinite, isFinite, exp, log2, log10, cbrt,
-                          hypot, sinh, cosh, tanh, trunc, sign, clamp, newRandom, tau, pi };
+                          hypot, sinh, cosh, tanh, trunc, sign, clamp, tau, pi };
+        import std.random { Random };
 
         """;
 
@@ -158,12 +159,12 @@ public class MathTests
 
     [Fact]
     public void The_same_seed_gives_the_same_sequence() =>
-        // The reason there is no 'newRandom()' without an argument: a time source as the default would be
+        // The reason there is no 'Random.seeded()' without an argument: a time source as the default would be
         // convenient and would make every run silently irreproducible.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let a = newRandom(42);
-                let b = newRandom(42);
+                let a = Random.seeded(42);
+                let b = Random.seeded(42);
                 var i = 0;
                 while (i < 20) {
                     if (a.nextInt() != b.nextInt()) { return 0; }
@@ -177,8 +178,8 @@ public class MathTests
     public void Different_seeds_diverge() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let a = newRandom(1);
-                let b = newRandom(2);
+                let a = Random.seeded(1);
+                let b = Random.seeded(2);
                 return if (a.nextInt() != b.nextInt()) 1 else 0;
             }
             """));
@@ -190,7 +191,7 @@ public class MathTests
         // plausible input.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let r = newRandom(0);
+                let r = Random.seeded(0);
                 let a = r.nextInt();
                 let b = r.nextInt();
                 return if (a != 0 && b != 0 && a != b) 1 else 0;
@@ -204,7 +205,7 @@ public class MathTests
         // one half.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let r = newRandom(7);
+                let r = Random.seeded(7);
                 var i = 0;
                 while (i < 1000) {
                     let v = r.nextIntRange(10, 20);
@@ -219,7 +220,7 @@ public class MathTests
     public void An_empty_range_yields_its_lower_bound() =>
         Assert.Equal(5, Run(Head + """
             fn main(): int {
-                let r = newRandom(7);
+                let r = Random.seeded(7);
                 return r.nextIntRange(5, 5);
             }
             """));
@@ -228,7 +229,7 @@ public class MathTests
     public void NextFloat_stays_in_the_unit_interval() =>
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let r = newRandom(3);
+                let r = Random.seeded(3);
                 var i = 0;
                 while (i < 500) {
                     let v = r.nextFloat();
@@ -244,7 +245,7 @@ public class MathTests
         // A 'nextBool' always yielding the same value satisfies every range check and is still worthless.
         Assert.Equal(1, Run(Head + """
             fn main(): int {
-                let r = newRandom(11);
+                let r = Random.seeded(11);
                 var wahr = 0;
                 var falsch = 0;
                 var i = 0;

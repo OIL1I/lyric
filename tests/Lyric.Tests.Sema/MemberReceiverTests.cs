@@ -129,18 +129,18 @@ public class MemberReceiverTests
     }
 
     [Fact]
-    public void A_static_extension_reached_through_an_instance_compiles_with_a_warning()
+    public void A_static_extension_reached_through_an_instance_is_an_error()
     {
-        // The decision the recorded asymmetry waited for: the instance path still compiles — the
-        // warning is the deprecation clock, and the next major turns it into the error the type
-        // path always had. LYR-SEM0074 is that clock.
+        // The deprecation clock SEM0074 announced through 1.x has run out: since 2.0 the
+        // instance path is the error the type path always had. The member still resolves, so
+        // the rest of the expression types without follow-up noise.
         var de = Check(
             "struct Point { x: int, }\n"
             + "extend Point {\n    static fn make(): int { return 7; }\n}\n"
             + "fn main(): int {\n    let p = Point { x = 1 };\n    return p.make();\n}\n");
-        Assert.False(de.HasErrors);
         Assert.Contains(de.Diagnostics,
-            d => d.Code == "LYR-SEM0074" && d.Severity == Severity.Warning);
+            d => d.Code == "LYR-SEM0074" && d.Severity == Severity.Error);
+        Assert.Single(de.Diagnostics.Where(d => d.Severity == Severity.Error));
     }
 
     [Fact]

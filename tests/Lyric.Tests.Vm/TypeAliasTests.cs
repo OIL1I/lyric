@@ -124,9 +124,9 @@ public class TypeAliasTests
     public void An_alias_as_a_type_argument()
     {
         Assert.Equal(5, Run("""
-            import std.collections { List, emptyList };
+            import std.collections { List };
             type Id = int;
-            fn main(): int { let xs = emptyList<Id>(); xs.push(5); return xs.get(0); }
+            fn main(): int { let xs = List<Id>.empty(); xs.push(5); return xs.get(0); }
             """));
     }
 
@@ -165,10 +165,10 @@ public class TypeAliasTests
         // 'List<Id>' and 'List<int>' are the same instance. Two entries would be two layouts for one
         // type, which is the asymmetry that makes a value arrive in the wrong slot.
         var ir = Lower("""
-            import std.collections { List, emptyList };
+            import std.collections { List };
             type Id = int;
-            fn a(): int { let xs = emptyList<Id>(); xs.push(1); return xs.get(0); }
-            fn b(): int { let ys = emptyList<int>(); ys.push(2); return ys.get(0); }
+            fn a(): int { let xs = List<Id>.empty(); xs.push(1); return xs.get(0); }
+            fn b(): int { let ys = List<int>.empty(); ys.push(2); return ys.get(0); }
             fn main(): int { return a() + b(); }
             """);
 

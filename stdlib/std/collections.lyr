@@ -5,7 +5,7 @@
 module std.collections;
 
 import std.iter { Iterator, Iterable };
-import std.core { Hashable, Equatable, Ordered, Deprecated };
+import std.core { Hashable, Equatable, Ordered };
 
 /// What can be read and written with `[i]`.
 ///
@@ -249,12 +249,6 @@ pub class List<T> :: [Indexable<T>, Iterable<T>] {
     }
 }
 
-/// An empty list.
-@Deprecated { message = "use List.empty()" }
-pub fn emptyList<T>(): List<T> {
-    return List<T>.empty();
-}
-
 /// Walks a list; each loop holds its own cursor.
 pub class ListIterator<T> :: [Iterator<T>] {
     /// The list being walked.
@@ -302,9 +296,9 @@ pub fn collect<T>(source: Iterator<T>): List<T> {
 // occupied slots, so they have to count. They disappear on a grow.
 
 /// A hash map: open addressing, linear probing, load factor 3/4. The key type says how to
-/// hash and how to compare — `[Hashable<K>, Equatable<K>]` — and the iteration order is
+/// hash and how to compare — `[Hashable<K>]` — and the iteration order is
 /// UNSPECIFIED.
-pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
+pub class Map<K :: [Hashable<K>], V> {
     /// The key column; `states` says which slots are real.
     keys: (?K)[],
     /// The value column, parallel to `keys`.
@@ -490,12 +484,6 @@ pub class Map<K :: [Hashable<K>, Equatable<K>], V> {
     }
 }
 
-/// An empty map.
-@Deprecated { message = "use Map.empty()" }
-pub fn emptyMap<K :: [Hashable<K>, Equatable<K>], V>(): Map<K, V> {
-    return Map<K, V>.empty();
-}
-
 // ================================================================ sorting
 //
 // **Bottom-up Merge Sort**, in Lyric.
@@ -612,7 +600,7 @@ fn min(a: int, b: int): int {
 
 /// A hash set: the same probing as `Map`, without the value column. Iteration order is
 /// UNSPECIFIED. `Iterable`, so `for (v in set)` walks it directly.
-pub class Set<T :: [Hashable<T>, Equatable<T>]> :: [Iterable<T>] {
+pub class Set<T :: [Hashable<T>]> :: [Iterable<T>] {
     /// The element column; `states` says which slots are real.
     items: (?T)[],
     /// Per slot: 0 empty, 1 occupied, 2 tombstone.
@@ -762,7 +750,7 @@ pub class Set<T :: [Hashable<T>, Equatable<T>]> :: [Iterable<T>] {
 
 /// Walks the occupied slots. The order follows the hashes and is therefore UNSPECIFIED; a
 /// caller that needs one sorts.
-pub class SetIterator<T :: [Hashable<T>, Equatable<T>]> :: [Iterator<T>] {
+pub class SetIterator<T :: [Hashable<T>]> :: [Iterator<T>] {
     /// The set being walked.
     source: Set<T>,
     /// The next slot to look at.
@@ -781,16 +769,10 @@ pub class SetIterator<T :: [Hashable<T>, Equatable<T>]> :: [Iterator<T>] {
     }
 }
 
-/// An empty set.
-@Deprecated { message = "use Set.empty()" }
-pub fn emptySet<T :: [Hashable<T>, Equatable<T>]>(): Set<T> {
-    return Set<T>.empty();
-}
-
 // --- Set operations. All return a NEW set; none changes its arguments. ---
 
 /// Everything in either set, as a NEW set; neither argument changes.
-pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
+pub fn union<T :: [Hashable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
     let result = Set<T>.empty();
     for (v in a.iter()) {
         result.add(v);
@@ -802,7 +784,7 @@ pub fn union<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
 }
 
 /// Everything in both sets, as a NEW set; neither argument changes.
-pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
+pub fn intersect<T :: [Hashable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
     let result = Set<T>.empty();
     // Walk the SMALLER one: the number of probes depends on it.
     let small = if (a.length() <= b.length()) a else b;
@@ -816,7 +798,7 @@ pub fn intersect<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T>
 }
 
 /// Everything in `a` that is not in `b`, as a NEW set; neither argument changes.
-pub fn difference<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
+pub fn difference<T :: [Hashable<T>]>(a: Set<T>, b: Set<T>): Set<T> {
     let result = Set<T>.empty();
     for (v in a.iter()) {
         if (!b.contains(v)) {
@@ -827,7 +809,7 @@ pub fn difference<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): Set<T
 }
 
 /// Whether every element of `a` is in `b`.
-pub fn isSubset<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): bool {
+pub fn isSubset<T :: [Hashable<T>]>(a: Set<T>, b: Set<T>): bool {
     if (a.length() > b.length()) {
         return false;
     }
@@ -848,7 +830,7 @@ pub fn isSubset<T :: [Hashable<T>, Equatable<T>]>(a: Set<T>, b: Set<T>): bool {
 // sorts.
 
 /// Walks the keys; the order follows the hashes and is UNSPECIFIED.
-pub class MapKeyIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<K>] {
+pub class MapKeyIterator<K :: [Hashable<K>], V> :: [Iterator<K>] {
     /// The map being walked.
     source: Map<K, V>,
     /// The next slot to look at.
@@ -868,7 +850,7 @@ pub class MapKeyIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<K>] {
 }
 
 /// Walks the values; the order follows the hashes and is UNSPECIFIED.
-pub class MapValueIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<V>] {
+pub class MapValueIterator<K :: [Hashable<K>], V> :: [Iterator<V>] {
     /// The map being walked.
     source: Map<K, V>,
     /// The next slot to look at.
@@ -891,7 +873,7 @@ pub class MapValueIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<V>]
 ///
 /// Without this, walking both meant iterating `keys` and paying a second probe per key
 /// through `get`.
-pub class MapEntryIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<(K, V)>] {
+pub class MapEntryIterator<K :: [Hashable<K>], V> :: [Iterator<(K, V)>] {
     /// The map being walked.
     source: Map<K, V>,
     /// The next slot to look at.
@@ -915,19 +897,19 @@ pub class MapEntryIterator<K :: [Hashable<K>, Equatable<K>], V> :: [Iterator<(K,
 }
 
 /// A fresh cursor over the keys.
-pub fn keys<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<K> {
+pub fn keys<K :: [Hashable<K>], V>(m: Map<K, V>): Iterator<K> {
     return MapKeyIterator<K, V> { source = m, index = 0 };
 }
 
 /// A fresh cursor over the values.
-pub fn values<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<V> {
+pub fn values<K :: [Hashable<K>], V>(m: Map<K, V>): Iterator<V> {
     return MapValueIterator<K, V> { source = m, index = 0 };
 }
 
 /// A fresh cursor over `(key, value)` pairs:
 ///
 ///     for (entry in entries(m)) { let (k, v) = entry; … }
-pub fn entries<K :: [Hashable<K>, Equatable<K>], V>(m: Map<K, V>): Iterator<(K, V)> {
+pub fn entries<K :: [Hashable<K>], V>(m: Map<K, V>): Iterator<(K, V)> {
     return MapEntryIterator<K, V> { source = m, index = 0 };
 }
 

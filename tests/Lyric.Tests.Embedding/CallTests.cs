@@ -43,8 +43,8 @@ public class CallTests
     public void A_stdlib_function_of_the_same_name_is_not_reachable()
     {
         var instance = Instance("""
-            import std.string { length };
-            pub fn length2(s: string): int { return length(s) * 2; }
+            import std.string as strings;
+            pub fn length2(s: string): int { return s.length() * 2; }
             """);
 
         Assert.True(instance.Defines("length2"));

@@ -70,7 +70,9 @@ public static class DiagnosticMapper
     private static IReadOnlyList<LspDiagnosticTag>? TagsFor(string code) => code switch
     {
         "LYR-SEM0071" or "LYR-SEM0072" or "LYR-SEM0073" => [LspDiagnosticTag.Unnecessary],
-        "LYR-SEM0074" or "LYR-SEM0076" => [LspDiagnosticTag.Deprecated],
+        // SEM0074 carried the tag while it was the deprecation warning; since 2.0 it is a plain
+        // error and needs no strikethrough.
+        "LYR-SEM0076" => [LspDiagnosticTag.Deprecated],
         _ => null,
     };
 

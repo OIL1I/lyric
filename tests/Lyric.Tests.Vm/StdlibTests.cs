@@ -123,7 +123,6 @@ public class StdlibTests : IDisposable
         // exception.
         Assert.Equal(7, Run("""
             import std.os { env };
-            import std.string { length };
             fn main(): int {
                 let v = env("LYRIC_TEST_DEFINITELY_UNSET_XYZ");
                 if (v == null) { return 7; }

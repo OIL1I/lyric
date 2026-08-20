@@ -10,8 +10,6 @@
 
 module std.math;
 
-import std.core { Deprecated };
-
 /// The circle constant π.
 pub let pi: float = 3.141592653589793;
 
@@ -275,60 +273,5 @@ pub fn toDegrees(radians: float): float {
     return radians * 180.0 / pi;
 }
 
-// ------------------------------------------------------------------ randomness
-//
-// MOVED to `std.random` in v1.14: randomness is not arithmetic, and the new module carries the
-// helpers — `shuffle`, `choice`, `nextGaussian` — that want imports a math module has no
-// business having. This twin stays one release as the migration path and goes with 2.0.
-
-/// A deterministic pseudo-random generator. Moved to `std.random`, where `shuffle`, `choice`
-/// and `nextGaussian` live beside it; this twin goes with 2.0.
-@Deprecated { message = "use std.random.Random" }
-pub class Random {
-    /// The generator state; every draw replaces it.
-    state: int,
-
-    /// The next raw value. It may have either sign.
-    pub mut fn nextInt(): int {
-        var x = this.state;
-        x = x ^ x << 13;
-        x = x ^ x >> 7;
-        x = x ^ x << 17;
-        this.state = x;
-        return x;
-    }
-
-    /// Uniformly distributed in `[lo, hi)`. An empty range yields `lo`.
-    pub mut fn nextIntRange(lo: int, hi: int): int {
-        if (hi <= lo) {
-            return lo;
-        }
-        // Magnitude first, then modulo: a negative raw value would otherwise land below `lo`.
-        return lo + absInt(this.nextInt()) % (hi - lo);
-    }
-
-    /// Uniformly distributed in `[0, 1)`.
-    pub mut fn nextFloat(): float {
-        // 53 bits are exactly the mantissa of a float64; more would not be representable.
-        let bits = absInt(this.nextInt()) % 9007199254740992;
-        return bits as float / 9007199254740992.0;
-    }
-
-    /// A generator with an explicit seed. A seed of 0 is a fixed point for xorshift — the
-    /// sequence would stay 0 forever — so it is replaced silently rather than panicking on a
-    /// plausible input.
-    pub static fn seeded(seed: int): Random {
-        return Random { state = if (seed == 0) 0x2545F4914F6CDD1D else seed };
-    }
-
-    /// True or false, from the next draw's parity.
-    pub mut fn nextBool(): bool {
-        return this.nextInt() % 2 == 0;
-    }
-}
-
-/// A generator with an explicit seed.
-@Deprecated { message = "use std.random.Random.seeded()" }
-pub fn newRandom(seed: int): Random {
-    return Random.seeded(seed);
-}
+// Randomness lives in `std.random` (since v1.14): randomness is not arithmetic. The migration
+// twin that bridged one release went with 2.0.

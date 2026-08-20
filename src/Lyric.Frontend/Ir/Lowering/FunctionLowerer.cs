@@ -1310,7 +1310,9 @@ internal sealed class FunctionLowerer
                 "iterating a string (std.iter is not on the module path)", stmt.Span);
 
             var type = _typeTable.Intern(symbol);
-            var chars = CallHelper("std.string.toChars", stmt.Span, LowerExpr(stmt.Iterable));
+            // The compiler-bound edge behind 'for (c in s)'. Bound to the private twin since 2.0:
+            // the deprecated pub form went with the cut, the native stayed.
+            var chars = CallHelper("std.string.rawToChars", stmt.Span, LowerExpr(stmt.Iterable));
 
             var instance = _slots.NewTemp(new IrRefType(type));
             _b.Emit(new NewObject(instance, type, new IrRefType(type), stmt.Span));

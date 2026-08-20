@@ -178,10 +178,10 @@ public class WarningAnalyzerTests
     public void Only_the_unused_name_of_a_clause_warns()
     {
         var de = Check(
-            "import std.string { concat, length, trim };\n\nfn main(): int {\n    return length(concat(\"a\", \"b\"));\n}\n",
+            "import std.string { concat, repeat };\n\nfn main(): int {\n    return concat(\"a\", \"b\").length();\n}\n",
             withStdlib: true);
         AssertWarns(de, "LYR-SEM0072");
-        Assert.Contains(de.Diagnostics, d => d.Message.Contains("import 'trim'"));
+        Assert.Contains(de.Diagnostics, d => d.Message.Contains("import 'repeat'"));
         Assert.DoesNotContain(de.Diagnostics, d => d.Message.Contains("import 'concat'"));
     }
 

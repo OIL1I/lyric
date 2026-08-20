@@ -69,10 +69,12 @@ public sealed class DiagnosticMappingTests
         var sm = new SourceManager();
         var id = sm.AddVirtual("map.lyr", "abcdef");
         var de = new DiagnosticEngine(sm);
+        // SEM0074 lost its Deprecated tag with 2.0: it is a plain error now, and an error with
+        // strikethrough would read as "still works, just frowned upon".
         de.Report("LYR-SEM0071", Severity.Warning, new Span(id, 0, 1), "unused");
         de.Report("LYR-SEM0073", Severity.Warning, new Span(id, 1, 2), "unreachable");
-        de.Report("LYR-SEM0074", Severity.Warning, new Span(id, 2, 3), "deprecated form");
-        de.Report("LYR-SEM0001", Severity.Error,   new Span(id, 3, 4), "plain error");
+        de.Report("LYR-SEM0076", Severity.Warning, new Span(id, 2, 3), "deprecated form");
+        de.Report("LYR-SEM0074", Severity.Error,   new Span(id, 3, 4), "static extension");
 
         var mapped = DiagnosticMapper.ForFile(sm, de.SortedSnapshot(), id);
 

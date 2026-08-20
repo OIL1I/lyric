@@ -11,10 +11,6 @@
 
 module std.string;
 
-// Possible since v1.13: 'std.core' imports nothing anymore — it is the library's root, and this
-// import is the reason why.
-import std.core { Deprecated };
-
 /// The two joined — what `+` on strings compiles to.
 pub fn concat(a: string, b: string): string;
 
@@ -45,55 +41,6 @@ pub fn repeat(value: string, count: int): string;
 // There is deliberately no 's[i]'. Access at a code-point position is O(n), and an index operator
 // would make the obvious loop quadratic without showing it. Walk characters with 'for (c in s)'.
 
-/// The length in code points — the unit every position in this module uses.
-@Deprecated { message = "use s.length()" }
-pub fn length(value: string): int;
-/// The character at a code-point position. O(n): a position counts code points, not bytes.
-@Deprecated { message = "use s.charAt(i)" }
-pub fn charAt(value: string, index: int): char;
-/// `count` characters from `start`, both in code points.
-@Deprecated { message = "use s.substring(start, count)" }
-pub fn substring(value: string, start: int, count: int): string;
-
-// Position in code points, or -1, so the result can be passed straight to 'charAt' and
-// 'substring'.
-/// The first position of `needle` in code points, or `-1` — ready for `charAt` and
-/// `substring`.
-@Deprecated { message = "use s.indexOf(needle)" }
-pub fn indexOf(value: string, needle: string): int;
-/// Whether `needle` occurs.
-@Deprecated { message = "use s.contains(needle)" }
-pub fn contains(value: string, needle: string): bool;
-/// Whether the string begins with `prefix`.
-@Deprecated { message = "use s.startsWith(prefix)" }
-pub fn startsWith(value: string, prefix: string): bool;
-/// Whether the string ends with `suffix`.
-@Deprecated { message = "use s.endsWith(suffix)" }
-pub fn endsWith(value: string, suffix: string): bool;
-
-/// Without leading and trailing whitespace.
-@Deprecated { message = "use s.trim()" }
-pub fn trim(value: string): string;
-
-// Ordinal rather than culture-dependent: the same program yields the same result everywhere.
-/// Upper-cased, ordinal — the same result everywhere, no culture involved.
-@Deprecated { message = "use s.toUpper()" }
-pub fn toUpper(value: string): string;
-/// Lower-cased, ordinal.
-@Deprecated { message = "use s.toLower()" }
-pub fn toLower(value: string): string;
-
-// An empty separator is a panic: "split into what" has no answer.
-/// The parts between occurrences of `separator`. An empty separator panics: "split into
-/// what" has no answer.
-@Deprecated { message = "use s.split(separator)" }
-pub fn split(value: string, separator: string): string[];
-
-// What 'for (c in s)' uses: one O(n) pass instead of n calls to 'charAt'.
-/// The characters as an array, in one O(n) pass — what `for (c in s)` uses.
-@Deprecated { message = "use s.toChars()" }
-pub fn toChars(value: string): char[];
-
 /// The characters joined back into one string — the inverse of `toChars`. Native since v1.14:
 /// one call instead of one string per character.
 pub fn fromChars(chars: char[]): string;
@@ -102,11 +49,6 @@ pub fn fromChars(chars: char[]): string;
 //
 // The first natives whose PARAMETER is an array. The format always allowed it (§3 of the
 // bytecode specification); the registry and this module simply never used it before.
-
-/// The string as UTF-8 bytes — the inverse of `utf8Decode`, and what a file or a socket
-/// actually carries.
-@Deprecated { message = "use s.utf8Encode()" }
-pub fn utf8Encode(value: string): uint8[];
 
 /// The bytes as a string, STRICTLY: invalid UTF-8 answers `null` rather than a U+FFFD quietly
 /// standing in for the data — the difference to `readText`, whose replacement decoding is
@@ -119,9 +61,9 @@ fn joinAll(parts: string[], separator: string): string;
 
 // --- the raw twins (v1.15) ----------------------------------------------------------------
 //
-// Inside 'extend string' a method SHADOWS the free function of the same name, so the method
-// bodies below reach the host through these private twins. The registry binds both names to
-// one implementation; the deprecated pub forms above stay bound for existing bytecode.
+// The method bodies below reach the host through these private twins. The registry also still
+// binds the old free-form names (length, charAt, …) to the same implementations: the pub
+// declarations went with 2.0, but bytecode compiled against 1.x keeps loading.
 
 fn rawLength(value: string): int;
 fn rawCharAt(value: string, index: int): char;
@@ -139,9 +81,9 @@ fn rawUtf8Encode(value: string): uint8[];
 
 // =============================================================== the method API (v1.15)
 //
-// One name, one form: `s.trim()`, not a free function beside a method. The free forms above and
-// below warn as deprecated and go with 2.0; `concat` and `repeat` stay free — they back `+` and
-// `*` — and the type-directed families (`fromXxx`, `parseXxx`) keep their names.
+// One name, one form: `s.trim()`, not a free function beside a method. The deprecated free
+// forms went with 2.0; `concat` and `repeat` stay free — they back `+` and `*` — and the
+// type-directed families (`fromXxx`, `parseXxx`) keep their names.
 //
 // A method is a call and looks like one. `s.length()` has parentheses BECAUSE it costs O(n) —
 // a property would promise a stored answer this type does not have.
@@ -470,20 +412,6 @@ pub fn digitToChar(value: int): ?char {
 
 // ------------------------------------------------------------------ predicates
 
-/// Whether the length is zero.
-@Deprecated { message = "use s.isEmpty()" }
-pub fn isEmpty(value: string): bool {
-    return value.isEmpty();
-}
-
-/// Empty or whitespace only.
-// Over `toChars` rather than `charAt` per position: `charAt` is O(n), and the loop around it
-// would be quadratic. The same pattern holds for everything below that walks characters.
-@Deprecated { message = "use s.isBlank()" }
-pub fn isBlank(value: string): bool {
-    return value.isBlank();
-}
-
 // ------------------------------------------------------------------ searching
 
 // Whether `needle` stands at `at` in `chars` — the window comparison the searches below share.
@@ -498,29 +426,6 @@ fn matchesAt(chars: char[], needle: char[], at: int): bool {
     return true;
 }
 
-/// Searches from a position. `-1` when nothing is found, as in `indexOf`.
-// One `toChars` per side and a window comparison per position: the old form compared a fresh
-// `substring` copy per position, which multiplied two O(n) costs.
-@Deprecated { message = "use s.indexOfFrom(needle, start)" }
-pub fn indexOfFrom(value: string, needle: string, start: int): int {
-    return value.indexOfFrom(needle, start);
-}
-
-/// The LAST occurrence.
-@Deprecated { message = "use s.lastIndexOf(needle)" }
-pub fn lastIndexOf(value: string, needle: string): int {
-    return value.lastIndexOf(needle);
-}
-
-/// How often `needle` occurs, WITHOUT overlap.
-///
-/// Overlapping occurrences are not counted: `count("aaa", "aa")` is 1, not 2. This matches
-/// `replace`.
-@Deprecated { message = "use s.count(needle)" }
-pub fn count(value: string, needle: string): int {
-    return value.count(needle);
-}
-
 // ------------------------------------------------------------------ splitting and joining
 
 /// Joins the parts with a separator: the inverse of `split`. One native call — a left fold
@@ -529,59 +434,7 @@ pub fn join(parts: string[], separator: string): string {
     return joinAll(parts, separator);
 }
 
-/// Splits at line breaks. Both `\r\n` and `\n` count.
-@Deprecated { message = "use s.splitLines()" }
-pub fn splitLines(value: string): string[] {
-    return value.splitLines();
-}
-
-/// Splits at the FIRST occurrence; the rest stays whole, for `key=value=more`.
-@Deprecated { message = "use s.splitFirst(separator)" }
-pub fn splitFirst(value: string, separator: string): string[] {
-    return value.splitFirst(separator);
-}
-
-/// Every non-overlapping occurrence of `needle` replaced. An empty needle changes nothing.
-// Untouched stretches travel as WHOLE substrings into a builder rather than character by
-// character into a growing string: the old form copied the entire result once per character.
-@Deprecated { message = "use s.replace(needle, replacement)" }
-pub fn replace(value: string, needle: string, replacement: string): string {
-    return value.replace(needle, replacement);
-}
-
-/// The first occurrence replaced; without one the string comes back unchanged.
-@Deprecated { message = "use s.replaceFirst(needle, replacement)" }
-pub fn replaceFirst(value: string, needle: string, replacement: string): string {
-    return value.replaceFirst(needle, replacement);
-}
-
 // ------------------------------------------------------------------ trimming and padding
-
-/// Without leading whitespace.
-@Deprecated { message = "use s.trimStart()" }
-pub fn trimStart(value: string): string {
-    return value.trimStart();
-}
-
-/// Without trailing whitespace.
-@Deprecated { message = "use s.trimEnd()" }
-pub fn trimEnd(value: string): string {
-    return value.trimEnd();
-}
-
-/// Pads at the front until `width` is reached. A longer string is left unchanged; truncating
-/// would lose data in a function that only formats.
-@Deprecated { message = "use s.padStart(width, fill)" }
-pub fn padStart(value: string, width: int, fill: char): string {
-    return value.padStart(width, fill);
-}
-
-/// Pads at the end until `width` is reached. A longer string is left unchanged; truncating
-/// would lose data in a function that only formats.
-@Deprecated { message = "use s.padEnd(width, fill)" }
-pub fn padEnd(value: string, width: int, fill: char): string {
-    return value.padEnd(width, fill);
-}
 
 // ------------------------------------------------------------------ parsing
 //
@@ -593,7 +446,7 @@ pub fn padEnd(value: string, width: int, fill: char): string {
 /// No overflow protection: a number beyond `int64` wraps rather than yielding `null`. Detecting
 /// it would need a division per digit.
 pub fn parseInt(value: string): ?int {
-    let chars = toChars(value);
+    let chars = rawToChars(value);
     let n = chars.length;
     if (n == 0) {
         return null;
@@ -631,7 +484,7 @@ pub fn parseIntRadix(value: string, radix: int): ?int {
         return null;
     }
 
-    let chars = toChars(value);
+    let chars = rawToChars(value);
     let n = chars.length;
     if (n == 0) {
         return null;
@@ -685,7 +538,7 @@ pub fn parseBool(value: string): ?bool {
 ///
 /// Without exponent notation (`1e9`), which would need a state machine of its own.
 pub fn parseFloat(value: string): ?float {
-    let dot = indexOf(value, ".");
+    let dot = rawIndexOf(value, ".");
     if (dot < 0) {
         let whole = parseInt(value);
         if (whole == null) {
@@ -694,15 +547,15 @@ pub fn parseFloat(value: string): ?float {
         return whole as float;
     }
 
-    let head = substring(value, 0, dot);
-    let tail = substring(value, dot + 1, length(value) - dot - 1);
-    if (length(tail) == 0) {
+    let head = rawSubstring(value, 0, dot);
+    let tail = rawSubstring(value, dot + 1, rawLength(value) - dot - 1);
+    if (rawLength(tail) == 0) {
         return null;
     }
 
     var wholePart = 0;
     var negative = false;
-    if (length(head) > 0) {
+    if (rawLength(head) > 0) {
         if (head == "-") {
             negative = true;
         } else {
@@ -711,12 +564,12 @@ pub fn parseFloat(value: string): ?float {
                 return null;
             }
             wholePart = g;
-            negative = charAt(head, 0) == '-';
+            negative = rawCharAt(head, 0) == '-';
         }
     }
 
     // The fractional digits one at a time, so no sign gets into them.
-    let tailChars = toChars(tail);
+    let tailChars = rawToChars(tail);
     var fraction = 0.0;
     var divisor = 1.0;
     var i = 0;
@@ -759,13 +612,6 @@ pub class StringBuilder {
         return StringBuilder { parts = [""] * 4, count = 0 };
     }
 
-    /// How many pieces were appended — the PIECE count, an implementation detail, NOT the
-    /// character count. Measure the built string instead. (It would carry `@Deprecated`, but an
-    /// attribute cannot sit on a member yet; the removal is planned for 2.0 regardless.)
-    pub fn length(): int {
-        return this.count;
-    }
-
     /// Adds a piece; the backing array doubles when full.
     pub mut fn append(value: string): void {
         if (this.count == this.parts.length) {
@@ -805,10 +651,4 @@ pub class StringBuilder {
         }
         return joinAll(filled, "");
     }
-}
-
-/// An empty builder.
-@Deprecated { message = "use StringBuilder.new()" }
-pub fn newStringBuilder(): StringBuilder {
-    return StringBuilder.new();
 }

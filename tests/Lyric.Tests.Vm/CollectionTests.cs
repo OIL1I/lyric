@@ -54,19 +54,19 @@ public class CollectionTests
             NativeRegistry.CreateDefault(TextWriter.Null, TextWriter.Null)).AsI64;
     }
 
-    private const string Head = "import std.collections { List, emptyList };\n";
+    private const string Head = "import std.collections { List };\n";
 
     // ------------------------------------------------------------------ List<T>
 
     [Fact]
     public void A_list_starts_empty() =>
-        Assert.Equal(0, Run(Head + "fn main(): int { return emptyList<int>().length(); }"));
+        Assert.Equal(0, Run(Head + "fn main(): int { return List<int>.empty().length(); }"));
 
     [Fact]
     public void Push_appends_and_counts() =>
         Assert.Equal(3, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(1);
                 xs.push(2);
                 xs.push(3);
@@ -82,7 +82,7 @@ public class CollectionTests
         // green even with the doubling broken.
         Assert.Equal(4950, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 var i = 0;
                 while (i < 100) { xs.push(i); i = i + 1; }
 
@@ -98,7 +98,7 @@ public class CollectionTests
     public void Pop_returns_the_last_value_and_shrinks() =>
         Assert.Equal(21, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(1);
                 xs.push(2);
                 let last = xs.pop() ?? 0;
@@ -112,7 +112,7 @@ public class CollectionTests
         // range. Hence `?T` and no `panic`.
         Assert.Equal(7, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 return xs.pop() ?? 7;
             }
             """));
@@ -122,9 +122,9 @@ public class CollectionTests
         // A second instantiation: with only one the test would stay green even if the monomorphization
         // ignored the element type.
         Assert.Equal(2, Run("""
-            import std.collections { List, emptyList };
+            import std.collections { List };
             fn main(): int {
-                let xs = emptyList<string>();
+                let xs = List<string>.empty();
                 xs.push("a");
                 xs.push("b");
                 return xs.length();
@@ -139,7 +139,7 @@ public class CollectionTests
         // over `Iterator<T>`. The compiler knows exactly ONE built-in indexable form, the array.
         Assert.Equal(20, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(10);
                 xs.push(20);
                 return xs[1];
@@ -152,7 +152,7 @@ public class CollectionTests
         // `Indexable<T>` would have to reproduce a special case.
         Assert.Equal(5, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(10);
                 xs[0] = 5;
                 return xs[0];
@@ -199,7 +199,7 @@ public class CollectionTests
         // is exactly where the old version returned a leftover.
         var panic = Assert.Throws<LyricPanic>(() => Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(10);
                 xs.push(20);
                 xs.push(30);
@@ -216,7 +216,7 @@ public class CollectionTests
         // reads it back although it has been removed.
         Assert.Throws<LyricPanic>(() => Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(10);
                 xs.push(20);
                 let v = xs.pop();
@@ -227,7 +227,7 @@ public class CollectionTests
     [Fact]
     public void A_negative_index_panics() =>
         Assert.Throws<LyricPanic>(() => Run(Head + """
-            fn main(): int { let xs = emptyList<int>(); xs.push(1); return xs[0 - 1]; }
+            fn main(): int { let xs = List<int>.empty(); xs.push(1); return xs[0 - 1]; }
             """));
 
     [Fact]
@@ -236,7 +236,7 @@ public class CollectionTests
         // wrong place after a pop.
         Assert.Equal(99, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(10);
                 xs.push(20);
                 let v = xs.pop();
@@ -255,7 +255,7 @@ public class CollectionTests
         // not copy on every push and pop.
         Assert.Equal(128, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 var i = 0;
                 while (i < 100) { xs.push(i); i = i + 1; }
                 return xs.capacity();
@@ -264,7 +264,7 @@ public class CollectionTests
 
         Assert.Equal(16, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 var i = 0;
                 while (i < 100) { xs.push(i); i = i + 1; }
                 var k = 0;
@@ -279,7 +279,7 @@ public class CollectionTests
         // Below four slots the copying is not worth it: the gain would be a few dozen bytes.
         Assert.Equal(4, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(1);
                 let v = xs.pop();
                 return xs.capacity();
@@ -295,7 +295,7 @@ public class CollectionTests
         // be ambiguous with two candidates and would have to scan every visible module.
         Assert.Equal(6, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(1);
                 xs.push(2);
                 xs.push(3);
@@ -312,7 +312,7 @@ public class CollectionTests
         // 'iter()' yields a fresh cursor on every call.
         Assert.Equal(9, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 xs.push(1);
                 xs.push(2);
                 xs.push(3);
@@ -328,7 +328,7 @@ public class CollectionTests
     public void An_empty_list_iterates_zero_times() =>
         Assert.Equal(0, Run(Head + """
             fn main(): int {
-                let xs = emptyList<int>();
+                let xs = List<int>.empty();
                 var n = 0;
                 for (x in xs) { n = n + 1; }
                 return n;
@@ -401,7 +401,7 @@ public class CollectionTests
             import std.collections;
 
             fn main(): int {
-                var xs = collections.emptyList<int>();
+                var xs = collections.List<int>.empty();
                 xs.push(3);
                 xs.push(5);
                 xs.push(9);
@@ -421,7 +421,7 @@ public class CollectionTests
             import std.collections;
 
             fn main(): int {
-                var xs = collections.emptyList<int>();
+                var xs = collections.List<int>.empty();
                 xs.push(1);
                 xs.push(2);
                 xs.push(3);
@@ -437,7 +437,7 @@ public class CollectionTests
             import std.collections;
 
             fn main(): int {
-                let xs = collections.emptyList<int>();
+                let xs = collections.List<int>.empty();
                 return xs.toArray().length;
             }
             """));
@@ -449,7 +449,7 @@ public class CollectionTests
             import std.collections;
 
             fn main(): int {
-                var xs = collections.emptyList<int>();
+                var xs = collections.List<int>.empty();
                 xs.push(1);
 
                 let a = xs.toArray();
@@ -464,7 +464,7 @@ public class CollectionTests
             import std.collections;
 
             fn main(): int {
-                var xs = collections.emptyList<int>();
+                var xs = collections.List<int>.empty();
                 xs.push(1);
                 xs.push(2);
                 xs.clear();
@@ -484,7 +484,7 @@ public class CollectionTests
             import std.collections;
 
             fn main(): int {
-                var xs = collections.emptyList<int>();
+                var xs = collections.List<int>.empty();
                 xs.push(1);
                 xs.push(2);
                 xs.push(3);
@@ -501,7 +501,7 @@ public class CollectionTests
             import std.collections;
 
             fn main(): int {
-                var xs = collections.emptyList<int>();
+                var xs = collections.List<int>.empty();
                 xs.push(1);
                 xs.clear();
                 xs.push(7);
