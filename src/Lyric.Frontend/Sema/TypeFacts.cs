@@ -69,6 +69,22 @@ public static class TypeFacts
     };
 
     /// <summary>
+    /// Does an integer literal fit a FLOAT target exactly? "Fits" is exact by the
+    /// specification (§3.1): 2⁵³+1 meeting a <c>float</c> is an error, never a silent
+    /// rounding. A magnitude is exactly representable when its significant bit-span — top set
+    /// bit down to bottom set bit — fits the target's significand (24 bits for float32, 53 for
+    /// float64); the exponent range is no concern, 2⁶⁴ sits far inside both.
+    /// </summary>
+    public static bool IntLiteralExactInFloat(ulong magnitude, PrimitiveKind target)
+    {
+        if (magnitude == 0) return true;
+        var significand = target is PrimitiveKind.Float32 ? 24 : 53;
+        var hi = 63 - System.Numerics.BitOperations.LeadingZeroCount(magnitude);
+        var lo = System.Numerics.BitOperations.TrailingZeroCount(magnitude);
+        return hi - lo + 1 <= significand;
+    }
+
+    /// <summary>
     /// The <see cref="TypeSymbol"/> behind a named type; <c>null</c> when there is none — a scalar,
     /// an array, a function type.
     ///

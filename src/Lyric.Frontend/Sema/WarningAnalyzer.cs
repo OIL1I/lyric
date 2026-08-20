@@ -498,7 +498,15 @@ internal sealed class WarningAnalyzer
             case BinaryExpr bi: WalkExpr(bi.Left); WalkExpr(bi.Right); break;
             case UnaryExpr u:
                 if (u.Operator is UnaryOp.PreInc or UnaryOp.PreDec) MarkMutated(u.Operand);
+                if (u is { Operator: UnaryOp.Neg, Operand: IntLiteralExpr negLit })
+                {
+                    CheckLiteralInRange(negLit, negative: true);
+                    break;
+                }
                 WalkExpr(u.Operand);
+                break;
+            case IntLiteralExpr lit:
+                CheckLiteralInRange(lit, negative: false);
                 break;
             case PostfixExpr p:
                 if (p.Operator is PostfixOp.Inc or PostfixOp.Dec) MarkMutated(p.Operand);
@@ -540,5 +548,23 @@ internal sealed class WarningAnalyzer
                 foreach (var seg in fs.Segments) if (seg is InterpHole h) WalkExpr(h.Expr);
                 break;
         }
+    }
+
+    /// <summary>
+    /// A literal that stayed at the DEFAULT type after adaptation had its chances must FIT that
+    /// type. The checker types an unsuffixed literal <c>int</c> provisionally and every §3.1
+    /// context that retargets it records the adapted type; what remains <c>int</c> with a
+    /// magnitude beyond <c>int</c>'s range used to reach the lowering as raw bits and
+    /// reinterpret to a negative number (found by the 2.0.1 audit). An ERROR in the warnings
+    /// pass, deliberately: this walk is the one place that sees every literal with its FINAL
+    /// type — checking eagerly in the checker would refuse the uint masks §3.1 allows.
+    /// </summary>
+    private void CheckLiteralInRange(IntLiteralExpr lit, bool negative)
+    {
+        if (lit.Suffix is not null) return;
+        if (_types.TypeOf(lit) is not PrimitiveType { Kind: PrimitiveKind.Int or PrimitiveKind.Int64 }) return;
+        if (TypeFacts.IntLiteralFits(negative, lit.Value, PrimitiveKind.Int)) return;
+        _de.Report("LYR-SEM0001", Severity.Error, lit.Span,
+            "integer literal does not fit 'int' — annotate the uint type that holds it");
     }
 }

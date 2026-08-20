@@ -45,6 +45,9 @@ public sealed class TypeChecker
     private readonly TypeSymbol? _iterator;
     private readonly TypeSymbol? _arrayIterator;
     private readonly TypeSymbol? _rangeIterator;
+    private readonly TypeSymbol? _inclusiveRangeIterator;
+    private readonly TypeSymbol? _unsignedRangeIterator;
+    private readonly TypeSymbol? _inclusiveUnsignedRangeIterator;
     private readonly TypeSymbol? _stringIterator;
     private readonly TypeSymbol? _iterable;
     private readonly TypeSymbol? _indexable;
@@ -76,6 +79,9 @@ public sealed class TypeChecker
         _iterator = iter?.LookupLocal("Iterator") as TypeSymbol;
         _arrayIterator = iter?.LookupLocal("ArrayIterator") as TypeSymbol;
         _rangeIterator = iter?.LookupLocal("RangeIterator") as TypeSymbol;
+        _inclusiveRangeIterator = iter?.LookupLocal("InclusiveRangeIterator") as TypeSymbol;
+        _unsignedRangeIterator = iter?.LookupLocal("UnsignedRangeIterator") as TypeSymbol;
+        _inclusiveUnsignedRangeIterator = iter?.LookupLocal("InclusiveUnsignedRangeIterator") as TypeSymbol;
         _stringIterator = iter?.LookupLocal("StringIterator") as TypeSymbol;
         _iterable = iter?.LookupLocal("Iterable") as TypeSymbol;
 
@@ -149,6 +155,9 @@ public sealed class TypeChecker
         _result.IteratorInterface = _iterator;
         _result.ArrayIterator = _arrayIterator;
         _result.RangeIterator = _rangeIterator;
+        _result.InclusiveRangeIterator = _inclusiveRangeIterator;
+        _result.UnsignedRangeIterator = _unsignedRangeIterator;
+        _result.InclusiveUnsignedRangeIterator = _inclusiveUnsignedRangeIterator;
         _result.StringIterator = _stringIterator;
         _result.Indexable = _indexable;
         _result.Iterable = _iterable;
@@ -184,6 +193,15 @@ public sealed class TypeChecker
                 var initT = CheckExpr(g.Binding.Initializer, module.Members);
                 _inGlobalInitializer = false;
                 if (declared is not null) { CheckAssignable(g.Binding.Initializer, initT, declared, g.Span); type = declared; }
+                // The same rule as a local binding (§7.1): 'null' and '[]' fix no type.
+                else if (initT is NullType
+                         || (g.Binding.Initializer is ArrayLitExpr { Elements.Length: 0 } && initT is ArrayOf { Element: ErrorType }))
+                {
+                    _de.Report("LYR-SEM0010", Severity.Error, g.Span,
+                        $"'{g.Binding.Name}' needs a type — "
+                        + (initT is NullType ? "'null'" : "'[]'") + " fixes none on its own");
+                    type = LyrType.Error;
+                }
                 else type = initT;
             }
             else type = declared ?? LyrType.Error;
@@ -315,6 +333,15 @@ public sealed class TypeChecker
         if (declared is null && init is null)
             _de.Report("LYR-SEM0010", Severity.Error, sb.Span,
                 $"'{sb.Binding.Name}' needs a type or an initializer");
+        // The same rule as a local binding (§7.1): 'null' and '[]' fix no type on their own.
+        else if (declared is null && (init is NullType
+                 || (sb.Binding.Initializer is ArrayLitExpr { Elements.Length: 0 } && init is ArrayOf { Element: ErrorType })))
+        {
+            _de.Report("LYR-SEM0010", Severity.Error, sb.Span,
+                $"'{sb.Binding.Name}' needs a type — "
+                + (init is NullType ? "'null'" : "'[]'") + " fixes none on its own");
+            init = LyrType.Error;
+        }
         else if (declared is not null && init is not null)
             CheckAssignable(sb.Binding.Initializer!, init, declared, sb.Span);
 
@@ -663,6 +690,16 @@ public sealed class TypeChecker
         LyrType type;
         if (declared is not null && initT is not null) { CheckAssignable(bnd.Initializer!, initT, declared, bnd.Span); type = declared; }
         else if (declared is not null) type = declared;
+        // 'null' and '[]' fix no type of their own (§7.1 of the specification). Without this
+        // report the null type or the empty array's error element flowed SILENTLY into the
+        // lowering, which died on it as an internal exception — a crash for a two-line program.
+        else if (initT is NullType || (bnd.Initializer is ArrayLitExpr { Elements.Length: 0 } && initT is ArrayOf { Element: ErrorType }))
+        {
+            _de.Report("LYR-SEM0010", Severity.Error, bnd.Span,
+                $"binding '{bnd.Name}' needs a type — "
+                + (initT is NullType ? "'null'" : "'[]'") + " fixes none on its own");
+            type = LyrType.Error;
+        }
         else if (initT is not null) type = initT;
         else { _de.Report("LYR-SEM0010", Severity.Error, bnd.Span, $"binding '{bnd.Name}' needs a type or an initializer"); type = LyrType.Error; }
 
@@ -2673,10 +2710,15 @@ public sealed class TypeChecker
                 args = [];
 
             if (args.Length != ts.Generics.Length)
+            {
                 _de.Report("LYR-SEM0026", Severity.Error, si.Span,
                     $"generic type '{ts.Name}' expects {ts.Generics.Length} type argument(s), got "
                     + $"{args.Length} — write them ('{ts.Name}<…> {{ … }}') or use it where the type "
                     + "is known");
+                // Poison instead of checking the fields against UNBOUND parameters: each would
+                // add a "cannot assign 'X' to 'T'" behind the one actual cause.
+                return LyrType.Error;
+            }
             var gi = new GenericInstance(ts, args);
             subst = SubstMap(gi);
             CheckConstraints(ts.Generics, args, si.Span);
@@ -3736,7 +3778,18 @@ public sealed class TypeChecker
 
         if (!IsAssignable(expr, from, to))
         {
-            _de.Report("LYR-SEM0001", Severity.Error, span, $"cannot assign '{TypeFacts.Display(from)}' to '{TypeFacts.Display(to)}'");
+            var fromText = TypeFacts.Display(from);
+            var toText = TypeFacts.Display(to);
+            // "cannot assign 'T' to 'T'" explains nothing. When the DISPLAY collides the types
+            // differ by identity: two declarations sharing a name, or a generic reaching
+            // itself at a larger type — which monomorphization refuses (§8.1).
+            var hint = fromText == toText
+                ? " — two different types share this name (declared in different scopes, or a "
+                  + "generic call instantiating itself at a larger type, which cannot be "
+                  + "monomorphized)"
+                : "";
+            _de.Report("LYR-SEM0001", Severity.Error, span,
+                $"cannot assign '{fromText}' to '{toText}'{hint}");
             return;
         }
 
@@ -3870,7 +3923,9 @@ public sealed class TypeChecker
         if (TryUntypedIntLiteral(expr, out var negative, out var magnitude))
         {
             if (TypeFacts.IsInteger(target)) return TypeFacts.IntLiteralFits(negative, magnitude, target.Kind);
-            if (TypeFacts.IsFloat(target)) return true; // an integer literal adapts to a float
+            // An integer literal adapts to a float only EXACTLY (§3.1): 2^53+1 meeting a
+            // 'float' is the ordinary assignment error, never a silent rounding.
+            if (TypeFacts.IsFloat(target)) return TypeFacts.IntLiteralExactInFloat(magnitude, target.Kind);
         }
         if (IsUntypedFloatLiteral(expr) && TypeFacts.IsFloat(target)) return true;
         return false;

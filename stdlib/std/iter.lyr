@@ -21,8 +21,9 @@ pub interface Iterator<T> {
     mut fn next(): ?T;
 }
 
-/// A numeric range. `a..b` and `a..=b` differ only in the end value the compiler substitutes,
-/// so there is one adapter rather than two.
+/// An exclusive numeric range, `a..b`. The inclusive form has its own adapter below: folding
+/// `a..=b` into `a..b+1` was the 2.0.1 bug — at the type's maximum the `+1` wraps and the
+/// loop runs zero times.
 pub class RangeIterator :: [Iterator<int>] {
     /// The next value to yield.
     current: int,
@@ -36,6 +37,79 @@ pub class RangeIterator :: [Iterator<int>] {
         }
         let value = this.current;
         this.current = this.current + 1;
+        return value;
+    }
+}
+
+// The compiler-bound adapter behind 'a..=b' (private: the compiler reaches it by symbol, and
+// a second public range type would be API for a distinction the range SYNTAX already carries).
+// A done flag rather than arithmetic on the bound: 'last' may be the type's maximum, where
+// both 'last + 1' and an incremented cursor would wrap (§7.2 of the specification).
+class InclusiveRangeIterator :: [Iterator<int>] {
+    /// The next value to yield.
+    current: int,
+    /// The LAST value yielded — inclusive, and possibly the type's maximum.
+    last: int,
+    /// Whether `last` has been yielded.
+    done: bool,
+
+    /// The next value, or `null` at the end.
+    pub mut fn next(): ?int {
+        if (this.done || this.current > this.last) {
+            return null;
+        }
+        let value = this.current;
+        if (this.current == this.last) {
+            this.done = true;
+        } else {
+            this.current = this.current + 1;
+        }
+        return value;
+    }
+}
+
+// The unsigned twins, compiler-bound behind ranges over 'uint'. A uint range cannot ride the
+// int adapters: a bound beyond 2^63 would reinterpret, and the SIGNED comparison would call a
+// range that crosses the sign bit empty. Smaller unsigned types embed into int order-
+// preserving and take the signed adapters; only the full-width uint needs these.
+class UnsignedRangeIterator :: [Iterator<uint>] {
+    /// The next value to yield.
+    current: uint,
+    /// The first value NOT yielded.
+    end: uint,
+
+    /// The next value, or `null` at the end.
+    pub mut fn next(): ?uint {
+        if (this.current >= this.end) {
+            return null;
+        }
+        let value = this.current;
+        this.current = this.current + 1;
+        return value;
+    }
+}
+
+// See InclusiveRangeIterator for the done flag; see UnsignedRangeIterator for why uint has
+// its own pair.
+class InclusiveUnsignedRangeIterator :: [Iterator<uint>] {
+    /// The next value to yield.
+    current: uint,
+    /// The LAST value yielded — inclusive, and possibly the type's maximum.
+    last: uint,
+    /// Whether `last` has been yielded.
+    done: bool,
+
+    /// The next value, or `null` at the end.
+    pub mut fn next(): ?uint {
+        if (this.done || this.current > this.last) {
+            return null;
+        }
+        let value = this.current;
+        if (this.current == this.last) {
+            this.done = true;
+        } else {
+            this.current = this.current + 1;
+        }
         return value;
     }
 }

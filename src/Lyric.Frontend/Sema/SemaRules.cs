@@ -110,6 +110,10 @@ public sealed class SemaRules
     private static bool ValidMain(FunctionDecl fn)
     {
         if (!IsNamed(fn.ReturnType, "int")) return false;
+        // The entry point declares nothing (§9.2): a throws clause on main would let an
+        // exception escape the program as LYR-VM0010 — the panic that is supposed to be
+        // unreachable from source.
+        if (fn.Throws is not null) return false;
         return fn.Parameters.Length switch
         {
             0 => true,
