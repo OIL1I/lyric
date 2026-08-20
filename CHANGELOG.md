@@ -10,11 +10,12 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v2.2.0 — 2026-08-20
 
 The A8 wave: both coroutine edges Erato's register filed after building its cutscene driver,
 plus one the fix uncovered. The bytecode format stays **3.2**; a module that never calls
-`next()` loads on every 2.x runtime.
+`next()` loads on every 2.x runtime. Four conformance cases activate with this release
+(`//! since: 2.2.0`); the suite stands at 85.
 
 ### Added
 

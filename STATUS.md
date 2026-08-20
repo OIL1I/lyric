@@ -190,9 +190,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4335 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **2.1.1**; the specification in `lyriclang/lyric-spec` is
-**NORMATIVE**, its suite stands at 81 cases, and the toolchain's own CI runs it against the
+4350 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **2.2.0**; the specification in `lyriclang/lyric-spec` is
+**NORMATIVE**, its suite stands at 85 cases, and the toolchain's own CI runs it against the
 working tree.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
@@ -332,9 +332,8 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M29 — the A8 wave — is BUILT** (2026-08-20, branch `feature/m29-a8-wave`, two slices,
-ships as v2.2.0). Both coroutine edges Erato's register filed under A8, plus one the work
-uncovered:
+**M29 — the A8 wave — is RELEASED as v2.2.0** (2026-08-20, PR #68). Both coroutine edges
+Erato's register filed under A8, plus one the work uncovered:
 
 - [x] slice 1: `Coroutine<T>` lowers as a FIELD type — the AST path `TypeTable.Lower(TypeNode)`
       learns the special case the sema and the LyrType path always had; `List<Coroutine<T>>`
@@ -562,8 +561,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`sema: a module-qualified type is a name, not a poisoned value`
-(PR #67; released as v2.1.1 — the crash the first re-pin found)
+`lang: co.next() — the safe pull beside the panicking resume`
+(PR #68; released as v2.2.0 — the A8 wave)
 
 ---
 
