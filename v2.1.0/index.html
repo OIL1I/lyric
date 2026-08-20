@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.1.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.1.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.1.0 — 2026-08-20</h2>
+<p>The ergonomics wave: two additive changes the audit measured the edges of. Four conformance
+cases activate with this release (<code>//! since: 2.1.0</code>); one 2.0 case pinning the old
+non-context rule retires with its sentence.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><strong><code>@Deprecated</code> reaches members.</strong> A method, field or <code>static let</code> of a struct, class or
+enum — and an extend method — may carry <code>@Deprecated</code>; every use warns at the use site,
+exactly like a deprecated free function. Only this one attribute is admitted there: the
+module format has no member rows, and <code>@Deprecated</code> is the attribute that needs none.
+Interface members stay attribute-free — deprecating an abstract member would raise
+conformance questions nobody has answered.</li>
+<li><strong>The adaptation context propagates structurally.</strong> <code>let xs: int64[] = [1, 2, 3];</code>,
+<code>let i: int64 = if (c) 4 else 5;</code> and the match twin compile now: in a §3.1 context the
+array elements and the arms check against the context type, an unsuffixed literal adapts,
+and a misfit errors at the element or arm. Without a context, elements and arms unify among
+themselves as before. Parameter defaults thread their context too.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

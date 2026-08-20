@@ -1,0 +1,207 @@
+/* The whole stylesheet. No build step, no framework: one page layout does not need either. */
+
+:root {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #5a5a5a;
+    --rule: #e0e0e0;
+    --accent: #0b5fff;
+    --code-bg: #f5f5f5;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #16181c;
+        --fg: #e6e6e6;
+        --muted: #9aa0a6;
+        --rule: #2c2f36;
+        --accent: #6ea8ff;
+        --code-bg: #1e2127;
+    }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    line-height: 1.6;
+}
+
+a { color: var(--accent); }
+
+/* --- header ------------------------------------------------------------- */
+
+.top {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--rule);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 2;
+}
+
+.brand { font-weight: 700; text-decoration: none; font-size: 1.1rem; }
+.version { color: var(--muted); font-family: var(--mono); font-size: 0.85rem; }
+
+.areas { display: flex; gap: 1rem; }
+.areas a { text-decoration: none; color: var(--muted); }
+.areas a:hover { color: var(--accent); }
+.areas a.current { color: var(--fg); font-weight: 600; }
+.switcher { margin-left: auto; }
+.switcher select {
+    font: inherit;
+    font-size: 0.85rem;
+    background: var(--bg);
+    color: var(--fg);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    padding: 0.2rem 0.4rem;
+}
+
+/* --- layout ------------------------------------------------------------- */
+
+.layout {
+    display: grid;
+    grid-template-columns: 16rem minmax(0, 1fr);
+    gap: 2rem;
+    max-width: 76rem;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.sidebar { font-size: 0.9rem; align-self: start; position: sticky; top: 4rem; }
+.sidebar h2 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 1.25rem 0 0.4rem;
+}
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar li { margin: 0.15rem 0; }
+.sidebar a { text-decoration: none; color: var(--fg); }
+.sidebar a:hover { color: var(--accent); }
+.sidebar a.here { color: var(--accent); font-weight: 600; }
+
+main { min-width: 0; }
+
+/* --- content ------------------------------------------------------------ */
+
+h1 { font-size: 1.9rem; margin-top: 0; }
+h2 { font-size: 1.35rem; margin-top: 2rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.2rem; }
+h3 { font-size: 1.1rem; margin-top: 1.5rem; }
+
+code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--code-bg);
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+}
+
+pre {
+    background: var(--code-bg);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    overflow-x: auto;
+}
+
+pre code { background: none; padding: 0; font-size: 0.85rem; }
+
+/* Wide tables scroll inside their own box rather than widening the page. */
+table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; margin: 1rem 0; }
+th, td { border: 1px solid var(--rule); padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+th { background: var(--code-bg); }
+
+blockquote {
+    margin: 1rem 0;
+    padding: 0.1rem 1rem;
+    border-left: 3px solid var(--rule);
+    color: var(--muted);
+}
+
+/* --- in-page contents --------------------------------------------------- */
+
+.contents {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0.5rem 1rem;
+    margin-bottom: 2rem;
+    font-size: 0.9rem;
+}
+.contents ul { list-style: none; margin: 0; padding: 0; columns: 2; }
+.contents a { text-decoration: none; }
+
+/* --- standard library items --------------------------------------------- */
+
+.item { margin: 2.5rem 0; }
+.item h2 a { text-decoration: none; color: inherit; }
+.kind {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 400;
+}
+.signature { margin: 0.5rem 0; }
+.members { border-left: 2px solid var(--rule); padding-left: 1rem; margin-left: 0.25rem; }
+.member { margin: 1rem 0; }
+.source { color: var(--muted); font-size: 0.8rem; font-family: var(--mono); }
+
+/* --- previous / next ---------------------------------------------------- */
+
+.neighbours {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+}
+.neighbours .next { margin-left: auto; }
+
+@media (max-width: 60rem) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .sidebar { position: static; }
+    .contents ul { columns: 1; }
+}
+
+/* --- welcome page ------------------------------------------------------- */
+
+.welcome {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3rem 1.5rem;
+}
+.welcome h1 { font-size: 2.4rem; margin: 0 0 0.5rem; }
+.welcome .lead { color: var(--muted); font-size: 1.1rem; margin: 0 0 2rem; }
+
+.cards { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.card {
+    display: block;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--fg);
+}
+.card:hover { border-color: var(--accent); }
+.card h2 { margin: 0 0 0.4rem; color: var(--accent); font-size: 1.2rem; border: none; padding-bottom: 0; }
+.card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+.changes { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); }
+.changes > h2 { font-size: 1.3rem; }
+
+@media (max-width: 40rem) {
+    .cards { grid-template-columns: 1fr; }
+    .areas { display: none; }
+}

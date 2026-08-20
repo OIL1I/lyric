@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The Pack Format — Lyric v2.1.0</title>
+<link rel="stylesheet" href="../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../">Lyric</a>
+<nav class="areas">
+<a href="../guide/getting-started/">Guide</a>
+<a class="current" href="../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.1.0</span>
+<nav class="switcher" data-versions="../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../grammar/">Lyric Grammar</a></li>
+<li><a href="../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../pack/" class="here">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../stdlib/std.build/">std.build</a></li>
+<li><a href="../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../stdlib/std.core/">std.core</a></li>
+<li><a href="../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../stdlib/std.math/">std.math</a></li>
+<li><a href="../stdlib/std.option/">std.option</a></li>
+<li><a href="../stdlib/std.os/">std.os</a></li>
+<li><a href="../stdlib/std.random/">std.random</a></li>
+<li><a href="../stdlib/std.string/">std.string</a></li>
+<li><a href="../stdlib/std.test/">std.test</a></li>
+<li><a href="../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>The Pack Format</h1>
+<nav class="contents">
+<ul>
+<li><a href="#layout">Layout</a></li>
+<li><a href="#the-footer">The footer</a></li>
+<li><a href="#what-a-packed-program-is">What a packed program is</a></li>
+<li><a href="#what-packing-is-not">What packing is not</a></li>
+<li><a href="#failure-duties">Failure duties</a></li>
+</ul>
+</nav>
+<p>How a Lyric program becomes one executable file. This document is the contract between
+<code>lyrpack</code>, which writes packed executables, and <code>lyrstub</code>, which is one. The module inside is an
+ordinary <code>.lyrbc</code> and is specified in <a href="/v2.1.0/bytecode/"><code>Bytecode.md</code></a>; nothing here reaches into it.</p>
+<h2 id="layout">Layout</h2>
+<p>A packed executable is three regions, in order:</p>
+<pre><code>┌────────────────────────────┐
+│ stub executable            │  the platform's lyrstub, byte for byte
+├────────────────────────────┤
+│ payload                    │  one .lyrbc module, byte for byte
+├────────────────────────────┤
+│ footer                     │  24 bytes, see below
+└────────────────────────────┘
+</code></pre>
+<p>The stub is a self-contained single-file build of <code>lyrstub</code> for one platform; the toolchain
+archive carries it under <code>stubs/&lt;rid&gt;/</code>. Nothing is patched into it: packing is a byte copy with
+two appends, which is why it needs no linker, no code signing step and no knowledge of the
+executable format it wraps. The operating system loads the file as the executable it begins
+with; the trailing bytes are cargo it never looks at.</p>
+<h2 id="the-footer">The footer</h2>
+<p>Fixed 24 bytes at the very end of the file, little-endian:</p>
+<table>
+<thead>
+<tr>
+<th>Offset from end</th>
+<th>Size</th>
+<th>Field</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>−24</td>
+<td>u32</td>
+<td>version</td>
+<td>footer layout version, currently <strong>1</strong></td>
+</tr>
+<tr>
+<td>−20</td>
+<td>u32</td>
+<td>reserved</td>
+<td>written as 0, <strong>ignored on read</strong></td>
+</tr>
+<tr>
+<td>−16</td>
+<td>u64</td>
+<td>length</td>
+<td>payload length in bytes, &gt; 0</td>
+</tr>
+<tr>
+<td>−8</td>
+<td>8 bytes</td>
+<td>magic</td>
+<td>ASCII <code>LYRPACK1</code></td>
+</tr>
+</tbody>
+</table>
+<p>The footer sits at the end so the stub needs no knowledge of its own size: read the last 24
+bytes, check the magic, and the payload lies directly before the footer, <code>length</code> bytes long.</p>
+<p>The version covers the footer LAYOUT alone. The payload's format version stands in the <code>.lyrbc</code>
+header and is judged by the runtime inside the stub, with the same rules any runtime applies.
+The reserved field is written as zero and ignored on read, so a future minor can use it without
+breaking a deployed stub.</p>
+<p>Three answers when the stub inspects its own file, and they are deliberately distinct:</p>
+<ul>
+<li><strong>No magic</strong> — the stub is empty: it explains itself and exits with the usage code. A
+truncated pack also lands here, because truncation eats the footer; the message allows for
+both.</li>
+<li><strong>Magic, but a version this reader does not know, a zero length, or a length reaching outside
+the file</strong> — the pack is damaged: reported as such, nothing is executed.</li>
+<li><strong>A payload with sound bounds</strong> — it is read and handed to the runtime. Whether it is a VALID
+module is the runtime's question, answered with the same diagnostics <code>lyrvm run</code> gives.</li>
+</ul>
+<h2 id="what-a-packed-program-is">What a packed program is</h2>
+<ul>
+<li><strong>It owns its command line.</strong> Every argument goes to <code>main(args: string[])</code> unchanged — no
+<code>--</code> protocol, no stub options, not even <code>--help</code>. A shipped program that could be talked out
+of running by a flag its author never defined would be the wrong surprise.</li>
+<li><strong>It runs with every capability</strong>, exactly as <code>lyrvm run</code> without <code>--grant</code> does: packing is
+the standalone mode in one file. Narrowing a packed program would be a packing-time decision
+recorded in the footer — a future minor, not a runtime flag an end user could edit away.</li>
+<li><strong>Its exit codes are the runner contract</strong> (<code>Bytecode.md</code> §8): <code>main</code>'s return value, 101 on
+a panic, 1 when the module fails to load, 2 for the empty stub.</li>
+<li><strong>stdout carries program output only</strong>; everything the stub or runtime has to say goes to
+stderr.</li>
+</ul>
+<h2 id="what-packing-is-not">What packing is not</h2>
+<ul>
+<li><strong>Not compilation.</strong> <code>lyrpack</code> takes a <code>.lyrbc</code> and does not look inside it beyond the
+extension; a file of garbage packs successfully and fails at first start, with the loader's
+diagnostics. <code>lyrvm verify</code> answers the question ahead of time. <code>lyric pack app.lyr</code> compiles
+and packs in one step.</li>
+<li><strong>Not linking.</strong> The module travels whole, the stub travels whole. There is no dead-code step
+beyond what the compiler already did, and two packed programs share nothing.</li>
+<li><strong>Not macOS-runnable — yet.</strong> A Mach-O declares its own extent in its load commands, and
+appended bytes put the file beyond it: the existing ad-hoc signature stops validating, and
+<code>codesign</code> refuses to write a new one over the layout (&quot;main executable failed strict
+validation&quot;) — measured by the release pipeline, which is how this limit was found. Packing
+WORKS on macOS; running the result does not, until the payload becomes a real Mach-O segment
+the way deno and Node's SEA do it. Windows (PE) and Linux (ELF) do not validate the file
+tail and are unaffected.</li>
+</ul>
+<h2 id="failure-duties">Failure duties</h2>
+<p><code>lyrpack</code> refuses to overwrite either of its inputs, and a pack that fails midway deletes its
+half-written output: a file that starts and then reports itself empty or damaged must not be
+what a failed build leaves behind.</p>
+<nav class="neighbours">
+<a class="prev" href="../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a>
+</nav>
+</main>
+</div>
+<script src="../site.js"></script>
+</body>
+</html>
