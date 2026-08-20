@@ -57,8 +57,9 @@ internal static class CoroutineFactory
 
         // The return value is a CLOSURE over the state object: a fat pointer of object reference and
         // body index. That makes 'resume co' an ordinary 'callind', needing neither an opcode nor a
-        // value type of its own.
-        var signature = new IrFunctionType([], yieldType);
+        // value type of its own. The signature carries the lenient flag the body's exhausted exits
+        // branch on.
+        var signature = TypeTable.CoroutineSignature(yieldType);
         var closure = slots.NewTemp(signature);
         builder.Emit(new MakeClosure(closure, body, instance, signature, span));
         builder.Seal(new Return(closure, span));

@@ -10,6 +10,41 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## Unreleased
+
+The A8 wave: both coroutine edges Erato's register filed after building its cutscene driver,
+plus one the fix uncovered. The bytecode format stays **3.2**; a module that never calls
+`next()` loads on every 2.x runtime.
+
+### Added
+
+- **`co.next()` — the safe pull.** It advances a coroutine exactly like `resume` and answers
+  `?T`: the value, or `null` once the body has run to its end — and `null` stays the answer on
+  every further call, where `resume` keeps its promised panic. A `Coroutine<void>` answers
+  `bool` (did it advance?), so `while (p.next()) { }` drives it out; a `Coroutine<?T>` refuses
+  the form (`LYR-SEM0080`) because `null` would mean two things there — drive it with `resume`
+  and a protocol of your own. The name and shape are `Iterator<T>.next()`'s on purpose.
+
+  A query that does NOT pull (`isDone`) was probed and rejected: a pull-based coroutine cannot
+  know whether another value comes without running the body, which is why no generator API in
+  Python, JavaScript or C# has one. The pull with an end signal is the honest form.
+
+  On the wire, exhaustion is read back through the compiler-bound native
+  `std.core.coroutineIsDone`; an older runtime rejects a module that uses `next()` at load time
+  with that name in the message — the format's designed forward path.
+
+### Fixed
+
+- **`Coroutine<T>` works as a field type.** A class or struct field, and a type argument
+  (`List<Coroutine<T>>`), used to be refused with `LYR-IR0001` ("type 'Coroutine' (not a
+  class)") while the same type worked as a parameter and a local. A driver now holds its
+  coroutines directly instead of hiding each behind a captured closure.
+- **A bare `return;` in the middle of a coroutine body works.** It compiled to a valueless
+  return from a value-yielding body — an internal compiler error in Debug, malformed bytecode in
+  Release, and the coroutine was never marked exhausted. It is now exactly the run-through exit:
+  the next `resume` panics, the next `next()` answers `null`. (`return;` in tail position, the
+  common form, was always fine.)
+
 ## v2.1.1 — 2026-08-20
 
 One fix, found the day of 2.1.0 by the first embedder to re-pin: a compiler crash on a form

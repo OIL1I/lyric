@@ -332,6 +332,29 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
+**M29 — the A8 wave — is BUILT** (2026-08-20, branch `feature/m29-a8-wave`, two slices,
+ships as v2.2.0). Both coroutine edges Erato's register filed under A8, plus one the work
+uncovered:
+
+- [x] slice 1: `Coroutine<T>` lowers as a FIELD type — the AST path `TypeTable.Lower(TypeNode)`
+      learns the special case the sema and the LyrType path always had; `List<Coroutine<T>>`
+      through the type-argument path too. The closure idiom stops being mandatory.
+- [x] slice 2: `co.next()` — the safe pull beside the panicking `resume`. `?T` (bool for
+      `Coroutine<void>`); refused on `Coroutine<?T>` (LYR-SEM0080), where null is ambiguous.
+      The body takes a lenient flag; its done-exits read a zeroed state field instead of
+      manufacturing values; the marker is read from outside by the compiler-bound native
+      `std.core.coroutineIsDone` (per-signature import entries — format stays 3.2, an old
+      runtime rejects at binding with the import's name, the designed forward path; a module
+      not using `next()` keeps loading everywhere). `resume` semantics, frames and panic are
+      UNTOUCHED; `isDone` alone was probed and rejected — a pull coroutine cannot answer
+      "will there be another value" without pulling (no mainstream generator API has hasNext).
+      Spec §10/§4.4/§11/Appendix A amended, suite 81 → 85 (`//! since: 2.2.0`), 85/85 against
+      the working tree.
+- [x] found on the way, fixed in slice 2: a bare `return;` MID-BODY in a coroutine — §10
+      always allowed it — emitted a valueless `ret` from a value-yielding body: internal
+      verifier error in Debug, malformed bytecode in Release, exhaustion never marked. It is
+      the run-through exit now, shared by all three ways out.
+
 **M28 — the ergonomics wave — is RELEASED as v2.1.0** (2026-08-20, PR #66). Two additive changes the audit measured before they were built:
 
 - [x] `@Deprecated` reaches members: methods, fields, static lets, extend methods — the ONE

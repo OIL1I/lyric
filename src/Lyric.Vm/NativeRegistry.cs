@@ -283,6 +283,15 @@ public sealed class NativeRegistry
             _ => throw new LyricPanic(VmDiagnostics.Panicked,
                 "resume on a coroutine that has already finished"));
 
+        // The done state behind 'co.next()': field 0 of the coroutine's state object is the
+        // re-entry marker, and -1 means the body ran through. The compiler emits one import per
+        // coroutine signature; the tag comparison in Bind lets this one implementation answer
+        // them all, because the marker sits at the same place in every state layout.
+        registry.Register("std.core.coroutineIsDone", new[] { TypeTag.Fn }, TypeTag.Bool,
+            args => args[0].HasEnvironment
+                ? LyrValue.FromBool(unchecked((int)args[0].AsObject[0].AsU64) == -1)
+                : throw new LyricPanic(VmDiagnostics.Panicked, "next on an empty coroutine value"));
+
         // 'std.core' carries PRIVATE duplicates of six of these declarations (fromInt through
         // charAt): the module is the library's root and imports nothing — with an import of
         // std.string there, no module could import std.core back (LYR-RES0005). One host function

@@ -248,7 +248,9 @@ public static class IrPrinter
     };
 
     // --- formatting helpers ---
-    private static string TypeStr(IrType t) => t switch
+    // Internal: the ImportTable keys per-signature imports by this display, so the one type
+    // spelling stays the one there is.
+    internal static string TypeStr(IrType t) => t switch
     {
         IrScalarType s => IrNames.Scalar(s.Kind),
         IrRefType r => $"&{r.Type}",

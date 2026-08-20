@@ -88,11 +88,20 @@ internal sealed class ImportTable
 
     public ImportId Intern(IrImport import)
     {
-        if (_assigned.TryGetValue(import.Name, out var existing)) return existing;
+        // Keyed by name AND signature: 'std.core.coroutineIsDone' is emitted once per coroutine
+        // signature it is asked about, and two entries under one name are two rows the runtime
+        // binds independently — every consumer of the Imports section is positional. For every
+        // declared native the name determines the signature, so nothing changes for them.
+        var key = SignatureKey(import);
+        if (_assigned.TryGetValue(key, out var existing)) return existing;
 
         var id = new ImportId(_used.Count);
-        _assigned[import.Name] = id;
+        _assigned[key] = id;
         _used.Add(import);
         return id;
     }
+
+    private static string SignatureKey(IrImport import) =>
+        $"{import.Name}({string.Join(",", import.ParamTypes.Select(IrPrinter.TypeStr))})" +
+        $"->{IrPrinter.TypeStr(import.ReturnType)}";
 }

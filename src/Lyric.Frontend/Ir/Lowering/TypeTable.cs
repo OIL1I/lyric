@@ -645,11 +645,12 @@ internal sealed class TypeTable
         // An instance of a generic type: 'Box<int>' is a table entry of its own with its own layout.
         GenericInstance g => InstanceType(g, span),
 
-        // Coroutine<T> IS a function value without parameters: 'resume co' continues it and yields the
-        // next value, which is a call. A coroutine differs from an ordinary function only in WHERE it
-        // starts the next time. That the sema keeps them apart is right and belongs there; the IR checks
-        // consistency, not language rules.
-        CoroutineOf c => new IrFunctionType([], Lower(c.Yield, span)),
+        // Coroutine<T> IS a function value: 'resume co' continues it and yields the next value,
+        // which is a call. A coroutine differs from an ordinary function only in WHERE it starts
+        // the next time. That the sema keeps them apart is right and belongs there; the IR checks
+        // consistency, not language rules. The one parameter is the lenient flag: false panics on
+        // exhaustion ('resume'), true delivers the done state instead ('next').
+        CoroutineOf c => CoroutineSignature(Lower(c.Yield, span)),
 
         FnType f => new IrFunctionType(
             f.Parameters.Select(p => Lower(p, span)).ToArray(), Lower(f.Return, span)),
@@ -670,6 +671,16 @@ internal sealed class TypeTable
 
         _ => TypeLowering.Lower(type)
     };
+
+    /// <summary>
+    /// The wire signature of a coroutine value: one bool parameter, the LENIENT flag. A
+    /// <c>resume</c> passes false and the exhausted exits panic; a <c>next()</c> passes true and
+    /// they deliver instead, with the done state read back through
+    /// <c>std.core.coroutineIsDone</c>. One definition, because factory, body, resume and next
+    /// have to agree on it to the letter.
+    /// </summary>
+    public static IrFunctionType CoroutineSignature(IrType yield) =>
+        new([new IrScalarType(IrScalar.Bool)], yield);
 
     /// <summary>'?T' with the nesting boundary in one place rather than at every call site.</summary>
     private static IrType OptionalOf(IrType inner, Core.Span span) =>
@@ -726,6 +737,14 @@ internal sealed class TypeTable
 
             var bound = _binding.Resolve(named);
             if (bound is ImportBindingSymbol import) bound = import.Target;
+
+            // 'Coroutine<T>' is a builtin, not a declared generic: it has no layout to intern.
+            // A coroutine value is a function value over its state, so the written form lowers
+            // exactly like the sema's CoroutineOf — the case the LyrType path always had.
+            if (bound is TypeSymbol { Kind: TypeSymbolKind.Builtin, Name: "Coroutine" }
+                && named.TypeArguments.Length == 1)
+                return CoroutineSignature(
+                    Lower(named.TypeArguments[0], named.TypeArguments[0].Span));
 
             // Written type arguments ('Box<int>' as a field or parameter type) are lowered BEFORE the
             // instance is interned: an argument may itself be a type parameter of the surrounding
@@ -831,6 +850,13 @@ internal sealed class TypeTable
         {
             var definition = _binding.Resolve(generic);
             if (definition is ImportBindingSymbol imported) definition = imported.Target;
+
+            // 'List<Coroutine<int>>': the builtin has no definition to intern an instance of, so it
+            // becomes the sema's CoroutineOf here, the same normalization ResolveType applies.
+            if (definition is TypeSymbol { Kind: TypeSymbolKind.Builtin, Name: "Coroutine" }
+                && generic.TypeArguments.Length == 1)
+                return new CoroutineOf(Resolve(generic.TypeArguments[0], span));
+
             if (definition is TypeSymbol generictype)
                 return new GenericInstance(generictype,
                     generic.TypeArguments.Select(argument => Resolve(argument, span)).ToArray());
