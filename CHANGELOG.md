@@ -10,7 +10,12 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
-## Unreleased
+## v2.0.0 — 2026-08-20
+
+The specification is **normative** from this release on: `lyriclang/lyric-spec` defines the
+language, the toolchain implements it, and a divergence is a toolchain bug. The major cuts the
+SOURCE surface — everything the 1.x deprecation clocks announced — while the bytecode format
+stays **3.2** and bytecode compiled against 1.x keeps loading.
 
 ### Removed — the 2.0 cut
 

@@ -11,7 +11,7 @@
 
 ## Current milestone
 
-**v1.0.0 through v1.12.0 are released** — annotated tags on the remote, each with a release page.
+**v1.0.0 through v2.0.0 are released** — annotated tags on the remote, each with a release page.
 M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
 v1.8.0 through v1.9.1 carried the three toolchain archives plus two installables; since the org
 split the editor clients release from their own repositories, and a toolchain release carries
@@ -190,9 +190,10 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4307 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
-plus `lyrembed.dll`, version **1.16.0**; the conformance suite stands at 45 cases in
-`lyriclang/lyric-spec`, pinned to the 1.16.0 release.
+4311 tests green **in Debug and Release**, bytecode format **3.2**, **ten** binaries
+plus `lyrembed.dll`, version **2.0.0**; the specification in `lyriclang/lyric-spec` is
+**NORMATIVE**, its suite stands at 54 cases, and the toolchain's own CI runs it against the
+working tree.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
 that largely carries itself (`Map`, `Set`, merge sort, all iterator adapters and the string hash are
@@ -209,6 +210,24 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **M26 — v2.0.0** (2026-08-20, five slices, `feature/m26-v2`, PR #64). The specification
+  turned NORMATIVE and the clocks ran out: Appendix A catalogues all 180 diagnostic codes
+  verified against the emission sites; chapter 7 carries the complete narrowing and
+  definite-assignment models (the stale-lambda-proof answer: a checked unwrap, LYR-VM0007);
+  the EBNF and the bytecode format are canonical in the spec with checked mirrors here; all
+  34 `@Deprecated` declarations plus StringBuilder.length went (registry keeps the native
+  names — 1.x bytecode loads); SEM0074 warning → error; `Hashable :: [Equatable]`; pub-roots
+  prunes libraries from their surface; and the toolchain CI gates every change against the
+  suite, with `//! since:` versioning the cases. 4311 tests, 54/54 conformance, docs 389/389.
+
+- [x] **M25 — the spec draft** (2026-08-19, shipped as v1.16.0, substance in
+  `lyriclang/lyric-spec`). Twelve chapters plus the conformance suite and its reference
+  runner, CI against the pinned release. The suite earned its keep on day one — resume yields
+  T and exhaustion panics, Throwable is a builtin, and `catch (e: Throwable)` compiled but
+  never caught (fixed in the toolchain); the maintainer's octal catch forced the full
+  compiler audit of the draft, which rewrote chapter 1 and corrected six more chapters.
+  Decisions recorded: overflow wraps (frozen), pub-roots YES at 2.0.
+
 - [x] **M24 — the freeze prep** (2026-08-19, four slices, `feature/m24-freeze-prep`). The
   three design leftovers settled before the spec freezes semantics: `opaque type` answers
   Erato's A4 (a handle scripts cannot forge, free at runtime), the string API became methods
@@ -224,16 +243,6 @@ out of them and hands its own functions, types and value structs in.
   registry never could. On top: the byte bridge (writeBytes, strict utf8Decode), std.random
   (moved out of math, plus shuffle/choice/gaussian) and std.time (Instant/Duration, iso() with
   floor semantics). Doc ratchet 370 → 430.
-
-- [x] **M22 — the language gaps** (2026-08-19, four slices, `feature/m22-language-gaps`).
-  Compound assignment through the operator interfaces; interface inheritance with ONE parent
-  and implication-only semantics — the chain-prefix slot layout is what lets a parent's
-  default run behind a child receiver, and the redeclaration ban is what keeps static and
-  dynamic dispatch from splitting; `std.core` became the import-free root, which let
-  `newStringBuilder` deprecate and forced `@Deprecated` to keep its no-row promise; block
-  lambdas infer their return type. One deliberate No: heterogeneous arithmetic (§Design
-  decisions). One regression the probe itself caught: instance-keyed, not symbol-keyed,
-  dedup across conformance lists.
 
 ## Measurements
 
@@ -321,46 +330,11 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
-**M26 — v2.0.0 — is BUILT** (2026-08-20, branch `feature/m26-v2`, five slices). The
-specification turns normative and the deprecation clocks run out. The delivery list:
-
-- [x] the deep audit toward the normative spec: Appendix A — all 180 diagnostic codes across
-      ten families, severity and cause verified against the emission sites, retired numbers
-      recorded (PAR0024/0039, CLI0007; SEM0048/49 never issued); the full narrowing model and
-      a new §7.7 definite assignment in chapter 7 (six new conformance cases, one of them the
-      checked-unwrap answer to stale lambda proofs); §4.7 gives attributes the home
-      SEM0065–0069 never had (slice 1)
-- [x] the subsumption: the EBNF and the `.lyrbc` format are canonical IN THE SPEC (chapters
-      02 and 13); `docs/Grammar.md` and `docs/Bytecode.md` stay as byte-identical mirrors
-      below a sync marker, and a CI job diffs them — the grammar-sync model, reused (slice 2)
-- [x] the cut: all 34 `@Deprecated` declarations gone (free string forms, free constructors,
-      the math Random twin, write/writeln) plus StringBuilder.length; the registry keeps the
-      old native names so 1.x bytecode loads; SEM0074 warning → error, the one severity
-      change of the major; `Hashable<T> :: [Equatable<T>]` and every key constraint shrinks
-      to one entry; doc floor 430 → 389 of 389 — completeness holds (slice 3)
-- [x] pub-roots: a library prunes from the `pub` functions of its compiled modules; the
-      stdlib no longer ships whole inside every library or embedded script; observable at the
-      host boundary and pinned there (slice 4)
-- [x] the conformance gate: the toolchain's own CI runs the spec suite against the WORKING
-      TREE; cases carry `//! since:` and activate by version, ending the deferred-case dance
-      — 54/54 against the candidate (slice 5)
-
-**M25 — the spec draft — was BUILT** (2026-08-19, shipped as v1.16.0; the substance lives in
-`lyriclang/lyric-spec`). The delivery list:
-
-- [x] twelve chapters, non-normative until 2.0: lexical contract, grammar framing (EBNF stays
-      canonical in this repo until subsumed), types with the FROZEN decisions (wrapping
-      arithmetic; distinct numeric types; the opaque wall), modules/capabilities, interfaces,
-      operators-as-methods, statements and narrowing, monomorphization, the three failure
-      shapes, coroutines, the stdlib boundary, the diagnostic-code contract
-- [x] the conformance suite seed: 30 cases (one .lyr, expectations in a //! header), the
-      reference runner under 150 lines, CI running against the PINNED toolchain release
-- [x] the suite earned its keep on day one: resume yields T and exhaustion panics (the draft
-      had a null protocol — corrected), Throwable is a builtin (corrected), and
-      'catch (e: Throwable)' compiled but never caught — a sema/VM split, fixed HERE:
-      the explicit Throwable catch is the catch-all now, and a specific-interface catch is
-      refused with a diagnostic instead of silently catching nothing
-- [x] decisions recorded: overflow wraps (frozen), pub-roots YES at 2.0, spec repo now
+**The 1.x line is closed.** v2.0.0 is released: the specification is normative, the
+deprecation clocks have run out, and the conformance gate runs the suite against every
+working-tree change. The deep audit toward the spec continues as standing work — FlowAnalyzer
+and the diagnostic catalogue are done; what remains is walking the remaining sema rules and
+the VM chapters at the same depth, case by case. The next milestone is the maintainer's call.
 
 **M24 was merged and released as v1.15.0** (PR #62) — the freeze prep. With it the
 pre-freeze design space is closed; next is v1.16, the spec draft (non-normative) plus the seed
@@ -528,14 +502,15 @@ answer yet, and it belongs asked before E4 starts.
   indexes valid there — several parents would need thunks. Redeclaring a chain member is refused
   instead of getting override semantics: without vtable overriding, the same call would dispatch
   differently through the child and through the parent. A child interface VALUE does not convert to
-  the parent's type; implication holds for implementing types. `std.core` adopts
-  `Hashable :: [Equatable]` at 2.0, not before.
-- **pub declarations become a library's reachability roots — decided YES, lands at 2.0**
-  (maintainer, 2026-08-19). A module without `main` currently keeps the well-known standard
-  library wholesale (measured: 7886 bytes for a one-function library). With the rule, a
-  library's `pub` surface decides its contents. It waits for 2.0 because it is observable:
-  a host calling an unexported function through the embedding API would find it missing.
-  The spec documents the rule as "from 2.0".
+  the parent's type; implication holds for implementing types. `std.core` adopted
+  `Hashable :: [Equatable]` with 2.0, as planned.
+- **pub declarations are a library's reachability roots — decided YES, LANDED with 2.0**
+  (maintainer, 2026-08-19; built 2026-08-20). Before the rule a module without `main` kept the
+  well-known standard library wholesale (measured: 7886 bytes for a one-function library).
+  Now a library's `pub` surface decides its contents; the raw lowering API keeps the old
+  keep-everything behavior for bare snippets, pinned in ExportRootTests. It waited for 2.0
+  because it is observable: a host calling a function the surface does not reach finds it
+  missing.
 - **Iterator method chaining: documented No for now** (M24 probe). `xs.iter().map(f).take(3)`
   wants generic default methods on `Iterator<T>`. The sema ACCEPTS them already; the lowering
   refuses on both paths — an interface VALUE fails at instance interning (`fn(T) -> U` in the
@@ -555,8 +530,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`lexer, ir: f-strings honor the literal-brace escape the grammar promised`
-(closes M25's delivery list; released as v1.16.0)
+`ci, release: the conformance gate, and the tree claims 2.0.0`
+(closes M26's delivery list; released as v2.0.0 — the spec is normative)
 
 ---
 
