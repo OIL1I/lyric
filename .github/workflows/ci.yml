@@ -19,13 +19,13 @@ on:
 permissions:
   contents: read
 
-# A push to a branch with an open pull request fires BOTH triggers, and the two runs verify the
-# same work twice — doubled runner load, and twice the exposure to anything load-sensitive. The
-# key is the branch NAME in both cases ('head_ref' on a pull request, 'ref_name' on a push), so
-# the two land in one group and the later arrival cancels the earlier. Successive pushes to the
-# same branch collapse the same way.
+# Successive pushes to one branch collapse: the newer run cancels the older, so a slice pushed
+# twice in a minute is verified once. The EVENT is part of the key on purpose. Unifying push and
+# pull_request would halve the load again — a push to a branch with an open PR does fire both —
+# but the run that loses is reported as a cancelled check ON the pull request, which reads as a
+# failure and blocks a merge. A duplicate run is cheaper than a red cross that means nothing.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
