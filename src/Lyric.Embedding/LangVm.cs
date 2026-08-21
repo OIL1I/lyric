@@ -250,7 +250,7 @@ public sealed class LangVm
         {
             // Translated at the host boundary rather than passed through: 'LyricPanic' lives in
             // the runtime assembly, which a host does not reference.
-            throw new ScriptPanicException(panic.Code, panic.Message, panic);
+            throw ScriptException.From(panic);
         }
         catch (LyricRuntimeException runtime)
         {
@@ -273,20 +273,23 @@ public sealed class LangVm
     ///
     /// <para>A module without an entry point is the normal case here.</para>
     /// </summary>
+    /// <param name="budget">Bounds the constant initializer, which runs HERE. For foreign code
+    /// this is the first place it can loop forever — before the host has called anything.</param>
     /// <exception cref="ScriptException">A missing capability, or an import that cannot be bound.
     /// </exception>
-    public ScriptInstance Instantiate(ScriptModule module)
+    /// <exception cref="ScriptBudgetException">The initializer spent the budget.</exception>
+    public ScriptInstance Instantiate(ScriptModule module, ExecutionBudget? budget = null)
     {
         ArgumentNullException.ThrowIfNull(module);
         try
         {
             return new ScriptInstance(this, module,
-                LoadedProgram.Load(module.Loaded, _natives, _options.Capabilities));
+                LoadedProgram.Load(module.Loaded, _natives, _options.Capabilities, budget));
         }
         catch (LyricPanic panic)
         {
             // The constant initializer is ordinary Lyric code and can panic like any other.
-            throw new ScriptPanicException(panic.Code, panic.Message, panic);
+            throw ScriptException.From(panic);
         }
         catch (LyricRuntimeException runtime)
         {

@@ -60,12 +60,21 @@ public sealed class ScriptInstance
     /// <exception cref="ScriptException">No such function, wrong arity, or a value that does not
     /// cross the boundary.</exception>
     /// <exception cref="ScriptPanicException">The script panicked.</exception>
-    public TResult Call<TResult>(string function, params object?[] arguments)
+    public TResult Call<TResult>(string function, params object?[] arguments) =>
+        Call<TResult>(function, null, arguments);
+
+    /// <inheritdoc cref="Call{TResult}(string, object?[])"/>
+    /// <param name="budget">Bounds this call. Several calls sharing one object share one kitty —
+    /// how a host bounds a whole frame rather than a single script — and a host function that
+    /// calls back in draws from whichever budget its own call was given.</param>
+    /// <exception cref="ScriptBudgetException">The call spent the budget.</exception>
+    public TResult Call<TResult>(string function, ExecutionBudget? budget,
+        params object?[] arguments)
     {
         var (index, signature) = Resolve(function, arguments.Length);
         var marshalled = MarshalArguments(function, signature, arguments);
 
-        var produced = Invoke(index, marshalled);
+        var produced = Invoke(index, marshalled, budget);
         return Marshal.FromLyric<TResult>(produced, signature.ReturnType,
             $"the result of '{function}'");
     }
@@ -73,10 +82,15 @@ public sealed class ScriptInstance
     /// <summary>As <see cref="Call{TResult}"/>, for a function that returns nothing.
     ///
     /// <para>Separate because <c>Call&lt;void&gt;</c> cannot be written in C#.</para></summary>
-    public void CallVoid(string function, params object?[] arguments)
+    public void CallVoid(string function, params object?[] arguments) =>
+        CallVoid(function, null, arguments);
+
+    /// <inheritdoc cref="CallVoid(string, object?[])"/>
+    /// <inheritdoc cref="Call{TResult}(string, ExecutionBudget, object?[])" path="/param"/>
+    public void CallVoid(string function, ExecutionBudget? budget, params object?[] arguments)
     {
         var (index, signature) = Resolve(function, arguments.Length);
-        Invoke(index, MarshalArguments(function, signature, arguments));
+        Invoke(index, MarshalArguments(function, signature, arguments), budget);
     }
 
     /// <summary>The attribute rows of this script's module. The same answer as
@@ -90,19 +104,32 @@ public sealed class ScriptInstance
     /// </summary>
     /// <exception cref="ScriptException">The use does not name a function, or the arity does not
     /// match.</exception>
-    public TResult Call<TResult>(AttributeUse target, params object?[] arguments)
+    public TResult Call<TResult>(AttributeUse target, params object?[] arguments) =>
+        Call<TResult>(target, null, arguments);
+
+    /// <inheritdoc cref="Call{TResult}(AttributeUse, object?[])"/>
+    /// <inheritdoc cref="Call{TResult}(string, ExecutionBudget, object?[])" path="/param"/>
+    public TResult Call<TResult>(AttributeUse target, ExecutionBudget? budget,
+        params object?[] arguments)
     {
         var (index, signature) = Resolve(target, arguments.Length);
-        var produced = Invoke(index, MarshalArguments(target.TargetName, signature, arguments));
+        var produced = Invoke(index, MarshalArguments(target.TargetName, signature, arguments),
+            budget);
         return Marshal.FromLyric<TResult>(produced, signature.ReturnType,
             $"the result of '{target.TargetName}'");
     }
 
     /// <inheritdoc cref="Call{TResult}(AttributeUse, object?[])"/>
-    public void CallVoid(AttributeUse target, params object?[] arguments)
+    public void CallVoid(AttributeUse target, params object?[] arguments) =>
+        CallVoid(target, null, arguments);
+
+    /// <inheritdoc cref="Call{TResult}(AttributeUse, object?[])"/>
+    /// <inheritdoc cref="Call{TResult}(string, ExecutionBudget, object?[])" path="/param"/>
+    public void CallVoid(AttributeUse target, ExecutionBudget? budget,
+        params object?[] arguments)
     {
         var (index, signature) = Resolve(target, arguments.Length);
-        Invoke(index, MarshalArguments(target.TargetName, signature, arguments));
+        Invoke(index, MarshalArguments(target.TargetName, signature, arguments), budget);
     }
 
     private (int Index, BytecodeFunction Signature) Resolve(AttributeUse target, int argumentCount)
@@ -150,15 +177,17 @@ public sealed class ScriptInstance
         return values;
     }
 
-    private LyrValue Invoke(int index, LyrValue[] arguments)
+    private LyrValue Invoke(int index, LyrValue[] arguments, ExecutionBudget? budget)
     {
         try
         {
-            return _program.Invoke(index, arguments);
+            return budget is null
+                ? _program.Invoke(index, arguments)
+                : _program.Invoke(index, budget, arguments);
         }
         catch (LyricPanic panic)
         {
-            throw new ScriptPanicException(panic.Code, panic.Message, panic);
+            throw ScriptException.From(panic);
         }
         catch (LyricRuntimeException runtime)
         {
