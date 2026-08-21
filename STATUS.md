@@ -217,9 +217,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4400 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.3.0**; the specification in `lyriclang/lyric-spec` is
-**NORMATIVE**, its suite stands at 85 cases, and the toolchain's own CI runs it against the
+4421 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.3.1**; the specification in `lyriclang/lyric-spec` is
+**NORMATIVE**, its suite stands at 88 cases, and the toolchain's own CI runs it against the
 working tree.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
@@ -236,6 +236,14 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **The v2.3.1 bug wave** (2026-08-21, `fix/v2.3.1-bug-wave`). Four measured bugs, three of
+  them valid programs the toolchain mishandled: a parent's default method through a child-typed
+  value (the devirtualizer put one interface value into another's slot; the constraint route
+  looked the member up without the chain), an array literal that lowered its elements without
+  the element type (null and the interface lift both), the console code page that made
+  redirected output depend on whichever tool last touched it, and `1E+21`. Three conformance
+  cases, `//! since: 2.3.1`.
 
 - [x] **M27 — the deep audit and its patch wave** (2026-08-20, `fix/v2.0.1-audit-wave`,
   PR #65, released as v2.0.1). Probe-first through numerics, control flow, the type system
@@ -265,13 +273,6 @@ out of them and hands its own functions, types and value structs in.
   never caught (fixed in the toolchain); the maintainer's octal catch forced the full
   compiler audit of the draft, which rewrote chapter 1 and corrected six more chapters.
   Decisions recorded: overflow wraps (frozen), pub-roots YES at 2.0.
-
-- [x] **M24 — the freeze prep** (2026-08-19, four slices, `feature/m24-freeze-prep`). The
-  three design leftovers settled before the spec freezes semantics: `opaque type` answers
-  Erato's A4 (a handle scripts cannot forge, free at runtime), the string API became methods
-  with the free forms on the 2.0 deprecation clock, and iterator chaining got its honest No
-  with the probe pinned. The build surfaced a latent function-id collision between the global
-  initializer and downstream functions — found by the new density check, fixed at the counter.
 
 ## Measurements
 
@@ -358,6 +359,23 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**The v2.3.1 bug wave is BUILT** (2026-08-21, branch `fix/v2.3.1-bug-wave`, three slices).
+Four of the five findings of the post-2.3.0 audit, fixed and pinned: the inherited default
+through a child-typed value (#71 — the cause was the DEVIRTUALIZER, not the lowering the issue
+suspected, and the constraint route had a second gap beside it), the array-literal element that
+lowered without its context (#72 — the same fix carries the interface lift nobody had filed),
+the shared console code page behind years of sporadic process-test failures (#74), and the
+uppercase float exponent (#75, with the rendering now specified in §11 and routed through one
+place). Spec PR: `lyriclang/lyric-spec#1`, suite 85 → 88.
+
+**#73 stays open, deliberately.** The audit called it a design round and it is one — sharper
+than filed: the `throws` of a coroutine function is checked at the CALL, which cannot throw,
+and unchecked at the `resume`/`next()`, which can. The local case only looks right because the
+try covering the call usually covers the resumes too. Every route out of that scope — an
+optional, a field, `next()` through a field — reaches `LYR-VM0010`, which Appendix A still
+calls "reachable only for a hand-built module". Fixing it means deciding what throwability a
+coroutine VALUE carries; that is a language change, not a patch.
 
 **M30 — the debugger — is RELEASED as v2.3.0** (2026-08-20). Details under §Current milestone.
 Found on the way and fixed in its own commit: `tools/Bench` had not compiled since the 2.0
@@ -456,12 +474,6 @@ too (`feature/lsp-formatting`).
 **Deviation from the plan, recorded**: no own `Lyric.Formatting` library — the formatter is a
 namespace in `lyrfe`, because both consumers (lyrfmt, lyrls) already share that assembly and a
 fourth library bought naming trouble for zero separation.
-
-**Noticed repeatedly while testing, unresolved**: individual process-spawning tests fail
-sporadically under full-suite load and never in isolation — first an LSP test (254/254 green
-alone, repeatedly), during M20 once `ProtocolTests.A_panic_looks_the_same_through_a_foreign_runtime`
-in Debug (3/3 green alone, full Cli rerun green). The pattern is load, not logic. Worth a look
-before it becomes a CI lottery.
 
 **M16 is closed and released as v1.8.0.** What remains from it: the first manual run of the
 JetBrains checklist (plugin README) against the released zip, in a 2026.1+ IDE.
