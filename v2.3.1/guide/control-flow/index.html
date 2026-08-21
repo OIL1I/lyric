@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Control flow — Lyric v2.3.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.3.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/" class="here">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Control flow</h1>
+<nav class="contents">
+<ul>
+<li><a href="#conditions">Conditions</a></li>
+<li><a href="#loops">Loops</a></li>
+<li><a href="#deferred-work">Deferred work</a></li>
+</ul>
+</nav>
+<h2 id="conditions">Conditions</h2>
+<p><code>if</code> as a statement takes blocks:</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    let n = 7;
+
+    if (n &gt; 10) {
+        println(&quot;large&quot;);
+    } else if (n &gt; 5) {
+        println(&quot;medium&quot;);
+    } else {
+        println(&quot;small&quot;);
+    }
+    return 0;
+}
+</code></pre>
+<p><code>if</code> as an expression takes expressions, and <code>else</code> is mandatory:</p>
+<pre><code class="language-lyr">fn main(): int {
+    let n = 7;
+    let bonus = if (n &gt; 5) 10 else 0;
+    return bonus;
+}
+</code></pre>
+<h2 id="loops">Loops</h2>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    var i = 0;
+    while (i &lt; 3) {
+        println(f&quot;while {i}&quot;);
+        i = i + 1;
+    }
+
+    do {
+        println(&quot;runs at least once&quot;);
+        i = i + 1;
+    } while (i &lt; 3);
+
+    for (n in 0..3) {
+        println(f&quot;for {n}&quot;);
+    }
+
+    for (n in 0..=3) {
+        println(f&quot;inclusive {n}&quot;);
+    }
+    return 0;
+}
+</code></pre>
+<p><code>for-in</code> walks a range, an array, or anything that implements <code>Iterable&lt;T&gt;</code>:</p>
+<pre><code class="language-lyr">import std.io.console { println };
+import std.collections { List };
+
+fn main(): int {
+    let names = [&quot;Ada&quot;, &quot;Grace&quot;];
+    for (name in names) {
+        println(name);
+    }
+
+    let numbers = List&lt;int&gt;.empty();
+    numbers.push(1);
+    numbers.push(2);
+    for (n in numbers) {
+        println(f&quot;{n}&quot;);
+    }
+    return 0;
+}
+</code></pre>
+<p><code>break</code> leaves the innermost loop, <code>continue</code> starts its next iteration.</p>
+<h2 id="deferred-work">Deferred work</h2>
+<p><code>defer</code> schedules a statement to run when the surrounding scope ends, whichever way it ends.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn main(): int {
+    defer println(&quot;cleanup runs last&quot;);
+
+    println(&quot;work&quot;);
+    return 0;
+}
+</code></pre>
+<p>Deferred statements run in reverse order of registration.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/functions/">Functions</a>
+<a class="next" href="../../guide/structs-and-classes/">Structs and classes</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.3.1</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.3.1</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.3.1 — 2026-08-21</h2>
+<p>The post-2.3.0 audit's patch wave: four measured bugs, none of them reachable from a program
+that was doing anything unusual. The bytecode format stays <strong>3.3</strong>, and the language gains
+nothing — three of the four were valid programs the toolchain mishandled. Three conformance
+cases activate with this release (<code>//! since: 2.3.1</code>); the suite stands at 88.</p>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><strong>A parent interface's default method works through a child-typed value.</strong> <code>c.describe()</code>,
+where <code>describe</code> is a default declared on the parent of <code>c</code>'s interface, was an internal
+compiler error in Debug and a wrong receiver slot in Release — the optimizer had resolved
+the slot to the parent's function and called it directly with a child-typed value, which the
+language does not convert either. All three routes to such a default are fixed and pinned:
+through an interface-typed value, through a constraint naming the child, and through an
+element of an interface-typed array. The constraint route had a second gap of its own and
+reported &quot;'C' has no 'describe'&quot; from the lowering.</li>
+<li><strong>An array literal gives its elements the element type.</strong> <code>let xs: (?int)[] = [null, 5];</code>
+was accepted by the checker and refused by the lowering (&quot;'null' in a position without an
+expected type&quot;), and <code>let xs: Shape[] = [Sq { }];</code> put class references where interface
+values were declared — an internal error in Debug, a wrong dispatch in Release. An element
+is a context position like every other now.</li>
+<li><strong>A redirected stream carries UTF-8.</strong> On Windows the console's code page encoded redirected
+output too, and <code>lyrrepl</code> set that shared code page unconditionally — so a tool running
+beside a REPL could have its output best-fit-mapped, turning an em dash into a hyphen. Every
+tool now writes UTF-8 into a redirected stream and reads UTF-8 from a redirected stdin; the
+code page is set only for a console that really is one. This is what made individual
+process-spawning tests fail sporadically under load since M16.</li>
+<li><strong>A float renders with a lowercase exponent.</strong> <code>println(f&quot;{1.0e21}&quot;)</code> wrote <code>1E+21</code>, where
+C, Go, Python, JavaScript and Rust all write <code>1e+21</code>. <code>std.string.fromFloat</code> backs the
+f-string lowering, so its output is program behaviour: the shape is now specified (spec §11)
+and pinned — shortest round-trip, plain decimal while the decimal exponent lies in <code>-4 .. 16</code>
+and scientific outside it, <code>Infinity</code> / <code>-Infinity</code> / <code>NaN</code>, <code>-0</code> for negative zero. The
+disassembler, the IR printer and the debugger's variables panel render through the same one
+place.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
