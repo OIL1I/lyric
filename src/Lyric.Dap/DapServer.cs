@@ -100,6 +100,15 @@ public sealed class DapServer(Stream input, Stream output, DapServerOptions? opt
                     await SetBreakpointsAsync(request, cancellationToken).ConfigureAwait(false);
                     break;
 
+                // Answered although this adapter offers no exception filters: a client sends the
+                // request as part of its configuration sequence whether or not there is anything
+                // to set, and an error on a request the protocol calls optional stops that
+                // sequence — leaving a program that never starts. There is nothing to report, so
+                // the response carries no body.
+                case "setExceptionBreakpoints":
+                    await RespondAsync(request, null, cancellationToken).ConfigureAwait(false);
+                    break;
+
                 case "configurationDone":
                 {
                     var session = SessionOrThrow();

@@ -10,6 +10,23 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.7.1 — 2026-08-22
+
+One fix, to a request the debug adapter left unanswered.
+
+### Fixed
+
+- **`lyrdbg` answers `setExceptionBreakpoints`.** An editor configures exception breakpoints as
+  part of its startup sequence — after the `initialized` event, before `configurationDone` —
+  whether or not the adapter offers any filters to set. This one offers none and answered the
+  request with an error, and a client that treats a failed configuration request as fatal never
+  gets to `configurationDone`: the program stands there launched and never started, with no output
+  and nothing to see.
+
+  There is still nothing to set and nothing to report, so the answer carries no body. What changed
+  is that it is an answer. Nothing about breakpoints, stepping or a running session behaves
+  differently, and a client that never sends the request sees no change at all.
+
 ## v2.7.0 — 2026-08-21
 
 One overload, and with it the debugger reaches the shape an embedded script actually has. The
