@@ -314,7 +314,10 @@ public sealed class LangVm
         if (!result.Ok || result.Bytes is null)
             throw new EmbeddingException(
                 $"'{name}' did not compile ({result.Diagnostics.ErrorCount} error(s))",
-                result.Diagnostics.Diagnostics);
+                // Resolved HERE, where the source manager of this compilation is still in hand:
+                // a Span is an index into it, and the host catching this has neither.
+                [.. result.Diagnostics.Diagnostics.Select(
+                    d => ScriptDiagnostic.From(d, result.Sources))]);
 
         // Loaded and validated at compile time rather than at run time, so a module that is never
         // executed is still known to be broken.

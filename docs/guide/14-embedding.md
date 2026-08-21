@@ -321,4 +321,36 @@ A script that fails throws on the host side:
 | `EmbeddingException` | the host used the API wrongly — an unknown function, a signature mismatch |
 
 These are declared in `Lyric.Embedding`; a host does not reference the runtime assembly to catch
-them.
+them — which is also why each of them carries what a host would otherwise have gone looking for.
+
+An `EmbeddingException` carries the diagnostics **with their place already resolved**:
+
+```csharp
+catch (EmbeddingException failed)
+{
+    foreach (var diagnostic in failed.Diagnostics)
+        Console.Error.WriteLine(diagnostic);   // src/held.lyr:129:15: error[LYR-SEM0002]: …
+}
+```
+
+`File`, `Line` and `Column` stand on the diagnostic, and on every note under it. The resolution
+happens at the throw: a compiler span is an index into the compilation's source manager, and that
+manager is gone by the time you catch anything — which is why a code and a message used to be all
+that arrived. A diagnostic about the compilation rather than about a position in it has
+`File == null` and line 0. A module compiled from memory is named by the name you passed to
+`Compile`; one compiled from disk carries its path, and an error one import away carries THAT
+file's path rather than the entry's.
+
+A `ScriptPanicException` carries the Lyric call stack the same way:
+
+```csharp
+catch (ScriptPanicException panic)
+{
+    Console.Error.WriteLine(panic.Message);
+    foreach (var frame in panic.Backtrace)
+        Console.Error.WriteLine($"    in {frame}");   // update (game:7)
+}
+```
+
+The frames are innermost first and name their line while the module carries a source map, which it
+does unless it was built with `--no-source-map`.

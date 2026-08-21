@@ -53,6 +53,10 @@ public class LangVmTests
     /// <summary>
     /// The diagnostics arrive as DATA rather than as pre-rendered text: a host shows them in its own
     /// interface and needs the code and the position rather than a string to parse back.
+    ///
+    /// <para>The position is RESOLVED (2.6): a span is an index into the compilation's source
+    /// manager, which no host has, so one carried a code and a message and the question "in which
+    /// file?" — every time, in a project of thirteen.</para>
     /// </summary>
     [Fact]
     public void Diagnostics_arrive_as_data_with_code_and_position()
@@ -63,7 +67,9 @@ public class LangVmTests
 
         var diagnostic = thrown.Diagnostics.First(d => d.Severity == Severity.Error);
         Assert.StartsWith("LYR-", diagnostic.Code, StringComparison.Ordinal);
-        Assert.True(diagnostic.Span.End > diagnostic.Span.Start);
+        Assert.Equal("mod", diagnostic.File);
+        Assert.Equal(1, diagnostic.Line);
+        Assert.True(diagnostic.Column > 1, "the column points into the line, not at its start");
     }
 
     /// <summary>

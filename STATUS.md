@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4470 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.5.1**; the specification in `lyriclang/lyric-spec` is
+4478 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.6.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -270,6 +270,12 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **A13 — a compilation error carries its place** (2026-08-21,
+  `feature/a13-diagnostic-positions`, v2.6.0). The pattern this makes three of, after A9 and
+  A12: the toolchain knew the answer and the boundary dropped it. Worth watching as a class —
+  every type the embedding API hands out wants asking whether it is still meaningful once the
+  compilation that made it is gone.
+
 - [x] **The formatter breaks operator chains** (2026-08-21, `feature/fmt-operator-chains`,
   v2.5.1). One method, one `Doc.WillBreak` beside it, five tests. Two lessons: a scope estimate
   made from reading code ("changes every formatted file") was off by the whole corpus, and the
@@ -281,22 +287,6 @@ out of them and hands its own functions, types and value structs in.
   calls rather than only compiling them, two guide edits. The lesson is about the label rather
   than the code: a restriction was called deliberate in a changelog when it was only where the
   implementation stopped, and the next requirement found it a release later.
-
-- [x] **M31 — the budget and the named attribute value** (2026-08-21,
-  `feature/m31-budget-and-constants`). Erato's A10 and A11. The budget is wasmtime's `fuel`
-  rather than V8's terminate-from-a-watchdog: counted, deterministic, no second thread — and
-  the analysis found a hole the register had not, namely that the constant initializer runs
-  inside `Instantiate`. A11 deliberately did NOT add a `const` binding form (that would be a
-  second mechanism for "a name bound to a value", Rule 2): the one POSITION learned to read a
-  `let` instead.
-
-- [x] **The v2.3.1 bug wave** (2026-08-21, `fix/v2.3.1-bug-wave`). Four measured bugs, three of
-  them valid programs the toolchain mishandled: a parent's default method through a child-typed
-  value (the devirtualizer put one interface value into another's slot; the constraint route
-  looked the member up without the chain), an array literal that lowered its elements without
-  the element type (null and the interface lift both), the console code page that made
-  redirected output depend on whichever tool last touched it, and `1E+21`. Three conformance
-  cases, `//! since: 2.3.1`.
 
 ## Measurements
 
@@ -383,6 +373,19 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**A13 — the compilation error with a place — is RELEASED as v2.6.0** (2026-08-21). Erato filed
+it after E12: `EmbeddingException` handed out compiler `Diagnostic`s whose `Span` is an index
+into the compilation's source manager, and that manager never left the toolchain — so a host
+caught a code and a message, in a project of thirteen files. The place is resolved AT THE THROW
+now, into `ScriptDiagnostic` (file, line, column, notes and all). Three options stood in the
+register; this is the first one it asked for, and the other two — handing out the manager, or a
+rendered blob — were refused for the same reason: a manager outlives nothing and a blob cannot
+be jumped to.
+
+**Found beside it, unfiled**: `ScriptPanicException` did not carry the backtrace either. Erato
+reached it through `InnerException` — that means naming `LyricPanic`, a runtime type the whole
+embedding API exists so a host need NOT reference. `Backtrace` is a property now.
 
 **The formatter breaks operator chains — RELEASED as v2.5.1** (2026-08-21). The last item of
 Erato's E7 note, cut out of M31 and done on its own. `BinaryDoc` held no line opportunity at

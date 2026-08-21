@@ -10,6 +10,36 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.6.0 — 2026-08-21
+
+A compilation error tells an embedding host WHERE it happened, and a panic hands over its
+backtrace. Both were already known inside the toolchain and stopped at the boundary. The bytecode
+format stays **3.3** and the language gains nothing.
+
+### Added
+
+- **`EmbeddingException.Diagnostics` carries file, line and column.** A compiler diagnostic holds
+  a span, which is an index into the compilation's source manager plus offsets — and that manager
+  belongs to the compilation, so a host caught a code and a message and nothing else. In a project
+  of thirteen `.lyr` files that is the question "in which one?" every time, where the command line
+  had been printing `src/held.lyr:129:15: error[LYR-SEM0002]: …` all along.
+
+  The place is resolved at the throw, where the manager is still in hand. `File`, `Line` and
+  `Column` stand on the diagnostic and on every note under it; `ToString()` gives the one-line form
+  the command line prints. An error one import away carries THAT file's path — naming the entry
+  file would be confidently wrong, which is worse than naming nothing.
+
+- **`ScriptPanicException.Backtrace`** — the Lyric call stack, innermost first, each frame naming
+  its line while the module carries a source map. The frames existed; reaching them meant naming
+  `LyricPanic`, a type of the runtime assembly this API exists so a host need not reference.
+
+### Changed
+
+- **The element type of `EmbeddingException.Diagnostics` is now `ScriptDiagnostic`** rather than
+  the compiler's `Diagnostic`. `Code`, `Severity` and `Message` keep their names, so host code
+  reading those compiles unchanged; what goes is `Span`, which no host could resolve — the very
+  reason for this release.
+
 ## v2.5.1 — 2026-08-21
 
 One fix, to a promise the formatter's own chapter makes.
