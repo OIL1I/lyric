@@ -739,18 +739,94 @@ public sealed class AstFormatter
         _ => throw new InternalCompilationException($"unreachable: unexpected {op}"),
     };
 
+    /// <summary>
+    /// A chain of operators of one precedence level, as ONE breaking decision.
+    ///
+    /// <para>The chain is flattened first: <c>a &amp;&amp; b &amp;&amp; c</c> parses as
+    /// <c>((a &amp;&amp; b) &amp;&amp; c)</c>, and formatting that shape as it stands would let the
+    /// inner pair fit while the outer one breaks — a staircase nobody writes by hand. Flat, the
+    /// operands print as they always did; broken, every operator of the level goes to the front of
+    /// its own line, indented one step.</para>
+    ///
+    /// <para>The operator leads the continuation line rather than trailing the one before it. Both
+    /// forms have a following; this one is what PEP 8, rustfmt and the .NET style default settled
+    /// on, and it is the one where the eye finds what joins two operands without reading to the end
+    /// of a line first.</para>
+    ///
+    /// <para>Only the associative side is walked, so written parentheses survive: in
+    /// <c>a + (b + c)</c> the right operand is a level of its own and takes <c>level - 1</c>, which
+    /// is what puts its parentheses back.</para>
+    /// </summary>
     private Doc BinaryDoc(BinaryExpr expr)
     {
-        var (symbol, level) = BinaryInfo(expr.Operator);
+        var (_, level) = BinaryInfo(expr.Operator);
 
         // Left-associative throughout, except ?? which associates right. The tighter side takes
         // level-1, so an equal level there regains its written parentheses.
-        var (leftMax, rightMax) = expr.Operator == BinaryOp.Coalesce
-            ? (level - 1, level)
-            : (level, level - 1);
+        var rightAssociative = expr.Operator == BinaryOp.Coalesce;
 
-        return Doc.Of(ExprDoc(expr.Left, leftMax), Doc.From($" {symbol} "),
-            ExprDoc(expr.Right, rightMax));
+        var operands = new List<Doc>();
+        var operators = new List<string>();
+        Flatten(expr, level, rightAssociative, operands, operators);
+
+        // An operand that breaks by itself — a match or if expression, a lambda with a block —
+        // lays out over several lines whatever the width says. A group around the chain could
+        // then never be flat, so every such chain would break for a reason that has nothing to do
+        // with the width: 'return base * match (r) { … }' would leave its operator behind on the
+        // first line. Those chains stay as they are and let the block-shaped operand break.
+        if (operands.Exists(Doc.WillBreak))
+        {
+            var flat = new List<Doc> { operands[0] };
+            for (var i = 0; i < operators.Count; i++)
+            {
+                flat.Add(Doc.From($" {operators[i]} "));
+                flat.Add(operands[i + 1]);
+            }
+
+            return Doc.Of([.. flat]);
+        }
+
+        var tail = new List<Doc>(operators.Count * 3);
+        for (var i = 0; i < operators.Count; i++)
+        {
+            tail.Add(Doc.LineOrSpace);
+            tail.Add(Doc.From(operators[i] + " "));
+            tail.Add(operands[i + 1]);
+        }
+
+        return Doc.GroupOf(operands[0], Doc.IndentOf([.. tail]));
+    }
+
+    /// <summary>Collects the operands and the operators of one precedence level, in source order.
+    /// Everything that is not a binary expression of exactly this level is an operand and gets its
+    /// own document, groups and all.</summary>
+    private void Flatten(Expr expr, int level, bool rightAssociative,
+        List<Doc> operands, List<string> operators)
+    {
+        // The level decides the associativity — only '??' associates right — so a matching level
+        // is the whole test.
+        if (expr is BinaryExpr binary && BinaryInfo(binary.Operator).Level == level)
+        {
+            var symbol = BinaryInfo(binary.Operator).Symbol;
+            if (rightAssociative)
+            {
+                operands.Add(ExprDoc(binary.Left, level - 1));
+                operators.Add(symbol);
+                Flatten(binary.Right, level, true, operands, operators);
+            }
+            else
+            {
+                Flatten(binary.Left, level, false, operands, operators);
+                operators.Add(symbol);
+                operands.Add(ExprDoc(binary.Right, level - 1));
+            }
+
+            return;
+        }
+
+        // The end of the chain: the leftmost operand of a left-associative one, the rightmost of a
+        // right-associative one. Either way it is the side that may carry the same level again.
+        operands.Add(ExprDoc(expr, level));
     }
 
     private Doc AssignDoc(AssignExpr expr)

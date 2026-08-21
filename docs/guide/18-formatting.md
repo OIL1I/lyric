@@ -34,6 +34,43 @@ with one element per line — and a broken list gets a trailing comma exactly wh
 allows one. A blank line always follows the module header and separates declarations with
 bodies; imports sit together.
 
+An operator chain counts as such a list. A condition that runs past the limit breaks before
+every operator of the same precedence, indented one step:
+
+```lyr
+fn playable(width: int, height: int, tiles: int): bool {
+    return width > 0
+        && height > 0
+        && tiles > 0
+        && width * height >= tiles
+        && width * height - tiles < width;
+}
+```
+
+Two things about that shape. The operator leads its line rather than trailing the one before it,
+so the eye finds what joins two operands without reading to the end of a line first. And the
+whole level breaks or none of it does: `a && b && c` is one decision, not two nested ones. A
+tighter level inside stays on its line while the looser one around it breaks — the comparisons
+above are untouched by the `&&` chain breaking.
+
+The one exception is an operand that breaks by itself. A `match` or `if` expression lays itself
+out over several lines whatever the width says, and a chain containing one stays as it is rather
+than breaking for a reason that has nothing to do with the width:
+
+```lyr
+enum Rarity {
+    Common,
+    Rare,
+}
+
+fn price(base: int, rarity: Rarity): int {
+    return base * match (rarity) {
+        Common => 1,
+        Rare => 3,
+    };
+}
+```
+
 Two things it decides that are worth knowing in advance. Parentheses that only restate the
 precedence table go away — `(a * b) + c` becomes `a * b + c`, and `(a && b) || c` becomes
 `a && b || c`, because `&&` binds tighter; parentheses that change the parse always stay. And a

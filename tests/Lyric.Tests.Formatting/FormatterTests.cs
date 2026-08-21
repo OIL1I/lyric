@@ -367,4 +367,105 @@ public class FormatterTests
 
             """, Format("interface Named{fn name():string;}\ninterface Labeled::[Named]{fn label():string;}"));
     }
+
+    // ------------------------------------------------------------------ operator chains
+
+    [Fact]
+    public void A_chain_that_fits_stays_on_its_line() =>
+        Assert.Equal("""
+            fn f(a: int, b: int, c: int): int {
+                return a + b * c;
+            }
+
+            """, Format("fn f(a:int,b:int,c:int):int{return a+b*c;}"));
+
+    [Fact]
+    public void A_chain_over_the_limit_breaks_before_every_operator()
+    {
+        // The whole level breaks or none of it does: 'a && b && c' parses as '((a && b) && c)',
+        // and formatting that shape as it stands would let the inner pair fit while the outer one
+        // breaks — a staircase nobody writes by hand.
+        var formatted = Format(
+            "fn f(alpha: int, beta: int, gamma: int): int {\n"
+            + "    if (alpha > 0 && beta > 0 && gamma > 0 && alpha + beta > gamma"
+            + " && beta + gamma > alpha && gamma + alpha > beta) {\n"
+            + "        return 1;\n    }\n    return 0;\n}");
+
+        Assert.Equal("""
+            fn f(alpha: int, beta: int, gamma: int): int {
+                if (alpha > 0
+                    && beta > 0
+                    && gamma > 0
+                    && alpha + beta > gamma
+                    && beta + gamma > alpha
+                    && gamma + alpha > beta) {
+                    return 1;
+                }
+                return 0;
+            }
+
+            """, formatted);
+
+        Assert.All(formatted.Split('\n'), line => Assert.True(line.Length <= 100, line));
+    }
+
+    [Fact]
+    public void Only_the_level_that_does_not_fit_breaks() =>
+        // The '||' chain breaks, the '&&' chains inside it still fit and stay flat. Groups nest,
+        // so the decision belongs to a level rather than to an expression.
+        Assert.Equal("""
+            fn f(): bool {
+                let mixedPrecedence = 1 > 0 && 2 > 1 && 3 > 2
+                    || 4 > 3 && 5 > 4 && 6 > 5
+                    || 7 > 6 && 8 > 7 && 9 > 8;
+                return mixedPrecedence;
+            }
+
+            """, Format("fn f():bool{let mixedPrecedence=1>0&&2>1&&3>2||4>3&&5>4&&6>5||7>6&&8>7&&9>8;"
+            + "return mixedPrecedence;}"));
+
+    [Fact]
+    public void A_broken_chain_keeps_the_parentheses_it_needs() =>
+        // Flattening walks the associative side only, so a written group on the other side stays
+        // a level of its own and gets its parentheses back.
+        Assert.Equal("""
+            fn f(a: int, b: int, c: int, d: int, e: int, ff: int, g: int, h: int): int {
+                return a
+                    * (b + c)
+                    * (d + e)
+                    * (ff + g)
+                    * (h + a)
+                    * (b + c)
+                    * (d + e)
+                    * (ff + g)
+                    * (h + a)
+                    * (b + c);
+            }
+
+            """, Format(
+            "fn f(a:int,b:int,c:int,d:int,e:int,ff:int,g:int,h:int):int{"
+            + "return a*(b+c)*(d+e)*(ff+g)*(h+a)*(b+c)*(d+e)*(ff+g)*(h+a)*(b+c);}"));
+
+    [Fact]
+    public void An_operand_that_breaks_by_itself_keeps_the_chain_together() =>
+        // A match expression lays itself out over several lines whatever the width says. A group
+        // around the chain could never be flat then, and the multiplication would break for a
+        // reason that has nothing to do with the width.
+        Assert.Equal("""
+            enum Rarity {
+                Common,
+                Rare,
+            }
+
+            fn price(price: int, rarity: Rarity): int {
+                return price * match (rarity) {
+                    Common => 1,
+                    Rare => 3,
+                };
+            }
+
+            """, Format(
+            "enum Rarity{Common,Rare}\n"
+            + "fn price(price:int,rarity:Rarity):int{"
+            + "return price*match(rarity){Common=>1,Rare=>3,};}"));
 }

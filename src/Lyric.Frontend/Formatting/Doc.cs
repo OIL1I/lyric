@@ -53,6 +53,26 @@ public abstract record Doc
 
     public static Doc From(string text) => new Text(text);
 
+    /// <summary>
+    /// Does this document force a line break wherever it stands?
+    ///
+    /// <para>A <see cref="HardLine"/> does, and so does anything holding one — a group around it
+    /// can never render flat, because <c>Fits</c> refuses it. A builder asks before wrapping
+    /// something in a group of its own: a group that is bound to break makes its own line
+    /// decisions for a reason that has nothing to do with the width.</para>
+    ///
+    /// <para><see cref="IfBroken"/> answers no: its content does not exist in the flat rendering,
+    /// so it cannot be what forces the break.</para>
+    /// </summary>
+    public static bool WillBreak(Doc doc) => doc switch
+    {
+        HardLine => true,
+        Concat(var parts) => parts.Any(WillBreak),
+        Group(var content) => WillBreak(content),
+        Indent(var content) => WillBreak(content),
+        _ => false,
+    };
+
     public static Doc Of(params Doc[] parts) => new Concat(parts);
 
     public static Doc GroupOf(params Doc[] parts) => new Group(new Concat(parts));

@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4465 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.5.0**; the specification in `lyriclang/lyric-spec` is
+4470 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.5.1**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -269,6 +269,12 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **The formatter breaks operator chains** (2026-08-21, `feature/fmt-operator-chains`,
+  v2.5.1). One method, one `Doc.WillBreak` beside it, five tests. Two lessons: a scope estimate
+  made from reading code ("changes every formatted file") was off by the whole corpus, and the
+  carve-out for hard-breaking operands is not an edge case but the thing that keeps
+  `base * match (r) { … }` readable.
 
 - [x] **A12 — a foreign value struct in a native signature** (2026-08-21,
   `feature/a12-foreign-value-struct`, v2.5.0). One lookup, six embedding tests that RUN the
@@ -291,17 +297,6 @@ out of them and hands its own functions, types and value structs in.
   the element type (null and the interface lift both), the console code page that made
   redirected output depend on whichever tool last touched it, and `1E+21`. Three conformance
   cases, `//! since: 2.3.1`.
-
-- [x] **M27 — the deep audit and its patch wave** (2026-08-20, `fix/v2.0.1-audit-wave`,
-  PR #65, released as v2.0.1). Probe-first through numerics, control flow, the type system
-  and the runtime boundary: 24 new conformance cases, and seven measured bugs fixed as one
-  wave — `..=max` ran zero times (inclusive ranges got their own adapter with a done flag),
-  small-width and uint ranges got their own carriers (they were malformed IR under the
-  verifier, and uint compared signed beyond 2⁶³), defer became the block affair §7.5 always
-  claimed (per iteration, break/continue drain what they leave), `let x = null;`/`let xs
-  = [];` report instead of crashing, oversized literals stopped reinterpreting, int-to-float
-  adaptation is exact, and `throws` on main is refused. Plus the §11 registry ratchet
-  (std.build is host-bound, now said) and two diagnosis-QoI fixes. 4322 tests, 78/78.
 
 ## Measurements
 
@@ -389,6 +384,18 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
+**The formatter breaks operator chains — RELEASED as v2.5.1** (2026-08-21). The last item of
+Erato's E7 note, cut out of M31 and done on its own. `BinaryDoc` held no line opportunity at
+all, so a chain could not break however long it grew; it flattens the level now and breaks
+before every operator, indented one step, operator-leading. **The prediction that cut it from
+M31 was wrong**: it changes "the shape of every formatted file in the corpus" — measured, it
+changes NOTHING in this repository's corpus, and the only file that moved during development
+was `examples/inventory.lyr`, which the match-expression carve-out then put back. The carve-out
+is the design finding: a group around a chain containing a hard line can never be flat, so
+`return base * match (r) { … }` would have broken its operator off for a reason that has
+nothing to do with the width. `Doc.WillBreak` answers that question now, where Prettier's
+`willBreak` sits.
+
 **A12 — the foreign value struct — is RELEASED as v2.5.0** (2026-08-21): Erato filed it after
 E10, and it is the sibling of A9 in the same file. `NativeStructParameter` looked its type up
 with `module.Members.LookupLocal` and required a single-segment path, so an imported or
@@ -401,11 +408,7 @@ Guide 13 gained the `…Int` family table in the same wave — `clampInt` existe
 nothing named the convention where someone would look.
 
 **M31 is BUILT and RELEASED as v2.4.0** (2026-08-21). Details under §Current milestone. What
-is left for Erato: the register's A10/A11 entries want closing, and the `lyric fmt` note beside
-them — operator chains do not break and run past the 100-column limit (`BinaryDoc` holds no
-`Doc.Line` at all, so a chain cannot break; reproduced at 117 columns) — is NOT done. It was cut
-from this milestone deliberately: it changes the shape of every formatted file in the corpus and
-belongs in its own slice.
+is left for Erato: the register's A10/A11/A12 entries want closing — all three are delivered.
 
 **The v2.3.1 bug wave is BUILT** (2026-08-21, branch `fix/v2.3.1-bug-wave`, three slices).
 Four of the five findings of the post-2.3.0 audit, fixed and pinned: the inherited default
