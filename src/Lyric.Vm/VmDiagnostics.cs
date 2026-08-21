@@ -33,6 +33,14 @@ public static class VmDiagnostics
     /// policy, not a broken file. The same module runs elsewhere.</para></summary>
     public const string CapabilityDenied = "LYR-CAP0001";
 
+    /// <summary>The execution ran out of the instruction budget the host granted it.
+    ///
+    /// <para>In the CAP range for the same reason as <see cref="CapabilityDenied"/>: the program
+    /// broke no contract of its own, the host declined to let it run longer, and the same module
+    /// finishes elsewhere. It arrives as a panic all the same — a stop a running program could
+    /// catch would be a stop it could sit out.</para></summary>
+    public const string BudgetExhausted = "LYR-CAP0002";
+
     /// <summary>Element index outside the array bounds. Unlike type and field indices it is a
     /// runtime value and cannot be checked at load time.</summary>
     public const string IndexOutOfRange = "LYR-VM0006";

@@ -50,10 +50,14 @@ public sealed class LoadedProgram
     public ModuleAttributes Attributes => _attributes ??= ModuleAttributes.Of(_module);
 
     /// <summary>Loads, binds, initializes.</summary>
+    /// <param name="budget">Covers the global initializer, which runs HERE. Foreign code gets its
+    /// first chance to loop forever before the host has called anything: a module-level
+    /// <c>let x = spin();</c> would otherwise hang the load itself.</param>
     /// <exception cref="LyricRuntimeException">A missing capability, or an import that cannot be
     /// bound.</exception>
+    /// <exception cref="LyricPanic">The initializer panicked, or spent the budget.</exception>
     public static LoadedProgram Load(BytecodeModule module, NativeRegistry? natives = null,
-        Capability granted = Capability.All)
+        Capability granted = Capability.All, ExecutionBudget? budget = null)
     {
         // First of all: a module requiring more than this VM grants never starts. The requirement
         // is recorded in the module, so a host loading foreign bytes checks the same thing.
@@ -83,7 +87,7 @@ public sealed class LoadedProgram
         // The initializer runs before everything else and exactly once. It is void; what counts
         // are the slots it leaves behind.
         if (module.GlobalInit is { } init && init >= module.Imports.Count)
-            program.Execute(init - module.Imports.Count);
+            program.Execute(init - module.Imports.Count, budget: budget);
 
         return program;
     }
@@ -107,7 +111,13 @@ public sealed class LoadedProgram
     /// <exception cref="LyricRuntimeException">No entry point.</exception>
     public LyrValue RunEntry(IReadOnlyList<string> arguments) => RunEntryCore(arguments, null);
 
-    private LyrValue RunEntryCore(IReadOnlyList<string> arguments, DebugController? debug)
+    /// <summary>Runs <c>main</c> under an instruction budget.</summary>
+    /// <exception cref="LyricPanic">The program panicked, or spent the budget.</exception>
+    public LyrValue RunEntry(IReadOnlyList<string> arguments, ExecutionBudget budget) =>
+        RunEntryCore(arguments, null, budget);
+
+    private LyrValue RunEntryCore(IReadOnlyList<string> arguments, DebugController? debug,
+        ExecutionBudget? budget = null)
     {
         if (_module.Start is not { } start)
             throw new LyricRuntimeException(VmDiagnostics.NoEntryPoint,
@@ -127,7 +137,7 @@ public sealed class LoadedProgram
             ? []
             : [Interpreter.ArgumentArray(arguments)];
 
-        return Execute(entry, entryArgs, debug);
+        return Execute(entry, entryArgs, debug, budget);
     }
 
     /// <summary>
@@ -149,8 +159,18 @@ public sealed class LoadedProgram
     /// parameter slots; the caller checks arity and types against the function table.</summary>
     public LyrValue Invoke(int index, params LyrValue[] arguments) => Execute(index, arguments);
 
+    /// <summary>Runs the function at <paramref name="index"/> under an instruction budget.
+    ///
+    /// <para>The budget covers THIS call. Two calls sharing one object share one kitty — which is
+    /// how a host bounds a whole frame across several scripts — and a native that calls back into
+    /// the program draws from whichever budget its own call was given.</para>
+    /// </summary>
+    /// <exception cref="LyricPanic">The program panicked, or spent the budget.</exception>
+    public LyrValue Invoke(int index, ExecutionBudget budget, params LyrValue[] arguments) =>
+        Execute(index, arguments, budget: budget);
+
     private LyrValue Execute(int index, LyrValue[]? arguments = null,
-        DebugController? debug = null) =>
+        DebugController? debug = null, ExecutionBudget? budget = null) =>
         Interpreter.Execute(_prepared, index, _module.Strings, _module.Types, _dispatch,
-            _natives, _globals, _arguments, arguments, _module.SourceMap, debug);
+            _natives, _globals, _arguments, arguments, _module.SourceMap, debug, budget);
 }
