@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The standard library — Lyric v2.6.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.6.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/" class="here">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>The standard library</h1>
+<nav class="contents">
+<ul>
+<li><a href="#collections">Collections</a></li>
+<li><a href="#iteration">Iteration</a></li>
+<li><a href="#one-name-per-type-not-overloads">One name per type, not overloads</a></li>
+<li><a href="#capabilities">Capabilities</a></li>
+<li><a href="#strings-have-methods">Strings have methods</a></li>
+<li><a href="#constructors-live-on-the-types">Constructors live on the types</a></li>
+<li><a href="#editing-the-standard-library">Editing the standard library</a></li>
+</ul>
+</nav>
+<p>The standard library is written in Lyric and ships as source alongside the toolchain.</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>std.core</code></td>
+<td><code>panic</code>, <code>assert</code>, <code>todo</code>, <code>unreachable</code>, <code>Exception</code>, <code>Display</code>, <code>Hashable</code>, <code>Equatable</code>, <code>Ordered</code></td>
+</tr>
+<tr>
+<td><code>std.string</code></td>
+<td>inspection, search, split, join, trim, pad, parsing, <code>StringBuilder</code></td>
+</tr>
+<tr>
+<td><code>std.fmt</code></td>
+<td>number formatting, padding, alignment, tables</td>
+</tr>
+<tr>
+<td><code>std.math</code></td>
+<td><code>sqrt</code>, <code>pi</code>, <code>abs</code>, <code>min</code>, <code>max</code>, rounding, trigonometry</td>
+</tr>
+<tr>
+<td><code>std.collections</code></td>
+<td><code>List&lt;T&gt;</code>, <code>Map&lt;K, V&gt;</code>, <code>Set&lt;T&gt;</code>, <code>Indexable&lt;T&gt;</code>, sorting</td>
+</tr>
+<tr>
+<td><code>std.iter</code></td>
+<td><code>Iterator&lt;T&gt;</code>, <code>Iterable&lt;T&gt;</code>, adapters, <code>sum</code></td>
+</tr>
+<tr>
+<td><code>std.option</code></td>
+<td><code>map</code>, <code>andThen</code>, <code>filter</code>, <code>zip</code>, <code>contains</code>, <code>toArray</code>, <code>iter</code>, <code>expect</code></td>
+</tr>
+<tr>
+<td><code>std.io.console</code></td>
+<td><code>print</code>, <code>println</code>, <code>readLine</code> — the writers take any <code>Display</code> value: <code>println(42)</code></td>
+</tr>
+<tr>
+<td><code>std.io.file</code></td>
+<td>reading and writing files — requires <code>fileAccess</code></td>
+</tr>
+<tr>
+<td><code>std.os</code></td>
+<td>environment, process, exit — requires <code>osAccess</code></td>
+</tr>
+<tr>
+<td><code>std.random</code></td>
+<td><code>Random.seeded</code>, <code>shuffle</code>, <code>choice</code>, <code>nextGaussian</code> — deterministic, no capability</td>
+</tr>
+<tr>
+<td><code>std.time</code></td>
+<td><code>Instant</code>, <code>Duration</code>, ISO 8601 — requires <code>osAccess</code></td>
+</tr>
+<tr>
+<td><code>std.build</code></td>
+<td><code>addExecutable</code> — only a <code>build.lyr</code> run by <code>lyric build</code> can use it</td>
+</tr>
+</tbody>
+</table>
+<h2 id="collections">Collections</h2>
+<p><code>List&lt;T&gt;</code> grows; <code>T[]</code> does not.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+import std.collections { List };
+
+fn main(): int {
+    let items = List&lt;string&gt;.empty();
+    items.push(&quot;first&quot;);
+    items.push(&quot;second&quot;);
+
+    for (item in items) {
+        println(item);
+    }
+
+    let copy = items.toArray();
+    return copy.length;
+}
+</code></pre>
+<h2 id="iteration">Iteration</h2>
+<p>Anything implementing <code>Iterable&lt;T&gt;</code> works with <code>for-in</code>, including your own types.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+import std.iter { Iterator, Iterable };
+
+class Countdown :: [Iterable&lt;int&gt;] {
+    from: int,
+
+    fn iter(): Iterator&lt;int&gt; {
+        return CountdownIter { remaining = this.from };
+    }
+}
+
+class CountdownIter :: [Iterator&lt;int&gt;] {
+    remaining: int,
+
+    mut fn next(): ?int {
+        if (this.remaining &lt;= 0) { return null; }
+        let value = this.remaining;
+        this.remaining = this.remaining - 1;
+        return value;
+    }
+}
+
+fn main(): int {
+    var total = 0;
+    for (n in Countdown { from = 3 }) {
+        total = total + n;
+    }
+    println(f&quot;{total}&quot;);
+    return total;
+}
+</code></pre>
+<p>An <code>Iterator&lt;T&gt;</code> yields <code>?T</code> and signals the end with <code>null</code>. <code>Iterable&lt;T&gt;</code> hands out a fresh
+iterator per call, so two loops over the same collection do not interfere.</p>
+<h2 id="one-name-per-type-not-overloads">One name per type, not overloads</h2>
+<p>Lyric has no overloading, so the library distinguishes by the type in the NAME. <code>std.math</code> carries
+both families side by side:</p>
+<table>
+<thead>
+<tr>
+<th>float</th>
+<th>int</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>min</code>, <code>max</code></td>
+<td><code>minInt</code>, <code>maxInt</code></td>
+</tr>
+<tr>
+<td><code>clamp</code></td>
+<td><code>clampInt</code></td>
+</tr>
+<tr>
+<td><code>abs</code>, <code>sign</code></td>
+<td><code>absInt</code>, <code>signInt</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>clamp(index, 0, count - 1)</code> on three <code>int</code>s is therefore <code>cannot assign 'int' to 'float'</code>, and
+the answer is <code>clampInt</code> rather than a conversion there and back. The same rule shapes
+<code>fromInt</code>/<code>fromFloat</code> and <code>parseInt</code>/<code>parseFloat</code> in <code>std.string</code>.</p>
+<h2 id="capabilities">Capabilities</h2>
+<p><code>std.io.file</code>, <code>std.io.net</code> and <code>std.os</code> require a capability. A standalone run grants
+everything; a host grants explicitly, and a module that requires more than it is granted is
+rejected before it runs.</p>
+<h2 id="strings-have-methods">Strings have methods</h2>
+<p>Since v1.15 the string API is method-shaped: <code>s.trim()</code>, <code>s.split(&quot;,&quot;)</code>, <code>s.contains(x)</code>,
+<code>s.length()</code>. The deprecated free forms (<code>trim(s)</code>, …) went with 2.0. <code>concat</code> and <code>repeat</code>
+stay free — they back <code>+</code> and <code>*</code> — and the type-directed families (<code>fromInt</code>, <code>parseInt</code>, …)
+keep their names.</p>
+<p>The methods come with the module: any <code>import std.string { … }</code> makes them visible, and a file
+that needs no free name imports the module under an alias, which avoids shadowing the builtin
+type name:</p>
+<pre><code class="language-lyr">import std.string as strings;
+
+fn main(): int {
+    return &quot;  Grüße  &quot;.trim().length();
+}
+</code></pre>
+<p>Two things worth knowing: <code>s.length()</code> is a call BECAUSE it costs O(n) — a property would
+promise a stored answer this type does not have — and every method returns a NEW string;
+<code>s.trim();</code> as a statement does nothing, because a Lyric string has nothing to mutate.</p>
+<h2 id="constructors-live-on-the-types">Constructors live on the types</h2>
+<p>A container comes from its type: <code>List&lt;int&gt;.empty()</code>, <code>Map&lt;string, int&gt;.empty()</code>,
+<code>Set&lt;int&gt;.empty()</code>, <code>StringBuilder.new()</code>, <code>Random.seeded(42)</code> — the latter from <code>std.random</code>
+since v1.14, where <code>shuffle</code>, <code>choice</code> and <code>nextGaussian</code> live beside it. The old free
+functions (<code>emptyList</code>, <code>emptyMap</code>, <code>emptySet</code>, <code>newRandom</code>) and the <code>std.math.Random</code> twin
+went with 2.0.</p>
+<h2 id="editing-the-standard-library">Editing the standard library</h2>
+<p>The toolchain reads the standard library from <strong>beside its own binary</strong> — a copy made at build
+time — or from <code>LYRIC_STDLIB</code> when that is set. Editing the sources in the repository therefore
+changes nothing until the next <code>dotnet build</code> refreshes the copies, and a published toolchain
+froze its copy when it was packaged. When an edit &quot;is not found&quot;, it is almost always this:
+point <code>LYRIC_STDLIB</code> at the repository's <code>stdlib/</code> while working on it.</p>
+<p>The library also holds itself accountable: every public item is documented (a test pins
+completeness), every file is formatted and compiles without a single diagnostic, and
+<code>stdlib-tests/</code> carries its behavioral tests — written in Lyric, run by <code>lyric test</code>.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/modules/">Modules</a>
+<a class="next" href="../../guide/embedding/">Embedding</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

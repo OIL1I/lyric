@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.6.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.6.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.6.0 — 2026-08-21</h2>
+<p>A compilation error tells an embedding host WHERE it happened, and a panic hands over its
+backtrace. Both were already known inside the toolchain and stopped at the boundary. The bytecode
+format stays <strong>3.3</strong> and the language gains nothing.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong><code>EmbeddingException.Diagnostics</code> carries file, line and column.</strong> A compiler diagnostic holds
+a span, which is an index into the compilation's source manager plus offsets — and that manager
+belongs to the compilation, so a host caught a code and a message and nothing else. In a project
+of thirteen <code>.lyr</code> files that is the question &quot;in which one?&quot; every time, where the command line
+had been printing <code>src/held.lyr:129:15: error[LYR-SEM0002]: …</code> all along.</p>
+<p>The place is resolved at the throw, where the manager is still in hand. <code>File</code>, <code>Line</code> and
+<code>Column</code> stand on the diagnostic and on every note under it; <code>ToString()</code> gives the one-line form
+the command line prints. An error one import away carries THAT file's path — naming the entry
+file would be confidently wrong, which is worse than naming nothing.</p>
+</li>
+<li><p><strong><code>ScriptPanicException.Backtrace</code></strong> — the Lyric call stack, innermost first, each frame naming
+its line while the module carries a source map. The frames existed; reaching them meant naming
+<code>LyricPanic</code>, a type of the runtime assembly this API exists so a host need not reference.</p>
+</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><strong>The element type of <code>EmbeddingException.Diagnostics</code> is now <code>ScriptDiagnostic</code></strong> rather than
+the compiler's <code>Diagnostic</code>. <code>Code</code>, <code>Severity</code> and <code>Message</code> keep their names, so host code
+reading those compiles unchanged; what goes is <code>Span</code>, which no host could resolve — the very
+reason for this release.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
