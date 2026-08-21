@@ -10,6 +10,30 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.5.1 — 2026-08-21
+
+One fix, to a promise the formatter's own chapter makes.
+
+### Fixed
+
+- **`lyric fmt` breaks operator chains at the 100-column limit.** A condition of three
+  comparisons ran to 140 characters and stayed there, idempotently: `BinaryDoc` held no line
+  opportunity at all, so a chain could not break however long it grew. The limit is documented as
+  the tool's contract, and it now holds for expressions too.
+
+  A chain that does not fit breaks before **every** operator of its precedence level, indented
+  one step — the operator leads its line, as PEP 8, rustfmt and the .NET style default all
+  settled on. The level breaks as a unit: `a && b && c` is one decision, so no staircase of
+  nested pairs. A tighter level inside stays flat while the looser one breaks.
+
+  One shape is deliberately left alone: a chain with an operand that breaks by itself — a `match`
+  or `if` expression, a lambda with a block — stays as it is, because a group around it could
+  never be flat and the chain would break for a reason that has nothing to do with the width.
+
+  **Formatted files can change shape**: a `lyric fmt --check` in CI may report files that were
+  clean before. Nothing in this repository's own corpus changed, which is how narrow the
+  reformatting turned out to be.
+
 ## v2.5.0 — 2026-08-21
 
 One requirement from the embedder, and the documentation gap beside it. The bytecode format stays
