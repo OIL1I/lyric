@@ -409,4 +409,116 @@ public class DebuggerTests
         controller.Start([]);
         Assert.Equal(5, ExpectStop(controller, StopReason.Exited).ExitCode);
     }
+
+    // ------------------------------------------------------------------ a program without an entry point
+
+    /// <summary>
+    /// The shape an embedded script has: no `main`, and a host that calls one function per frame
+    /// from its own loop. Before 2.7 the debugger was reachable only through RunEntry, so the
+    /// whole machinery existed for a shape a game does not have.
+    /// </summary>
+    private const string Frames = """
+        pub fn update(n: int): int {
+            let doubled = n * 2;
+            return doubled + 1;
+        }
+
+        pub fn other(): int {
+            return 7;
+        }
+        """;
+
+    [Fact]
+    public async Task A_breakpoint_hits_inside_an_invoked_function()
+    {
+        var program = Load(Frames);
+        var controller = DebugController.Create(program);
+        Assert.True(Assert.Single(controller.SetBreakpoints("test.lyr", [2])).Verified);
+
+        // The host's own thread makes the call; the commands come from this one.
+        var index = program.IndexOfFunction("main.update");
+        var call = Task.Run(() => program.Invoke(index, controller, LyrValue.FromI64(20)).AsI64);
+
+        ExpectStop(controller, StopReason.Breakpoint);
+        var frames = controller.StackTrace();
+        Assert.Equal("main.update", frames[0].Function);
+        Assert.Equal(2, frames[0].Line);
+        Assert.Equal("20", ValueOf(controller.Locals(0), "n"));
+
+        controller.Continue();
+        Assert.Equal(41, await call.WaitAsync(Timeout));
+    }
+
+    [Fact]
+    public async Task Stepping_works_from_an_invoked_function()
+    {
+        var program = Load(Frames);
+        var controller = DebugController.Create(program);
+        controller.SetBreakpoints("test.lyr", [2]);
+
+        var index = program.IndexOfFunction("main.update");
+        var call = Task.Run(() => program.Invoke(index, controller, LyrValue.FromI64(1)).AsI64);
+
+        ExpectStop(controller, StopReason.Breakpoint);
+        controller.StepOver();
+
+        var stop = ExpectStop(controller, StopReason.Step);
+        Assert.Equal(3, controller.StackTrace()[0].Line);
+        // The line before it ran, so its binding now has a value.
+        Assert.Equal("2", ValueOf(controller.Locals(0), "doubled"));
+
+        controller.Continue();
+        Assert.Equal(3, await call.WaitAsync(Timeout));
+    }
+
+    [Fact]
+    public async Task One_controller_serves_call_after_call()
+    {
+        // The per-frame model: the controller is attached once and every call it is passed to
+        // stops. Nothing about it is per-run.
+        var program = Load(Frames);
+        var controller = DebugController.Create(program);
+        controller.SetBreakpoints("test.lyr", [2]);
+        var index = program.IndexOfFunction("main.update");
+
+        for (var n = 1; n <= 3; n++)
+        {
+            var argument = n;
+            var call = Task.Run(() =>
+                program.Invoke(index, controller, LyrValue.FromI64(argument)).AsI64);
+
+            ExpectStop(controller, StopReason.Breakpoint);
+            Assert.Equal(argument.ToString(), ValueOf(controller.Locals(0), "n"));
+
+            controller.Continue();
+            Assert.Equal(argument * 2 + 1, await call.WaitAsync(Timeout));
+        }
+    }
+
+    [Fact]
+    public void A_call_without_a_breakpoint_runs_through()
+    {
+        // The controller is attached and the other function carries no breakpoint: the call
+        // returns without ever stopping, which is what a host needs for the frames in between.
+        var program = Load(Frames);
+        var controller = DebugController.Create(program);
+        controller.SetBreakpoints("test.lyr", [2]);
+
+        Assert.Equal(7,
+            program.Invoke(program.IndexOfFunction("main.other"), controller).AsI64);
+    }
+
+    [Fact]
+    public void The_event_stream_stays_open_between_calls()
+    {
+        // No Exited event: nothing ended, the host simply stopped calling. A stream that
+        // completed after one frame would end a session the game is still in.
+        var program = Load(Frames);
+        var controller = DebugController.Create(program);
+
+        program.Invoke(program.IndexOfFunction("main.other"), controller);
+
+        Assert.False(controller.Events.IsCompleted);
+        Assert.Empty(controller.Events);
+    }
 }
