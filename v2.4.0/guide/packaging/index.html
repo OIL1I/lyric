@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Packing a program — Lyric v2.4.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.4.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/" class="here">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Packing a program</h1>
+<nav class="contents">
+<ul>
+<li><a href="#what-a-packed-program-is">What a packed program is</a></li>
+<li><a href="#what-to-know-before-shipping">What to know before shipping</a></li>
+</ul>
+</nav>
+<p>A Lyric program normally travels as a <code>.lyrbc</code> module and runs wherever a <code>lyrvm</code> is. Packing
+removes that condition: one command wraps your program and the runtime into a single executable
+that runs on a machine that has never heard of Lyric.</p>
+<pre><code class="language-bash">lyric pack app.lyr
+./app arg1 arg2
+</code></pre>
+<p>That is the whole workflow. <code>lyric pack</code> compiles the file and hands the module to <code>lyrpack</code>,
+which copies a prebuilt runtime — the <em>stub</em> — and appends the module to it. No compiler ships
+inside the result, nothing is installed on the target machine, and packing takes about as long
+as copying the file, because that is what it is.</p>
+<p>An already compiled module packs directly, which is how a <code>build.lyr</code> project packs its
+artifact:</p>
+<pre><code class="language-bash">lyric build
+lyric pack out/app.lyrbc -o dist/app
+</code></pre>
+<h2 id="what-a-packed-program-is">What a packed program is</h2>
+<p>It is your program, owning the whole command line. Every argument goes to <code>main</code> unchanged —
+there is no <code>--</code> protocol and no wrapper option, not even <code>--help</code>. If your program wants a
+help text, it prints one:</p>
+<pre><code class="language-lyr">import std.io.console;
+
+fn main(args: string[]): int {
+    if (args.length == 0) {
+        console.println(&quot;usage: app &lt;name&gt;&quot;);
+        return 2;
+    }
+
+    for (name in args) {
+        console.println(&quot;hello, &quot; + name);
+    }
+    return 0;
+}
+</code></pre>
+<p>The exit code is <code>main</code>'s return value, a panic exits with 101 and prints its backtrace to
+stderr, and the source map travels inside the module, so the backtrace names your lines — the
+program behaves exactly as it did under <code>lyric run</code>, because it is the same runtime executing
+the same bytes.</p>
+<p>A packed program runs with <strong>every capability</strong>, like any standalone program. The sandbox
+belongs to hosts that embed the runtime; a program someone ships as an executable answers to
+the operating system, the way every executable does.</p>
+<h2 id="what-to-know-before-shipping">What to know before shipping</h2>
+<ul>
+<li><strong>One platform per file.</strong> The stub is a native executable, so a pack is for one platform.
+The toolchain archive carries stubs under <code>stubs/&lt;rid&gt;/</code>, and <code>--stub</code> points at any of them
+explicitly.</li>
+<li><strong>Size.</strong> The stub contains the whole runtime, so even <code>return 0;</code> is megabytes. The program
+on top costs what the module costs — usually kilobytes.</li>
+<li><strong>macOS cannot run packed programs yet.</strong> A Mach-O declares its own size, appended bytes put
+the file beyond it, and <code>codesign</code> refuses to bless the result — so the packed file is killed
+on start and cannot be re-signed either. Pack FOR macOS is planned (the payload has to become
+a real Mach-O segment); pack ON macOS for the other platforms works today, with their stubs
+and <code>--stub</code>.</li>
+<li><strong>Packing is not verification.</strong> <code>lyrpack</code> copies bytes and does not look inside the module;
+a broken module packs fine and reports at first start. <code>lyrvm verify</code> answers ahead of time.</li>
+</ul>
+<p>The byte-level layout — the footer, its versioning, and what the stub does in which failure —
+is specified in <a href="/v2.4.0/pack/">Pack.md</a>.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/building/">Building a project</a>
+<a class="next" href="../../guide/formatting/">Formatting</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
