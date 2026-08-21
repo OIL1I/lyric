@@ -21,7 +21,7 @@
 <h2>Reference</h2>
 <ul>
 <li><a href="../grammar/" class="here">Lyric Grammar</a></li>
-<li><a href="../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a></li>
 <li><a href="../pack/">The Pack Format</a></li>
 </ul>
 <h2>Project</h2>
@@ -60,6 +60,13 @@
 <li><a href="#patterns">7. Patterns</a></li>
 </ul>
 </nav>
+<blockquote>
+<p><strong>Mirror.</strong> The canonical home of this document is
+<a href="https://github.com/lyriclang/lyric-spec/blob/main/spec/02-grammar.md"><code>lyriclang/lyric-spec</code> → <code>spec/02-grammar.md</code></a>.
+This copy exists for the toolchain's tests and doc site; CI diffs everything below the
+marker against the canonical body. Edit it there, mirror it here.</p>
+</blockquote>
+<!-- sync:body -->
 <p>The formal grammar of the Lyric language. This document defines the syntax only; it says nothing
 about typing, name resolution or runtime behaviour.</p>
 <h2 id="notation">Notation</h2>
@@ -575,7 +582,7 @@ RangePattern    = Literal ( '..' | '..=' ) Literal .
 <p><code>Literal</code> is an integer, float, string, char, bool or null literal. A <code>FieldPattern</code> without <code>=</code>
 binds the field to its own name.</p>
 <nav class="neighbours">
-<a class="next" href="../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a>
+<a class="next" href="../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a>
 </nav>
 </main>
 </div>

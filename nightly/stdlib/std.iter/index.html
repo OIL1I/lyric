@@ -21,7 +21,7 @@
 <h2>Reference</h2>
 <ul>
 <li><a href="../../grammar/">Lyric Grammar</a></li>
-<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a></li>
 <li><a href="../../pack/">The Pack Format</a></li>
 </ul>
 <h2>Project</h2>
@@ -109,8 +109,9 @@ position.</p>
 <section class="item" id="class-rangeiterator">
 <h2><a href="#class-rangeiterator">RangeIterator</a> <span class="kind">class</span></h2>
 <pre class="signature"><code class="language-lyr">pub class RangeIterator :: [Iterator&lt;int&gt;]</code></pre>
-<p>A numeric range. <code>a..b</code> and <code>a..=b</code> differ only in the end value the compiler substitutes,
-so there is one adapter rather than two.</p>
+<p>An exclusive numeric range, <code>a..b</code>. The inclusive form has its own adapter below: folding
+<code>a..=b</code> into <code>a..b+1</code> was the 2.0.1 bug — at the type's maximum the <code>+1</code> wraps and the
+loop runs zero times.</p>
 <div class="members">
 <div class="member">
 <pre class="signature"><code class="language-lyr">current: int</code></pre>
@@ -125,7 +126,7 @@ so there is one adapter rather than two.</p>
 <p>The next value, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:26</p>
+<p class="source">stdlib/std/iter.lyr:27</p>
 </section>
 <section class="item" id="class-arrayiterator">
 <h2><a href="#class-arrayiterator">ArrayIterator</a> <span class="kind">class</span></h2>
@@ -146,7 +147,7 @@ array do not disturb each other.</p>
 <p>The next value, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:45</p>
+<p class="source">stdlib/std/iter.lyr:119</p>
 </section>
 <section class="item" id="class-stringiterator">
 <h2><a href="#class-stringiterator">StringIterator</a> <span class="kind">class</span></h2>
@@ -167,7 +168,7 @@ make the loop quadratic. The cost is one array per loop.</p>
 <p>The next character, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:64</p>
+<p class="source">stdlib/std/iter.lyr:138</p>
 </section>
 <section class="item" id="interface-iterable">
 <h2><a href="#interface-iterable">Iterable</a> <span class="kind">interface</span></h2>
@@ -182,7 +183,7 @@ a FRESH cursor.</p>
 <p>A fresh cursor over this value.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:86</p>
+<p class="source">stdlib/std/iter.lyr:160</p>
 </section>
 <section class="item" id="class-mapiterator">
 <h2><a href="#class-mapiterator">MapIterator</a> <span class="kind">class</span></h2>
@@ -202,13 +203,13 @@ a FRESH cursor.</p>
 <p>The next transformed value, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:104</p>
+<p class="source">stdlib/std/iter.lyr:178</p>
 </section>
 <section class="item" id="function-map">
 <h2><a href="#function-map">map</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn map&lt;T, U&gt;(source: Iterator&lt;T&gt;, f: fn(T) -&gt; U): Iterator&lt;U&gt;</code></pre>
 <p>Each element through <code>f</code>, lazily: nothing runs before someone asks.</p>
-<p class="source">stdlib/std/iter.lyr:122</p>
+<p class="source">stdlib/std/iter.lyr:196</p>
 </section>
 <section class="item" id="class-filteriterator">
 <h2><a href="#class-filteriterator">FilterIterator</a> <span class="kind">class</span></h2>
@@ -228,13 +229,13 @@ a FRESH cursor.</p>
 <p>The next passing value, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:127</p>
+<p class="source">stdlib/std/iter.lyr:201</p>
 </section>
 <section class="item" id="function-filter">
 <h2><a href="#function-filter">filter</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn filter&lt;T&gt;(source: Iterator&lt;T&gt;, keep: fn(T) -&gt; bool): Iterator&lt;T&gt;</code></pre>
 <p>Only the elements <code>keep</code> accepts, lazily.</p>
-<p class="source">stdlib/std/iter.lyr:148</p>
+<p class="source">stdlib/std/iter.lyr:222</p>
 </section>
 <section class="item" id="class-takeiterator">
 <h2><a href="#class-takeiterator">TakeIterator</a> <span class="kind">class</span></h2>
@@ -254,14 +255,14 @@ a FRESH cursor.</p>
 <p>The next value while the budget lasts, then <code>null</code>.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:153</p>
+<p class="source">stdlib/std/iter.lyr:227</p>
 </section>
 <section class="item" id="function-take">
 <h2><a href="#function-take">take</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn take&lt;T&gt;(source: Iterator&lt;T&gt;, count: int): Iterator&lt;T&gt;</code></pre>
 <p>The first <code>count</code> elements, lazily. A negative <code>count</code> yields nothing rather than
 panicking: it is an empty selection, not a broken promise.</p>
-<p class="source">stdlib/std/iter.lyr:171</p>
+<p class="source">stdlib/std/iter.lyr:245</p>
 </section>
 <section class="item" id="class-skipiterator">
 <h2><a href="#class-skipiterator">SkipIterator</a> <span class="kind">class</span></h2>
@@ -281,13 +282,13 @@ panicking: it is an empty selection, not a broken promise.</p>
 <p>The next value past the dropped front, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:176</p>
+<p class="source">stdlib/std/iter.lyr:250</p>
 </section>
 <section class="item" id="function-skip">
 <h2><a href="#function-skip">skip</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn skip&lt;T&gt;(source: Iterator&lt;T&gt;, count: int): Iterator&lt;T&gt;</code></pre>
 <p>Everything after the first <code>count</code> elements, lazily. A negative <code>count</code> skips nothing.</p>
-<p class="source">stdlib/std/iter.lyr:196</p>
+<p class="source">stdlib/std/iter.lyr:270</p>
 </section>
 <section class="item" id="class-takewhileiterator">
 <h2><a href="#class-takewhileiterator">TakeWhileIterator</a> <span class="kind">class</span></h2>
@@ -311,14 +312,14 @@ panicking: it is an empty selection, not a broken promise.</p>
 <p>The next value of the accepted front, then <code>null</code> forever.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:201</p>
+<p class="source">stdlib/std/iter.lyr:275</p>
 </section>
 <section class="item" id="function-takewhile">
 <h2><a href="#function-takewhile">takeWhile</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn takeWhile&lt;T&gt;(source: Iterator&lt;T&gt;, keep: fn(T) -&gt; bool): Iterator&lt;T&gt;</code></pre>
 <p>The longest front <code>keep</code> accepts; it ends at the FIRST refusal, even if <code>true</code> would come
 again — that is what separates it from <code>filter</code>.</p>
-<p class="source">stdlib/std/iter.lyr:232</p>
+<p class="source">stdlib/std/iter.lyr:306</p>
 </section>
 <section class="item" id="class-enumerateiterator">
 <h2><a href="#class-enumerateiterator">EnumerateIterator</a> <span class="kind">class</span></h2>
@@ -338,13 +339,13 @@ again — that is what separates it from <code>filter</code>.</p>
 <p>The next <code>(position, value)</code> pair, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:237</p>
+<p class="source">stdlib/std/iter.lyr:311</p>
 </section>
 <section class="item" id="function-enumerate">
 <h2><a href="#function-enumerate">enumerate</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn enumerate&lt;T&gt;(source: Iterator&lt;T&gt;): Iterator&lt;(int, T)&gt;</code></pre>
 <p>Numbers the elements: <code>a, b, c</code> becomes <code>(0, a), (1, b), (2, c)</code>.</p>
-<p class="source">stdlib/std/iter.lyr:256</p>
+<p class="source">stdlib/std/iter.lyr:330</p>
 </section>
 <section class="item" id="class-zipiterator">
 <h2><a href="#class-zipiterator">ZipIterator</a> <span class="kind">class</span></h2>
@@ -364,7 +365,7 @@ again — that is what separates it from <code>filter</code>.</p>
 <p>The next pair, or <code>null</code> when either side ends.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:261</p>
+<p class="source">stdlib/std/iter.lyr:335</p>
 </section>
 <section class="item" id="function-zip">
 <h2><a href="#function-zip">zip</a> <span class="kind">function</span></h2>
@@ -372,7 +373,7 @@ again — that is what separates it from <code>filter</code>.</p>
 <p>Walks both in step and ends with the shorter one.</p>
 <p>The one surplus call on <code>left</code> is the price of both sides sharing the same interface; avoiding
 it would need a <code>peek</code> on <code>Iterator&lt;T&gt;</code> that exists nowhere else.</p>
-<p class="source">stdlib/std/iter.lyr:285</p>
+<p class="source">stdlib/std/iter.lyr:359</p>
 </section>
 <section class="item" id="class-chainiterator">
 <h2><a href="#class-chainiterator">ChainIterator</a> <span class="kind">class</span></h2>
@@ -396,13 +397,13 @@ it would need a <code>peek</code> on <code>Iterator&lt;T&gt;</code> that exists 
 <p>The next value, first half first, or <code>null</code> when both end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:290</p>
+<p class="source">stdlib/std/iter.lyr:364</p>
 </section>
 <section class="item" id="function-chain">
 <h2><a href="#function-chain">chain</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn chain&lt;T&gt;(first: Iterator&lt;T&gt;, second: Iterator&lt;T&gt;): Iterator&lt;T&gt;</code></pre>
 <p>First everything of <code>first</code>, then everything of <code>second</code>, lazily.</p>
-<p class="source">stdlib/std/iter.lyr:312</p>
+<p class="source">stdlib/std/iter.lyr:386</p>
 </section>
 <section class="item" id="class-flatmapiterator">
 <h2><a href="#class-flatmapiterator">FlatMapIterator</a> <span class="kind">class</span></h2>
@@ -426,14 +427,14 @@ it would need a <code>peek</code> on <code>Iterator&lt;T&gt;</code> that exists 
 <p>The next value of the current sequence, moving to the next source value when one ends.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:317</p>
+<p class="source">stdlib/std/iter.lyr:391</p>
 </section>
 <section class="item" id="function-flatmap">
 <h2><a href="#function-flatmap">flatMap</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn flatMap&lt;T, U&gt;(source: Iterator&lt;T&gt;, f: fn(T) -&gt; Iterator&lt;U&gt;): Iterator&lt;U&gt;</code></pre>
 <p>Each element becomes a sequence, and the sequences run back to back — lazily on both
 levels: <code>flatMap(lines, words)</code> reads no second line before the first is drained.</p>
-<p class="source">stdlib/std/iter.lyr:347</p>
+<p class="source">stdlib/std/iter.lyr:421</p>
 </section>
 <section class="item" id="class-chunksiterator">
 <h2><a href="#class-chunksiterator">ChunksIterator</a> <span class="kind">class</span></h2>
@@ -453,14 +454,14 @@ levels: <code>flatMap(lines, words)</code> reads no second line before the first
 <p>The next group, or <code>null</code> when the source is spent.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:352</p>
+<p class="source">stdlib/std/iter.lyr:426</p>
 </section>
 <section class="item" id="function-chunks">
 <h2><a href="#function-chunks">chunks</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn chunks&lt;T&gt;(source: Iterator&lt;T&gt;, size: int): Iterator&lt;T[]&gt;</code></pre>
 <p>Groups of <code>size</code> back to back; the last one may be shorter, and never empty. A size below
 one yields nothing rather than panicking, the <code>take</code> convention.</p>
-<p class="source">stdlib/std/iter.lyr:377</p>
+<p class="source">stdlib/std/iter.lyr:451</p>
 </section>
 <section class="item" id="class-emptyiterator">
 <h2><a href="#class-emptyiterator">EmptyIterator</a> <span class="kind">class</span></h2>
@@ -472,7 +473,7 @@ one yields nothing rather than panicking, the <code>take</code> convention.</p>
 <p>Always <code>null</code>.</p>
 </div>
 </div>
-<p class="source">stdlib/std/iter.lyr:387</p>
+<p class="source">stdlib/std/iter.lyr:461</p>
 </section>
 <section class="item" id="function-fold">
 <h2><a href="#function-fold">fold</a> <span class="kind">function</span></h2>
@@ -480,71 +481,71 @@ one yields nothing rather than panicking, the <code>take</code> convention.</p>
 <p>Folds from the left: <code>fold(1..4, 0, (acc, n) =&gt; acc + n)</code> is <code>((0+1)+2)+3</code>.</p>
 <p>The most general terminator; <code>count</code>, <code>sum</code>, <code>any</code> and <code>all</code> are special cases of it. They
 exist separately because <code>fold</code> with a closure is too much ceremony for counting.</p>
-<p class="source">stdlib/std/iter.lyr:407</p>
+<p class="source">stdlib/std/iter.lyr:481</p>
 </section>
 <section class="item" id="function-reduce">
 <h2><a href="#function-reduce">reduce</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn reduce&lt;T&gt;(source: Iterator&lt;T&gt;, step: fn(T, T) -&gt; T): ?T</code></pre>
 <p>Folds without a seed: the first element starts the accumulator, so the result carries the
 element type — and <code>null</code> says the source was empty, the case a seed would have answered.</p>
-<p class="source">stdlib/std/iter.lyr:420</p>
+<p class="source">stdlib/std/iter.lyr:494</p>
 </section>
 <section class="item" id="function-first">
 <h2><a href="#function-first">first</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn first&lt;T&gt;(source: Iterator&lt;T&gt;): ?T</code></pre>
 <p>The first element, or <code>null</code> for an empty source. One <code>next</code>, named for the chain that ends
 on it.</p>
-<p class="source">stdlib/std/iter.lyr:436</p>
+<p class="source">stdlib/std/iter.lyr:510</p>
 </section>
 <section class="item" id="function-count">
 <h2><a href="#function-count">count</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn count&lt;T&gt;(source: Iterator&lt;T&gt;): int</code></pre>
 <p>How many elements the iterator yields; drains it.</p>
-<p class="source">stdlib/std/iter.lyr:441</p>
+<p class="source">stdlib/std/iter.lyr:515</p>
 </section>
 <section class="item" id="function-sum">
 <h2><a href="#function-sum">sum</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn sum(source: Iterator&lt;int&gt;): int</code></pre>
 <p>The sum of an <code>int</code> iterator.</p>
-<p class="source">stdlib/std/iter.lyr:453</p>
+<p class="source">stdlib/std/iter.lyr:527</p>
 </section>
 <section class="item" id="function-sumfloat">
 <h2><a href="#function-sumfloat">sumFloat</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn sumFloat(source: Iterator&lt;float&gt;): float</code></pre>
 <p>The sum of a <code>float</code> iterator.</p>
-<p class="source">stdlib/std/iter.lyr:464</p>
+<p class="source">stdlib/std/iter.lyr:538</p>
 </section>
 <section class="item" id="function-any">
 <h2><a href="#function-any">any</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn any&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): bool</code></pre>
 <p>Stops at the first match; the rest is never evaluated.</p>
-<p class="source">stdlib/std/iter.lyr:475</p>
+<p class="source">stdlib/std/iter.lyr:549</p>
 </section>
 <section class="item" id="function-all">
 <h2><a href="#function-all">all</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn all&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): bool</code></pre>
 <p>Stops at the first counterexample. An empty iterator yields <code>true</code>, the only convention for
 which <code>all(a) &amp;&amp; all(b) == all(chain(a, b))</code> holds.</p>
-<p class="source">stdlib/std/iter.lyr:489</p>
+<p class="source">stdlib/std/iter.lyr:563</p>
 </section>
 <section class="item" id="function-none">
 <h2><a href="#function-none">none</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn none&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): bool</code></pre>
 <p>Whether nothing matches: <code>!any</code>.</p>
-<p class="source">stdlib/std/iter.lyr:502</p>
+<p class="source">stdlib/std/iter.lyr:576</p>
 </section>
 <section class="item" id="function-find">
 <h2><a href="#function-find">find</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn find&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): ?T</code></pre>
 <p>The first element that matches, or <code>null</code>.</p>
-<p class="source">stdlib/std/iter.lyr:507</p>
+<p class="source">stdlib/std/iter.lyr:581</p>
 </section>
 <section class="item" id="function-position">
 <h2><a href="#function-position">position</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn position&lt;T&gt;(source: Iterator&lt;T&gt;, test: fn(T) -&gt; bool): ?int</code></pre>
 <p>The position of the first match. Separate from <code>find</code>, because a <code>(int, T)</code> tuple would cost
 the common case where only one of the two is needed.</p>
-<p class="source">stdlib/std/iter.lyr:521</p>
+<p class="source">stdlib/std/iter.lyr:595</p>
 </section>
 <section class="item" id="function-collectarray">
 <h2><a href="#function-collectarray">collectArray</a> <span class="kind">function</span></h2>
@@ -553,19 +554,19 @@ the common case where only one of the two is needed.</p>
 <p>Quadratic: a <code>T[]</code> has a fixed length, so every append copies. For large iterators use
 <code>std.collections.collect</code>, which gathers into a doubling <code>List&lt;T&gt;</code>. It stands here because
 <code>std.iter</code> must not import <code>std.collections</code>; the dependency runs the other way.</p>
-<p class="source">stdlib/std/iter.lyr:540</p>
+<p class="source">stdlib/std/iter.lyr:614</p>
 </section>
 <section class="item" id="function-minvalue">
 <h2><a href="#function-minvalue">minValue</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn minValue&lt;T :: [Ordered&lt;T&gt;]&gt;(source: Iterator&lt;T&gt;): ?T</code></pre>
 <p>The smallest element, or <code>null</code> for an empty source.</p>
-<p class="source">stdlib/std/iter.lyr:551</p>
+<p class="source">stdlib/std/iter.lyr:625</p>
 </section>
 <section class="item" id="function-maxvalue">
 <h2><a href="#function-maxvalue">maxValue</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn maxValue&lt;T :: [Ordered&lt;T&gt;]&gt;(source: Iterator&lt;T&gt;): ?T</code></pre>
 <p>The largest element, or <code>null</code> for an empty source.</p>
-<p class="source">stdlib/std/iter.lyr:567</p>
+<p class="source">stdlib/std/iter.lyr:641</p>
 </section>
 <nav class="neighbours">
 <a class="prev" href="../../stdlib/std.io.file/">std.io.file</a>

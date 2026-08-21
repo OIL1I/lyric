@@ -21,7 +21,7 @@
 <h2>Reference</h2>
 <ul>
 <li><a href="../../grammar/">Lyric Grammar</a></li>
-<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a></li>
 <li><a href="../../pack/">The Pack Format</a></li>
 </ul>
 <h2>Project</h2>
@@ -52,16 +52,13 @@
 <ul>
 <li><a href="#interface-indexable">Indexable</a></li>
 <li><a href="#class-list">List</a></li>
-<li><a href="#function-emptylist">emptyList</a></li>
 <li><a href="#class-listiterator">ListIterator</a></li>
 <li><a href="#function-collect">collect</a></li>
 <li><a href="#class-map">Map</a></li>
-<li><a href="#function-emptymap">emptyMap</a></li>
 <li><a href="#function-sortlist">sortList</a></li>
 <li><a href="#function-sortlistby">sortListBy</a></li>
 <li><a href="#class-set">Set</a></li>
 <li><a href="#class-setiterator">SetIterator</a></li>
-<li><a href="#function-emptyset">emptySet</a></li>
 <li><a href="#function-union">union</a></li>
 <li><a href="#function-intersect">intersect</a></li>
 <li><a href="#function-difference">difference</a></li>
@@ -191,12 +188,6 @@ panic, as in <code>get</code>.</p>
 </div>
 <p class="source">stdlib/std/collections.lyr:41</p>
 </section>
-<section class="item" id="function-emptylist">
-<h2><a href="#function-emptylist">emptyList</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn emptyList&lt;T&gt;(): List&lt;T&gt;</code></pre>
-<p>An empty list.</p>
-<p class="source">stdlib/std/collections.lyr:253</p>
-</section>
 <section class="item" id="class-listiterator">
 <h2><a href="#class-listiterator">ListIterator</a> <span class="kind">class</span></h2>
 <pre class="signature"><code class="language-lyr">pub class ListIterator&lt;T&gt; :: [Iterator&lt;T&gt;]</code></pre>
@@ -215,7 +206,7 @@ panic, as in <code>get</code>.</p>
 <p>The next value, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/collections.lyr:259</p>
+<p class="source">stdlib/std/collections.lyr:253</p>
 </section>
 <section class="item" id="function-collect">
 <h2><a href="#function-collect">collect</a> <span class="kind">function</span></h2>
@@ -224,13 +215,13 @@ panic, as in <code>get</code>.</p>
 <p>Here rather than in <code>std.iter</code>, because the dependency runs this way: <code>std.collections</code> imports
 <code>std.iter</code>, not the reverse. <code>std.iter.collectArray</code> is the variant without that dependency,
 and it is quadratic because a <code>T[]</code> copies on every append. This one doubles and is linear.</p>
-<p class="source">stdlib/std/collections.lyr:281</p>
+<p class="source">stdlib/std/collections.lyr:275</p>
 </section>
 <section class="item" id="class-map">
 <h2><a href="#class-map">Map</a> <span class="kind">class</span></h2>
-<pre class="signature"><code class="language-lyr">pub class Map&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub class Map&lt;K :: [Hashable&lt;K&gt;], V&gt;</code></pre>
 <p>A hash map: open addressing, linear probing, load factor 3/4. The key type says how to
-hash and how to compare — <code>[Hashable&lt;K&gt;, Equatable&lt;K&gt;]</code> — and the iteration order is
+hash and how to compare — <code>[Hashable&lt;K&gt;]</code> — and the iteration order is
 UNSPECIFIED.</p>
 <div class="members">
 <div class="member">
@@ -292,19 +283,13 @@ with everything else.</p>
 <p>Removes and returns the old value, or <code>null</code> when the key was absent.</p>
 </div>
 </div>
-<p class="source">stdlib/std/collections.lyr:307</p>
-</section>
-<section class="item" id="function-emptymap">
-<h2><a href="#function-emptymap">emptyMap</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn emptyMap&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;(): Map&lt;K, V&gt;</code></pre>
-<p>An empty map.</p>
-<p class="source">stdlib/std/collections.lyr:494</p>
+<p class="source">stdlib/std/collections.lyr:301</p>
 </section>
 <section class="item" id="function-sortlist">
 <h2><a href="#function-sortlist">sortList</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn sortList&lt;T :: [Ordered&lt;T&gt;]&gt;(xs: List&lt;T&gt;): void</code></pre>
 <p>Sorts in place by the natural order of the type.</p>
-<p class="source">stdlib/std/collections.lyr:515</p>
+<p class="source">stdlib/std/collections.lyr:503</p>
 </section>
 <section class="item" id="function-sortlistby">
 <h2><a href="#function-sortlistby">sortListBy</a> <span class="kind">function</span></h2>
@@ -313,11 +298,11 @@ with everything else.</p>
 <p><code>less(a, b)</code> must return <code>true</code> when <code>a</code> comes STRICTLY before <code>b</code>. A <code>less</code> returning <code>true</code>
 for equal elements destroys stability; a contradictory <code>less</code> makes the output arbitrary but
 crashes nothing, because the algorithm only compares.</p>
-<p class="source">stdlib/std/collections.lyr:524</p>
+<p class="source">stdlib/std/collections.lyr:512</p>
 </section>
 <section class="item" id="class-set">
 <h2><a href="#class-set">Set</a> <span class="kind">class</span></h2>
-<pre class="signature"><code class="language-lyr">pub class Set&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt; :: [Iterable&lt;T&gt;]</code></pre>
+<pre class="signature"><code class="language-lyr">pub class Set&lt;T :: [Hashable&lt;T&gt;]&gt; :: [Iterable&lt;T&gt;]</code></pre>
 <p>A hash set: the same probing as <code>Map</code>, without the value column. Iteration order is
 UNSPECIFIED. <code>Iterable</code>, so <code>for (v in set)</code> walks it directly.</p>
 <div class="members">
@@ -372,11 +357,11 @@ with everything else.</p>
 <p>A fresh cursor on every call.</p>
 </div>
 </div>
-<p class="source">stdlib/std/collections.lyr:615</p>
+<p class="source">stdlib/std/collections.lyr:603</p>
 </section>
 <section class="item" id="class-setiterator">
 <h2><a href="#class-setiterator">SetIterator</a> <span class="kind">class</span></h2>
-<pre class="signature"><code class="language-lyr">pub class SetIterator&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt; :: [Iterator&lt;T&gt;]</code></pre>
+<pre class="signature"><code class="language-lyr">pub class SetIterator&lt;T :: [Hashable&lt;T&gt;]&gt; :: [Iterator&lt;T&gt;]</code></pre>
 <p>Walks the occupied slots. The order follows the hashes and is therefore UNSPECIFIED; a
 caller that needs one sorts.</p>
 <div class="members">
@@ -393,41 +378,35 @@ caller that needs one sorts.</p>
 <p>The next value, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/collections.lyr:765</p>
-</section>
-<section class="item" id="function-emptyset">
-<h2><a href="#function-emptyset">emptySet</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn emptySet&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(): Set&lt;T&gt;</code></pre>
-<p>An empty set.</p>
-<p class="source">stdlib/std/collections.lyr:785</p>
+<p class="source">stdlib/std/collections.lyr:753</p>
 </section>
 <section class="item" id="function-union">
 <h2><a href="#function-union">union</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn union&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub fn union&lt;T :: [Hashable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
 <p>Everything in either set, as a NEW set; neither argument changes.</p>
-<p class="source">stdlib/std/collections.lyr:793</p>
+<p class="source">stdlib/std/collections.lyr:775</p>
 </section>
 <section class="item" id="function-intersect">
 <h2><a href="#function-intersect">intersect</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn intersect&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub fn intersect&lt;T :: [Hashable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
 <p>Everything in both sets, as a NEW set; neither argument changes.</p>
-<p class="source">stdlib/std/collections.lyr:805</p>
+<p class="source">stdlib/std/collections.lyr:787</p>
 </section>
 <section class="item" id="function-difference">
 <h2><a href="#function-difference">difference</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn difference&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub fn difference&lt;T :: [Hashable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): Set&lt;T&gt;</code></pre>
 <p>Everything in <code>a</code> that is not in <code>b</code>, as a NEW set; neither argument changes.</p>
-<p class="source">stdlib/std/collections.lyr:819</p>
+<p class="source">stdlib/std/collections.lyr:801</p>
 </section>
 <section class="item" id="function-issubset">
 <h2><a href="#function-issubset">isSubset</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn isSubset&lt;T :: [Hashable&lt;T&gt;, Equatable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): bool</code></pre>
+<pre class="signature"><code class="language-lyr">pub fn isSubset&lt;T :: [Hashable&lt;T&gt;]&gt;(a: Set&lt;T&gt;, b: Set&lt;T&gt;): bool</code></pre>
 <p>Whether every element of <code>a</code> is in <code>b</code>.</p>
-<p class="source">stdlib/std/collections.lyr:830</p>
+<p class="source">stdlib/std/collections.lyr:812</p>
 </section>
 <section class="item" id="class-mapkeyiterator">
 <h2><a href="#class-mapkeyiterator">MapKeyIterator</a> <span class="kind">class</span></h2>
-<pre class="signature"><code class="language-lyr">pub class MapKeyIterator&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt; :: [Iterator&lt;K&gt;]</code></pre>
+<pre class="signature"><code class="language-lyr">pub class MapKeyIterator&lt;K :: [Hashable&lt;K&gt;], V&gt; :: [Iterator&lt;K&gt;]</code></pre>
 <p>Walks the keys; the order follows the hashes and is UNSPECIFIED.</p>
 <div class="members">
 <div class="member">
@@ -443,11 +422,11 @@ caller that needs one sorts.</p>
 <p>The next key, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/collections.lyr:851</p>
+<p class="source">stdlib/std/collections.lyr:833</p>
 </section>
 <section class="item" id="class-mapvalueiterator">
 <h2><a href="#class-mapvalueiterator">MapValueIterator</a> <span class="kind">class</span></h2>
-<pre class="signature"><code class="language-lyr">pub class MapValueIterator&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt; :: [Iterator&lt;V&gt;]</code></pre>
+<pre class="signature"><code class="language-lyr">pub class MapValueIterator&lt;K :: [Hashable&lt;K&gt;], V&gt; :: [Iterator&lt;V&gt;]</code></pre>
 <p>Walks the values; the order follows the hashes and is UNSPECIFIED.</p>
 <div class="members">
 <div class="member">
@@ -463,11 +442,11 @@ caller that needs one sorts.</p>
 <p>The next value, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/collections.lyr:871</p>
+<p class="source">stdlib/std/collections.lyr:853</p>
 </section>
 <section class="item" id="class-mapentryiterator">
 <h2><a href="#class-mapentryiterator">MapEntryIterator</a> <span class="kind">class</span></h2>
-<pre class="signature"><code class="language-lyr">pub class MapEntryIterator&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt; :: [Iterator&lt;(K, V)&gt;]</code></pre>
+<pre class="signature"><code class="language-lyr">pub class MapEntryIterator&lt;K :: [Hashable&lt;K&gt;], V&gt; :: [Iterator&lt;(K, V)&gt;]</code></pre>
 <p>Walks key and value TOGETHER; the order follows the hashes and is UNSPECIFIED.</p>
 <p>Without this, walking both meant iterating <code>keys</code> and paying a second probe per key
 through <code>get</code>.</p>
@@ -485,39 +464,39 @@ through <code>get</code>.</p>
 <p>The next <code>(key, value)</code> pair, or <code>null</code> at the end.</p>
 </div>
 </div>
-<p class="source">stdlib/std/collections.lyr:894</p>
+<p class="source">stdlib/std/collections.lyr:876</p>
 </section>
 <section class="item" id="function-keys">
 <h2><a href="#function-keys">keys</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn keys&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;K&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub fn keys&lt;K :: [Hashable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;K&gt;</code></pre>
 <p>A fresh cursor over the keys.</p>
-<p class="source">stdlib/std/collections.lyr:918</p>
+<p class="source">stdlib/std/collections.lyr:900</p>
 </section>
 <section class="item" id="function-values">
 <h2><a href="#function-values">values</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn values&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;V&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub fn values&lt;K :: [Hashable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;V&gt;</code></pre>
 <p>A fresh cursor over the values.</p>
-<p class="source">stdlib/std/collections.lyr:923</p>
+<p class="source">stdlib/std/collections.lyr:905</p>
 </section>
 <section class="item" id="function-entries">
 <h2><a href="#function-entries">entries</a> <span class="kind">function</span></h2>
-<pre class="signature"><code class="language-lyr">pub fn entries&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;(K, V)&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub fn entries&lt;K :: [Hashable&lt;K&gt;], V&gt;(m: Map&lt;K, V&gt;): Iterator&lt;(K, V)&gt;</code></pre>
 <p>A fresh cursor over <code>(key, value)</code> pairs:</p>
 <pre><code>for (entry in entries(m)) { let (k, v) = entry; … }
 </code></pre>
-<p class="source">stdlib/std/collections.lyr:930</p>
+<p class="source">stdlib/std/collections.lyr:912</p>
 </section>
 <section class="item" id="function-listcontains">
 <h2><a href="#function-listcontains">listContains</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn listContains&lt;T :: [Equatable&lt;T&gt;]&gt;(xs: List&lt;T&gt;, value: T): bool</code></pre>
 <p>Whether the value occurs, by <code>equals</code>; O(n).</p>
-<p class="source">stdlib/std/collections.lyr:941</p>
+<p class="source">stdlib/std/collections.lyr:923</p>
 </section>
 <section class="item" id="function-listindexof">
 <h2><a href="#function-listindexof">listIndexOf</a> <span class="kind">function</span></h2>
 <pre class="signature"><code class="language-lyr">pub fn listIndexOf&lt;T :: [Equatable&lt;T&gt;]&gt;(xs: List&lt;T&gt;, value: T): ?int</code></pre>
 <p>The position of the first occurrence, or <code>null</code> when there is none.</p>
-<p class="source">stdlib/std/collections.lyr:953</p>
+<p class="source">stdlib/std/collections.lyr:935</p>
 </section>
 <nav class="neighbours">
 <a class="prev" href="../../stdlib/std.build/">std.build</a>

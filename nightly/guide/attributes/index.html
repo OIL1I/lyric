@@ -40,6 +40,7 @@
 <li><a href="../../guide/formatting/">Formatting</a></li>
 <li><a href="../../guide/diagnostics/">Diagnostics</a></li>
 <li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
 </ul>
 </nav>
 <main>
@@ -190,6 +191,33 @@ fn main(): int {
 <p>It changes diagnostics and nothing else — a program that ignores the warning compiles to the
 same module, and a deprecated function may keep calling itself and its deprecated siblings
 without the compiler nagging the one place allowed not to care.</p>
+<p>Since 2.1 the same attribute — and only it — may sit on a MEMBER: a method, a field or a
+<code>static let</code> of a struct, class or enum, and on an extend method. Every other attribute
+there is refused, because the compiled module has no metadata rows for members and
+<code>@Deprecated</code> is the one attribute that needs none. Interface members carry no attributes at
+all: deprecating an abstract member would raise questions about implementations nobody has
+answered yet.</p>
+<pre><code class="language-lyr">import std.core { Deprecated };
+
+class Counter {
+    n: int,
+
+    @Deprecated { message = &quot;use tick()&quot; }
+    pub mut fn bump(): void {
+        this.n = this.n + 1;
+    }
+
+    pub mut fn tick(): void {
+        this.n = this.n + 1;
+    }
+}
+
+fn main(): int {
+    var c = Counter { n = 0 };
+    c.tick();
+    return c.n;
+}
+</code></pre>
 <p>The compiler-read set is part of the language's contract, which is why it grows by decision
 rather than by convention: <code>@Deprecated</code> is in it, <code>@Inline</code> and its kind are not. Everything
 else stays inert — an attribute the compiler does not know describes, and does nothing.</p>

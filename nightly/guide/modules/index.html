@@ -40,6 +40,7 @@
 <li><a href="../../guide/formatting/">Formatting</a></li>
 <li><a href="../../guide/diagnostics/">Diagnostics</a></li>
 <li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
 </ul>
 </nav>
 <main>
@@ -179,7 +180,9 @@ fn main(): int {
 </code></pre>
 <p>The point is the wall: an SDK declares <code>pub opaque type Entity = int;</code> beside its natives, a
 script holds and returns the handle — and can neither forge one from a literal nor leak it into
-arithmetic. On the wire the handle is its underlying number.</p>
+arithmetic. On the wire the handle is its underlying number. The wall spans modules: an SDK of
+several files declares the handle once and imports it wherever a native signature names it —
+selectively or module-qualified, in scalar and array positions alike.</p>
 <nav class="neighbours">
 <a class="prev" href="../../guide/coroutines/">Coroutines</a>
 <a class="next" href="../../guide/standard-library/">The standard library</a>

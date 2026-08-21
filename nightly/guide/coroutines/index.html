@@ -40,6 +40,7 @@
 <li><a href="../../guide/formatting/">Formatting</a></li>
 <li><a href="../../guide/diagnostics/">Diagnostics</a></li>
 <li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
 </ul>
 </nav>
 <main>
@@ -92,7 +93,46 @@ fn main(): int {
 }
 </code></pre>
 <p><code>resume</code> on an exhausted coroutine is a panic. A caller either knows how many values there are, or
-uses an infinite coroutine and stops itself.</p>
+uses an infinite coroutine and stops itself — or pulls with <code>next()</code>:</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn three(): Coroutine&lt;int&gt; {
+    yield 10;
+    yield 20;
+    yield 30;
+}
+
+fn main(): int {
+    let co = three();
+    var sum = 0;
+    var live = true;
+    while (live) {
+        let v = co.next();
+        if (v == null) {
+            live = false;
+        } else {
+            sum += v;
+        }
+    }
+    println(f&quot;sum: {sum}&quot;);
+    return sum;
+}
+</code></pre>
+<p><code>co.next()</code> is the safe form of the same pull: it advances the coroutine exactly like <code>resume</code>
+and answers <code>?T</code> — the value, or <code>null</code> once the body has run to its end. After the end it stays
+<code>null</code> on every further call; <code>resume</code> on the same coroutine still panics, because leniency
+belongs to the call, not to the state. The name and shape are <code>Iterator&lt;T&gt;.next()</code>'s on purpose.</p>
+<p>Two yield types change the answer's form, for the same reason: a <code>Coroutine&lt;void&gt;</code> has no value
+to wrap, so its <code>next()</code> returns <code>bool</code> — did it advance? — and <code>while (p.next()) { }</code> drives it
+to the end. A <code>Coroutine&lt;?T&gt;</code> refuses <code>next()</code> outright (<code>LYR-SEM0080</code>): a <code>null</code> there would
+mean both &quot;yielded null&quot; and &quot;done&quot;, so such a coroutine is driven with <code>resume</code> and a protocol
+of its own.</p>
+<p>A coroutine may also end itself early with a bare <code>return;</code> — the next pull is then the panic or
+the <code>null</code>, exactly as if the body had run through.</p>
+<p>A coroutine is an ordinary value: it can be a parameter, a local, a field of a class or struct,
+or a type argument — a driver that steps a stored <code>List&lt;Coroutine&lt;float&gt;&gt;</code> every frame holds
+them like anything else. Copying the value copies a reference to the same suspended state; two
+holders drive one coroutine.</p>
 <p>Send values (<code>resume c, v</code>) do not exist.</p>
 <nav class="neighbours">
 <a class="prev" href="../../guide/errors/">Errors</a>

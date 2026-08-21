@@ -40,6 +40,7 @@
 <li><a href="../../guide/formatting/">Formatting</a></li>
 <li><a href="../../guide/diagnostics/">Diagnostics</a></li>
 <li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
 </ul>
 </nav>
 <main>
@@ -176,9 +177,9 @@ everything; a host grants explicitly, and a module that requires more than it is
 rejected before it runs.</p>
 <h2 id="strings-have-methods">Strings have methods</h2>
 <p>Since v1.15 the string API is method-shaped: <code>s.trim()</code>, <code>s.split(&quot;,&quot;)</code>, <code>s.contains(x)</code>,
-<code>s.length()</code>. The free forms (<code>trim(s)</code>, …) still work and warn as deprecated; they go with the
-next major. <code>concat</code> and <code>repeat</code> stay free — they back <code>+</code> and <code>*</code> — and the type-directed
-families (<code>fromInt</code>, <code>parseInt</code>, …) keep their names.</p>
+<code>s.length()</code>. The deprecated free forms (<code>trim(s)</code>, …) went with 2.0. <code>concat</code> and <code>repeat</code>
+stay free — they back <code>+</code> and <code>*</code> — and the type-directed families (<code>fromInt</code>, <code>parseInt</code>, …)
+keep their names.</p>
 <p>The methods come with the module: any <code>import std.string { … }</code> makes them visible, and a file
 that needs no free name imports the module under an alias, which avoids shadowing the builtin
 type name:</p>
@@ -194,9 +195,9 @@ promise a stored answer this type does not have — and every method returns a N
 <h2 id="constructors-live-on-the-types">Constructors live on the types</h2>
 <p>A container comes from its type: <code>List&lt;int&gt;.empty()</code>, <code>Map&lt;string, int&gt;.empty()</code>,
 <code>Set&lt;int&gt;.empty()</code>, <code>StringBuilder.new()</code>, <code>Random.seeded(42)</code> — the latter from <code>std.random</code>
-since v1.14, where <code>shuffle</code>, <code>choice</code> and <code>nextGaussian</code> live beside it. The old free functions
-(<code>emptyList</code>, <code>emptyMap</code>, <code>emptySet</code>, <code>newRandom</code>) and the <code>std.math.Random</code> twin still work and
-warn as deprecated; they disappear with the next major version.</p>
+since v1.14, where <code>shuffle</code>, <code>choice</code> and <code>nextGaussian</code> live beside it. The old free
+functions (<code>emptyList</code>, <code>emptyMap</code>, <code>emptySet</code>, <code>newRandom</code>) and the <code>std.math.Random</code> twin
+went with 2.0.</p>
 <h2 id="editing-the-standard-library">Editing the standard library</h2>
 <p>The toolchain reads the standard library from <strong>beside its own binary</strong> — a copy made at build
 time — or from <code>LYRIC_STDLIB</code> when that is set. Editing the sources in the repository therefore

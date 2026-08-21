@@ -40,6 +40,7 @@
 <li><a href="../../guide/formatting/">Formatting</a></li>
 <li><a href="../../guide/diagnostics/">Diagnostics</a></li>
 <li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
 </ul>
 </nav>
 <main>
@@ -105,8 +106,9 @@ fn main(): int {
     return 0;
 }
 </code></pre>
-<p>Several constraints stand side by side: <code>&lt;K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;]&gt;</code>. A constraint may
-mention its own parameter.</p>
+<p>Several constraints stand side by side: <code>&lt;T :: [Ordered&lt;T&gt;, Display]&gt;</code>. A constraint may
+mention its own parameter, and an interface chain counts once: <code>Hashable&lt;K&gt;</code> implies
+<code>Equatable&lt;K&gt;</code>, so a <code>Map</code> key needs only <code>&lt;K :: [Hashable&lt;K&gt;]&gt;</code>.</p>
 <h2 id="monomorphization">Monomorphization</h2>
 <p>Each combination of type arguments becomes its own function and its own layout at compile time.
 <code>Box&lt;int&gt;</code> and <code>Box&lt;string&gt;</code> share no code and no field layout. There is no runtime type

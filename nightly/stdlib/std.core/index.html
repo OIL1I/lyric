@@ -21,7 +21,7 @@
 <h2>Reference</h2>
 <ul>
 <li><a href="../../grammar/">Lyric Grammar</a></li>
-<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a></li>
 <li><a href="../../pack/">The Pack Format</a></li>
 </ul>
 <h2>Project</h2>
@@ -132,7 +132,7 @@ stated somewhere else is wrong.</p>
 <section class="item" id="interface-display">
 <h2><a href="#interface-display">Display</a> <span class="kind">interface</span></h2>
 <pre class="signature"><code class="language-lyr">pub interface Display</code></pre>
-<p>What can be rendered as text — the anchor for <code>write</code>, <code>writeln</code> and <code>std.fmt</code>.</p>
+<p>What can be rendered as text — the anchor for <code>print</code>, <code>println</code> and <code>std.fmt</code>.</p>
 <p>Every built-in scalar satisfies it through an <code>extend</code>, and a user type through <code>::</code>. A value
 held THROUGH the interface (<code>let d: Display = 5;</code>) stays rejected: an interface value is a fat
 pointer and needs a reference, which a scalar has none of.</p>
@@ -161,12 +161,12 @@ would be no <code>Map&lt;int, V&gt;</code>.</p>
 </section>
 <section class="item" id="interface-hashable">
 <h2><a href="#interface-hashable">Hashable</a> <span class="kind">interface</span></h2>
-<pre class="signature"><code class="language-lyr">pub interface Hashable&lt;T&gt;</code></pre>
+<pre class="signature"><code class="language-lyr">pub interface Hashable&lt;T&gt; :: [Equatable&lt;T&gt;]</code></pre>
 <p>Values of this type can be hashed, which is what a <code>Map</code> key and a <code>Set</code> element need.</p>
 <p><strong>Equal values must produce equal hashes.</strong> No compiler checks it and every hash table depends on
 it. The reverse does not hold — two different values may collide.</p>
-<p>It does not imply <code>Equatable</code> yet — that adoption is a breaking change reserved for 2.0. A
-caller needing both requires both: <code>K :: [Hashable&lt;K&gt;, Equatable&lt;K&gt;]</code>.</p>
+<p><code>Hashable&lt;T&gt;</code> implies <code>Equatable&lt;T&gt;</code> (its parent since 2.0): a hash table cannot exist
+without equality. A key constraint is <code>K :: [Hashable&lt;K&gt;]</code> alone.</p>
 <div class="members">
 <div class="member">
 <pre class="signature"><code class="language-lyr">fn hash(): int</code></pre>

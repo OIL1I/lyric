@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Lyric .lyrbc Bytecode Format 3.2 — Lyric nightly</title>
+<title>Lyric .lyrbc Bytecode Format 3.3 — Lyric nightly</title>
 <link rel="stylesheet" href="../site.css" />
 </head>
 <body>
@@ -21,7 +21,7 @@
 <h2>Reference</h2>
 <ul>
 <li><a href="../grammar/">Lyric Grammar</a></li>
-<li><a href="../bytecode/" class="here">Lyric .lyrbc Bytecode Format 3.2</a></li>
+<li><a href="../bytecode/" class="here">Lyric .lyrbc Bytecode Format 3.3</a></li>
 <li><a href="../pack/">The Pack Format</a></li>
 </ul>
 <h2>Project</h2>
@@ -47,7 +47,7 @@
 </ul>
 </nav>
 <main>
-<h1>Lyric .lyrbc Bytecode Format 3.2</h1>
+<h1>Lyric .lyrbc Bytecode Format 3.3</h1>
 <nav class="contents">
 <ul>
 <li><a href="#encoding">1. Encoding</a></li>
@@ -60,14 +60,27 @@
 <li><a href="#runner-contract">8. Runner contract</a></li>
 </ul>
 </nav>
+<blockquote>
+<p><strong>Mirror.</strong> The canonical home of this document is
+<a href="https://github.com/lyriclang/lyric-spec/blob/main/spec/13-bytecode.md"><code>lyriclang/lyric-spec</code> → <code>spec/13-bytecode.md</code></a>.
+This copy exists for the toolchain's tests and doc site; CI diffs everything below the
+marker against the canonical body. Edit it there, mirror it here.</p>
+</blockquote>
+<!-- sync:body -->
 <p>This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.</p>
 <p>Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.</p>
-<p>Format version <strong>3.2</strong> covers: scalars, locals, module-internal and native calls, structured
+<p>Format version <strong>3.3</strong> covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
-value semantics, exceptions, global constants, closures, host objects, source positions, and
-attributes.</p>
+value semantics, exceptions, global constants, closures, host objects, source positions,
+attributes, and debug information.</p>
+<p><strong>3.3 against 3.2</strong>: one new section — DebugInfo (id 13), the names of local and global
+slots — and one loosened producer rule: Names (id 12) may carry field names for any type, where
+3.2 allowed entries only for types an Attributes row references. Both directions stay compatible:
+a 3.2 reader skips the unknown section, and its Names rules never depended on the restriction, so
+it loads a 3.3 module unchanged — the only difference is whether a debugger can name a slot or a
+field.</p>
 <p><strong>3.2 against 3.1</strong>: two new sections — Attributes (id 11) and Names (id 12). Both are skippable:
 no other section refers to either, and a runtime that ignores them runs the program unchanged,
 because an attribute describes and does nothing. A 3.1 reader therefore loads a 3.2 module; the
@@ -212,7 +225,13 @@ minor version may only add skippable sections.</p>
 <td>12</td>
 <td>Names</td>
 <td>no</td>
-<td>field names, only for types an Attributes row references</td>
+<td>field names: required for types an Attributes row references, permitted for any</td>
+</tr>
+<tr>
+<td>13</td>
+<td>DebugInfo</td>
+<td>no</td>
+<td>strippable: local and global slot names</td>
 </tr>
 </tbody>
 </table>
@@ -467,9 +486,13 @@ target for a module row, a type that is not a struct, the same (targetKind, targ
 twice, a value count differing from the struct's field count, a value tag differing from the field
 tag at its position, a string index outside the pool, and a value of a non-literal type.</p>
 <h3 id="names-id-12">Names (Id 12)</h3>
-<p>New in 3.2. Field names, ONLY for types an Attributes row references — the attribute types
-themselves and the attributed type targets. Everywhere else the rule of the Types section stands:
-field names are not in the bytecode.</p>
+<p>New in 3.2. Field names, for types an Attributes row references — the attribute types
+themselves and the attributed type targets. Those entries are REQUIRED whenever such a type has
+fields. Since 3.3 the restriction is a floor rather than a ceiling: a compiler may write an entry
+for ANY type — a debugger expanding an object needs its field names the same way a host reading
+an attribute row does. Stripping debug information (§DebugInfo) removes the entries no Attributes
+row demands; everywhere else the rule of the Types section stands: field names are not in the
+bytecode.</p>
 <pre><code>count            uleb128
 entries          count × {
                    type         uleb128   index into Types
@@ -485,6 +508,32 @@ it cannot name: the layout gives field types and the row gives values, but which
 exists only in the source.</p>
 <p>A reader must reject: a type index outside the table, the same type twice, and a name count
 differing from that type's field count.</p>
+<h3 id="debuginfo-id-13">DebugInfo (Id 13)</h3>
+<p>New in 3.3. The name of each local and global slot — what a debugger writes beside a value.</p>
+<pre><code>functionCount    uleb128               must equal the count in Functions (Id 5)
+functions        functionCount × {
+                   nameCount  uleb128   0, or that function's slotCount
+                   names      nameCount × uleb128   index into the string pool
+                 }
+globalNameCount  uleb128               0, or the count in Globals (Id 10)
+globalNames      globalNameCount × uleb128   index into the string pool
+</code></pre>
+<p><code>names[i]</code> names slot <code>i</code>, so the first <code>paramCount</code> entries name the parameters;
+<code>globalNames[i]</code> names global slot <code>i</code>. The names go through the string pool rather than inline:
+<code>i</code>, <code>x</code> and <code>this</code> repeat across functions, and the pool is where repetition pays.</p>
+<p>A slot the compiler created — a spilled intermediate, a value crossing a block boundary, a result
+buffer — carries the empty string. A consumer does not show such a slot: which slots exist is the
+format's business; which of them mean anything to a person is the compiler's statement, made
+here.</p>
+<p><code>nameCount</code> <code>0</code> means the function says nothing about its slots. A count that is neither <code>0</code> nor
+the function's <code>slotCount</code> is malformed: the position IS the slot index, and a partial list would
+name the wrong slots.</p>
+<p><strong>Strippable.</strong> No other section refers to this one, so removing it — together with the Names
+entries no Attributes row demands — leaves a valid module. A debugger then shows slot indices,
+the same way a panic without a SourceMap names a function instead of a line.</p>
+<p>A reader must reject: a <code>functionCount</code> differing from the Functions section, a <code>nameCount</code> that
+is neither <code>0</code> nor that function's slot count, a <code>globalNameCount</code> that is neither <code>0</code> nor the
+Globals count, and a string index outside the pool.</p>
 <hr />
 <h2 id="type-tags">3. Type tags</h2>
 <p>One byte.</p>
@@ -1332,11 +1381,12 @@ type. Field access at runtime is then an unchecked array access.</p>
     retval
 }
 </code></pre>
-<p>A minimal module containing only that function, 46 bytes. The compiler writes a SourceMap by
-default; this is the stripped form, which is why section 6 is absent:</p>
+<p>A minimal module containing only that function, 46 bytes. The compiler writes a SourceMap and a
+DebugInfo section by default; this is the stripped form, which is why sections 6 and 13 are
+absent:</p>
 <pre><code>4C 59 52 42                  magic &quot;LYRB&quot;
 03 00                        version.major = 3
-02 00                        version.minor = 2
+03 00                        version.minor = 3
 
 01                           § section 1 — Capabilities
 01                             byteLength = 1
