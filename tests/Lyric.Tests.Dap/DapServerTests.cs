@@ -263,6 +263,26 @@ public class DapServerTests : IDisposable
     }
 
     [Fact]
+    public async Task Exception_breakpoints_are_answered_although_none_are_offered()
+    {
+        await using var client = Client();
+        var program = WriteProgram(Counting);
+
+        Assert.True((await client.RequestAsync("initialize", new { adapterID = "lyric" })).Success);
+        Assert.True((await client.RequestAsync("launch", new { program })).Success);
+        client.TakeEvent("initialized");
+
+        // Where a client sends it: after the initialized event, before configurationDone. A
+        // failure here ends the configuration sequence, and the program below would never start.
+        var response = await client.RequestAsync("setExceptionBreakpoints",
+            new { filters = Array.Empty<string>() });
+        Assert.True(response.Success);
+
+        Assert.True((await client.RequestAsync("configurationDone")).Success);
+        Assert.Equal(0, client.TakeEvent("exited").Body!.Value.GetProperty("exitCode").GetInt32());
+    }
+
+    [Fact]
     public async Task An_unknown_request_is_answered_not_dropped()
     {
         await using var client = Client();
