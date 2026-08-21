@@ -710,7 +710,14 @@ public static class ModuleLowerer
             var expr = written?.Value ?? fields[i].Default
                 ?? throw new InternalCompilationException(
                     $"ir: attribute field '{fields[i].Name}' has neither a value nor a default");
-            values[i] = EvaluateAttributeValue(fieldTypes[i], expr);
+
+            // The written form may be a NAME bound to the literal; the sema resolved the same
+            // chain when it accepted the use, through the same walk.
+            var literal = AttributeValues.LiteralOf(expr, types)
+                ?? throw new InternalCompilationException(
+                    $"ir: attribute field '{fields[i].Name}' is no compile-time value, which the "
+                    + "sema accepts nowhere");
+            values[i] = EvaluateAttributeValue(fieldTypes[i], literal);
         }
         return new IrAttribute(kind, target, typeId, values);
     }

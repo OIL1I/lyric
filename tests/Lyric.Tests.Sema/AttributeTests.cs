@@ -11,8 +11,9 @@ namespace Lyric.Tests.Sema;
 ///
 /// <para>The pinned decisions: an attribute is a STRUCT, and where it may sit is the marker
 /// interface it declares — conformance, not the name, the same nominal rule the operators follow.
-/// Arguments are literals, because they end up in a bytecode section, and the emitted row is
-/// complete: a field the use does not write needs a literal default.</para>
+/// Arguments are values at compile time, because they end up in a bytecode section — a literal,
+/// or since 2.4 a <c>let</c> bound to one — and the emitted row is complete: a field the use does
+/// not write needs such a value as its default.</para>
 /// </summary>
 public class AttributeTests
 {
@@ -256,6 +257,105 @@ public class AttributeTests
             fn main(): int { return 0; }
             """);
 
+    // ---------------------------------------------------------------- a name for the value (2.4)
+
+    [Fact]
+    public void A_module_let_bound_to_a_literal_is_an_argument() =>
+        // The point of the whole exercise: a program can publish its vocabulary and have the uses
+        // checked, instead of repeating a raw string where a typo is a silent receiver.
+        AssertClean(Markers + """
+
+            let PRIORITY = 10;
+
+            @System { order = PRIORITY }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_chain_of_bindings_resolves() =>
+        AssertClean(Markers + """
+
+            let BASE = 10;
+            let PRIORITY = BASE;
+
+            @System { order = PRIORITY }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_static_let_is_an_argument() =>
+        AssertClean(Markers + """
+
+            struct Order {
+                static let LATE: int = 10;
+            }
+
+            @System { order = Order.LATE }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_named_default_fills_the_row() =>
+        AssertClean("""
+            import std.core { OnFunction };
+
+            let DEFAULT_LIMIT = 3;
+
+            struct Retry :: [OnFunction] { limit: int = DEFAULT_LIMIT }
+
+            @Retry
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_let_bound_to_an_expression_is_still_refused() =>
+        // The line is where the VALUE is written, not what the compiler could work out: 1 + 2 is
+        // computable and has nowhere to be computed.
+        AssertReports("LYR-SEM0066", "must be a literal", Markers + """
+
+            let PRIORITY = 5 + 5;
+
+            @System { order = PRIORITY }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_field_is_not_a_constant() =>
+        // Only a global binding: a field is bound per instance, and the row has one value.
+        AssertReports("LYR-SEM0066", "must be a literal", Markers + """
+
+            struct Settings { order: int }
+
+            fn take(s: Settings): void { }
+
+            @System { order = s.order }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_function_call_is_still_refused() =>
+        AssertReports("LYR-SEM0066", "must be a literal", Markers + """
+
+            fn ten(): int { return 10; }
+
+            @System { order = ten() }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
     [Fact]
     public void A_wrongly_typed_argument_is_an_ordinary_assignability_error() =>
         AssertReports("LYR-SEM0001", "", Markers + """
@@ -284,7 +384,7 @@ public class AttributeTests
 
     [Fact]
     public void A_non_literal_default_cannot_fill_the_row() =>
-        AssertReports("LYR-SEM0069", "not a literal", """
+        AssertReports("LYR-SEM0069", "not a value at compile time", """
             import std.core { OnFunction };
 
             fn compute(): int { return 3; }

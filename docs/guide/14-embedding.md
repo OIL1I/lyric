@@ -165,6 +165,60 @@ Registration checks the layout at load time: a host that fills three fields agai
 SDK declares with two is rejected with the import's name in the message, before any instruction
 runs.
 
+## Bounding what a script may spend
+
+A capability decides what a script may REACH. It says nothing about how long it may run, and
+`while (true) { }` needs no capability at all. For code you did not write — a mod, something
+downloaded — hand in a budget:
+
+```csharp
+var budget = new ExecutionBudget(2_000_000);
+
+try
+{
+    instance.CallVoid("onUpdate", budget, 0.016);
+}
+catch (ScriptBudgetException)
+{
+    // still working when the budget ran out
+    mods.Disable(instance);
+}
+```
+
+The budget counts **instructions, not milliseconds**, and that is the point rather than a
+shortcut: the same script under the same limit stops at the same instruction on every machine and
+in every run, so a replay stays a replay. Read `budget.Consumed` after a call that fits to find
+out what your own workload actually costs — there is no other way to arrive at a number worth
+setting.
+
+One object, several calls: `Reset()` refills it, and passing one budget to several calls makes
+them share it, which is how a host bounds a whole frame rather than a single script. A host
+function that calls back into the script draws from whichever budget its own call was given.
+
+`Instantiate` takes one too, and for foreign code it should:
+
+```csharp
+var instance = vm.Instantiate(module, new ExecutionBudget(10_000_000));
+```
+
+The module's constant initializer runs there, before the host has called anything — a
+module-level `let x = spin();` would otherwise hang the load itself.
+
+Three things worth knowing before you rely on it:
+
+- **The stop is not catchable by the script.** It arrives as a panic, so no `catch` inside the
+  program sees it and no `defer` runs afterwards. A stop a script could catch is one it could sit
+  out.
+- **`ScriptBudgetException` is a `ScriptPanicException`**, so a host that already catches panics
+  keeps catching this — but the separate type is what lets you tell "this script is broken" from
+  "this script was still working".
+- **A budget bounds bytecode, not host time.** A native of yours that blocks for a second blocks
+  for a second; the budget charges it one instruction. What it bounds is the script's own loops
+  and calls, which is where a mod runs away.
+
+An instance whose call was stopped is left mid-computation: its globals hold whatever the
+interrupted code had written. Treat it the way you would treat one that panicked.
+
 ## Registering types
 
 `RegisterType` exposes a C# class to scripts. Scripts receive such an object and pass it on; they

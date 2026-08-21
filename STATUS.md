@@ -11,6 +11,39 @@
 
 ## Current milestone
 
+**M31 — the budget and the named attribute value — is BUILT** (2026-08-21, branch
+`feature/m31-budget-and-constants`, four slices, ships as v2.4.0). Both open requirements of
+Erato's register, answered:
+
+- [x] **A10** — `ExecutionBudget`: instructions, not milliseconds, so the same script under the
+      same limit stops at the same instruction. A third specialization of the M30 policy loop;
+      an unmetered run picks the same `ReleasePolicy` it always did and pays one null check
+      before the loop starts. The stop is `LYR-CAP0002` and arrives as a PANIC — uncatchable,
+      no `defer` behind it — which is the property that makes it worth having against code
+      nobody trusts (slices 1–2)
+- [x] the register did not see the load half: the constant initializer runs inside
+      `Instantiate`, so `let x = spin();` hung a host before it had called anything. `Load`
+      takes a budget too (slice 1)
+- [x] `ScriptBudgetException` derives from `ScriptPanicException`: an older host keeps catching
+      what it caught, and a new one can tell "broken" from "still working" without comparing a
+      diagnostic code as a string (slice 2)
+- [x] **A11** — an attribute argument may NAME its value: a `let` bound to a literal, through a
+      chain, across modules, selectively or qualified, `static let` too. One resolution walk
+      shared by the sema and the lowering (slice 3)
+- [x] spec §4.7 and the §2 note amended, mirror synced, Appendix A gains CAP0002 and rewords
+      SEM0066; two conformance cases, suite 88 → 90; guides 14 and 15, CHANGELOG (slice 4)
+
+**Deliberate limits, stated in guide 14**: a budget bounds BYTECODE, not host time — a native
+that blocks is charged one instruction; budget and debugger are exclusive (the debugger wins,
+and nothing combines them); an instance whose call was stopped is left mid-computation, exactly
+like one that panicked. **Not built**: no `--budget` on the command line, because a standalone
+run trusts its program the way `lyric pack` grants every capability.
+
+**Measured** (Release, `tools/Bench`, against v2.3.1 on the same machine, unmetered): every case
+equal or faster, the two `for-in` rows swinging 25–30 % in the FAVOURABLE direction — which
+measures the machine, not the change, and repeats the M30 lesson about this box. Allocations
+unchanged.
+
 **M30 — the debugger — is BUILT** (2026-08-20, branch `feature/m30-debugger`, four slices,
 ships as v2.3.0). The delivery list:
 
@@ -217,9 +250,9 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4421 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.3.1**; the specification in `lyriclang/lyric-spec` is
-**NORMATIVE**, its suite stands at 88 cases, and the toolchain's own CI runs it against the
+4459 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.4.0**; the specification in `lyriclang/lyric-spec` is
+**NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
 **What this state can do**: the whole language of the grammar compiles and runs; a standard library
@@ -236,6 +269,14 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **M31 — the budget and the named attribute value** (2026-08-21,
+  `feature/m31-budget-and-constants`). Erato's A10 and A11. The budget is wasmtime's `fuel`
+  rather than V8's terminate-from-a-watchdog: counted, deterministic, no second thread — and
+  the analysis found a hole the register had not, namely that the constant initializer runs
+  inside `Instantiate`. A11 deliberately did NOT add a `const` binding form (that would be a
+  second mechanism for "a name bound to a value", Rule 2): the one POSITION learned to read a
+  `let` instead.
 
 - [x] **The v2.3.1 bug wave** (2026-08-21, `fix/v2.3.1-bug-wave`). Four measured bugs, three of
   them valid programs the toolchain mishandled: a parent's default method through a child-typed
@@ -265,14 +306,6 @@ out of them and hands its own functions, types and value structs in.
   names — 1.x bytecode loads); SEM0074 warning → error; `Hashable :: [Equatable]`; pub-roots
   prunes libraries from their surface; and the toolchain CI gates every change against the
   suite, with `//! since:` versioning the cases. 4311 tests, 54/54 conformance, docs 389/389.
-
-- [x] **M25 — the spec draft** (2026-08-19, shipped as v1.16.0, substance in
-  `lyriclang/lyric-spec`). Twelve chapters plus the conformance suite and its reference
-  runner, CI against the pinned release. The suite earned its keep on day one — resume yields
-  T and exhaustion panics, Throwable is a builtin, and `catch (e: Throwable)` compiled but
-  never caught (fixed in the toolchain); the maintainer's octal catch forced the full
-  compiler audit of the draft, which rewrote chapter 1 and corrected six more chapters.
-  Decisions recorded: overflow wraps (frozen), pub-roots YES at 2.0.
 
 ## Measurements
 
@@ -359,6 +392,13 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**M31 is BUILT and RELEASED as v2.4.0** (2026-08-21). Details under §Current milestone. What
+is left for Erato: the register's A10/A11 entries want closing, and the `lyric fmt` note beside
+them — operator chains do not break and run past the 100-column limit (`BinaryDoc` holds no
+`Doc.Line` at all, so a chain cannot break; reproduced at 117 columns) — is NOT done. It was cut
+from this milestone deliberately: it changes the shape of every formatted file in the corpus and
+belongs in its own slice.
 
 **The v2.3.1 bug wave is BUILT** (2026-08-21, branch `fix/v2.3.1-bug-wave`, three slices).
 Four of the five findings of the post-2.3.0 audit, fixed and pinned: the inherited default

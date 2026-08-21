@@ -35,6 +35,15 @@ internal readonly struct DebugPolicy(DebugController controller) : IExecutionPol
         controller.OnInstruction(frames, frame);
 }
 
+/// <summary>The metered policy: one instruction, one unit, and the run stops when the host's
+/// budget is spent. Its own specialization rather than a flag in the release one, so an
+/// unmetered run keeps the loop it had before budgets existed.</summary>
+internal readonly struct BudgetPolicy(ExecutionBudget budget) : IExecutionPolicy
+{
+    public void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame) =>
+        budget.Charge();
+}
+
 /// <summary>
 /// Executes a loaded <see cref="BytecodeModule"/>.
 ///
@@ -82,7 +91,8 @@ public static class Interpreter
         IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
         DispatchTable dispatch, NativeRegistry.BoundNative[] natives, LyrValue[] globals,
         ArgumentPool arguments, LyrValue[]? entryArguments = null,
-        BytecodeSourceMap? sourceMap = null, DebugController? debug = null)
+        BytecodeSourceMap? sourceMap = null, DebugController? debug = null,
+        ExecutionBudget? budget = null)
     {
         var frames = new Stack<Frame>();
         var frame = prepared[startIndex].Rent();
@@ -94,12 +104,19 @@ public static class Interpreter
 
         try
         {
-            // Two JIT specializations of one loop; the release one carries no trace of the hook.
-            return debug is null
+            // Three JIT specializations of one loop; the release one carries no trace of a hook.
+            // Debugging beats metering where a caller asks for both: a session parked at a
+            // breakpoint would otherwise spend a budget on standing still, and nothing in the
+            // toolchain combines them — the debugger runs a program, a budget runs foreign code.
+            if (debug is not null)
+                return Loop(prepared, strings, types, dispatch, natives, globals, arguments, frames,
+                    ref frame, new DebugPolicy(debug));
+
+            return budget is null
                 ? Loop(prepared, strings, types, dispatch, natives, globals, arguments, frames,
                     ref frame, default(ReleasePolicy))
                 : Loop(prepared, strings, types, dispatch, natives, globals, arguments, frames,
-                    ref frame, new DebugPolicy(debug));
+                    ref frame, new BudgetPolicy(budget));
         }
         catch (LyricPanic panic) when (panic.CallStack.Count == 0)
         {
