@@ -2693,10 +2693,12 @@ public sealed class TypeChecker
             {
                 var ft = FieldType(fs);
                 CheckAssignable(field.Value, CheckExpr(field.Value, scope, ft), ft, field.Span);
-                if (!IsAttributeLiteral(field.Value))
+                // AFTER the check, which is what binds the name this may be resolving through.
+                if (AttributeValues.LiteralOf(field.Value, _result) is null)
                     _de.Report("LYR-SEM0066", Severity.Error, field.Value.Span,
-                        $"an attribute argument must be a literal — a number, a string, a char or "
-                        + $"a bool; what stands in the bytecode has to be a value at compile time");
+                        "an attribute argument must be a literal — a number, a string, a char or "
+                        + "a bool — or a 'let' whose initializer is one; what stands in the "
+                        + "bytecode has to be a value at compile time");
             }
             else
             {
@@ -2712,27 +2714,17 @@ public sealed class TypeChecker
         foreach (var field in (ts.Declaration as StructDecl)?.Members.OfType<FieldDecl>() ?? [])
         {
             if (writtenFields.Contains(field.Name)) continue;
-            if (field.Default is not null && IsAttributeLiteral(field.Default)) continue;
+            if (field.Default is not null && AttributeValues.LiteralOf(field.Default, _result) is not null)
+                continue;
             _de.Report("LYR-SEM0069", Severity.Error, attribute.Span,
                 field.Default is null
                     ? $"'@{ts.Name}' leaves '{field.Name}' without a value — write it, or give "
                       + "the field a literal default"
-                    : $"'@{ts.Name}' leaves '{field.Name}' to a default that is not a literal — "
-                      + "what stands in the bytecode has to be a value at compile time");
+                    : $"'@{ts.Name}' leaves '{field.Name}' to a default that is not a value at "
+                      + "compile time — a literal, or a 'let' whose initializer is one");
         }
         return ts;
     }
-
-    /// <summary>What may stand in an attribute argument: exactly what can be written into the
-    /// bytecode as a constant. <c>null</c> is excluded on purpose — an attribute field is a
-    /// scalar, a char or a string, never an optional.</summary>
-    private static bool IsAttributeLiteral(Expr e) => e switch
-    {
-        IntLiteralExpr or FloatLiteralExpr or StringLiteralExpr or CharLiteralExpr
-            or BoolLiteralExpr => true,
-        UnaryExpr { Operator: UnaryOp.Neg, Operand: IntLiteralExpr or FloatLiteralExpr } => true,
-        _ => false,
-    };
 
     private LyrType CheckStructInit(StructInitExpr si, SymbolTable scope, LyrType? expected)
     {

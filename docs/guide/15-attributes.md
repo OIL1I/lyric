@@ -46,10 +46,10 @@ import std.core { OnType, OnFunction };
 pub struct Tag :: [OnFunction, OnType] { }
 ```
 
-## Arguments are literals
+## Arguments are values at compile time
 
-The block after the name is the struct initializer, restricted to literals — numbers (a sign is
-allowed), strings, chars and bools:
+The block after the name is the struct initializer, restricted to what can be written into the
+compiled module — numbers (a sign is allowed), strings, chars and bools:
 
 ```lyr
 import std.core { OnFunction };
@@ -63,10 +63,39 @@ pub fn fetch(): void { }
 The restriction is not taste: the values are written into the compiled module, and what stands in
 a file has to be a value at compile time. `limit = 1 + 2` is rejected, and so is `null`.
 
+Since v2.4 an argument may also NAME its value, as long as the name is a `let` whose initializer
+is itself such a literal:
+
+```lyr
+import std.core { OnFunction };
+
+pub struct On :: [OnFunction] { event: string }
+
+pub let CLEARED = "tetris.cleared";
+
+@On { event = CLEARED }
+pub fn onCleared(): void { }
+
+fn main(): int { return 0; }
+```
+
+That is what lets a program publish a vocabulary instead of repeating raw strings: a module
+exports its event names, whoever handles them imports the module, and a typo is `unknown
+identifier` at compile time rather than a handler nobody ever calls. The name may be imported
+selectively or written module-qualified, it may point at another such `let`, and a `static let`
+on a type works the same way.
+
+Two edges worth knowing in advance. A name is resolved, not COMPUTED: `let LIMIT = 1 + 2;` stays
+rejected, because the value would have to be worked out and there is no constant folding to work
+it out with — the value has to stand in the source. And the named form is slightly stricter than
+the written one: `@Retry { limit = 5 }` adapts the literal to an `int32` field, while
+`let LIMIT = 5;` is already an `int` and does not adapt, so a narrow field wants a narrow binding
+(`let LIMIT: int32 = 5;`).
+
 A field you do not write carries its default — `label` above is `""` without anyone writing it.
-That only works when the default itself is a literal; a field with a computed default and no
-written value is an error at the use site, because there would be nothing to write into the
-module.
+That only works when the default itself is such a value — a literal, or a name for one; a field
+with a computed default and no written value is an error at the use site, because there would be
+nothing to write into the module.
 
 Two more rules, both diagnosed where they happen: the same attribute may not sit on one target
 twice, and neither a generic attribute struct nor a generic target is allowed — the compiled

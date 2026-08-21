@@ -1,0 +1,165 @@
+using System.Runtime.CompilerServices;
+using Lyric.Core;
+using Lyric.Embedding;
+
+namespace Lyric.Tests.Embedding;
+
+/// <summary>
+/// An attribute argument may NAME its value (2.4), and the host reads the value all the same.
+///
+/// <para>The fault class this closes sits on the receiving side of an event. A game publishes its
+/// vocabulary as a module a mod imports; before this, the mod still had to repeat the raw string
+/// in the attribute, so a typo produced a handler nobody ever calls — silent, and found much
+/// later. With the name checked at compile time, the typo is <c>unknown identifier</c>.</para>
+///
+/// <para>The row is what these tests read: the sema deciding the use is legal is only half of it,
+/// and a value that never reaches the module would be a compiler that agreed and then forgot.
+/// </para>
+/// </summary>
+public sealed class AttributeConstantTests : IDisposable
+{
+    private static string RepoRoot([CallerFilePath] string thisFile = "")
+        => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
+
+    private readonly string _dir = Path.Combine(Path.GetTempPath(),
+        "lyric-attr-" + Guid.NewGuid().ToString("N")[..8]);
+
+    public AttributeConstantTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+        GC.SuppressFinalize(this);
+    }
+
+    private void Module(string modulePath, string source)
+    {
+        var file = Path.Combine(_dir, Path.Combine(modulePath.Split('.')) + ".lyr");
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllText(file, source);
+    }
+
+    private LangVm Vm() => new(new HostOptions
+    {
+        StdlibRoot = Path.Combine(RepoRoot(), "stdlib"),
+        SourceRoot = _dir,
+        Capabilities = Capability.None,
+    });
+
+    [Fact]
+    public void A_named_value_reaches_the_row()
+    {
+        var vm = Vm();
+        var module = vm.Compile("""
+            import std.core { OnFunction };
+
+            pub struct On :: [OnFunction] { event: string, priority: int }
+
+            let CLEARED = "tetris.cleared";
+            let LATE = 10;
+
+            @On { event = CLEARED, priority = LATE }
+            pub fn onCleared(): void { }
+            """, "mod");
+
+        var row = Assert.Single(module.Attributes.OnFunctions("On"));
+        Assert.Equal("tetris.cleared", row.Value("event")?.Text);
+        Assert.Equal(10, row.Value("priority")?.AsInt);
+    }
+
+    [Fact]
+    public void A_value_named_across_a_module_boundary_reaches_the_row()
+    {
+        // The shape the requirement was filed for: the game publishes its event names, the mod
+        // imports them, and the compiler checks what used to be a bare string.
+        Module("tetris_api", """
+            module tetris_api;
+
+            pub let CLEARED = "tetris.cleared";
+            """);
+
+        var vm = Vm();
+        var selective = vm.Compile("""
+            import std.core { OnFunction };
+            import tetris_api { CLEARED };
+
+            pub struct On :: [OnFunction] { event: string }
+
+            @On { event = CLEARED }
+            pub fn onCleared(): void { }
+            """, "mod");
+
+        var qualified = vm.Compile("""
+            import std.core { OnFunction };
+            import tetris_api;
+
+            pub struct On :: [OnFunction] { event: string }
+
+            @On { event = tetris_api.CLEARED }
+            pub fn onCleared(): void { }
+            """, "other");
+
+        Assert.Equal("tetris.cleared",
+            Assert.Single(selective.Attributes.OnFunctions("On")).Value("event")?.Text);
+        Assert.Equal("tetris.cleared",
+            Assert.Single(qualified.Attributes.OnFunctions("On")).Value("event")?.Text);
+    }
+
+    [Fact]
+    public void A_named_default_reaches_the_row()
+    {
+        var vm = Vm();
+        var module = vm.Compile("""
+            import std.core { OnFunction };
+
+            let DEFAULT_LIMIT = 3;
+
+            pub struct Retry :: [OnFunction] { limit: int = DEFAULT_LIMIT }
+
+            @Retry
+            pub fn fetch(): void { }
+            """, "mod");
+
+        Assert.Equal(3, Assert.Single(module.Attributes.OnFunctions("Retry")).Value("limit")?.AsInt);
+    }
+
+    [Fact]
+    public void A_negative_named_value_keeps_its_sign()
+    {
+        var vm = Vm();
+        var module = vm.Compile("""
+            import std.core { OnFunction };
+
+            let FOREVER = -1;
+
+            pub struct Retry :: [OnFunction] { limit: int }
+
+            @Retry { limit = FOREVER }
+            pub fn fetch(): void { }
+            """, "mod");
+
+        Assert.Equal(-1, Assert.Single(module.Attributes.OnFunctions("Retry")).Value("limit")?.AsInt);
+    }
+
+    [Fact]
+    public void The_type_row_of_an_attributed_type_takes_names_too()
+    {
+        var vm = Vm();
+        var module = vm.Compile("""
+            import std.core { OnType };
+
+            let PHYSICS = 2;
+
+            pub struct Component :: [OnType] { stage: int }
+
+            @Component { stage = PHYSICS }
+            pub struct Body { x: float, y: float }
+            """, "mod");
+
+        var row = Assert.Single(module.Attributes.OnTypes("Component"));
+        Assert.Equal(2, row.Value("stage")?.AsInt);
+        var fields = module.Attributes.FieldsOf(row.Target);
+        Assert.NotNull(fields);
+        Assert.Equal(["x", "y"], fields.Select(f => f.Name));
+    }
+}
