@@ -72,6 +72,39 @@ the names of local and global slots, plus field names for every named type. `lyr
 is byte-for-byte the same otherwise, and a debugger attached to a stripped module falls back to
 slot indices. `lyrvm info` tells you which sections a module carries.
 
+## Debugging a script inside a host
+
+A game has no `main`. Its entry points are the functions a host calls once per frame, so the shape
+above — launch a program, watch it run — never applies to it. Since 2.7 the controller attaches to
+a single call instead:
+
+```csharp
+var controller = DebugController.Create(program);
+controller.SetBreakpoints("held.lyr", [129]);
+
+// in the game loop, on the game's own thread:
+program.Invoke(update, controller, LyrValue.FromF64(dt));
+```
+
+The call runs on the caller's thread, and a breakpoint parks that thread until a resume command
+arrives — so the commands have to come from another one, which is what a DAP service attached to
+the running game provides. The same arrangement `Start` makes, with the roles swapped: there the
+program gets a thread of its own and the caller commands it; here the caller IS the program's
+thread.
+
+The controller survives across calls: breakpoints, and the stops they produce, hold for every
+invocation it is passed to, and a call into a function nothing breaks on returns without stopping.
+What never arrives is an `Exited` event — nothing ended, the host simply stopped calling — so the
+event stream stays open, which is the honest answer while a game is still running.
+
+There is no overload taking a debugger and a budget together: a session parked at a breakpoint
+would spend a budget on standing still.
+
+What this does not do is keep the window drawing. The parked thread is the one the game runs on,
+so the picture stands still until a resume arrives. Drawing through a breakpoint would need an
+interpreter that can return to its host mid-instruction and be resumed later; this one keeps its
+frame stack on the CLR stack, and that is a different machine.
+
 Three limits, stated rather than discovered:
 
 - **The global initializer runs before the debugger attaches.** A breakpoint in a module-level

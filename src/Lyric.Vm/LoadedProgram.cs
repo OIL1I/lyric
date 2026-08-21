@@ -169,6 +169,33 @@ public sealed class LoadedProgram
     public LyrValue Invoke(int index, ExecutionBudget budget, params LyrValue[] arguments) =>
         Execute(index, arguments, budget: budget);
 
+    /// <summary>
+    /// Runs the function at <paramref name="index"/> under a debugger.
+    ///
+    /// <para>The same call a host makes every frame, with the controller attached — which is what
+    /// a program WITHOUT an entry point needs: an embedded script has no <c>main</c>, so
+    /// <see cref="RunEntry(IReadOnlyList{string}, DebugController)"/> never applies to it, and
+    /// before this the whole debugger was reachable only through a shape a game does not have.
+    /// </para>
+    ///
+    /// <para>The call runs on the CALLER's thread, and a breakpoint parks it until a resume
+    /// command arrives — so the commands have to come from somewhere else. That is the same
+    /// arrangement <see cref="DebugController.Start"/> makes, with the roles swapped: there the
+    /// program gets a thread of its own and the caller commands it; here the caller is the
+    /// program's thread and something else commands it.</para>
+    ///
+    /// <para>The controller survives across calls: breakpoints, and the stops they produce, hold
+    /// for every invocation it is passed to. What does NOT arrive is an <c>Exited</c> event —
+    /// nothing ended, the host simply stopped calling — so <see cref="DebugController.Events"/>
+    /// stays open, which is the honest answer while a game is still running.</para>
+    ///
+    /// <para>There is no overload taking both a debugger and a budget, and that is deliberate: a
+    /// session parked at a breakpoint would spend a budget on standing still.</para>
+    /// </summary>
+    /// <exception cref="LyricPanic">The program panicked.</exception>
+    public LyrValue Invoke(int index, DebugController debug, params LyrValue[] arguments) =>
+        Execute(index, arguments, debug);
+
     private LyrValue Execute(int index, LyrValue[]? arguments = null,
         DebugController? debug = null, ExecutionBudget? budget = null) =>
         Interpreter.Execute(_prepared, index, _module.Strings, _module.Types, _dispatch,

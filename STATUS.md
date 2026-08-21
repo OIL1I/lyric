@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4478 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.6.0**; the specification in `lyriclang/lyric-spec` is
+4483 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.7.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -270,6 +270,11 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **A14 — the debugger reaches an invoked function** (2026-08-21,
+  `feature/a14-debug-invoke`, v2.7.0). One public overload, five tests, one guide section. The
+  fourth in the A9/A12/A13 row: the toolchain had the whole answer and offered it at one shape
+  only. Worth the note that the shape it was missing is the one every embedded script has.
+
 - [x] **A13 — a compilation error carries its place** (2026-08-21,
   `feature/a13-diagnostic-positions`, v2.6.0). The pattern this makes three of, after A9 and
   A12: the toolchain knew the answer and the boundary dropped it. Worth watching as a class —
@@ -281,12 +286,6 @@ out of them and hands its own functions, types and value structs in.
   made from reading code ("changes every formatted file") was off by the whole corpus, and the
   carve-out for hard-breaking operands is not an edge case but the thing that keeps
   `base * match (r) { … }` readable.
-
-- [x] **A12 — a foreign value struct in a native signature** (2026-08-21,
-  `feature/a12-foreign-value-struct`, v2.5.0). One lookup, six embedding tests that RUN the
-  calls rather than only compiling them, two guide edits. The lesson is about the label rather
-  than the code: a restriction was called deliberate in a changelog when it was only where the
-  implementation stopped, and the next requirement found it a release later.
 
 ## Measurements
 
@@ -373,6 +372,20 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**A14 — the debugger reaches an invoked function — is RELEASED as v2.7.0** (2026-08-21). Erato
+filed it after E13, and it is the same class as A13 one door further: everything M30 built was
+offered at `RunEntry` alone, and an embedded script has no `main` to start. One overload —
+`Invoke(index, controller, args)`, the shape the budget got in 2.4 — and the whole machinery is
+reachable. Nothing in `DebugController` needed changing: its command surface was already a
+semaphore and two volatile fields, so a host driving the call from its own thread works as it
+stands.
+
+**What was asked for and NOT built**, because the register calls it a wish rather than a
+requirement: a controller a host can drive without a second thread, so a window could keep
+drawing while the script stands still. That needs an interpreter that returns to its host
+mid-instruction and resumes later; this one keeps its frame stack on the CLR stack, which is a
+different machine. Guide 21 states it.
 
 **A13 — the compilation error with a place — is RELEASED as v2.6.0** (2026-08-21). Erato filed
 it after E12: `EmbeddingException` handed out compiler `Diagnostic`s whose `Span` is an index

@@ -10,6 +10,34 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.7.0 — 2026-08-21
+
+One overload, and with it the debugger reaches the shape an embedded script actually has. The
+bytecode format stays **3.3** and the language gains nothing.
+
+### Added
+
+- **`LoadedProgram.Invoke(index, debugController, args)`.** Since 2.3 the toolchain has had
+  breakpoints, stepping, the call stack, locals and evaluate — offered at exactly one place,
+  `RunEntry`, which starts a program at its `main`. A game has no `main`: its entry points are the
+  functions a host calls once per frame through `Invoke`, so none of that machinery was reachable
+  from a host. The budget got this shape in 2.4; the debugger gets it now.
+
+  The call runs on the caller's thread and a breakpoint parks it, so the commands come from
+  another one — the same arrangement `DebugController.Start` makes with the roles swapped. A
+  controller survives across calls: its breakpoints hold for every invocation it is passed to, and
+  a call into a function nothing breaks on returns without stopping. No `Exited` event arrives,
+  because nothing ended — the host simply stopped calling — so the event stream stays open while
+  the game runs.
+
+  There is deliberately no overload taking a debugger and a budget together: a session parked at a
+  breakpoint would spend a budget on standing still.
+
+  What it does not do is keep a window drawing: the parked thread is the game's own. Drawing
+  through a breakpoint needs an interpreter that can return to its host mid-instruction and resume
+  later, and this one keeps its frame stack on the CLR stack. Guide 21 says so rather than leaving
+  it to be discovered.
+
 ## v2.6.0 — 2026-08-21
 
 A compilation error tells an embedding host WHERE it happened, and a panic hands over its
