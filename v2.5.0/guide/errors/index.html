@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Errors — Lyric v2.5.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.5.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/" class="here">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Errors</h1>
+<nav class="contents">
+<ul>
+<li><a href="#panics">Panics</a></li>
+<li><a href="#exceptions">Exceptions</a></li>
+<li><a href="#cleanup">Cleanup</a></li>
+<li><a href="#custom-exception-types">Custom exception types</a></li>
+</ul>
+</nav>
+<p>Lyric separates two kinds of failure.</p>
+<ul>
+<li>A <strong>panic</strong> is a programming error: an index out of range, an unwrap of an absent value. It is
+not catchable and ends the process with exit code <code>101</code>.</li>
+<li>An <strong>exception</strong> is an expected condition that a caller may handle.</li>
+</ul>
+<h2 id="panics">Panics</h2>
+<pre><code class="language-lyr">import std.core { panic, assert };
+
+fn take(items: int[], index: int): int {
+    if (index &lt; 0 || index &gt;= items.length) {
+        panic(&quot;index out of range&quot;);
+    }
+    return items[index];
+}
+
+fn main(): int {
+    assert(true, &quot;this holds&quot;);
+    return take([1, 2, 3], 1);
+}
+</code></pre>
+<p><code>std.core</code> also offers <code>todo</code> and <code>unreachable</code> for the same purpose.</p>
+<h2 id="exceptions">Exceptions</h2>
+<p>A function that can throw declares <code>throws</code>. A caller either handles it or declares <code>throws</code>
+itself.</p>
+<p><code>throws</code> without a type means <code>Throwable</code> — anything. Naming a type narrows the declaration, and a
+<code>catch</code> for that type then covers the call completely.</p>
+<pre><code class="language-lyr">import std.core { Exception };
+
+fn parse(text: string): int throws Exception {
+    if (text == &quot;&quot;) {
+        throw Exception { text = &quot;empty input&quot; };
+    }
+    return 1;
+}
+
+fn main(): int {
+    try {
+        let n = parse(&quot;&quot;);
+        return n;
+    } catch (e: Exception) {
+        return 0;
+    }
+}
+</code></pre>
+<p>A <code>catch</code> may bind by type, bind everything, or bind nothing:</p>
+<pre><code class="language-lyr">import std.core { Exception };
+
+fn risky(): int throws {
+    throw Exception { text = &quot;no&quot; };
+}
+
+fn main(): int {
+    try {
+        return risky();
+    } catch (e: Exception) {
+        return 1;
+    } catch (other) {
+        return 2;
+    }
+}
+</code></pre>
+<p><code>main</code> cannot declare <code>throws</code>; an exception that reaches it aborts the process.</p>
+<h2 id="cleanup">Cleanup</h2>
+<p><code>defer</code> runs when the scope ends, on the normal path and while unwinding:</p>
+<pre><code class="language-lyr">import std.core { Exception };
+import std.io.console { println };
+
+fn work(): int throws Exception {
+    defer println(&quot;released&quot;);
+
+    throw Exception { text = &quot;failed&quot; };
+}
+
+fn main(): int {
+    try {
+        return work();
+    } catch (e: Exception) {
+        return 0;
+    }
+}
+</code></pre>
+<p>There is no <code>finally</code>; <code>defer</code> covers it.</p>
+<h2 id="custom-exception-types">Custom exception types</h2>
+<p>Any type that satisfies <code>Throwable</code> can be thrown. <code>Throwable</code> is built in and needs no import;
+<code>std.core.Exception</code> is the ready-made implementation, whose field is <code>text</code> and whose method is
+<code>message()</code>.</p>
+<pre><code class="language-lyr">class NotFound :: [Throwable] {
+    what: string,
+    fn message(): string { return &quot;not found: &quot; + this.what; }
+}
+
+fn lookup(key: string): int throws NotFound {
+    throw NotFound { what = key };
+}
+
+fn main(): int {
+    try {
+        return lookup(&quot;key&quot;);
+    } catch (e: NotFound) {
+        return 0;
+    }
+}
+</code></pre>
+<nav class="neighbours">
+<a class="prev" href="../../guide/optionals/">Optionals</a>
+<a class="next" href="../../guide/coroutines/">Coroutines</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

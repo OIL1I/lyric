@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Functions — Lyric v2.5.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.5.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/" class="here">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Functions</h1>
+<nav class="contents">
+<ul>
+<li><a href="#default-and-variadic-parameters">Default and variadic parameters</a></li>
+<li><a href="#functions-as-values">Functions as values</a></li>
+<li><a href="#lambdas">Lambdas</a></li>
+<li><a href="#static-methods">Static methods</a></li>
+</ul>
+</nav>
+<pre><code class="language-lyr">fn add(a: int, b: int): int {
+    return a + b;
+}
+
+fn main(): int {
+    return add(2, 3);
+}
+</code></pre>
+<p>A function without a return type returns <code>void</code>. The return type is written after the parameters.</p>
+<h2 id="default-and-variadic-parameters">Default and variadic parameters</h2>
+<p>A parameter may have a default. <code>params</code> on the last parameter collects the rest into an array.</p>
+<pre><code class="language-lyr">import std.io.console { println };
+
+fn greet(name: string, greeting: string = &quot;Hello&quot;): string {
+    return greeting + &quot;, &quot; + name;
+}
+
+fn total(params values: int[]): int {
+    var sum = 0;
+    for (v in values) { sum = sum + v; }
+    return sum;
+}
+
+fn main(): int {
+    println(greet(&quot;Ada&quot;));
+    println(greet(&quot;Ada&quot;, &quot;Good evening&quot;));
+    return total(1, 2, 3);
+}
+</code></pre>
+<p>A finished array may be passed to a variadic parameter as a whole.</p>
+<h2 id="functions-as-values">Functions as values</h2>
+<p>A function name used without parentheses is a value of type <code>fn(...) -&gt; R</code>.</p>
+<pre><code class="language-lyr">fn double(n: int): int { return n * 2; }
+
+fn apply(f: fn(int) -&gt; int, value: int): int {
+    return f(value);
+}
+
+fn main(): int {
+    return apply(double, 21);
+}
+</code></pre>
+<h2 id="lambdas">Lambdas</h2>
+<p>A lambda is written with <code>=&gt;</code>. Its body is an expression or a block.</p>
+<pre><code class="language-lyr">fn apply(f: fn(int) -&gt; int, value: int): int {
+    return f(value);
+}
+
+fn main(): int {
+    let triple = (n: int) =&gt; n * 3;
+    let describe = (n: int): int =&gt; { return n + 1; };
+
+    return apply(triple, 3) + apply(describe, 5);
+}
+</code></pre>
+<p>A lambda captures the variables it uses. A block-bodied lambda infers its return type from its
+<code>return</code> statements when neither an annotation nor a context provides one — the returns must
+agree, the same rule match arms follow.</p>
+<h2 id="static-methods">Static methods</h2>
+<p>A type can carry functions that need no instance. They are called through the type.</p>
+<pre><code class="language-lyr">struct Point {
+    x: int,
+    y: int,
+
+    static fn origin(): Point { return Point { x = 0, y = 0 }; }
+    static let ZERO: int = 0;
+}
+
+fn main(): int {
+    let p = Point.origin();
+    return p.x + Point.ZERO;
+}
+</code></pre>
+<p>On a generic type the type arguments belong to the type:</p>
+<pre><code class="language-lyr">struct Pair&lt;T&gt; {
+    a: T,
+    b: T,
+
+    static fn both(value: T): Pair&lt;T&gt; { return Pair&lt;T&gt; { a = value, b = value }; }
+}
+
+fn main(): int {
+    let p = Pair&lt;int&gt;.both(4);
+    return p.a + p.b;
+}
+</code></pre>
+<nav class="neighbours">
+<a class="prev" href="../../guide/values-and-types/">Values and types</a>
+<a class="next" href="../../guide/control-flow/">Control flow</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
