@@ -377,6 +377,12 @@ optional, a field, `next()` through a field — reaches `LYR-VM0010`, which Appe
 calls "reachable only for a hand-built module". Fixing it means deciding what throwability a
 coroutine VALUE carries; that is a language change, not a patch.
 
+Decided 2026-08-21: **document now, carry the type change as its own milestone.** Spec chapter
+10 states the gap and Appendix A stops claiming VM0010 is unreachable (`lyric-spec#2`); guide
+11 gets the user-facing half — wrap the pull, not only the call. Two answers were weighed and
+refused in the text: every pull throwing taxes the ordinary coroutine, and refusing a throwing
+coroutine a field would refuse programs whose RUNTIME behaviour is already correct.
+
 **M30 — the debugger — is RELEASED as v2.3.0** (2026-08-20). Details under §Current milestone.
 Found on the way and fixed in its own commit: `tools/Bench` had not compiled since the 2.0
 deprecation removal (`set_iter` still imported `emptySet`) — every bench run died before the

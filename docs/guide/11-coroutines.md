@@ -102,4 +102,41 @@ or a type argument — a driver that steps a stored `List<Coroutine<float>>` eve
 them like anything else. Copying the value copies a reference to the same suspended state; two
 holders drive one coroutine.
 
+## When the body throws
+
+A coroutine body may `throw`, and the exception comes out of the `resume` or `next()` that was
+running it — not out of the call that made the coroutine, which runs no body at all. It lands in
+the function driving the pull, where a `try` catches it like any other:
+
+```lyr
+import std.core { Exception };
+import std.io.console { println };
+
+fn steps(): Coroutine<int> throws Exception {
+    yield 1;
+    throw Exception { text = "the second step failed" };
+}
+
+fn main(): int {
+    try {
+        let co = steps();
+        println(f"{resume co}");
+        println(f"{resume co}");
+    } catch (e: Exception) {
+        println(e.message());
+    }
+    return 0;
+}
+```
+
+**Wrap the pull, not only the call.** The compiler asks for handling where a `throws` coroutine
+function is CALLED, and that is the one place nothing can be thrown yet. It does not ask again at
+the pull — and when the coroutine reaches the pull through a field or an optional, it asks
+nothing at all. An exception thrown there is then uncaught: the program ends with exit code 101,
+the same way an uncaught exception ends any program.
+
+So a driver that holds coroutines and steps them — a cutscene runner, a task list — puts its own
+`try` around the pull if the bodies it drives can throw. `next()` does not help here: it is
+lenient about the END of a body, not about a body that throws.
+
 Send values (`resume c, v`) do not exist.
