@@ -271,4 +271,36 @@ public sealed class OutputTests
         Assert.Equal(ExitCodes.Failure, result.ExitCode);
         Assert.Contains("LYR-RES", result.Err);
     }
+
+    // ---------------------------------------------------------------- the encoding contract
+
+    [Fact]
+    public void Non_ascii_output_survives_a_redirected_stream()
+    {
+        // A redirected stream is UTF-8, whatever code page the console this process happens to be
+        // attached to carries. Without that, Windows best-fit-maps on the way out: the em dash of
+        // this very hint left one tool as a hyphen and another intact, which is how a comparison
+        // between two tool runs could fail on a busy machine and nowhere else.
+        using var file = Toolchain.Temp(".lyr");
+        File.WriteAllText(file.Path, "fn main(): int {\n    var n = 1;\n    return n;\n}\n");
+
+        var result = Toolchain.Lyrc("check", file.Path);
+
+        Assert.Equal(ExitCodes.Success, result.ExitCode);
+        Assert.Contains("LYR-SEM0075", result.Err);
+        Assert.Contains("—", result.Err);
+    }
+
+    [Fact]
+    public void The_two_runtimes_render_a_diagnostic_identically()
+    {
+        // The shape of the sporadic failure this pins: one path runs the program in the driver,
+        // the other spawns lyrvm. Same text, two writers — and for months, occasionally, two
+        // encodings.
+        var inProcess = Toolchain.Lyric("run", Toolchain.Example("hello.lyr"), "--verbose");
+        var spawned = Toolchain.Lyric("run", Toolchain.Example("hello.lyr"), "--verbose",
+            "--vm", Toolchain.LyrvmPath);
+
+        Assert.Equal(inProcess.Out, spawned.Out);
+    }
 }

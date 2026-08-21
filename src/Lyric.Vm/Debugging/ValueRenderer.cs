@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Lyric.Bytecode;
+using Lyric.Core;
 
 namespace Lyric.Vm.Debugging;
 
@@ -29,9 +30,9 @@ internal static class ValueRenderer
             case TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64:
                 return new Rendered(value.AsU64.ToString(CultureInfo.InvariantCulture), typeName, false);
             case TypeTag.F32:
-                return new Rendered(value.AsF32.ToString("R", CultureInfo.InvariantCulture), typeName, false);
+                return new Rendered(Floats.Render(value.AsF32), typeName, false);
             case TypeTag.F64:
-                return new Rendered(value.AsF64.ToString("R", CultureInfo.InvariantCulture), typeName, false);
+                return new Rendered(Floats.Render(value.AsF64), typeName, false);
             case TypeTag.Bool:
                 return new Rendered(value.AsBool ? "true" : "false", typeName, false);
             case TypeTag.Char:

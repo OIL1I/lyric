@@ -22,6 +22,8 @@ public static class Program
 {
     public static int Main(string[] args)
     {
+        ConsoleStreams.UseUtf8WhenRedirected();
+
         string? directoryArgument = null;
         string? stdlib = null;
         for (var i = 0; i < args.Length; i++)

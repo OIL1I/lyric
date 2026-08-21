@@ -20,6 +20,8 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        ConsoleStreams.UseUtf8WhenRedirected();
+
         var options = new LspServerOptions();
 
         for (var i = 0; i < args.Length; i++)

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Lyric.AST;
+using Lyric.Core;
 
 namespace Lyric.DocGen.Extraction;
 
@@ -159,7 +160,7 @@ public static class SignatureWriter
     public static string Constant(Expr e) => e switch
     {
         IntLiteralExpr i => i.Value.ToString(CultureInfo.InvariantCulture),
-        FloatLiteralExpr f => f.Value.ToString("R", CultureInfo.InvariantCulture),
+        FloatLiteralExpr f => Floats.Render(f.Value),
         BoolLiteralExpr b => b.Value ? "true" : "false",
         StringLiteralExpr s => "\"" + Escape(s.Value) + "\"",
         CharLiteralExpr c => "'" + Escape(char.ConvertFromUtf32(c.CodePoint)) + "'",

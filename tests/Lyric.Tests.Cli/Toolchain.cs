@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 
 namespace Lyric.Tests.Cli;
 
@@ -21,6 +22,17 @@ public sealed record ToolResult(int ExitCode, string StdOut, string StdErr)
 /// </summary>
 public static class Toolchain
 {
+    /// <summary>
+    /// The reading half of the encoding contract: every tool writes UTF-8 into a redirected stream
+    /// (<c>ConsoleStreams.UseUtf8WhenRedirected</c>), so every pipe here is decoded as UTF-8 too.
+    ///
+    /// <para>Without the pin the default is the PARENT's console code page, which is shared,
+    /// mutable process state — two tools compared against each other could be read through two
+    /// different code pages, and an em dash would survive one and not the other. That was a
+    /// sporadic failure under full-suite load for months.</para>
+    /// </summary>
+    private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
+
     /// <summary>The repository root, found through <c>Lyric.slnx</c>. The way up from the test assembly is
     /// more stable than a counted <c>../../../..</c>, which becomes silently wrong at every change to the
     /// output structure.</summary>
@@ -99,6 +111,9 @@ public static class Toolchain
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardInputEncoding = Utf8,
+            StandardOutputEncoding = Utf8,
+            StandardErrorEncoding = Utf8,
             WorkingDirectory = RepositoryRoot,
         };
         foreach (var argument in args) info.ArgumentList.Add(argument);
@@ -148,6 +163,8 @@ public static class Toolchain
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Utf8,
+            StandardErrorEncoding = Utf8,
             WorkingDirectory = workingDirectory ?? RepositoryRoot,
         };
         foreach (var argument in args) info.ArgumentList.Add(argument);

@@ -267,7 +267,7 @@ public static class IrPrinter
     private static string ConstStr(IrConstValue v) => v switch
     {
         IntConst i => i.Value.ToString(CultureInfo.InvariantCulture),
-        FloatConst f => f.Value.ToString("R", CultureInfo.InvariantCulture),
+        FloatConst f => Floats.Render(f.Value),
         BoolConst b => b.Value ? "true" : "false",
         CharConst c => c.CodePoint.ToString(CultureInfo.InvariantCulture),
         StringConst s => Quote(s.Value),

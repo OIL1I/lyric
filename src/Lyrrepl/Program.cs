@@ -14,7 +14,14 @@ public static class Program
 
     public static int Main(string[] rawArgs)
     {
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        ConsoleStreams.UseUtf8WhenRedirected();
+
+        // A REAL console still gets its code page: the prompt prints what the user typed,
+        // and on Windows that needs UTF-8 to survive. Redirected, the line above has already
+        // decided the encoding — and setting the code page there would reach into a console
+        // this process is merely attached to, which is how it used to change what tools
+        // running beside it wrote.
+        if (!Console.IsOutputRedirected) Console.OutputEncoding = System.Text.Encoding.UTF8;
 
         if (rawArgs.Contains("--version") || rawArgs.Contains("-v"))
         {

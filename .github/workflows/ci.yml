@@ -19,6 +19,15 @@ on:
 permissions:
   contents: read
 
+# A push to a branch with an open pull request fires BOTH triggers, and the two runs verify the
+# same work twice — doubled runner load, and twice the exposure to anything load-sensitive. The
+# key is the branch NAME in both cases ('head_ref' on a pull request, 'ref_name' on a push), so
+# the two land in one group and the later arrival cancels the earlier. Successive pushes to the
+# same branch collapse the same way.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     name: Build and test (${{ matrix.os }})

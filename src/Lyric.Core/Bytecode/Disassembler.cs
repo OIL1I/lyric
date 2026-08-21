@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Lyric.Core;
 
 namespace Lyric.Bytecode;
 
@@ -193,7 +194,7 @@ public static class Disassembler
 
     private static string ConstText(BytecodeModule module, BytecodeInstruction i) => i.Type switch
     {
-        TypeTag.F32 or TypeTag.F64 => i.FloatValue.ToString("R", CultureInfo.InvariantCulture),
+        TypeTag.F32 or TypeTag.F64 => Floats.Render(i.FloatValue),
         TypeTag.Bool => i.BoolValue ? "true" : "false",
         TypeTag.String => $"s{N(i.Immediate)} {Quote(SafeString(module, i.Immediate))}",
         _ => N(i.Immediate),
@@ -269,7 +270,7 @@ public static class Disassembler
     {
         TypeTag.String => Quote(value.Text ?? ""),
         TypeTag.Bool => value.AsBool ? "true" : "false",
-        TypeTag.F32 or TypeTag.F64 => value.AsFloat.ToString("R", CultureInfo.InvariantCulture),
+        TypeTag.F32 or TypeTag.F64 => Floats.Render(value.AsFloat),
         TypeTag.Char => $"'{char.ConvertFromUtf32((int)value.Bits)}'",
         TypeTag.U8 or TypeTag.U16 or TypeTag.U32 or TypeTag.U64 => N(value.Bits),
         _ => value.AsInt.ToString(CultureInfo.InvariantCulture),
