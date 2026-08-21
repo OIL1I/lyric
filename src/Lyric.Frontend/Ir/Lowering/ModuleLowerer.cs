@@ -110,7 +110,7 @@ public static class ModuleLowerer
                         // struct's type; the call site passes a hidden buffer and copies the
                         // value out. See ImportReturn.
                         var returnNode = ResolveLocalAliases(function.ReturnType, aliases, binding);
-                        var returned = NativeStructParameter(module, returnNode, typeTable);
+                        var returned = NativeStructParameter(module, returnNode, typeTable, binding);
                         var wireReturn = returned is { } r
                             ? new IrScalarType(IrScalar.Void)
                             : DeclaredTypes.Lower(returnNode, host);
@@ -546,7 +546,7 @@ public static class ModuleLowerer
         for (var i = 0; i < function.Parameters.Length; i++)
         {
             var node = ResolveLocalAliases(function.Parameters[i].Type, aliases, binding)!;
-            if (NativeStructParameter(module, node, typeTable) is { } flat)
+            if (NativeStructParameter(module, node, typeTable, binding) is { } flat)
             {
                 shape[i] = flat;
                 flattened.AddRange(flat.Fields);
@@ -577,18 +577,31 @@ public static class ModuleLowerer
         };
     }
 
-    /// <summary>A struct of this native module used as a parameter, or <c>null</c> when the node
-    /// is anything else.</summary>
+    /// <summary>A value struct used as a parameter of a native declaration, or <c>null</c> when
+    /// the node is anything else.
+    ///
+    /// <para>The struct may come from ANOTHER module: an SDK of several files declares <c>Vec2</c>
+    /// once and names it wherever a native takes or returns one, selectively imported or
+    /// module-qualified. What crosses the wire is the LAYOUT, and a layout belongs to the program
+    /// rather than to the file that declared it — the same reason an imported alias resolves here
+    /// (§3.5). The host agreeing about that layout is checked at load time, as it always was.</para>
+    /// </summary>
     /// <exception cref="UnsupportedConstructException">The struct has a field that cannot be
     /// flattened. Scalars and strings only: an array or object field would put a module layout
     /// into the host's hands, which is the boundary this design keeps closed.</exception>
     private static ImportParam? NativeStructParameter(ModuleSymbol module, TypeNode? node,
-        TypeTable typeTable)
+        TypeTable typeTable, BindingResult binding)
     {
-        if (node is not NamedType { Path.Length: 1, TypeArguments.Length: 0 } named
-            || module.Members.LookupLocal(named.Path[0])
-                is not TypeSymbol { Kind: TypeSymbolKind.Struct } symbol)
-            return null;
+        if (node is not NamedType { TypeArguments.Length: 0 } named) return null;
+
+        // The declaring module first — that path needs no binding entry — then whatever the
+        // resolver bound the node to, which is what carries an import or a qualified path.
+        var bound = named.Path.Length == 1
+            ? module.Members.LookupLocal(named.Path[0]) ?? binding.Resolve(named)
+            : binding.Resolve(named);
+        while (bound is ImportBindingSymbol imported) bound = imported.Target;
+
+        if (bound is not TypeSymbol { Kind: TypeSymbolKind.Struct } symbol) return null;
 
         var type = typeTable.Intern(symbol);
         var layout = typeTable.Defs[type.Value];

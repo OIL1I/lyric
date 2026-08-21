@@ -117,9 +117,10 @@ compiled like any other function.
 
 ## Value types across the boundary
 
-A native signature may use a `struct` declared **in the same native module**, with scalar and
-string fields only. The declaration stays fully typed on the script side; on the wire the struct
-is **flattened**:
+A native signature may use a `struct` an SDK module declares, with scalar and string fields only.
+Since v2.5 it may be a struct of **another** module of the SDK — a vector is declared once and
+named wherever a native takes or returns one, imported selectively or written module-qualified.
+The declaration stays fully typed on the script side; on the wire the struct is **flattened**:
 
 ```text
 // sdk/engine/geo.lyr
@@ -163,7 +164,8 @@ travel as scalars, and the result buffer exists once per program.
 
 Registration checks the layout at load time: a host that fills three fields against a struct the
 SDK declares with two is rejected with the import's name in the message, before any instruction
-runs.
+runs. That check is what makes the module boundary irrelevant here — what crosses is a layout,
+and the host is held to it whichever file wrote the declaration down.
 
 ## Bounding what a script may spend
 
