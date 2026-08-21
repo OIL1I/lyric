@@ -82,6 +82,125 @@ public class InterfaceInheritanceTests
             """));
     }
 
+    /// <summary>The mirror image of <see cref="Chain"/>: the DEFAULT sits on the parent and the
+    /// abstract member below it, so every call through a child-typed value reaches a function
+    /// whose own receiver is the parent's interface type.</summary>
+    private const string DefaultOnParent =
+        """
+        interface Score {
+            fn points(): int;
+
+            fn doubled(): int {
+                return this.points() * 2;
+            }
+        }
+
+        interface Ranked :: [Score] {
+            fn rank(): int;
+        }
+
+        struct Player :: [Ranked] {
+            base: int,
+
+            fn points(): int {
+                return this.base;
+            }
+
+            fn rank(): int {
+                return 1;
+            }
+        }
+
+        """;
+
+    [Fact]
+    public void A_child_interface_value_runs_the_parents_default()
+    {
+        // The receiver is a Ranked value, the default belongs to Score. Both the dispatch and the
+        // 'this.points()' inside the default have to survive the difference.
+        Assert.Equal(14, Run(DefaultOnParent +
+            """
+            fn main(): int {
+                let r: Ranked = Player { base = 7 };
+                return r.doubled();
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_constraint_on_the_child_reaches_the_parents_default()
+    {
+        Assert.Equal(15, Run(DefaultOnParent +
+            """
+            fn scored<T :: [Ranked]>(x: T): int {
+                return x.doubled() + x.rank();
+            }
+
+            fn main(): int {
+                return scored(Player { base = 7 });
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_chain_of_three_reaches_the_grandparents_default()
+    {
+        Assert.Equal(31, Run(
+            """
+            interface A {
+                fn base(): int;
+
+                fn twice(): int {
+                    return this.base() * 2;
+                }
+            }
+
+            interface B :: [A] {
+                fn mid(): int {
+                    return this.twice() + 1;
+                }
+            }
+
+            interface C :: [B] {
+                fn leaf(): int;
+            }
+
+            class K :: [C] {
+                fn base(): int {
+                    return 3;
+                }
+
+                fn leaf(): int {
+                    return 9;
+                }
+            }
+
+            fn main(): int {
+                let k: C = K { };
+                return k.twice() + k.mid() + k.leaf() * 2;
+            }
+            """));
+    }
+
+    [Fact]
+    public void An_array_of_child_interface_values_dispatches_per_element()
+    {
+        // The element position is a context: the class values are lifted into interface values
+        // there, and the parent's default is reached through each of them.
+        Assert.Equal(20, Run(DefaultOnParent +
+            """
+            fn main(): int {
+                let xs: Ranked[] = [Player { base = 3 }, Player { base = 7 }];
+
+                var sum = 0;
+                for (x in xs) {
+                    sum = sum + x.doubled();
+                }
+                return sum;
+            }
+            """));
+    }
+
     [Fact]
     public void A_concrete_value_carries_into_the_implied_parent_interface()
     {

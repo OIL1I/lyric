@@ -52,6 +52,15 @@ internal static class Devirtualizer
                     var target = row.Methods[call.Slot];
                     var receiver = module.Functions[target.Value].Locals[0].Type;
 
+                    // The slot may be INHERITED: a default declared on a parent interface, reached
+                    // through a child-typed value. Its receiver is then the PARENT's interface type,
+                    // and the value at hand is the child's — two different types for one
+                    // representation. The runtime would not care, the IR does: an interface value
+                    // does not convert to its parent's type, in the source language (§3.5) as here.
+                    // Such a slot keeps its dispatch; the vtable answers it in one lookup anyway.
+                    if (receiver is IrInterfaceType declared && declared.Type != call.Interface)
+                        continue;
+
                     var args = (TempId[])call.Args.Clone();
                     if (receiver is not IrInterfaceType) args[0] = lift.Value;
                     block.Insts[i] = new Call(call.Dest, target, args, call.Span);

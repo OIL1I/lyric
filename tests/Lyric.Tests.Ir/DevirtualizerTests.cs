@@ -86,4 +86,21 @@ public class DevirtualizerTests
         var wide = module.Functions.Single(f => f.Name == "main.wide");
         Assert.Contains(Ops(wide), op => op is CallVirt);
     }
+
+    [Fact]
+    public void An_inherited_default_keeps_its_dispatch()
+    {
+        // The slot resolves to a default declared on the PARENT, whose receiver is the parent's
+        // interface type — while the value at hand is the child's. Devirtualizing would put one
+        // into the other's slot, and an interface value does not convert to its parent's type.
+        // 'describe' is over the inline budget, so the direct call would survive to be seen.
+        var pad = string.Join(" + ", Enumerable.Repeat("this.name()", 26));
+        var module = Optimized(
+            "interface Base { fn name(): int; fn describe(): int { return " + pad + "; } }\n" +
+            "interface Child :: [Base] { fn extra(): int; }\n" +
+            "class C :: [Child] { fn name(): int { return 1; } fn extra(): int { return 2; } }\n" +
+            "fn main(): int { let c: Child = C { }; return c.describe(); }");
+
+        Assert.Contains(Ops(Main(module)), op => op is CallVirt);
+    }
 }
