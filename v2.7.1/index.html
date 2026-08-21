@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.7.1</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.7.1</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.7.1 — 2026-08-22</h2>
+<p>One fix, to a request the debug adapter left unanswered.</p>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><p><strong><code>lyrdbg</code> answers <code>setExceptionBreakpoints</code>.</strong> An editor configures exception breakpoints as
+part of its startup sequence — after the <code>initialized</code> event, before <code>configurationDone</code> —
+whether or not the adapter offers any filters to set. This one offers none and answered the
+request with an error, and a client that treats a failed configuration request as fatal never
+gets to <code>configurationDone</code>: the program stands there launched and never started, with no output
+and nothing to see.</p>
+<p>There is still nothing to set and nothing to report, so the answer carries no body. What changed
+is that it is an answer. Nothing about breakpoints, stepping or a running session behaves
+differently, and a client that never sends the request sees no change at all.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

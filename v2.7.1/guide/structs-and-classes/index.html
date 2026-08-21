@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Structs and classes — Lyric v2.7.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.7.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/" class="here">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Structs and classes</h1>
+<nav class="contents">
+<ul>
+<li><a href="#methods">Methods</a></li>
+<li><a href="#constants-on-a-type">Constants on a type</a></li>
+</ul>
+</nav>
+<p>Both group named fields. They differ in what a binding holds.</p>
+<ul>
+<li>A <strong>struct</strong> is a value. Assigning it copies.</li>
+<li>A <strong>class</strong> is a reference. Assigning it shares.</li>
+</ul>
+<pre><code class="language-lyr">struct Point { x: int, y: int, }
+
+class Counter { value: int, }
+
+fn main(): int {
+    var a = Point { x = 1, y = 2 };
+    var b = a;
+    b.x = 99;                       // a.x is still 1
+
+    let first = Counter { value = 0 };
+    let second = first;
+    second.value = 5;               // first.value is now 5 as well
+
+    return a.x + first.value;
+}
+</code></pre>
+<p>A field may have a default, and an initializer may then leave it out:</p>
+<pre><code class="language-lyr">struct Config {
+    retries: int = 3,
+    verbose: bool = false,
+}
+
+fn main(): int {
+    let c = Config { verbose = true };
+    return c.retries;
+}
+</code></pre>
+<h2 id="methods">Methods</h2>
+<p>Members are separated by <code>,</code>. A method that writes to <code>this</code> is marked <code>mut</code>.</p>
+<pre><code class="language-lyr">class Counter {
+    value: int,
+
+    fn get(): int { return this.value; }
+
+    mut fn increment(): void { this.value = this.value + 1; }
+}
+
+fn main(): int {
+    let c = Counter { value = 0 };
+    c.increment();
+    c.increment();
+    return c.get();
+}
+</code></pre>
+<p><code>mut</code> on a method of a struct means the receiver is written back to the caller's value.</p>
+<h2 id="constants-on-a-type">Constants on a type</h2>
+<p><code>static let</code> attaches a constant to a type. <code>static fn</code> attaches a function that needs no
+receiver.</p>
+<pre><code class="language-lyr">struct Vec2 {
+    x: float,
+    y: float,
+
+    static let DIMENSIONS: int = 2;
+
+    static fn zero(): Vec2 { return Vec2 { x = 0.0, y = 0.0 }; }
+
+    fn sum(): float { return this.x + this.y; }
+}
+
+fn main(): int {
+    let v = Vec2.zero();
+    return Vec2.DIMENSIONS + v.sum() as int;
+}
+</code></pre>
+<p>Constants are initialized in declaration order before <code>main</code> runs. An initializer may read a
+constant declared before it, not one declared after.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/control-flow/">Control flow</a>
+<a class="next" href="../../guide/enums-and-matching/">Enums and pattern matching</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

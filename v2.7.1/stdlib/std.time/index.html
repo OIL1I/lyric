@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.time — Lyric v2.7.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.7.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/" class="here">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.time</h1>
+<nav class="contents">
+<ul>
+<li><a href="#struct-duration">Duration</a></li>
+<li><a href="#struct-instant">Instant</a></li>
+</ul>
+</nav>
+<section class="item" id="struct-duration">
+<h2><a href="#struct-duration">Duration</a> <span class="kind">struct</span></h2>
+<pre class="signature"><code class="language-lyr">pub struct Duration</code></pre>
+<p>A distance between two instants, in whole milliseconds. May be negative: <code>a.since(b)</code> with
+<code>b</code> later than <code>a</code> says so rather than hiding it.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">millis: int</code></pre>
+<p>The distance in milliseconds; the sign is the direction.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub static fn ofMillis(value: int): Duration</code></pre>
+<p>A duration of whole milliseconds.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub static fn ofSeconds(value: int): Duration</code></pre>
+<p>A duration of whole seconds.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub static fn ofMinutes(value: int): Duration</code></pre>
+<p>A duration of whole minutes.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn totalMillis(): int</code></pre>
+<p>The whole distance in milliseconds.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn totalSeconds(): int</code></pre>
+<p>The whole distance in seconds, truncated towards zero.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn plus(other: Duration): Duration</code></pre>
+<p>The two added.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn minus(other: Duration): Duration</code></pre>
+<p>The other subtracted from this one.</p>
+</div>
+</div>
+<p class="source">stdlib/std/time.lyr:25</p>
+</section>
+<section class="item" id="struct-instant">
+<h2><a href="#struct-instant">Instant</a> <span class="kind">struct</span></h2>
+<pre class="signature"><code class="language-lyr">pub struct Instant</code></pre>
+<p>A point on the wall clock: milliseconds since 1970-01-01 UTC.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">millis: int</code></pre>
+<p>Milliseconds since the epoch; negative is before 1970.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub static fn now(): Instant</code></pre>
+<p>The wall clock, now.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub static fn ofEpochMillis(value: int): Instant</code></pre>
+<p>The instant at these epoch milliseconds — for stored timestamps and for tests, which
+want a clock that stands still.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn epochMillis(): int</code></pre>
+<p>Milliseconds since the epoch — the raw number back, for storing.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn since(earlier: Instant): Duration</code></pre>
+<p>The distance from <code>earlier</code> to this instant. Negative when <code>earlier</code> is actually later.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn plus(d: Duration): Instant</code></pre>
+<p>This instant moved by a duration; a negative one moves backwards.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn iso(): string</code></pre>
+<p>ISO 8601 in UTC, millisecond precision: <code>1970-01-01T00:00:00.000Z</code>.</p>
+<p><code>divFloor</code>/<code>modFloor</code> rather than <code>/</code> and <code>%</code>, so an instant BEFORE the epoch lands in
+the right day — truncation would round the day towards 1970 and hand the rest a negative
+time.</p>
+</div>
+</div>
+<p class="source">stdlib/std/time.lyr:66</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.test/">std.test</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
