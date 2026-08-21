@@ -10,6 +10,39 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.5.0 — 2026-08-21
+
+One requirement from the embedder, and the documentation gap beside it. The bytecode format stays
+**3.3**; nothing on the wire changes, which is the whole finding.
+
+### Fixed
+
+- **A native signature may name a value struct of ANOTHER SDK module.** An SDK of several files
+  declares its `Vec2` once; before this only the declaring module could name it, so a second
+  module (`engine.camera.toWorld(x, y): world.Vec2`) was `LYR-IR0001` — "non-primitive type in a
+  declared signature" — whether the type was imported selectively or written module-qualified.
+  Both forms work now, as parameter and as return.
+
+  It is the same shape as the imported-alias fix of 2.2.1, one function away in the same file:
+  the lookup was module-local and never asked the resolver. The 2.2.1 note called the restriction
+  "documented and deliberate" — that was too generous. Its reason (an alias has nothing to
+  flatten) explains why the alias fix did not carry structs along; it does not explain why a
+  foreign struct may not be flattened, and there is no such reason. What crosses the wire is a
+  LAYOUT, a layout belongs to the program rather than to the file that wrote it down, and the
+  host is held to it by the same load-time check as before.
+
+  Unchanged: a struct in a native signature flattens to scalars and strings, so a field that is
+  an array or an object is still refused — crossing a module line changes nothing about what the
+  host would have to know.
+
+### Documentation
+
+- **The `…Int` family of `std.math` is named in the guide.** `clamp` takes floats and `clampInt`
+  takes ints, as `min`/`minInt` and `abs`/`absInt` do, because the language has no overloading and
+  the library distinguishes by the type in the name. Reaching for `clamp` with three `int`s and
+  getting `cannot assign 'int' to 'float'` is the convention working as designed — but chapter 13
+  never said so where someone would look for it.
+
 ## v2.4.0 — 2026-08-21
 
 M31: two additive answers to what an embedder found in production. A host can bound how long

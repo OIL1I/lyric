@@ -80,6 +80,21 @@ fn main(): int {
 An `Iterator<T>` yields `?T` and signals the end with `null`. `Iterable<T>` hands out a fresh
 iterator per call, so two loops over the same collection do not interfere.
 
+## One name per type, not overloads
+
+Lyric has no overloading, so the library distinguishes by the type in the NAME. `std.math` carries
+both families side by side:
+
+| float | int |
+|---|---|
+| `min`, `max` | `minInt`, `maxInt` |
+| `clamp` | `clampInt` |
+| `abs`, `sign` | `absInt`, `signInt` |
+
+`clamp(index, 0, count - 1)` on three `int`s is therefore `cannot assign 'int' to 'float'`, and
+the answer is `clampInt` rather than a conversion there and back. The same rule shapes
+`fromInt`/`fromFloat` and `parseInt`/`parseFloat` in `std.string`.
+
 ## Capabilities
 
 `std.io.file`, `std.io.net` and `std.os` require a capability. A standalone run grants

@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4459 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.4.0**; the specification in `lyriclang/lyric-spec` is
+4465 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.5.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -269,6 +269,12 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **A12 — a foreign value struct in a native signature** (2026-08-21,
+  `feature/a12-foreign-value-struct`, v2.5.0). One lookup, six embedding tests that RUN the
+  calls rather than only compiling them, two guide edits. The lesson is about the label rather
+  than the code: a restriction was called deliberate in a changelog when it was only where the
+  implementation stopped, and the next requirement found it a release later.
 
 - [x] **M31 — the budget and the named attribute value** (2026-08-21,
   `feature/m31-budget-and-constants`). Erato's A10 and A11. The budget is wasmtime's `fuel`
@@ -296,16 +302,6 @@ out of them and hands its own functions, types and value structs in.
   = [];` report instead of crashing, oversized literals stopped reinterpreting, int-to-float
   adaptation is exact, and `throws` on main is refused. Plus the §11 registry ratchet
   (std.build is host-bound, now said) and two diagnosis-QoI fixes. 4322 tests, 78/78.
-
-- [x] **M26 — v2.0.0** (2026-08-20, five slices, `feature/m26-v2`, PR #64). The specification
-  turned NORMATIVE and the clocks ran out: Appendix A catalogues all 180 diagnostic codes
-  verified against the emission sites; chapter 7 carries the complete narrowing and
-  definite-assignment models (the stale-lambda-proof answer: a checked unwrap, LYR-VM0007);
-  the EBNF and the bytecode format are canonical in the spec with checked mirrors here; all
-  34 `@Deprecated` declarations plus StringBuilder.length went (registry keeps the native
-  names — 1.x bytecode loads); SEM0074 warning → error; `Hashable :: [Equatable]`; pub-roots
-  prunes libraries from their surface; and the toolchain CI gates every change against the
-  suite, with `//! since:` versioning the cases. 4311 tests, 54/54 conformance, docs 389/389.
 
 ## Measurements
 
@@ -392,6 +388,17 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**A12 — the foreign value struct — is RELEASED as v2.5.0** (2026-08-21): Erato filed it after
+E10, and it is the sibling of A9 in the same file. `NativeStructParameter` looked its type up
+with `module.Members.LookupLocal` and required a single-segment path, so an imported or
+qualified struct never matched and fell through to `LYR-IR0001`. It asks the resolver now, as
+`ResolveLocalAliases` has since 2.2.1. **The 2.2.1 changelog called that restriction
+"documented and deliberate" and it was not** — the reason given there explains why the alias
+fix did not carry structs along, not why a foreign struct may not be flattened. No spec change:
+value structs in native signatures are toolchain surface, and the spec says nothing about them.
+Guide 13 gained the `…Int` family table in the same wave — `clampInt` existed all along, but
+nothing named the convention where someone would look.
 
 **M31 is BUILT and RELEASED as v2.4.0** (2026-08-21). Details under §Current milestone. What
 is left for Erato: the register's A10/A11 entries want closing, and the `lyric fmt` note beside
