@@ -1,0 +1,1474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Changelog — Lyric v2.7.0</title>
+<link rel="stylesheet" href="../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../">Lyric</a>
+<nav class="areas">
+<a href="../guide/getting-started/">Guide</a>
+<a class="current" href="../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.7.0</span>
+<nav class="switcher" data-versions="../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../grammar/">Lyric Grammar</a></li>
+<li><a href="../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a></li>
+<li><a href="../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../changelog/" class="here">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../stdlib/std.build/">std.build</a></li>
+<li><a href="../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../stdlib/std.core/">std.core</a></li>
+<li><a href="../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../stdlib/std.math/">std.math</a></li>
+<li><a href="../stdlib/std.option/">std.option</a></li>
+<li><a href="../stdlib/std.os/">std.os</a></li>
+<li><a href="../stdlib/std.random/">std.random</a></li>
+<li><a href="../stdlib/std.string/">std.string</a></li>
+<li><a href="../stdlib/std.test/">std.test</a></li>
+<li><a href="../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>Changelog</h1>
+<nav class="contents">
+<ul>
+<li><a href="#v2.7.0-2026-08-21">v2.7.0 — 2026-08-21</a></li>
+<li><a href="#v2.6.0-2026-08-21">v2.6.0 — 2026-08-21</a></li>
+<li><a href="#v2.5.1-2026-08-21">v2.5.1 — 2026-08-21</a></li>
+<li><a href="#v2.5.0-2026-08-21">v2.5.0 — 2026-08-21</a></li>
+<li><a href="#v2.4.0-2026-08-21">v2.4.0 — 2026-08-21</a></li>
+<li><a href="#v2.3.1-2026-08-21">v2.3.1 — 2026-08-21</a></li>
+<li><a href="#v2.3.0-2026-08-20">v2.3.0 — 2026-08-20</a></li>
+<li><a href="#v2.2.1-2026-08-20">v2.2.1 — 2026-08-20</a></li>
+<li><a href="#v2.2.0-2026-08-20">v2.2.0 — 2026-08-20</a></li>
+<li><a href="#v2.1.1-2026-08-20">v2.1.1 — 2026-08-20</a></li>
+<li><a href="#v2.1.0-2026-08-20">v2.1.0 — 2026-08-20</a></li>
+<li><a href="#v2.0.1-2026-08-20">v2.0.1 — 2026-08-20</a></li>
+<li><a href="#v2.0.0-2026-08-20">v2.0.0 — 2026-08-20</a></li>
+<li><a href="#v1.16.0-2026-08-19">v1.16.0 — 2026-08-19</a></li>
+<li><a href="#v1.15.0-2026-08-19">v1.15.0 — 2026-08-19</a></li>
+<li><a href="#v1.14.0-2026-08-19">v1.14.0 — 2026-08-19</a></li>
+<li><a href="#v1.13.0-2026-08-19">v1.13.0 — 2026-08-19</a></li>
+<li><a href="#v1.12.0-2026-08-19">v1.12.0 — 2026-08-19</a></li>
+<li><a href="#v1.11.0-2026-08-19">v1.11.0 — 2026-08-19</a></li>
+<li><a href="#v1.10.0-2026-08-19">v1.10.0 — 2026-08-19</a></li>
+<li><a href="#v1.9.1-2026-08-19">v1.9.1 — 2026-08-19</a></li>
+<li><a href="#v1.9.0-2026-08-19">v1.9.0 — 2026-08-19</a></li>
+<li><a href="#v1.8.1-2026-08-18">v1.8.1 — 2026-08-18</a></li>
+<li><a href="#v1.8.0-2026-08-18">v1.8.0 — 2026-08-18</a></li>
+<li><a href="#v1.6.0-2026-08-18">v1.6.0 — 2026-08-18</a></li>
+<li><a href="#v1.5.0-2026-08-18">v1.5.0 — 2026-08-18</a></li>
+<li><a href="#v1.4.0-2026-08-17">v1.4.0 — 2026-08-17</a></li>
+<li><a href="#v1.3.1-2026-08-17">v1.3.1 — 2026-08-17</a></li>
+<li><a href="#v1.3.0-2026-08-17">v1.3.0 — 2026-08-17</a></li>
+<li><a href="#v1.2.0-2026-08-17">v1.2.0 — 2026-08-17</a></li>
+<li><a href="#v1.1.0-2026-08-15">v1.1.0 — 2026-08-15</a></li>
+<li><a href="#v1.0.1-2026-08-14">v1.0.1 — 2026-08-14</a></li>
+<li><a href="#v1.0.0-2026-08-14">v1.0.0 — 2026-08-14</a></li>
+</ul>
+</nav>
+<p>This file starts at v1.0.0. Before it there was no compatibility promise to describe — neither for
+the language nor for the <code>.lyrbc</code> format — and a changelog written under those conditions records
+churn rather than change. The pre-1.0 releases carry their notes in their annotated tags.</p>
+<p>Versions follow <code>vMAJOR.MINOR.PATCH</code>, as described in <a href="https://github.com/lyriclang/lyric/blob/main/README.md#versioning">README</a>. Each entry
+lists what changed <strong>for someone using the toolchain</strong>: the language, the standard library, the
+bytecode format, the command line and the embedding API. Compiler internals are in <code>git log</code>.</p>
+<hr />
+<h2 id="v2.7.0-2026-08-21">v2.7.0 — 2026-08-21</h2>
+<p>One overload, and with it the debugger reaches the shape an embedded script actually has. The
+bytecode format stays <strong>3.3</strong> and the language gains nothing.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong><code>LoadedProgram.Invoke(index, debugController, args)</code>.</strong> Since 2.3 the toolchain has had
+breakpoints, stepping, the call stack, locals and evaluate — offered at exactly one place,
+<code>RunEntry</code>, which starts a program at its <code>main</code>. A game has no <code>main</code>: its entry points are the
+functions a host calls once per frame through <code>Invoke</code>, so none of that machinery was reachable
+from a host. The budget got this shape in 2.4; the debugger gets it now.</p>
+<p>The call runs on the caller's thread and a breakpoint parks it, so the commands come from
+another one — the same arrangement <code>DebugController.Start</code> makes with the roles swapped. A
+controller survives across calls: its breakpoints hold for every invocation it is passed to, and
+a call into a function nothing breaks on returns without stopping. No <code>Exited</code> event arrives,
+because nothing ended — the host simply stopped calling — so the event stream stays open while
+the game runs.</p>
+<p>There is deliberately no overload taking a debugger and a budget together: a session parked at a
+breakpoint would spend a budget on standing still.</p>
+<p>What it does not do is keep a window drawing: the parked thread is the game's own. Drawing
+through a breakpoint needs an interpreter that can return to its host mid-instruction and resume
+later, and this one keeps its frame stack on the CLR stack. Guide 21 says so rather than leaving
+it to be discovered.</p>
+</li>
+</ul>
+<h2 id="v2.6.0-2026-08-21">v2.6.0 — 2026-08-21</h2>
+<p>A compilation error tells an embedding host WHERE it happened, and a panic hands over its
+backtrace. Both were already known inside the toolchain and stopped at the boundary. The bytecode
+format stays <strong>3.3</strong> and the language gains nothing.</p>
+<h3 id="added-1">Added</h3>
+<ul>
+<li><p><strong><code>EmbeddingException.Diagnostics</code> carries file, line and column.</strong> A compiler diagnostic holds
+a span, which is an index into the compilation's source manager plus offsets — and that manager
+belongs to the compilation, so a host caught a code and a message and nothing else. In a project
+of thirteen <code>.lyr</code> files that is the question &quot;in which one?&quot; every time, where the command line
+had been printing <code>src/held.lyr:129:15: error[LYR-SEM0002]: …</code> all along.</p>
+<p>The place is resolved at the throw, where the manager is still in hand. <code>File</code>, <code>Line</code> and
+<code>Column</code> stand on the diagnostic and on every note under it; <code>ToString()</code> gives the one-line form
+the command line prints. An error one import away carries THAT file's path — naming the entry
+file would be confidently wrong, which is worse than naming nothing.</p>
+</li>
+<li><p><strong><code>ScriptPanicException.Backtrace</code></strong> — the Lyric call stack, innermost first, each frame naming
+its line while the module carries a source map. The frames existed; reaching them meant naming
+<code>LyricPanic</code>, a type of the runtime assembly this API exists so a host need not reference.</p>
+</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><strong>The element type of <code>EmbeddingException.Diagnostics</code> is now <code>ScriptDiagnostic</code></strong> rather than
+the compiler's <code>Diagnostic</code>. <code>Code</code>, <code>Severity</code> and <code>Message</code> keep their names, so host code
+reading those compiles unchanged; what goes is <code>Span</code>, which no host could resolve — the very
+reason for this release.</li>
+</ul>
+<h2 id="v2.5.1-2026-08-21">v2.5.1 — 2026-08-21</h2>
+<p>One fix, to a promise the formatter's own chapter makes.</p>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><p><strong><code>lyric fmt</code> breaks operator chains at the 100-column limit.</strong> A condition of three
+comparisons ran to 140 characters and stayed there, idempotently: <code>BinaryDoc</code> held no line
+opportunity at all, so a chain could not break however long it grew. The limit is documented as
+the tool's contract, and it now holds for expressions too.</p>
+<p>A chain that does not fit breaks before <strong>every</strong> operator of its precedence level, indented
+one step — the operator leads its line, as PEP 8, rustfmt and the .NET style default all
+settled on. The level breaks as a unit: <code>a &amp;&amp; b &amp;&amp; c</code> is one decision, so no staircase of
+nested pairs. A tighter level inside stays flat while the looser one breaks.</p>
+<p>One shape is deliberately left alone: a chain with an operand that breaks by itself — a <code>match</code>
+or <code>if</code> expression, a lambda with a block — stays as it is, because a group around it could
+never be flat and the chain would break for a reason that has nothing to do with the width.</p>
+<p><strong>Formatted files can change shape</strong>: a <code>lyric fmt --check</code> in CI may report files that were
+clean before. Nothing in this repository's own corpus changed, which is how narrow the
+reformatting turned out to be.</p>
+</li>
+</ul>
+<h2 id="v2.5.0-2026-08-21">v2.5.0 — 2026-08-21</h2>
+<p>One requirement from the embedder, and the documentation gap beside it. The bytecode format stays
+<strong>3.3</strong>; nothing on the wire changes, which is the whole finding.</p>
+<h3 id="fixed-1">Fixed</h3>
+<ul>
+<li><p><strong>A native signature may name a value struct of ANOTHER SDK module.</strong> An SDK of several files
+declares its <code>Vec2</code> once; before this only the declaring module could name it, so a second
+module (<code>engine.camera.toWorld(x, y): world.Vec2</code>) was <code>LYR-IR0001</code> — &quot;non-primitive type in a
+declared signature&quot; — whether the type was imported selectively or written module-qualified.
+Both forms work now, as parameter and as return.</p>
+<p>It is the same shape as the imported-alias fix of 2.2.1, one function away in the same file:
+the lookup was module-local and never asked the resolver. The 2.2.1 note called the restriction
+&quot;documented and deliberate&quot; — that was too generous. Its reason (an alias has nothing to
+flatten) explains why the alias fix did not carry structs along; it does not explain why a
+foreign struct may not be flattened, and there is no such reason. What crosses the wire is a
+LAYOUT, a layout belongs to the program rather than to the file that wrote it down, and the
+host is held to it by the same load-time check as before.</p>
+<p>Unchanged: a struct in a native signature flattens to scalars and strings, so a field that is
+an array or an object is still refused — crossing a module line changes nothing about what the
+host would have to know.</p>
+</li>
+</ul>
+<h3 id="documentation">Documentation</h3>
+<ul>
+<li><strong>The <code>…Int</code> family of <code>std.math</code> is named in the guide.</strong> <code>clamp</code> takes floats and <code>clampInt</code>
+takes ints, as <code>min</code>/<code>minInt</code> and <code>abs</code>/<code>absInt</code> do, because the language has no overloading and
+the library distinguishes by the type in the name. Reaching for <code>clamp</code> with three <code>int</code>s and
+getting <code>cannot assign 'int' to 'float'</code> is the convention working as designed — but chapter 13
+never said so where someone would look for it.</li>
+</ul>
+<h2 id="v2.4.0-2026-08-21">v2.4.0 — 2026-08-21</h2>
+<p>M31: two additive answers to what an embedder found in production. A host can bound how long
+foreign code runs, and an attribute argument may name its value instead of repeating it. The
+bytecode format stays <strong>3.3</strong>, and a module compiled by 2.3 loads unchanged. Two conformance
+cases activate with this release (<code>//! since: 2.4.0</code>); the suite stands at 90.</p>
+<h3 id="added-2">Added</h3>
+<ul>
+<li><p><strong>An instruction budget for embedded code.</strong> <code>new ExecutionBudget(2_000_000)</code>, handed to
+<code>Instantiate</code> or to a call, stops a script that will not stop by itself:</p>
+<pre><code class="language-csharp">try { instance.CallVoid(&quot;onUpdate&quot;, budget, 0.016); }
+catch (ScriptBudgetException) { mods.Disable(instance); }
+</code></pre>
+<p>A capability decides what a script may REACH; <code>while (true) { }</code> needs none, and until now
+nothing bounded it. The budget counts <strong>instructions, not milliseconds</strong>, so the same script
+under the same limit stops at the same instruction on every machine — a wall clock cannot
+promise that, and a replay needs it. <code>Consumed</code> after a call that fits is how a host arrives
+at a number worth setting; <code>Reset()</code> refills; one budget passed to several calls bounds a
+whole frame across several scripts, and a host function calling back in draws from the same
+one.</p>
+<p><code>Instantiate</code> takes one because the constant initializer runs there — a module-level
+<code>let x = spin();</code> used to hang the load itself, before the host had called anything.</p>
+<p>The stop is <code>LYR-CAP0002</code> and arrives as a <strong>panic</strong>: the script cannot catch it and no
+<code>defer</code> runs behind it, which is what makes it worth having against code you do not trust.
+<code>ScriptBudgetException</code> derives from <code>ScriptPanicException</code>, so a host written before this
+keeps catching what it caught — the separate type is there to tell &quot;this script is broken&quot;
+from &quot;this script was still working&quot;. What it does NOT bound is host time: a native of yours
+that blocks for a second is charged one instruction.</p>
+</li>
+<li><p><strong>An attribute argument may name its value.</strong> Beside a literal, an argument may be a <code>let</code>
+whose initializer is one — through a chain of them, across modules, imported selectively or
+written module-qualified, and a <code>static let</code> on a type the same way:</p>
+<pre><code class="language-lyr">pub let CLEARED = &quot;tetris.cleared&quot;;
+
+@On { event = CLEARED }
+pub fn onCleared(): void { }
+</code></pre>
+<p>This is what lets a program publish a vocabulary — event names, kinds, versions — and have
+its consumers checked. Repeating the raw string was the last place where a typo produced a
+handler nobody ever calls, which is the fault class attributes closed for entry points.</p>
+<p>It is <strong>not</strong> constant folding: <code>let LIMIT = 1 + 2;</code> stays rejected, because the value has to
+stand in the source and this language folds nothing anywhere. One edge worth knowing: the
+named form is slightly stricter than the written one, since <code>@A { n = 5 }</code> adapts the literal
+to a narrow field while <code>let N = 5;</code> is already an <code>int</code> — a narrow field wants
+<code>let N: int32 = 5;</code>.</p>
+</li>
+</ul>
+<h2 id="v2.3.1-2026-08-21">v2.3.1 — 2026-08-21</h2>
+<p>The post-2.3.0 audit's patch wave: four measured bugs, none of them reachable from a program
+that was doing anything unusual. The bytecode format stays <strong>3.3</strong>, and the language gains
+nothing — three of the four were valid programs the toolchain mishandled. Three conformance
+cases activate with this release (<code>//! since: 2.3.1</code>); the suite stands at 88.</p>
+<h3 id="fixed-2">Fixed</h3>
+<ul>
+<li><strong>A parent interface's default method works through a child-typed value.</strong> <code>c.describe()</code>,
+where <code>describe</code> is a default declared on the parent of <code>c</code>'s interface, was an internal
+compiler error in Debug and a wrong receiver slot in Release — the optimizer had resolved
+the slot to the parent's function and called it directly with a child-typed value, which the
+language does not convert either. All three routes to such a default are fixed and pinned:
+through an interface-typed value, through a constraint naming the child, and through an
+element of an interface-typed array. The constraint route had a second gap of its own and
+reported &quot;'C' has no 'describe'&quot; from the lowering.</li>
+<li><strong>An array literal gives its elements the element type.</strong> <code>let xs: (?int)[] = [null, 5];</code>
+was accepted by the checker and refused by the lowering (&quot;'null' in a position without an
+expected type&quot;), and <code>let xs: Shape[] = [Sq { }];</code> put class references where interface
+values were declared — an internal error in Debug, a wrong dispatch in Release. An element
+is a context position like every other now.</li>
+<li><strong>A redirected stream carries UTF-8.</strong> On Windows the console's code page encoded redirected
+output too, and <code>lyrrepl</code> set that shared code page unconditionally — so a tool running
+beside a REPL could have its output best-fit-mapped, turning an em dash into a hyphen. Every
+tool now writes UTF-8 into a redirected stream and reads UTF-8 from a redirected stdin; the
+code page is set only for a console that really is one. This is what made individual
+process-spawning tests fail sporadically under load since M16.</li>
+<li><strong>A float renders with a lowercase exponent.</strong> <code>println(f&quot;{1.0e21}&quot;)</code> wrote <code>1E+21</code>, where
+C, Go, Python, JavaScript and Rust all write <code>1e+21</code>. <code>std.string.fromFloat</code> backs the
+f-string lowering, so its output is program behaviour: the shape is now specified (spec §11)
+and pinned — shortest round-trip, plain decimal while the decimal exponent lies in <code>-4 .. 16</code>
+and scientific outside it, <code>Infinity</code> / <code>-Infinity</code> / <code>NaN</code>, <code>-0</code> for negative zero. The
+disassembler, the IR printer and the debugger's variables panel render through the same one
+place.</li>
+</ul>
+<h2 id="v2.3.0-2026-08-20">v2.3.0 — 2026-08-20</h2>
+<p>M30: the toolchain learns to debug. Breakpoints, stepping, the call stack and the variables
+panel, in any editor that speaks the Debug Adapter Protocol — the VS Code extension wires it to
+F5. The bytecode format goes <strong>3.2 → 3.3</strong>; the change is one strippable section, so a 3.2
+runtime loads a 3.3 module unchanged, and every 2.x module keeps loading here.</p>
+<h3 id="added-3">Added</h3>
+<ul>
+<li><strong><code>lyrdbg</code>, the debug adapter — the eleventh binary.</strong> An editor launches it over stdio. It
+compiles the program itself, in the debug shape — source map, debug info, optimizations OFF,
+because an inlined callee has no frame to show — so what you debug is always the file in the
+editor; a prebuilt <code>.lyrbc</code> launches as it is. Breakpoints stop before the line runs, slide
+from a blank line to the next mapped one, and hit on every loop pass; stepping is
+line-granular with the standard over/in/out rules; a pause lands before the next instruction.
+The panels show the real frame stack with source lines, the locals of any frame, a Globals
+scope, and structured values expanded — struct and class fields by name, enum variants with
+their payload, arrays by index, interface values as their concrete type. Hover and the debug
+console evaluate dotted name paths (<code>player.pos.x</code>); expressions are out by design — half an
+expression compiler answers wrongly. The program's own stdout/stderr arrive as labeled output
+events; a panic ends the session with its message, backtrace and exit code 101.</li>
+<li><strong>Bytecode format 3.3: the DebugInfo section (id 13).</strong> The names of local and global slots,
+strippable like the source map, written by default; a compiler-created slot carries the empty
+string and is never shown. The Names section (id 12) becomes a floor instead of a ceiling:
+with debug info on it carries field names for ANY named type, so a debugger can expand an
+object. <code>lyrc build --no-debug-info</code> strips both back to the 3.2 shape; <code>lyrvm info</code> reports
+<code>source map</code> and <code>debug info</code> presence.</li>
+<li><strong><code>CompilerOptions.DebugInfo</code> and <code>CompilerOptions.Optimize</code></strong> in the frontend library: the
+debug shape is available to any host that compiles.</li>
+<li><strong>Guide chapter 21 — Debugging</strong>, including the three stated limits: the global initializer
+runs before the debugger attaches, standard-library lines are not steppable, and optimized
+bytecode shows the optimizer's world.</li>
+</ul>
+<h3 id="fixed-3">Fixed</h3>
+<ul>
+<li><strong><code>tools/Bench</code> compiles again.</strong> The 2.0 deprecation removal took <code>std.collections.emptySet</code>
+with it and the harness's <code>set_iter</code> case was never migrated; every run died before the first
+number. The case uses <code>Set&lt;int&gt;.empty()</code> now, and a case that fails to compile names itself
+and its diagnostics.</li>
+</ul>
+<h2 id="v2.2.1-2026-08-20">v2.2.1 — 2026-08-20</h2>
+<p>One fix, found by the embedder the same day: the specification's §3.5 promises that an opaque
+alias resolves to its underlying in a native signature — without restricting where the alias
+was declared. The toolchain under-delivered.</p>
+<h3 id="fixed-4">Fixed</h3>
+<ul>
+<li><strong>An imported opaque type resolves in a native signature.</strong> An SDK of several modules
+declares its handle type once (<code>engine.world</code> owns <code>TextureId</code>) and names it in a sibling's
+natives (<code>engine.assets</code>: <code>pub fn load(name: string): TextureId;</code>) — that was <code>LYR-IR0001</code>
+(&quot;non-primitive type in a declared signature&quot;) while the same alias resolved fine in the
+declaring module and in every ordinary signature. Both import forms work now, selective and
+module-qualified, in scalar and array positions; transparent aliases resolve the same way.
+Value structs stay module-local in native signatures — that restriction is documented and
+deliberate, an alias has nothing to flatten.</li>
+</ul>
+<h2 id="v2.2.0-2026-08-20">v2.2.0 — 2026-08-20</h2>
+<p>The A8 wave: both coroutine edges Erato's register filed after building its cutscene driver,
+plus one the fix uncovered. The bytecode format stays <strong>3.2</strong>; a module that never calls
+<code>next()</code> loads on every 2.x runtime. Four conformance cases activate with this release
+(<code>//! since: 2.2.0</code>); the suite stands at 85.</p>
+<h3 id="added-4">Added</h3>
+<ul>
+<li><p><strong><code>co.next()</code> — the safe pull.</strong> It advances a coroutine exactly like <code>resume</code> and answers
+<code>?T</code>: the value, or <code>null</code> once the body has run to its end — and <code>null</code> stays the answer on
+every further call, where <code>resume</code> keeps its promised panic. A <code>Coroutine&lt;void&gt;</code> answers
+<code>bool</code> (did it advance?), so <code>while (p.next()) { }</code> drives it out; a <code>Coroutine&lt;?T&gt;</code> refuses
+the form (<code>LYR-SEM0080</code>) because <code>null</code> would mean two things there — drive it with <code>resume</code>
+and a protocol of your own. The name and shape are <code>Iterator&lt;T&gt;.next()</code>'s on purpose.</p>
+<p>A query that does NOT pull (<code>isDone</code>) was probed and rejected: a pull-based coroutine cannot
+know whether another value comes without running the body, which is why no generator API in
+Python, JavaScript or C# has one. The pull with an end signal is the honest form.</p>
+<p>On the wire, exhaustion is read back through the compiler-bound native
+<code>std.core.coroutineIsDone</code>; an older runtime rejects a module that uses <code>next()</code> at load time
+with that name in the message — the format's designed forward path.</p>
+</li>
+</ul>
+<h3 id="fixed-5">Fixed</h3>
+<ul>
+<li><strong><code>Coroutine&lt;T&gt;</code> works as a field type.</strong> A class or struct field, and a type argument
+(<code>List&lt;Coroutine&lt;T&gt;&gt;</code>), used to be refused with <code>LYR-IR0001</code> (&quot;type 'Coroutine' (not a
+class)&quot;) while the same type worked as a parameter and a local. A driver now holds its
+coroutines directly instead of hiding each behind a captured closure.</li>
+<li><strong>A bare <code>return;</code> in the middle of a coroutine body works.</strong> It compiled to a valueless
+return from a value-yielding body — an internal compiler error in Debug, malformed bytecode in
+Release, and the coroutine was never marked exhausted. It is now exactly the run-through exit:
+the next <code>resume</code> panics, the next <code>next()</code> answers <code>null</code>. (<code>return;</code> in tail position, the
+common form, was always fine.)</li>
+</ul>
+<h2 id="v2.1.1-2026-08-20">v2.1.1 — 2026-08-20</h2>
+<p>One fix, found the day of 2.1.0 by the first embedder to re-pin: a compiler crash on a form
+the language always meant to allow.</p>
+<h3 id="fixed-6">Fixed</h3>
+<ul>
+<li><strong>A static call through a module-qualified type works.</strong> <code>import std.random;</code> followed by
+<code>random.Random.seeded(1234)</code> crashed the compiler with an internal error out of the lowering
+(&quot;type not lowerable&quot;) — the qualified type name got an unreported error type instead of a
+diagnostic. The form now compiles and dispatches exactly like <code>Random.seeded(1234)</code> after a
+selective import; a qualified type name standing alone in value position reports
+<code>LYR-SEM0052</code>, and a qualified generic without type arguments reports <code>LYR-SEM0063</code>, both as
+the bare name always has.</li>
+</ul>
+<h2 id="v2.1.0-2026-08-20">v2.1.0 — 2026-08-20</h2>
+<p>The ergonomics wave: two additive changes the audit measured the edges of. Four conformance
+cases activate with this release (<code>//! since: 2.1.0</code>); one 2.0 case pinning the old
+non-context rule retires with its sentence.</p>
+<h3 id="added-5">Added</h3>
+<ul>
+<li><strong><code>@Deprecated</code> reaches members.</strong> A method, field or <code>static let</code> of a struct, class or
+enum — and an extend method — may carry <code>@Deprecated</code>; every use warns at the use site,
+exactly like a deprecated free function. Only this one attribute is admitted there: the
+module format has no member rows, and <code>@Deprecated</code> is the attribute that needs none.
+Interface members stay attribute-free — deprecating an abstract member would raise
+conformance questions nobody has answered.</li>
+<li><strong>The adaptation context propagates structurally.</strong> <code>let xs: int64[] = [1, 2, 3];</code>,
+<code>let i: int64 = if (c) 4 else 5;</code> and the match twin compile now: in a §3.1 context the
+array elements and the arms check against the context type, an unsuffixed literal adapts,
+and a misfit errors at the element or arm. Without a context, elements and arms unify among
+themselves as before. Parameter defaults thread their context too.</li>
+</ul>
+<h2 id="v2.0.1-2026-08-20">v2.0.1 — 2026-08-20</h2>
+<p>The first harvest of the deep audit: seven bugs measured against the now-normative
+specification, fixed as one wave. Seven new conformance cases activate with this release
+(<code>//! since: 2.0.1</code>); the suite stands at 78.</p>
+<h3 id="fixed-7">Fixed</h3>
+<ul>
+<li><strong><code>a..=hi</code> reaches the type's maximum.</strong> The inclusive range desugared to <code>..hi+1</code>, which
+wraps at the bound — <code>for (_ in max-2..=max)</code> ran ZERO times. Inclusive ranges ride their
+own adapter with a done flag now; no arithmetic touches the bound.</li>
+<li><strong>Ranges over every width and signedness.</strong> A range over <code>uint8</code>/<code>int16</code>/… produced
+malformed IR that only the Release verifier-skip let run; a <code>uint</code> range crossing 2⁶³
+compared SIGNED and ran dry. Bounds now widen into a signed or unsigned carrier, and the
+loop variable converts back at its own width.</li>
+<li><strong><code>defer</code> belongs to the block.</strong> A defer in a loop body registered once into the function
+scope: it fired once, with the last iteration's values, after the code following the loop.
+Loop bodies are scopes now — the defer runs at every iteration's end, <code>continue</code> and
+<code>break</code> included, draining exactly the scopes being left.</li>
+<li><strong><code>let x = null;</code> and <code>let xs = [];</code> report instead of crashing.</strong> Both drove an unhandled
+internal exception through the lowering. They are <code>LYR-SEM0010</code> now: the initializer fixes
+no type, the binding needs an annotation.</li>
+<li><strong>An oversized literal no longer reinterprets.</strong> <code>let x = 9223372036854775808;</code> compiled
+and held −9223372036854775808 — the magnitude's raw bits. A literal that stays at the
+default <code>int</code> must fit <code>int</code>; the same magnitude still adapts to annotated <code>uint</code>
+positions.</li>
+<li><strong>An integer literal meets a float exactly.</strong> <code>let g: float = 9007199254740993;</code> (2⁵³+1)
+adapted with a silent rounding; &quot;fits&quot; is exact now, for <code>float</code> and <code>float32</code> alike.</li>
+<li><strong>A <code>throws</code> clause on <code>main</code> is refused</strong> (<code>LYR-SEM0021</code>). It compiled, and a thrown
+exception left the program as the <code>LYR-VM0010</code> panic the specification calls unreachable
+from source.</li>
+</ul>
+<h3 id="improved">Improved</h3>
+<ul>
+<li>&quot;cannot assign 'T' to 'T'&quot; names its cause: when the two displays collide, the message says
+the types differ by identity — declared in different scopes, or a generic call
+instantiating itself at a larger type, which monomorphization refuses.</li>
+<li>A contextless generic construction reports <code>LYR-SEM0026</code> once, without a follow-up
+&quot;cannot assign&quot; per field.</li>
+<li>A new test pins the §11 contract: every native the shipped stdlib declares is bound by the
+default registry (<code>std.build</code> excepted — the build runner is its host, now said in §11).</li>
+</ul>
+<h2 id="v2.0.0-2026-08-20">v2.0.0 — 2026-08-20</h2>
+<p>The specification is <strong>normative</strong> from this release on: <code>lyriclang/lyric-spec</code> defines the
+language, the toolchain implements it, and a divergence is a toolchain bug. The major cuts the
+SOURCE surface — everything the 1.x deprecation clocks announced — while the bytecode format
+stays <strong>3.2</strong> and bytecode compiled against 1.x keeps loading.</p>
+<h3 id="removed-the-2.0-cut">Removed — the 2.0 cut</h3>
+<p>Everything <code>@Deprecated</code> announced through 1.x is gone from the source surface. The registry
+still binds the old NATIVE names, so bytecode compiled against 1.x keeps loading; what the cut
+takes is the ability to write the old forms in new code.</p>
+<ul>
+<li><strong>The free string forms</strong> (<code>length(s)</code>, <code>trim(s)</code>, <code>toUpper(s)</code>, … — 27 declarations): the
+method API (<code>s.length()</code>, v1.15) is the one form. <code>concat</code> and <code>repeat</code> stay free — they
+back <code>+</code> and <code>*</code> — and the <code>fromXxx</code>/<code>parseXxx</code> families keep their names.</li>
+<li><strong>The free constructors</strong> <code>emptyList</code>, <code>emptyMap</code>, <code>emptySet</code>, <code>newStringBuilder</code>:
+constructors live on the types (<code>List&lt;T&gt;.empty()</code>, <code>StringBuilder.new()</code>, v1.12).</li>
+<li><strong><code>std.math.Random</code> and <code>newRandom</code></strong>: randomness lives in <code>std.random</code> (v1.14).</li>
+<li><strong><code>write</code>/<code>writeln</code></strong>: <code>print</code>/<code>println</code> take any <code>Display</code> value (v1.14).</li>
+<li><strong><code>StringBuilder.length()</code></strong>: it counted appended PIECES, an implementation detail; measure
+the built string. (It never carried <code>@Deprecated</code> — an attribute cannot sit on a member —
+its doc announced the 2.0 removal instead.)</li>
+</ul>
+<h3 id="changed-1">Changed</h3>
+<ul>
+<li><strong><code>Hashable&lt;T&gt;</code> declares <code>Equatable&lt;T&gt;</code> as its parent.</strong> A hash table cannot exist without
+equality; demanding the hash without the comparison was a lie by omission. A key constraint
+is <code>K :: [Hashable&lt;K&gt;]</code> alone — <code>Map</code>, <code>Set</code> and their helpers dropped the second
+constraint. A type conforming to <code>Hashable</code> now implements <code>hash</code> AND <code>equals</code>.</li>
+<li><strong><code>LYR-SEM0074</code> is an error.</strong> Calling a static extension method through an instance was a
+warning through 1.x with the message announcing this change; the clock has run out. The one
+1.x→2.0 severity change, recorded as such in the specification (§12.1).</li>
+<li><strong><code>docs/Grammar.md</code> and <code>docs/Bytecode.md</code> are checked mirrors.</strong> The canonical home of both
+is <code>lyriclang/lyric-spec</code> (chapters 02 and 13); CI diffs the copies here against the
+specification, so drift fails the build.</li>
+<li><strong>A library prunes from its <code>pub</code> surface.</strong> A compile without an entry point takes the
+<code>pub</code> functions of the compiled modules as reachability roots — a library's surface decides
+its contents, and the standard library no longer ships whole inside every library or
+embedded script. Observable at the host boundary: a private function nothing public reaches
+is not in the module (<code>Defines</code> says so), which is why this waited for the major.</li>
+</ul>
+<h2 id="v1.16.0-2026-08-19">v1.16.0 — 2026-08-19</h2>
+<p>The language has a specification: <code>lyriclang/lyric-spec</code> holds twelve chapters and a
+conformance suite, non-normative until 2.0 — and from this release on the semantics are
+FROZEN. Two toolchain fixes came out of writing it. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="fixed-8">Fixed</h3>
+<ul>
+<li><p><strong><code>{{</code> and <code>}}</code> in f-strings produce a literal brace</strong> — promised by the grammar since 1.0,
+honored by the lexer since this release: <code>f&quot;json: {{\&quot;k\&quot;: {n}}}&quot;</code> renders braces instead
+of a parse error. A lone <code>}</code> in the text stays ordinary text. Found by the spec audit.</p>
+</li>
+<li><p><strong><code>catch (e: Throwable)</code> catches now.</strong> It compiled — the exception analysis treats an
+interface catch as handling — and then never caught: the handler carried the interface's
+type id and the runtime compared it against the thrown CLASS, so the exception flew past a
+clause the compiler had accepted. Found by the conformance suite on its first run. The
+explicit <code>Throwable</code> catch is the catch-all now, identical to <code>catch (e)</code>; a catch naming
+any OTHER interface is refused with a diagnostic until the handler table can express a
+conformance test — the alternative was a clause that silently caught nothing.</p>
+</li>
+</ul>
+<h2 id="v1.15.0-2026-08-19">v1.15.0 — 2026-08-19</h2>
+<p>The freeze prep: the design leftovers settled before the spec freezes semantics. <code>opaque type</code>
+arrives, the string API becomes methods, iterator chaining gets its documented No — and a
+latent function-id collision in the lowering falls. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="fixed-9">Fixed</h3>
+<ul>
+<li><strong>A function-id collision in the lowering</strong>, latent since struct-returning natives: the
+global initializer's slot was reserved only for DECLARED globals, but a struct-return buffer
+CREATES one during body lowering — and once a body also requested an extension method (the
+new string methods do), initializer and extension landed on the same id, and calls
+mis-spliced into the wrong function. The initializer draws from the shared id counter now,
+and the function list refuses id holes with a named internal error instead of a silent
+mis-splice.</li>
+</ul>
+<h3 id="added-6">Added</h3>
+<ul>
+<li><p><strong>Strings have methods</strong>: <code>s.trim()</code>, <code>s.split(&quot;,&quot;)</code>, <code>s.contains(x)</code>, <code>s.length()</code> — 26
+methods via <code>extend string</code> in <code>std.string</code>. The free forms warn as <strong>deprecated</strong> and go
+with 2.0; <code>concat</code> and <code>repeat</code> stay free (they back <code>+</code> and <code>*</code>), and the type-directed
+families (<code>fromXxx</code>, <code>parseXxx</code>) keep their names. The methods come with any import of the
+module; a file needing no free name writes <code>import std.string as strings;</code> — and an import
+whose extensions are used no longer counts as unused. <code>s.length()</code> stays a call because it
+costs O(n), and every method returns a NEW string.</p>
+</li>
+<li><p><strong><code>opaque type</code></strong>: an alias with a new IDENTITY over the same layout —
+<code>pub opaque type Entity = int;</code>. Nothing converts implicitly in either direction; the explicit
+<code>as</code> to exactly the underlying and back is the one crossing; <code>==</code>/<code>!=</code> compare within one
+alias; arithmetic, ordering, constraint satisfaction and f-string rendering are refused. At
+runtime the value IS its underlying (the cast costs nothing), and a native signature resolves
+the alias to the underlying — an SDK's handle crosses the host boundary as a plain number
+while scripts can neither forge one nor leak it. Neither <code>opaque</code> nor <code>type</code> is a keyword;
+both stay usable as identifiers.</p>
+</li>
+</ul>
+<h2 id="v1.14.0-2026-08-19">v1.14.0 — 2026-08-19</h2>
+<p>The std polish, born from a line-by-line audit. The string module stops being quadratic, the
+print family collapses to one generic concept, the collections learn the operations daily use
+kept reaching for, arrays cross the native boundary as parameters for the first time — and two
+new modules arrive: <code>std.random</code> and <code>std.time</code>. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="added-7">Added</h3>
+<ul>
+<li><p><strong><code>print</code>, <code>println</code>, <code>eprint</code> and <code>eprintln</code> take any <code>Display</code> value</strong>: <code>println(42)</code>,
+<code>println(true)</code>. The string forms keep working unchanged — a string displays as itself — and
+<code>write</code>/<code>writeln</code> warn as <strong>deprecated</strong>; they were the same thing under a second name.
+Bytecode compiled before this release keeps running.</p>
+</li>
+<li><p><strong>Collections round out</strong>: <code>List</code> gains <code>insert</code>, <code>removeAt</code>, <code>first</code>, <code>last</code>, <code>reverse</code> and
+<code>swap</code>; <code>Map</code> gains <code>getOr</code>, <code>clear</code> and <code>entries</code> — key and value in ONE walk, without the
+second probe per key; <code>Set</code> gains <code>clear</code> and is <code>Iterable</code>, so <code>for (v in set)</code> walks it
+directly. <code>clear</code> on all three keeps the backing for reuse; the values are released all the
+same.</p>
+</li>
+<li><p><strong><code>std.iter</code> gains <code>flatMap</code>, <code>chunks</code>, <code>reduce</code> and <code>first</code>.</strong></p>
+</li>
+<li><p><strong>Arrays cross the native boundary as parameters</strong> — the bytecode format always allowed it
+(§3 type grammar; format stays <strong>3.2</strong>), the registry just never used it. On top of it:
+<code>std.io.file.writeBytes</code> and <code>appendBytes</code> (the write side readBytes was waiting for),
+<code>std.string.utf8Encode</code> and <code>utf8Decode</code> — the strict bridge: invalid bytes answer <code>null</code>
+instead of the U+FFFD replacement <code>readText</code> documents — and <code>fromChars</code> became one native
+call instead of one string per character.</p>
+</li>
+<li><p><strong><code>std.random</code></strong>: the generator moved out of <code>std.math</code> — randomness is not arithmetic —
+and gained what it was missing there: <code>shuffle</code> (Fisher–Yates over a <code>List</code>), <code>choice</code> and
+<code>nextGaussian</code>. Deterministic, seeded by the caller, no capability. The <code>std.math.Random</code>
+twin stays one release as a deprecated migration path.</p>
+</li>
+<li><p><strong><code>std.time</code></strong>: <code>Instant</code> and <code>Duration</code> as value structs over epoch milliseconds —
+<code>b.since(a)</code>, <code>a.plus(d)</code>, and <code>iso()</code> rendering UTC ISO 8601 with floor semantics, so an
+instant before 1970 lands in the right day. Gated by <code>osAccess</code>, the same bit as <code>std.os</code>:
+reading the clock is a question to the environment, and a new bit would be a contract change.
+The subtraction is a named method, not an operator — <code>Instant - Instant</code> yields a Duration,
+and the operator interfaces are homogeneous by the v1.13 decision.</p>
+</li>
+</ul>
+<h3 id="fixed-10">Fixed</h3>
+<ul>
+<li><p><strong><code>std.string</code> stops being quadratic.</strong> <code>StringBuilder.build</code> and <code>join</code> folded left and
+copied the whole result once per piece — both are one native join now; <code>replace</code> moves
+untouched stretches as whole substrings; the searches, parsers and trims index a character
+array instead of calling O(n) <code>charAt</code> per position. Same results, different cost curve.</p>
+</li>
+<li><p>Audit rests: <code>std.fmt</code> loses its German locals, <code>std.io.file</code> a torn doc fragment, and
+<code>std.io.console</code> sorts a native above the &quot;written in Lyric&quot; divider it contradicted.</p>
+</li>
+</ul>
+<h2 id="v1.13.0-2026-08-19">v1.13.0 — 2026-08-19</h2>
+<p>The language gaps close. Interface inheritance arrives — one parent, implied through the whole
+chain — compound assignment reaches through the operator interfaces, block lambdas infer their
+return type, and <code>std.core</code> becomes the import-free root of the library. One question got its
+documented No: heterogeneous operator arithmetic. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="added-8">Added</h3>
+<ul>
+<li><p><strong>Interface inheritance</strong>: an interface may declare one parent — <code>interface Labeled :: [Named]</code>.
+Conforming to the child implies conforming to the whole chain: implementing types provide the
+chain's abstract members (a missing one names the implying interface), inherit its default
+methods, satisfy parent constraints, and carry into parent-typed interface values. A value of
+the child's interface type answers the parent's members too. The rules: at most one parent
+(several requirements side by side are constraints: <code>&lt;T :: [A, B]&gt;</code>), only interfaces, no
+cycles (<code>LYR-SEM0078</code>), and no redeclaring a chain member (<code>LYR-SEM0079</code>) — an inherited
+member keeps its declaring interface, so the same call cannot dispatch two ways. What a chain
+does NOT add: a child interface <em>value</em> does not convert to the parent's type — conformance is
+implied for the implementing type; take the concrete value through the parent directly.
+<code>std.core</code> does not adopt <code>Hashable :: [Equatable]</code> yet: changing what every conforming type
+must implement is a breaking cut reserved for 2.0.</p>
+</li>
+<li><p><strong>Compound assignment reaches through the operator interfaces</strong>: <code>v += w</code> on a type conforming
+to <code>Add&lt;T&gt;</code> now compiles for variable targets (locals, captured variables) instead of
+reporting <code>LYR-SEM0003</code>. Field and element targets stay written out — the desugaring would
+evaluate the object or the index twice, and that stays visible in source.</p>
+</li>
+<li><p><strong>Block lambdas infer their return type</strong>: <code>(x: int) =&gt; { return x * 2; }</code> needs neither an
+annotation nor a context anymore — the type comes from the body's <code>return</code> statements,
+unified like match arms (<code>return null;</code> widens to the optional). This also closes the
+open-generic case: <code>apply(5, (n) =&gt; { … })</code> binds <code>U</code> from the block. A non-void inferred
+lambda still needs return coverage, and disagreeing returns are one error at the lambda.</p>
+</li>
+</ul>
+<h3 id="changed-2">Changed</h3>
+<ul>
+<li><p><strong><code>LYR-PAR0039</code> retired</strong>: <code>interface B :: [A]</code> parses since this release; everything the
+parent list may not be is a semantic message now, not a parse error.</p>
+</li>
+<li><p><strong><code>newStringBuilder</code> warns as deprecated</strong> — the piece v1.12 had to leave out. <code>std.core</code>
+imports nothing anymore: its extensions use private duplicates of six string natives
+(<code>fromInt</code> through <code>charAt</code>; the registry binds both names to the same host function), which
+makes <code>std.core</code> the library's root — and <code>import std.core { Deprecated }</code> inside
+<code>std.string</code> legal. Public API is unchanged; existing bytecode keeps running.</p>
+</li>
+</ul>
+<h3 id="fixed-11">Fixed</h3>
+<ul>
+<li><strong><code>@Deprecated</code> keeps its promise</strong>: it emits no metadata row and roots nothing. Previously a
+non-generic deprecated function survived dead-code pruning in every importing program — dead
+code carried along exactly because it was marked for removal.</li>
+</ul>
+<h2 id="v1.12.0-2026-08-19">v1.12.0 — 2026-08-19</h2>
+<p>The standard library grows up. Every public item is documented, constructors live on the types,
+the first real deprecations start their clock, and the library tests itself — in Lyric. Two
+compiler fixes came out of the work. The bytecode format stays <strong>3.2</strong>.</p>
+<h3 id="added-9">Added</h3>
+<ul>
+<li><p><strong>Constructors on the types</strong>: <code>List&lt;T&gt;.empty()</code>, <code>Map&lt;K, V&gt;.empty()</code>, <code>Set&lt;T&gt;.empty()</code>,
+<code>StringBuilder.new()</code> and <code>Random.seeded(seed)</code>. The free functions <code>emptyList</code>, <code>emptyMap</code>,
+<code>emptySet</code> and <code>newRandom</code> still work and warn as <strong>deprecated</strong> — the first real uses of
+<code>@Deprecated</code>, and their removal lands with the next major. (<code>newStringBuilder</code> points at its
+successor in the documentation; its attribute waits on <code>std.core</code> visibility inside
+<code>std.string</code>, where the import would be a cycle.)</p>
+</li>
+<li><p><strong><code>std.io.file.readBytes</code></strong>: the whole content as raw bytes, undecoded — the answer
+<code>readText</code> cannot give, because its UTF-8 decoding turns invalid bytes into U+FFFD. Writing
+bytes is not there yet: an array has never crossed the native boundary as a parameter, and
+that machinery is a change of its own.</p>
+</li>
+<li><p><strong>The standard library tests itself.</strong> <code>stdlib-tests/</code> holds behavioral tests written in
+Lyric and run by <code>lyric test</code>; the build runs them, and both repository invariants —
+formatted, and compiling in silence — cover the directory.</p>
+</li>
+<li><p><strong>Every public item of the standard library is documented</strong> — hover and the reference site
+answer everywhere — and a test pins completeness, not a count: new API without documentation
+is a red build.</p>
+</li>
+<li><p><strong>A bare import that shadows a builtin type warns</strong> (<code>LYR-SEM0077</code>): <code>import std.string;</code>
+binds the name <code>string</code>, and the annotation then names the module. The warning says the way
+out; using the shadowed name as a type is now a proper error naming the trap — previously it
+CRASHED the compiler on the local-annotation path.</p>
+</li>
+</ul>
+<h3 id="changed-3">Changed</h3>
+<ul>
+<li><p><strong><code>@Deprecated</code> may sit on generic declarations</strong> — the one exception to the
+no-attributes-on-generics rule, because its consumer is the compiler and no metadata row is
+involved; none is emitted there.</p>
+</li>
+<li><p><strong>A static call on a generic instance substitutes the caller's type parameter</strong>:
+<code>List&lt;T&gt;.empty()</code> inside your own generic function works now; previously the lowering met the
+bare <code>T</code> and failed with an internal error.</p>
+</li>
+<li><p>Two parameters of <code>std.string.replace</code>/<code>replaceFirst</code> are named <code>replacement</code> (signature help
+used to show a German name); every remaining German local and section header in the library
+is English now.</p>
+</li>
+</ul>
+<h2 id="v1.11.0-2026-08-19">v1.11.0 — 2026-08-19</h2>
+<p>Attributes stop being decoration. One is now read by the compiler — <code>@Deprecated</code> — and one by
+a new tool: <code>lyric test</code> runs every function marked <code>@Test</code>. The bytecode format stays <strong>3.2</strong>,
+and no existing program changes meaning.</p>
+<h3 id="added-10">Added</h3>
+<ul>
+<li><p><strong><code>@Deprecated</code>, the first attribute the compiler reads.</strong> From <code>std.core</code>, on a function, a
+type or a module: every use warns (<code>LYR-SEM0076</code>) at the use site, the note points at the
+attribute, and <code>message</code> says what to use instead. Resolved by IDENTITY — a struct someone
+else names <code>Deprecated</code> deprecates nothing. Uses inside anything itself deprecated are exempt,
+so a deprecated function may keep calling its deprecated siblings; a deprecated module warns
+at the imports that pull it in. It changes diagnostics and nothing else — the same module
+compiles either way. Editors strike deprecated uses through.</p>
+<p>With this the compiler-read attribute set becomes part of the language contract: <code>@Deprecated</code>
+is in it, everything else stays inert.</p>
+</li>
+<li><p><strong><code>lyric test</code> — tests, the Go shape.</strong> Tests live under <code>tests/</code> (or the <code>testRoot</code> your
+<code>lyric.json</code> names) and only the test runner ever compiles them; production builds never see
+a test file. A test is a top-level function marked <code>@Test</code> from the new <strong><code>std.test</code></strong>, fails
+by panicking, and runs in a <strong>fresh instance</strong> — module state cannot leak between tests.</p>
+<pre><code class="language-bash">lyric test
+</code></pre>
+<p><code>std.test</code> ships the marker and the assertions: <code>assertTrue</code>, and <code>assertEq</code> over
+<code>[Equatable&lt;T&gt;, Display]</code>, naming both values when they differ. The report is plain text, one
+line per test; the exit code is <code>0</code> when everything passed and <code>1</code> otherwise. No <code>tests/</code>
+directory means no tests and exits 0; a testRoot named explicitly and missing is an error.
+Guide chapter 20 covers it.</p>
+<p>The runner is <code>lyrtest</code>, the tenth binary, and it drives the compiled module through the
+embedding API — the attribute rows for discovery, a call handle per test: the same machinery
+a host uses, now with a consumer that is not a test of it.</p>
+</li>
+<li><p><strong><code>HostOptions.SourceRoot</code></strong> in the embedding API: a host may compile a file whose imports
+resolve against a directory other than the file's own — the test runner compiling <code>tests/</code>
+against <code>src/</code> is the case that added it.</p>
+</li>
+</ul>
+<h3 id="not-in-this-release">Not in this release</h3>
+<ul>
+<li><strong>Test filters, parallel execution, expectPanic, fixtures and setup/teardown, JSON output,
+editor test integration</strong> — deliberately; each is an idea issue, none blocks running tests.</li>
+<li><strong>Suppressing a deprecation warning in code</strong>: the mechanism would be another compiler-read
+attribute, and the set grows by decision. <code>--deny-warnings</code> still means what it says.</li>
+</ul>
+<h2 id="v1.10.0-2026-08-19">v1.10.0 — 2026-08-19</h2>
+<p>The compiler learns to speak below &quot;error&quot;. Four severities, warnings that matter, notes that
+point at places, and a CI gate. The language, the bytecode format (<strong>3.2</strong>) and the embedding
+API are unchanged; every program that compiled still compiles — some now hear about themselves.</p>
+<h3 id="added-11">Added</h3>
+<ul>
+<li><p><strong>Warnings.</strong> A local binding, loop variable, catch binding or pattern binding that is never
+referenced (<code>LYR-SEM0071</code> — naming it <code>_</code> is the opt-out; parameters and the shorthand field
+pattern <code>Rect { w, h }</code> are deliberately exempt). An imported name nobody in the file uses
+(<code>LYR-SEM0072</code>). A statement control flow can never reach (<code>LYR-SEM0073</code>). And a static
+extension method called through an instance (<code>LYR-SEM0074</code>): that form is <strong>deprecated</strong> and
+becomes an error in the next major — the warning is the clock. Warnings stay silent over a
+program with errors, and never fail a build by themselves.</p>
+</li>
+<li><p><strong><code>--deny-warnings</code></strong> on <code>check</code> and <code>build</code>, for CI: the warnings keep their severity in the
+output, one closing error (<code>LYR-CLI0016</code>) carries the policy into the exit code, and a denied
+build writes no artifact. The <code>lyric.json</code> unknown-key warnings are real diagnostics now
+(<code>LYR-CLI0017</code>) and count toward the gate.</p>
+</li>
+<li><p><strong>Notes on diagnostics.</strong> A duplicate declaration points back at the first one, a missing
+interface method points at the member it fails (in whatever file it lives), an unknown name
+suggests the single closest candidate in scope, and an unknown member suggests from the same
+list completion offers. Rendered indented under the caret block in text — deliberately not in
+the head-line format a problem matcher reads — as a <code>notes</code> array in <code>--json</code> (only when
+present, so existing consumers read what they always read), and as related information in
+editors.</p>
+</li>
+<li><p><strong>The first hint.</strong> <code>LYR-SEM0075</code>: a <code>var</code> through which nothing is ever changed — no
+reassignment, no field or element write, no <code>mut</code> call, not handed over by reference — could
+be a <code>let</code>. A <code>var</code> that documents mutation keeps its <code>var</code>.</p>
+</li>
+<li><p><strong>An error that was silent misbehavior</strong>: two files claiming one module name is <code>LYR-RES0007</code>
+with a note at the first claim, instead of a shadow registration nothing could explain.</p>
+</li>
+<li><p><strong>Editors draw the difference</strong>: unused and unreachable code fades, the deprecated instance
+form is struck through, and every note is a click away. The severity <code>info</code> exists on the
+wire for what later versions will say at it.</p>
+</li>
+<li><p><strong>Guide chapter 19</strong> documents the contract: severities, codes as stable identifiers, the
+gate, and what warns today. The repository holds itself to it — the standard library, the
+examples and the templates check in silence, and a test keeps them there.</p>
+</li>
+</ul>
+<h3 id="changed-4">Changed</h3>
+<ul>
+<li><p><strong>The editor clients live in their own repositories</strong> (<a href="https://github.com/lyriclang/vscode-lyric">vscode-lyric</a>,
+<a href="https://github.com/lyriclang/jetbrains-lyric">jetbrains-lyric</a>) and release their
+installables there, on their own cadence. Toolchain releases v1.8.0 through v1.9.1 carried
+them beside the archives; from this release on they are found there. The project moved to the
+<code>lyriclang</code> organization.</p>
+</li>
+<li><p>Two messages stopped promising futures: the duplicate-function hint lost its &quot;in v1&quot;
+(overloading was rejected for good in v1.5.0), and the block-lambda limit <code>LYR-SEM0046</code> now
+states the problem in the message and its way out in a note.</p>
+</li>
+</ul>
+<h2 id="v1.9.1-2026-08-19">v1.9.1 — 2026-08-19</h2>
+<p>The formatter reaches the editor. <code>textDocument/formatting</code> is served by the language server —
+format on save works wherever the editor offers it, in VS Code and the JetBrains IDEs alike,
+with no client update needed.</p>
+<p>The answer is one whole-document edit off the buffer as it stands, an empty list when the file
+already has the shape, and NO edits for a buffer that does not parse: the formatter never
+writes a guess over broken text, behind the editor's gesture either. The editor's tab settings
+are deliberately ignored — one shape is the tool's contract, in every surface it has.</p>
+<p>The toolchain is otherwise unchanged.</p>
+<h2 id="v1.9.0-2026-08-19">v1.9.0 — 2026-08-19</h2>
+<p>Two tools. <code>lyric pack</code> turns a program into one standalone executable, and <code>lyric fmt</code> gives
+every Lyric file the one shape there is. The language, the standard library, the bytecode
+format and the embedding API are untouched; the format stays <strong>3.2</strong>, and a <code>.lyrbc</code> built by
+1.8.0 packs and runs unchanged.</p>
+<h3 id="added-12">Added</h3>
+<ul>
+<li><p><strong><code>lyric pack app.lyr</code> — a program becomes one file.</strong></p>
+<pre><code class="language-bash">lyric pack app.lyr
+./app arg1 arg2
+</code></pre>
+<p>The result is a copy of a prebuilt stub runtime with the compiled module and a 24-byte footer
+appended — a byte copy, no linker, no .NET on the target machine. The packed program owns its
+whole command line (no <code>--</code> protocol, no wrapper options), runs with every capability like
+any standalone program, exits with <code>main</code>'s return value, and its panics name your lines —
+same runtime, same bytes, same backtraces as <code>lyric run</code>.</p>
+<p>Two new binaries carry it: <code>lyrpack</code>, which packs a <code>.lyrbc</code> and nothing else, and <code>lyrstub</code>,
+the runtime half of a packed program. The release archives hold the platform's stub under
+<code>stubs/&lt;rid&gt;/</code>; a bare stub started directly explains itself instead of failing obscurely,
+and a truncated pack is reported as damaged rather than executed. The format is specified in
+<a href="/v2.7.0/pack/"><code>docs/Pack.md</code></a>, the guide's chapter 17 says what to know before shipping.
+The release pipeline packs an example and RUNS the result on Windows and Linux before an
+archive exists.</p>
+</li>
+<li><p><strong><code>lyric fmt</code> — the formatter.</strong> In place for files and directories, <code>--check</code> for CI (writes
+nothing, exits nonzero when anything would change), <code>--stdin</code> for editors. No style options.</p>
+<p>What it keeps: every comment (trailing ones trailing), your blank lines capped at one, your
+literal spellings (<code>0xFF</code>, <code>1_000_000</code>). What it decides: line breaks against the 100-column
+limit, trailing commas exactly where the grammar allows them and only in broken layout, a
+blank line after the module header and between declarations with bodies. A file that does
+not parse is reported and left byte-for-byte untouched.</p>
+<p>The repository holds itself to it: the standard library, the examples and the templates are
+formatted, and a test fails when they stop being it.</p>
+</li>
+</ul>
+<h3 id="changed-5">Changed</h3>
+<ul>
+<li><strong>The standard library, the examples and the project templates are reformatted</strong> with the
+new formatter. No signature, no name and no behaviour changed — the test suite verifies the
+reformatted sources compile to the same programs.</li>
+</ul>
+<h3 id="not-in-this-release-1">Not in this release</h3>
+<ul>
+<li><strong>Packed executables that run on macOS.</strong> A Mach-O declares its own extent; appended bytes
+put the file beyond it, and <code>codesign</code> refuses the result — found by the release pipeline's
+own gate, recorded in <a href="/v2.7.0/pack/"><code>docs/Pack.md</code></a>. The fix is a real Mach-O segment for
+the payload, deno's route; until then macOS packs for the OTHER platforms via <code>--stub</code>.</li>
+<li><strong>Cross-platform packing sugar</strong>: a pack is for one platform, and a foreign platform packs
+via <code>--stub</code> with that platform's stub out of its archive. No <code>--target</code> until someone
+needs it.</li>
+<li><strong>A trimmed stub</strong>: 73.5 MB self-contained today; trimming measures 13.0 MB and survives a
+smoke test, but one smoke is not a gate. Decision material for the next scope check.</li>
+<li><strong>Capability narrowing at pack time</strong>: a packed program runs with everything, like any
+standalone program. Narrowing is a footer field for a future minor.</li>
+<li><strong><code>textDocument/formatting</code> in the language server</strong>: the formatter lives in the library the
+server already uses; the wiring is a later slice.</li>
+<li><strong>Format-on-save configuration, formatter style flags</strong>: deliberately never.</li>
+</ul>
+<h2 id="v1.8.1-2026-08-18">v1.8.1 — 2026-08-18</h2>
+<p>A one-line fix for the JetBrains plugin (now 1.2.1): the TextMate bundle provider was registered
+under an extension-point namespace that does not exist, so <code>.lyr</code> files rendered uncolored while
+everything the language server answers worked. The point is declared by the TextMate plugin but
+qualified under <code>com.intellij</code>; the registration moved there, and highlighting appears. The
+toolchain itself is unchanged.</p>
+<h2 id="v1.8.0-2026-08-18">v1.8.0 — 2026-08-18</h2>
+<p>The editors catch up with the compiler. No language change and no format change: the language
+server compiles the PROJECT instead of the open buffer, answers everything an editor asks, and
+two installable clients ship beside the toolchain — the VS Code extension as a <code>.vsix</code>, and a
+new JetBrains plugin.</p>
+<h3 id="changed-6">Changed</h3>
+<ul>
+<li><p><strong>The language server compiles the project, not the buffer.</strong> Under a <code>lyric.json</code>, every
+<code>.lyr</code> file beneath the source root is one compilation: find-references works in BOTH
+directions (standing on a declaration finds the uses in files that import it), files nobody
+has open get their errors into the Problems panel, a deleted file has its squiggles withdrawn,
+and a change behind the editor — a branch switch, another tool — is picked up through file
+watches. A file outside any project is compiled from itself, as before. Measured: a 14-file
+project checks in the same time as a single file — the standard library dominates either way.</p>
+</li>
+<li><p><strong>Find references and semantic highlighting underline the name, not the expression</strong> — <code>x</code>
+instead of <code>p.x</code>, <code>Point</code> instead of <code>Point { x = 1 }</code>.</p>
+</li>
+</ul>
+<h3 id="added-13">Added</h3>
+<ul>
+<li><strong>Rename</strong> (<code>F2</code> / <code>Shift+F6</code>), project-wide: the declaration, every use, and the <code>import</code>
+clauses that carry the name. What cannot be renamed says why — the standard library, a module,
+a built-in. Whether the NEW name collides is left to the compile that follows immediately; its
+diagnostics are the conflict analysis. Applied edits recompile clean, pinned by test.</li>
+<li><strong>Workspace symbols</strong>: every declaration of the project, searched by name.</li>
+<li><strong>Semantic highlighting</strong>: every name colored by what the compiler resolved it to — a type in
+an annotation, an initializer and an attribute alike; <code>let</code> bindings as readonly. An
+unresolved name stays uncolored, which is the honest signal.</li>
+<li><strong>Signature help</strong> while typing a call — the declaration as written, the active parameter
+following the commas. <strong>Folding</strong> with the closing line kept visible. <strong>Inlay hints</strong> for the
+inferred type of unannotated bindings and loop variables.</li>
+<li><strong>The VS Code extension grew up</strong>: a restart command, a status item that shows the server
+state and version, a <code>lyric: build</code> task wired to the Problems panel, snippets — and the
+extension ships as <code>vscode-lyric-&lt;version&gt;.vsix</code> on every release.</li>
+<li><strong>A JetBrains plugin</strong> (<code>jetbrains-lyric-&lt;version&gt;.zip</code>): the same server in CLion, IntelliJ
+IDEA, Rider and the other commercial IDEs, 2026.1 or newer — diagnostics, completion,
+navigation, rename, semantic highlighting, signature help, folding and inlay hints through
+the platform's own LSP integration. Install from disk; neither client is on a marketplace.</li>
+</ul>
+<p>The interpreter stops allocating — and so does the native boundary. No language change and no
+format change: the same programs compile to faster, smaller modules, run with far fewer heap
+allocations, and a host SDK can now put <code>Vec2</code> in a native signature. The numbers below come
+from <code>tools/Bench</code> (new in this release), Release, per operation, against v1.6.0.</p>
+<h3 id="changed-7">Changed</h3>
+<ul>
+<li><p><strong>A function call no longer allocates.</strong> Frames are pooled per function; a call went from
+<strong>176 B to 0 B</strong> and from ~50 ns to ~8 ns. Deep recursion still works, exceptions and panics
+unwind exactly as before.</p>
+</li>
+<li><p><strong>Small functions are inlined.</strong> A direct call to a function of roughly a dozen instructions —
+a <code>Vec2.add</code>, an iterator's <code>next</code>, a getter — is replaced by its body. Callers and callees
+with <code>try</code>/<code>defer</code> are left alone, recursion stays a call, and a function that always throws
+keeps its frame.</p>
+</li>
+<li><p><strong>Objects that never leave their function are dissolved into locals.</strong> A <code>Vec2</code> built, read
+and assigned inside a loop costs <strong>0 bytes</strong>: construction plus method call went from
+352 B / 271 ns to <strong>0 B / 8 ns</strong>, the operator form (<code>a + b</code>) from 352 B / 252 ns to
+<strong>0 B / 6 ns</strong>. This is what makes vector arithmetic through the v1.5.0 operators usable in a
+per-frame game loop.</p>
+</li>
+<li><p><strong><code>for-in</code> no longer allocates its iterator.</strong> A range or array loop runs at <strong>0 B per
+element</strong> (208 B before); a range loop is ~3× faster than in v1.6.0. The <code>Iterable</code> route
+through an interface is devirtualized where the concrete iterator is provable — a
+<code>Set</code>/<code>Map</code> loop now calls its <code>next</code> directly instead of dispatching per element.</p>
+</li>
+<li><p><strong>Modules got smaller.</strong> A function whose every call was inlined is removed; the six-function
+<code>examples/arith.lyr</code> compiles to two. An attributed function always survives — the row is a
+promise to the host.</p>
+</li>
+<li><p><strong>A panic in an inlined function names the caller's frame with the callee's line.</strong> The line
+is right, the frame above it is gone — the trade every optimizing compiler makes. A
+deliberate <code>panic(...)</code> keeps its full backtrace, because a function that never returns is
+not inlined.</p>
+</li>
+</ul>
+<h3 id="added-14">Added</h3>
+<ul>
+<li><p><strong>The native boundary takes and returns value structs, without allocating.</strong> A native
+signature may use a <code>struct</code> declared in the same native module (scalar and string fields
+only). The declaration stays fully typed on the script side; on the wire it is flattened:</p>
+<pre><code class="language-lyr">module engine.geo;
+
+pub struct Vec2 { x: float, y: float }
+
+pub fn setPosition(entity: int, at: Vec2);
+pub fn positionOf(entity: int): Vec2;
+</code></pre>
+<p>A struct parameter crosses as its fields — the host registers the delegate it would have
+written for scalars. A struct return comes back through a buffer the runtime owns
+(<code>NativeRegistry.RegisterStructReturning</code>): the implementation fills one value per field, the
+script sees an ordinary value, and value semantics keeps the shared buffer invisible. Layout
+disagreements between host and SDK are load errors with the import's name in them.</p>
+<p>Measured: a <code>Vec2</code> built fresh and passed in, or received back, costs <strong>0 B per call</strong> —
+the answer to the embedding question that produced this milestone (Erato's <code>positionOf</code>).</p>
+</li>
+<li><p><strong>A native call no longer allocates its argument array.</strong> The <code>LyrValue[]</code> handed to an
+implementation is pooled and reused; a one-argument crossing went from 40 B to 0 B, a
+four-argument one from 88 B to 0 B. The array is therefore a LOAN: read it during the call,
+copy values out, never store it — documented on <code>NativeRegistry</code>, and every implementation in
+the standard registry already complied.</p>
+</li>
+<li><p><strong><code>tools/Bench</code></strong> — the in-process measurement harness behind all numbers above:
+<code>dotnet run -c Release --project tools/Bench</code>. Allocated bytes and nanoseconds per operation,
+scalar-loop baseline subtracted, round-robin against JIT tiering, raw-registry boundary
+probes.</p>
+</li>
+</ul>
+<h3 id="not-in-this-release-2">Not in this release</h3>
+<ul>
+<li><strong>Struct returns through the embedding layer's delegates.</strong> <code>RegisterStructReturning</code> is a
+<code>NativeRegistry</code> surface; a <code>LangVm.RegisterNative</code> overload that marshals a C# struct is
+sugar for a later release — the raw form is the one a game host uses anyway.</li>
+<li><strong>Structs from other modules in native signatures</strong> — the struct must live in the module that
+declares the native, which is where an SDK's value types belong.</li>
+<li><strong>Escape analysis across surviving calls</strong> — a struct passed to or returned from a <em>Lyric</em>
+function that stays a function still allocates.</li>
+<li><strong>The remaining optional ops in <code>for-in</code></strong>: a range loop still runs ~1.9× a hand-written
+<code>while</code>; the gap is <code>optsome</code>/<code>optissome</code>/<code>optget</code> and block hops, peephole material.</li>
+<li><strong>Value structs as a language feature.</strong> Deliberately: a <code>struct</code> already HAS value
+semantics; this release makes the representation keep that promise everywhere it matters,
+with no new mechanism.</li>
+</ul>
+<h2 id="v1.6.0-2026-08-18">v1.6.0 — 2026-08-18</h2>
+<p>Attributes. A program can say things about itself that a tool outside it can read — which
+functions a host should call, what a script-declared type looks like, what a module is. The
+bytecode format goes <strong>3.1 → 3.2</strong>; both new sections are skippable, so a 1.5.0 runtime loads a
+1.6.0 module and runs it unchanged.</p>
+<h3 id="added-15">Added</h3>
+<ul>
+<li><p><strong>Attributes, on a function, a type and the module header.</strong> An attribute is a struct type;
+where it may sit is the marker interface it declares — <code>OnModule</code>, <code>OnType</code> or <code>OnFunction</code>, all
+new in <code>std.core</code>:</p>
+<pre><code class="language-lyr">import std.core { OnType, OnFunction };
+
+pub struct Component :: [OnType] { }
+pub struct System :: [OnFunction] { order: int = 0 }
+
+@Component
+pub struct Health { value: int, max: int }
+
+@System { order = 10 }
+pub fn damageTick(dt: float): void { }
+</code></pre>
+<p>Conformance decides, not the name — no struct becomes an attribute by accident, the same nominal
+rule the operators follow. The arguments are the struct initializer restricted to literals; a
+field the use does not write carries the field's literal default, and a field with neither is an
+error at the use site, not a hole in the metadata.</p>
+<p><strong>An attribute describes; it does nothing.</strong> No attribute in this release is read by the
+compiler, and a runtime that ignores them runs the program unchanged.</p>
+</li>
+<li><p><strong>Bytecode format 3.2.</strong> Section 11 holds the rows — target, attribute type, one value per field
+in field order, always complete. Section 12 holds field names, ONLY for types a row references:
+everywhere else the rule stands that field names are not in the bytecode, but a host reading
+<code>@Component struct Health</code> needs <code>value</code> and <code>max</code>, or it has learned a shape it cannot name.</p>
+<p>An attributed function survives dead-code elimination: the row is a promise that the index is
+valid, and the host is a caller the reachability analysis cannot see — the same standing as the
+entry point.</p>
+</li>
+<li><p><strong>The embedding API reads the rows.</strong> <code>ScriptModule.Attributes</code> answers <strong>before</strong>
+<code>Instantiate</code> — for foreign bytes, the module row is how a host decides whether to load at all.
+A hit is a call handle: <code>instance.CallVoid(use, …)</code> calls by the index the row carries, so a
+typo in a script is a compile error instead of a function nobody finds. <code>FieldsOf</code> yields the
+named, typed shape of an attributed type.</p>
+</li>
+<li><p><strong>The tools show them.</strong> <code>lyric disasm</code> prints each row with its field names, <code>lyrvm info</code>
+counts them, and hovering <code>@System</code> in an editor answers with the struct.</p>
+</li>
+</ul>
+<h3 id="fixed-12">Fixed</h3>
+<ul>
+<li><strong>A duplicate field in a struct initializer crashed the compiler.</strong> <code>P { x = 1, x = 2 }</code> passed
+the type checker and died in the lowering with an internal exception instead of an error
+message. It is a diagnostic now (<code>LYR-SEM0070</code>), reported at each repeated field, in struct and
+class initializers and in enum struct-variant initializers alike. Found while building the
+attribute checks, which validate their arguments the same way.</li>
+</ul>
+<h3 id="changed-8">Changed</h3>
+<ul>
+<li><strong><code>@name</code> at declaration position is no longer &quot;attributes arrive later&quot;.</strong> It parses; what the
+name resolves to is the sema's question, so <code>@test</code> is now <code>unknown type 'test'</code> instead of
+<code>LYR-PAR0038</code>. That code stays on parameters, where attributes remain rejected, with a message
+that no longer promises the future. The reserved expression form <code>@name(args)</code> leaves the
+grammar; <code>LYR-SEM0053</code> now says an attribute is not an expression.</li>
+</ul>
+<h3 id="not-in-this-release-3">Not in this release</h3>
+<ul>
+<li><strong>Attributes on parameters, fields and members</strong> — top-level declarations and the module header
+only.</li>
+<li><strong>Attributes the compiler reads</strong> (<code>@Deprecated</code>, <code>@MustUse</code>, <code>@Inline</code>): the moment one
+attribute changes compilation, the attribute set becomes part of the language contract and the
+stability promise. That is a separate decision, deliberately not smuggled in here.</li>
+<li><strong>Runtime application</strong>, Python-decorator style: there is no mechanism by which an attribute
+wraps or replaces its target.</li>
+<li><strong>Qualified attribute names</strong>: names are the bytecode's type names and therefore unqualified.
+An SDK owns its attribute names the way it owns its native names.</li>
+<li><strong>Completion after <code>@</code>.</strong></li>
+</ul>
+<h2 id="v1.5.0-2026-08-18">v1.5.0 — 2026-08-18</h2>
+<p>Operators on your types. Everything resolves through the one mechanism this language has for
+polymorphism — the interface a type declares — so there is no operator declaration syntax, no new
+opcode, and the <code>.lyrbc</code> format stays <strong>3.1</strong>.</p>
+<h3 id="added-16">Added</h3>
+<ul>
+<li><p><strong><code>==</code> and <code>!=</code> on every type conforming to <code>Equatable&lt;T&gt;</code>.</strong> The operator <em>is</em> the method:
+<code>a == b</code> calls <code>a.equals(b)</code>, and <code>a != b</code> negates it.</p>
+<pre><code class="language-lyr">struct Point :: [Equatable&lt;Point&gt;] {
+    x: int,
+    fn equals(other: Point): bool { return this.x == other.x; }
+}
+
+let same = a == b;
+</code></pre>
+<p>Conformance is required, not the method alone: a type with an <code>equals</code> nobody declared as
+<code>Equatable</code> stays rejected, so no method becomes an operator by accident of its name.</p>
+</li>
+<li><p><strong><code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> and <code>&gt;=</code> on every type conforming to <code>Ordered&lt;T&gt;</code></strong> — one <code>compare</code> method,
+negative/zero/positive, and all four operators read its sign. <strong><code>string &lt; string</code> works</strong>, through
+the conformance the standard library has carried since v1.0; its rejection had promised exactly
+this change.</p>
+</li>
+<li><p><strong><code>+</code>, <code>-</code>, <code>*</code> and <code>/</code> on types conforming to <code>Add&lt;T&gt;</code>, <code>Sub&lt;T&gt;</code>, <code>Mul&lt;T&gt;</code> and <code>Div&lt;T&gt;</code></strong> — four
+new <code>std.core</code> interfaces, one method each, homogeneous: <code>T op T</code> gives <code>T</code>. The built-in numerics
+conform, <code>string</code> to <code>Add</code> alone, so a generic function constrained on <code>Add&lt;T&gt;</code> serves an <code>int</code>, a
+<code>string</code> and your vector type in one program.</p>
+</li>
+<li><p><strong><code>as</code> beyond the numerics converts through <code>Into&lt;T&gt;</code>.</strong> <code>x as T</code> is <code>x.into()</code> where the
+operand's type declares the conformance. Explicit only, one target per type, total conversions
+only — a conversion that can fail belongs in a named function returning an optional. The numeric
+casts keep their opcodes and are not overridable.</p>
+</li>
+<li><p><strong><code>s *= 3</code> and <code>xs *= 2</code> work.</strong> The repetition overloads of <code>*</code> had no compound form — an
+accident of how compounds were checked, recorded as a limit. The compound check rework below
+delivered them.</p>
+</li>
+</ul>
+<h3 id="fixed-13">Fixed</h3>
+<ul>
+<li><strong>A compound assignment never checked its operator.</strong> <code>p += p</code> on a struct passed the compiler and
+produced an integer addition of two references at runtime — the <code>s += &quot;x&quot;</code> class of bug fixed in
+v1.1.0, one type over. <code>s &amp;= s</code> and <code>f &lt;&lt;= f</code> passed the same way. A compound is now typed as the
+binary it carries: whatever <code>a = a + b</code> says, <code>a += b</code> says too.</li>
+</ul>
+<h3 id="not-in-this-release-4">Not in this release</h3>
+<ul>
+<li><strong>Heterogeneous operands</strong> (<code>Vec2 * float</code>): needs a two-parameter interface and a rule for
+multiple conformances to one generic interface.</li>
+<li><strong>Compound assignment through the operator interfaces</strong> (<code>v += w</code> on a <code>Vec2</code>): the compound
+lowering evaluates the target's address once and cannot yet route through a call. The diagnostic
+says to write <code>v = v + w</code>.</li>
+<li><strong><code>%</code> on user types</strong>, and unary <code>-</code>: no interface exists for either, deliberately.</li>
+<li><strong>A conversion out of a builtin</strong> (<code>extend int :: [Into&lt;Cents&gt;]</code>): the orphan rule stops it, and
+the rule does not look into type arguments. A named function takes its place.</li>
+<li><strong>Method overloading</strong>, considered and rejected: constraints plus generics are this language's
+overloading, and the standard library says so itself.</li>
+</ul>
+<h2 id="v1.4.0-2026-08-17">v1.4.0 — 2026-08-17</h2>
+<p>Completion, and a standard library that says what it does. The language, the command line, the
+embedding API and the <code>.lyrbc</code> format are untouched; the format stays <strong>3.1</strong>.</p>
+<h3 id="added-17">Added</h3>
+<ul>
+<li><p><strong>Completion.</strong> After a <code>.</code> the members of what stands before it; anywhere else the names in
+scope.</p>
+<pre><code class="language-lyr">let p = Point { x = 1 };
+p.          // x, y, and every method, extension and interface default the type has
+</code></pre>
+<p>The member list is the one the compiler would accept, not an approximation of it: extension methods
+and interface default methods are in it, which matters because <strong>every string method of this
+standard library is an extension</strong> — a list without them would be empty on a <code>string</code>.</p>
+<p>In scope: locals, parameters, type parameters, what the module declares and imports, and the
+builtins. Inner names shadow outer ones, a binding is not offered inside its own initializer, and a
+loop variable is not offered in the loop head.</p>
+<p>Each item carries its kind and, when the declaration has one, the <code>///</code> block above it.</p>
+<p>It works while the file does not parse, which is the state it is asked in. The trigger character
+is <code>.</code>; everything else is the editor asking on its own.</p>
+</li>
+<li><p><strong>The standard library documents itself where it did not.</strong> <code>std.io.console</code>, <code>std.core</code> and
+<code>std.option</code> held 33 public declarations and no documentation at all, so hovering <code>println</code> showed
+a signature and nothing else. All three are written now, interface members included.</p>
+</li>
+</ul>
+<h3 id="fixed-14">Fixed</h3>
+<ul>
+<li><p><strong>A struct initializer is a reference to its type.</strong> Asking for the definition of <code>Point</code> in
+<code>let p = Point { x = 1 };</code> used to answer nothing, and find-references did not list it. Both do
+now, and hovering it reports the type.</p>
+<p>v1.3.0 listed this under <em>Not in this release</em> because recording it made the type checker read
+<code>Pair&lt;int&gt; { a = 6 }.a</code> as a static member access. The receiver question is answered from the
+expression's type now rather than from that table, so the two no longer collide.</p>
+</li>
+</ul>
+<h3 id="not-in-this-release-5">Not in this release</h3>
+<ul>
+<li><strong>Completion does not offer keywords.</strong> <code>if</code>, <code>return</code> and the rest are not symbols; an editor gets
+them from the grammar it highlights with.</li>
+<li><strong>Completion after <code>import</code> does not offer module paths.</strong> That is a different source — the file
+system — and not the scope.</li>
+<li><strong>A field reference still marks the whole member access</strong>: asking for references to <code>x</code> marks
+<code>p.x</code>. Use sites carry no span for their name alone.</li>
+<li><strong>References and completion stop at the compilation.</strong> The server compiles the file you are in, so
+another file of your project that imports it is not searched.</li>
+</ul>
+<h2 id="v1.3.1-2026-08-17">v1.3.1 — 2026-08-17</h2>
+<h3 id="fixed-15">Fixed</h3>
+<ul>
+<li><p><strong>Eight diagnostics pointed at a document that does not exist.</strong> Five named <code>Sprache.md</code>, which has
+been <a href="/v2.7.0/grammar/"><code>docs/Grammar.md</code></a> for some time, and the sections they cited were wrong as
+well — §10 and §11 of a document that has seven. Following either reference led nowhere twice:</p>
+<pre><code>attributes are not part of v1 (Sprache.md §10); '@test' and 'lyric test' arrive after v1.0
+</code></pre>
+<pre><code>attributes are not part of v1; '@test' and 'lyric test' arrive later
+</code></pre>
+<p>Rather than repair the citations, they are gone. <strong>A diagnostic names what is wrong, not where to
+read about it</strong> — a citation ages in two ways at once, and both had already happened here. Where a
+reference carried information (<code>§11 allows none or one 'string[]'</code>), the message now says it
+outright.</p>
+<p>The affected codes are <code>LYR-PAR0038</code>, <code>LYR-PAR0039</code>, <code>LYR-SEM0053</code>, the lowering's <em>main</em> check,
+the bytecode reader's global check and two entry-point findings of the IR verifier. <strong>No code
+changed and no behaviour changed</strong> — only the wording, so a program that compiled still compiles
+and one that did not still fails, with the same code on the same span.</p>
+</li>
+</ul>
+<h2 id="v1.3.0-2026-08-17">v1.3.0 — 2026-08-17</h2>
+<p>Everything in this release is the language server. The language, the standard library, the command
+line and the <code>.lyrbc</code> format are untouched; the format stays <strong>3.1</strong>.</p>
+<h3 id="added-18">Added</h3>
+<ul>
+<li><p><strong>Hover shows the documentation you wrote.</strong> A <code>///</code> block above a declaration appears under its
+signature, for declarations in the file you are editing and in every module it reads:</p>
+<pre><code>fn cpuCount() -&gt; int
+
+How many cores the machine has, for programs that split their work. The VM itself is
+single-threaded.
+</code></pre>
+<p>The text goes through unchanged — there is no doc-comment vocabulary in the grammar, so nothing is
+interpreted, and nothing is composed from the signature. A declaration without a block is shown
+exactly as before.</p>
+</li>
+<li><p><strong>An editor can show the outline of a file</strong> (<code>textDocument/documentSymbol</code>). Types carry their
+fields, methods, variants and static constants as children; imports, parameters and locals are
+left out, because an outline says what a file offers.</p>
+<p>It reads the syntax and resolves nothing, which is why <strong>a file with type errors still has an
+outline</strong> — the moment you most want one.</p>
+<p>Only the nested form is produced. An editor that does not announce
+<code>hierarchicalDocumentSymbolSupport</code> gets no outline rather than the deprecated flat one.</p>
+</li>
+<li><p><strong>Find all references</strong> (<code>textDocument/references</code>), with or without the declaration itself. The
+answer covers the program reachable from the file you are in, so a call into the standard library
+is found in the module that declares it.</p>
+</li>
+</ul>
+<h3 id="changed-9">Changed</h3>
+<ul>
+<li><strong>Go to definition selects the NAME of a declaration</strong>, not the start of it. Previously the cursor
+landed on the first character of the whole declaration — on <code>for</code> for a loop variable, on <code>catch</code>
+for a catch binding. An editor that announces <code>linkSupport</code> now also receives the full extent of
+the declaration beside the name, so a peek window shows the declaration and puts the cursor on its
+name.</li>
+</ul>
+<h3 id="fixed-16">Fixed</h3>
+<ul>
+<li><strong>Go to definition on a struct initializer no longer jumps somewhere else.</strong> In
+<code>let p = Point { x = 1 };</code>, asking about <code>Point</code> used to land on <code>p</code> — the enclosing binding, which
+is not what the cursor was on. It now answers with nothing. What it <em>cannot</em> yet do is answer with
+<code>Point</code>; see below.</li>
+</ul>
+<h3 id="not-in-this-release-6">Not in this release</h3>
+<ul>
+<li><strong>A struct initializer is not a reference to its type.</strong> <code>Point { … }</code> is bound to no symbol, so
+neither find-references nor go-to-definition sees it. An annotation (<code>let p: Point</code>) is found.</li>
+<li><strong>A field reference marks the whole member access</strong>: asking for references to <code>x</code> marks <code>p.x</code>, not
+the <code>x</code> in it. Use sites carry no span for their name alone.</li>
+<li><strong>References stop at the compilation.</strong> The server compiles the file you are in; another file of
+your project that imports it is not part of that compile, and its uses are therefore not listed.</li>
+<li><strong>No completion.</strong> It is the first question asked at a position where the text does not parse,
+which is a compiler topic rather than another editor feature.</li>
+</ul>
+<h2 id="v1.2.0-2026-08-17">v1.2.0 — 2026-08-17</h2>
+<h3 id="changed-10">Changed</h3>
+<ul>
+<li><p><strong>Only a field needs the <code>,</code> that separates members of a struct or class.</strong> A bodiless method used
+to need a semicolon <em>and</em> a comma in a row:</p>
+<pre><code class="language-lyr">class Builder {
+    fn addExecutable(entry: string, output: string): Artifact;,   // no longer
+    fn addTest(entry: string): Artifact;
+}
+</code></pre>
+<p>The rule is strictly more permissive, so every file that was valid stays valid — the comma is still
+accepted where it is now optional. Two fields still need one, or <code>a: int b: int</code> would read as a
+single field of a type nobody wrote.</p>
+</li>
+</ul>
+<h3 id="added-19">Added</h3>
+<ul>
+<li><p><strong><code>lyric new</code> writes a project that builds.</strong></p>
+<pre><code class="language-bash">lyric new myapp          # lyric.json, build.lyr, .gitignore, src/main.lyr
+lyric new mylib --lib    # lyric.json, src/mylib.lyr — nothing to build
+</code></pre>
+<p>Two shapes and two flags rather than a template system: with two variants a discovery mechanism is
+more machinery than content. The name becomes a module name, so it has to be one, and an existing
+directory that holds something is refused rather than merged into.</p>
+<p>The templates are embedded in the binary, so nothing can go missing beside it — and they are real
+<code>.lyr</code> files in the repository, which the test suite compiles. <code>__name__</code> is a valid Lyric
+identifier, so a template is compilable Lyric rather than text with holes in it.</p>
+<p>It is the one command the driver runs itself: it writes files and compiles nothing.</p>
+</li>
+<li><p><strong>A project may be built by a script, <code>build.lyr</code>.</strong> <code>lyric build</code> without a file argument runs it
+and compiles what it declares:</p>
+<pre><code class="language-lyr">import std.build { addExecutable };
+
+pub fn build() {
+    let app = addExecutable(&quot;src/main.lyr&quot;, &quot;out/app.lyrbc&quot;);
+    app.sourceMap(false);
+
+    addExecutable(&quot;tools/mktex.lyr&quot;, &quot;out/mktex.lyrbc&quot;);
+}
+</code></pre>
+<p>Every artifact is compiled whole, from its entry file; there is no link step and nothing is shared
+between two of them but the source on disk. <code>lyric build</code> <strong>with</strong> a file still means &quot;compile this
+file&quot; and is unchanged.</p>
+<p>Nothing is compiled while the script runs — it collects, and the compiles happen once <code>build</code> has
+returned. That is why an option set on the following line still applies, and why a source file the
+script generates is finished before anything reads it.</p>
+<p>It is a Lyric program with the whole standard library and every capability, so it may write files
+and start processes. Relative paths in it resolve against the directory holding <code>build.lyr</code>, not
+against the directory the build was started from. <strong><code>lyric build</code> in a repository you did not write
+runs code you did not write</strong>, as <code>make</code> and <code>cmake</code> do.</p>
+<p>New binary <code>lyrbuild</code>, the second after <code>lyrrepl</code> that holds both the front end and the runtime: a
+build script has to run, and what it collects has to be compiled afterwards.</p>
+</li>
+<li><p><strong>A project may say where its modules are, in a <code>lyric.json</code>.</strong></p>
+<pre><code class="language-json">{
+  // where our own modules live
+  &quot;sourceRoot&quot;: &quot;src&quot;,
+  &quot;nativeRoots&quot;: { &quot;engine&quot;: &quot;sdk&quot; },
+}
+</code></pre>
+<p><code>sourceRoot</code> replaces &quot;the directory of the entry file&quot; as the module root, and <code>nativeRoots</code> maps
+a module path segment to a directory whose modules may declare functions without a body. The file
+is searched for upwards from the file being compiled, and comments and trailing commas are allowed
+in it.</p>
+<p><strong>This closes the gap v1.1.0 shipped with</strong>: <code>lyric check</code> and <code>lyric build</code> now see the native
+roots a host declares, so a script written against an SDK no longer compiles in the host and fails
+on the command line.</p>
+<p>Both keys are optional and <strong>without the file nothing changes</strong> — that is what makes it an addition
+rather than a new requirement. A key nobody knows is a warning rather than an error, so a file
+written for a later version still loads.</p>
+<p>It is read and never executed, which is what lets an editor learn a project's layout without
+running anything from it.</p>
+</li>
+<li><p><strong>The language server follows a program across its files.</strong> Editing a module now refreshes the
+diagnostics of every open file that imports it, and a dependency is read from the editor's buffer
+rather than from its last save. Both halves are needed: an overlay nobody re-reads shows nothing,
+and a cascade over stale text refreshes to the same answer.</p>
+<p>What a file depends on is taken from the compilation itself, not from the imports in its text —
+the resolver already followed them, transitively and through the project's roots, and a second
+answer to that question would be the one that is wrong.</p>
+<p>The cascade goes one level. Two modules may import each other, which is a diagnostic rather than a
+crash, so a transitive one would not terminate.</p>
+<p><code>CompilerOptions.SourceOverlay</code> is the seam, and it is not editor-specific: it says &quot;compile as if
+these files held this text&quot;, which a host embedding the compiler can use for the same reason.</p>
+</li>
+<li><p><strong>The language server reads <code>lyric.json</code>.</strong> An import of a host SDK no longer shows as an unknown
+module in an editor while the same script runs correctly in the host — the second half of what
+v1.1.0 listed as not in it.</p>
+<p>A broken project file does not stop the analysis. The editor keeps getting diagnostics, resolved
+by the plain rules, and the reason goes to the client's log; publishing nothing would leave an
+earlier state on screen with no hint that anything happened. The message names the project file
+rather than appearing as an error inside the file being edited, and it is said once per change
+rather than once per keystroke.</p>
+<p><strong>Still not there</strong>: editing a module does not refresh the diagnostics of the file that imports
+it. The server analyses one buffer at a time.</p>
+</li>
+</ul>
+<h2 id="v1.1.0-2026-08-15">v1.1.0 — 2026-08-15</h2>
+<p>Bytecode format <strong>3.1</strong>. A minor of the format may only add skippable sections, so a 1.0 runtime
+reads a module built by this release and a 1.1 runtime reads one built by 1.0 — with one caveat
+below.</p>
+<h3 id="added-20">Added</h3>
+<ul>
+<li><p><strong>A host may ship its API as <code>.lyr</code> files instead of generating it.</strong> <code>HostOptions.NativeRoots</code>
+names directories whose modules may declare functions without a body, keyed by the module path
+segment they own, and <code>LangVm.RegisterNative</code> supplies the implementations under the same qualified
+names. Until now every host function went through <code>RegisterFunction</code>, which derives the declaration
+from the delegate — right for a handful, and for an SDK it means the same signature lives in the
+C# call and in whatever documents the API.</p>
+<p>Whether a module may declare a native follows the ROOT it came from, never its content, so naming
+a file well enough is not a way into the host. A module in such a root may hold ordinary Lyric code
+beside its declarations.</p>
+</li>
+<li><p><strong>A program may consist of several files.</strong> A module path becomes a file path under the directory
+of the entry file: <code>import shapes.circle</code> reads <code>shapes/circle.lyr</code> beside it. Until now only the
+standard library could be imported, so every program was one file.</p>
+<p>Three rules come with it. A file must agree with the path it was loaded from, or the header is an
+error — previously such a file registered under the name its header claimed and the import that
+pulled it in reported <em>cannot find module</em> about a file it had just read. <code>std</code> resolves against
+the standard library alone, so nothing beside your program can take its place. And only standard
+library modules declare functions without a body; in your own modules a missing body is a compiler
+error rather than a failure at load time.</p>
+<p>Everything still compiles into one <code>.lyrbc</code>. There is no separate compilation step per file.</p>
+</li>
+<li><p><strong>A panic names the line it happened on</strong>, not just the function:</p>
+<pre><code>panic [LYR-VM0002]: division by zero
+    in main.divide (app.lyr:3)
+    in main.main (app.lyr:8)
+</code></pre>
+<p>The innermost frame points at the instruction that failed, every frame below it at the call it was
+waiting on.</p>
+</li>
+<li><p><strong>The SourceMap section of the bytecode format now has a payload.</strong> It was reserved and named in
+3.0 and never written. It maps a byte offset in a function's code to a file and a line, one row per
+position change.</p>
+</li>
+<li><p><strong><code>lyrc build --no-source-map</code></strong> leaves the section out. Without it the file is byte for byte what
+the same build produced before the section existed, so stripping costs nothing else. The section is
+written by default: the moment a line number is wanted is the moment nobody planned for it.</p>
+<p>Paths are stored relative to the entry file's directory, and a file outside it — the standard
+library sits beside the toolchain — keeps its bare name. Nothing absolute reaches the file, so a
+module does not carry the directory layout of the machine that built it.</p>
+</li>
+</ul>
+<h3 id="fixed-17">Fixed</h3>
+<ul>
+<li><p><strong><code>s += &quot;x&quot;</code> on a string silently produced the empty string.</strong> <code>+</code> on a <code>string</code> is a call to
+<code>std.string.concat</code> and on an array an <code>arrcat</code> instruction, but the compound forms emitted a bare
+<code>add</code> with the operand type next to it. Nothing rejected that in a release build, and the runtime
+read the two strings as integers, so the variable ended up empty and the program kept running:</p>
+<pre><code class="language-lyr">var line = &quot;&quot;;
+line += &quot;0F &quot;;     // line was &quot;&quot; afterwards, not &quot;0F &quot;
+</code></pre>
+<p>Affected were a local, a captured variable and a coroutine local. On an <strong>array</strong> the same
+instruction produced a value with no reference, and the next access to it ended the process with a
+host exception instead of a panic. A field (<code>obj.s += &quot;x&quot;</code>) and an array element
+(<code>xs[0] += &quot;x&quot;</code>) were reported as <code>LYR-IR0001</code> rather than miscompiled, and now work as well.</p>
+<p><code>s = s + &quot;x&quot;</code> was correct throughout and is unchanged. <strong>Existing <code>.lyrbc</code> files are unaffected</strong>:
+the format and its specification were right, the compiler was not.</p>
+<p><code>s *= 3</code> and <code>xs *= 2</code> stay rejected — a separate rule in the type checker demands that the right
+operand be assignable to the left, which does not hold for repetition. <code>s = s * 3</code> works.</p>
+</li>
+<li><p><strong>A runtime accepted an arithmetic opcode with a type it cannot compute on.</strong> §5 of the format says
+<code>add</code> through <code>rem</code> require a numeric type; the reader checked indices only and never the type tag,
+so a module carrying <code>add string</code> passed <code>lyrvm verify</code> and ran. That is why the bug above could
+reach an output at all — the IR verifier that does catch it runs in debug builds only. Such a
+module is now rejected at load time with <code>LYR-BC0005</code>.</p>
+</li>
+<li><p><strong>A reader rejected a section id it did not know</strong>, with <code>LYR-BC0003</code>, instead of skipping it. That
+is the mechanism the format's forward compatibility rests on, and it had never run, because nothing
+had ever written an unknown section.</p>
+<p><strong>This is the caveat above</strong>: a 1.0.1 runtime cannot read a module carrying a SourceMap, even
+though the format says it must. Building with <code>--no-source-map</code> produces a module those runtimes
+accept.</p>
+</li>
+</ul>
+<h3 id="not-in-this-release-7">Not in this release</h3>
+<ul>
+<li><strong>The command line does not know native roots.</strong> <code>HostOptions.NativeRoots</code> reaches the compiler
+through the embedding API alone, so <code>lyric check</code> and the language server report an unknown module
+for an import a host resolves at runtime. Scripts written against an SDK run correctly and look
+wrong in an editor.</li>
+<li><strong>The language server does not know multi-file programs.</strong> It compiles the buffer it was given, so
+editing <code>util.lyr</code> does not refresh the diagnostics of the <code>app.lyr</code> that imports it. Reopening or
+editing the importing file does.</li>
+</ul>
+<p>Both need a place where a project says what it consists of, and putting that on the command line
+would make a third place where the layout is written down.</p>
+<h2 id="v1.0.1-2026-08-14">v1.0.1 — 2026-08-14</h2>
+<h3 id="fixed-18">Fixed</h3>
+<ul>
+<li><p><strong>A module with both a module-level <code>let</code> and a <code>try</code>/<code>catch</code> compiled to a file that would not
+load.</strong> The compiler wrote the Globals section (id 10) ahead of the Handlers section (id 9), and
+section ids must ascend strictly, so <code>lyric run</code> and <code>lyrvm verify</code> rejected the compiler's own
+output with <code>LYR-BC0005</code>. <code>lyric check</code> and <code>lyric build</code> reported success beforehand, which is
+what made it look like a runtime problem rather than an emitter one.</p>
+<p>Only a module carrying both sections was affected; either one on its own was written correctly and
+is unchanged. No <code>.lyrbc</code> file that used to be valid changes — the format and its specification
+were already right and the writer was not, so the bytecode format stays <strong>3.0</strong>.</p>
+</li>
+</ul>
+<h2 id="v1.0.0-2026-08-14">v1.0.0 — 2026-08-14</h2>
+<p>The first release with a compatibility promise. Everything below describes the state it ships, not
+a change against v0.9.0: there is no earlier entry to compare against.</p>
+<p>From here on the <code>.lyrbc</code> format and the language carry the promise the versioning describes: a
+minor may add, a major may break.</p>
+<h3 id="language">Language</h3>
+<p>The whole grammar in <a href="/v2.7.0/grammar/"><code>docs/Grammar.md</code></a> compiles and runs: functions, structs and
+classes, enums with <code>match</code>, interfaces with default methods and <code>::</code> conformance, generics with
+constraints, optionals, exceptions with <code>throws</code> and <code>defer</code>, closures, coroutines, modules, and
+<code>extend</code> blocks on own and primitive types.</p>
+<p>Fixed against v0.9.0, each of them a case that used to be refused or to fail late:</p>
+<ul>
+<li>An <strong>argument position</strong> now carries an expected type, so <code>f(Opt.Some(5))</code> names its instance
+instead of requiring <code>f(Opt&lt;int&gt;.Some(5))</code>.</li>
+<li>A <strong>generic struct initializer</strong> takes its instance from the surrounding type:
+<code>let p: P&lt;int&gt; = P { v = 1 }</code>. Written type arguments still win, and there is still no inference
+from the field values.</li>
+<li>A <strong><code>type</code> alias</strong> works in every position — as a return type and a field type too, not only as a
+parameter type and a local annotation.</li>
+<li><strong><code>static fn</code></strong> is allowed in an enum and an <code>extend</code> body. An interface member stays non-static:
+it is reached through a vtable slot, which takes a receiver.</li>
+<li>A <strong>cyclic type alias</strong> (<code>type A = B; type B = A;</code>) is a diagnostic instead of ending the compiler
+process.</li>
+</ul>
+<h3 id="toolchain">Toolchain</h3>
+<ul>
+<li><code>lyric</code> (driver), <code>lyrc</code> (compiler), <code>lyrvm</code> (runtime), <code>lyrrepl</code> (interactive prompt), and
+<code>lyrembed.dll</code> for a C# host.</li>
+<li><strong><code>lyric check</code> answers the same question as <code>lyric build</code>.</strong> It used to stop after type checking
+and report <code>ok</code> for programs the backend could not express.</li>
+<li>Releases ship a <strong>self-contained archive per platform</strong> (<code>win-x64</code>, <code>linux-x64</code>, <code>osx-arm64</code>) that
+runs without a .NET install.</li>
+</ul>
+<h3 id="documentation-1">Documentation</h3>
+<ul>
+<li>A static documentation site generated by <code>tools/DocGen</code>: the guide, both specifications, and a
+standard library reference generated from the <code>.lyr</code> signatures. One frozen directory per version.</li>
+</ul>
+<h3 id="not-in-this-release-8">Not in this release</h3>
+<ul>
+<li>No interface inheritance; require both interfaces side by side.</li>
+<li>No operator overloading, so <code>==</code> and <code>&lt;</code> on user types stay ordinary methods.</li>
+<li>No attributes (<code>@test</code> and the rest).</li>
+<li>The source map section of the bytecode format is reserved but not written, so a panic names the
+function rather than the line.</li>
+</ul>
+</main>
+</div>
+<script src="../site.js"></script>
+</body>
+</html>
