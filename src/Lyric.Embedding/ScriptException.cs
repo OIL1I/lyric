@@ -36,7 +36,19 @@ public class ScriptException : Exception
 public class ScriptPanicException : ScriptException
 {
     internal ScriptPanicException(string code, string message, Exception? inner)
-        : base(code, message, inner) { }
+        : base(code, message, inner) =>
+        Backtrace = inner is LyricPanic panic ? panic.CallStack : [];
+
+    /// <summary>
+    /// The Lyric call stack, innermost first, each frame as <c>function (file:line)</c> where the
+    /// module carries a source map — which it does unless it was built with
+    /// <c>--no-source-map</c>.
+    ///
+    /// <para>Here rather than only inside the inner exception: reaching it there means naming
+    /// <c>LyricPanic</c>, a type of the runtime assembly this API exists so a host need not
+    /// reference. Empty when the panic was raised before any frame existed.</para>
+    /// </summary>
+    public IReadOnlyList<string> Backtrace { get; }
 }
 
 /// <summary>
