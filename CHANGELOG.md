@@ -10,6 +10,62 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.4.0 — 2026-08-21
+
+M31: two additive answers to what an embedder found in production. A host can bound how long
+foreign code runs, and an attribute argument may name its value instead of repeating it. The
+bytecode format stays **3.3**, and a module compiled by 2.3 loads unchanged. Two conformance
+cases activate with this release (`//! since: 2.4.0`); the suite stands at 90.
+
+### Added
+
+- **An instruction budget for embedded code.** `new ExecutionBudget(2_000_000)`, handed to
+  `Instantiate` or to a call, stops a script that will not stop by itself:
+
+  ```csharp
+  try { instance.CallVoid("onUpdate", budget, 0.016); }
+  catch (ScriptBudgetException) { mods.Disable(instance); }
+  ```
+
+  A capability decides what a script may REACH; `while (true) { }` needs none, and until now
+  nothing bounded it. The budget counts **instructions, not milliseconds**, so the same script
+  under the same limit stops at the same instruction on every machine — a wall clock cannot
+  promise that, and a replay needs it. `Consumed` after a call that fits is how a host arrives
+  at a number worth setting; `Reset()` refills; one budget passed to several calls bounds a
+  whole frame across several scripts, and a host function calling back in draws from the same
+  one.
+
+  `Instantiate` takes one because the constant initializer runs there — a module-level
+  `let x = spin();` used to hang the load itself, before the host had called anything.
+
+  The stop is `LYR-CAP0002` and arrives as a **panic**: the script cannot catch it and no
+  `defer` runs behind it, which is what makes it worth having against code you do not trust.
+  `ScriptBudgetException` derives from `ScriptPanicException`, so a host written before this
+  keeps catching what it caught — the separate type is there to tell "this script is broken"
+  from "this script was still working". What it does NOT bound is host time: a native of yours
+  that blocks for a second is charged one instruction.
+
+- **An attribute argument may name its value.** Beside a literal, an argument may be a `let`
+  whose initializer is one — through a chain of them, across modules, imported selectively or
+  written module-qualified, and a `static let` on a type the same way:
+
+  ```lyr
+  pub let CLEARED = "tetris.cleared";
+
+  @On { event = CLEARED }
+  pub fn onCleared(): void { }
+  ```
+
+  This is what lets a program publish a vocabulary — event names, kinds, versions — and have
+  its consumers checked. Repeating the raw string was the last place where a typo produced a
+  handler nobody ever calls, which is the fault class attributes closed for entry points.
+
+  It is **not** constant folding: `let LIMIT = 1 + 2;` stays rejected, because the value has to
+  stand in the source and this language folds nothing anywhere. One edge worth knowing: the
+  named form is slightly stricter than the written one, since `@A { n = 5 }` adapts the literal
+  to a narrow field while `let N = 5;` is already an `int` — a narrow field wants
+  `let N: int32 = 5;`.
+
 ## v2.3.1 — 2026-08-21
 
 The post-2.3.0 audit's patch wave: four measured bugs, none of them reachable from a program

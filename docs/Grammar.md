@@ -187,8 +187,9 @@ an error.
 
 An attribute before the header describes the module; in a file without a header an attribute at the
 top belongs to the first declaration. The path names a struct type, and an `AttrArg` value must be
-a literal — an integer, float, string, char or bool, optionally sign-prefixed — which is a semantic
-rule, not a syntactic one.
+a value at compile time — an integer, float, string, char or bool literal, optionally
+sign-prefixed, or (since v2.4) a name denoting a `let` bound to one — which is a semantic rule,
+not a syntactic one.
 
 ---
 
