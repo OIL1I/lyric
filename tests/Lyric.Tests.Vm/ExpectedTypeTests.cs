@@ -222,6 +222,51 @@ public class ExpectedTypeTests
         Assert.Contains("LYR-SEM0001", Errors(
             "fn id<T>(x: T): T { return x; }\nfn main(): int { let s = id<int>(\"x\"); return 0; }"));
 
+    // ------------------------------------------------------------------ an element position
+
+    [Fact]
+    public void A_null_element_takes_its_optional_from_the_element_type()
+    {
+        // The sema had accepted this since the context began propagating structurally; the lowering
+        // read no context at an element and refused the 'null' as if it stood in a bare position.
+        Assert.Equal(5, Run("""
+            fn main(): int {
+                let xs: (?int)[] = [null, 5];
+                return if (xs[0] == null) xs[1] ?? 0 else 99;
+            }
+            """));
+    }
+
+    [Fact]
+    public void A_class_element_is_lifted_into_the_declared_interface()
+    {
+        // Lowered bare, the element stayed a class reference in a slot declared for an interface
+        // value — the silently wrong answer this file exists for, one dispatch later.
+        Assert.Equal(8, Run("""
+            interface Shape { fn area(): int; }
+            class Sq :: [Shape] { fn area(): int { return 4; } }
+
+            fn main(): int {
+                let xs: Shape[] = [Sq { }, Sq { }];
+                return xs[0].area() + xs[1].area();
+            }
+            """));
+    }
+
+    [Fact]
+    public void An_element_literal_adapts_to_the_declared_width() =>
+        Assert.Equal(6, Run("""
+            fn main(): int {
+                let xs: int32[] = [1, 2, 3];
+                return (xs[0] + xs[1] + xs[2]) as int;
+            }
+            """));
+
+    [Fact]
+    public void An_element_of_the_wrong_type_is_still_refused() =>
+        Assert.Contains("LYR-SEM0001", Errors(
+            "fn main(): int { let xs: int[] = [1, \"two\"]; return 0; }"));
+
     // ------------------------------------------------------------------ the load-bearing promise
 
     [Fact]

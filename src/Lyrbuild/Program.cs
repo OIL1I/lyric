@@ -43,6 +43,8 @@ public static class Program
 
     public static int Main(string[] args)
     {
+        ConsoleStreams.UseUtf8WhenRedirected();
+
         if (args.Contains("--help") || args.Contains("-h")) { PrintHelp(); return ExitCodes.Success; }
         if (args.Contains("--version") || args.Contains("-v"))
         {

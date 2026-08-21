@@ -10,6 +10,42 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.3.1 — 2026-08-21
+
+The post-2.3.0 audit's patch wave: four measured bugs, none of them reachable from a program
+that was doing anything unusual. The bytecode format stays **3.3**, and the language gains
+nothing — three of the four were valid programs the toolchain mishandled. Three conformance
+cases activate with this release (`//! since: 2.3.1`); the suite stands at 88.
+
+### Fixed
+
+- **A parent interface's default method works through a child-typed value.** `c.describe()`,
+  where `describe` is a default declared on the parent of `c`'s interface, was an internal
+  compiler error in Debug and a wrong receiver slot in Release — the optimizer had resolved
+  the slot to the parent's function and called it directly with a child-typed value, which the
+  language does not convert either. All three routes to such a default are fixed and pinned:
+  through an interface-typed value, through a constraint naming the child, and through an
+  element of an interface-typed array. The constraint route had a second gap of its own and
+  reported "'C' has no 'describe'" from the lowering.
+- **An array literal gives its elements the element type.** `let xs: (?int)[] = [null, 5];`
+  was accepted by the checker and refused by the lowering ("'null' in a position without an
+  expected type"), and `let xs: Shape[] = [Sq { }];` put class references where interface
+  values were declared — an internal error in Debug, a wrong dispatch in Release. An element
+  is a context position like every other now.
+- **A redirected stream carries UTF-8.** On Windows the console's code page encoded redirected
+  output too, and `lyrrepl` set that shared code page unconditionally — so a tool running
+  beside a REPL could have its output best-fit-mapped, turning an em dash into a hyphen. Every
+  tool now writes UTF-8 into a redirected stream and reads UTF-8 from a redirected stdin; the
+  code page is set only for a console that really is one. This is what made individual
+  process-spawning tests fail sporadically under load since M16.
+- **A float renders with a lowercase exponent.** `println(f"{1.0e21}")` wrote `1E+21`, where
+  C, Go, Python, JavaScript and Rust all write `1e+21`. `std.string.fromFloat` backs the
+  f-string lowering, so its output is program behaviour: the shape is now specified (spec §11)
+  and pinned — shortest round-trip, plain decimal while the decimal exponent lies in `-4 .. 16`
+  and scientific outside it, `Infinity` / `-Infinity` / `NaN`, `-0` for negative zero. The
+  disassembler, the IR printer and the debugger's variables panel render through the same one
+  place.
+
 ## v2.3.0 — 2026-08-20
 
 M30: the toolchain learns to debug. Breakpoints, stepping, the call stack and the variables

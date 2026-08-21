@@ -166,6 +166,33 @@ public class FormatTests
     public void A_narrow_scalar_interpolates(string type, string literal, string expected) =>
         Assert.Equal(expected, Out($"let x: {type} = {literal}; println(f\"{{x}}\");").Trim());
 
+    // ------------------------------------------- the float rendering itself
+
+    /// <summary>
+    /// What <c>fromFloat</c> writes, spelled out — spec §11.6. It backs the f-string lowering, so
+    /// this IS program output, and the conformance suite compares it byte for byte.
+    ///
+    /// <para>The shortest form that reads back as the same value; scientific notation below
+    /// <c>1e-4</c> and from <c>1e17</c> upwards; a LOWERCASE exponent marker with a sign, as every
+    /// other language writes it. .NET's round-trip format is the only one that shouts
+    /// <c>1E+21</c>, and nothing pinned it here until this table.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("1.0", "1")]                      // an integral value keeps no '.0'
+    [InlineData("1.5", "1.5")]
+    [InlineData("-0.0", "-0")]                    // negative zero keeps its sign
+    [InlineData("0.1 + 0.2", "0.30000000000000004")]
+    [InlineData("0.0001", "0.0001")]              // the last plain one going down
+    [InlineData("0.00001", "1e-05")]              // the first scientific one
+    [InlineData("1.0e16", "10000000000000000")]   // the last plain one going up
+    [InlineData("1.0e17", "1e+17")]               // the first scientific one
+    [InlineData("1.0e21", "1e+21")]
+    [InlineData("1.0 / 0.0", "Infinity")]
+    [InlineData("-1.0 / 0.0", "-Infinity")]
+    [InlineData("0.0 / 0.0", "NaN")]
+    public void A_float_renders_shortest_with_a_lowercase_exponent(string expression, string expected) =>
+        Assert.Equal(expected, Out($"println(f\"{{{expression}}}\");").Trim());
+
     [Fact]
     public void A_narrow_scalar_takes_a_format_spec() =>
         // The second route: with a spec it goes through std.fmt rather than std.string. Two paths, the

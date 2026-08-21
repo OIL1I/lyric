@@ -112,6 +112,22 @@ internal sealed class TypeTable
         return null;
     }
 
+    /// <summary>The same question one step further in: which interface of <paramref name="iface"/>'s
+    /// own CHAIN declares <paramref name="member"/>. A constraint names one interface, and the member
+    /// it promises may be its parent's — abstract or default alike.
+    ///
+    /// <para>The answer is the interface the receiver is lifted to, so it is the DECLARING one rather
+    /// than the constrained one: its slot index and its default's <c>this</c> then agree, which is what
+    /// keeps the lifted value usable for both the dispatch and, afterwards, the devirtualizer.</para>
+    /// </summary>
+    public TypeSymbol? InterfaceInChainProviding(TypeSymbol iface, string member)
+    {
+        foreach (var candidate in Conformance.WithParents(iface, _binding))
+            if (candidate.Members.LookupLocal(member) is FunctionSymbol)
+                return candidate;
+        return null;
+    }
+
     /// <summary>One cell per element type: <c>&lt;cell:int&gt;</c> exists exactly once, however many
     /// variables live in it.</summary>
     private readonly List<(IrType Element, TypeId Id)> _cells = new();

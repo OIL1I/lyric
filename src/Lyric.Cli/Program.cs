@@ -17,6 +17,8 @@ public static class Program
 {
     public static int Main(string[] rawArgs)
     {
+        ConsoleStreams.UseUtf8WhenRedirected();
+
         var (selection, args, error) = ToolSelection.Parse(rawArgs);
         if (error is not null)
             return CliDiagnostics.Fail(Console.Error, CliDiagnostics.MissingArgument,

@@ -830,7 +830,7 @@ public static class IrVerifier
                                         && double.IsFinite(fc.Value)
                                         && (float)fc.Value != fc.Value:
                     Report(block, index,
-                        $"float const {fc.Value.ToString("R", CultureInfo.InvariantCulture)} " +
+                        $"float const {Floats.Render(fc.Value)} " +
                         "is not exactly representable as f32");
                     break;
 

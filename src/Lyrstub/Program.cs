@@ -21,6 +21,8 @@ public static class Program
 {
     public static int Main(string[] args)
     {
+        ConsoleStreams.UseUtf8WhenRedirected();
+
         // The apphost's own path, which single-file publishing keeps meaningful when
         // AppContext.BaseDirectory points at an extraction directory instead.
         if (Environment.ProcessPath is not { } self)

@@ -15,6 +15,8 @@ public static class Program
 {
     public static int Main(string[] args)
     {
+        ConsoleStreams.UseUtf8WhenRedirected();
+
         if (args.Contains("--version") || args.Contains("-v"))
         {
             Console.Out.WriteLine($"lyrdbg {ToolchainVersion.Value}");

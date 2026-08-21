@@ -1,5 +1,6 @@
 using System.Globalization;
 using Lyric.Bytecode;
+using Lyric.Core;
 
 namespace Lyric.Vm;
 
@@ -308,7 +309,7 @@ public sealed class NativeRegistry
         Both("fromInt", new[] { TypeTag.I64 }, TypeTag.String,
             args => LyrValue.FromString(args[0].AsI64.ToString(CultureInfo.InvariantCulture)));
         Both("fromFloat", new[] { TypeTag.F64 }, TypeTag.String,
-            args => LyrValue.FromString(args[0].AsF64.ToString("R", CultureInfo.InvariantCulture)));
+            args => LyrValue.FromString(Floats.Render(args[0].AsF64)));
         Both("fromBool", new[] { TypeTag.Bool }, TypeTag.String,
             args => LyrValue.FromString(args[0].AsBool ? "true" : "false"));
         Both("fromChar", new[] { TypeTag.Char }, TypeTag.String,

@@ -30,7 +30,7 @@ public static class AstDumper
                 Line(sb, indent, $"Int {n.Value}{Suffix(n.Suffix)}", n.Span);
                 break;
             case FloatLiteralExpr n:
-                Line(sb, indent, $"Float {n.Value.ToString("R", CultureInfo.InvariantCulture)}{Suffix(n.Suffix)}", n.Span);
+                Line(sb, indent, $"Float {Floats.Render(n.Value)}{Suffix(n.Suffix)}", n.Span);
                 break;
             case StringLiteralExpr n:
                 Line(sb, indent, $"String {Quote(n.Value)}", n.Span);

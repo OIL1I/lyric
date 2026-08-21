@@ -19,6 +19,15 @@ on:
 permissions:
   contents: read
 
+# Successive pushes to one branch collapse: the newer run cancels the older, so a slice pushed
+# twice in a minute is verified once. The EVENT is part of the key on purpose. Unifying push and
+# pull_request would halve the load again — a push to a branch with an open PR does fire both —
+# but the run that loses is reported as a cancelled check ON the pull request, which reads as a
+# failure and blocks a merge. A duplicate run is cheaper than a red cross that means nothing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   build-and-test:
     name: Build and test (${{ matrix.os }})

@@ -3184,8 +3184,14 @@ internal sealed class FunctionLowerer
         if (TypeOfExpr(expr) is not IrArrayType type)
             throw NotSupported("array literal of a non-array type", expr.Span);
 
+        // AS the element type, not merely lowered: the element position is a context like any
+        // other, so a class becomes an interface value here, a 'null' becomes the empty optional,
+        // and a literal adapts to the width the sema settled on. Lowered bare, an element carried
+        // its own type into a slot declared for another one — malformed IR for the interface case,
+        // and no context at all for a 'null' the sema had long accepted.
         var elements = new TempId[expr.Elements.Length];
-        for (var i = 0; i < expr.Elements.Length; i++) elements[i] = LowerExpr(expr.Elements[i]);
+        for (var i = 0; i < expr.Elements.Length; i++)
+            elements[i] = LowerExprAs(expr.Elements[i], type.Element);
 
         var dest = _slots.NewTemp(type);
         _b.Emit(new NewArray(dest, type.Element, elements, expr.Span));
@@ -3658,8 +3664,9 @@ internal sealed class FunctionLowerer
         {
             if (ReceiverType(member.Target) is TypeParamType parameter)
                 foreach (var constraint in parameter.Param.Constraints)
-                    if (_typeTable.ConstraintInterface(constraint) is { } iface
-                        && iface.Members.LookupLocal(member.Member) is FunctionSymbol)
+                    if (_typeTable.ConstraintInterface(constraint) is { } constrained
+                        && _typeTable.InterfaceInChainProviding(constrained, member.Member)
+                            is { } iface)
                     {
                         // The receiver is available as a class reference and 'callvirt' needs an interface
                         // value: lift first (mkiface), then call. The same as at every other place where
