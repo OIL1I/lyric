@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Debugging — Lyric v2.10.1</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.10.1</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/" class="here">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Debugging</h1>
+<nav class="contents">
+<ul>
+<li><a href="#what-the-panels-show">What the panels show</a></li>
+<li><a href="#breakpoints-and-stepping">Breakpoints and stepping</a></li>
+<li><a href="#the-machinery-briefly">The machinery, briefly</a></li>
+<li><a href="#debugging-a-script-inside-a-host">Debugging a script inside a host</a></li>
+</ul>
+</nav>
+<p>The toolchain ships a debugger: <code>lyrdbg</code>, a Debug Adapter Protocol server an editor launches for
+you. In VS Code with the Lyric extension, opening a <code>.lyr</code> file and pressing F5 is the whole
+setup — breakpoints in the gutter, step over/in/out, the call stack with source lines, and the
+variables panel with your locals and globals under their names.</p>
+<p>A <code>launch.json</code> is only needed to pass arguments or to pin a file:</p>
+<pre><code class="language-json">{
+    &quot;type&quot;: &quot;lyric&quot;,
+    &quot;request&quot;: &quot;launch&quot;,
+    &quot;name&quot;: &quot;Debug main.lyr&quot;,
+    &quot;program&quot;: &quot;${file}&quot;,
+    &quot;args&quot;: [],
+    &quot;stopOnEntry&quot;: false
+}
+</code></pre>
+<p><code>program</code> may be a <code>.lyr</code> source or an already-built <code>.lyrbc</code>. A source file is compiled by the
+debugger itself, in the <strong>debug shape</strong>: with the source map, with debug info, and with the
+optimizations off — an inlined function has no frame to show, and a debugger that shows you the
+optimizer's world instead of your program's is lying politely. The compile costs tens of
+milliseconds; what runs is always the file in the editor.</p>
+<h2 id="what-the-panels-show">What the panels show</h2>
+<p>The <strong>call stack</strong> is the real frame stack, innermost first, each frame with its function and
+source line. The <strong>variables panel</strong> shows the locals of the selected frame — parameters first,
+then your bindings — and a Globals scope for module-level <code>let</code>s. Structured values expand:</p>
+<pre><code class="language-lyr">struct Vec2 { x: float, y: float }
+
+enum Shape {
+    Dot,
+    Circle(float),
+}
+
+fn main(): int {
+    let v = Vec2 { x = 1.0, y = 2.0 };   // expands into x and y
+    let s = Shape.Circle(3.5);           // shows 'Shape.Circle', expands into the payload
+    let xs = [10, 20, 30];               // shows 'int[3]', expands by index
+    return 0;
+}
+</code></pre>
+<p>Hovering a name evaluates it, and the debug console answers dotted paths: <code>v.x</code>, <code>player.pos.y</code>.
+That is the whole evaluate story — <strong>names, not expressions</strong>. <code>v.x + 1</code> is not a thing the
+debugger computes: an expression evaluator would be a second compiler running against a paused
+frame, and half of one would answer wrongly.</p>
+<h2 id="breakpoints-and-stepping">Breakpoints and stepping</h2>
+<p>A breakpoint stops <strong>before</strong> the line runs: the line's own bindings are not assigned yet, its
+inputs are. A breakpoint on a blank line or a declaration slides down to the next line that
+carries code and says so in the gutter; below the last executable line it stays unverified.
+Stepping is line-granular — one step is one source line, however many instructions it lowers to.
+Inside a loop, a breakpoint on the body hits every pass.</p>
+<p>What the program prints while running appears in the debug console — stdout and stderr both,
+labeled. A panic ends the session the way it ends a run: the message and backtrace land on
+stderr, the exit code is 101.</p>
+<h2 id="the-machinery-briefly">The machinery, briefly</h2>
+<p>Debugging works because the compiler writes two strippable sections into every module by
+default: the source map (byte offsets to lines, since 1.0.1) and, since 2.3, <strong>debug info</strong> —
+the names of local and global slots, plus field names for every named type. <code>lyrc build --no-debug-info</code> strips the names, exactly like <code>--no-source-map</code> strips the lines; the program
+is byte-for-byte the same otherwise, and a debugger attached to a stripped module falls back to
+slot indices. <code>lyrvm info</code> tells you which sections a module carries.</p>
+<h2 id="debugging-a-script-inside-a-host">Debugging a script inside a host</h2>
+<p>A game has no <code>main</code>. Its entry points are the functions a host calls once per frame, so the shape
+above — launch a program, watch it run — never applies to it. Since 2.7 the controller attaches to
+a single call instead:</p>
+<pre><code class="language-csharp">var controller = DebugController.Create(program);
+controller.SetBreakpoints(&quot;held.lyr&quot;, [129]);
+
+// in the game loop, on the game's own thread:
+program.Invoke(update, controller, LyrValue.FromF64(dt));
+</code></pre>
+<p>The call runs on the caller's thread, and a breakpoint parks that thread until a resume command
+arrives — so the commands have to come from another one, which is what a DAP service attached to
+the running game provides. The same arrangement <code>Start</code> makes, with the roles swapped: there the
+program gets a thread of its own and the caller commands it; here the caller IS the program's
+thread.</p>
+<p>The controller survives across calls: breakpoints, and the stops they produce, hold for every
+invocation it is passed to, and a call into a function nothing breaks on returns without stopping.
+What never arrives is an <code>Exited</code> event — nothing ended, the host simply stopped calling — so the
+event stream stays open, which is the honest answer while a game is still running.</p>
+<p>There is no overload taking a debugger and a budget together: a session parked at a breakpoint
+would spend a budget on standing still.</p>
+<h3 id="letting-an-editor-in">Letting an editor in</h3>
+<p>The commands can come from an editor rather than from your own code: <code>DapServer</code> has a second
+constructor that serves a controller you already hold, and the client sends <code>attach</code> where it
+would otherwise send <code>launch</code>.</p>
+<pre><code class="language-csharp">var controller = DebugController.Create(program);
+
+// a socket your host accepted, or any pair of streams
+var adapter = new DapServer(input, output, controller, scriptDirectory);
+_ = adapter.RunAsync();
+</code></pre>
+<p>Everything after <code>attach</code> is the protocol as it always was — breakpoints, stepping, stack,
+variables, evaluate. What differs is the two ends of a session:</p>
+<ul>
+<li><strong>Nothing is compiled or started.</strong> The program is already running; a breakpoint set here binds
+against it immediately and takes effect at the next instruction that reaches the line.</li>
+<li><strong>Disconnecting gives the program back.</strong> <code>DebugController.Detach()</code> runs: breakpoints go, a
+parked thread is released, and the event stream ends. Without it a game whose editor crashed
+would stand at its breakpoint for good, and the breakpoints nobody reads any more would park it
+again on the next frame. A detached controller is spent — attaching again means a new one.</li>
+</ul>
+<p>One server per controller, which is also the answer to a question a host with several scripts
+would otherwise have to invent: which program a <code>setBreakpoints</code> is about is decided by the
+connection it arrived on.</p>
+<p>The debuggee's output does not travel as output events here. Your host owns the program's writers
+and already has somewhere to put them.</p>
+<p>What this does not do is keep the window drawing. The parked thread is the one the game runs on,
+so the picture stands still until a resume arrives. Drawing through a breakpoint would need an
+interpreter that can return to its host mid-instruction and be resumed later; this one keeps its
+frame stack on the CLR stack, and that is a different machine.</p>
+<p>Three limits, stated rather than discovered:</p>
+<ul>
+<li><strong>The global initializer runs before the debugger attaches.</strong> A breakpoint in a module-level
+<code>let</code>'s initializer expression does not hit; the values are simply there, in the Globals
+scope, when the first line of <code>main</code> does.</li>
+<li><strong>Standard-library lines are not steppable.</strong> Their files are recorded by bare name, not by
+path, so a step into <code>List.push</code> runs through it and stops on your next line.</li>
+<li><strong>Debugging optimized bytecode shows the optimizer's world.</strong> A prebuilt <code>.lyrbc</code> from
+<code>lyrc build</code> has functions inlined away and structs scattered into scalars; frames and
+variables show what actually exists. Debug the source instead — the adapter's own compile is
+the honest shape.</li>
+</ul>
+<nav class="neighbours">
+<a class="prev" href="../../guide/testing/">Testing</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
