@@ -253,8 +253,9 @@ reached through an <code>import</code>, the name is the imported path, and a hea
 an error.</p>
 <p>An attribute before the header describes the module; in a file without a header an attribute at the
 top belongs to the first declaration. The path names a struct type, and an <code>AttrArg</code> value must be
-a literal — an integer, float, string, char or bool, optionally sign-prefixed — which is a semantic
-rule, not a syntactic one.</p>
+a value at compile time — an integer, float, string, char or bool literal, optionally
+sign-prefixed, or (since v2.4) a name denoting a <code>let</code> bound to one — which is a semantic rule,
+not a syntactic one.</p>
 <hr />
 <h2 id="declarations">3. Declarations</h2>
 <h3 id="functions">3.1 Functions</h3>

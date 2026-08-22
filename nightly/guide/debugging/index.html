@@ -50,6 +50,7 @@
 <li><a href="#what-the-panels-show">What the panels show</a></li>
 <li><a href="#breakpoints-and-stepping">Breakpoints and stepping</a></li>
 <li><a href="#the-machinery-briefly">The machinery, briefly</a></li>
+<li><a href="#debugging-a-script-inside-a-host">Debugging a script inside a host</a></li>
 </ul>
 </nav>
 <p>The toolchain ships a debugger: <code>lyrdbg</code>, a Debug Adapter Protocol server an editor launches for
@@ -108,6 +109,31 @@ default: the source map (byte offsets to lines, since 1.0.1) and, since 2.3, <st
 the names of local and global slots, plus field names for every named type. <code>lyrc build --no-debug-info</code> strips the names, exactly like <code>--no-source-map</code> strips the lines; the program
 is byte-for-byte the same otherwise, and a debugger attached to a stripped module falls back to
 slot indices. <code>lyrvm info</code> tells you which sections a module carries.</p>
+<h2 id="debugging-a-script-inside-a-host">Debugging a script inside a host</h2>
+<p>A game has no <code>main</code>. Its entry points are the functions a host calls once per frame, so the shape
+above — launch a program, watch it run — never applies to it. Since 2.7 the controller attaches to
+a single call instead:</p>
+<pre><code class="language-csharp">var controller = DebugController.Create(program);
+controller.SetBreakpoints(&quot;held.lyr&quot;, [129]);
+
+// in the game loop, on the game's own thread:
+program.Invoke(update, controller, LyrValue.FromF64(dt));
+</code></pre>
+<p>The call runs on the caller's thread, and a breakpoint parks that thread until a resume command
+arrives — so the commands have to come from another one, which is what a DAP service attached to
+the running game provides. The same arrangement <code>Start</code> makes, with the roles swapped: there the
+program gets a thread of its own and the caller commands it; here the caller IS the program's
+thread.</p>
+<p>The controller survives across calls: breakpoints, and the stops they produce, hold for every
+invocation it is passed to, and a call into a function nothing breaks on returns without stopping.
+What never arrives is an <code>Exited</code> event — nothing ended, the host simply stopped calling — so the
+event stream stays open, which is the honest answer while a game is still running.</p>
+<p>There is no overload taking a debugger and a budget together: a session parked at a breakpoint
+would spend a budget on standing still.</p>
+<p>What this does not do is keep the window drawing. The parked thread is the one the game runs on,
+so the picture stands still until a resume arrives. Drawing through a breakpoint would need an
+interpreter that can return to its host mid-instruction and be resumed later; this one keeps its
+frame stack on the CLR stack, and that is a different machine.</p>
 <p>Three limits, stated rather than discovered:</p>
 <ul>
 <li><strong>The global initializer runs before the debugger attaches.</strong> A breakpoint in a module-level

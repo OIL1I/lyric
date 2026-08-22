@@ -76,6 +76,36 @@ exactly as it was: the formatter never writes a guess over your text.</p>
 with one element per line — and a broken list gets a trailing comma exactly where the grammar
 allows one. A blank line always follows the module header and separates declarations with
 bodies; imports sit together.</p>
+<p>An operator chain counts as such a list. A condition that runs past the limit breaks before
+every operator of the same precedence, indented one step:</p>
+<pre><code class="language-lyr">fn playable(width: int, height: int, tiles: int): bool {
+    return width &gt; 0
+        &amp;&amp; height &gt; 0
+        &amp;&amp; tiles &gt; 0
+        &amp;&amp; width * height &gt;= tiles
+        &amp;&amp; width * height - tiles &lt; width;
+}
+</code></pre>
+<p>Two things about that shape. The operator leads its line rather than trailing the one before it,
+so the eye finds what joins two operands without reading to the end of a line first. And the
+whole level breaks or none of it does: <code>a &amp;&amp; b &amp;&amp; c</code> is one decision, not two nested ones. A
+tighter level inside stays on its line while the looser one around it breaks — the comparisons
+above are untouched by the <code>&amp;&amp;</code> chain breaking.</p>
+<p>The one exception is an operand that breaks by itself. A <code>match</code> or <code>if</code> expression lays itself
+out over several lines whatever the width says, and a chain containing one stays as it is rather
+than breaking for a reason that has nothing to do with the width:</p>
+<pre><code class="language-lyr">enum Rarity {
+    Common,
+    Rare,
+}
+
+fn price(base: int, rarity: Rarity): int {
+    return base * match (rarity) {
+        Common =&gt; 1,
+        Rare =&gt; 3,
+    };
+}
+</code></pre>
 <p>Two things it decides that are worth knowing in advance. Parentheses that only restate the
 precedence table go away — <code>(a * b) + c</code> becomes <code>a * b + c</code>, and <code>(a &amp;&amp; b) || c</code> becomes
 <code>a &amp;&amp; b || c</code>, because <code>&amp;&amp;</code> binds tighter; parentheses that change the parse always stay. And a

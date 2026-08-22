@@ -48,7 +48,7 @@
 <nav class="contents">
 <ul>
 <li><a href="#an-attribute-is-a-struct">An attribute is a struct</a></li>
-<li><a href="#arguments-are-literals">Arguments are literals</a></li>
+<li><a href="#arguments-are-values-at-compile-time">Arguments are values at compile time</a></li>
 <li><a href="#the-module-header">The module header</a></li>
 <li><a href="#what-ends-up-in-the-module-and-who-reads-it">What ends up in the module, and who reads it</a></li>
 <li><a href="#where-the-vocabulary-comes-from">Where the vocabulary comes from</a></li>
@@ -107,9 +107,9 @@ follow, and it exists for the same reason — nothing becomes an attribute by ac
 
 pub struct Tag :: [OnFunction, OnType] { }
 </code></pre>
-<h2 id="arguments-are-literals">Arguments are literals</h2>
-<p>The block after the name is the struct initializer, restricted to literals — numbers (a sign is
-allowed), strings, chars and bools:</p>
+<h2 id="arguments-are-values-at-compile-time">Arguments are values at compile time</h2>
+<p>The block after the name is the struct initializer, restricted to what can be written into the
+compiled module — numbers (a sign is allowed), strings, chars and bools:</p>
 <pre><code class="language-lyr">import std.core { OnFunction };
 
 pub struct Retry :: [OnFunction] { limit: int = 3, label: string = &quot;&quot; }
@@ -119,10 +119,33 @@ pub fn fetch(): void { }
 </code></pre>
 <p>The restriction is not taste: the values are written into the compiled module, and what stands in
 a file has to be a value at compile time. <code>limit = 1 + 2</code> is rejected, and so is <code>null</code>.</p>
+<p>Since v2.4 an argument may also NAME its value, as long as the name is a <code>let</code> whose initializer
+is itself such a literal:</p>
+<pre><code class="language-lyr">import std.core { OnFunction };
+
+pub struct On :: [OnFunction] { event: string }
+
+pub let CLEARED = &quot;tetris.cleared&quot;;
+
+@On { event = CLEARED }
+pub fn onCleared(): void { }
+
+fn main(): int { return 0; }
+</code></pre>
+<p>That is what lets a program publish a vocabulary instead of repeating raw strings: a module
+exports its event names, whoever handles them imports the module, and a typo is <code>unknown identifier</code> at compile time rather than a handler nobody ever calls. The name may be imported
+selectively or written module-qualified, it may point at another such <code>let</code>, and a <code>static let</code>
+on a type works the same way.</p>
+<p>Two edges worth knowing in advance. A name is resolved, not COMPUTED: <code>let LIMIT = 1 + 2;</code> stays
+rejected, because the value would have to be worked out and there is no constant folding to work
+it out with — the value has to stand in the source. And the named form is slightly stricter than
+the written one: <code>@Retry { limit = 5 }</code> adapts the literal to an <code>int32</code> field, while
+<code>let LIMIT = 5;</code> is already an <code>int</code> and does not adapt, so a narrow field wants a narrow binding
+(<code>let LIMIT: int32 = 5;</code>).</p>
 <p>A field you do not write carries its default — <code>label</code> above is <code>&quot;&quot;</code> without anyone writing it.
-That only works when the default itself is a literal; a field with a computed default and no
-written value is an error at the use site, because there would be nothing to write into the
-module.</p>
+That only works when the default itself is such a value — a literal, or a name for one; a field
+with a computed default and no written value is an error at the use site, because there would be
+nothing to write into the module.</p>
 <p>Two more rules, both diagnosed where they happen: the same attribute may not sit on one target
 twice, and neither a generic attribute struct nor a generic target is allowed — the compiled
 module holds one row, and one row cannot stand for every instance.</p>

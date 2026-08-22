@@ -52,6 +52,7 @@
 <li><a href="#registering-functions">Registering functions</a></li>
 <li><a href="#an-sdk-of-your-own">An SDK of your own</a></li>
 <li><a href="#value-types-across-the-boundary">Value types across the boundary</a></li>
+<li><a href="#bounding-what-a-script-may-spend">Bounding what a script may spend</a></li>
 <li><a href="#registering-types">Registering types</a></li>
 <li><a href="#attributes-what-a-script-says-about-itself">Attributes: what a script says about itself</a></li>
 <li><a href="#errors">Errors</a></li>
@@ -140,9 +141,10 @@ instantiated, not at the call site.</li>
 <p>A module in a native root may hold ordinary Lyric code beside its declarations; <code>anyKey</code> above is
 compiled like any other function.</p>
 <h2 id="value-types-across-the-boundary">Value types across the boundary</h2>
-<p>A native signature may use a <code>struct</code> declared <strong>in the same native module</strong>, with scalar and
-string fields only. The declaration stays fully typed on the script side; on the wire the struct
-is <strong>flattened</strong>:</p>
+<p>A native signature may use a <code>struct</code> an SDK module declares, with scalar and string fields only.
+Since v2.5 it may be a struct of <strong>another</strong> module of the SDK — a vector is declared once and
+named wherever a native takes or returns one, imported selectively or written module-qualified.
+The declaration stays fully typed on the script side; on the wire the struct is <strong>flattened</strong>:</p>
 <pre><code class="language-text">// sdk/engine/geo.lyr
 module engine.geo;
 
@@ -176,7 +178,51 @@ received back in a loop of a hundred thousand iterations, measures 0 bytes per c
 travel as scalars, and the result buffer exists once per program.</p>
 <p>Registration checks the layout at load time: a host that fills three fields against a struct the
 SDK declares with two is rejected with the import's name in the message, before any instruction
-runs.</p>
+runs. That check is what makes the module boundary irrelevant here — what crosses is a layout,
+and the host is held to it whichever file wrote the declaration down.</p>
+<h2 id="bounding-what-a-script-may-spend">Bounding what a script may spend</h2>
+<p>A capability decides what a script may REACH. It says nothing about how long it may run, and
+<code>while (true) { }</code> needs no capability at all. For code you did not write — a mod, something
+downloaded — hand in a budget:</p>
+<pre><code class="language-csharp">var budget = new ExecutionBudget(2_000_000);
+
+try
+{
+    instance.CallVoid(&quot;onUpdate&quot;, budget, 0.016);
+}
+catch (ScriptBudgetException)
+{
+    // still working when the budget ran out
+    mods.Disable(instance);
+}
+</code></pre>
+<p>The budget counts <strong>instructions, not milliseconds</strong>, and that is the point rather than a
+shortcut: the same script under the same limit stops at the same instruction on every machine and
+in every run, so a replay stays a replay. Read <code>budget.Consumed</code> after a call that fits to find
+out what your own workload actually costs — there is no other way to arrive at a number worth
+setting.</p>
+<p>One object, several calls: <code>Reset()</code> refills it, and passing one budget to several calls makes
+them share it, which is how a host bounds a whole frame rather than a single script. A host
+function that calls back into the script draws from whichever budget its own call was given.</p>
+<p><code>Instantiate</code> takes one too, and for foreign code it should:</p>
+<pre><code class="language-csharp">var instance = vm.Instantiate(module, new ExecutionBudget(10_000_000));
+</code></pre>
+<p>The module's constant initializer runs there, before the host has called anything — a
+module-level <code>let x = spin();</code> would otherwise hang the load itself.</p>
+<p>Three things worth knowing before you rely on it:</p>
+<ul>
+<li><strong>The stop is not catchable by the script.</strong> It arrives as a panic, so no <code>catch</code> inside the
+program sees it and no <code>defer</code> runs afterwards. A stop a script could catch is one it could sit
+out.</li>
+<li><strong><code>ScriptBudgetException</code> is a <code>ScriptPanicException</code></strong>, so a host that already catches panics
+keeps catching this — but the separate type is what lets you tell &quot;this script is broken&quot; from
+&quot;this script was still working&quot;.</li>
+<li><strong>A budget bounds bytecode, not host time.</strong> A native of yours that blocks for a second blocks
+for a second; the budget charges it one instruction. What it bounds is the script's own loops
+and calls, which is where a mod runs away.</li>
+</ul>
+<p>An instance whose call was stopped is left mid-computation: its globals hold whatever the
+interrupted code had written. Treat it the way you would treat one that panicked.</p>
 <h2 id="registering-types">Registering types</h2>
 <p><code>RegisterType</code> exposes a C# class to scripts. Scripts receive such an object and pass it on; they
 cannot construct one and cannot read its fields.</p>
@@ -273,7 +319,31 @@ names the way it owns its native names.</p>
 </tbody>
 </table>
 <p>These are declared in <code>Lyric.Embedding</code>; a host does not reference the runtime assembly to catch
-them.</p>
+them — which is also why each of them carries what a host would otherwise have gone looking for.</p>
+<p>An <code>EmbeddingException</code> carries the diagnostics <strong>with their place already resolved</strong>:</p>
+<pre><code class="language-csharp">catch (EmbeddingException failed)
+{
+    foreach (var diagnostic in failed.Diagnostics)
+        Console.Error.WriteLine(diagnostic);   // src/held.lyr:129:15: error[LYR-SEM0002]: …
+}
+</code></pre>
+<p><code>File</code>, <code>Line</code> and <code>Column</code> stand on the diagnostic, and on every note under it. The resolution
+happens at the throw: a compiler span is an index into the compilation's source manager, and that
+manager is gone by the time you catch anything — which is why a code and a message used to be all
+that arrived. A diagnostic about the compilation rather than about a position in it has
+<code>File == null</code> and line 0. A module compiled from memory is named by the name you passed to
+<code>Compile</code>; one compiled from disk carries its path, and an error one import away carries THAT
+file's path rather than the entry's.</p>
+<p>A <code>ScriptPanicException</code> carries the Lyric call stack the same way:</p>
+<pre><code class="language-csharp">catch (ScriptPanicException panic)
+{
+    Console.Error.WriteLine(panic.Message);
+    foreach (var frame in panic.Backtrace)
+        Console.Error.WriteLine($&quot;    in {frame}&quot;);   // update (game:7)
+}
+</code></pre>
+<p>The frames are innermost first and name their line while the module carries a source map, which it
+does unless it was built with <code>--no-source-map</code>.</p>
 <nav class="neighbours">
 <a class="prev" href="../../guide/standard-library/">The standard library</a>
 <a class="next" href="../../guide/attributes/">Attributes</a>

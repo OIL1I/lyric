@@ -49,6 +49,7 @@
 <ul>
 <li><a href="#collections">Collections</a></li>
 <li><a href="#iteration">Iteration</a></li>
+<li><a href="#one-name-per-type-not-overloads">One name per type, not overloads</a></li>
 <li><a href="#capabilities">Capabilities</a></li>
 <li><a href="#strings-have-methods">Strings have methods</a></li>
 <li><a href="#constructors-live-on-the-types">Constructors live on the types</a></li>
@@ -171,6 +172,34 @@ fn main(): int {
 </code></pre>
 <p>An <code>Iterator&lt;T&gt;</code> yields <code>?T</code> and signals the end with <code>null</code>. <code>Iterable&lt;T&gt;</code> hands out a fresh
 iterator per call, so two loops over the same collection do not interfere.</p>
+<h2 id="one-name-per-type-not-overloads">One name per type, not overloads</h2>
+<p>Lyric has no overloading, so the library distinguishes by the type in the NAME. <code>std.math</code> carries
+both families side by side:</p>
+<table>
+<thead>
+<tr>
+<th>float</th>
+<th>int</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>min</code>, <code>max</code></td>
+<td><code>minInt</code>, <code>maxInt</code></td>
+</tr>
+<tr>
+<td><code>clamp</code></td>
+<td><code>clampInt</code></td>
+</tr>
+<tr>
+<td><code>abs</code>, <code>sign</code></td>
+<td><code>absInt</code>, <code>signInt</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>clamp(index, 0, count - 1)</code> on three <code>int</code>s is therefore <code>cannot assign 'int' to 'float'</code>, and
+the answer is <code>clampInt</code> rather than a conversion there and back. The same rule shapes
+<code>fromInt</code>/<code>fromFloat</code> and <code>parseInt</code>/<code>parseFloat</code> in <code>std.string</code>.</p>
 <h2 id="capabilities">Capabilities</h2>
 <p><code>std.io.file</code>, <code>std.io.net</code> and <code>std.os</code> require a capability. A standalone run grants
 everything; a host grants explicitly, and a module that requires more than it is granted is
