@@ -12,7 +12,7 @@ The compiler, the bytecode VM and the standard library work end to end; every co
 [`docs/Grammar.md`](docs/Grammar.md) compiles and runs. From v1.0 the language and the `.lyrbc`
 format carry the promise the versioning describes: a minor may add, a major may break.
 
-Current version: **2.11.0**, bytecode format **3.5**.
+Current version: **2.12.0**, bytecode format **3.6**.
 
 ## Targets
 
@@ -135,7 +135,7 @@ That is what a release ships, one archive per platform.
 
 ```
 $ lyric repl
-Lyric 2.11.0 — :help for commands, :quit to leave
+Lyric 2.12.0 — :help for commands, :quit to leave
 lyr> let x = 5
 lyr> x * 2
 10

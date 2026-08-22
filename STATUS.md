@@ -139,14 +139,44 @@ The delivery list:
       The interpreter table is unaffected (it differences two iteration counts of one program).
       Rebuilding the first table on that method is its own piece of work; the harness says so at
       the top for now
-- [ ] **slice 6** — measure again, CHANGELOG, release, and the gate below
+- [x] **slice 6** — measured against a build with selection switched off and the old `nextInt`,
+      on the same machine in the same session; CHANGELOG; released as **v2.12.0**
 
-**The gate this milestone exists to inform**: whether a register bytecode (format 4.0, v3.0.0) is
-still worth a major afterwards. The honest prognosis is that it is not: Erato's table compares
-`acc = acc + 1.5` as 4 instructions against 1, and slice 4 makes it 1 in the stack machine too.
-The register machine wins against a NAIVE stack bytecode; against a fused one it wins much less,
-and the `StackScheduler` already keeps temps off the slots. The fused opcodes carry register
-operands, so slice 4 is not a detour from that decision — it is the experiment that settles it.
+## The gate: a register bytecode is NOT worth a major
+
+The question this milestone existed to answer, answered with its own numbers.
+
+**What a register machine would still win.** Compare what each shape costs now against what a
+three-address machine would need:
+
+| | 2.11 | **2.12** | a register machine |
+|---|---:|---:|---:|
+| a counting loop | 9 | **3** | 3 |
+| a float accumulator | 13 | **4** | 4 |
+| a masked accumulator | 15 | **9** | ~4 |
+| an array read | 19 | **13** | ~5 |
+
+The first two are already there — the fused forms ARE three-address instructions over slots, so
+for the shapes a loop skeleton is made of, the two machines emit the same number. What remains is
+the NESTED EXPRESSION: `acc = (acc + 1) & 1023` keeps its intermediate on the operand stack, and
+neither fused form can reach a value that is not in a slot.
+
+**And that gap does not need a major either.** It is one rule in `Emit/Fusion.cs`: today a fusion
+requires its temps to be stack-placed and its operands to be named locals. Let selection put an
+intermediate in a slot and chain the fused forms through it, and the nested expression becomes two
+instructions — inside format 3.x, with the opcodes that already exist. Do that and the operand
+stack simply stops being used by hot code, which is the register machine arrived at from the other
+side and without a `.lyrbc` that older runtimes cannot read.
+
+**So: no format 4.0 on performance grounds.** v3.0.0 keeps the language items it was cut for
+(#73, overloading, the removals); the bytecode goes with it only if something else demands it.
+
+**What the milestone also settled**, and this is the part worth keeping: the cost model. An
+instruction costs ~6 ns whatever it does; a crossing into the host costs about the same as one
+instruction; the price per instruction ROSE as the count fell, because what a fusion removes are
+the moves. Any future optimization argument on this VM starts from those three numbers.
+
+## What we are working on
 
 **v1.0.0 through v2.0.0 are released** — annotated tags on the remote, each with a release page.
 M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
@@ -327,8 +357,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4522 tests green **in Debug and Release**, bytecode format **3.5**, **eleven** binaries
-plus `lyrembed.dll`, version **2.11.0**; the specification in `lyriclang/lyric-spec` is
+4553 tests green **in Debug and Release**, bytecode format **3.6**, **eleven** binaries
+plus `lyrembed.dll`, version **2.12.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -447,8 +477,6 @@ have bought an incremental compiler nobody needs.
 project through `CheckProject` measures **median 41.7 ms** against **40.1 ms** for a single file
 of it. The standard library dominates; the project's size is in the noise, and the incremental
 compiler stays unwarranted at project scale too.
-
-## What we are working on
 
 **A18 — an opaque type leaves a name in the module — is RELEASED as v2.11.0** (2026-08-22,
 format 3.5). The register's second finding from the save system, and the one that cost a
