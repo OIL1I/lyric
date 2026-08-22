@@ -34,14 +34,60 @@ public sealed record DapServerOptions
     public string? StdlibRoot { get; init; }
 }
 
-public sealed class DapServer(Stream input, Stream output, DapServerOptions? options = null)
+public sealed class DapServer
 {
-    private readonly LspConnection _connection = new(input, output);
-    private readonly DapServerOptions _options = options ?? new DapServerOptions();
+    private readonly LspConnection _connection;
+    private readonly DapServerOptions _options;
+    private readonly Session? _attached;
     private int _sequence;
 
     private Session? _session;
     private bool _disconnect;
+
+    /// <summary>The launching adapter: it compiles and starts the program itself. What
+    /// <c>lyrdbg</c> is.</summary>
+    public DapServer(Stream input, Stream output, DapServerOptions? options = null)
+    {
+        _connection = new LspConnection(input, output);
+        _options = options ?? new DapServerOptions();
+    }
+
+    /// <summary>
+    /// The ATTACHING adapter: a host that already runs a program serves an editor for it.
+    ///
+    /// <para>A game has no <c>main</c> to launch and, more to the point, the bug worth stopping at
+    /// is rarely the one that happens at startup — it is the one in level three, twenty minutes
+    /// in. A host builds one of these per <see cref="DebugController"/> and gives it a pair of
+    /// streams (a socket it accepted, usually); the editor sends <c>attach</c> instead of
+    /// <c>launch</c>, and everything after that is the same protocol.</para>
+    ///
+    /// <para>One server per controller, which answers the question a multi-session host would
+    /// otherwise have to: WHICH program a <c>setBreakpoints</c> is about is decided by which
+    /// connection it arrived on.</para>
+    ///
+    /// <para>The debuggee's output does not travel as output events here — the host owns the
+    /// program's writers and has its own console. What ends the session never ends the program:
+    /// see <see cref="DebugController.Detach"/>.</para>
+    /// </summary>
+    /// <param name="baseDirectory">What the module's source-map paths are relative to — the
+    /// directory the host compiled the scripts from. Editor paths are mapped through it in both
+    /// directions.</param>
+    public DapServer(Stream input, Stream output, DebugController controller,
+        string baseDirectory, DapServerOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(controller);
+        ArgumentException.ThrowIfNullOrWhiteSpace(baseDirectory);
+
+        _connection = new LspConnection(input, output);
+        _options = options ?? new DapServerOptions();
+        _attached = new Session
+        {
+            Controller = controller,
+            BaseDirectory = Path.GetFullPath(baseDirectory),
+            Arguments = [],
+            Started = true,
+        };
+    }
 
     /// <summary>Everything one launched program carries: the controller, where its sources live,
     /// and the variable references handed out while it stands still.</summary>
@@ -92,8 +138,24 @@ public sealed class DapServer(Stream input, Stream output, DapServerOptions? opt
                         .ConfigureAwait(false);
                     break;
 
+                case "launch" when _attached is not null:
+                    await FailAsync(request,
+                        "this adapter serves a program that is already running — send 'attach'",
+                        cancellationToken).ConfigureAwait(false);
+                    break;
+
                 case "launch":
                     await LaunchAsync(request, cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case "attach" when _attached is null:
+                    await FailAsync(request,
+                        "this adapter starts the program itself — send 'launch'",
+                        cancellationToken).ConfigureAwait(false);
+                    break;
+
+                case "attach":
+                    await AttachAsync(request, cancellationToken).ConfigureAwait(false);
                     break;
 
                 case "setBreakpoints":
@@ -111,6 +173,8 @@ public sealed class DapServer(Stream input, Stream output, DapServerOptions? opt
 
                 case "configurationDone":
                 {
+                    // An attached session is marked started from the outset: the program is
+                    // running, and starting it a second time is not a thing that exists.
                     var session = SessionOrThrow();
                     if (!session.Started)
                     {
@@ -170,6 +234,11 @@ public sealed class DapServer(Stream input, Stream output, DapServerOptions? opt
                     break;
 
                 case "disconnect" or "terminate":
+                    // Attached, the program is not ours to end: a session that stops has to give
+                    // the thread back, or a game parked at a breakpoint stands there for good and
+                    // the breakpoints nobody reads park it again next frame. Launched, the process
+                    // is the session and ending it is the whole answer.
+                    _attached?.Controller.Detach();
                     _disconnect = true;
                     await RespondAsync(request, null, cancellationToken).ConfigureAwait(false);
                     break;
@@ -185,6 +254,26 @@ public sealed class DapServer(Stream input, Stream output, DapServerOptions? opt
         {
             await FailAsync(request, ex.Message, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    // ------------------------------------------------------------------ attach
+
+    /// <summary>
+    /// Binds the session to the controller this server was built with. Nothing is compiled,
+    /// loaded or started — the program is already running, which is the point.
+    ///
+    /// <para>The sequence afterwards is the launch one: the response, then <c>initialized</c>, so
+    /// the client sends its breakpoints and closes with <c>configurationDone</c>. A breakpoint set
+    /// here binds against a program that is running RIGHT NOW and takes effect at the next
+    /// instruction that reaches the line — there is no start to wait for.</para>
+    /// </summary>
+    private async Task AttachAsync(DapMessage request, CancellationToken cancellationToken)
+    {
+        _session = _attached;
+        _ = Task.Run(() => PumpEventsAsync(_attached!.Controller), CancellationToken.None);
+
+        await RespondAsync(request, null, cancellationToken).ConfigureAwait(false);
+        await EmitAsync("initialized", null, cancellationToken).ConfigureAwait(false);
     }
 
     // ------------------------------------------------------------------ launch

@@ -126,7 +126,7 @@ public sealed class DebugController
         try
         {
             var result = _program.RunEntry(arguments, this);
-            _events.Add(new StopEvent(StopReason.Exited,
+            Publish(new StopEvent(StopReason.Exited,
                 ExitCode: (int)(result.AsI64 & 0xFF)));
         }
         catch (LyricPanic panic)
@@ -134,12 +134,12 @@ public sealed class DebugController
             var trace = panic.CallStack.Count > 0
                 ? "\n  at " + string.Join("\n  at ", panic.CallStack)
                 : "";
-            _events.Add(new StopEvent(StopReason.Terminated,
+            Publish(new StopEvent(StopReason.Terminated,
                 Description: $"panic: {panic.Message}{trace}", ExitCode: 101));
         }
         catch (LyricRuntimeException error)
         {
-            _events.Add(new StopEvent(StopReason.Terminated,
+            Publish(new StopEvent(StopReason.Terminated,
                 Description: error.Message, ExitCode: 1));
         }
         finally
@@ -156,6 +156,11 @@ public sealed class DebugController
     /// </summary>
     internal void OnInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame)
     {
+        // Detached: the program belongs to its host again, and nothing here may stop it. First,
+        // because a stop with nobody left to resume it is a hang, and the hook is still installed
+        // for the rest of a call that was already running when the session ended.
+        if (_detached) return;
+
         if (_pauseRequested)
         {
             StopAt(frames, frame, StopReason.Pause);
@@ -241,7 +246,7 @@ public sealed class DebugController
         var effective = reason == StopReason.Step && !_everStopped ? StopReason.Entry : reason;
         _everStopped = true;
 
-        _events.Add(new StopEvent(effective));
+        Publish(new StopEvent(effective));
         _resume.Wait();
     }
 
@@ -250,6 +255,61 @@ public sealed class DebugController
     /// <summary>Requests a pause; the program stops before its next instruction. A program deep
     /// inside a native call stops when it returns.</summary>
     public void Pause() => _pauseRequested = true;
+
+    /// <summary>
+    /// Gives the program back to its host: every breakpoint goes, a parked thread is released,
+    /// and the event stream ends.
+    ///
+    /// <para>What a session needs when it ends WITHOUT the program ending — the shape an attached
+    /// debugger has. An editor that closes, crashes or simply disconnects leaves a game whose
+    /// thread may be standing at a breakpoint; without this it stands there for good, and the
+    /// breakpoints nobody listens to any more park it again on the next frame.</para>
+    ///
+    /// <para>A controller is spent afterwards: it hooks nothing and reports nothing. Attaching
+    /// again means a new one, which is also the honest model — the old session is over.</para>
+    /// </summary>
+    public void Detach()
+    {
+        if (_detached) return;
+        _detached = true;
+
+        lock (_breakpointFiles)
+        {
+            _breakpointFiles.Clear();
+            _breakpoints = null;
+        }
+
+        _pauseRequested = false;
+
+        // Order matters: the mode leaves Paused before the thread wakes, or the wakened thread
+        // reads Paused and parks itself again on the next instruction.
+        var wasPaused = _mode == Mode.Paused;
+        _mode = Mode.Run;
+        _pausedFrame = null;
+        _pausedStack = null;
+        _handles.Clear();
+        if (wasPaused) _resume.Release();
+
+        _events.CompleteAdding();
+    }
+
+    private volatile bool _detached;
+
+    /// <summary>Publishes a stop event unless the session is over. After a detach the collection
+    /// is complete, and an <c>Add</c> would throw ON THE DEBUGGEE'S THREAD — turning the end of a
+    /// debug session into the end of the program it was debugging.</summary>
+    private void Publish(StopEvent stop)
+    {
+        if (_detached) return;
+        try
+        {
+            _events.Add(stop);
+        }
+        catch (InvalidOperationException)
+        {
+            // Detached between the check and the add. The session is over either way.
+        }
+    }
 
     public void Continue() => Resume(Mode.Run);
     public void StepIn() => Resume(Mode.StepIn);

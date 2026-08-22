@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4489 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.8.0**; the specification in `lyriclang/lyric-spec` is
+4495 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.9.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -270,6 +270,12 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **A15 — the debug adapter attaches** (2026-08-22, `feature/a15-dap-attach`, v2.9.0). The
+  estimate that mattered was wrong in the useful direction: the protocol was the easy half, and
+  the design work was the end of a session rather than its start. `Detach` also closed a hole the
+  launched path had all along — a stop event published after the stream completed would have
+  thrown on the debuggee's own thread.
+
 - [x] **A16 — globals initialize in dependency order** (2026-08-22, `feature/a16-init-order`,
   v2.8.0). The first Erato finding that was a defect rather than a missing shape, and the first
   where two of our own tools disagreed about the same files. The lesson is in the comment it
@@ -286,12 +292,6 @@ out of them and hands its own functions, types and value structs in.
   `feature/a14-debug-invoke`, v2.7.0). One public overload, five tests, one guide section. The
   fourth in the A9/A12/A13 row: the toolchain had the whole answer and offered it at one shape
   only. Worth the note that the shape it was missing is the one every embedded script has.
-
-- [x] **A13 — a compilation error carries its place** (2026-08-21,
-  `feature/a13-diagnostic-positions`, v2.6.0). The pattern this makes three of, after A9 and
-  A12: the toolchain knew the answer and the boundary dropped it. Worth watching as a class —
-  every type the embedding API hands out wants asking whether it is still meaningful once the
-  compilation that made it is gone.
 
 ## Measurements
 
@@ -378,6 +378,21 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**A15 — a debug adapter that attaches — is RELEASED as v2.9.0** (2026-08-22). The register
+called it a convenience rather than a blockade, and it was right about the protocol half: the
+messages, the session, the `StopReason` translation and the variable references all stood. What
+it was NOT right about is where the work sat — the interesting part is not `attach`, it is what
+happens when a session ENDS without the program ending. `DebugController.Detach()` is the new
+piece: breakpoints go, a parked thread is released, the event stream closes. Without it an
+editor that crashes leaves a game standing at its breakpoint for good.
+
+Two questions the register listed as "only an embedder can answer" answered themselves once the
+shape was right: WHICH session knows a file is decided by the connection it arrived on (one
+server per controller), and `stackTrace` on a running program already failed honestly, because
+the controller's inspection surface has always thrown when not paused. The third — a scene
+change replacing the controller under a still-connected editor — stays the embedder's, as the
+register says.
 
 **A16 — the initialization order follows the imports — is RELEASED as v2.8.0** (2026-08-22).
 Erato filed it after E15, and it is the first of their findings that was a real defect rather

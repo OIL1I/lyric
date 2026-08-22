@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Lyric.Dap;
 using Lyric.Lsp.Protocol;
+using Lyric.Vm.Debugging;
 
 namespace Lyric.Tests.Dap;
 
@@ -94,6 +95,16 @@ internal sealed class DapTestClient : IAsyncDisposable
         _client = new LspConnection(_fromServer, _toServer);
         var server = new DapServer(_toServer, _fromServer,
             new DapServerOptions { StdlibRoot = stdlibRoot });
+        _server = Task.Run(() => server.RunAsync());
+        _reader = Task.Run(ReadAllAsync);
+    }
+
+    /// <summary>The attaching shape: the host built the controller, the server only serves it.
+    /// </summary>
+    public DapTestClient(DebugController controller, string baseDirectory)
+    {
+        _client = new LspConnection(_fromServer, _toServer);
+        var server = new DapServer(_toServer, _fromServer, controller, baseDirectory);
         _server = Task.Run(() => server.RunAsync());
         _reader = Task.Run(ReadAllAsync);
     }
