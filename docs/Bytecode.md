@@ -4,7 +4,7 @@
 > marker against the canonical body. Edit it there, mirror it here.
 
 <!-- sync:body -->
-# Lyric `.lyrbc` Bytecode Format 3.4
+# Lyric `.lyrbc` Bytecode Format 3.5
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.
@@ -12,10 +12,17 @@ or a second runtime can be written from this document alone.
 Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.
 
-Format version **3.4** covers: scalars, locals, module-internal and native calls, structured
+Format version **3.5** covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
 value semantics, exceptions, global constants, closures, host objects, source positions,
-attributes, and debug information.
+attributes, debug information, and the names of opaque field types.
+
+**3.5 against 3.4**: one new section — OpaqueFields (id 14), the name of the `opaque type` a
+field was declared with. It is skippable, and in the plainest way: no other section refers to it,
+it says nothing about how the program runs, and a reader that ignores it is a reader that knows
+what it knew before. A 3.4 reader therefore loads a 3.5 module unchanged, and a 3.5 reader loads
+a 3.4 module — the only difference is whether a host can tell a handle from the number it is
+made of.
 
 **3.4 against 3.3**: one new `ConstValue` form — an attribute value of enum type, written as the
 variant's tag. It is the first change to this format that a 3.3 reader cannot ignore: the
@@ -103,6 +110,7 @@ minor version may only add skippable sections.
 | 11 | Attributes | no | attribute rows: which struct describes which target, with literal values |
 | 12 | Names | no | field names: required for types an Attributes row references, permitted for any |
 | 13 | DebugInfo | no | strippable: local and global slot names |
+| 14 | OpaqueFields | no | the `opaque type` a field was declared with |
 
 A missing section counts as empty.
 
@@ -480,6 +488,45 @@ the same way a panic without a SourceMap names a function instead of a line.
 A reader must reject: a `functionCount` differing from the Functions section, a `nameCount` that
 is neither `0` nor that function's slot count, a `globalNameCount` that is neither `0` nor the
 Globals count, and a string index outside the pool.
+
+### OpaqueFields (Id 14)
+
+New in 3.5. The name of the `opaque type` a field was declared with, for types that have at least
+one such field.
+
+An opaque alias is a distinct type in the language and its underlying type everywhere below the
+checker: `opaque type Entity = int` is an `i64` in every layout, signature and instruction, which
+is what lets a handle cross a native boundary for nothing. The consequence is that a consumer
+reading the shape of a type — a host deciding what it may write to disk, a debugger labelling a
+value — sees a number where the source wrote a handle, and the two demand different treatment.
+This section is the name it lost, and nothing more: it does not change what the field IS.
+
+```
+count            uleb128
+entries          count × {
+                   type         uleb128   index into Types
+                   nameCount    uleb128   must equal that type's fieldCount
+                   names        nameCount × string
+                 }
+```
+
+The names stand in field order, as in Names (§Names): `names[i]` belongs to the field
+`fieldTypes[i]` describes. A field whose type is not opaque carries the **empty string** — the
+position is the index, so every field of an entry's type answers or none does. A type no field of
+which is opaque has no entry at all.
+
+The name is the alias's own, unqualified, as every name in the tables is. It names the LEAF
+through arrays and optionals: a field declared `Entity[]` carries `Entity`, and its entry in the
+Types section still says the field is an array. A transparent alias resolves through to what it
+names, because a transparent alias is a name for a type rather than a type of its own — only an
+opaque one is distinct.
+
+**Skippable and metadata-only.** No other section refers to it, nothing in it affects execution,
+and a producer may leave it out entirely. A producer that writes it SHOULD write it for the types
+Names covers, which is where a consumer asks.
+
+A reader must reject: a type index outside the table, the same type twice, and a name count
+differing from that type's field count.
 
 ---
 

@@ -57,6 +57,7 @@ public static class BytecodeReader
         BytecodeSourceMap? sourceMap = null;
         IReadOnlyList<BytecodeAttribute> attributes = Array.Empty<BytecodeAttribute>();
         IReadOnlyList<BytecodeFieldNames> fieldNames = Array.Empty<BytecodeFieldNames>();
+        IReadOnlyList<BytecodeOpaqueFields> opaqueFields = Array.Empty<BytecodeOpaqueFields>();
         IReadOnlyList<IReadOnlyList<string>>? slotNames = null;
         IReadOnlyList<string> globalNames = Array.Empty<string>();
 
@@ -103,6 +104,7 @@ public static class BytecodeReader
                     attributes = ReadAttributes(payload, strings, types, functions.Count);
                     break;
                 case SectionId.Names: fieldNames = ReadFieldNames(payload, types); break;
+                case SectionId.OpaqueFields: opaqueFields = ReadOpaqueFields(payload, types); break;
                 // Reads after Functions and Globals, which the ids guarantee: each name list is
                 // checked against the slot table it describes.
                 case SectionId.DebugInfo:
@@ -140,6 +142,7 @@ public static class BytecodeReader
             SourceMap = sourceMap,
             Attributes = attributes,
             FieldNames = fieldNames,
+            OpaqueFields = opaqueFields,
             SlotNames = slotNames,
             GlobalNames = globalNames,
         };
@@ -329,6 +332,44 @@ public static class BytecodeReader
             var names = new List<string>(nameCount);
             for (var n = 0; n < nameCount; n++) names.Add(payload.String());
             entries.Add(new BytecodeFieldNames { Type = type, Names = names });
+        }
+        return entries;
+    }
+
+    /// <summary>
+    /// Section 14: the opaque type name per field, in field order. Shaped exactly like the Names
+    /// section and checked exactly like it — a partial list would name the wrong fields.
+    ///
+    /// <para>An empty string is the normal case and means "this field's type is not opaque". It
+    /// costs a byte per field of a type that has at least one, which is the price of keeping the
+    /// position the index.</para>
+    /// </summary>
+    private static IReadOnlyList<BytecodeOpaqueFields> ReadOpaqueFields(ByteReader payload,
+        IReadOnlyList<BytecodeTypeDef> types)
+    {
+        var count = payload.ULebAsCount();
+        var entries = new List<BytecodeOpaqueFields>(Math.Min(count, 1024));
+        var seen = new HashSet<int>();
+
+        for (var i = 0; i < count; i++)
+        {
+            var type = payload.ULebAsCount();
+            if (type >= types.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                    $"opaque names entry {i}: type {type} is out of range");
+            if (!seen.Add(type))
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"opaque names entry {i}: type {type} appears twice");
+
+            var nameCount = payload.ULebAsCount();
+            if (nameCount != types[type].FieldTypes.Count)
+                throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                    $"opaque names entry {i}: {nameCount} name(s) for "
+                    + $"{types[type].FieldTypes.Count} field(s) of '{types[type].Name}'");
+
+            var names = new List<string>(nameCount);
+            for (var n = 0; n < nameCount; n++) names.Add(payload.String());
+            entries.Add(new BytecodeOpaqueFields { Type = type, Names = names });
         }
         return entries;
     }

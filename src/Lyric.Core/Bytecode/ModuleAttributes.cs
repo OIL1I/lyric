@@ -66,25 +66,44 @@ public sealed class ModuleAttributes
                           && use.Attribute == attribute);
 
     /// <summary>
-    /// The shape of a type as (name, type) pairs — the answer to what <c>@Component struct
-    /// Health</c> declares.
+    /// The shape of a type — the answer to what <c>@Component struct Health</c> declares.
     ///
     /// <para>Names exist only for types an attribute row references (section 12); for any other
     /// index this is <c>null</c>, not an empty list, so "no names were shipped" stays
     /// distinguishable from "the type has no fields".</para>
     /// </summary>
-    public IReadOnlyList<(string Name, BytecodeType Type)>? FieldsOf(int typeIndex)
+    public IReadOnlyList<AttributeField>? FieldsOf(int typeIndex)
     {
         var entry = _module.FieldNames.FirstOrDefault(n => n.Type == typeIndex);
         if (entry is null)
             return _module.Types[typeIndex].FieldTypes.Count == 0
                 ? []
                 : null;
+
+        var opaque = _module.OpaqueFields.FirstOrDefault(o => o.Type == typeIndex)?.Names;
         return entry.Names
-            .Select((name, i) => (name, _module.Types[typeIndex].FieldTypes[i]))
+            .Select((name, i) => new AttributeField(name, _module.Types[typeIndex].FieldTypes[i],
+                opaque is not null && opaque[i].Length > 0 ? opaque[i] : null))
             .ToArray();
     }
 }
+
+/// <summary>
+/// One field of an attributed type: what it is called, what it is, and — since 3.5 — the name of
+/// the <c>opaque type</c> it was declared with.
+/// </summary>
+/// <param name="OpaqueName">The declared opaque type, or <c>null</c> for every ordinary field and
+/// for every module written before 3.5.
+///
+/// <para>It answers a question <see cref="Type"/> cannot: an <c>opaque type Entity = int</c> is an
+/// <c>i64</c> below the sema, so a host that writes a save file sees a handle and a level number
+/// as the same field. A handle must not be written — the slot it names belongs to someone else
+/// after a restart — and this is what lets the host refuse it by name.</para>
+///
+/// <para>The LEAF name: a field of type <c>Entity[]</c> answers <c>Entity</c>, and
+/// <see cref="Type"/> still says it is an array. A transparent alias resolves through to whatever
+/// it names, because that one is not a type of its own.</para></param>
+public sealed record AttributeField(string Name, BytecodeType Type, string? OpaqueName);
 
 /// <summary>
 /// One attribute on one target, with the values joined to their field names.

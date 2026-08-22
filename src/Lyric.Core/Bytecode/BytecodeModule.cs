@@ -50,6 +50,10 @@ public sealed class BytecodeModule
     /// bytecode.</summary>
     public IReadOnlyList<BytecodeFieldNames> FieldNames { get; init; } = [];
 
+    /// <summary>The opaque type names of section 14 (format 3.5), empty in every module written
+    /// before it and in every module whose named types have no opaque field.</summary>
+    public IReadOnlyList<BytecodeOpaqueFields> OpaqueFields { get; init; } = [];
+
     /// <summary>Local slot names from the DebugInfo section (id 13, format 3.3), one list per
     /// function, or <c>null</c> when the module carries none. A per-function list is either empty
     /// (the function says nothing) or exactly as long as its slot table; a compiler-created slot
@@ -120,6 +124,20 @@ public sealed record BytecodeConstValue(TypeTag Tag)
 /// <summary>The field names of one type, in field order. Present only for types an attribute row
 /// references.</summary>
 public sealed class BytecodeFieldNames
+{
+    /// <summary>Index into the Types section.</summary>
+    public required int Type { get; init; }
+
+    public required IReadOnlyList<string> Names { get; init; }
+}
+
+/// <summary>
+/// The names of the opaque types a type's fields were DECLARED with, in field order (section 14).
+///
+/// <para>Empty where a field's type is not opaque, and the list is either absent or exactly as
+/// long as the field list — the position IS the field index, as in the Names section.</para>
+/// </summary>
+public sealed class BytecodeOpaqueFields
 {
     /// <summary>Index into the Types section.</summary>
     public required int Type { get; init; }

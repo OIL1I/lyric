@@ -12,7 +12,7 @@ public static class Format
     /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
     /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
-    public const ushort VersionMinor = 4;
+    public const ushort VersionMinor = 5;
 }
 
 /// <summary>
@@ -99,6 +99,29 @@ public enum SectionId : byte
     /// it is valid — a debugger then shows slot indices.</para>
     /// </summary>
     DebugInfo = 13,
+
+    /// <summary>
+    /// The declared name of a field whose type is an <c>opaque type</c>, new in 3.5 — one entry
+    /// per type, one name per field, empty where the field's type is not opaque.
+    ///
+    /// <para>An opaque alias is a type of its own for the compiler and its underlying type for
+    /// the runtime: <c>opaque type Entity = int</c> is an <c>i64</c> everywhere below the sema,
+    /// which is what lets a handle cross a native boundary for nothing. A host reading the shape
+    /// of an attributed class therefore could not tell a handle from a number, and a handle is
+    /// exactly what must not be written to a save file — the slot it names belongs to someone
+    /// else after a restart.</para>
+    ///
+    /// <para>Its own section rather than a name in the Types table, which has no row for an alias:
+    /// a reference from a field type would need a new type tag, and a tag is not skippable — an
+    /// older runtime reading a signature has to know every one of them. A section it does not know
+    /// it skips, so this is a name for those who want it and nothing at all for those who do
+    /// not.</para>
+    ///
+    /// <para>The name is the alias's own, unqualified, as everywhere else in the tables. It is
+    /// the LEAF through arrays and optionals — <c>Entity[]</c> writes <c>Entity</c>, and the field
+    /// type still says it is an array.</para>
+    /// </summary>
+    OpaqueFields = 14,
 }
 
 /// <summary>

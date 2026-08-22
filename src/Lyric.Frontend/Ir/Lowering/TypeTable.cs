@@ -467,6 +467,8 @@ internal sealed class TypeTable
             var fields = members.OfType<FieldDecl>().ToArray();
             var names = new string[fields.Length];
             var types = new IrType[fields.Length];
+            var opaque = new string[fields.Length];
+            var anyOpaque = false;
 
             for (var i = 0; i < fields.Length; i++)
             {
@@ -475,11 +477,19 @@ internal sealed class TypeTable
                 // Nothing of it stands in the bytecode.
                 names[i] = fields[i].Name;
                 types[i] = Lower(fields[i].Type, fields[i].Span);
+
+                // Read AFTER the type lowered, which means the name is resolvable and this cannot
+                // be the first to report a broken one.
+                opaque[i] = OpaqueNameOf(fields[i].Type) ?? "";
+                anyOpaque |= opaque[i].Length > 0;
             }
 
             _defs[id.Value] = new IrTypeDef(name, types, names)
             {
                 IsStruct = symbol.Kind == TypeSymbolKind.Struct,
+                // Empty unless something is actually opaque: a list of empty strings per type would
+                // be a section that says nothing in most modules.
+                FieldOpaqueNames = anyOpaque ? opaque : [],
             };
             return id;
         }
@@ -631,6 +641,42 @@ internal sealed class TypeTable
             $"member '{name}' of '{symbol.Name}' is not a field; only field access is supported " +
             "by this compiler version yet",
             span);
+    }
+
+    /// <summary>
+    /// The <c>opaque type</c> a written field type names, or <c>null</c> when it names none.
+    ///
+    /// <para>Over the SYNTAX rather than over the lowered type, and that is not laziness: the
+    /// lowering erases an opaque alias to its underlying type by design, and so does the sema's
+    /// resolution on this path. What is written is the last place the name still exists.</para>
+    ///
+    /// <para>Through <c>[]</c> and <c>?</c> to the leaf, because a list of handles is as
+    /// unsaveable as a handle and the field type already says which of the two it is. Through a
+    /// TRANSPARENT alias as well — <c>type Slot = Entity</c> names the opaque one and the answer
+    /// is <c>Entity</c>, the type that is actually distinct.</para>
+    ///
+    /// <para>A field of a type PARAMETER instantiated with an opaque type is NOT covered: the
+    /// substitution keys instances by the erased type, so <c>Box&lt;Entity&gt;</c> and
+    /// <c>Box&lt;int&gt;</c> are one entry and one answer for both. Naming one of them would be
+    /// wrong for the other.</para>
+    /// </summary>
+    private string? OpaqueNameOf(TypeNode node)
+    {
+        if (node is ArrayType array) return OpaqueNameOf(array.Element);
+        if (node is NullableType option) return OpaqueNameOf(option.Inner);
+        if (node is not NamedType { TypeArguments.Length: 0 } named) return null;
+
+        // A builtin name and a substituted type parameter are both decided before any binding is
+        // consulted, exactly as in Lower, and neither can be opaque.
+        if (_substitutions.Count > 0 && _substitutions.Peek().ContainsKey(named.Path[^1])) return null;
+        if (TypeFacts.FromBuiltinName(named.Path[^1]) is not null) return null;
+
+        var bound = _binding.Resolve(named);
+        if (bound is ImportBindingSymbol import) bound = import.Target;
+
+        return bound is TypeSymbol { Kind: TypeSymbolKind.Alias, Declaration: TypeAliasDecl alias }
+            ? alias.IsOpaque ? alias.Name : OpaqueNameOf(alias.Aliased)
+            : null;
     }
 
     public IrType Lower(LyrType type, Core.Span span) => type switch
