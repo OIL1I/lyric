@@ -57,9 +57,30 @@ The delivery list:
       direction. What it establishes is worth more than the 12 %: the remaining ~6 ns is **the
       dispatch itself**, not the memory around it — so nothing short of executing fewer
       instructions will move this number, which is exactly what slices 3 and 4 do
-- [ ] **slice 3** — fusion 1, the compare-branch (format 3.6): `ldloc a; const k; lt; condbr`
-      becomes one instruction. The JVM's `if_icmp*`, and the peephole has it easy — the
-      `StackScheduler` already knows a comparison has exactly one consumer
+- [x] **slice 3** — fusion 1, the compare-branch (format 3.6). `brcmp` and `brcmpk` are `condbr`
+      with the comparison folded in: they read slots, branch to blocks, and touch the operand
+      stack not at all. Selection lives in `Emit/Fusion.cs`, NOT in the IR — a fused instruction
+      is a property of the ENCODING, and teaching the verifier, the printer, the inliner and
+      scalar replacement a backend shape to save the emitter a step would be the wrong trade
+      twice over. **Counted exactly, by the bench reading an `ExecutionBudget`**:
+
+      | case | before | after |
+      |---|---:|---:|
+      | loopOnly | 9 | **6** |
+      | intAdd, floatAdd | 13 | **10** |
+      | maskOnly | 15 | **12** |
+      | arrayRead | 19 | **16** |
+
+      **Timings deliberately NOT recorded**: three consecutive runs put `floatAdd` at 74.9, 114.6
+      and 140.8 ns per iteration, so what answered was the machine and not the change. The counts
+      are deterministic and stand; the seconds wait for a quiet box. Spec: `lyric-spec#8`
+
+- [x] **slice 3b** — the bench's own correction, found while using it: it first differenced two
+      SEPARATELY minimized runs, which amplifies noise rather than removing it. It now takes the
+      minimum of each run interleaved, over 15 trials. A minimum is the estimator for one-sided
+      noise and the difference of two of them estimates the difference; the intermediate version,
+      a median of paired differences, is worse and the comment says why — it gives every disturbed
+      subtrahend a vote
 - [ ] **slice 4** — fusion 2, the accumulator forms: `ldloc s; const k; add T; stloc s` and the
       local/local shape become one each. The JVM's `iinc`, typed. The 13-instruction loop falls
       to 4, the 9 to 3
