@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.core — Lyric v2.11.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.11.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.5</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/" class="here">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.core</h1>
+<nav class="contents">
+<ul>
+<li><a href="#function-panic">panic</a></li>
+<li><a href="#function-coroutineended">coroutineEnded</a></li>
+<li><a href="#function-assert">assert</a></li>
+<li><a href="#function-todo">todo</a></li>
+<li><a href="#function-unreachable">unreachable</a></li>
+<li><a href="#class-exception">Exception</a></li>
+<li><a href="#interface-display">Display</a></li>
+<li><a href="#interface-equatable">Equatable</a></li>
+<li><a href="#interface-hashable">Hashable</a></li>
+<li><a href="#interface-ordered">Ordered</a></li>
+<li><a href="#interface-add">Add</a></li>
+<li><a href="#interface-sub">Sub</a></li>
+<li><a href="#interface-mul">Mul</a></li>
+<li><a href="#interface-div">Div</a></li>
+<li><a href="#interface-into">Into</a></li>
+<li><a href="#interface-onmodule">OnModule</a></li>
+<li><a href="#interface-ontype">OnType</a></li>
+<li><a href="#interface-onfunction">OnFunction</a></li>
+<li><a href="#struct-deprecated">Deprecated</a></li>
+</ul>
+</nav>
+<p>What the language itself needs: aborting with a reason, the ready-made <code>Throwable</code>, and the
+interfaces the built-in types satisfy.</p>
+<p><code>panic</code> and <code>coroutineEnded</code> are bound by the compiler, so nothing has to import this module to
+reach them.</p>
+<section class="item" id="function-panic">
+<h2><a href="#function-panic">panic</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn panic(message: string): void</code></pre>
+<p>Ends the program with <code>message</code> and a backtrace.</p>
+<p>Not catchable. Its return type is <code>never</code>, so the flow analysis treats everything after a call as
+unreachable — which is why <code>expect</code> can return a non-optional after panicking.</p>
+<p class="source">stdlib/std/core.lyr:23</p>
+</section>
+<section class="item" id="function-coroutineended">
+<h2><a href="#function-coroutineended">coroutineEnded</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn coroutineEnded(): void</code></pre>
+<p>Panics because a coroutine was resumed after its body had run to the end.</p>
+<p>Called from a dispatcher nobody wrote, which is why nobody could have written the import either.</p>
+<p class="source">stdlib/std/core.lyr:30</p>
+</section>
+<section class="item" id="function-assert">
+<h2><a href="#function-assert">assert</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn assert(condition: bool, message: string): void</code></pre>
+<p>Panics with <code>message</code> when <code>condition</code> is false, for invariants the compiler does not check.</p>
+<p><code>void</code> rather than <code>never</code>: it does not replace a <code>return</code>, and a function ending in <code>assert</code> is
+still <code>LYR-SEM0017</code>.</p>
+<p class="source">stdlib/std/core.lyr:44</p>
+</section>
+<section class="item" id="function-todo">
+<h2><a href="#function-todo">todo</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn todo(message: string): void</code></pre>
+<p>Marks a place that is still missing. Unlike a comment it reports itself when reached, with
+<code>not implemented:</code> before the message.</p>
+<p class="source">stdlib/std/core.lyr:52</p>
+</section>
+<section class="item" id="function-unreachable">
+<h2><a href="#function-unreachable">unreachable</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn unreachable(message: string): void</code></pre>
+<p>Marks a branch that must never be taken, with <code>unreachable:</code> before the message.</p>
+<p><code>todo</code> means <em>still to come</em>; this means <em>must never happen</em>. Reaching it says that an assumption
+stated somewhere else is wrong.</p>
+<p class="source">stdlib/std/core.lyr:60</p>
+</section>
+<section class="item" id="class-exception">
+<h2><a href="#class-exception">Exception</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class Exception :: [Throwable]</code></pre>
+<p>The ready-made <code>Throwable</code> for throwing a message: <code>throw Exception { text = &quot;…&quot; };</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">text: string</code></pre>
+<p>What <code>message()</code> returns.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub fn message(): string</code></pre>
+<p>The text this exception was built with.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:72</p>
+</section>
+<section class="item" id="interface-display">
+<h2><a href="#interface-display">Display</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Display</code></pre>
+<p>What can be rendered as text — the anchor for <code>print</code>, <code>println</code> and <code>std.fmt</code>.</p>
+<p>Every built-in scalar satisfies it through an <code>extend</code>, and a user type through <code>::</code>. A value
+held THROUGH the interface (<code>let d: Display = 5;</code>) stays rejected: an interface value is a fat
+pointer and needs a reference, which a scalar has none of.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn show(): string</code></pre>
+<p>This value as text.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:95</p>
+</section>
+<section class="item" id="interface-equatable">
+<h2><a href="#interface-equatable">Equatable</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Equatable&lt;T&gt;</code></pre>
+<p>Values of this type can be compared for equality.</p>
+<p>Generic rather than <code>fn equals(other: Equatable)</code>, so both sides carry the concrete type: an
+interface as a parameter type would need an interface VALUE, and a scalar cannot be one — there
+would be no <code>Map&lt;int, V&gt;</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn equals(other: T): bool</code></pre>
+<p>Whether the two are equal.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:149</p>
+</section>
+<section class="item" id="interface-hashable">
+<h2><a href="#interface-hashable">Hashable</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Hashable&lt;T&gt; :: [Equatable&lt;T&gt;]</code></pre>
+<p>Values of this type can be hashed, which is what a <code>Map</code> key and a <code>Set</code> element need.</p>
+<p><strong>Equal values must produce equal hashes.</strong> No compiler checks it and every hash table depends on
+it. The reverse does not hold — two different values may collide.</p>
+<p><code>Hashable&lt;T&gt;</code> implies <code>Equatable&lt;T&gt;</code> (its parent since 2.0): a hash table cannot exist
+without equality. A key constraint is <code>K :: [Hashable&lt;K&gt;]</code> alone.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn hash(): int</code></pre>
+<p>The hash of this value.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:161</p>
+</section>
+<section class="item" id="interface-ordered">
+<h2><a href="#interface-ordered">Ordered</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Ordered&lt;T&gt;</code></pre>
+<p>Values of this type have an order — what sorting and range queries need.</p>
+<p>One comparison instead of four methods: <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> and <code>&gt;=</code> all derive from it.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn compare(other: T): int</code></pre>
+<p>Negative when this comes first, zero when the two are equal, positive when <code>other</code> comes
+first — as <code>strcmp</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:169</p>
+</section>
+<section class="item" id="interface-add">
+<h2><a href="#interface-add">Add</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Add&lt;T&gt;</code></pre>
+<p>Values of this type can be added: <code>a + b</code> is <code>a.add(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn add(other: T): T</code></pre>
+<p>The sum of this value and <code>other</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:347</p>
+</section>
+<section class="item" id="interface-sub">
+<h2><a href="#interface-sub">Sub</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Sub&lt;T&gt;</code></pre>
+<p>Values of this type can be subtracted: <code>a - b</code> is <code>a.sub(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn sub(other: T): T</code></pre>
+<p>This value minus <code>other</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:353</p>
+</section>
+<section class="item" id="interface-mul">
+<h2><a href="#interface-mul">Mul</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Mul&lt;T&gt;</code></pre>
+<p>Values of this type can be multiplied: <code>a * b</code> is <code>a.mul(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn mul(other: T): T</code></pre>
+<p>The product of this value and <code>other</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:359</p>
+</section>
+<section class="item" id="interface-div">
+<h2><a href="#interface-div">Div</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Div&lt;T&gt;</code></pre>
+<p>Values of this type can be divided: <code>a / b</code> is <code>a.div(b)</code>.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn div(other: T): T</code></pre>
+<p>This value divided by <code>other</code>. What a division by zero does is the type's own business;
+the built-in numerics panic.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:365</p>
+</section>
+<section class="item" id="interface-into">
+<h2><a href="#interface-into">Into</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface Into&lt;T&gt;</code></pre>
+<p>A value of this type converts to <code>T</code>: <code>x as T</code> is <code>x.into()</code>.</p>
+<p>ONE target per type: the method is named <code>into</code>, and a type has one member of a name — a second
+conversion is an ordinary named method. Total conversions only; a conversion that can fail
+belongs in a named function returning an optional.</p>
+<p>The numeric casts keep their opcodes: <code>1 as float</code> never goes through here.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">fn into(): T</code></pre>
+<p>This value as a <code>T</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:462</p>
+</section>
+<section class="item" id="interface-onmodule">
+<h2><a href="#interface-onmodule">OnModule</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface OnModule</code></pre>
+<p>A struct declaring this may stand as <code>@Name</code> before the module header.</p>
+<p class="source">stdlib/std/core.lyr:472</p>
+</section>
+<section class="item" id="interface-ontype">
+<h2><a href="#interface-ontype">OnType</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface OnType</code></pre>
+<p>A struct declaring this may stand as <code>@Name</code> before a struct, class or enum declaration.</p>
+<p class="source">stdlib/std/core.lyr:475</p>
+</section>
+<section class="item" id="interface-onfunction">
+<h2><a href="#interface-onfunction">OnFunction</a> <span class="kind">interface</span></h2>
+<pre class="signature"><code class="language-lyr">pub interface OnFunction</code></pre>
+<p>A struct declaring this may stand as <code>@Name</code> before a top-level function.</p>
+<p class="source">stdlib/std/core.lyr:478</p>
+</section>
+<section class="item" id="struct-deprecated">
+<h2><a href="#struct-deprecated">Deprecated</a> <span class="kind">struct</span></h2>
+<pre class="signature"><code class="language-lyr">pub struct Deprecated :: [OnModule, OnType, OnFunction]</code></pre>
+<p>Marks its target as deprecated: the compiler warns at every use, and <code>message</code> says what to
+use instead. The first attribute the compiler itself reads — it changes diagnostics and
+nothing else, so a program that ignores the warning runs unchanged.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">message: string</code></pre>
+<p>What to use instead; shown in the warning at every use site.</p>
+</div>
+</div>
+<p class="source">stdlib/std/core.lyr:483</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.collections/">std.collections</a>
+<a class="next" href="../../stdlib/std.fmt/">std.fmt</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

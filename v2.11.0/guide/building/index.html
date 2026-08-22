@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Building a project — Lyric v2.11.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.11.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/" class="here">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Building a project</h1>
+<nav class="contents">
+<ul>
+<li><a href="#starting-one">Starting one</a></li>
+<li><a href="#building-one">Building one</a></li>
+<li><a href="#the-script">The script</a></li>
+<li><a href="#nothing-is-compiled-while-the-script-runs">Nothing is compiled while the script runs</a></li>
+<li><a href="#it-is-a-program-not-a-list">It is a program, not a list</a></li>
+<li><a href="#what-the-script-does-not-say">What the script does not say</a></li>
+<li><a href="#when-something-goes-wrong">When something goes wrong</a></li>
+</ul>
+</nav>
+<h2 id="starting-one">Starting one</h2>
+<pre><code class="language-bash">lyric new myapp          # a program
+lyric new mylib --lib    # a module someone imports
+</code></pre>
+<p>An app arrives ready to build:</p>
+<pre><code>myapp/
+├── lyric.json      where the modules live
+├── build.lyr       what to build
+├── .gitignore
+└── src/main.lyr
+</code></pre>
+<pre><code class="language-bash">cd myapp &amp;&amp; lyric build &amp;&amp; lyric run out/myapp.lyrbc
+</code></pre>
+<p>A library has no <code>build.lyr</code>, because there is nothing to build: it is source another project points
+its <code>sourceRoot</code> at and imports. Its module file is named after it, so <code>import mylib</code> finds
+<code>src/mylib.lyr</code>.</p>
+<p>The name becomes a module name, so it has to be one: letters, digits and <code>_</code>, not starting with a
+digit. <code>lyric new</code> refuses to write into a directory that already holds something.</p>
+<h2 id="building-one">Building one</h2>
+<p>For a single file there is nothing to set up:</p>
+<pre><code class="language-bash">lyric build app.lyr -o app.lyrbc
+</code></pre>
+<p>A project with more than one program, or one that generates part of its own source, puts a
+<code>build.lyr</code> at its root and runs <code>lyric build</code> without naming a file.</p>
+<h2 id="the-script">The script</h2>
+<pre><code class="language-lyr">import std.build { addExecutable };
+
+pub fn build() {
+    let app = addExecutable(&quot;src/main.lyr&quot;, &quot;out/app.lyrbc&quot;);
+    app.sourceMap(false);
+
+    addExecutable(&quot;tools/mktex.lyr&quot;, &quot;out/mktex.lyrbc&quot;);
+}
+</code></pre>
+<pre><code class="language-bash">lyric build          # the working directory
+lyric build ../game  # somewhere else
+</code></pre>
+<p>Every artifact is compiled on its own, whole, from its entry file. There is no link step and nothing
+is shared between two of them but the source on disk.</p>
+<p><code>lyric build</code> with a <strong>file</strong> still means &quot;compile this file&quot; and goes to the compiler, as it always
+did. Only a directory, or no argument at all, looks for a <code>build.lyr</code>.</p>
+<h2 id="nothing-is-compiled-while-the-script-runs">Nothing is compiled while the script runs</h2>
+<p><code>addExecutable</code> collects; the compiles happen once <code>build</code> has returned. That is why <code>sourceMap</code> on
+the next line still applies — and why a file the script writes is finished before anything reads it.</p>
+<h2 id="it-is-a-program-not-a-list">It is a program, not a list</h2>
+<p>A build script runs with every capability and has the whole standard library. It may write files,
+read them, and start processes:</p>
+<pre><code class="language-lyr">import std.build { addExecutable };
+import std.io.file { writeText };
+
+pub fn build() {
+    writeText(&quot;src/version.lyr&quot;, &quot;module version; pub fn text(): string { return \&quot;1.2.0\&quot;; }&quot;);
+
+    addExecutable(&quot;src/main.lyr&quot;, &quot;out/app.lyrbc&quot;);
+}
+</code></pre>
+<p>Relative paths mean the same everywhere in the script: they are resolved against the directory
+holding <code>build.lyr</code>, not against the directory you started the build from.</p>
+<p><strong>This is code you are running.</strong> <code>lyric build</code> in a repository you did not write executes a program
+you did not write, exactly as <code>make</code> and <code>cmake</code> do.</p>
+<h2 id="what-the-script-does-not-say">What the script does not say</h2>
+<p>Where modules live is a property of the project, not of a build, so it stays in
+<a href="/v2.11.0/guide/modules/#saying-where-the-modules-are"><code>lyric.json</code></a>:</p>
+<pre><code class="language-json">{
+  &quot;sourceRoot&quot;: &quot;src&quot;,
+  &quot;nativeRoots&quot;: { &quot;engine&quot;: &quot;sdk&quot; },
+}
+</code></pre>
+<p>Both files are read for every artifact. The script never repeats a root, and an editor learns the
+layout from <code>lyric.json</code> without running anything.</p>
+<h2 id="when-something-goes-wrong">When something goes wrong</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No <code>build.lyr</code> in the directory</td>
+<td><code>LYR-CLI0011</code></td>
+</tr>
+<tr>
+<td>The script does not compile</td>
+<td>its own diagnostics, with file, line and column</td>
+</tr>
+<tr>
+<td>No <code>build</code> function, or it panics</td>
+<td><code>LYR-CLI0012</code></td>
+</tr>
+<tr>
+<td><code>build</code> declared nothing to compile</td>
+<td><code>LYR-CLI0012</code> — silence would look like success</td>
+</tr>
+<tr>
+<td>An entry file is not there</td>
+<td>named before anything is written</td>
+</tr>
+</tbody>
+</table>
+<nav class="neighbours">
+<a class="prev" href="../../guide/attributes/">Attributes</a>
+<a class="next" href="../../guide/packaging/">Packing a program</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

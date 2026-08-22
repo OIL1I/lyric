@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.11.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.11.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.11.0 — 2026-08-22</h2>
+<p>Bytecode format <strong>3.5</strong>. One new section, and the whole release is about a name that used to get
+lost.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>A module records the <code>opaque type</code> a field was declared with</strong> (section 14, format 3.5).
+An opaque alias is a distinct type in the language and its underlying type everywhere below the
+checker — that is what makes <code>x as Entity</code> free and lets a handle cross a native boundary
+unchanged. The cost showed up on the other side: a host reading the shape of an attributed
+class saw</p>
+<pre><code>@Saved class Holder { hero: world.Entity, stage: int }   →   i64, i64
+</code></pre>
+<p>and a save writer that WANTS to refuse a handle — the slot it names belongs to something else
+after a restart — had nothing to refuse it by. Now:</p>
+<pre><code class="language-csharp">foreach (var field in module.Attributes.FieldsOf(saved.Target)!)
+    if (field.OpaqueName is { } opaque)
+        throw new InvalidOperationException($&quot;{field.Name} is a '{opaque}' handle&quot;);
+</code></pre>
+<p><code>FieldsOf</code> returns <code>AttributeField</code> records instead of tuples; <code>Name</code> and <code>Type</code> are unchanged,
+<code>OpaqueName</code> is the addition and is <code>null</code> for every ordinary field. The name is the leaf
+through arrays and optionals — a field of type <code>Entity[]</code> answers <code>Entity</code>, and its type still
+says it is an array. A transparent alias resolves through to what it names, because that one is
+not a type of its own.</p>
+<p><strong>Nothing about the program changes.</strong> The field is the same <code>i64</code> it was, no instruction moved,
+and a runtime that ignores the section is a runtime that knows what it knew before. <code>lyric disasm</code> shows the names where they exist: <code>names Holder(hero: Entity, stage)</code>.</p>
+</li>
+</ul>
+<h3 id="format">Format</h3>
+<ul>
+<li><strong>3.5 against 3.4</strong>: one new section, OpaqueFields (id 14), skippable in the plainest way — no
+other section refers to it and none of it affects execution. A 3.4 reader loads a 3.5 module
+unchanged, and the other way round; the only difference is whether a host can tell a handle
+from the number it is made of. Unlike 3.4, this one asks nothing of anybody.</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
