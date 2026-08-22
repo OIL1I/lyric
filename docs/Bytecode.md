@@ -24,6 +24,10 @@ what it knew before. A 3.4 reader therefore loads a 3.5 module unchanged, and a 
 a 3.4 module — the only difference is whether a host can tell a handle from the number it is
 made of.
 
+*(The rule above was written as "a minor may only add skippable sections" and stood that way
+through 3.4, which is not one — the note below says so in its own words. The wording was
+corrected to what the format has actually done since; no version's contents changed with it.)*
+
 **3.4 against 3.3**: one new `ConstValue` form — an attribute value of enum type, written as the
 variant's tag. It is the first change to this format that a 3.3 reader cannot ignore: the
 Attributes section is skippable as a whole, but a reader that DOES read it meets a tag it has no
@@ -90,8 +94,19 @@ payload          byteLength bytes
 A reader must skip a section with an unknown id and must reject a file whose section ids do not
 strictly ascend.
 
-**Versioning**: an unknown major version is rejected. An unknown minor version is tolerated; a new
-minor version may only add skippable sections.
+**Versioning**: an unknown major version is rejected. An unknown minor version is tolerated.
+
+A new MINOR version may add anything a module can decline to use: a skippable section, a value
+form inside one, an opcode. What it may not do is change the meaning or the shape of something a
+reader of the previous minor already reads — that is a major. The compatibility this buys is
+per MODULE rather than per version: a module that uses nothing new loads on the older reader
+unchanged, and a module that uses something new needs a runtime of that minor or newer, the same
+forward path the language's own additions take.
+
+Two consequences worth stating, because they are what the rule is for. A reader must not reject a
+file merely for carrying a higher minor. And a producer must not silently downgrade: if it emits
+a new form, the minor in the header says so, so the failure is "this runtime is too old", named
+at load time, instead of a misread instruction.
 
 ### Section ids
 
@@ -285,9 +300,9 @@ format: it presupposes that a runtime decodes the code into an array before runn
 that walks the bytes directly would have to count instructions to answer a question the format can
 answer in its own coordinates.
 
-**The row carries no column.** A minor version may only add skippable sections, so the shape of this
-one is fixed until a major: a column cannot be added here later, and adding it beside this section
-would be a second mechanism for the same thing.
+**The row carries no column.** The shape of an existing row is fixed until a major (§Versioning):
+a column cannot be added here later, and adding it beside this section would be a second mechanism
+for the same thing.
 
 A reader must reject: a `functionCount` that differs from the Functions section, a file index outside
 the file table, a string index outside the pool, an offset that does not lie inside that function's

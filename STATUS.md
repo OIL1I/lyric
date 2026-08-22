@@ -11,65 +11,53 @@
 
 ## Current milestone
 
-**M31 — the budget and the named attribute value — is BUILT** (2026-08-21, branch
-`feature/m31-budget-and-constants`, four slices, ships as v2.4.0). Both open requirements of
-Erato's register, answered:
+**M32 — "die Zaehlung" — is RUNNING** (started 2026-08-22, branch
+`feature/m32-instruction-count`, ships as v2.12.0, format 3.5 -> 3.6).
 
-- [x] **A10** — `ExecutionBudget`: instructions, not milliseconds, so the same script under the
-      same limit stops at the same instruction. A third specialization of the M30 policy loop;
-      an unmetered run picks the same `ReleasePolicy` it always did and pays one null check
-      before the loop starts. The stop is `LYR-CAP0002` and arrives as a PANIC — uncatchable,
-      no `defer` behind it — which is the property that makes it worth having against code
-      nobody trusts (slices 1–2)
-- [x] the register did not see the load half: the constant initializer runs inside
-      `Instantiate`, so `let x = spin();` hung a host before it had called anything. `Load`
-      takes a budget too (slice 1)
-- [x] `ScriptBudgetException` derives from `ScriptPanicException`: an older host keeps catching
-      what it caught, and a new one can tell "broken" from "still working" without comparing a
-      diagnostic code as a string (slice 2)
-- [x] **A11** — an attribute argument may NAME its value: a `let` bound to a literal, through a
-      chain, across modules, selectively or qualified, `static let` too. One resolution walk
-      shared by the sema and the lowering (slice 3)
-- [x] spec §4.7 and the §2 note amended, mirror synced, Appendix A gains CAP0002 and rewords
-      SEM0066; two conformance cases, suite 88 → 90; guides 14 and 15, CHANGELOG (slice 4)
+**The measurement it starts from** (this machine, Release, two programs per shape differing only
+in iteration count so startup cancels, best of three):
 
-**Deliberate limits, stated in guide 14**: a budget bounds BYTECODE, not host time — a native
-that blocks is charged one instruction; budget and debugger are exclusive (the debugger wins,
-and nothing combines them); an instance whose call was stopped is left mid-computation, exactly
-like one that panicked. **Not built**: no `--budget` on the command line, because a standalone
-run trusts its program the way `lyric pack` grants every capability.
+| shape | instructions/iteration | ns/iteration | **ns/instruction** |
+|---|---:|---:|---:|
+| `while (i < n) { i += 1; }` | 9 | 58.2 | **6.5** |
+| `while (i < n) { acc += 1.5; i += 1; }` | 13 | 85.4 | **6.6** |
+| `Random.nextFloat()` (differential) | ~85 | ~555 | — |
 
-**Measured** (Release, `tools/Bench`, against v2.3.1 on the same machine, unmetered): every case
-equal or faster, the two `for-in` rows swinging 25–30 % in the FAVOURABLE direction — which
-measures the machine, not the change, and repeats the M30 lesson about this box. Allocations
-unchanged.
+**The price is flat**: an `add f64` costs what a `br` costs, ~23 cycles. That is the normal price
+of a switch-dispatch stack machine, not a slow interpreter — so the lever is the NUMBER of
+dispatches, not their price. Erato's register reached the same conclusion from its own five
+shapes; this reproduces it here.
 
-**M30 — the debugger — is BUILT** (2026-08-20, branch `feature/m30-debugger`, four slices,
-ships as v2.3.0). The delivery list:
+The delivery list:
 
-- [x] format 3.3: the DebugInfo section (id 13) — local and global slot names, strippable like
-      the source map, `--no-debug-info` strips it; Names (id 12) loosened from attribute-only to
-      any named type. Spec chapter 13 amended in `lyriclang/lyric-spec`, mirror synced (slice 1)
-- [x] the policy-generic interpreter loop: one loop source, two JIT specializations; the release
-      hook inlines to nothing — allocations unchanged at 0 B, timings within same-day run
-      variance (the machine was ~2× noisier than the 2026-08-18 baseline in BOTH directions of
-      the A/B; worth a re-measure on a quiet machine) (slice 2)
-- [x] `DebugController` in Lyric.Vm: breakpoints via source-map rows (a blank line slides down),
-      line-granular stepping with the standard depth rules, pause, and — while parked — stack,
-      locals, globals, expansion by static type, dotted-path evaluate. 15 VM-level tests, no
-      protocol involved (slice 2)
-- [x] `lyrdbg`, the ELEVENTH binary: a DAP server that compiles the program itself in the debug
-      shape (source map + debug info + `Optimize=false` — the new `CompilerOptions` knobs) and
-      runs it in-process; debuggee output travels as output events. Tested in-process over piped
-      streams — deliberately no process spawns (slice 3)
-- [x] `vscode-lyric` 1.3.0 wires F5: debug type, breakpoints, adapter lookup beside the driver;
-      guide chapter 21; CHANGELOG v2.3.0 (slice 4)
+- [ ] **slice 0** — the spec's minor-version rule says what the format actually does. It read "a
+      minor may only add skippable sections", which 3.4 was not. Without it every new opcode
+      would be a major (`lyriclang/lyric-spec#7`)
+- [ ] **slice 1** — the measuring bench: `tools/Bench` gains interpreter cases (loop, int add,
+      float add, mask, array read) with their instruction counts from `disasm`, so every later
+      claim is a delta against a number in this file
+- [ ] **slice 2** — the decode buffer, NO format change: the VM holds a struct array instead of
+      one heap `BytecodeInstruction` per instruction, and load-time specialization turns
+      `(Op, TypeTag)` into one internal opcode. Lyric is statically typed, so what CPython 3.11
+      gets from quickening at runtime is a table here. Removes per dispatch one pointer chase,
+      one static call and a second switch
+- [ ] **slice 3** — fusion 1, the compare-branch (format 3.6): `ldloc a; const k; lt; condbr`
+      becomes one instruction. The JVM's `if_icmp*`, and the peephole has it easy — the
+      `StackScheduler` already knows a comparison has exactly one consumer
+- [ ] **slice 4** — fusion 2, the accumulator forms: `ldloc s; const k; add T; stloc s` and the
+      local/local shape become one each. The JVM's `iinc`, typed. The 13-instruction loop falls
+      to 4, the 9 to 3
+- [ ] **slice 5** — `std.random`: 53 dispatches for a xorshift64*, measured. The STATE stays in
+      the script, the shift/xor round becomes one native. Build it only if the crossing measures
+      cheaper than the dispatches it saves
+- [ ] **slice 6** — measure again, CHANGELOG, release, and the gate below
 
-**Deliberate limits, stated in guide 21**: the global initializer runs before the debugger
-attaches; stdlib lines are not steppable (bare names in the map); evaluate is name paths, not
-expressions; a panic reports output + exit 101 rather than a stopped-on-exception state.
-**Open on the editor side**: jetbrains-lyric has no DAP wiring yet — its DAP story is
-IDE-version-gated and belongs to that repository's cadence.
+**The gate this milestone exists to inform**: whether a register bytecode (format 4.0, v3.0.0) is
+still worth a major afterwards. The honest prognosis is that it is not: Erato's table compares
+`acc = acc + 1.5` as 4 instructions against 1, and slice 4 makes it 1 in the stack machine too.
+The register machine wins against a NAIVE stack bytecode; against a fused one it wins much less,
+and the `StackScheduler` already keeps temps off the slots. The fused opcodes carry register
+operands, so slice 4 is not a detour from that decision — it is the experiment that settles it.
 
 **v1.0.0 through v2.0.0 are released** — annotated tags on the remote, each with a release page.
 M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
@@ -782,6 +770,43 @@ answer yet, and it belongs asked before E4 starts.
   with an open vtable question (there are no generic slots — such defaults could never be
   overridden). Milestone-sized; the spec documents free adapters as THE form, and an
   `IrPinTests` entry keeps today's refusal visible instead of accidental.
+- **THE v3 BASKET AND THE PATCH TRAIN BEFORE IT** (maintainer, 2026-08-22). Everything this
+  file has deferred goes into v3.0.0, and OVERLOADING joins it. The order is fixed and the
+  reason is that a major should be short: **anything that does not need a major ships FIRST, as
+  its own patch** — iterator chaining, the new file-error API, member-`@Deprecated` on interface
+  members, the ignored non-interface entries in a `::` list, multiple interface parents. Each of
+  those deprecates whatever it replaces in the standard library as it lands, and the removal is
+  the major, as at 2.0.
+  - **One exception, and it is new for this project**: a form that is replaced ONLY by
+    overloading is NOT removed at the major. Overloading arrives WITH v3.0.0, so its
+    replacements are the same age as the break; deleting them in the same release would give a
+    user no version in which both exist. Those forms carry a KEPT-UNTIL promise through v3.5,
+    and the promise is written down at the declaration rather than in a release note.
+  - **What must still be decided, before any of it**: `@Deprecated` carries a message and
+    nothing else, so a promise "kept until 3.5" has no form. See the next entry.
+  - **A design round comes before the major**, overloading included, and it has to answer what
+    overloading means for a language whose whole dispatch story is generics plus constraints —
+    Rule 2 is at stake, and it is the mechanism Oil died of.
+
+- **`@Deprecated` needs a `until` field before the patch train starts** (open, 2026-08-22). A
+  kept-until promise that lives in a release note is a promise nobody can check. The smallest
+  form that makes it real: one more field on the existing attribute, and a compiler check that
+  a promise whose version has ARRIVED is an error at build time — the ratchet removes the form
+  instead of a person remembering to. NOT a second attribute (`@Sunset`, `@Until`): that would
+  be a second mechanism for "this is going away".
+
+- **`unsafe` blocks: documented No, with the measurement** (2026-08-22). What an `unsafe` would
+  remove — the bounds check in `ldelem`, the panic in `optget` — is a compare and a branch
+  INSIDE a dispatch that costs ~23 cycles. It buys about one percent and pays with the property
+  the embedding is sold on: `Capability.None` means nothing if a script may read past an array.
+  A C-shaped answer to a dispatch-shaped problem.
+
+- **`@Inline` as a language form: documented No** (2026-08-22). The inliner has a budget since
+  M14 and `nextFloat` was inlined without being asked; `nextInt` was not, at 53 instructions.
+  Forcing it saves ONE call per 53 dispatches — it cannot move a 555 ns measurement. If the
+  budget is wrong that is a measurement and a constant, not a keyword, and it would make the
+  second compiler-read attribute out of a mechanism that is supposed to describe and do nothing.
+
 - **Heterogeneous operator arithmetic: documented No** (M22 probe). Two facts cap it below
   usefulness: a type conforms to `Mul` ONCE (`Mul<Vec2>` beside `Mul<float>` fails the signature
   check — one `mul`, two wanted signatures), and Lyric has no overloading, so `mul(other: float)`

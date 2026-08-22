@@ -15,6 +15,16 @@ namespace Lyric.Vm;
 /// </summary>
 internal interface IExecutionPolicy
 {
+    /// <summary>
+    /// Whether <see cref="BeforeInstruction"/> READS the frame it is handed.
+    ///
+    /// <para>The interpreter keeps the operand stack pointer in a local and only writes it back
+    /// where something can observe it. A policy that merely counts does not observe it; a
+    /// debugger does. Static, so that specializing this method for a policy STRUCT folds the
+    /// check away entirely — the release path carries no branch for it.</para>
+    /// </summary>
+    static abstract bool ObservesFrame { get; }
+
     /// <summary>Called before each instruction. <c>frame.Ip</c> still points AT the instruction
     /// about to execute; <c>frames.Count</c> is the call depth below it.</summary>
     void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame);
@@ -24,6 +34,8 @@ internal interface IExecutionPolicy
 /// time.</summary>
 internal readonly struct ReleasePolicy : IExecutionPolicy
 {
+    public static bool ObservesFrame => false;
+
     public void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame) { }
 }
 
@@ -31,6 +43,9 @@ internal readonly struct ReleasePolicy : IExecutionPolicy
 /// checks breakpoints, stepping and pause requests there.</summary>
 internal readonly struct DebugPolicy(DebugController controller) : IExecutionPolicy
 {
+    /// <summary>It does: the controller renders locals and the operand stack at a stop.</summary>
+    public static bool ObservesFrame => true;
+
     public void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame) =>
         controller.OnInstruction(frames, frame);
 }
@@ -40,6 +55,9 @@ internal readonly struct DebugPolicy(DebugController controller) : IExecutionPol
 /// unmetered run keeps the loop it had before budgets existed.</summary>
 internal readonly struct BudgetPolicy(ExecutionBudget budget) : IExecutionPolicy
 {
+    /// <summary>It does not: charging a unit never looks at the frame.</summary>
+    public static bool ObservesFrame => false;
+
     public void BeforeInstruction(Stack<Interpreter.Frame> frames, Interpreter.Frame frame) =>
         budget.Charge();
 }
@@ -157,64 +175,85 @@ public static class Interpreter
         Stack<Frame> frames, ref Frame frame, TPolicy policy)
         where TPolicy : struct, IExecutionPolicy
     {
+        // The frame's two arrays, its instruction list and its stack pointer, in LOCALS.
+        //
+        // A 'frame.Push' was three dependent loads before a single value moved -- the frame
+        // object, its Stack array, its Sp -- and 'slots[i]' two more. The JIT cannot hoist
+        // them by itself: 'frame' is a class, and any call inside the loop could in principle
+        // write through it, so every access has to be re-read. At two to four stack operations
+        // per instruction, that chain of dependent loads IS the dispatch cost.
+        //
+        // The arrays never change while a frame runs, so they need no write-back at all. 'sp'
+        // does, and every place below that changes 'frame' writes it out and reloads.
+        var locals = frame.Slots;
+        var stack = frame.Stack;
+        var instructions = frame.Fn.Instructions;
+        var sp = frame.Sp;
+
         while (true)
         {
+            // Only a policy that READS the frame between instructions pays for the write-back,
+            // and only the debugger does. 'TPolicy.ObservesFrame' is a constant once the JIT has
+            // specialized this method for the policy struct, so the release path has no branch.
+            if (TPolicy.ObservesFrame) frame.Sp = sp;
+
             policy.BeforeInstruction(frames, frame);
 
-            var instruction = frame.Fn.Instructions[frame.Ip++];
+            ref readonly var instruction = ref instructions[frame.Ip++];
 
             switch (instruction.Opcode)
             {
                 case Op.Const:
-                    frame.Push(Constant(instruction, strings));
+                    stack[sp++] = Constant(instruction, strings);
                     break;
 
                 case Op.LoadLocal:
-                    frame.Push(frame.Slots[(int)instruction.Immediate]);
+                    stack[sp++] = locals[(int)instruction.Immediate];
                     break;
 
                 case Op.StoreLocal:
-                    frame.Slots[(int)instruction.Immediate] = frame.Pop();
+                    locals[(int)instruction.Immediate] = stack[--sp];
                     break;
 
                 // As ldloc/stloc but module-wide. The index was checked at load time, so this is
                 // an unchecked array access.
                 case Op.LoadGlobal:
-                    frame.Push(globals[(int)instruction.Immediate]);
+                    stack[sp++] = globals[(int)instruction.Immediate];
                     break;
 
                 case Op.StoreGlobal:
-                    globals[(int)instruction.Immediate] = frame.Pop();
+                    globals[(int)instruction.Immediate] = stack[--sp];
                     break;
 
                 case Op.Pop:
-                    frame.Pop();
+                    sp--;
                     break;
 
                 case Op.Add or Op.Sub or Op.Mul or Op.Div or Op.Rem or
                      Op.Shl or Op.Shr or Op.BitAnd or Op.BitOr or Op.BitXor:
                 {
-                    var rhs = frame.Pop();
-                    var lhs = frame.Pop();
-                    frame.Push(Binary(instruction.Opcode, instruction.Type!.Value, lhs, rhs));
+                    var rhs = stack[--sp];
+                    var lhs = stack[--sp];
+                    stack[sp++] = Binary(instruction.Opcode, instruction.Type, lhs, rhs);
                     break;
                 }
 
                 case Op.Lt or Op.Le or Op.Gt or Op.Ge or Op.Eq or Op.Ne:
                 {
-                    var rhs = frame.Pop();
-                    var lhs = frame.Pop();
-                    frame.Push(LyrValue.FromBool(
-                        Compare(instruction.Opcode, instruction.Type!.Value, lhs, rhs)));
+                    var rhs = stack[--sp];
+                    var lhs = stack[--sp];
+                    stack[sp++] = LyrValue.FromBool(Compare(instruction.Opcode, instruction.Type, lhs, rhs));
                     break;
                 }
 
                 case Op.Neg or Op.Not or Op.BitNot:
-                    frame.Push(Unary(instruction.Opcode, instruction.Type, frame.Pop()));
+                    var unaryOperand = stack[--sp];
+                    stack[sp++] = Unary(instruction.Opcode, instruction.TypeOrNull, unaryOperand);
                     break;
 
                 case Op.Convert:
-                    frame.Push(Convert(instruction.Type!.Value, instruction.ToType!.Value, frame.Pop()));
+                    var convertFrom = stack[--sp];
+                    stack[sp++] = Convert(instruction.Type, instruction.ToType, convertFrom);
                     break;
 
                 case Op.Branch:
@@ -223,7 +262,7 @@ public static class Interpreter
 
                 case Op.CondBranch:
                     frame.Ip = frame.Fn.BlockStart[
-                        (int)(frame.Pop().AsBool ? instruction.Immediate : instruction.Immediate2)];
+                        (int)(stack[--sp].AsBool ? instruction.Immediate : instruction.Immediate2)];
                     break;
 
                 case Op.Call:
@@ -238,11 +277,11 @@ public static class Interpreter
                         // the duration of the call and recycled behind it. An implementation
                         // that throws abandons it — a lost pool entry, never a corrupt one.
                         var args = arguments.Rent(native.Arity);
-                        for (var i = native.Arity - 1; i >= 0; i--) args[i] = frame.Pop();
+                        for (var i = native.Arity - 1; i >= 0; i--) args[i] = stack[--sp];
 
                         var produced = native.Implementation(args);
                         arguments.Recycle(args);
-                        if (native.ReturnsValue) frame.Push(produced);
+                        if (native.ReturnsValue) stack[sp++] = produced;
                         break;
                     }
 
@@ -253,10 +292,15 @@ public static class Interpreter
                     var callee = prepared[index - natives.Length];
                     var next = callee.Rent();
                     // Arguments lie on the stack in call order, the first lowest.
-                    for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();
+                    for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = stack[--sp];
 
+                    frame.Sp = sp;
                     frames.Push(frame);
                     frame = next;
+                    locals = frame.Slots;
+                    stack = frame.Stack;
+                    instructions = frame.Fn.Instructions;
+                    sp = frame.Sp;
                     break;
                 }
 
@@ -271,9 +315,15 @@ public static class Interpreter
 
                     var pending = frame.Unwinding;
                     var pendingType = frame.UnwindType;
+                    frame.Sp = sp;
                     if (!Resume(frames, ref frame, pending, pendingType))
                         throw new LyricPanic(VmDiagnostics.UncaughtException,
                             $"uncaught exception of type '{TypeName(types, pendingType)}'");
+
+                    locals = frame.Slots;
+                    stack = frame.Stack;
+                    instructions = frame.Fn.Instructions;
+                    sp = frame.Sp;
                     break;
                 }
 
@@ -281,7 +331,7 @@ public static class Interpreter
                 {
                     // 0 means the type is only known at runtime; the value is then a fat pointer
                     // carrying its concrete type.
-                    var thrown = frame.Pop();
+                    var thrown = stack[--sp];
                     var declared = (int)instruction.Immediate - 1;
                     var type = declared >= 0 ? declared : thrown.ConcreteType;
 
@@ -290,29 +340,37 @@ public static class Interpreter
                     frame.NextHandler = 0;
                     frame.UnwindBlock = BlockAt(frame, frame.Ip - 1);
 
+                    frame.Sp = sp;
                     if (!Resume(frames, ref frame, thrown, type))
                         throw new LyricPanic(VmDiagnostics.UncaughtException,
                             $"uncaught exception of type '{TypeName(types, type)}'");
+
+                    locals = frame.Slots;
+                    stack = frame.Stack;
+                    instructions = frame.Fn.Instructions;
+                    sp = frame.Sp;
                     break;
                 }
 
                 // Value semantics. The compiler decided where to copy; here it is only copied.
                 case Op.StructCopy:
-                    frame.Push(CopyStruct(frame.Pop(), types, (int)instruction.Immediate));
+                    var toCopy = stack[--sp];
+                    stack[sp++] = CopyStruct(toCopy, types, (int)instruction.Immediate);
                     break;
 
                 // An interface value is a fat pointer: the same object plus its concrete type
                 // index in the unused bits. No allocation and no layout change.
                 case Op.MakeInterface:
-                    frame.Push(LyrValue.FromInterface(frame.Pop(), (int)instruction.Immediate));
+                    var boxed = stack[--sp];
+                    stack[sp++] = LyrValue.FromInterface(boxed, (int)instruction.Immediate);
                     break;
 
                 // Lowest immediate bit: is an environment on the stack? Without captures there is
                 // none, and the closure is a bare function index.
                 case Op.MakeClosure:
                 {
-                    var environment = (instruction.Immediate & 1) == 1 ? frame.Pop() : default;
-                    frame.Push(LyrValue.FromClosure(environment, (int)(instruction.Immediate >> 1)));
+                    var environment = (instruction.Immediate & 1) == 1 ? stack[--sp] : default;
+                    stack[sp++] = LyrValue.FromClosure(environment, (int)(instruction.Immediate >> 1));
                     break;
                 }
 
@@ -322,19 +380,19 @@ public static class Interpreter
                 case Op.CallIndirect:
                 {
                     var argCount = (int)(instruction.Immediate >> 1);
-                    var closure = frame.Peek(argCount);
+                    var closure = stack[sp - 1 - (argCount)];
                     var index = closure.ClosureFunction;
 
                     if (index < natives.Length)
                     {
                         var native = natives[index];
                         var nativeArgs = arguments.Rent(native.Arity);
-                        for (var i = native.Arity - 1; i >= 0; i--) nativeArgs[i] = frame.Pop();
-                        frame.Pop(); // the closure value itself
+                        for (var i = native.Arity - 1; i >= 0; i--) nativeArgs[i] = stack[--sp];
+                        sp--; // the closure value itself
 
                         var produced = native.Implementation(nativeArgs);
                         arguments.Recycle(nativeArgs);
-                        if (native.ReturnsValue) frame.Push(produced);
+                        if (native.ReturnsValue) stack[sp++] = produced;
                         break;
                     }
 
@@ -346,13 +404,18 @@ public static class Interpreter
                     var callFrame = target.Rent();
 
                     var offset = closure.HasEnvironment ? 1 : 0;
-                    for (var i = argCount - 1; i >= 0; i--) callFrame.Slots[offset + i] = frame.Pop();
+                    for (var i = argCount - 1; i >= 0; i--) callFrame.Slots[offset + i] = stack[--sp];
 
-                    frame.Pop(); // the closure value
+                    sp--; // the closure value
                     if (closure.HasEnvironment) callFrame.Slots[0] = LyrValue.FromObject(closure.AsObject);
 
+                    frame.Sp = sp;
                     frames.Push(frame);
                     frame = callFrame;
+                    locals = frame.Slots;
+                    stack = frame.Stack;
+                    instructions = frame.Fn.Instructions;
+                    sp = frame.Sp;
                     break;
                 }
 
@@ -365,18 +428,18 @@ public static class Interpreter
 
                     // The receiver lies below the arguments, reachable before the target is known
                     // only through the arity recorded in the table.
-                    var receiver = frame.Peek(dispatch.ArityOf(iface, slot) - 1);
+                    var receiver = stack[sp - 1 - (dispatch.ArityOf(iface, slot) - 1)];
                     var index = dispatch.Resolve(receiver.ConcreteType, iface, slot);
 
                     if (index < natives.Length)
                     {
                         var native = natives[index];
                         var args = arguments.Rent(native.Arity);
-                        for (var i = native.Arity - 1; i >= 0; i--) args[i] = frame.Pop();
+                        for (var i = native.Arity - 1; i >= 0; i--) args[i] = stack[--sp];
 
                         var produced = native.Implementation(args);
                         arguments.Recycle(args);
-                        if (native.ReturnsValue) frame.Push(produced);
+                        if (native.ReturnsValue) stack[sp++] = produced;
                         break;
                     }
 
@@ -386,10 +449,15 @@ public static class Interpreter
 
                     var callee = prepared[index - natives.Length];
                     var next = callee.Rent();
-                    for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = frame.Pop();
+                    for (var i = callee.Source.ParamCount - 1; i >= 0; i--) next.Slots[i] = stack[--sp];
 
+                    frame.Sp = sp;
                     frames.Push(frame);
                     frame = next;
+                    locals = frame.Slots;
+                    stack = frame.Stack;
+                    instructions = frame.Fn.Instructions;
+                    sp = frame.Sp;
                     break;
                 }
 
@@ -397,18 +465,19 @@ public static class Interpreter
                 // The loader checked that the type and field indices match, so a field access is
                 // an unchecked array access.
                 case Op.NewObject:
-                    frame.Push(LyrValue.FromObject(NewInstance(types[(int)instruction.Immediate])));
+                    stack[sp++] = LyrValue.FromObject(NewInstance(types[(int)instruction.Immediate]));
                     break;
 
                 case Op.LoadField:
-                    frame.Push(frame.Pop().AsObject[(int)instruction.Immediate2]);
+                    var owner = stack[--sp];
+                    stack[sp++] = owner.AsObject[(int)instruction.Immediate2];
                     break;
 
                 case Op.StoreField:
                 {
                     // The reference lies below the value, so the value comes off first.
-                    var value = frame.Pop();
-                    frame.Pop().AsObject[(int)instruction.Immediate2] = value;
+                    var value = stack[--sp];
+                    stack[--sp].AsObject[(int)instruction.Immediate2] = value;
                     break;
                 }
 
@@ -417,54 +486,55 @@ public static class Interpreter
                 case Op.NewArray:
                 {
                     var elements = new LyrValue[(int)instruction.Immediate];
-                    for (var i = elements.Length - 1; i >= 0; i--) elements[i] = frame.Pop();
-                    frame.Push(LyrValue.FromObject(elements));
+                    for (var i = elements.Length - 1; i >= 0; i--) elements[i] = stack[--sp];
+                    stack[sp++] = LyrValue.FromObject(elements);
                     break;
                 }
 
                 case Op.LoadElem:
                 {
-                    var at = frame.Pop().AsI64;
-                    var array = frame.Pop().AsObject;
-                    frame.Push(array[CheckedIndex(at, array.Length, frame)]);
+                    var at = stack[--sp].AsI64;
+                    var array = stack[--sp].AsObject;
+                    stack[sp++] = array[CheckedIndex(at, array.Length, frame)];
                     break;
                 }
 
                 case Op.StoreElem:
                 {
-                    var value = frame.Pop();
-                    var at = frame.Pop().AsI64;
-                    var array = frame.Pop().AsObject;
+                    var value = stack[--sp];
+                    var at = stack[--sp].AsI64;
+                    var array = stack[--sp].AsObject;
                     array[CheckedIndex(at, array.Length, frame)] = value;
                     break;
                 }
 
                 case Op.ArrayLen:
-                    frame.Push(LyrValue.FromI64(frame.Pop().AsObject.Length));
+                    var measured = stack[--sp];
+                    stack[sp++] = LyrValue.FromI64(measured.AsObject.Length);
                     break;
 
                 case Op.ArrayConcat:
                 {
-                    var right = frame.Pop().AsObject;
-                    var left = frame.Pop().AsObject;
+                    var right = stack[--sp].AsObject;
+                    var left = stack[--sp].AsObject;
                     var joined = new LyrValue[left.Length + right.Length];
                     left.CopyTo(joined, 0);
                     right.CopyTo(joined, left.Length);
-                    frame.Push(LyrValue.FromObject(joined));
+                    stack[sp++] = LyrValue.FromObject(joined);
                     break;
                 }
 
                 case Op.ArrayRepeat:
                 {
-                    var count = frame.Pop().AsI64;
-                    var source = frame.Pop().AsObject;
+                    var count = stack[--sp].AsI64;
+                    var source = stack[--sp].AsObject;
                     if (count < 0)
                         throw new LyricPanic(VmDiagnostics.IndexOutOfRange,
                             $"array repetition count {count} is negative");
 
                     var repeated = new LyrValue[source.Length * count];
                     for (var i = 0; i < count; i++) source.CopyTo(repeated, i * source.Length);
-                    frame.Push(LyrValue.FromObject(repeated));
+                    stack[sp++] = LyrValue.FromObject(repeated);
                     break;
                 }
 
@@ -472,24 +542,26 @@ public static class Interpreter
                 // with the natural representation; only scalars need the marker LyrValue.Some
                 // sets.
                 case Op.OptNone:
-                    frame.Push(LyrValue.None);
+                    stack[sp++] = LyrValue.None;
                     break;
 
                 case Op.OptSome:
-                    frame.Push(LyrValue.Some(frame.Pop()));
+                    var wrapped = stack[--sp];
+                    stack[sp++] = LyrValue.Some(wrapped);
                     break;
 
                 case Op.OptIsSome:
-                    frame.Push(LyrValue.FromBool(frame.Pop().IsSome));
+                    var tested = stack[--sp];
+                    stack[sp++] = LyrValue.FromBool(tested.IsSome);
                     break;
 
                 case Op.OptGet:
                 {
-                    var option = frame.Pop();
+                    var option = stack[--sp];
                     if (!option.IsSome)
                         throw new LyricPanic(VmDiagnostics.NullDereference,
                             $"force-unwrapped a '?T' that had no value in '{frame.Fn.Source.Name}'");
-                    frame.Push(option.Unwrap());
+                    stack[sp++] = option.Unwrap();
                     break;
                 }
 
@@ -499,31 +571,32 @@ public static class Interpreter
                 {
                     var layout = types[(int)instruction.Immediate];
                     var slots = new LyrValue[layout.FieldTypes.Count];
-                    for (var i = slots.Length - 1; i >= 1; i--) slots[i] = frame.Pop();
+                    for (var i = slots.Length - 1; i >= 1; i--) slots[i] = stack[--sp];
                     slots[0] = LyrValue.FromI64(TagOf(types, (int)instruction.Immediate));
-                    frame.Push(LyrValue.FromObject(slots));
+                    stack[sp++] = LyrValue.FromObject(slots);
                     break;
                 }
 
                 case Op.EnumTag:
-                    frame.Push(frame.Pop().AsObject[0]);
+                    var payload = stack[--sp];
+                    stack[sp++] = payload.AsObject[0];
                     break;
 
                 case Op.EnumAs:
                 {
-                    var value = frame.Pop();
+                    var value = stack[--sp];
                     var expected = TagOf(types, (int)instruction.Immediate);
                     if (value.AsObject[0].AsI64 != expected)
                         throw new LyricPanic(VmDiagnostics.WrongVariant,
                             $"expected variant '{types[(int)instruction.Immediate].Name}' " +
                             $"in '{frame.Fn.Source.Name}', found tag {value.AsObject[0].AsI64}");
-                    frame.Push(value);
+                    stack[sp++] = value;
                     break;
                 }
 
                 case Op.Return or Op.ReturnValue:
                 {
-                    var result = instruction.Opcode == Op.ReturnValue ? frame.Pop() : default;
+                    var result = instruction.Opcode == Op.ReturnValue ? stack[--sp] : default;
                     var returnsValue = frame.Fn.Source.ReturnType.Tag != TypeTag.Void;
 
                     // The result was read before the recycle clears the arrays; a LyrValue is a
@@ -537,7 +610,11 @@ public static class Interpreter
 
                     frame = frames.Pop();
                     dead.Fn.Recycle(dead);
-                    if (returnsValue) frame.Push(result);
+                    locals = frame.Slots;
+                    stack = frame.Stack;
+                    instructions = frame.Fn.Instructions;
+                    sp = frame.Sp;
+                    if (returnsValue) stack[sp++] = result;
                     break;
                 }
 
@@ -697,7 +774,7 @@ public static class Interpreter
         return slots;
     }
 
-    private static LyrValue Constant(BytecodeInstruction instruction,
+    private static LyrValue Constant(in VmInstruction instruction,
         IReadOnlyList<string> strings) => instruction.Type switch
     {
         TypeTag.F32 => LyrValue.FromF32((float)instruction.FloatValue),
@@ -706,7 +783,7 @@ public static class Interpreter
         TypeTag.String => LyrValue.FromString(strings[(int)instruction.Immediate]),
         // For integers and char the immediate is already the bit pattern, but has to be brought
         // to the width invariant (i8 arrives as 0x00..0xFF).
-        _ => LyrValue.FromBits(LyrValue.Normalize(instruction.Type!.Value, instruction.Immediate)),
+        _ => LyrValue.FromBits(LyrValue.Normalize(instruction.Type, instruction.Immediate)),
     };
 
     private static LyrValue Binary(Op op, TypeTag tag, LyrValue lhs, LyrValue rhs)
@@ -905,7 +982,7 @@ public static class Interpreter
     internal sealed class Prepared
     {
         public required BytecodeFunction Source { get; init; }
-        public required BytecodeInstruction[] Instructions { get; init; }
+        public required VmInstruction[] Instructions { get; init; }
         public required int[] BlockStart { get; init; }
 
         /// <summary>This function's index in the module. The source map is keyed by it, and a
@@ -924,9 +1001,13 @@ public static class Interpreter
 
         public static Prepared From(BytecodeFunction function, BytecodeHandler[] handlers, int index)
         {
-            var instructions = CodeDecoder.Decode(function.Code).ToArray();
-            var indexByOffset = new Dictionary<int, int>(instructions.Length);
-            for (var i = 0; i < instructions.Length; i++) indexByOffset[instructions[i].Offset] = i;
+            var decoded = CodeDecoder.Decode(function.Code).ToArray();
+
+            // Flattened here, once, into the interpreter's own shape -- see VmInstruction.
+            var instructions = new VmInstruction[decoded.Length];
+            for (var i = 0; i < decoded.Length; i++) instructions[i] = new VmInstruction(decoded[i]);
+            var indexByOffset = new Dictionary<int, int>(decoded.Length);
+            for (var i = 0; i < decoded.Length; i++) indexByOffset[decoded[i].Offset] = i;
 
             var blockStart = new int[function.BlockOffsets.Count];
             for (var b = 0; b < blockStart.Length; b++)
