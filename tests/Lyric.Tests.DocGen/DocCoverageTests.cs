@@ -22,7 +22,7 @@ public class DocCoverageTests
     /// 41 deprecated (and documented) declarations, and the coverage reached ALL of the surface
     /// that remains. Lowered deliberately from 430 for exactly that removal.
     /// </summary>
-    private const int Floor = 389;
+    private const int Floor = 390;
 
     private static string RepoRoot([CallerFilePath] string thisFile = "")
         => Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));

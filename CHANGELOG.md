@@ -10,6 +10,40 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.13.0 — 2026-08-22
+
+The first link of the train that runs ahead of v3.0.0: everything that does not need a major
+ships first, on its own, and deprecates what it replaces. This is the mechanism those
+deprecations will be written with.
+
+### Added
+
+- **A deprecation may name the version that removes it.** `@Deprecated` carries a second field:
+
+  ```lyr
+  @Deprecated { message = "use renew", until = "3.5" }
+  pub fn old(): int { return 1; }
+  ```
+
+  Building with a toolchain that has reached that version is an error (`LYR-SEM0081`), as is a
+  version the compiler cannot read. A deprecation makes two promises — use something else, and
+  this will disappear — and only the first was ever written where anyone could see it; the second
+  lived in a release note, which is another way of saying it lived in somebody's memory.
+
+  Three decisions in it, each of which could have gone the other way:
+
+  - **The named version is the one that removes it.** `until = "3.5"` fails AT 3.5, not one
+    release later, so the failure lands on whoever is preparing that release.
+  - **The check sits at the declaration, not at a use.** A form kept past its date is wrong
+    whether or not anything still calls it, and dead code would never trip a use-site warning.
+  - **It stops the build rather than warning.** A warning about a removal that should already
+    have happened is a warning nobody acts on — the same reasoning as the documentation ratchet
+    and the corpus-silence invariant.
+
+  Not a second attribute: an `@Sunset` beside `@Deprecated` would be a second mechanism for "this
+  is going away", and the two would eventually disagree about a declaration carrying one and not
+  the other. An empty `until` is the ordinary policy — warn now, remove at the next major.
+
 ## v2.12.0 — 2026-08-22
 
 Bytecode format **3.6**. The interpreter runs the same programs in a third of the instructions,
