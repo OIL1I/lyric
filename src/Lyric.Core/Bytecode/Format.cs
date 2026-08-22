@@ -12,7 +12,7 @@ public static class Format
     /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
     /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
-    public const ushort VersionMinor = 5;
+    public const ushort VersionMinor = 6;
 }
 
 /// <summary>
@@ -238,6 +238,28 @@ public enum Op : byte
     Add = 0x10, Sub = 0x11, Mul = 0x12, Div = 0x13, Rem = 0x14,
     Shl = 0x15, Shr = 0x16, BitAnd = 0x17, BitOr = 0x18, BitXor = 0x19,
 
+    /// <summary>
+    /// <c>binll &lt;op&gt; &lt;type&gt; &lt;dest&gt; &lt;a&gt; &lt;b&gt;</c> — new in 3.6.
+    /// <c>dest = a op b</c> over LOCAL SLOTS, doing in one instruction what
+    /// <c>ldloc; ldloc; op; stloc</c> does in four.
+    ///
+    /// <para><c>op</c> is one of the binary opcodes — arithmetic, bitwise or a comparison
+    /// (<see cref="Add"/>..<see cref="BitXor"/>, <see cref="Lt"/>..<see cref="Ne"/>) — as a byte,
+    /// so the fused forms need no enumeration of their own. <c>type</c> is the tag of the
+    /// OPERANDS; for a comparison the destination takes a <c>bool</c>, exactly as the unfused
+    /// form leaves one on the stack.</para>
+    ///
+    /// <para>The destination may be one of the sources: both operands are read before it is
+    /// written, which is what makes <c>i = i + 1</c> one instruction.</para>
+    /// </summary>
+    BinLocals = 0x1A,
+
+    /// <summary><c>binlk &lt;op&gt; &lt;type&gt; &lt;dest&gt; &lt;a&gt; &lt;immediate&gt;</c> —
+    /// as <see cref="BinLocals"/>, with a CONSTANT right-hand operand encoded exactly as
+    /// <see cref="Const"/> encodes one of that type. The shape an accumulator has:
+    /// <c>acc = acc + 1.5</c>.</summary>
+    BinConst = 0x1B,
+
     /// <summary>Comparisons: the tag names the operand type, the result is always bool.</summary>
     Lt = 0x20, Le = 0x21, Gt = 0x22, Ge = 0x23, Eq = 0x24, Ne = 0x25,
 
@@ -259,6 +281,29 @@ public enum Op : byte
     Branch = 0x43,      // br <uleb128 block>
     CondBranch = 0x44,  // condbr <uleb128 ifTrue> <uleb128 ifFalse>
     Unreachable = 0x45,
+
+    /// <summary>
+    /// <c>brcmp &lt;cmp&gt; &lt;type&gt; &lt;a&gt; &lt;b&gt; &lt;ifTrue&gt; &lt;ifFalse&gt;</c>
+    /// — new in 3.6. Compares two LOCAL SLOTS and branches, doing in one instruction what
+    /// <c>ldloc; ldloc; cmp; condbr</c> does in four.
+    ///
+    /// <para><c>cmp</c> is one of the comparison opcodes (<see cref="Lt"/>..<see cref="Ne"/>) as a
+    /// byte, so the fused forms need no second enumeration; <c>type</c> is the tag of the
+    /// OPERANDS, as on the unfused comparison. The two targets are block indices, as on
+    /// <see cref="CondBranch"/>.</para>
+    ///
+    /// <para>It leaves the operand stack untouched, which is what makes it a pure saving: the
+    /// values never reach the stack to begin with. Measured on this VM, an instruction costs the
+    /// same ~6 ns whatever it does — so four dispatches become one, and the work inside is
+    /// unchanged.</para>
+    /// </summary>
+    BranchCompare = 0x46,
+
+    /// <summary><c>brcmpk &lt;cmp&gt; &lt;type&gt; &lt;a&gt; &lt;immediate&gt; &lt;ifTrue&gt;
+    /// &lt;ifFalse&gt;</c> — as <see cref="BranchCompare"/>, with a CONSTANT right-hand operand
+    /// encoded exactly as <see cref="Const"/> encodes one of that type. The shape a counting loop
+    /// has: <c>i &lt; 10000</c>.</summary>
+    BranchCompareConst = 0x47,
 
     /// <summary><c>newobj &lt;uleb128 type&gt;</c> — allocates an instance with every field at its zero value.</summary>
     NewObject = 0x50,

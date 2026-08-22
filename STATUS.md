@@ -11,65 +11,172 @@
 
 ## Current milestone
 
-**M31 — the budget and the named attribute value — is BUILT** (2026-08-21, branch
-`feature/m31-budget-and-constants`, four slices, ships as v2.4.0). Both open requirements of
-Erato's register, answered:
+**M32 — "die Zaehlung" — is RUNNING** (started 2026-08-22, branch
+`feature/m32-instruction-count`, ships as v2.12.0, format 3.5 -> 3.6).
 
-- [x] **A10** — `ExecutionBudget`: instructions, not milliseconds, so the same script under the
-      same limit stops at the same instruction. A third specialization of the M30 policy loop;
-      an unmetered run picks the same `ReleasePolicy` it always did and pays one null check
-      before the loop starts. The stop is `LYR-CAP0002` and arrives as a PANIC — uncatchable,
-      no `defer` behind it — which is the property that makes it worth having against code
-      nobody trusts (slices 1–2)
-- [x] the register did not see the load half: the constant initializer runs inside
-      `Instantiate`, so `let x = spin();` hung a host before it had called anything. `Load`
-      takes a budget too (slice 1)
-- [x] `ScriptBudgetException` derives from `ScriptPanicException`: an older host keeps catching
-      what it caught, and a new one can tell "broken" from "still working" without comparing a
-      diagnostic code as a string (slice 2)
-- [x] **A11** — an attribute argument may NAME its value: a `let` bound to a literal, through a
-      chain, across modules, selectively or qualified, `static let` too. One resolution walk
-      shared by the sema and the lowering (slice 3)
-- [x] spec §4.7 and the §2 note amended, mirror synced, Appendix A gains CAP0002 and rewords
-      SEM0066; two conformance cases, suite 88 → 90; guides 14 and 15, CHANGELOG (slice 4)
+**The baseline it starts from**, from `tools/Bench` (Release, two iteration counts differenced
+so nothing that happens once is in the figure, instructions per iteration read from an
+`ExecutionBudget` rather than counted by hand):
 
-**Deliberate limits, stated in guide 14**: a budget bounds BYTECODE, not host time — a native
-that blocks is charged one instruction; budget and debugger are exclusive (the debugger wins,
-and nothing combines them); an instance whose call was stopped is left mid-computation, exactly
-like one that panicked. **Not built**: no `--budget` on the command line, because a standalone
-run trusts its program the way `lyric pack` grants every capability.
+| case | instr/iter | ns/iter | **ns/instr** |
+|---|---:|---:|---:|
+| loopOnly | 9.0 | 54.8 | **6.09** |
+| intAdd | 13.0 | 86.9 | **6.68** |
+| floatAdd | 13.0 | 81.2 | **6.25** |
+| maskOnly | 15.0 | 109.7 | **7.32** |
+| arrayRead | 19.0 | 119.4 | **6.29** |
 
-**Measured** (Release, `tools/Bench`, against v2.3.1 on the same machine, unmetered): every case
-equal or faster, the two `for-in` rows swinging 25–30 % in the FAVOURABLE direction — which
-measures the machine, not the change, and repeats the M30 lesson about this box. Allocations
-unchanged.
+**The price is flat**: an `add f64` costs what a `br` costs. That is the normal price of a
+switch-dispatch stack machine, not a slow interpreter — so the lever is the NUMBER of dispatches,
+not their price. The instruction counts agree exactly with the ones Erato's `bench/interp`
+reported from the outside, which is the cross-check that the two are measuring the same compiler.
 
-**M30 — the debugger — is BUILT** (2026-08-20, branch `feature/m30-debugger`, four slices,
-ships as v2.3.0). The delivery list:
+Beside it, the shape that decides slice 5: `Random.nextFloat()` costs ~555 ns, and
+`std.random.Random.nextInt` is **53 instructions** for a xorshift64* — six shift-and-xor rounds
+written in Lyric.
 
-- [x] format 3.3: the DebugInfo section (id 13) — local and global slot names, strippable like
-      the source map, `--no-debug-info` strips it; Names (id 12) loosened from attribute-only to
-      any named type. Spec chapter 13 amended in `lyriclang/lyric-spec`, mirror synced (slice 1)
-- [x] the policy-generic interpreter loop: one loop source, two JIT specializations; the release
-      hook inlines to nothing — allocations unchanged at 0 B, timings within same-day run
-      variance (the machine was ~2× noisier than the 2026-08-18 baseline in BOTH directions of
-      the A/B; worth a re-measure on a quiet machine) (slice 2)
-- [x] `DebugController` in Lyric.Vm: breakpoints via source-map rows (a blank line slides down),
-      line-granular stepping with the standard depth rules, pause, and — while parked — stack,
-      locals, globals, expansion by static type, dotted-path evaluate. 15 VM-level tests, no
-      protocol involved (slice 2)
-- [x] `lyrdbg`, the ELEVENTH binary: a DAP server that compiles the program itself in the debug
-      shape (source map + debug info + `Optimize=false` — the new `CompilerOptions` knobs) and
-      runs it in-process; debuggee output travels as output events. Tested in-process over piped
-      streams — deliberately no process spawns (slice 3)
-- [x] `vscode-lyric` 1.3.0 wires F5: debug type, breakpoints, adapter lookup beside the driver;
-      guide chapter 21; CHANGELOG v2.3.0 (slice 4)
+The delivery list:
 
-**Deliberate limits, stated in guide 21**: the global initializer runs before the debugger
-attaches; stdlib lines are not steppable (bare names in the map); evaluate is name paths, not
-expressions; a panic reports output + exit 101 rather than a stopped-on-exception state.
-**Open on the editor side**: jetbrains-lyric has no DAP wiring yet — its DAP story is
-IDE-version-gated and belongs to that repository's cadence.
+- [x] **slice 0** — the spec's minor-version rule says what the format actually does. It read
+      "a minor may only add skippable sections", which 3.4 was not — the note beside that version
+      said as much, so the document had contradicted itself since the day it shipped, at the one
+      place a planner would consult before proposing an opcode. The rule now states the
+      compatibility the format has actually delivered: per MODULE, not per version
+      (`lyriclang/lyric-spec#7`, merged; mirror synced)
+- [x] **slice 1** — the measuring bench: five interpreter cases in `tools/Bench`, Erato's names
+      so the numbers are comparable to the report that started this. Two iteration counts
+      differenced instead of a baseline case subtracted, and the instructions per iteration are
+      READ FROM A BUDGET rather than counted from a disassembly — which is what makes the table
+      survive slices 3 and 4, where the number that must fall is the one the harness reports
+- [x] **slice 2** — the decode buffer, no format change (maintainer, `066bed9`): a flat
+      `VmInstruction[]` instead of an array of `BytecodeInstruction` REFERENCES, and the frame's
+      hot state (arrays, instruction list, stack pointer) hoisted into locals of the loop.
+      **Measured, and this is the point**: the flat array alone bought NOTHING; the hoisting
+      bought 12 % on `loopOnly` and 1–2 % where an instruction does more than move a value. My
+      estimate for this slice was "plausibly 1.3–1.8×" and it was wrong in the optimistic
+      direction. What it establishes is worth more than the 12 %: the remaining ~6 ns is **the
+      dispatch itself**, not the memory around it — so nothing short of executing fewer
+      instructions will move this number, which is exactly what slices 3 and 4 do
+- [x] **slice 3** — fusion 1, the compare-branch (format 3.6). `brcmp` and `brcmpk` are `condbr`
+      with the comparison folded in: they read slots, branch to blocks, and touch the operand
+      stack not at all. Selection lives in `Emit/Fusion.cs`, NOT in the IR — a fused instruction
+      is a property of the ENCODING, and teaching the verifier, the printer, the inliner and
+      scalar replacement a backend shape to save the emitter a step would be the wrong trade
+      twice over. **Counted exactly, by the bench reading an `ExecutionBudget`**:
+
+      | case | before | after |
+      |---|---:|---:|
+      | loopOnly | 9 | **6** |
+      | intAdd, floatAdd | 13 | **10** |
+      | maskOnly | 15 | **12** |
+      | arrayRead | 19 | **16** |
+
+      **Timings not recorded at the time**: three consecutive runs put `floatAdd` at 74.9, 114.6
+      and 140.8 ns per iteration, so what answered was the machine and not the change. They were
+      taken later, on a quiet box, and stand in slice 4 below — where the comparison is against
+      the same harness with the selection switched off rather than against yesterday's numbers.
+      Spec: `lyric-spec#8`
+
+- [x] **slice 3b** — the bench's own correction, found while using it: it first differenced two
+      SEPARATELY minimized runs, which amplifies noise rather than removing it. It now takes the
+      minimum of each run interleaved, over 15 trials. A minimum is the estimator for one-sided
+      noise and the difference of two of them estimates the difference; the intermediate version,
+      a median of paired differences, is worse and the comment says why — it gives every disturbed
+      subtrahend a vote
+- [x] **slice 4** — fusion 2, the arithmetic forms. `binll` and `binlk` take their operands from
+      slots and write the result into one; they carry any binary operation, comparisons included,
+      so `flag = a < b` is the same instruction with a bool destination. The destination may be a
+      source, which is what makes `i = i + 1` one instruction.
+
+      **Measured against the same harness with fusion switched off, on the same machine in the
+      same session** — a separate worktree with `Fusion.Of` returning nothing, so the only
+      difference is the selection:
+
+      | case | instr | ns/iter | instr | ns/iter | |
+      |---|---:|---:|---:|---:|---:|
+      | | *before* | *before* | *after* | *after* | |
+      | loopOnly | 9 | 41.7 | **3** | **16.2** | **2.6×** |
+      | intAdd | 13 | 57.4 | **4** | **25.3** | **2.3×** |
+      | floatAdd | 13 | 66.1 | **4** | **26.7** | **2.5×** |
+      | maskOnly | 15 | 83.6 | **9** | **52.5** | **1.6×** |
+      | arrayRead | 19 | 92.2 | **13** | **64.7** | **1.4×** |
+
+      **The time fell with the count, not beside it** — which is the hypothesis this milestone
+      rests on, now measured rather than argued: the dispatch is the bill. What did rise is the
+      average price per instruction (≈4.9 → ≈6.0 ns), and that is the healthy direction: the
+      instructions the fusion removed were the cheapest ones, the moves.
+
+      The two shapes that do NOT fuse are visible in the table too: `maskOnly` keeps a nested
+      operation whose inner result is a temp, and `arrayRead` an element load — neither has a
+      slot to read from
+- [x] **slice 5** — `std.random`. The condition was "only if the crossing measures cheaper than
+      the dispatches it saves", so that was measured first: `nativeSqrt` costs 8 instructions and
+      48.0 ns against `loopOnly`'s 3 and 15.4 — **a crossing into the host costs about what an
+      ordinary instruction costs here**, which is a different world from the ~125 ns Erato
+      measures for an engine native marshalling several arguments. Against 53 dispatches the
+      decision was not close.
+
+      The state stays in the script; one integer crosses and the next one comes back:
+
+      | | instr/iter | ns/iter |
+      |---|---:|---:|
+      | `acc = acc + r.nextFloat()` before | 64 | 305–320 |
+      | after | **42** | **166–176** |
+
+      **The sequence is identical**, including the replaced zero seed — and it is now PINNED:
+      the existing test compared two generators against each other, which would have watched
+      xorshift64 be replaced by something else without a word. The new one asserts the values,
+      and I checked that it fails when they move.
+
+      What is left in `nextFloat` is `absInt` and a modulo, both written in Lyric. Reaching for
+      the top 53 bits instead would be faster and CHANGES THE VALUES — a decision about a
+      documented generator, not a performance slice.
+
+- [ ] **found while measuring, not yet done**: the first bench table's *adjusted* columns are
+      unreliable since 3.6. They subtract a baseline CASE, which assumes every case carries the
+      same loop; selection broke that — the baseline's nested expression does not fuse while a
+      plain accumulator does, and the subtraction now reports a NEGATIVE cost for a native call.
+      The interpreter table is unaffected (it differences two iteration counts of one program).
+      Rebuilding the first table on that method is its own piece of work; the harness says so at
+      the top for now
+- [x] **slice 6** — measured against a build with selection switched off and the old `nextInt`,
+      on the same machine in the same session; CHANGELOG; released as **v2.12.0**
+
+## The gate: a register bytecode is NOT worth a major
+
+The question this milestone existed to answer, answered with its own numbers.
+
+**What a register machine would still win.** Compare what each shape costs now against what a
+three-address machine would need:
+
+| | 2.11 | **2.12** | a register machine |
+|---|---:|---:|---:|
+| a counting loop | 9 | **3** | 3 |
+| a float accumulator | 13 | **4** | 4 |
+| a masked accumulator | 15 | **9** | ~4 |
+| an array read | 19 | **13** | ~5 |
+
+The first two are already there — the fused forms ARE three-address instructions over slots, so
+for the shapes a loop skeleton is made of, the two machines emit the same number. What remains is
+the NESTED EXPRESSION: `acc = (acc + 1) & 1023` keeps its intermediate on the operand stack, and
+neither fused form can reach a value that is not in a slot.
+
+**And that gap does not need a major either.** It is one rule in `Emit/Fusion.cs`: today a fusion
+requires its temps to be stack-placed and its operands to be named locals. Let selection put an
+intermediate in a slot and chain the fused forms through it, and the nested expression becomes two
+instructions — inside format 3.x, with the opcodes that already exist. Do that and the operand
+stack simply stops being used by hot code, which is the register machine arrived at from the other
+side and without a `.lyrbc` that older runtimes cannot read.
+
+**So: no format 4.0 on performance grounds.** v3.0.0 keeps the language items it was cut for
+(#73, overloading, the removals); the bytecode goes with it only if something else demands it.
+
+**What the milestone also settled**, and this is the part worth keeping: the cost model. An
+instruction costs ~6 ns whatever it does; a crossing into the host costs about the same as one
+instruction; the price per instruction ROSE as the count fell, because what a fusion removes are
+the moves. Any future optimization argument on this VM starts from those three numbers.
+
+## What we are working on
 
 **v1.0.0 through v2.0.0 are released** — annotated tags on the remote, each with a release page.
 M0–M10 are finished and tagged (`m0`–`m10-complete`, `v0.1.0`/`v0.5.0`/`v0.9.0`). Releases
@@ -250,8 +357,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4522 tests green **in Debug and Release**, bytecode format **3.5**, **eleven** binaries
-plus `lyrembed.dll`, version **2.11.0**; the specification in `lyriclang/lyric-spec` is
+4553 tests green **in Debug and Release**, bytecode format **3.6**, **eleven** binaries
+plus `lyrembed.dll`, version **2.12.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -370,8 +477,6 @@ have bought an incremental compiler nobody needs.
 project through `CheckProject` measures **median 41.7 ms** against **40.1 ms** for a single file
 of it. The standard library dominates; the project's size is in the noise, and the incremental
 compiler stays unwarranted at project scale too.
-
-## What we are working on
 
 **A18 — an opaque type leaves a name in the module — is RELEASED as v2.11.0** (2026-08-22,
 format 3.5). The register's second finding from the save system, and the one that cost a
@@ -782,6 +887,43 @@ answer yet, and it belongs asked before E4 starts.
   with an open vtable question (there are no generic slots — such defaults could never be
   overridden). Milestone-sized; the spec documents free adapters as THE form, and an
   `IrPinTests` entry keeps today's refusal visible instead of accidental.
+- **THE v3 BASKET AND THE PATCH TRAIN BEFORE IT** (maintainer, 2026-08-22). Everything this
+  file has deferred goes into v3.0.0, and OVERLOADING joins it. The order is fixed and the
+  reason is that a major should be short: **anything that does not need a major ships FIRST, as
+  its own patch** — iterator chaining, the new file-error API, member-`@Deprecated` on interface
+  members, the ignored non-interface entries in a `::` list, multiple interface parents. Each of
+  those deprecates whatever it replaces in the standard library as it lands, and the removal is
+  the major, as at 2.0.
+  - **One exception, and it is new for this project**: a form that is replaced ONLY by
+    overloading is NOT removed at the major. Overloading arrives WITH v3.0.0, so its
+    replacements are the same age as the break; deleting them in the same release would give a
+    user no version in which both exist. Those forms carry a KEPT-UNTIL promise through v3.5,
+    and the promise is written down at the declaration rather than in a release note.
+  - **What must still be decided, before any of it**: `@Deprecated` carries a message and
+    nothing else, so a promise "kept until 3.5" has no form. See the next entry.
+  - **A design round comes before the major**, overloading included, and it has to answer what
+    overloading means for a language whose whole dispatch story is generics plus constraints —
+    Rule 2 is at stake, and it is the mechanism Oil died of.
+
+- **`@Deprecated` needs a `until` field before the patch train starts** (open, 2026-08-22). A
+  kept-until promise that lives in a release note is a promise nobody can check. The smallest
+  form that makes it real: one more field on the existing attribute, and a compiler check that
+  a promise whose version has ARRIVED is an error at build time — the ratchet removes the form
+  instead of a person remembering to. NOT a second attribute (`@Sunset`, `@Until`): that would
+  be a second mechanism for "this is going away".
+
+- **`unsafe` blocks: documented No, with the measurement** (2026-08-22). What an `unsafe` would
+  remove — the bounds check in `ldelem`, the panic in `optget` — is a compare and a branch
+  INSIDE a dispatch that costs ~23 cycles. It buys about one percent and pays with the property
+  the embedding is sold on: `Capability.None` means nothing if a script may read past an array.
+  A C-shaped answer to a dispatch-shaped problem.
+
+- **`@Inline` as a language form: documented No** (2026-08-22). The inliner has a budget since
+  M14 and `nextFloat` was inlined without being asked; `nextInt` was not, at 53 instructions.
+  Forcing it saves ONE call per 53 dispatches — it cannot move a 555 ns measurement. If the
+  budget is wrong that is a measurement and a constant, not a keyword, and it would make the
+  second compiler-read attribute out of a mechanism that is supposed to describe and do nothing.
+
 - **Heterogeneous operator arithmetic: documented No** (M22 probe). Two facts cap it below
   usefulness: a type conforms to `Mul` ONCE (`Mul<Vec2>` beside `Mul<float>` fails the signature
   check — one `mul`, two wanted signatures), and Lyric has no overloading, so `mul(other: float)`

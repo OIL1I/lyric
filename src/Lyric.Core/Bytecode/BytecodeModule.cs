@@ -291,4 +291,27 @@ public sealed record BytecodeInstruction
 
     public double FloatValue { get; init; }
     public bool BoolValue { get; init; }
+
+    /// <summary>Fused forms (3.6) only: what the instruction computes — the comparison for
+    /// <c>brcmp</c>/<c>brcmpk</c>. The same <see cref="Op"/> value the unfused instruction would
+    /// have carried, which is why the fused forms need no enumeration of their own. Meaningless
+    /// for every other opcode.</summary>
+    public Op Fused { get; init; }
+
+    /// <summary>Fused forms only: the left operand's local slot.</summary>
+    public int SlotA { get; init; }
+
+    /// <summary>Fused forms only: the right operand's local slot, for the shapes that have one.
+    /// The constant shapes carry their value in <see cref="ConstBits"/> or
+    /// <see cref="FloatValue"/> instead and leave this at -1.</summary>
+    public int SlotB { get; init; } = -1;
+
+    /// <summary>Fused constant shapes only: the immediate's bit pattern, in the encoding
+    /// <c>const</c> uses for the same tag — a float lands in <see cref="FloatValue"/>, a bool in
+    /// <see cref="BoolValue"/>.</summary>
+    public ulong ConstBits { get; init; }
+
+    /// <summary>The fused ARITHMETIC forms only: the slot the result goes into. The fused
+    /// branches have no destination and leave it at -1.</summary>
+    public int SlotDest { get; init; } = -1;
 }

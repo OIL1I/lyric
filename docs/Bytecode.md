@@ -4,7 +4,7 @@
 > marker against the canonical body. Edit it there, mirror it here.
 
 <!-- sync:body -->
-# Lyric `.lyrbc` Bytecode Format 3.5
+# Lyric `.lyrbc` Bytecode Format 3.6
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.
@@ -12,10 +12,19 @@ or a second runtime can be written from this document alone.
 Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.
 
-Format version **3.5** covers: scalars, locals, module-internal and native calls, structured
+Format version **3.6** covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
 value semantics, exceptions, global constants, closures, host objects, source positions,
-attributes, debug information, and the names of opaque field types.
+attributes, debug information, the names of opaque field types, and fused compare-and-branch.
+
+**3.6 against 3.5**: four new opcodes. `brcmp` and `brcmpk` (§Calls and control flow) do in one
+instruction what a comparison followed by `condbr` does in four; `binll` and `binlk`
+(§Arithmetic and bit operations) do the same for an operation whose operands are slots and whose
+result goes into one. A module that uses one needs
+a runtime of 3.6 or newer; a module that does not is unchanged, which is the compatibility
+§Versioning describes. Nothing else moves: the fused forms compute what the instructions they
+replace computed, in the same order, with the same overflow and comparison rules — a producer may
+emit either.
 
 **3.5 against 3.4**: one new section — OpaqueFields (id 14), the name of the `opaque type` a
 field was declared with. It is skippable, and in the plainest way: no other section refers to it,
@@ -23,6 +32,10 @@ it says nothing about how the program runs, and a reader that ignores it is a re
 what it knew before. A 3.4 reader therefore loads a 3.5 module unchanged, and a 3.5 reader loads
 a 3.4 module — the only difference is whether a host can tell a handle from the number it is
 made of.
+
+*(The rule above was written as "a minor may only add skippable sections" and stood that way
+through 3.4, which is not one — the note below says so in its own words. The wording was
+corrected to what the format has actually done since; no version's contents changed with it.)*
 
 **3.4 against 3.3**: one new `ConstValue` form — an attribute value of enum type, written as the
 variant's tag. It is the first change to this format that a 3.3 reader cannot ignore: the
@@ -90,8 +103,19 @@ payload          byteLength bytes
 A reader must skip a section with an unknown id and must reject a file whose section ids do not
 strictly ascend.
 
-**Versioning**: an unknown major version is rejected. An unknown minor version is tolerated; a new
-minor version may only add skippable sections.
+**Versioning**: an unknown major version is rejected. An unknown minor version is tolerated.
+
+A new MINOR version may add anything a module can decline to use: a skippable section, a value
+form inside one, an opcode. What it may not do is change the meaning or the shape of something a
+reader of the previous minor already reads — that is a major. The compatibility this buys is
+per MODULE rather than per version: a module that uses nothing new loads on the older reader
+unchanged, and a module that uses something new needs a runtime of that minor or newer, the same
+forward path the language's own additions take.
+
+Two consequences worth stating, because they are what the rule is for. A reader must not reject a
+file merely for carrying a higher minor. And a producer must not silently downgrade: if it emits
+a new form, the minor in the header says so, so the failure is "this runtime is too old", named
+at load time, instead of a misread instruction.
 
 ### Section ids
 
@@ -285,9 +309,9 @@ format: it presupposes that a runtime decodes the code into an array before runn
 that walks the bytes directly would have to count instructions to answer a question the format can
 answer in its own coordinates.
 
-**The row carries no column.** A minor version may only add skippable sections, so the shape of this
-one is fixed until a major: a column cannot be added here later, and adding it beside this section
-would be a second mechanism for the same thing.
+**The row carries no column.** The shape of an existing row is fixed until a major (§Versioning):
+a column cannot be added here later, and adding it beside this section would be a second mechanism
+for the same thing.
 
 A reader must reject: a `functionCount` that differs from the Functions section, a file index outside
 the file table, a string index outside the pool, an offset that does not lie inside that function's
@@ -636,6 +660,24 @@ operand type.
 unsigned are distinct operations. There is no string concatenation instruction; it lowers to a
 call.
 
+**The fused forms** (3.6). Two more opcodes do the same arithmetic over LOCAL SLOTS, in one
+instruction instead of four:
+
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x1A` | `binll` | `op`, `T`, `uleb128` dest, `uleb128` a, `uleb128` b | 0 | `dest = a op b` |
+| `0x1B` | `binlk` | `op`, `T`, `uleb128` dest, `uleb128` a, immediate | 0 | `dest = a op k` |
+
+`op` is one byte holding one of the binary opcodes — `0x10`..`0x19` or a comparison
+`0x20`..`0x25`; the fused forms carry the operation they perform rather than introducing an
+enumeration of their own. `T` is the tag of the OPERANDS, and the rules above apply to it
+unchanged; when `op` is a comparison, `dest` receives a `bool`, exactly as the unfused form leaves
+one on the stack. `binlk` encodes its constant as `const` encodes a value of `T`.
+
+The destination may be one of the sources: both operands are read before it is written.
+
+Neither touches the operand stack, and both are optional for a producer — see §Versioning.
+
 ### Comparisons
 
 Two values of the same type produce a `bool` (−2 +1). The tag names the operand type, not the
@@ -673,6 +715,8 @@ result type.
 | `0x43` | `br` | `uleb128` block | 0 | unconditional jump |
 | `0x44` | `condbr` | `uleb128` ifTrue, `uleb128` ifFalse | −1 | branch on the top `bool` |
 | `0x45` | `unreachable` | — | 0 | must never be reached |
+| `0x46` | `brcmp` | `cmp`, `T`, `uleb128` a, `uleb128` b, `uleb128` ifTrue, `uleb128` ifFalse | 0 | compare two slots and branch |
+| `0x47` | `brcmpk` | `cmp`, `T`, `uleb128` a, immediate, `uleb128` ifTrue, `uleb128` ifFalse | 0 | compare a slot with a constant and branch |
 
 `call` takes `paramCount` values off the stack, the first parameter lowest, and leaves one value
 exactly when the return type is not `void`.
@@ -680,7 +724,20 @@ exactly when the return type is not `void`.
 The index addresses a shared index space: all imports first, then all defined functions.
 
 `ret` and `retval` must match the function's return type. Every block ends with exactly one of
-`ret`, `retval`, `br`, `condbr`, `unreachable`, `throw` or `endfinally`.
+`ret`, `retval`, `br`, `condbr`, `brcmp`, `brcmpk`, `unreachable`, `throw` or `endfinally`.
+
+**The fused branches** (3.6). `brcmp` and `brcmpk` are `condbr` with the comparison folded in.
+`cmp` is one byte holding one of the comparison opcodes (`0x20`..`0x25`) — the fused forms carry
+the operation they perform rather than introducing an enumeration of their own — and `T` is the
+tag of the OPERANDS, as on the comparison itself. `brcmpk` encodes its right-hand operand exactly
+as `const` encodes a value of `T`.
+
+Both read local slots and branch to block indices; **neither touches the operand stack**, which is
+where the saving comes from. The comparison rules of §Comparisons apply unchanged, minus `string`:
+these forms compare one machine word.
+
+A producer is free to emit the unfused sequence instead — the two are equivalent by construction,
+and a producer that never emits the fused forms writes a module any 3.5 runtime accepts.
 
 ### Objects
 
@@ -861,6 +918,11 @@ safety checks.
 For `newobj`, `ldfld` and `stfld`, load-time checking means: the type index lies within the Types
 section, and for `ldfld` and `stfld` the field index lies within the field count of that exact
 type. Field access at runtime is then an unchecked array access.
+
+For the fused forms it means: the operation byte is one the form admits — a comparison for
+`brcmp` and `brcmpk`, any binary opcode for `binll` and `binlk` — every slot lies within the slot
+table, every branch target within the block table, and `T` is one that operation accepts. Their
+operands are read and written at runtime without a check, exactly as `ldloc`'s slot is.
 
 The reader stops at the first finding.
 

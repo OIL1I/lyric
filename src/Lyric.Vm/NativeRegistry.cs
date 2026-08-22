@@ -423,6 +423,21 @@ public sealed class NativeRegistry
         var f1 = new[] { TypeTag.F64 };
         var f2 = new[] { TypeTag.F64, TypeTag.F64 };
 
+        // --- std.random (ungated) --------------------------------------------------------
+        //
+        // One xorshift64 round. In Lyric it was 53 instructions -- three shifts, three exclusive
+        // ors, and the loads and stores between them -- and every one of them costs what a
+        // crossing costs. The shift semantics have to match the language exactly: '>>' on a
+        // signed integer is arithmetic here as it is there, and '<<' wraps.
+        registry.Register("std.random.xorshift", new[] { TypeTag.I64 }, TypeTag.I64, args =>
+        {
+            var x = args[0].AsI64;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            return LyrValue.FromI64(x);
+        });
+
         registry.Register("std.math.sqrt", f1, TypeTag.F64,
             args => LyrValue.FromF64(Math.Sqrt(args[0].AsF64)));
         registry.Register("std.math.abs", f1, TypeTag.F64,

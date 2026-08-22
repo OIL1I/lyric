@@ -911,6 +911,34 @@ public static class BytecodeReader
                         $"function '{function.Name}' at {instruction.Offset}: global index " +
                         $"{instruction.Immediate} is outside {module.Globals.Count} global(s)");
 
+                // The fused arithmetic writes a slot and reads one or two; all three are checked
+                // here so the interpreter reads and writes an array without asking.
+                case Op.BinLocals or Op.BinConst
+                    when instruction.SlotDest >= function.SlotTypes.Count
+                         || instruction.SlotA >= function.SlotTypes.Count
+                         || instruction.SlotB >= function.SlotTypes.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: local slot " +
+                        $"{Math.Max(instruction.SlotDest, Math.Max(instruction.SlotA, instruction.SlotB))} " +
+                        $"is outside {function.SlotTypes.Count} slot(s)");
+
+                // The fused branches carry their operands as slots and their targets as block
+                // indices; both are checked here so the interpreter reads an array without asking.
+                case Op.BranchCompare or Op.BranchCompareConst
+                    when instruction.SlotA >= function.SlotTypes.Count
+                         || instruction.SlotB >= function.SlotTypes.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: local slot " +
+                        $"{Math.Max(instruction.SlotA, instruction.SlotB)} is outside " +
+                        $"{function.SlotTypes.Count} slot(s)");
+
+                case Op.BranchCompare or Op.BranchCompareConst
+                    when instruction.Immediate >= (ulong)function.BlockOffsets.Count
+                         || instruction.Immediate2 >= (ulong)function.BlockOffsets.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: branch target is outside " +
+                        $"{function.BlockOffsets.Count} block(s)");
+
                 case Op.Branch when instruction.Immediate >= (ulong)function.BlockOffsets.Count:
                 case Op.CondBranch when instruction.Immediate >= (ulong)function.BlockOffsets.Count
                                         || instruction.Immediate2 >= (ulong)function.BlockOffsets.Count:
@@ -945,6 +973,17 @@ public static class BytecodeReader
             // 'conv' is numeric on both ends, and the two ends have to differ.
             Op.Convert => IsNumeric(tag) && IsNumeric(instruction.ToType!.Value)
                           && tag != instruction.ToType.Value,
+
+            // A fused form computes in one machine operation over a word, so it accepts what the
+            // operation it carries accepts, minus the string: an eq over references is not one of
+            // those, and a fused form has no room to call anything.
+            Op.BranchCompare or Op.BranchCompareConst or Op.BinLocals or Op.BinConst =>
+                instruction.Fused switch
+                {
+                    Op.Shl or Op.Shr or Op.BitAnd or Op.BitOr or Op.BitXor => IsInteger(tag),
+                    Op.Eq or Op.Ne => IsNumeric(tag) || tag is TypeTag.Bool or TypeTag.Char,
+                    _ => IsNumeric(tag),
+                },
             _ => true,
         };
 

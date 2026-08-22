@@ -430,13 +430,29 @@ public static class BytecodeWriter
         {
             blockOffsets[block.Id.Value] = code.Position;
 
-            foreach (var op in block.Insts)
+            // Which runs of operations become one instruction (3.6). The plan is computed per
+            // block and consulted here; an empty plan emits exactly what this loop emitted before.
+            var plan = Fusion.Of(function, block, layout);
+
+            for (var i = 0; i < block.Insts.Count; i++)
             {
                 // Recorded BEFORE the instruction, so the slot loads that belong to it fall under
-                // its position rather than under the one before.
-                positions?.At(code.Position, op.Span);
-                WriteOp(code, function, layout, strings, op, importCount);
+                // its position rather than under the one before. A fusion takes the position of
+                // the FIRST operation it replaces, which is where the expression starts and the
+                // line a debugger stops on.
+                positions?.At(code.Position, block.Insts[i].Span);
+
+                if (plan.At.TryGetValue(i, out var fused))
+                {
+                    WriteFused(code, strings, fused);
+                    i += fused.Consumed - 1;
+                    continue;
+                }
+
+                WriteOp(code, function, layout, strings, block.Insts[i], importCount);
             }
+
+            if (plan.EndsBlock) continue; // the last fusion stands for the terminator too
 
             positions?.At(code.Position, block.Terminator!.Span);
             WriteTerminator(code, layout, block.Terminator!);
@@ -698,21 +714,57 @@ public static class BytecodeWriter
         }
     }
 
-    private static void WriteConstImmediate(ByteWriter code, StringPool strings, Const constant)
+    /// <summary>
+    /// One fused instruction (3.6). The operands are slots and block indices, so nothing here
+    /// touches the operand stack — which is the whole saving: the four instructions this replaces
+    /// spent three of their dispatches moving a value onto the stack and off it again.
+    /// </summary>
+    private static void WriteFused(ByteWriter code, StringPool strings, FusedInstruction fused)
     {
-        var kind = ((IrScalarType)constant.Type).Kind;
-        switch (constant.Value)
+        code.Opcode(fused.Opcode);
+        code.U8((byte)fused.Kind);
+        code.Tag(fused.Type);
+
+        // The arithmetic forms name their destination first; the branches have none and go
+        // straight to their operands.
+        if (fused.SlotDest >= 0) code.ULeb(fused.SlotDest);
+        code.ULeb(fused.SlotA);
+
+        if (fused.Constant is { } constant) WriteScalarImmediate(code, strings, fused.Type, constant);
+        else code.ULeb(fused.SlotB);
+
+        if (fused.Opcode is Op.BranchCompare or Op.BranchCompareConst)
+        {
+            code.ULeb(fused.IfTrue);
+            code.ULeb(fused.IfFalse);
+        }
+    }
+
+    private static void WriteConstImmediate(ByteWriter code, StringPool strings, Const constant) =>
+        WriteScalarImmediate(code, strings, TagOf(constant.Type), constant.Value);
+
+    /// <summary>
+    /// A constant's bytes, by the tag it is written under.
+    ///
+    /// <para>One encoding for constants wherever they stand — in a <c>const</c> instruction or
+    /// inside a fused form. Two would eventually disagree about the one case that distinguishes
+    /// them, which is the single-precision float.</para>
+    /// </summary>
+    private static void WriteScalarImmediate(ByteWriter code, StringPool strings, TypeTag tag,
+        IrConstValue value)
+    {
+        switch (value)
         {
             // Two's complement, zero-extended to 64 bits, the same encoding as in the IR.
             case IntConst i: code.ULeb(i.Value); break;
-            case FloatConst f when kind == IrScalar.F32: code.F32((float)f.Value); break;
+            case FloatConst f when tag == TypeTag.F32: code.F32((float)f.Value); break;
             case FloatConst f: code.F64(f.Value); break;
             case BoolConst b: code.U8(b.Value ? (byte)1 : (byte)0); break;
             case CharConst c: code.ULeb((ulong)c.CodePoint); break;
             case StringConst s: code.ULeb(strings.Intern(s.Value)); break;
             default:
                 throw new InternalCompilationException(
-                    $"bytecode: unhandled const {constant.Value.GetType().Name}");
+                    $"bytecode: unhandled const {value.GetType().Name}");
         }
     }
 

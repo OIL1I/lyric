@@ -10,6 +10,84 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.12.0 — 2026-08-22
+
+Bytecode format **3.6**. The interpreter runs the same programs in a third of the instructions,
+and the release is about why that is the number that mattered.
+
+### The measurement it started from
+
+An instruction on this VM costs ~6 ns — and costs it **regardless of what it does**. A `br`, an
+`add f64` and an `and i64` lie within twenty percent of each other. That is the normal price of a
+switch-dispatch stack machine, not a slow interpreter: the dispatch is the whole bill. So nothing
+that makes an instruction cheaper moves a program's time, and the only lever is executing fewer.
+
+The loop test of every `while` in the language was four instructions, of which three existed to
+move a value onto the operand stack and off it again.
+
+### Added
+
+- **Fused instructions** (format 3.6). Four opcodes that read local slots and write local slots,
+  touching the operand stack not at all:
+
+  | | |
+  |---|---|
+  | `brcmp`, `brcmpk` | compare two slots, or a slot and a constant, and branch |
+  | `binll`, `binlk` | `dest = a op b` and `dest = a op k`, for any binary operation |
+
+  A comparison in the arithmetic form writes a `bool`, exactly as the unfused pair leaves one on
+  the stack; the destination may be one of the sources, which is what makes `i = i + 1` a single
+  instruction. Instruction selection is in the emitter, not in the IR — a fused instruction is a
+  property of the encoding, and the IR is the machine-independent form every pass reads.
+
+  ```
+  brcmpk lt i64 l0, 10000000 -> bb2, bb3
+  binlk add f64 l1 = l1, 1.5
+  binlk add i64 l0 = l0, 1
+  br bb1
+  ```
+
+- **`std.random` draws in a native round.** Three shifts and three exclusive ors written in Lyric
+  were 53 instructions, and on this VM a crossing into the host costs about what one instruction
+  costs. The state stays in the script: one integer crosses, the next comes back. **The sequence
+  is unchanged**, including the replaced zero seed, and it is pinned by a test now — the one
+  beside it compared two generators with each other and would have held for any algorithm at all.
+
+### Measured
+
+Same harness, same machine, same session; the baseline is a build with selection switched off and
+the old `nextInt`. Two iteration counts differenced, so nothing that happens once is in the
+figure, and the instruction counts are read from an `ExecutionBudget` rather than counted by hand.
+
+| case | instr | ns/iter | instr | ns/iter | |
+|---|---:|---:|---:|---:|---:|
+| | *2.11* | *2.11* | *2.12* | *2.12* | |
+| a counting loop | 9 | 44.3 | **3** | **18.2** | **2.4×** |
+| an integer accumulator | 13 | 59.2 | **4** | **27.6** | **2.1×** |
+| a float accumulator | 13 | 68.7 | **4** | **24.8** | **2.8×** |
+| a masked accumulator | 15 | 88.7 | **9** | **61.2** | 1.4× |
+| a native call | 14 | 82.4 | **8** | **56.9** | 1.4× |
+| `Random.nextFloat()` | 70 | 395.4 | **42** | **199.2** | **2.0×** |
+| an array read | 19 | 91.6 | **13** | **65.8** | 1.4× |
+
+The time fell WITH the count rather than beside it, which is the claim the release rests on. What
+rose is the average price per instruction (≈4.9 → ≈6.3 ns), and that is the healthy direction:
+the instructions the fusion removed were the cheapest ones, the moves.
+
+The rows that gain least say where the remaining work is: a nested expression keeps its
+intermediate on the stack, and neither fused form can reach a value that is not in a slot.
+
+### Format
+
+**3.6 against 3.5**: four new opcodes. A producer may emit the unfused sequences instead, and one
+that never emits a fused form writes a module any 3.5 runtime accepts; a module that uses one
+needs a 3.6 runtime, named at load time.
+
+The §Versioning rule was corrected in the same round. It read "a minor version may only add
+skippable sections", which 3.4 was not — the note beside that version said as much, so the
+document had contradicted itself since the day it shipped. It now states the compatibility the
+format has actually delivered: per MODULE, not per version.
+
 ## v2.11.0 — 2026-08-22
 
 Bytecode format **3.5**. One new section, and the whole release is about a name that used to get
