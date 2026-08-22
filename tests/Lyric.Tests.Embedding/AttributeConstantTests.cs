@@ -230,4 +230,89 @@ public sealed class AttributeConstantTests : IDisposable
         Assert.Equal("Layout.Separate", row.Value("layout")?.Text);
         Assert.Equal(1, row.Value("layout")?.AsInt);
     }
+
+    /// <summary>
+    /// A default written in the module that DECLARES the attribute, read in a module that uses
+    /// it. The default's meaning is settled when its own declaration is checked, so checking a
+    /// use first asked a question nobody had answered yet: '@Saved' without arguments failed
+    /// across a module line while the same code in one file compiled.
+    /// </summary>
+    [Fact]
+    public void An_attribute_default_holds_across_the_module_that_uses_it()
+    {
+        Module("engine.save", """
+            module engine.save;
+
+            import std.core { OnType };
+
+            pub enum Layout { Shared, Separate }
+
+            pub struct Saved :: [OnType] { layout: Layout = Layout.Shared, version: int = 1 }
+            """);
+
+        var vm = Vm();
+        var module = vm.Compile("""
+            import engine.save { Saved };
+
+            @Saved
+            pub class Holder { n: int = 0 }
+            """, "mod");
+
+        var row = Assert.Single(module.Attributes.OnTypes("Saved"));
+        Assert.Equal("Layout.Shared", row.Value("layout")?.Text);
+        Assert.Equal(1, row.Value("version")?.AsInt);
+    }
+
+    [Fact]
+    public void A_use_that_writes_one_field_still_takes_the_others_from_their_defaults()
+    {
+        // The shape that made the finding sharp: '@Saved { version = 2 }' failed for the field it
+        // did NOT write.
+        Module("engine.save", """
+            module engine.save;
+
+            import std.core { OnType };
+
+            pub enum Layout { Shared, Separate }
+
+            pub struct Saved :: [OnType] { layout: Layout = Layout.Shared, version: int = 1 }
+            """);
+
+        var vm = Vm();
+        var module = vm.Compile("""
+            import engine.save { Saved };
+
+            @Saved { version = 2 }
+            pub class Holder { n: int = 0 }
+            """, "mod");
+
+        var row = Assert.Single(module.Attributes.OnTypes("Saved"));
+        Assert.Equal("Layout.Shared", row.Value("layout")?.Text);
+        Assert.Equal(2, row.Value("version")?.AsInt);
+    }
+
+    [Fact]
+    public void A_named_constant_default_crosses_the_module_line_too()
+    {
+        // The same question for the 2.4 form: a default that is a 'let' rather than a variant.
+        Module("engine.retry", """
+            module engine.retry;
+
+            import std.core { OnFunction };
+
+            pub let DEFAULT_LIMIT = 3;
+
+            pub struct Retry :: [OnFunction] { limit: int = DEFAULT_LIMIT }
+            """);
+
+        var vm = Vm();
+        var module = vm.Compile("""
+            import engine.retry { Retry };
+
+            @Retry
+            pub fn fetch(): void { }
+            """, "mod");
+
+        Assert.Equal(3, Assert.Single(module.Attributes.OnFunctions("Retry")).Value("limit")?.AsInt);
+    }
 }
