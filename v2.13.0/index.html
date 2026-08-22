@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.13.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.13.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.13.0 — 2026-08-22</h2>
+<p>The first link of the train that runs ahead of v3.0.0: everything that does not need a major
+ships first, on its own, and deprecates what it replaces. This is the mechanism those
+deprecations will be written with.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>A deprecation may name the version that removes it.</strong> <code>@Deprecated</code> carries a second field:</p>
+<pre><code class="language-lyr">@Deprecated { message = &quot;use renew&quot;, until = &quot;3.5&quot; }
+pub fn old(): int { return 1; }
+</code></pre>
+<p>Building with a toolchain that has reached that version is an error (<code>LYR-SEM0081</code>), as is a
+version the compiler cannot read. A deprecation makes two promises — use something else, and
+this will disappear — and only the first was ever written where anyone could see it; the second
+lived in a release note, which is another way of saying it lived in somebody's memory.</p>
+<p>Three decisions in it, each of which could have gone the other way:</p>
+<ul>
+<li><strong>The named version is the one that removes it.</strong> <code>until = &quot;3.5&quot;</code> fails AT 3.5, not one
+release later, so the failure lands on whoever is preparing that release.</li>
+<li><strong>The check sits at the declaration, not at a use.</strong> A form kept past its date is wrong
+whether or not anything still calls it, and dead code would never trip a use-site warning.</li>
+<li><strong>It stops the build rather than warning.</strong> A warning about a removal that should already
+have happened is a warning nobody acts on — the same reasoning as the documentation ratchet
+and the corpus-silence invariant.</li>
+</ul>
+<p>Not a second attribute: an <code>@Sunset</code> beside <code>@Deprecated</code> would be a second mechanism for &quot;this
+is going away&quot;, and the two would eventually disagree about a declaration carrying one and not
+the other. An empty <code>until</code> is the ordinary policy — warn now, remove at the next major.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

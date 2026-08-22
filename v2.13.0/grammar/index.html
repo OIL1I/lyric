@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric Grammar — Lyric v2.13.0</title>
+<link rel="stylesheet" href="../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../">Lyric</a>
+<nav class="areas">
+<a href="../guide/getting-started/">Guide</a>
+<a class="current" href="../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.13.0</span>
+<nav class="switcher" data-versions="../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../grammar/" class="here">Lyric Grammar</a></li>
+<li><a href="../bytecode/">Lyric .lyrbc Bytecode Format 3.6</a></li>
+<li><a href="../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../stdlib/std.build/">std.build</a></li>
+<li><a href="../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../stdlib/std.core/">std.core</a></li>
+<li><a href="../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../stdlib/std.math/">std.math</a></li>
+<li><a href="../stdlib/std.option/">std.option</a></li>
+<li><a href="../stdlib/std.os/">std.os</a></li>
+<li><a href="../stdlib/std.random/">std.random</a></li>
+<li><a href="../stdlib/std.string/">std.string</a></li>
+<li><a href="../stdlib/std.test/">std.test</a></li>
+<li><a href="../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>Lyric Grammar</h1>
+<nav class="contents">
+<ul>
+<li><a href="#notation">Notation</a></li>
+<li><a href="#lexical-grammar">1. Lexical grammar</a></li>
+<li><a href="#module-structure">2. Module structure</a></li>
+<li><a href="#declarations">3. Declarations</a></li>
+<li><a href="#type-expressions">4. Type expressions</a></li>
+<li><a href="#statements">5. Statements</a></li>
+<li><a href="#expressions">6. Expressions</a></li>
+<li><a href="#patterns">7. Patterns</a></li>
+</ul>
+</nav>
+<blockquote>
+<p><strong>Mirror.</strong> The canonical home of this document is
+<a href="https://github.com/lyriclang/lyric-spec/blob/main/spec/02-grammar.md"><code>lyriclang/lyric-spec</code> → <code>spec/02-grammar.md</code></a>.
+This copy exists for the toolchain's tests and doc site; CI diffs everything below the
+marker against the canonical body. Edit it there, mirror it here.</p>
+</blockquote>
+<!-- sync:body -->
+<p>The formal grammar of the Lyric language. This document defines the syntax only; it says nothing
+about typing, name resolution or runtime behaviour.</p>
+<h2 id="notation">Notation</h2>
+<p>EBNF with the following conventions:</p>
+<table>
+<thead>
+<tr>
+<th>Form</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'x'</code></td>
+<td>terminal</td>
+</tr>
+<tr>
+<td><code>X</code></td>
+<td>non-terminal</td>
+</tr>
+<tr>
+<td><code>{ X }</code></td>
+<td>zero or more</td>
+</tr>
+<tr>
+<td><code>[ X ]</code></td>
+<td>zero or one</td>
+</tr>
+<tr>
+<td><code>X \| Y</code></td>
+<td>alternative</td>
+</tr>
+<tr>
+<td><code>( X )</code></td>
+<td>grouping</td>
+</tr>
+<tr>
+<td><code>X .</code></td>
+<td>end of production</td>
+</tr>
+<tr>
+<td><code>(* … *)</code></td>
+<td>note</td>
+</tr>
+</tbody>
+</table>
+<p><code>a'..'z</code> denotes a character range. <code>any-char</code> denotes any character of the source encoding.</p>
+<hr />
+<h2 id="lexical-grammar">1. Lexical grammar</h2>
+<h3 id="source-file">1.1 Source file</h3>
+<pre><code class="language-ebnf">SourceFile      = { Trivia | Token } EOF .
+Trivia          = Whitespace | LineComment | BlockComment .
+</code></pre>
+<p>Source is UTF-8. A byte-order mark at offset 0 is skipped. Line terminators are <code>\n</code> and <code>\r\n</code>.</p>
+<h3 id="whitespace-and-comments">1.2 Whitespace and comments</h3>
+<pre><code class="language-ebnf">Whitespace      = ' ' | '\t' | '\n' | '\r' .
+LineComment     = '//' { any-char-except-newline } .
+BlockComment    = '/*' { BlockComment | any-char } '*/' .
+DocComment      = '///' { any-char-except-newline } .
+</code></pre>
+<p>Block comments nest: <code>/* /* */ */</code> is one comment. Doc comments are tokenized and carry no
+grammatical meaning.</p>
+<h3 id="identifiers">1.3 Identifiers</h3>
+<pre><code class="language-ebnf">IdentStart      = 'a'..'z' | 'A'..'Z' | '_' .
+IdentCont       = IdentStart | '0'..'9' .
+IDENTIFIER      = IdentStart { IdentCont } .        (* unless it is a keyword *)
+AT_IDENT        = '@' IdentStart { IdentCont } .
+</code></pre>
+<h3 id="keywords">1.4 Keywords</h3>
+<p>Reserved; never an identifier:</p>
+<pre><code class="language-text">module    import    as        pub       static
+struct    class     enum      interface extend
+fn        mut       let       var       params
+if        else      while     do        for       in    match
+break     continue  return    yield     resume    defer
+try       catch     throw
+true      false     null
+this
+</code></pre>
+<p>Contextual; reserved only in the position shown, an identifier everywhere else:</p>
+<table>
+<thead>
+<tr>
+<th>Word</th>
+<th>Position</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>first token of a top-level declaration, before an identifier</td>
+</tr>
+<tr>
+<td><code>throws</code></td>
+<td>after the return type of a function signature</td>
+</tr>
+</tbody>
+</table>
+<p>Built-in type names (<code>int</code>, <code>string</code>, …) are identifiers, not keywords.</p>
+<h3 id="literals">1.5 Literals</h3>
+<pre><code class="language-ebnf">IntLit          = ( DecLit | HexLit | BinLit | OctLit ) [ IntSuffix ] .
+DecLit          = DecDigit { DecDigit | '_' } .
+HexLit          = '0' ( 'x' | 'X' ) HexDigit { HexDigit | '_' } .
+BinLit          = '0' ( 'b' | 'B' ) BinDigit { BinDigit | '_' } .
+OctLit          = '0' ( 'o' | 'O' ) OctDigit { OctDigit | '_' } .
+IntSuffix       = ( 'i' | 'u' ) DecDigit { DecDigit } .   (* i8 … i64, u8 … u64 *)
+
+FloatLit        = DecLit ( '.' DecLit [ Exponent ] | Exponent ) [ FloatSuffix ]
+                | DecLit FloatSuffix .
+Exponent        = ( 'e' | 'E' ) [ '+' | '-' ] DecDigit { DecDigit | '_' } .
+FloatSuffix     = 'f' DecDigit { DecDigit } .             (* f32, f64 *)
+
+StringLit       = '&quot;' { StringChar | EscapeSeq } '&quot;' .
+InterpolatedStr = 'f' '&quot;' { StringChar | EscapeSeq | Interpolation } '&quot;' .
+Interpolation   = '{' Expr [ ':' FormatSpec ] '}' .
+CharLit         = &quot;'&quot; ( CharChar | EscapeSeq ) &quot;'&quot; .
+EscapeSeq       = '\' ( 'n' | 'r' | 't' | '\' | '&quot;' | &quot;'&quot; | '0'
+                      | 'x' HexDigit HexDigit
+                      | 'u' '{' HexDigit { HexDigit } '}' ) .
+
+BoolLit         = 'true' | 'false' .
+NullLit         = 'null' .
+</code></pre>
+<p>Inside an interpolated string, <code>{{</code> and <code>}}</code> produce a literal brace. <code>FormatSpec</code> runs to the
+matching <code>}</code>, tracking nested braces, parentheses and brackets. A <code>\u{…}</code> escape carries at
+most eight hex digits and must name a Unicode scalar value.</p>
+<h3 id="operators-and-punctuation">1.6 Operators and punctuation</h3>
+<pre><code class="language-text">(   )   {   }   [   ]
+,   .   ;   :   ::  -&gt;  =&gt;
+?   ?.  ??  !
++   -   *   /   %
+&amp;   |   ^   ~
+&lt;&lt;  &gt;&gt;
+==  !=  &lt;   &lt;=  &gt;   &gt;=
+&amp;&amp;  ||  !
+++  --
+..  ..=
+=   +=  -=  *=  /=  %=
+&amp;=  |=  ^=  &lt;&lt;= &gt;&gt;=
+&amp;&amp;= ||= ??=
+</code></pre>
+<p>The lexer takes the longest match: <code>&lt;&lt;=</code> before <code>&lt;&lt;</code> before <code>&lt;</code>.</p>
+<p><code>::</code> introduces an interface list and never appears in a module path; <code>.</code> separates path
+segments. <code>!</code> is postfix force-unwrap and prefix logical not.</p>
+<hr />
+<h2 id="module-structure">2. Module structure</h2>
+<pre><code class="language-ebnf">Module          = { Attribute } ModuleHeader { TopLevelDecl }
+                | { TopLevelDecl } .
+ModuleHeader    = 'module' ModulePath ';' .
+ModulePath      = IDENTIFIER { '.' IDENTIFIER } .
+
+Attribute       = AT_IDENT { '.' IDENTIFIER }
+                  [ '{' [ AttrArg { ',' AttrArg } [ ',' ] ] '}' ] .
+AttrArg         = IDENTIFIER '=' Expr .
+
+ImportDecl      = 'import' ModulePath [ ImportClause ] ';' .
+ImportClause    = '{' IDENTIFIER { ',' IDENTIFIER } [ ',' ] '}'
+                | 'as' IDENTIFIER .
+
+TopLevelDecl    = ImportDecl
+                | { Attribute } [ 'pub' ] ( FunctionDecl
+                                          | StructDecl
+                                          | ClassDecl
+                                          | EnumDecl )
+                | [ 'pub' ] ( InterfaceDecl
+                            | ExtendDecl
+                            | GlobalBinding
+                            | TypeAlias ) .
+
+GlobalBinding   = BindingStmt .                   (* 'let' only *)
+TypeAlias       = [ 'opaque' ] 'type' IDENTIFIER '=' TypeExpr ';' .
+</code></pre>
+<p>Neither <code>type</code> nor <code>opaque</code> is a keyword; both are contextual, so both remain usable as
+identifiers.</p>
+<p>A plain alias is a name for a type, not a new type. An <strong>opaque</strong> alias (since v1.15) is a new
+IDENTITY over the same layout: nothing converts implicitly in either direction, an explicit <code>as</code>
+to exactly the underlying type and back is the one crossing, <code>==</code>/<code>!=</code> compare within one alias,
+and everything else — arithmetic, ordering, constraint satisfaction, f-string rendering — is
+refused. At runtime an opaque value is its underlying value; in a native signature the alias
+resolves to the underlying, which is how a handle crosses the host boundary as a plain number
+while scripts cannot forge one.</p>
+<p>The module header is optional. In an entry file the name then comes from the file name; in a file
+reached through an <code>import</code>, the name is the imported path, and a header that disagrees with it is
+an error.</p>
+<p>An attribute before the header describes the module; in a file without a header an attribute at the
+top belongs to the first declaration. The path names a struct type, and an <code>AttrArg</code> value must be
+a value at compile time — an integer, float, string, char or bool literal, optionally
+sign-prefixed, or (since v2.4) a name denoting a <code>let</code> bound to one — which is a semantic rule,
+not a syntactic one.</p>
+<hr />
+<h2 id="declarations">3. Declarations</h2>
+<h3 id="functions">3.1 Functions</h3>
+<pre><code class="language-ebnf">FunctionDecl    = [ 'pub' ] [ 'static' ] [ 'mut' ] 'fn' IDENTIFIER [ GenericParams ]
+                  '(' [ ParamList ] ')' [ ':' TypeExpr ]
+                  [ 'throws' [ TypeExpr ] ]
+                  ( Block | ';' ) .
+GenericParams   = '&lt;' GenericParam { ',' GenericParam } '&gt;' .
+GenericParam    = IDENTIFIER [ '::' '[' TypeExpr { ',' TypeExpr } ']' ] .
+
+ParamList       = Param { ',' Param } .
+Param           = [ 'params' ] IDENTIFIER ':' TypeExpr [ '=' Expr ] .
+</code></pre>
+<p>A body of <code>;</code> declares a function without one. <code>params</code> may appear on the last parameter only,
+whose type must be an array.</p>
+<h3 id="structs">3.2 Structs</h3>
+<pre><code class="language-ebnf">StructDecl      = [ 'pub' ] 'struct' IDENTIFIER [ GenericParams ]
+                  [ '::' InterfaceList ]
+                  '{' [ StructBody ] '}' .
+InterfaceList   = '[' TypeExpr { ',' TypeExpr } ']' .
+StructBody      = { StructMember [ ',' ] } .
+StructMember    = Field | FunctionDecl | StaticBinding .
+StaticBinding   = [ 'pub' ] 'static' BindingStmt .
+Field           = IDENTIFIER ':' TypeExpr [ '=' Expr ] .
+</code></pre>
+<p>Members are separated by <code>,</code>. Only a field requires it: a member that closes itself — a block body
+ending in <code>}</code>, a bodiless method or a <code>static let</code> ending in <code>;</code> — may omit it.</p>
+<h3 id="classes">3.3 Classes</h3>
+<pre><code class="language-ebnf">ClassDecl       = [ 'pub' ] 'class' IDENTIFIER [ GenericParams ]
+                  [ '::' InterfaceList ]
+                  '{' [ ClassBody ] '}' .
+ClassBody       = { ClassMember [ ',' ] } .
+ClassMember     = Field | FunctionDecl | StaticBinding .
+</code></pre>
+<h3 id="enums">3.4 Enums</h3>
+<pre><code class="language-ebnf">EnumDecl        = [ 'pub' ] 'enum' IDENTIFIER [ GenericParams ]
+                  [ '::' InterfaceList ]
+                  '{' [ EnumBody ] '}' .
+EnumBody        = EnumVariant { ',' EnumVariant } [ ',' ]
+                  [ ';' { FunctionDecl } ] .
+EnumVariant     = IDENTIFIER [ TupleVariant | StructVariant ] .
+TupleVariant    = '(' TypeExpr { ',' TypeExpr } ')' .
+StructVariant   = '{' Field { ',' Field } [ ',' ] '}' .
+</code></pre>
+<p>The <code>;</code> separates the variant list from the method list.</p>
+<h3 id="interfaces">3.5 Interfaces</h3>
+<pre><code class="language-ebnf">InterfaceDecl   = [ 'pub' ] 'interface' IDENTIFIER [ GenericParams ]
+                  [ '::' InterfaceList ]
+                  '{' { InterfaceMember } '}' .
+InterfaceMember = FunctionDecl .
+</code></pre>
+<p>An interface member with a body is a default implementation.</p>
+<p>The interface list names the <strong>parent</strong>: whoever conforms to the interface conforms to the parent
+too, transitively — abstract members of the whole chain must be implemented, default methods of the
+whole chain are inherited, and a constraint on the parent is satisfied by the child. Semantic
+rules, not syntactic ones: the list holds at most <strong>one</strong> entry (several requirements side by side
+are what constraints are for: <code>&lt;T :: [A, B]&gt;</code>), the entry names an interface, the chain is acyclic,
+and a member of the chain cannot be redeclared — an inherited member keeps its declaring interface.</p>
+<p>A value of interface type reaches the members of its whole chain. It does not, however, convert to
+a value of the parent's type: conformance is implied for the <em>implementing</em> type, so take the
+concrete value through the parent where a parent-typed value is needed.</p>
+<p>A member carries no <code>static</code>: it is reached through a vtable slot, which takes a receiver, and a
+static member has none. Declare it on the implementing type instead.</p>
+<h3 id="extend-blocks">3.6 Extend blocks</h3>
+<pre><code class="language-ebnf">ExtendDecl      = 'extend' TypeExpr [ '::' InterfaceList ]
+                  '{' { FunctionDecl } '}' .
+</code></pre>
+<hr />
+<h2 id="type-expressions">4. Type expressions</h2>
+<pre><code class="language-ebnf">TypeExpr        = TypePrefix TypeAtom { TypeSuffix } .
+TypePrefix      = [ '?' ] .
+TypeAtom        = BuiltinType
+                | ModulePath [ '&lt;' TypeExpr { ',' TypeExpr } '&gt;' ]
+                | FunctionType
+                | TupleType
+                | GroupedType .
+FunctionType    = 'fn' '(' [ TypeExpr { ',' TypeExpr } ] ')' '-&gt;' TypeExpr .
+TupleType       = '(' TypeExpr ',' TypeExpr { ',' TypeExpr } ')' .   (* arity &gt;= 2 *)
+GroupedType     = '(' TypeExpr ')' .
+TypeSuffix      = '[' ']' .
+
+BuiltinType     = 'int' | 'uint' | 'float'
+                | 'int8' | 'int16' | 'int32' | 'int64'
+                | 'uint8' | 'uint16' | 'uint32' | 'uint64'
+                | 'float32' | 'float64'
+                | 'bool' | 'char' | 'string' | 'void' .
+</code></pre>
+<p>A function type extends as far to the right as possible: <code>fn(int) -&gt; void[]</code> is a function
+returning <code>void[]</code>. An array of function values is written <code>(fn(int) -&gt; void)[]</code>.</p>
+<p><code>?</code> binds to the atom together with its suffixes: <code>?T[]</code> is an optional array. An array of
+optionals is written <code>(?T)[]</code>.</p>
+<p><code>?</code> does not nest: <code>??T</code> is not a type.</p>
+<hr />
+<h2 id="statements">5. Statements</h2>
+<pre><code class="language-ebnf">Block           = '{' { Statement } '}' .
+
+Statement       = Block
+                | BindingStmt
+                | DestructuringStmt
+                | IfStmt
+                | WhileStmt
+                | DoWhileStmt
+                | ForInStmt
+                | MatchStmt
+                | BreakStmt
+                | ContinueStmt
+                | ReturnStmt
+                | YieldStmt
+                | DeferStmt
+                | ThrowStmt
+                | TryStmt
+                | ExprStmt .
+
+BindingStmt     = ( 'let' | 'var' ) IDENTIFIER [ ':' TypeExpr ] [ '=' Expr ] ';' .
+DestructuringStmt = ( 'let' | 'var' ) TuplePattern [ ':' TypeExpr ] '=' Expr ';' .
+
+IfStmt          = 'if' '(' Expr ')' Block [ 'else' ( Block | IfStmt ) ] .
+
+WhileStmt       = 'while' '(' Expr ')' Block .
+DoWhileStmt     = 'do' Block 'while' '(' Expr ')' ';' .
+ForInStmt       = 'for' '(' IDENTIFIER 'in' Expr ')' Block .
+
+MatchStmt       = 'match' '(' Expr ')' '{' { MatchArm } '}' .
+MatchArm        = Pattern [ 'if' Expr ] '=&gt;' ( Expr | Block ) .
+
+BreakStmt       = 'break' ';' .
+ContinueStmt    = 'continue' ';' .
+ReturnStmt      = 'return' [ Expr ] ';' .
+YieldStmt       = 'yield' [ Expr ] ';' .
+DeferStmt       = 'defer' ( Block | Expr ';' ) .
+ThrowStmt       = 'throw' Expr ';' .
+
+TryStmt         = 'try' Block { CatchClause } .
+CatchClause     = 'catch' '(' CatchBinding ')' Block .
+CatchBinding    = '_'
+                | IDENTIFIER ':' TypeExpr
+                | IDENTIFIER .
+
+ExprStmt        = Expr ';' .
+</code></pre>
+<p>A destructuring binding requires an initializer. Its pattern admits names, <code>_</code> and nested tuple
+patterns; no form that can fail.</p>
+<p><code>ExprStmt</code> admits a call, an assignment or <code>resume</code>. A statement does not begin with a struct
+initializer: at that position <code>Name { … }</code> is a name followed by a block.</p>
+<p>An arm whose body is an expression is followed by <code>,</code>, except for the last arm before <code>}</code>. An arm
+whose body is a block may omit it.</p>
+<hr />
+<h2 id="expressions">6. Expressions</h2>
+<h3 id="precedence">6.1 Precedence</h3>
+<p>Highest first. All levels are left-associative unless stated.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Operators</th>
+<th>Associativity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>postfix <code>.</code> <code>?.</code> <code>[ ]</code> <code>( )</code> <code>++</code> <code>--</code> <code>!</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>2</td>
+<td>prefix <code>!</code> <code>-</code> <code>~</code> <code>++</code> <code>--</code> <code>resume</code></td>
+<td>right</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>as</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>*</code> <code>/</code> <code>%</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>+</code> <code>-</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>&lt;&lt;</code> <code>&gt;&gt;</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>..</code> <code>..=</code></td>
+<td>non-associative</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>&amp;</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>^</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>\|</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>==</code> <code>!=</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>&amp;&amp;</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>\|\|</code></td>
+<td>left</td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>??</code></td>
+<td>right</td>
+</tr>
+<tr>
+<td>16</td>
+<td>assignment</td>
+<td>right</td>
+</tr>
+</tbody>
+</table>
+<h3 id="grammar">6.2 Grammar</h3>
+<pre><code class="language-ebnf">Expr            = Assign .
+Assign          = Coalesce [ AssignOp Assign ] .
+AssignOp        = '=' | '+=' | '-=' | '*=' | '/=' | '%='
+                | '&amp;=' | '|=' | '^=' | '&lt;&lt;=' | '&gt;&gt;='
+                | '&amp;&amp;=' | '||=' | '??=' .
+
+Primary         = IntLit | FloatLit | StringLit | InterpolatedStr
+                | CharLit | BoolLit | NullLit
+                | 'this'
+                | IDENTIFIER
+                | TypePath
+                | '(' Expr ')'
+                | IfExpr
+                | MatchExpr
+                | StructInit
+                | ArrayLit
+                | TupleLit
+                | Lambda .
+
+Lambda          = '(' [ LambdaParam { ',' LambdaParam } ] ')' [ ':' TypeExpr ]
+                  '=&gt;' ( Expr | Block ) .
+LambdaParam     = IDENTIFIER [ ':' TypeExpr ] .
+
+ResumeExpr      = 'resume' UnaryExpr .
+
+StructInit      = TypePath '{' [ StructInitField { ',' StructInitField } [ ',' ] ] '}' .
+StructInitField = IDENTIFIER '=' Expr .
+
+TypePath        = ModulePath [ '&lt;' TypeExpr { ',' TypeExpr } '&gt;' ] [ '.' IDENTIFIER ] .
+
+CallArgs        = [ '&lt;' TypeExpr { ',' TypeExpr } '&gt;' ] '(' [ Expr { ',' Expr } ] ')' .
+
+ArrayLit        = '[' [ Expr { ',' Expr } [ ',' ] ] ']' .
+TupleLit        = '(' Expr ',' Expr { ',' Expr } ')' .
+
+IfExpr          = 'if' '(' Expr ')' Expr 'else' Expr .
+MatchExpr       = 'match' '(' Expr ')' '{' { MatchArm } '}' .
+</code></pre>
+<p><code>else</code> is mandatory in <code>IfExpr</code>; <code>else if</code> is a nested <code>IfExpr</code>.</p>
+<p>In a <code>TypePath</code>, the trailing <code>'.' IDENTIFIER</code> names an enum variant: <code>Opt&lt;int&gt;.Some</code>. The type
+arguments belong to the type and precede that segment.</p>
+<h3 id="resolving">6.3 Resolving <code>&lt;</code></h3>
+<p>A <code>&lt;</code> after a name opens a type-argument list when it closes balanced and only tokens that can
+occur in a type expression stand between the two, and the token that follows is one of:</p>
+<table>
+<thead>
+<tr>
+<th>Follower</th>
+<th>Form</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>(</code></td>
+<td>call with explicit type arguments — <code>f&lt;int&gt;()</code></td>
+</tr>
+<tr>
+<td><code>{</code></td>
+<td>struct initializer — <code>Pair&lt;int&gt; { … }</code></td>
+</tr>
+<tr>
+<td><code>.</code></td>
+<td>type path in value position — <code>Pair&lt;int&gt;.of(3)</code></td>
+</tr>
+</tbody>
+</table>
+<p>In every other case <code>&lt;</code> is the comparison operator.</p>
+<hr />
+<h2 id="patterns">7. Patterns</h2>
+<pre><code class="language-ebnf">Pattern         = '_'
+                | Literal
+                | IDENTIFIER
+                | TypePath [ '(' Pattern { ',' Pattern } ')' ]
+                | TypePath '{' [ FieldPattern { ',' FieldPattern } [ ',' ] ] '}'
+                | TuplePattern
+                | Pattern '|' Pattern
+                | RangePattern .
+
+FieldPattern    = IDENTIFIER [ '=' Pattern ] .
+TuplePattern    = '(' Pattern ',' Pattern { ',' Pattern } ')' .
+RangePattern    = Literal ( '..' | '..=' ) Literal .
+</code></pre>
+<p><code>Literal</code> is an integer, float, string, char, bool or null literal. A <code>FieldPattern</code> without <code>=</code>
+binds the field to its own name.</p>
+<nav class="neighbours">
+<a class="next" href="../bytecode/">Lyric .lyrbc Bytecode Format 3.6</a>
+</nav>
+</main>
+</div>
+<script src="../site.js"></script>
+</body>
+</html>
