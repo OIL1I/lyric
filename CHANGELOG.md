@@ -10,6 +10,51 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.10.0 — 2026-08-22
+
+An attribute argument may name an enum variant. The bytecode format goes **3.3 → 3.4**, and this
+is the first change to it that an older reader cannot ignore — see below.
+
+### Added
+
+- **A unit enum variant is an attribute argument.**
+
+  ```lyr
+  pub enum Layout { Packed, Separate }
+
+  pub struct Saved :: [OnFunction] { layout: Layout = Layout.Packed }
+
+  @Saved { layout = Layout.Separate }
+  pub fn store(): void { }
+  ```
+
+  A vocabulary written as an enum is checked by the TYPE SYSTEM at the use site: `Layout.Seperate`
+  is a compile error, where the same typo in a string is a row nobody ever matches — the fault
+  class attributes closed for entry points, one field deeper. It works as a written argument, as a
+  field default, and through a `let` bound to a variant, because one resolution walk answers all
+  three.
+
+  A variant **with a payload** is refused, and the message says why rather than repeating "must be
+  a literal": a row holds one value per field, and a payload is values of its own.
+
+  A host reads both halves — `Text` is the qualified variant (`Layout.Separate`), `AsInt` its tag.
+  The disassembler prints the name too.
+
+### Changed
+
+- **Bytecode format 3.4**: `ConstValue` gains one form, an attribute value of enum type written as
+  the variant's tag. The value names no enum — the field's type does, and the enum's entry names
+  its variants, so the name is resolved rather than stored twice.
+
+  **The compatibility note that matters**: the Attributes section is skippable as a whole, but a
+  reader that does read it meets a tag it has no case for. A module whose attribute rows use an
+  enum value therefore does **not** load on a runtime older than this one; a 3.4 module without
+  such a value loads unchanged. That is the same forward path `co.next()` took in 2.2.0 — the
+  module that uses the new thing is the module that needs the new runtime.
+
+- **`LYR-SEM0066` says what it now allows**: a number, a string, a char, a bool, a unit enum
+  variant, or a `let` bound to one.
+
 ## v2.9.0 — 2026-08-22
 
 An editor can attach to a program a host is already running. The bytecode format stays **3.3** and

@@ -269,6 +269,9 @@ public static class Disassembler
     private static string ValueText(BytecodeConstValue value) => value.Tag switch
     {
         TypeTag.String => Quote(value.Text ?? ""),
+        // The reader resolved the variant name beside the tag; a dump that showed the number
+        // alone would make a reader count declarations to find out what it says.
+        TypeTag.Enum => value.Text ?? value.AsInt.ToString(CultureInfo.InvariantCulture),
         TypeTag.Bool => value.AsBool ? "true" : "false",
         TypeTag.F32 or TypeTag.F64 => Floats.Render(value.AsFloat),
         TypeTag.Char => $"'{char.ConvertFromUtf32((int)value.Bits)}'",

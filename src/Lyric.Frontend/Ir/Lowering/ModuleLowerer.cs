@@ -730,15 +730,33 @@ public static class ModuleLowerer
                 ?? throw new InternalCompilationException(
                     $"ir: attribute field '{fields[i].Name}' is no compile-time value, which the "
                     + "sema accepts nowhere");
-            values[i] = EvaluateAttributeValue(fieldTypes[i], literal);
+            values[i] = EvaluateAttributeValue(fieldTypes[i], literal, typeTable);
         }
         return new IrAttribute(kind, target, typeId, values);
     }
 
     /// <summary>A literal, evaluated against the FIELD's type: an integer written into a float
     /// field becomes that float, so the tag in the bytecode always matches the layout.</summary>
-    private static IrAttributeValue EvaluateAttributeValue(IrType fieldType, Expr literal)
+    private static IrAttributeValue EvaluateAttributeValue(IrType fieldType, Expr literal,
+        TypeTable typeTable)
     {
+        // An enum field takes the variant's TAG — its index in the enum's variant list, the same
+        // number slot 0 carries at runtime. The name is not written: the field's type names the
+        // enum, and the enum's entry names its variants, so a reader has both without a third
+        // copy that could disagree with them.
+        if (fieldType is IrEnumType enumType)
+        {
+            var name = literal switch
+            {
+                MemberExpr member => member.Member,
+                TypePathExpr path => path.Path[^1],
+                _ => throw new InternalCompilationException(
+                    $"ir: attribute value of kind {literal.GetType().Name} survived the sema"),
+            };
+            return new IrAttributeValue(fieldType,
+                (ulong)typeTable.TagOf(enumType.Type, name, literal.Span), null);
+        }
+
         var negative = false;
         if (literal is UnaryExpr { Operator: UnaryOp.Neg } neg)
         {
