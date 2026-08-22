@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4483 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.7.0**; the specification in `lyriclang/lyric-spec` is
+4489 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
+plus `lyrembed.dll`, version **2.8.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -269,6 +269,13 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **A16 — globals initialize in dependency order** (2026-08-22, `feature/a16-init-order`,
+  v2.8.0). The first Erato finding that was a defect rather than a missing shape, and the first
+  where two of our own tools disagreed about the same files. The lesson is in the comment it
+  replaced: that one called discovery order "the only order that works without a dependency
+  analysis" and cited Go's topological sort in the same breath — the answer was written down
+  beside the excuse.
 
 - [x] **The debug adapter answers `setExceptionBreakpoints`** (2026-08-22, PR #83, v2.7.1). Four
   lines and a test. The lesson is where it was found: a second DAP client, not a second reading of
@@ -371,6 +378,30 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**A16 — the initialization order follows the imports — is RELEASED as v2.8.0** (2026-08-22).
+Erato filed it after E15, and it is the first of their findings that was a real defect rather
+than a missing shape: global initialization ran in DISCOVERY order from the entry file, so a
+third module decided whether a second one compiled, and the same file compiled or not depending
+on who compiled it. Their player compiles every file as its own entry — to read its attribute
+rows — so "compiled as an entry" is the normal case for them, and `lyric check main.lyr` said
+`ok` about files the player rejected.
+
+The fix is one walk: `Compilation.InitializationOrder()`, a DFS post-order over the import edges,
+used by the sema (which decides `LYR-SEM0057`) and by `GlobalTable` (which emits `<globals>`) —
+one order for both, or they would drift. **What the register got right and the old comment did
+not**: an import IS the dependency statement and it was already there to be read, and the
+comment's own citation of Go named the answer it was not taking. **Found while building**: import
+cycles are already `LYR-RES0005`, so the walk's cycle guard is not tolerance but survival — the
+sema still runs on the broken graph, and a recursing walk would hang instead of letting the
+diagnostic through.
+
+**A15 — a DAP `attach` — is NOT built and is not planned yet.** The register calls it "eine
+Bequemlichkeit, keine Blockade" and Erato has shipped its own adapter (730 lines against
+`DapServer`'s 527). What an `attach` would save is the next embedder writing them again; what it
+needs first is an answer to questions only an embedder has — which of five running sessions knows
+this file, what `stackTrace` says while the program runs, what happens when the editor
+disappears. Worth a design round, not a slice.
 
 **The editor clients are catching up — jetbrains-lyric gains run and debug** (2026-08-22, PR
 `lyriclang/jetbrains-lyric#1`, ships as 1.3.0). The plugin could not start a program at all. It has

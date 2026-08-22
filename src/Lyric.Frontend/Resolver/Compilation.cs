@@ -187,6 +187,56 @@ public sealed class Compilation
     public ModuleSymbol? FindModule(string[] path) =>
         _modules.FirstOrDefault(m => m.Path.Length == path.Length && m.Path.SequenceEqual(path));
 
+    /// <summary>
+    /// The modules in the order their globals are initialized: every module AFTER the ones it
+    /// imports.
+    ///
+    /// <para><see cref="Modules"/> is discovery order — the entry file, then what its imports
+    /// pulled in, breadth first. Initializing in that order made a third module decide whether a
+    /// second one compiles: <c>b</c> reading a global of <c>a</c> was fine when the entry imported
+    /// <c>a</c> first and an error otherwise, including when <c>b</c> was compiled on its own.
+    /// The import IS the dependency statement, and it is already there to be read.</para>
+    ///
+    /// <para>A depth-first post-order over the import edges, seeded with the modules the compiler
+    /// binds WITHOUT an import (§4.4): those are dependencies too, they are simply not written
+    /// down, and a program that never names <c>std.string</c> still reaches it through an
+    /// f-string.</para>
+    ///
+    /// <para>A CYCLE cannot be ordered, and the resolver already refuses one
+    /// (<c>LYR-RES0005</c>). The guard below is not tolerance, then, but survival: the sema runs
+    /// on the broken graph anyway — one error does not stop the pass that would report the next
+    /// twenty — and a walk that recursed into a cycle would hang instead of letting the diagnostic
+    /// through.</para>
+    ///
+    /// <para>Deterministic: the walk follows this list and each module's declarations, so the same
+    /// input yields the same order and therefore the same bytecode.</para>
+    /// </summary>
+    public IReadOnlyList<ModuleSymbol> InitializationOrder()
+    {
+        var order = new List<ModuleSymbol>(_modules.Count);
+        var seen = new HashSet<ModuleSymbol>(ReferenceEqualityComparer.Instance);
+
+        foreach (var path in WellKnownModules)
+            if (FindModule(path) is { } wellKnown)
+                Visit(wellKnown);
+
+        foreach (var module in _modules) Visit(module);
+        return order;
+
+        void Visit(ModuleSymbol module)
+        {
+            // Already placed, or standing on the stack above us — which is the cycle, and the
+            // reason this is an Add-once guard rather than a three-colour walk.
+            if (!seen.Add(module)) return;
+
+            foreach (var decl in AstOf(module).Declarations)
+                if (decl is ImportDecl import && FindModule(import.Path) is { } imported)
+                    Visit(imported);
+
+            order.Add(module);
+        }
+    }
+
     /// <summary>Resolves every module and returns the binding side table. Errors go to the
     /// diagnostic engine as LYR-RES####.</summary>
     public BindingResult Resolve()

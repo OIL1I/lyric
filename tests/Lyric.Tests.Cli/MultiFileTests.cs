@@ -180,4 +180,90 @@ public class MultiFileTests
 
         Assert.Equal(42, Toolchain.Lyric("run", app).ExitCode);
     }
+
+    // ---------------------------------------------------------------- initialization order
+
+    /// <summary>
+    /// A module-level `let` may read one from a module it IMPORTS. Before 2.8 the order of
+    /// initialization followed the order in which the entry file happened to discover the
+    /// modules, so a THIRD module decided whether a SECOND one compiled — and the same file
+    /// compiled or not depending on who compiled it.
+    ///
+    /// <para>The four shapes below are the ones that disagreed. Only the first was accepted.
+    /// </para>
+    /// </summary>
+    private static TemporaryDirectory TwoConstantModules()
+    {
+        var project = Toolchain.TempDirectory();
+        project.Write("a.lyr", """
+            module a;
+
+            pub let width = 10;
+            """);
+        project.Write("b.lyr", """
+            module b;
+
+            import a;
+
+            pub let doubled = a.width * 2;
+
+            pub fn show(): int {
+                return doubled;
+            }
+            """);
+        return project;
+    }
+
+    [Theory]
+    [InlineData("import a;\nimport b { show };\n")]   // the order that always worked
+    [InlineData("import b { show };\nimport a;\n")]   // the same imports, the other way round
+    [InlineData("import b { show };\n")]              // only b — which imports a itself
+    public void A_global_may_read_one_from_an_imported_module(string imports)
+    {
+        using var project = TwoConstantModules();
+        var app = project.Write("app.lyr", imports + """
+
+            fn main(): int {
+                return show();
+            }
+            """);
+
+        var run = Toolchain.Lyric("run", app);
+
+        // 20, not 0: the value is what the initializer computed, so 'a' really did run first.
+        Assert.Equal("", run.Err);
+        Assert.Equal(20, run.ExitCode);
+    }
+
+    [Fact]
+    public void A_module_compiles_the_same_way_on_its_own()
+    {
+        // The case that made this a defect rather than a wart: a host compiling every file as its
+        // own entry — to read its attributes — saw errors the command line never showed.
+        using var project = TwoConstantModules();
+        var check = Toolchain.Lyric("check", Path.Combine(project.Path, "b.lyr"));
+
+        Assert.Equal("", check.Err);
+        Assert.Equal(ExitCodes.Success, check.ExitCode);
+    }
+
+    [Fact]
+    public void A_global_reading_a_later_one_of_its_own_module_is_still_refused()
+    {
+        // The rule inside a module is untouched, and it is the one that catches a real mistake.
+        using var project = Toolchain.TempDirectory();
+        var app = project.Write("app.lyr", """
+            let first = second + 1;
+            let second = 2;
+
+            fn main(): int {
+                return first;
+            }
+            """);
+
+        var check = Toolchain.Lyric("check", app);
+
+        Assert.Equal(ExitCodes.Failure, check.ExitCode);
+        Assert.Contains("LYR-SEM0057", check.Err);
+    }
 }

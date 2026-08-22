@@ -129,6 +129,29 @@ fn main(): int {
 An initializer may read a constant declared before it, not one after. There is no module-level
 `var`.
 
+Across files the order follows the imports: a module's constants are initialized after those of
+every module it imports, so an initializer may read them too.
+
+```text
+// config.lyr
+module config;
+
+pub let width = 10;
+pub let height = 20;
+
+// board.lyr
+module board;
+
+import config;
+
+pub let cellCount = config.width * config.height;
+```
+
+Two files again, so the test suite does not compile them — but a program of these two does.
+Which file you compile does not change that. `config` is initialized before `board` because
+`board` says so with its import — whether the program was entered through `board`, through
+something that imports it, or through `board` itself.
+
 ## Type aliases
 
 ```lyr
