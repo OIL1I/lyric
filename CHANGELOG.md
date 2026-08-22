@@ -10,6 +10,35 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.9.0 — 2026-08-22
+
+An editor can attach to a program a host is already running. The bytecode format stays **3.3** and
+the language gains nothing.
+
+### Added
+
+- **`DapServer` serves a controller you already hold.** A second constructor takes a
+  `DebugController` and the directory the scripts were compiled from; the client sends `attach`
+  where it would otherwise send `launch`, and everything after that is the protocol as it was.
+  Nothing is compiled, nothing is started — the program is running, which is the point. A game has
+  no `main` to launch, and the bug worth stopping at is rarely the one at startup.
+
+  One server per controller, which answers what a host with several scripts would otherwise have
+  to invent: which program a `setBreakpoints` is about is decided by the connection it arrived on.
+  The transport stays the host's business — the constructor takes two streams, so a socket, a pipe
+  or anything else works without the adapter knowing about it. `lyrdbg` is unchanged: it launches,
+  and an attaching adapter lives in the host's own process.
+
+- **`DebugController.Detach()`** — gives the program back: breakpoints go, a parked thread is
+  released, and the event stream ends. It is what a session needs when it ends without the program
+  ending, and the attaching server calls it on `disconnect`. Without it a game whose editor
+  crashed would stand at its breakpoint for good, and the breakpoints nobody reads any more would
+  park it again on the next frame. A detached controller is spent; attaching again means a new
+  one.
+
+  A launched session is unaffected: there the process is the session, and ending it is the whole
+  answer.
+
 ## v2.8.0 — 2026-08-22
 
 Module constants initialize in dependency order, so a file compiles the same way whoever compiles

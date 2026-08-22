@@ -100,6 +100,37 @@ event stream stays open, which is the honest answer while a game is still runnin
 There is no overload taking a debugger and a budget together: a session parked at a breakpoint
 would spend a budget on standing still.
 
+### Letting an editor in
+
+The commands can come from an editor rather than from your own code: `DapServer` has a second
+constructor that serves a controller you already hold, and the client sends `attach` where it
+would otherwise send `launch`.
+
+```csharp
+var controller = DebugController.Create(program);
+
+// a socket your host accepted, or any pair of streams
+var adapter = new DapServer(input, output, controller, scriptDirectory);
+_ = adapter.RunAsync();
+```
+
+Everything after `attach` is the protocol as it always was — breakpoints, stepping, stack,
+variables, evaluate. What differs is the two ends of a session:
+
+- **Nothing is compiled or started.** The program is already running; a breakpoint set here binds
+  against it immediately and takes effect at the next instruction that reaches the line.
+- **Disconnecting gives the program back.** `DebugController.Detach()` runs: breakpoints go, a
+  parked thread is released, and the event stream ends. Without it a game whose editor crashed
+  would stand at its breakpoint for good, and the breakpoints nobody reads any more would park it
+  again on the next frame. A detached controller is spent — attaching again means a new one.
+
+One server per controller, which is also the answer to a question a host with several scripts
+would otherwise have to invent: which program a `setBreakpoints` is about is decided by the
+connection it arrived on.
+
+The debuggee's output does not travel as output events here. Your host owns the program's writers
+and already has somewhere to put them.
+
 What this does not do is keep the window drawing. The parked thread is the one the game runs on,
 so the picture stands still until a resume arrives. Drawing through a breakpoint would need an
 interpreter that can return to its host mid-instruction and be resumed later; this one keeps its
