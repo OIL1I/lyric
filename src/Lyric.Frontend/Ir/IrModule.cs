@@ -125,6 +125,21 @@ public record struct IrTypeDef(string Name, IrType[] FieldTypes, string[] FieldN
     /// </summary>
     public string[] MethodSlots { get; init; } = [];
 
+    /// <summary>
+    /// The name of the <c>opaque type</c> a field was DECLARED with, in field order, empty where
+    /// the field's type is not opaque — and the whole array empty when no field of this type is.
+    ///
+    /// <para>The only place in the pipeline where an opaque alias leaves a trace. Below the sema
+    /// it IS its underlying type, deliberately (that is why a handle crosses a native boundary for
+    /// nothing), so nothing here changes what the field is — this is a NAME beside it, for a host
+    /// reading the shape of an attributed class and asking whether a field is a handle.</para>
+    ///
+    /// <para>Filled for classes and structs. An enum variant's payload is not covered: a host asks
+    /// the layout of the type an attribute names, and reaching a variant means it has already
+    /// walked past what it can decide about.</para>
+    /// </summary>
+    public string[] FieldOpaqueNames { get; init; } = [];
+
     /// <summary>Value semantics? A <c>struct</c> has the same field layout as a class; the difference
     /// is that every binding copies. A flag rather than an entry type of its own, because nothing about
     /// the layout itself changes.</summary>

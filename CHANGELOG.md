@@ -10,6 +10,49 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.11.0 — 2026-08-22
+
+Bytecode format **3.5**. One new section, and the whole release is about a name that used to get
+lost.
+
+### Added
+
+- **A module records the `opaque type` a field was declared with** (section 14, format 3.5).
+  An opaque alias is a distinct type in the language and its underlying type everywhere below the
+  checker — that is what makes `x as Entity` free and lets a handle cross a native boundary
+  unchanged. The cost showed up on the other side: a host reading the shape of an attributed
+  class saw
+
+  ```
+  @Saved class Holder { hero: world.Entity, stage: int }   →   i64, i64
+  ```
+
+  and a save writer that WANTS to refuse a handle — the slot it names belongs to something else
+  after a restart — had nothing to refuse it by. Now:
+
+  ```csharp
+  foreach (var field in module.Attributes.FieldsOf(saved.Target)!)
+      if (field.OpaqueName is { } opaque)
+          throw new InvalidOperationException($"{field.Name} is a '{opaque}' handle");
+  ```
+
+  `FieldsOf` returns `AttributeField` records instead of tuples; `Name` and `Type` are unchanged,
+  `OpaqueName` is the addition and is `null` for every ordinary field. The name is the leaf
+  through arrays and optionals — a field of type `Entity[]` answers `Entity`, and its type still
+  says it is an array. A transparent alias resolves through to what it names, because that one is
+  not a type of its own.
+
+  **Nothing about the program changes.** The field is the same `i64` it was, no instruction moved,
+  and a runtime that ignores the section is a runtime that knows what it knew before. `lyric
+  disasm` shows the names where they exist: `names Holder(hero: Entity, stage)`.
+
+### Format
+
+- **3.5 against 3.4**: one new section, OpaqueFields (id 14), skippable in the plainest way — no
+  other section refers to it and none of it affects execution. A 3.4 reader loads a 3.5 module
+  unchanged, and the other way round; the only difference is whether a host can tell a handle
+  from the number it is made of. Unlike 3.4, this one asks nothing of anybody.
+
 ## v2.10.1 — 2026-08-22
 
 One fix, reported the day 2.10.0 landed: the new enum argument was unusable in the shape an SDK

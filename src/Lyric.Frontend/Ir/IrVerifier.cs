@@ -147,6 +147,12 @@ public static class IrVerifier
                 continue;
             }
 
+            // Either nothing is opaque or every field has an answer: the position is the field
+            // index, so a short list would name the wrong field rather than fewer of them.
+            if (def.FieldOpaqueNames.Length is not 0 && def.FieldOpaqueNames.Length != def.FieldTypes.Length)
+                findings.Add($"type {id} '{def.Name}' has {def.FieldTypes.Length} field type(s) " +
+                             $"but {def.FieldOpaqueNames.Length} opaque name(s)");
+
             // An enum entry carries no fields of its own; its variants do. Each has to be a layout and
             // must not be an enum itself.
             for (var v = 0; v < def.Variants.Length; v++)

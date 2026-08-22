@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4507 tests green **in Debug and Release**, bytecode format **3.4**, **eleven** binaries
-plus `lyrembed.dll`, version **2.10.1**; the specification in `lyriclang/lyric-spec` is
+4522 tests green **in Debug and Release**, bytecode format **3.5**, **eleven** binaries
+plus `lyrembed.dll`, version **2.11.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -269,6 +269,12 @@ out of them and hands its own functions, types and value structs in.
 > else stands in `git log`.
 
 ## Recently finished
+
+- [x] **A18 — an opaque type leaves a name in the module** (2026-08-22,
+  `feature/a18-opaque-field-names`, v2.11.0, format 3.5). The first format change since 3.1 that
+  is skippable in BOTH directions, and the reason is worth keeping: 3.4 put a new form inside a
+  section a reader already reads, this one put a new section beside them. Same size of addition,
+  opposite compatibility.
 
 - [x] **A17 — an attribute default holds across a module line** (2026-08-22,
   `fix/a17-attribute-default-across-modules`, v2.10.1). One line, and the second time in two
@@ -366,6 +372,18 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**A18 — an opaque type leaves a name in the module — is RELEASED as v2.11.0** (2026-08-22,
+format 3.5). The register's second finding from the save system, and the one that cost a
+decision rather than a line. What Erato asked for was "a name in the Types table"; the Types
+table has no row for an alias, and referring to one from a field type would need a new type
+TAG — a tag is not skippable, because every reader of a signature has to know all of them. So it
+became a section of its own (id 14), which an older reader steps over without noticing.
+
+**The shape of the answer is the interesting part**: the field stays an `i64`. The section adds a
+NAME beside the type rather than a type, which is the only form that keeps the opacity free at
+runtime — the property A4 was built for — while making it visible to a host. A trace, not a
+mechanism.
 
 **A17 — an attribute default across a module line — is RELEASED as v2.10.1** (2026-08-22).
 Erato filed it hours after the 2.10.0 re-pin: the enum argument worked written and failed

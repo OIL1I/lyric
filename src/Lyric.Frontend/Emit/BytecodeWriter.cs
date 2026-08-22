@@ -270,6 +270,27 @@ public static class BytecodeWriter
                 foreach (var name in globalNames ?? []) s.ULeb(strings.Intern(name));
             });
 
+        // The opaque names, for the types that got field names above and have an opaque field
+        // among them. An opaque alias IS its underlying type everywhere below the sema, so a host
+        // reading '@Saved class Holder { hero: Entity, stage: int }' sees two i64 and cannot
+        // refuse the one that must not be saved. This section is the only trace it leaves — and it
+        // is last because the ids ascend, not because anything reads it late.
+        var opaque = new SortedSet<int>(referenced);
+        opaque.RemoveWhere(t => module.Types[t].FieldOpaqueNames.Length == 0);
+
+        if (opaque.Count > 0)
+            WriteSection(writer, SectionId.OpaqueFields, s =>
+            {
+                s.ULeb(opaque.Count);
+                foreach (var typeIndex in opaque)
+                {
+                    s.ULeb(typeIndex);
+                    var names = module.Types[typeIndex].FieldOpaqueNames;
+                    s.ULeb(names.Length);
+                    foreach (var name in names) s.String(name);
+                }
+            });
+
         return writer.ToArray();
     }
 

@@ -97,9 +97,16 @@ public static class Disassembler
                       $" -> {target}\n");
         }
 
+        // The field names, with the opaque type beside the fields that have one (section
+        // 14): 'names Holder(hero: Entity, stage)'. Written out here because a trace nobody
+        // can see is one nobody can check.
         foreach (var entry in module.FieldNames)
-            sb.Append($"  names {module.Types[entry.Type].Name}" +
-                      $"({string.Join(", ", entry.Names)})\n");
+        {
+            var opaque = module.OpaqueFields.FirstOrDefault(o => o.Type == entry.Type)?.Names;
+            var fields = entry.Names.Select((name, i) =>
+                opaque is not null && opaque[i].Length > 0 ? $"{name}: {opaque[i]}" : name);
+            sb.Append($"  names {module.Types[entry.Type].Name}({string.Join(", ", fields)})\n");
+        }
 
         for (var f = 0; f < module.Functions.Count; f++)
         {

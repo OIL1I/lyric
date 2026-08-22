@@ -104,6 +104,7 @@ public class GuideTests
     [InlineData("Attributes.OnFunctions")]
     [InlineData("Attributes.OnModule")]
     [InlineData("FieldsOf")]
+    [InlineData("OpaqueName")]
     public void The_embedding_chapter_names_the_api_that_exists(string expected) =>
         Assert.Contains(expected, EmbeddingChapter(), StringComparison.Ordinal);
 

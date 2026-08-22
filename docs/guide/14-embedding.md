@@ -310,6 +310,26 @@ Three details carry the weight:
 Attribute names are unqualified: `System`, not `engine.ecs.System`. An SDK owns its attribute
 names the way it owns its native names.
 
+### A field that is a handle
+
+A field carries one more answer, and it exists for a decision a host has to make rather than for
+tidiness. An `opaque type Entity = int` is a distinct type in the script and an `i64` in the
+module, so a save writer walking the fields of an attributed class sees a handle and a level
+number as the same thing — and a handle is exactly what must not be written down, because the
+slot it names belongs to something else after a restart.
+
+```csharp
+foreach (var field in module.Attributes.FieldsOf(saved.Target)!)
+    if (field.OpaqueName is { } opaque)
+        throw new InvalidOperationException(
+            $"{field.Name} is a '{opaque}' handle and does not survive a restart");
+```
+
+`OpaqueName` is `null` for every ordinary field, and for every module a compiler before 2.11
+wrote. It is the LEAF name: a field of type `Entity[]` answers `Entity`, and `field.Type` still
+says it is an array. What the host does with the answer is its own business — the language keeps
+refusing to say what an attribute means.
+
 ## Errors
 
 A script that fails throws on the host side:
