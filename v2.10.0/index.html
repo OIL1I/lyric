@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.10.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.10.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.10.0 — 2026-08-22</h2>
+<p>An attribute argument may name an enum variant. The bytecode format goes <strong>3.3 → 3.4</strong>, and this
+is the first change to it that an older reader cannot ignore — see below.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>A unit enum variant is an attribute argument.</strong></p>
+<pre><code class="language-lyr">pub enum Layout { Packed, Separate }
+
+pub struct Saved :: [OnFunction] { layout: Layout = Layout.Packed }
+
+@Saved { layout = Layout.Separate }
+pub fn store(): void { }
+</code></pre>
+<p>A vocabulary written as an enum is checked by the TYPE SYSTEM at the use site: <code>Layout.Seperate</code>
+is a compile error, where the same typo in a string is a row nobody ever matches — the fault
+class attributes closed for entry points, one field deeper. It works as a written argument, as a
+field default, and through a <code>let</code> bound to a variant, because one resolution walk answers all
+three.</p>
+<p>A variant <strong>with a payload</strong> is refused, and the message says why rather than repeating &quot;must be
+a literal&quot;: a row holds one value per field, and a payload is values of its own.</p>
+<p>A host reads both halves — <code>Text</code> is the qualified variant (<code>Layout.Separate</code>), <code>AsInt</code> its tag.
+The disassembler prints the name too.</p>
+</li>
+</ul>
+<h3 id="changed">Changed</h3>
+<ul>
+<li><p><strong>Bytecode format 3.4</strong>: <code>ConstValue</code> gains one form, an attribute value of enum type written as
+the variant's tag. The value names no enum — the field's type does, and the enum's entry names
+its variants, so the name is resolved rather than stored twice.</p>
+<p><strong>The compatibility note that matters</strong>: the Attributes section is skippable as a whole, but a
+reader that does read it meets a tag it has no case for. A module whose attribute rows use an
+enum value therefore does <strong>not</strong> load on a runtime older than this one; a 3.4 module without
+such a value loads unchanged. That is the same forward path <code>co.next()</code> took in 2.2.0 — the
+module that uses the new thing is the module that needs the new runtime.</p>
+</li>
+<li><p><strong><code>LYR-SEM0066</code> says what it now allows</strong>: a number, a string, a char, a bool, a unit enum
+variant, or a <code>let</code> bound to one.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Testing — Lyric v2.10.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a class="current" href="../../guide/getting-started/">Guide</a>
+<a href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.10.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Guide</h2>
+<ul>
+<li><a href="../../guide/getting-started/">Getting started</a></li>
+<li><a href="../../guide/values-and-types/">Values and types</a></li>
+<li><a href="../../guide/functions/">Functions</a></li>
+<li><a href="../../guide/control-flow/">Control flow</a></li>
+<li><a href="../../guide/structs-and-classes/">Structs and classes</a></li>
+<li><a href="../../guide/enums-and-matching/">Enums and pattern matching</a></li>
+<li><a href="../../guide/interfaces/">Interfaces</a></li>
+<li><a href="../../guide/generics/">Generics</a></li>
+<li><a href="../../guide/optionals/">Optionals</a></li>
+<li><a href="../../guide/errors/">Errors</a></li>
+<li><a href="../../guide/coroutines/">Coroutines</a></li>
+<li><a href="../../guide/modules/">Modules</a></li>
+<li><a href="../../guide/standard-library/">The standard library</a></li>
+<li><a href="../../guide/embedding/">Embedding</a></li>
+<li><a href="../../guide/attributes/">Attributes</a></li>
+<li><a href="../../guide/building/">Building a project</a></li>
+<li><a href="../../guide/packaging/">Packing a program</a></li>
+<li><a href="../../guide/formatting/">Formatting</a></li>
+<li><a href="../../guide/diagnostics/">Diagnostics</a></li>
+<li><a href="../../guide/testing/" class="here">Testing</a></li>
+<li><a href="../../guide/debugging/">Debugging</a></li>
+</ul>
+</nav>
+<main>
+<h1>Testing</h1>
+<p>Tests live in a directory of their own — <code>tests/</code> beside your <code>lyric.json</code>, or wherever its
+<code>testRoot</code> points — and only <code>lyric test</code> ever compiles them. A production build never sees a
+test file, so nothing has to be stripped and nothing ships by accident.</p>
+<p>A test is a top-level function marked <code>@Test</code>, taking nothing and returning nothing. It fails by
+panicking, which is what the assertions in <code>std.test</code> do:</p>
+<pre><code class="language-lyr">import std.test { Test, assertEq, assertTrue };
+
+fn double(n: int): int {
+    return n * 2;
+}
+
+@Test
+pub fn doubling_doubles(): void {
+    assertEq(double(2), 4);
+}
+
+@Test
+pub fn doubling_keeps_the_sign(): void {
+    assertTrue(double(-3) &lt; 0, &quot;the sign must survive&quot;);
+}
+</code></pre>
+<pre><code class="language-bash">lyric test
+</code></pre>
+<pre><code>PASS math_tests.doubling_doubles
+PASS math_tests.doubling_keeps_the_sign
+2 test(s), all passed
+</code></pre>
+<p>The runner compiles every <code>.lyr</code> under the test root, finds the <code>@Test</code> functions through the
+module's attribute rows — the same machinery a host uses to find <code>@System</code> functions — and runs
+each in a <strong>fresh instance</strong>: module state cannot leak between tests, because no two tests share
+an instance. A failing assertion names both values (<code>expected 5, got 4</code>); a panic fails the test
+with its backtrace; the exit code is <code>0</code> when everything passed and <code>1</code> otherwise, which is all
+a CI step needs.</p>
+<p>Test files are ordinary programs of your project: they import your modules through the
+<code>sourceRoot</code> the <code>lyric.json</code> declares, and the whole standard library and every capability are
+theirs — a test is your own code running on your own machine, the same standing <code>lyric run</code>
+has.</p>
+<p>A project without a <code>tests/</code> directory has no tests, and <code>lyric test</code> says so and exits <code>0</code>. A
+<code>testRoot</code> your <code>lyric.json</code> names explicitly is a promise, though: if the directory is missing,
+that is an error.</p>
+<p><code>assertEq</code> wants <code>[Equatable&lt;T&gt;, Display]</code> — the comparison needs the one, naming both values in
+the failure needs the other. Every built-in scalar and <code>string</code> satisfy both; for your own types
+you declare the conformances, as <a href="/v2.10.0/guide/interfaces/">chapter 7</a> shows.</p>
+<nav class="neighbours">
+<a class="prev" href="../../guide/diagnostics/">Diagnostics</a>
+<a class="next" href="../../guide/debugging/">Debugging</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

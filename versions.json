@@ -4,6 +4,10 @@
     "stable": false
   },
   {
+    "version": "v2.10.0",
+    "stable": true
+  },
+  {
     "version": "v2.9.0",
     "stable": true
   },
