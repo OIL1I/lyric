@@ -85,6 +85,30 @@ identifier` at compile time rather than a handler nobody ever calls. The name ma
 selectively or written module-qualified, it may point at another such `let`, and a `static let`
 on a type works the same way.
 
+Since v2.10 an argument may also be a **unit variant of an enum**, and for a vocabulary that is
+the form to reach for:
+
+```lyr
+import std.core { OnFunction };
+
+pub enum Layout { Packed, Separate }
+
+pub struct Saved :: [OnFunction] { layout: Layout = Layout.Packed }
+
+@Saved { layout = Layout.Separate }
+pub fn store(): void { }
+
+fn main(): int { return 0; }
+```
+
+`Layout.Seperate` is then a compile error rather than a row nobody matches — the type system
+checks the spelling, which a string could never do. A host reads the variant's name and its tag:
+the compiled module carries the tag, and the enum's own entry carries the names, so nothing is
+written twice.
+
+A variant WITH a payload is refused, and the message says why: a row holds one value per field,
+and a payload is values of its own. `Shape.Circle(1.0)` has nowhere to put its `1.0`.
+
 Two edges worth knowing in advance. A name is resolved, not COMPUTED: `let LIMIT = 1 + 2;` stays
 rejected, because the value would have to be worked out and there is no constant folding to work
 it out with — the value has to stand in the source. And the named form is slightly stricter than

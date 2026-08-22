@@ -14,6 +14,11 @@ namespace Lyric.Sema;
 /// typo there is a receiver that stays silent rather than a compile error. That is the fault class
 /// attributes were adopted to remove on the sending side.</para>
 ///
+/// <para>Since 2.10 a unit enum variant counts too. It is the shape that makes the whole
+/// mechanism worth having: a vocabulary written as an enum is checked at the use site by the type
+/// system rather than by whoever reads the row later, and the row still carries a plain number —
+/// the variant's tag — with the name resolved beside it.</para>
+///
 /// <para>NOT constant folding, and deliberately not: Lyric has no such pass anywhere, and a
 /// <c>let</c> is an ordinary global slot filled at load time. What this reads is the one shape
 /// whose value is already written in the source — a binding whose initializer IS a literal,
@@ -42,6 +47,12 @@ public static class AttributeValues
         _ => null,
     };
 
+    /// <summary>Is this a unit variant of an enum — <c>Stage.Physics</c>? A variant WITH a payload
+    /// is not: the row holds one value per field, and a payload is values of its own.</summary>
+    private static bool IsUnitVariant(Expr expr, TypeResult types) =>
+        types.RefOf(expr) is EnumVariantSymbol { Declaration: EnumVariant variant }
+        && variant.TupleFields is null && variant.StructFields is null;
+
     /// <summary>
     /// A name: selective (<c>import api { CLEARED };</c>), module-qualified (<c>api.CLEARED</c>)
     /// or a <c>static let</c> on a type — all three arrive here as a symbol the checker already
@@ -49,6 +60,11 @@ public static class AttributeValues
     /// </summary>
     private static Expr? ThroughBinding(Expr expr, TypeResult types, HashSet<Symbol> seen)
     {
+        // A unit variant is a value in its own right, and the one whose spelling the compiler
+        // checks: a typo in 'Stage.Phyiscs' is 'has no variant', where the same mistake in a
+        // string or a number is a row nobody notices until something silently does nothing.
+        if (IsUnitVariant(expr, types)) return expr;
+
         var symbol = types.RefOf(expr);
         while (symbol is ImportBindingSymbol imported) symbol = imported.Target;
 

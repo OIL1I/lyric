@@ -213,7 +213,7 @@ public static class BytecodeReader
             var values = new List<BytecodeConstValue>(valueCount);
             for (var v = 0; v < valueCount; v++)
             {
-                var value = ReadAttributeValue(payload, strings, i);
+                var value = ReadAttributeValue(payload, strings, types, def.FieldTypes[v], i);
                 if (value.Tag != def.FieldTypes[v].Tag)
                     throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
                         $"attribute row {i}: value {v} is {value.Tag}, field {v} of '{def.Name}' "
@@ -230,12 +230,45 @@ public static class BytecodeReader
         return rows;
     }
 
+    /// <param name="fieldType">The type of the field this value fills. Only the enum case needs
+    /// it, and it needs it for both halves of the answer: which variants exist, and what the one
+    /// named here is called.</param>
     private static BytecodeConstValue ReadAttributeValue(ByteReader payload,
-        IReadOnlyList<string> strings, int row)
+        IReadOnlyList<string> strings, IReadOnlyList<BytecodeTypeDef> types,
+        BytecodeType fieldType, int row)
     {
         var tag = payload.Tag();
         switch (tag)
         {
+            // New in 3.4. The payload is the variant's tag; the enum is the field's own type, so
+            // the name resolves here rather than in every consumer: a host reading a row gets
+            // 'Stage.Physics' in Text and the tag in Bits, and needs to know neither table.
+            case TypeTag.Enum:
+            {
+                var variant = payload.ULebAsCount();
+                if (fieldType.Tag != TypeTag.Enum || fieldType.TypeIndex >= types.Count)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                        $"attribute row {row}: an enum value fills no enum field");
+
+                var declaration = types[fieldType.TypeIndex];
+                if (variant >= declaration.Variants.Count)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"attribute row {row}: variant {variant} is outside "
+                        + $"'{declaration.Name}', which has {declaration.Variants.Count}");
+
+                var entry = declaration.Variants[variant];
+                if (entry >= types.Count)
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"attribute row {row}: variant {variant} of '{declaration.Name}' points "
+                        + $"outside the type table");
+
+                return new BytecodeConstValue(tag)
+                {
+                    Bits = (ulong)variant,
+                    Text = types[entry].Name,
+                };
+            }
+
             case TypeTag.String:
             {
                 var index = payload.ULebAsCount();

@@ -12,7 +12,7 @@ public static class Format
     /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
     /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
-    public const ushort VersionMinor = 3;
+    public const ushort VersionMinor = 4;
 }
 
 /// <summary>

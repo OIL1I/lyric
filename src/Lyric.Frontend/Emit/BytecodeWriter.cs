@@ -370,6 +370,12 @@ public static class BytecodeWriter
                 or TypeTag.Char:
                 s.ULeb(value.Bits);
                 break;
+            // An enum value is its VARIANT TAG — the index in the enum's variant list, the same
+            // number slot 0 of a variant carries at runtime. Which enum is not repeated here: the
+            // field's own type says it, and the reader resolves the name from there (3.4).
+            case TypeTag.Enum:
+                s.ULeb(value.Bits);
+                break;
             default:
                 throw new InternalCompilationException(
                     $"bytecode: attribute value of type {tag} is not encodable");

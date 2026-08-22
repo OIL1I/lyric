@@ -236,7 +236,7 @@ public class AttributeTests
 
     [Fact]
     public void A_computed_argument_is_rejected() =>
-        AssertReports("LYR-SEM0066", "must be a literal", Markers + """
+        AssertReports("LYR-SEM0066", "must be a value at compile time", Markers + """
 
             @System { order = 1 + 2 }
             fn f(): void { }
@@ -246,7 +246,7 @@ public class AttributeTests
 
     [Fact]
     public void Null_is_not_an_attribute_argument() =>
-        AssertReports("LYR-SEM0066", "must be a literal", """
+        AssertReports("LYR-SEM0066", "must be a value at compile time", """
             import std.core { OnFunction };
 
             struct Tag :: [OnFunction] { label: ?string }
@@ -319,7 +319,7 @@ public class AttributeTests
     public void A_let_bound_to_an_expression_is_still_refused() =>
         // The line is where the VALUE is written, not what the compiler could work out: 1 + 2 is
         // computable and has nowhere to be computed.
-        AssertReports("LYR-SEM0066", "must be a literal", Markers + """
+        AssertReports("LYR-SEM0066", "must be a value at compile time", Markers + """
 
             let PRIORITY = 5 + 5;
 
@@ -332,7 +332,7 @@ public class AttributeTests
     [Fact]
     public void A_field_is_not_a_constant() =>
         // Only a global binding: a field is bound per instance, and the row has one value.
-        AssertReports("LYR-SEM0066", "must be a literal", Markers + """
+        AssertReports("LYR-SEM0066", "must be a value at compile time", Markers + """
 
             struct Settings { order: int }
 
@@ -346,7 +346,7 @@ public class AttributeTests
 
     [Fact]
     public void A_function_call_is_still_refused() =>
-        AssertReports("LYR-SEM0066", "must be a literal", Markers + """
+        AssertReports("LYR-SEM0066", "must be a value at compile time", Markers + """
 
             fn ten(): int { return 10; }
 
@@ -411,5 +411,106 @@ public class AttributeTests
                 let s = System { order = 2 };
                 return s.order;
             }
+            """);
+
+    // ---------------------------------------------------------------- an enum value (2.10)
+
+    [Fact]
+    public void A_unit_variant_is_an_argument() =>
+        // The form the whole exercise is for: a vocabulary the TYPE system checks, where a string
+        // would be checked by whoever reads the row much later, or never.
+        AssertClean("""
+            import std.core { OnFunction };
+
+            enum Stage { Input, Physics, Render }
+
+            struct System :: [OnFunction] { stage: Stage }
+
+            @System { stage = Stage.Physics }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_variant_fills_a_default_too() =>
+        AssertClean("""
+            import std.core { OnFunction };
+
+            enum Stage { Input, Physics }
+
+            struct System :: [OnFunction] { stage: Stage = Stage.Input }
+
+            @System
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_let_bound_to_a_variant_is_an_argument() =>
+        // The 2.4 rule and the 2.10 one compose: one resolution walk answers both.
+        AssertClean("""
+            import std.core { OnFunction };
+
+            enum Stage { Input, Physics }
+
+            struct System :: [OnFunction] { stage: Stage }
+
+            let DEFAULT_STAGE = Stage.Physics;
+
+            @System { stage = DEFAULT_STAGE }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_variant_with_a_payload_is_refused() =>
+        // A row holds one value per field; a payload is values of its own. The message says that
+        // rather than "must be a literal", which tells someone who wrote a variant nothing.
+        AssertReports("LYR-SEM0066", "carries a payload", """
+            import std.core { OnFunction };
+
+            enum Shape { Dot, Circle(float) }
+
+            struct Tag :: [OnFunction] { shape: Shape }
+
+            @Tag { shape = Shape.Circle(1.0) }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_variant_of_another_enum_is_an_ordinary_assignability_error() =>
+        AssertReports("LYR-SEM0001", "", """
+            import std.core { OnFunction };
+
+            enum Stage { Input, Render }
+            enum Other { Left, Right }
+
+            struct Tag :: [OnFunction] { stage: Stage }
+
+            @Tag { stage = Other.Left }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
+            """);
+
+    [Fact]
+    public void A_misspelled_variant_is_a_compile_error() =>
+        // The fault class this closes: with a string the typo produced a row nobody matched.
+        AssertReports("LYR-SEM0012", "no static member 'Phyiscs'", """
+            import std.core { OnFunction };
+
+            enum Stage { Input, Physics }
+
+            struct Tag :: [OnFunction] { stage: Stage }
+
+            @Tag { stage = Stage.Phyiscs }
+            fn f(): void { }
+
+            fn main(): int { return 0; }
             """);
 }

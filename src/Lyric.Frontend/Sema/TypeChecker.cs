@@ -2700,9 +2700,12 @@ public sealed class TypeChecker
                 // AFTER the check, which is what binds the name this may be resolving through.
                 if (AttributeValues.LiteralOf(field.Value, _result) is null)
                     _de.Report("LYR-SEM0066", Severity.Error, field.Value.Span,
-                        "an attribute argument must be a literal — a number, a string, a char or "
-                        + "a bool — or a 'let' whose initializer is one; what stands in the "
-                        + "bytecode has to be a value at compile time");
+                        PayloadVariant(field.Value) is { } carried
+                            ? $"'{carried}' carries a payload; a row holds one value per field, "
+                              + "so only a variant without one stands in an attribute"
+                            : "an attribute argument must be a value at compile time — a number, "
+                              + "a string, a char, a bool, a unit enum variant, or a 'let' bound "
+                              + "to one");
             }
             else
             {
@@ -2729,6 +2732,22 @@ public sealed class TypeChecker
         }
         return ts;
     }
+
+    /// <summary>The variant name when the expression CONSTRUCTS one with a payload — the near
+    /// miss of an enum attribute argument, and worth its own sentence: "must be a literal" says
+    /// nothing to someone who wrote a variant and only got the payload wrong.</summary>
+    private string? PayloadVariant(Expr expr) =>
+        expr is CallExpr { Callee: MemberExpr member }
+        && _result.RefOf(member) is EnumVariantSymbol
+            ? $"{string.Join('.', Flatten(member))}"
+            : null;
+
+    private static IEnumerable<string> Flatten(MemberExpr member) =>
+        member.Target is MemberExpr inner
+            ? Flatten(inner).Append(member.Member)
+            : member.Target is IdentifierExpr id
+                ? [id.Name, member.Member]
+                : [member.Member];
 
     private LyrType CheckStructInit(StructInitExpr si, SymbolTable scope, LyrType? expected)
     {

@@ -250,8 +250,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4495 tests green **in Debug and Release**, bytecode format **3.3**, **eleven** binaries
-plus `lyrembed.dll`, version **2.9.0**; the specification in `lyriclang/lyric-spec` is
+4504 tests green **in Debug and Release**, bytecode format **3.4**, **eleven** binaries
+plus `lyrembed.dll`, version **2.10.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
@@ -270,6 +270,12 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **An enum variant is an attribute argument** (2026-08-22,
+  `feature/enum-attribute-arguments`, v2.10.0, format 3.4). Worth keeping for the estimate rather
+  than the code: when A11 landed I wrote this off as "much bigger" on two grounds, and only one
+  of them held. The cheap half was the one I had called expensive — a host needs no variant
+  table, because the module already carries the names.
+
 - [x] **A15 — the debug adapter attaches** (2026-08-22, `feature/a15-dap-attach`, v2.9.0). The
   estimate that mattered was wrong in the useful direction: the protocol was the easy half, and
   the design work was the end of a session rather than its start. `Detach` also closed a hole the
@@ -287,11 +293,6 @@ out of them and hands its own functions, types and value structs in.
   lines and a test. The lesson is where it was found: a second DAP client, not a second reading of
   the specification. An optional request refused is a program that never starts, and only a client
   that sends it can show that.
-
-- [x] **A14 — the debugger reaches an invoked function** (2026-08-21,
-  `feature/a14-debug-invoke`, v2.7.0). One public overload, five tests, one guide section. The
-  fourth in the A9/A12/A13 row: the toolchain had the whole answer and offered it at one shape
-  only. Worth the note that the shape it was missing is the one every embedded script has.
 
 ## Measurements
 
@@ -378,6 +379,20 @@ of it. The standard library dominates; the project's size is in the noise, and t
 compiler stays unwarranted at project scale too.
 
 ## What we are working on
+
+**An enum variant is an attribute argument — RELEASED as v2.10.0** (2026-08-22, maintainer's
+request). The form I weighed and rejected when A11 landed: back then the note said "the row
+carries only scalars and strings, and the host would have to interpret variants — much bigger".
+Half of that was true and half was an estimate that never got made. The row DID need a new
+form, so the format moved 3.3 → 3.4; the host side did NOT need interpreting, because the
+field's type names the enum and the enum's entry names its variants — the reader resolves
+`Layout.Separate` from what the module already carries and hands the host a name and a tag.
+
+**The compatibility line is the one to remember**: this is the first format change a 3.3 reader
+cannot ignore. The Attributes section is skippable as a whole, but a reader that DOES read it
+meets a tag it has no case for — so a module whose rows use an enum value does not load on an
+older runtime, while one without such a value still does. Same forward path as `co.next()` in
+2.2.0, and stated in both the format chapter and the changelog rather than discovered.
 
 **A15 — a debug adapter that attaches — is RELEASED as v2.9.0** (2026-08-22). The register
 called it a convenience rather than a blockade, and it was right about the protocol half: the

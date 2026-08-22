@@ -106,7 +106,10 @@ public sealed record BytecodeConstValue(TypeTag Tag)
     /// IEEE bit pattern of the value (F32 widened to F64 bits when read back).</summary>
     public ulong Bits { get; init; }
 
-    /// <summary>The value when <see cref="Tag"/> is <c>String</c>; <c>null</c> otherwise.</summary>
+    /// <summary>The value when <see cref="Tag"/> is <c>String</c>, and the qualified variant name
+    /// (<c>Stage.Physics</c>) when it is <c>Enum</c>; <c>null</c> otherwise. An enum value carries
+    /// both halves — the name here, the variant's tag in <see cref="Bits"/> — because a host
+    /// reading a row wants the name and a program comparing one wants the number.</summary>
     public string? Text { get; init; }
 
     public long AsInt => (long)Bits;

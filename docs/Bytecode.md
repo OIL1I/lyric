@@ -4,7 +4,7 @@
 > marker against the canonical body. Edit it there, mirror it here.
 
 <!-- sync:body -->
-# Lyric `.lyrbc` Bytecode Format 3.3
+# Lyric `.lyrbc` Bytecode Format 3.4
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.
@@ -12,10 +12,17 @@ or a second runtime can be written from this document alone.
 Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.
 
-Format version **3.3** covers: scalars, locals, module-internal and native calls, structured
+Format version **3.4** covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
 value semantics, exceptions, global constants, closures, host objects, source positions,
 attributes, and debug information.
+
+**3.4 against 3.3**: one new `ConstValue` form — an attribute value of enum type, written as the
+variant's tag. It is the first change to this format that a 3.3 reader cannot ignore: the
+Attributes section is skippable as a whole, but a reader that DOES read it meets a tag it has no
+case for and rejects the module. A 3.4 module whose attribute rows use no enum value loads on a
+3.3 reader unchanged, which is the same forward path the language's own additions take — the
+module that uses the new thing is the module that needs the new runtime.
 
 **3.3 against 3.2**: one new section — DebugInfo (id 13), the names of local and global
 slots — and one loosened producer rule: Names (id 12) may carry field names for any type, where
@@ -377,7 +384,16 @@ ConstValue       = tag u8, then by tag:
                    f32 / f64          4 / 8 bytes IEEE-754 bit pattern, little-endian
                    bool               u8
                    string             uleb128    index into the string pool
+                   enum (3.4)         uleb128    the variant's tag: its index in the enum's
+                                                 variantTypes list
 ```
+
+**An enum value names no enum.** The field's own type does, and the enum's entry names its
+variants, so the tag is the whole payload — a second copy could disagree with the first. A reader
+resolves the variant name through the field type when it wants one; the value itself is the
+number slot 0 of that variant carries at runtime. The tag must be within the enum's variant list,
+and only a variant WITHOUT a payload may be written: a row holds one value per field, and a
+payload is values of its own.
 
 **A row is complete**: one value per field of the attribute type, in field declaration order — a
 field the source did not write carries the field's literal default, filled in by the compiler. The

@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Lyric.Bytecode;
 using Lyric.Core;
 using Lyric.Embedding;
 
@@ -161,5 +162,72 @@ public sealed class AttributeConstantTests : IDisposable
         var fields = module.Attributes.FieldsOf(row.Target);
         Assert.NotNull(fields);
         Assert.Equal(["x", "y"], fields.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void An_enum_value_reaches_the_row_as_a_name_and_a_tag()
+    {
+        // Both halves, because a host wants the name and a program comparing rows wants the
+        // number: Text is the qualified variant, Bits the tag slot 0 carries at runtime.
+        var vm = Vm();
+        var module = vm.Compile("""
+            import std.core { OnFunction };
+
+            pub enum Layout { Packed, Separate }
+
+            pub struct Saved :: [OnFunction] { layout: Layout }
+
+            @Saved { layout = Layout.Separate }
+            pub fn store(): void { }
+            """, "mod");
+
+        var row = Assert.Single(module.Attributes.OnFunctions("Saved"));
+        Assert.Equal("Layout.Separate", row.Value("layout")?.Text);
+        Assert.Equal(1, row.Value("layout")?.AsInt);
+    }
+
+    [Fact]
+    public void The_first_variant_is_tag_zero()
+    {
+        var vm = Vm();
+        var module = vm.Compile("""
+            import std.core { OnFunction };
+
+            pub enum Layout { Packed, Separate }
+
+            pub struct Saved :: [OnFunction] { layout: Layout = Layout.Packed }
+
+            @Saved
+            pub fn store(): void { }
+            """, "mod");
+
+        var row = Assert.Single(module.Attributes.OnFunctions("Saved"));
+        Assert.Equal("Layout.Packed", row.Value("layout")?.Text);
+        Assert.Equal(0, row.Value("layout")?.AsInt);
+    }
+
+    [Fact]
+    public void An_enum_value_survives_a_round_trip_through_bytes()
+    {
+        // The row is read back from the BYTES a second time here: the encoding carries the tag
+        // alone, and the name is resolved from the field's type — so a reader that never saw the
+        // source still answers 'Layout.Separate'.
+        var vm = Vm();
+        var compiled = vm.Compile("""
+            import std.core { OnFunction };
+
+            pub enum Layout { Packed, Separate }
+
+            pub struct Saved :: [OnFunction] { layout: Layout }
+
+            @Saved { layout = Layout.Separate }
+            pub fn store(): void { }
+            """, "mod");
+
+        var reread = ModuleAttributes.Of(BytecodeReader.ReadOrThrow(compiled.Bytes));
+        var row = Assert.Single(reread.OnFunctions("Saved"));
+
+        Assert.Equal("Layout.Separate", row.Value("layout")?.Text);
+        Assert.Equal(1, row.Value("layout")?.AsInt);
     }
 }
