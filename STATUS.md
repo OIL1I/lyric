@@ -270,6 +270,11 @@ out of them and hands its own functions, types and value structs in.
 
 ## Recently finished
 
+- [x] **The debug adapter answers `setExceptionBreakpoints`** (2026-08-22, PR #83, v2.7.1). Four
+  lines and a test. The lesson is where it was found: a second DAP client, not a second reading of
+  the specification. An optional request refused is a program that never starts, and only a client
+  that sends it can show that.
+
 - [x] **A14 — the debugger reaches an invoked function** (2026-08-21,
   `feature/a14-debug-invoke`, v2.7.0). One public overload, five tests, one guide section. The
   fourth in the A9/A12/A13 row: the toolchain had the whole answer and offered it at one shape
@@ -280,12 +285,6 @@ out of them and hands its own functions, types and value structs in.
   A12: the toolchain knew the answer and the boundary dropped it. Worth watching as a class —
   every type the embedding API hands out wants asking whether it is still meaningful once the
   compilation that made it is gone.
-
-- [x] **The formatter breaks operator chains** (2026-08-21, `feature/fmt-operator-chains`,
-  v2.5.1). One method, one `Doc.WillBreak` beside it, five tests. Two lessons: a scope estimate
-  made from reading code ("changes every formatted file") was off by the whole corpus, and the
-  carve-out for hard-breaking operands is not an edge case but the thing that keeps
-  `base * match (r) { … }` readable.
 
 ## Measurements
 
@@ -373,6 +372,31 @@ compiler stays unwarranted at project scale too.
 
 ## What we are working on
 
+**The editor clients are catching up — jetbrains-lyric gains run and debug** (2026-08-22, PR
+`lyriclang/jetbrains-lyric#1`, ships as 1.3.0). The plugin could not start a program at all. It has
+a run configuration now — `lyric run`, the driver, with the compiler's diagnostics clickable in the
+console — and the same configuration under Debug drives `lyrdbg` through the platform's OWN DAP
+client: no `XDebugProcess`, no second protocol implementation, the mirror of the LSP wiring one
+door further. Refused on purpose and visible in the UI: no breakpoint conditions (the adapter
+evaluates names, not expressions) and no exception breakpoints (a panic ends a program instead of
+stopping it).
+
+**What the new `verifyPlugin` gate found on its FIRST run**: the plugin was incompatible with the
+2026.1 baseline it claims, and had been since the org split. Compiled against 2026.2, the Kotlin
+override binds `LspIntegrationProvider.LspClientStarter` — the name the LSP interfaces were renamed
+to there — and 2026.1 has no such class, so opening a `.lyr` file would have thrown
+`NoSuchClassError`. The rule that follows: **compile against the OLDEST supported release and
+verify both ends**. Old names resolve in the new IDE; new names do not resolve in the old one.
+
+**v2.7.1 fell out of the same wiring**: `lyrdbg` refused `setExceptionBreakpoints`, a request an
+editor sends during configuration whether or not filters are offered. VS Code never sends it, so
+one client was never going to find it.
+
+**What is left for the clients**: neither has ever had a release. Both `release.yml` wait on a
+`vX.Y.Z` tag, both READMEs promise an installable, and since the split there is none to download.
+Versions stand at 1.3.0 on both sides, and the JetBrains checklist has still never been run against
+a released zip.
+
 **A14 — the debugger reaches an invoked function — is RELEASED as v2.7.0** (2026-08-21). Erato
 filed it after E13, and it is the same class as A13 one door further: everything M30 built was
 offered at `RunEntry` alone, and an embedded script has no `main` to start. One overload —
@@ -456,7 +480,7 @@ first number, which is also why the bench gate for the policy loop had no pre-ex
 to lean on.
 
 Next: the file-error design round (A) — small vs. big unification — whenever the maintainer
-calls it. Erato-side: engine.task and engine.assets rework; jetbrains-lyric DAP wiring.
+calls it. Erato-side: engine.task and engine.assets rework.
 
 **A9 — the imported-alias fix — is RELEASED as v2.2.1** (2026-08-20): Erato's register filed
 A9 the day of the 2.2.0 re-pin — an opaque type imported from a sibling SDK module did not
@@ -690,8 +714,8 @@ answer yet, and it belongs asked before E4 starts.
 
 ## Last relevant commit
 
-`ir: an imported opaque alias resolves in a native signature`
-(released as v2.2.1 — Erato's A9, filed and fixed the same day)
+`dap: an exception-breakpoint request is answered, not refused`
+(released as v2.7.1 — found by wiring a second editor to the adapter)
 
 ---
 
