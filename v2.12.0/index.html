@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.12.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.12.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.12.0 — 2026-08-22</h2>
+<p>Bytecode format <strong>3.6</strong>. The interpreter runs the same programs in a third of the instructions,
+and the release is about why that is the number that mattered.</p>
+<h3 id="the-measurement-it-started-from">The measurement it started from</h3>
+<p>An instruction on this VM costs ~6 ns — and costs it <strong>regardless of what it does</strong>. A <code>br</code>, an
+<code>add f64</code> and an <code>and i64</code> lie within twenty percent of each other. That is the normal price of a
+switch-dispatch stack machine, not a slow interpreter: the dispatch is the whole bill. So nothing
+that makes an instruction cheaper moves a program's time, and the only lever is executing fewer.</p>
+<p>The loop test of every <code>while</code> in the language was four instructions, of which three existed to
+move a value onto the operand stack and off it again.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong>Fused instructions</strong> (format 3.6). Four opcodes that read local slots and write local slots,
+touching the operand stack not at all:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>brcmp</code>, <code>brcmpk</code></td>
+<td>compare two slots, or a slot and a constant, and branch</td>
+</tr>
+<tr>
+<td><code>binll</code>, <code>binlk</code></td>
+<td><code>dest = a op b</code> and <code>dest = a op k</code>, for any binary operation</td>
+</tr>
+</tbody>
+</table>
+<p>A comparison in the arithmetic form writes a <code>bool</code>, exactly as the unfused pair leaves one on
+the stack; the destination may be one of the sources, which is what makes <code>i = i + 1</code> a single
+instruction. Instruction selection is in the emitter, not in the IR — a fused instruction is a
+property of the encoding, and the IR is the machine-independent form every pass reads.</p>
+<pre><code>brcmpk lt i64 l0, 10000000 -&gt; bb2, bb3
+binlk add f64 l1 = l1, 1.5
+binlk add i64 l0 = l0, 1
+br bb1
+</code></pre>
+</li>
+<li><p><strong><code>std.random</code> draws in a native round.</strong> Three shifts and three exclusive ors written in Lyric
+were 53 instructions, and on this VM a crossing into the host costs about what one instruction
+costs. The state stays in the script: one integer crosses, the next comes back. <strong>The sequence
+is unchanged</strong>, including the replaced zero seed, and it is pinned by a test now — the one
+beside it compared two generators with each other and would have held for any algorithm at all.</p>
+</li>
+</ul>
+<h3 id="measured">Measured</h3>
+<p>Same harness, same machine, same session; the baseline is a build with selection switched off and
+the old <code>nextInt</code>. Two iteration counts differenced, so nothing that happens once is in the
+figure, and the instruction counts are read from an <code>ExecutionBudget</code> rather than counted by hand.</p>
+<table>
+<thead>
+<tr>
+<th>case</th>
+<th style="text-align: right;">instr</th>
+<th style="text-align: right;">ns/iter</th>
+<th style="text-align: right;">instr</th>
+<th style="text-align: right;">ns/iter</th>
+<th style="text-align: right;"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td style="text-align: right;"><em>2.11</em></td>
+<td style="text-align: right;"><em>2.11</em></td>
+<td style="text-align: right;"><em>2.12</em></td>
+<td style="text-align: right;"><em>2.12</em></td>
+<td style="text-align: right;"></td>
+</tr>
+<tr>
+<td>a counting loop</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">44.3</td>
+<td style="text-align: right;"><strong>3</strong></td>
+<td style="text-align: right;"><strong>18.2</strong></td>
+<td style="text-align: right;"><strong>2.4×</strong></td>
+</tr>
+<tr>
+<td>an integer accumulator</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">59.2</td>
+<td style="text-align: right;"><strong>4</strong></td>
+<td style="text-align: right;"><strong>27.6</strong></td>
+<td style="text-align: right;"><strong>2.1×</strong></td>
+</tr>
+<tr>
+<td>a float accumulator</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;">68.7</td>
+<td style="text-align: right;"><strong>4</strong></td>
+<td style="text-align: right;"><strong>24.8</strong></td>
+<td style="text-align: right;"><strong>2.8×</strong></td>
+</tr>
+<tr>
+<td>a masked accumulator</td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">88.7</td>
+<td style="text-align: right;"><strong>9</strong></td>
+<td style="text-align: right;"><strong>61.2</strong></td>
+<td style="text-align: right;">1.4×</td>
+</tr>
+<tr>
+<td>a native call</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">82.4</td>
+<td style="text-align: right;"><strong>8</strong></td>
+<td style="text-align: right;"><strong>56.9</strong></td>
+<td style="text-align: right;">1.4×</td>
+</tr>
+<tr>
+<td><code>Random.nextFloat()</code></td>
+<td style="text-align: right;">70</td>
+<td style="text-align: right;">395.4</td>
+<td style="text-align: right;"><strong>42</strong></td>
+<td style="text-align: right;"><strong>199.2</strong></td>
+<td style="text-align: right;"><strong>2.0×</strong></td>
+</tr>
+<tr>
+<td>an array read</td>
+<td style="text-align: right;">19</td>
+<td style="text-align: right;">91.6</td>
+<td style="text-align: right;"><strong>13</strong></td>
+<td style="text-align: right;"><strong>65.8</strong></td>
+<td style="text-align: right;">1.4×</td>
+</tr>
+</tbody>
+</table>
+<p>The time fell WITH the count rather than beside it, which is the claim the release rests on. What
+rose is the average price per instruction (≈4.9 → ≈6.3 ns), and that is the healthy direction:
+the instructions the fusion removed were the cheapest ones, the moves.</p>
+<p>The rows that gain least say where the remaining work is: a nested expression keeps its
+intermediate on the stack, and neither fused form can reach a value that is not in a slot.</p>
+<h3 id="format">Format</h3>
+<p><strong>3.6 against 3.5</strong>: four new opcodes. A producer may emit the unfused sequences instead, and one
+that never emits a fused form writes a module any 3.5 runtime accepts; a module that uses one
+needs a 3.6 runtime, named at load time.</p>
+<p>The §Versioning rule was corrected in the same round. It read &quot;a minor version may only add
+skippable sections&quot;, which 3.4 was not — the note beside that version said as much, so the
+document had contradicted itself since the day it shipped. It now states the compatibility the
+format has actually delivered: per MODULE, not per version.</p>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.io.console — Lyric v2.12.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.12.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.6</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/" class="here">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.io.console</h1>
+<nav class="contents">
+<ul>
+<li><a href="#function-print">print</a></li>
+<li><a href="#function-println">println</a></li>
+<li><a href="#function-eprint">eprint</a></li>
+<li><a href="#function-eprintln">eprintln</a></li>
+<li><a href="#function-readline">readLine</a></li>
+<li><a href="#function-readall">readAll</a></li>
+<li><a href="#function-readchar">readChar</a></li>
+<li><a href="#function-isinteractive">isInteractive</a></li>
+<li><a href="#function-flush">flush</a></li>
+<li><a href="#function-prompt">prompt</a></li>
+<li><a href="#class-lineiterator">LineIterator</a></li>
+<li><a href="#function-lines">lines</a></li>
+</ul>
+</nav>
+<p>Reading from and writing to the console.</p>
+<p>Output needs no capability — it is always available. <code>print</code> and <code>println</code> take any type that
+satisfies <code>Display</code>: <code>println(42)</code>, <code>println(true)</code>, <code>println(&quot;hi&quot;)</code>.</p>
+<section class="item" id="function-print">
+<h2><a href="#function-print">print</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn print&lt;T :: [Display]&gt;(value: T): void</code></pre>
+<p>Writes any displayable value without a line break: <code>print(42)</code>, <code>print(&quot;hi&quot;)</code>.</p>
+<p>There is no overloading; the <code>Display</code> constraint does the same job and extends to every type
+that satisfies it rather than to a fixed list. Monomorphization turns the call into a direct one
+per used type, so the generality costs nothing at runtime.</p>
+<p>Nothing is flushed. A prompt written with <code>print</code> sits in the buffer until <code>flush</code>, which is why
+<code>prompt</code> exists.</p>
+<p class="source">stdlib/std/io/console.lyr:45</p>
+</section>
+<section class="item" id="function-println">
+<h2><a href="#function-println">println</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn println&lt;T :: [Display]&gt;(value: T): void</code></pre>
+<p>Writes any displayable value, followed by a line break.</p>
+<p class="source">stdlib/std/io/console.lyr:50</p>
+</section>
+<section class="item" id="function-eprint">
+<h2><a href="#function-eprint">eprint</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn eprint&lt;T :: [Display]&gt;(value: T): void</code></pre>
+<p>Writes any displayable value to standard ERROR without a line break.</p>
+<p class="source">stdlib/std/io/console.lyr:55</p>
+</section>
+<section class="item" id="function-eprintln">
+<h2><a href="#function-eprintln">eprintln</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn eprintln&lt;T :: [Display]&gt;(value: T): void</code></pre>
+<p>Writes any displayable value to standard ERROR, followed by a line break.</p>
+<p>Diagnostics belong here rather than in standard output, so a program used in a pipe does not put
+them into the data.</p>
+<p class="source">stdlib/std/io/console.lyr:63</p>
+</section>
+<section class="item" id="function-readline">
+<h2><a href="#function-readline">readLine</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn readLine(): ?string</code></pre>
+<p>Reads one line from standard input, without its line break.</p>
+<p><code>null</code> at end of input. Optional rather than an empty string, because EOF is a state and not a
+line: a program reading until <code>null</code> stops, one reading until <code>&quot;&quot;</code> never does.</p>
+<p class="source">stdlib/std/io/console.lyr:73</p>
+</section>
+<section class="item" id="function-readall">
+<h2><a href="#function-readall">readAll</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn readAll(): string</code></pre>
+<p>Reads everything up to end of input, for filters that need the whole text.</p>
+<p>The input is held in memory in full. <code>lines</code> is the way through a stream larger than that.</p>
+<p class="source">stdlib/std/io/console.lyr:78</p>
+</section>
+<section class="item" id="function-readchar">
+<h2><a href="#function-readchar">readChar</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn readChar(): ?char</code></pre>
+<p>Reads a single code point, or <code>null</code> at end of input.</p>
+<p class="source">stdlib/std/io/console.lyr:81</p>
+</section>
+<section class="item" id="function-isinteractive">
+<h2><a href="#function-isinteractive">isInteractive</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn isInteractive(): bool</code></pre>
+<p>Whether standard input and output are a terminal rather than a pipe.</p>
+<p>A program writing into a pipe should not put a prompt into the stream, and this is how it knows.</p>
+<p class="source">stdlib/std/io/console.lyr:86</p>
+</section>
+<section class="item" id="function-flush">
+<h2><a href="#function-flush">flush</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn flush(): void</code></pre>
+<p>Pushes buffered output to the console.</p>
+<p>Needed as soon as something is written without a line break and has to be visible before the
+program continues — a prompt being the usual case.</p>
+<p class="source">stdlib/std/io/console.lyr:92</p>
+</section>
+<section class="item" id="function-prompt">
+<h2><a href="#function-prompt">prompt</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn prompt(text: string): ?string</code></pre>
+<p>Writes <code>text</code>, flushes it, and reads one line.</p>
+<p>The flush is the point: without it the question would sit in the buffer while the program waits
+for an answer nobody knows is expected. <code>null</code> at end of input, as <code>readLine</code>.</p>
+<p class="source">stdlib/std/io/console.lyr:103</p>
+</section>
+<section class="item" id="class-lineiterator">
+<h2><a href="#class-lineiterator">LineIterator</a> <span class="kind">class</span></h2>
+<pre class="signature"><code class="language-lyr">pub class LineIterator :: [Iterator&lt;string&gt;]</code></pre>
+<p>The iterator <code>lines</code> hands out. Yields each line of standard input until it ends.</p>
+<div class="members">
+<div class="member">
+<pre class="signature"><code class="language-lyr">done: bool</code></pre>
+<p>Set once <code>readLine</code> answered <code>null</code>; from then on the iterator ends.</p>
+</div>
+<div class="member">
+<pre class="signature"><code class="language-lyr">pub mut fn next(): ?string</code></pre>
+<p>The next line, or <code>null</code> once the input has ended. Ends for good after the first <code>null</code>.</p>
+</div>
+</div>
+<p class="source">stdlib/std/io/console.lyr:110</p>
+</section>
+<section class="item" id="function-lines">
+<h2><a href="#function-lines">lines</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn lines(): Iterator&lt;string&gt;</code></pre>
+<p>The lines of standard input, as an iterator — the idiomatic shape of a filter:</p>
+<pre><code>for (line in console.lines()) { … }
+</code></pre>
+<p>An iterator rather than a <code>string[]</code>: the input can be larger than memory, and a program that
+only counts should not have to collect it first.</p>
+<p class="source">stdlib/std/io/console.lyr:133</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.fmt/">std.fmt</a>
+<a class="next" href="../../stdlib/std.io.file/">std.io.file</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>

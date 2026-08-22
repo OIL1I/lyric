@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.test — Lyric v2.12.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.12.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.6</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/" class="here">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.test</h1>
+<nav class="contents">
+<ul>
+<li><a href="#struct-test">Test</a></li>
+<li><a href="#function-asserttrue">assertTrue</a></li>
+<li><a href="#function-asserteq">assertEq</a></li>
+</ul>
+</nav>
+<p>Marking tests, and the assertions that fail them. <code>lyric test</code> runs every function marked
+<code>@Test</code> in the project's test root; a test fails by panicking, which is what the assertions
+here do.</p>
+<section class="item" id="struct-test">
+<h2><a href="#struct-test">Test</a> <span class="kind">struct</span></h2>
+<pre class="signature"><code class="language-lyr">pub struct Test :: [OnFunction]</code></pre>
+<p>Marks a top-level function as a test. <code>lyric test</code> finds it through the attribute row and
+runs it in a fresh instance; the function takes no parameters and returns nothing.</p>
+<p class="source">stdlib/std/test.lyr:16</p>
+</section>
+<section class="item" id="function-asserttrue">
+<h2><a href="#function-asserttrue">assertTrue</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn assertTrue(condition: bool, message: string): void</code></pre>
+<p>Fails the test with <code>message</code> when <code>condition</code> is false.</p>
+<p>The same behavior as <code>std.core.assert</code> — it exists so a test file needs one import, and it
+delegates so there is one implementation.</p>
+<p class="source">stdlib/std/test.lyr:22</p>
+</section>
+<section class="item" id="function-asserteq">
+<h2><a href="#function-asserteq">assertEq</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn assertEq&lt;T :: [Equatable&lt;T&gt;, Display]&gt;(actual: T, expected: T): void</code></pre>
+<p>Fails the test when the two values differ, naming both.</p>
+<p class="source">stdlib/std/test.lyr:27</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.string/">std.string</a>
+<a class="next" href="../../stdlib/std.time/">std.time</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
