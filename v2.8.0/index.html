@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.8.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.8.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.8.0 — 2026-08-22</h2>
+<p>Module constants initialize in dependency order, so a file compiles the same way whoever compiles
+it. The bytecode format stays <strong>3.3</strong>; more programs compile than before and none fewer.</p>
+<h3 id="fixed">Fixed</h3>
+<ul>
+<li><p><strong>A module-level <code>let</code> may read one from a module it imports.</strong> The order of initialization
+followed the order in which the entry file happened to discover the modules, so a THIRD module
+decided whether a SECOND one compiled:</p>
+<table>
+<thead>
+<tr>
+<th>the entry imports</th>
+<th><code>pub let doubled = a.width * 2;</code> in <code>b</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>a</code>, then <code>b</code></td>
+<td>compiled</td>
+</tr>
+<tr>
+<td><code>b</code>, then <code>a</code></td>
+<td><code>LYR-SEM0057</code></td>
+</tr>
+<tr>
+<td>only <code>b</code>, which imports <code>a</code> itself</td>
+<td><code>LYR-SEM0057</code></td>
+</tr>
+<tr>
+<td><code>b</code> on its own</td>
+<td><code>LYR-SEM0057</code></td>
+</tr>
+</tbody>
+</table>
+<p>The import is the dependency statement, and the compiler had already followed it to load the
+file. Globals now initialize module by module in dependency order — every module after the ones
+it imports — and in declaration order within a module, which is the rule §4.3 of the
+specification now states.</p>
+<p><strong>Which file you compile no longer changes the answer.</strong> That is the half that made this a
+defect rather than a wart: a host compiling every file as its own entry — to read its attribute
+rows before deciding what to load — saw errors <code>lyric check</code> never showed, and a project could
+look green for months and still refuse to start.</p>
+<p>Unchanged: the rule inside one module, where reading a constant declared further down is still
+<code>LYR-SEM0057</code>, and import cycles, which the resolver refuses as <code>LYR-RES0005</code> before the
+question arises. The diagnostic's message says what the order is now.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>

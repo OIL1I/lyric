@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>std.os — Lyric v2.8.0</title>
+<link rel="stylesheet" href="../../site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="../../">Lyric</a>
+<nav class="areas">
+<a href="../../guide/getting-started/">Guide</a>
+<a class="current" href="../../grammar/">Documentation</a>
+</nav>
+<span class="version">v2.8.0</span>
+<nav class="switcher" data-versions="../../../versions.json"></nav>
+</header>
+<div class="layout">
+<nav class="sidebar">
+<h2>Reference</h2>
+<ul>
+<li><a href="../../grammar/">Lyric Grammar</a></li>
+<li><a href="../../bytecode/">Lyric .lyrbc Bytecode Format 3.3</a></li>
+<li><a href="../../pack/">The Pack Format</a></li>
+</ul>
+<h2>Project</h2>
+<ul>
+<li><a href="../../changelog/">Changelog</a></li>
+</ul>
+<h2>Standard library</h2>
+<ul>
+<li><a href="../../stdlib/std.build/">std.build</a></li>
+<li><a href="../../stdlib/std.collections/">std.collections</a></li>
+<li><a href="../../stdlib/std.core/">std.core</a></li>
+<li><a href="../../stdlib/std.fmt/">std.fmt</a></li>
+<li><a href="../../stdlib/std.io.console/">std.io.console</a></li>
+<li><a href="../../stdlib/std.io.file/">std.io.file</a></li>
+<li><a href="../../stdlib/std.iter/">std.iter</a></li>
+<li><a href="../../stdlib/std.math/">std.math</a></li>
+<li><a href="../../stdlib/std.option/">std.option</a></li>
+<li><a href="../../stdlib/std.os/" class="here">std.os</a></li>
+<li><a href="../../stdlib/std.random/">std.random</a></li>
+<li><a href="../../stdlib/std.string/">std.string</a></li>
+<li><a href="../../stdlib/std.test/">std.test</a></li>
+<li><a href="../../stdlib/std.time/">std.time</a></li>
+</ul>
+</nav>
+<main>
+<h1>std.os</h1>
+<nav class="contents">
+<ul>
+<li><a href="#function-platform">platform</a></li>
+<li><a href="#function-env">env</a></li>
+<li><a href="#function-currentdir">currentDir</a></li>
+<li><a href="#function-exit">exit</a></li>
+<li><a href="#function-args">args</a></li>
+<li><a href="#function-setenv">setEnv</a></li>
+<li><a href="#function-hostname">hostName</a></li>
+<li><a href="#function-username">userName</a></li>
+<li><a href="#function-homedir">homeDir</a></li>
+<li><a href="#function-cpucount">cpuCount</a></li>
+<li><a href="#function-nowmillis">nowMillis</a></li>
+<li><a href="#function-nownanos">nowNanos</a></li>
+<li><a href="#function-sleep">sleep</a></li>
+<li><a href="#function-envor">envOr</a></li>
+</ul>
+</nav>
+<section class="item" id="function-platform">
+<h2><a href="#function-platform">platform</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn platform(): string</code></pre>
+<p><code>&quot;windows&quot;</code>, <code>&quot;linux&quot;</code>, <code>&quot;macos&quot;</code> or <code>&quot;unknown&quot;</code>.</p>
+<p class="source">stdlib/std/os.lyr:9</p>
+</section>
+<section class="item" id="function-env">
+<h2><a href="#function-env">env</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn env(name: string): ?string</code></pre>
+<p>An environment variable, or <code>null</code> when it is not set — an ordinary question about the
+environment, not a panic.</p>
+<p class="source">stdlib/std/os.lyr:13</p>
+</section>
+<section class="item" id="function-currentdir">
+<h2><a href="#function-currentdir">currentDir</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn currentDir(): string</code></pre>
+<p>The current working directory.</p>
+<p class="source">stdlib/std/os.lyr:16</p>
+</section>
+<section class="item" id="function-exit">
+<h2><a href="#function-exit">exit</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn exit(code: int): void</code></pre>
+<p>Ends the process immediately with this code. No <code>defer</code> runs and no <code>catch</code> applies. To
+exit cleanly, return from <code>main</code>.</p>
+<p class="source">stdlib/std/os.lyr:20</p>
+</section>
+<section class="item" id="function-args">
+<h2><a href="#function-args">args</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn args(): string[]</code></pre>
+<p>The command-line arguments, also outside <code>main</code>.</p>
+<p><code>main(args)</code> receives them, but a function deeper in the program does not; here they are
+available without threading them through.</p>
+<p class="source">stdlib/std/os.lyr:28</p>
+</section>
+<section class="item" id="function-setenv">
+<h2><a href="#function-setenv">setEnv</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn setEnv(name: string, value: string): bool</code></pre>
+<p>Sets an environment variable for this process. Child processes inherit it; the system does
+not.</p>
+<p class="source">stdlib/std/os.lyr:32</p>
+</section>
+<section class="item" id="function-hostname">
+<h2><a href="#function-hostname">hostName</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn hostName(): ?string</code></pre>
+<p>The machine's name, or <code>null</code> when the system does not say.</p>
+<p class="source">stdlib/std/os.lyr:35</p>
+</section>
+<section class="item" id="function-username">
+<h2><a href="#function-username">userName</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn userName(): ?string</code></pre>
+<p>The current user's name, or <code>null</code> when the system does not say.</p>
+<p class="source">stdlib/std/os.lyr:37</p>
+</section>
+<section class="item" id="function-homedir">
+<h2><a href="#function-homedir">homeDir</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn homeDir(): ?string</code></pre>
+<p>The user's home directory, or <code>null</code> when the system does not say.</p>
+<p class="source">stdlib/std/os.lyr:39</p>
+</section>
+<section class="item" id="function-cpucount">
+<h2><a href="#function-cpucount">cpuCount</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn cpuCount(): int</code></pre>
+<p>How many cores the machine has, for programs that split their work. The VM itself is
+single-threaded.</p>
+<p class="source">stdlib/std/os.lyr:43</p>
+</section>
+<section class="item" id="function-nowmillis">
+<h2><a href="#function-nowmillis">nowMillis</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn nowMillis(): int</code></pre>
+<p>Milliseconds since 1970-01-01 UTC.</p>
+<p>A number rather than a date type: dates, time zones and calendars are their own module. The
+number is the same on every platform.</p>
+<p class="source">stdlib/std/os.lyr:49</p>
+</section>
+<section class="item" id="function-nownanos">
+<h2><a href="#function-nownanos">nowNanos</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn nowNanos(): int</code></pre>
+<p>Nanoseconds from a monotonic clock. Not comparable with <code>nowMillis</code>; the origin is arbitrary.
+A system clock can jump during a measurement, a monotonic one cannot.</p>
+<p class="source">stdlib/std/os.lyr:53</p>
+</section>
+<section class="item" id="function-sleep">
+<h2><a href="#function-sleep">sleep</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn sleep(millis: int): void</code></pre>
+<p>Suspends the process. The VM is single-threaded, so nothing runs alongside.</p>
+<p class="source">stdlib/std/os.lyr:56</p>
+</section>
+<section class="item" id="function-envor">
+<h2><a href="#function-envor">envOr</a> <span class="kind">function</span></h2>
+<pre class="signature"><code class="language-lyr">pub fn envOr(name: string, fallback: string): string</code></pre>
+<p>An environment variable with a default.</p>
+<p class="source">stdlib/std/os.lyr:61</p>
+</section>
+<nav class="neighbours">
+<a class="prev" href="../../stdlib/std.option/">std.option</a>
+<a class="next" href="../../stdlib/std.random/">std.random</a>
+</nav>
+</main>
+</div>
+<script src="../../site.js"></script>
+</body>
+</html>
