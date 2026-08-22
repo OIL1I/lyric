@@ -15,6 +15,14 @@ module std.random;
 import std.collections { List };
 import std.math { absInt, sqrt, log, cos, tau };
 
+/// One xorshift64 round: three shifts and three exclusive ors over the state.
+///
+/// Native, and this one is worth a word because the rest of this module is not. Written in Lyric
+/// the round is 53 instructions, and an instruction costs the same as a crossing into the host —
+/// so a draw spent most of its time dispatching shifts. The STATE stays here; what crosses is one
+/// integer, and what comes back is the next one.
+fn xorshift(state: int): int;
+
 /// A deterministic pseudo-random generator (xorshift64*): one `int` of state, seeded by the
 /// caller. Not cryptographic — keys need a source from the operating system.
 pub class Random {
@@ -30,10 +38,7 @@ pub class Random {
 
     /// The next raw value. It may have either sign.
     pub mut fn nextInt(): int {
-        var x = this.state;
-        x = x ^ x << 13;
-        x = x ^ x >> 7;
-        x = x ^ x << 17;
+        let x = xorshift(this.state);
         this.state = x;
         return x;
     }

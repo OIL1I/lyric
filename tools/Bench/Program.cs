@@ -20,6 +20,16 @@ namespace Lyric.Bench;
 /// warm-up, which a long-lived host pays once. Two warm-up runs precede the measurement so the
 /// interpreter loop is tiered before the clock starts; the minimum over the repetitions is
 /// reported, because noise only ever adds.</para>
+///
+/// <para><b>The adjusted columns of this first table became unreliable with format 3.6</b>, and
+/// the reason is worth knowing rather than patching over. Subtracting a baseline CASE assumes
+/// every case carries the same loop around its operation. Instruction selection broke that
+/// assumption: the scalar baseline computes a nested expression, which does not fuse, while a
+/// case with a plain accumulator now runs three instructions where the baseline runs nine. The
+/// subtraction then reports a negative cost for a native call, which is not a small error but a
+/// meaningless one. The interpreter table below does not have the problem — it differences two
+/// iteration counts of the SAME program — and rebuilding the first table on that method is its
+/// own piece of work.</para>
 /// </summary>
 internal static class Program
 {
@@ -624,6 +634,42 @@ internal static class Program
                     i = i + 1;
                 }
                 return if (acc >= 0) 0 else 1;
+            }
+            """);
+
+        // What a crossing into the host costs, measured the same way as everything else here, so
+        // it can be compared against a count of dispatches. 'sqrt' is a native whose own work is
+        // a single machine instruction, which leaves the boundary.
+        yield return new InterpreterCase("nativeSqrt", """
+            import std.math { sqrt };
+
+            fn main(): int {
+                var acc = 0.0;
+                var i = 0;
+                while (i < {N}) {
+                    acc = acc + sqrt(2.0);
+                    i = i + 1;
+                }
+                return if (acc > 0.0) 0 else 1;
+            }
+            """);
+
+        // Not a shape but a CALL, and the one Erato measured as its most expensive line: two
+        // random numbers cost it more than five boundary crossings. What it measures here is a
+        // standard-library function written in Lyric — a xorshift round is six shift-and-xor
+        // steps, and every one of them is instructions.
+        yield return new InterpreterCase("randomFloat", """
+            import std.random { Random };
+
+            fn main(): int {
+                var r = Random.seeded(1234);
+                var acc = 0.0;
+                var i = 0;
+                while (i < {N}) {
+                    acc = acc + r.nextFloat();
+                    i = i + 1;
+                }
+                return if (acc > 0.0) 0 else 1;
             }
             """);
 

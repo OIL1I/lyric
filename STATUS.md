@@ -109,9 +109,36 @@ The delivery list:
       The two shapes that do NOT fuse are visible in the table too: `maskOnly` keeps a nested
       operation whose inner result is a temp, and `arrayRead` an element load — neither has a
       slot to read from
-- [ ] **slice 5** — `std.random`: 53 dispatches for a xorshift64*, measured. The STATE stays in
-      the script, the shift/xor round becomes one native. Build it only if the crossing measures
-      cheaper than the dispatches it saves
+- [x] **slice 5** — `std.random`. The condition was "only if the crossing measures cheaper than
+      the dispatches it saves", so that was measured first: `nativeSqrt` costs 8 instructions and
+      48.0 ns against `loopOnly`'s 3 and 15.4 — **a crossing into the host costs about what an
+      ordinary instruction costs here**, which is a different world from the ~125 ns Erato
+      measures for an engine native marshalling several arguments. Against 53 dispatches the
+      decision was not close.
+
+      The state stays in the script; one integer crosses and the next one comes back:
+
+      | | instr/iter | ns/iter |
+      |---|---:|---:|
+      | `acc = acc + r.nextFloat()` before | 64 | 305–320 |
+      | after | **42** | **166–176** |
+
+      **The sequence is identical**, including the replaced zero seed — and it is now PINNED:
+      the existing test compared two generators against each other, which would have watched
+      xorshift64 be replaced by something else without a word. The new one asserts the values,
+      and I checked that it fails when they move.
+
+      What is left in `nextFloat` is `absInt` and a modulo, both written in Lyric. Reaching for
+      the top 53 bits instead would be faster and CHANGES THE VALUES — a decision about a
+      documented generator, not a performance slice.
+
+- [ ] **found while measuring, not yet done**: the first bench table's *adjusted* columns are
+      unreliable since 3.6. They subtract a baseline CASE, which assumes every case carries the
+      same loop; selection broke that — the baseline's nested expression does not fuse while a
+      plain accumulator does, and the subtraction now reports a NEGATIVE cost for a native call.
+      The interpreter table is unaffected (it differences two iteration counts of one program).
+      Rebuilding the first table on that method is its own piece of work; the harness says so at
+      the top for now
 - [ ] **slice 6** — measure again, CHANGELOG, release, and the gate below
 
 **The gate this milestone exists to inform**: whether a register bytecode (format 4.0, v3.0.0) is

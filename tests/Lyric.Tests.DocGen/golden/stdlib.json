@@ -3735,7 +3735,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/random.lyr",
-                "Line": 22
+                "Line": 30
               }
             },
             {
@@ -3746,7 +3746,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/random.lyr",
-                "Line": 27
+                "Line": 35
               }
             },
             {
@@ -3757,7 +3757,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/random.lyr",
-                "Line": 32
+                "Line": 40
               }
             },
             {
@@ -3768,7 +3768,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/random.lyr",
-                "Line": 42
+                "Line": 47
               }
             },
             {
@@ -3779,7 +3779,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/random.lyr",
-                "Line": 51
+                "Line": 56
               }
             },
             {
@@ -3790,7 +3790,7 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/random.lyr",
-                "Line": 58
+                "Line": 63
               }
             },
             {
@@ -3801,13 +3801,13 @@
               "Members": [],
               "Source": {
                 "File": "stdlib/std/random.lyr",
-                "Line": 63
+                "Line": 68
               }
             }
           ],
           "Source": {
             "File": "stdlib/std/random.lyr",
-            "Line": 20
+            "Line": 28
           }
         },
         {
@@ -3818,7 +3818,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/random.lyr",
-            "Line": 78
+            "Line": 83
           }
         },
         {
@@ -3829,7 +3829,7 @@
           "Members": [],
           "Source": {
             "File": "stdlib/std/random.lyr",
-            "Line": 88
+            "Line": 93
           }
         }
       ]

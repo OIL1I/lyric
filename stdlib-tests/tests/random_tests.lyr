@@ -13,6 +13,26 @@ pub fn a_seeded_generator_is_reproducible(): void {
     assertTrue(absInt(c.nextInt()) > 0, "the zero seed is replaced, not a fixed point");
 }
 
+/// The exact sequence, not just its reproducibility.
+///
+/// The test beside this one compares two generators, so it holds for ANY algorithm — it would
+/// have watched xorshift64 be replaced by something else without a word. These values were taken
+/// before the round moved into a native and are asserted after: what a seed produces is a promise
+/// to every program that saved a seed and expects the same world back.
+@Test
+pub fn a_seed_produces_exactly_this_sequence(): void {
+    let r = Random.seeded(1234);
+    assertEq(r.nextInt(), 1335200936027);
+    assertEq(r.nextInt(), 2392750596832386171);
+    assertEq(r.nextInt(), 0 - 8332078248054572541);
+    assertEq(r.nextInt(), 0 - 2142365548691529);
+    assertEq(r.nextInt(), 45745413532698888);
+
+    // The replaced zero seed has its own sequence, and it is part of the same promise.
+    let z = Random.seeded(0);
+    assertEq(z.nextInt(), 0 - 9120871113685408793);
+}
+
 @Test
 pub fn shuffle_permutes_and_keeps_every_element(): void {
     let xs = List<int>.empty();
