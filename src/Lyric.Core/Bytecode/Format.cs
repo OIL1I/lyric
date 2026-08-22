@@ -238,6 +238,28 @@ public enum Op : byte
     Add = 0x10, Sub = 0x11, Mul = 0x12, Div = 0x13, Rem = 0x14,
     Shl = 0x15, Shr = 0x16, BitAnd = 0x17, BitOr = 0x18, BitXor = 0x19,
 
+    /// <summary>
+    /// <c>binll &lt;op&gt; &lt;type&gt; &lt;dest&gt; &lt;a&gt; &lt;b&gt;</c> — new in 3.6.
+    /// <c>dest = a op b</c> over LOCAL SLOTS, doing in one instruction what
+    /// <c>ldloc; ldloc; op; stloc</c> does in four.
+    ///
+    /// <para><c>op</c> is one of the binary opcodes — arithmetic, bitwise or a comparison
+    /// (<see cref="Add"/>..<see cref="BitXor"/>, <see cref="Lt"/>..<see cref="Ne"/>) — as a byte,
+    /// so the fused forms need no enumeration of their own. <c>type</c> is the tag of the
+    /// OPERANDS; for a comparison the destination takes a <c>bool</c>, exactly as the unfused
+    /// form leaves one on the stack.</para>
+    ///
+    /// <para>The destination may be one of the sources: both operands are read before it is
+    /// written, which is what makes <c>i = i + 1</c> one instruction.</para>
+    /// </summary>
+    BinLocals = 0x1A,
+
+    /// <summary><c>binlk &lt;op&gt; &lt;type&gt; &lt;dest&gt; &lt;a&gt; &lt;immediate&gt;</c> —
+    /// as <see cref="BinLocals"/>, with a CONSTANT right-hand operand encoded exactly as
+    /// <see cref="Const"/> encodes one of that type. The shape an accumulator has:
+    /// <c>acc = acc + 1.5</c>.</summary>
+    BinConst = 0x1B,
+
     /// <summary>Comparisons: the tag names the operand type, the result is always bool.</summary>
     Lt = 0x20, Le = 0x21, Gt = 0x22, Ge = 0x23, Eq = 0x24, Ne = 0x25,
 

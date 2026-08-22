@@ -265,6 +265,19 @@ public static class Interpreter
                         (int)(stack[--sp].AsBool ? instruction.Immediate : instruction.Immediate2)];
                     break;
 
+                // The fused arithmetic (3.6). Both operands are read before the destination is
+                // written, which is what lets a destination be one of the sources -- 'i = i + 1'
+                // is this instruction.
+                case Op.BinLocals:
+                    locals[instruction.SlotDest] = FusedResult(instruction,
+                        locals[instruction.SlotA], locals[instruction.SlotB]);
+                    break;
+
+                case Op.BinConst:
+                    locals[instruction.SlotDest] = FusedResult(instruction,
+                        locals[instruction.SlotA], FusedConstant(instruction));
+                    break;
+
                 // The fused branches (3.6). Four dispatches in one, and the operands never reach
                 // the operand stack: the loop test of every 'while' in the language is this
                 // instruction.
@@ -279,20 +292,8 @@ public static class Interpreter
 
                 case Op.BranchCompareConst:
                 {
-                    // The constant is rebuilt exactly as 'const' would build it: an f32 stays
-                    // single precision, and an integer is brought to its width invariant. A
-                    // shortcut here would make 'i < 1' mean something else for i8 than for i64.
-                    var right = instruction.Type switch
-                    {
-                        TypeTag.F32 => LyrValue.FromF32((float)instruction.FloatValue),
-                        TypeTag.F64 => LyrValue.FromF64(instruction.FloatValue),
-                        TypeTag.Bool => LyrValue.FromBool(instruction.BoolValue),
-                        _ => LyrValue.FromBits(
-                            LyrValue.Normalize(instruction.Type, instruction.ConstBits)),
-                    };
-
                     var taken = Compare(instruction.Fused, instruction.Type,
-                        locals[instruction.SlotA], right);
+                        locals[instruction.SlotA], FusedConstant(instruction));
                     frame.Ip = frame.Fn.BlockStart[
                         (int)(taken ? instruction.Immediate : instruction.Immediate2)];
                     break;
@@ -806,6 +807,30 @@ public static class Interpreter
                 slots[i] = LyrValue.FromString(string.Empty);
         return slots;
     }
+
+    /// <summary>What a fused binary form computes. A comparison leaves a bool, everything else
+    /// leaves a value of the operand type — the same split the unfused pair has, decided by the
+    /// operation the instruction carries rather than by its own type.</summary>
+    private static LyrValue FusedResult(in VmInstruction instruction, LyrValue lhs, LyrValue rhs) =>
+        instruction.Fused is Op.Lt or Op.Le or Op.Gt or Op.Ge or Op.Eq or Op.Ne
+            ? LyrValue.FromBool(Compare(instruction.Fused, instruction.Type, lhs, rhs))
+            : Binary(instruction.Fused, instruction.Type, lhs, rhs);
+
+    /// <summary>
+    /// The immediate of a fused constant shape, rebuilt exactly as <c>const</c> would build it: an
+    /// f32 stays single precision, and an integer is brought to its width invariant.
+    ///
+    /// <para>A shortcut here would make <c>i &lt; 1</c> mean something else for an int8 than for
+    /// an int64 — the constant arrives as 0x00..0xFF and would compare as 255 where it means -1.
+    /// </para>
+    /// </summary>
+    private static LyrValue FusedConstant(in VmInstruction instruction) => instruction.Type switch
+    {
+        TypeTag.F32 => LyrValue.FromF32((float)instruction.FloatValue),
+        TypeTag.F64 => LyrValue.FromF64(instruction.FloatValue),
+        TypeTag.Bool => LyrValue.FromBool(instruction.BoolValue),
+        _ => LyrValue.FromBits(LyrValue.Normalize(instruction.Type, instruction.ConstBits)),
+    };
 
     private static LyrValue Constant(in VmInstruction instruction,
         IReadOnlyList<string> strings) => instruction.Type switch

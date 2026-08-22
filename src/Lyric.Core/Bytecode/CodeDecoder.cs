@@ -57,6 +57,10 @@ public static class CodeDecoder
                 Op.OptIsSome or Op.OptGet or Op.EnumTag =>
                     new BytecodeInstruction { Offset = offset, Opcode = opcode },
 
+                // The fused arithmetic (3.6): the operation as a byte, the operand tag, the
+                // destination slot, then one or two sources.
+                Op.BinLocals or Op.BinConst => DecodeFusedBinary(reader, offset, opcode),
+
                 // The fused branches (3.6): the comparison as a byte, the operand tag, one or
                 // two slots, then the two block targets — Immediate/Immediate2 as on condbr, so a
                 // consumer that only cares where control goes reads them in the same place.
@@ -102,6 +106,39 @@ public static class CodeDecoder
 
         return instruction with { Immediate = reader.ULeb(), Immediate2 = reader.ULeb() };
     }
+
+    /// <summary>
+    /// A fused binary operation. As with the branches, the operation byte is checked here rather
+    /// than left to the validator: it decides nothing about the stream's length, but a decoder
+    /// that let an arbitrary byte through would hand the interpreter an opcode it switches on.
+    /// </summary>
+    private static BytecodeInstruction DecodeFusedBinary(ByteReader reader, int offset, Op opcode)
+    {
+        var raw = reader.U8();
+        var kind = (Op)raw;
+        if (!IsFusibleBinary(kind))
+            throw new MalformedBytecodeException(BytecodeDiagnostics.UnknownEncoding,
+                $"{opcode} at code offset {offset}: 0x{raw:X2} is not a binary operation");
+
+        var tag = reader.Tag();
+        var instruction = new BytecodeInstruction
+        {
+            Offset = offset, Opcode = opcode, Fused = kind, Type = tag,
+            SlotDest = (int)reader.ULeb(), SlotA = (int)reader.ULeb(),
+        };
+
+        return opcode == Op.BinLocals
+            ? instruction with { SlotB = (int)reader.ULeb() }
+            : ReadFusedConstant(reader, offset, instruction, tag);
+    }
+
+    /// <summary>The operations a fused form may carry: the arithmetic and bitwise pair
+    /// operations, and the comparisons. One list, because the decoder and the disassembler have
+    /// to agree with the writer about which bytes are legal there.</summary>
+    internal static bool IsFusibleBinary(Op kind) => kind
+        is Op.Add or Op.Sub or Op.Mul or Op.Div or Op.Rem
+        or Op.Shl or Op.Shr or Op.BitAnd or Op.BitOr or Op.BitXor
+        or Op.Lt or Op.Le or Op.Gt or Op.Ge or Op.Eq or Op.Ne;
 
     /// <summary>The immediate of a fused constant shape, in the encoding <c>const</c> uses for the
     /// same tag — one encoding for constants, wherever they stand.</summary>
@@ -232,7 +269,7 @@ public static class CodeDecoder
 
         // The fused forms read slots and write slots; nothing of theirs reaches the stack. That is
         // most of why they are worth having.
-        Op.BranchCompare or Op.BranchCompareConst => (0, 0),
+        Op.BranchCompare or Op.BranchCompareConst or Op.BinLocals or Op.BinConst => (0, 0),
 
         Op.Call => (callArity, callReturnsValue ? 1 : 0),
 

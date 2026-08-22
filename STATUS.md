@@ -71,9 +71,11 @@ The delivery list:
       | maskOnly | 15 | **12** |
       | arrayRead | 19 | **16** |
 
-      **Timings deliberately NOT recorded**: three consecutive runs put `floatAdd` at 74.9, 114.6
-      and 140.8 ns per iteration, so what answered was the machine and not the change. The counts
-      are deterministic and stand; the seconds wait for a quiet box. Spec: `lyric-spec#8`
+      **Timings not recorded at the time**: three consecutive runs put `floatAdd` at 74.9, 114.6
+      and 140.8 ns per iteration, so what answered was the machine and not the change. They were
+      taken later, on a quiet box, and stand in slice 4 below — where the comparison is against
+      the same harness with the selection switched off rather than against yesterday's numbers.
+      Spec: `lyric-spec#8`
 
 - [x] **slice 3b** — the bench's own correction, found while using it: it first differenced two
       SEPARATELY minimized runs, which amplifies noise rather than removing it. It now takes the
@@ -81,9 +83,32 @@ The delivery list:
       noise and the difference of two of them estimates the difference; the intermediate version,
       a median of paired differences, is worse and the comment says why — it gives every disturbed
       subtrahend a vote
-- [ ] **slice 4** — fusion 2, the accumulator forms: `ldloc s; const k; add T; stloc s` and the
-      local/local shape become one each. The JVM's `iinc`, typed. The 13-instruction loop falls
-      to 4, the 9 to 3
+- [x] **slice 4** — fusion 2, the arithmetic forms. `binll` and `binlk` take their operands from
+      slots and write the result into one; they carry any binary operation, comparisons included,
+      so `flag = a < b` is the same instruction with a bool destination. The destination may be a
+      source, which is what makes `i = i + 1` one instruction.
+
+      **Measured against the same harness with fusion switched off, on the same machine in the
+      same session** — a separate worktree with `Fusion.Of` returning nothing, so the only
+      difference is the selection:
+
+      | case | instr | ns/iter | instr | ns/iter | |
+      |---|---:|---:|---:|---:|---:|
+      | | *before* | *before* | *after* | *after* | |
+      | loopOnly | 9 | 41.7 | **3** | **16.2** | **2.6×** |
+      | intAdd | 13 | 57.4 | **4** | **25.3** | **2.3×** |
+      | floatAdd | 13 | 66.1 | **4** | **26.7** | **2.5×** |
+      | maskOnly | 15 | 83.6 | **9** | **52.5** | **1.6×** |
+      | arrayRead | 19 | 92.2 | **13** | **64.7** | **1.4×** |
+
+      **The time fell with the count, not beside it** — which is the hypothesis this milestone
+      rests on, now measured rather than argued: the dispatch is the bill. What did rise is the
+      average price per instruction (≈4.9 → ≈6.0 ns), and that is the healthy direction: the
+      instructions the fusion removed were the cheapest ones, the moves.
+
+      The two shapes that do NOT fuse are visible in the table too: `maskOnly` keeps a nested
+      operation whose inner result is a temp, and `arrayRead` an element load — neither has a
+      slot to read from
 - [ ] **slice 5** — `std.random`: 53 dispatches for a xorshift64*, measured. The STATE stays in
       the script, the shift/xor round becomes one native. Build it only if the crossing measures
       cheaper than the dispatches it saves

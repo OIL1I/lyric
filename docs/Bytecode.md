@@ -17,8 +17,10 @@ control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch
 value semantics, exceptions, global constants, closures, host objects, source positions,
 attributes, debug information, the names of opaque field types, and fused compare-and-branch.
 
-**3.6 against 3.5**: two new opcodes, `brcmp` and `brcmpk` (§Calls and control flow), which do in
-one instruction what a comparison followed by `condbr` does in four. A module that uses one needs
+**3.6 against 3.5**: four new opcodes. `brcmp` and `brcmpk` (§Calls and control flow) do in one
+instruction what a comparison followed by `condbr` does in four; `binll` and `binlk`
+(§Arithmetic and bit operations) do the same for an operation whose operands are slots and whose
+result goes into one. A module that uses one needs
 a runtime of 3.6 or newer; a module that does not is unchanged, which is the compatibility
 §Versioning describes. Nothing else moves: the fused forms compute what the instructions they
 replace computed, in the same order, with the same overflow and comparison rules — a producer may
@@ -658,6 +660,24 @@ operand type.
 unsigned are distinct operations. There is no string concatenation instruction; it lowers to a
 call.
 
+**The fused forms** (3.6). Two more opcodes do the same arithmetic over LOCAL SLOTS, in one
+instruction instead of four:
+
+| Opcode | Mnemonic | Operands | Stack | Effect |
+|---|---|---|---|---|
+| `0x1A` | `binll` | `op`, `T`, `uleb128` dest, `uleb128` a, `uleb128` b | 0 | `dest = a op b` |
+| `0x1B` | `binlk` | `op`, `T`, `uleb128` dest, `uleb128` a, immediate | 0 | `dest = a op k` |
+
+`op` is one byte holding one of the binary opcodes — `0x10`..`0x19` or a comparison
+`0x20`..`0x25`; the fused forms carry the operation they perform rather than introducing an
+enumeration of their own. `T` is the tag of the OPERANDS, and the rules above apply to it
+unchanged; when `op` is a comparison, `dest` receives a `bool`, exactly as the unfused form leaves
+one on the stack. `binlk` encodes its constant as `const` encodes a value of `T`.
+
+The destination may be one of the sources: both operands are read before it is written.
+
+Neither touches the operand stack, and both are optional for a producer — see §Versioning.
+
 ### Comparisons
 
 Two values of the same type produce a `bool` (−2 +1). The tag names the operand type, not the
@@ -899,9 +919,10 @@ For `newobj`, `ldfld` and `stfld`, load-time checking means: the type index lies
 section, and for `ldfld` and `stfld` the field index lies within the field count of that exact
 type. Field access at runtime is then an unchecked array access.
 
-For `brcmp` and `brcmpk` it means: the `cmp` byte is one of `0x20`..`0x25`, the slots lie within
-the slot table, the targets within the block table, and `T` is one the comparison accepts. Their
-operands are read at runtime without a check, exactly as `ldloc`'s slot is.
+For the fused forms it means: the operation byte is one the form admits — a comparison for
+`brcmp` and `brcmpk`, any binary opcode for `binll` and `binlk` — every slot lies within the slot
+table, every branch target within the block table, and `T` is one that operation accepts. Their
+operands are read and written at runtime without a check, exactly as `ldloc`'s slot is.
 
 The reader stops at the first finding.
 

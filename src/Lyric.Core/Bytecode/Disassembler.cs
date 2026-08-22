@@ -164,8 +164,15 @@ public static class Disassembler
         Op.CondBranch => $"condbr bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
         Op.Unreachable => "unreachable",
 
-        // The fused branches print what they replace, so a disassembly reads like the four
-        // instructions it stands for: 'brcmp lt i64 l0, l1 -> bb2, bb3'.
+        // The fused forms print what they replace, so a disassembly reads like the four
+        // instructions each stands for: 'binlk add i64 l0 = l0, 1'.
+        Op.BinLocals =>
+            $"binll {Mnemonic(i.Fused)} {TypeName(i.Type!.Value)} l{N((ulong)i.SlotDest)} = "
+            + $"l{N((ulong)i.SlotA)}, l{N((ulong)i.SlotB)}",
+        Op.BinConst =>
+            $"binlk {Mnemonic(i.Fused)} {TypeName(i.Type!.Value)} l{N((ulong)i.SlotDest)} = "
+            + $"l{N((ulong)i.SlotA)}, {FusedConstText(i)}",
+
         Op.BranchCompare =>
             $"brcmp {Mnemonic(i.Fused)} {TypeName(i.Type!.Value)} l{N((ulong)i.SlotA)}, "
             + $"l{N((ulong)i.SlotB)} -> bb{N(i.Immediate)}, bb{N(i.Immediate2)}",

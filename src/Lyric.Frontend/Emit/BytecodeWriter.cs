@@ -724,13 +724,20 @@ public static class BytecodeWriter
         code.Opcode(fused.Opcode);
         code.U8((byte)fused.Kind);
         code.Tag(fused.Type);
+
+        // The arithmetic forms name their destination first; the branches have none and go
+        // straight to their operands.
+        if (fused.SlotDest >= 0) code.ULeb(fused.SlotDest);
         code.ULeb(fused.SlotA);
 
-        if (fused.Opcode == Op.BranchCompare) code.ULeb(fused.SlotB);
-        else WriteScalarImmediate(code, strings, fused.Type, fused.Constant!);
+        if (fused.Constant is { } constant) WriteScalarImmediate(code, strings, fused.Type, constant);
+        else code.ULeb(fused.SlotB);
 
-        code.ULeb(fused.IfTrue);
-        code.ULeb(fused.IfFalse);
+        if (fused.Opcode is Op.BranchCompare or Op.BranchCompareConst)
+        {
+            code.ULeb(fused.IfTrue);
+            code.ULeb(fused.IfFalse);
+        }
     }
 
     private static void WriteConstImmediate(ByteWriter code, StringPool strings, Const constant) =>

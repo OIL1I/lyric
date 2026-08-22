@@ -121,6 +121,99 @@ public class FusionTests
         Assert.Contains("brcmpk lt f64 l0, 1.5 ->", text, StringComparison.Ordinal);
     }
 
+    // ------------------------------------------------------------------ the arithmetic forms
+
+    [Fact]
+    public void An_accumulator_against_a_constant_is_one_instruction()
+    {
+        var text = Disassemble("""
+            pub fn check(n: int): int {
+                var i = 0;
+                while (i < n) { i = i + 1; }
+                return i;
+            }
+            """);
+
+        Assert.Contains("binlk add i64 l1 = l1, 1", text, StringComparison.Ordinal);
+
+        // 'var i = 0' keeps its 'const; stloc': there is no load to fold, and a shape for
+        // "store a constant into a slot" would buy an instruction that runs once per function
+        // rather than once per iteration.
+    }
+
+    [Fact]
+    public void An_operation_over_two_locals_is_one_instruction()
+    {
+        var text = Disassemble("""
+            pub fn check(a: int, b: int): int {
+                var c = 0;
+                c = a * b;
+                return c;
+            }
+            """);
+
+        Assert.Contains("binll mul i64 l2 = l0, l1", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_comparison_that_is_stored_rather_than_branched_on_fuses_too()
+    {
+        // The same shape with a bool destination: the operation decides what the result is, not
+        // the instruction.
+        var text = Disassemble("""
+            pub fn check(a: int, b: int): bool {
+                var flag = false;
+                flag = a < b;
+                return flag;
+            }
+            """);
+
+        Assert.Contains("binll lt i64 l2 = l0, l1", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_destination_may_be_a_source()
+    {
+        var text = Disassemble("""
+            pub fn check(a: int, b: int): int {
+                var acc = a;
+                acc = acc - b;
+                return acc;
+            }
+            """);
+
+        Assert.Contains("binll sub i64 l2 = l2, l1", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_whole_loop_body_becomes_four_instructions()
+    {
+        // What the milestone is about, in one case: the shape Erato measured, counted from the
+        // disassembly rather than from a benchmark.
+        var text = Disassemble("""
+            pub fn check(n: int): float {
+                var i = 0;
+                var acc = 0.0;
+                while (i < n) {
+                    acc = acc + 1.5;
+                    i = i + 1;
+                }
+                return acc;
+            }
+            """);
+
+        var body = text.Split("bb2:")[1].Split("bb3:")[0];
+        var instructions = body.Split((char)10)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .ToArray();
+
+        Assert.Equal(3, instructions.Length); // two fused operations and the jump back
+        Assert.Contains("binlk add f64", instructions[0], StringComparison.Ordinal);
+        Assert.Contains("binlk add i64", instructions[1], StringComparison.Ordinal);
+        Assert.Equal("br bb1", instructions[2]);
+    }
+
     // ------------------------------------------------------------------ what must not fuse
 
     [Fact]
@@ -180,6 +273,37 @@ public class FusionTests
             """);
 
         Assert.DoesNotContain("brcmp", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_operation_whose_result_is_read_twice_does_not_fuse()
+    {
+        // Stored AND used further: the store cannot swallow a value the next operation wants.
+        var text = Disassemble("""
+            pub fn check(a: int, b: int): int {
+                let sum = a + b;
+                return sum * sum;
+            }
+            """);
+
+        Assert.DoesNotContain("binll", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_operation_on_a_field_does_not_fuse()
+    {
+        // Neither operand is a slot; a field load is an instruction of its own.
+        var text = Disassemble("""
+            pub class Box { n: int = 0 }
+
+            pub fn check(b: Box): int {
+                var out = 0;
+                out = b.n + 1;
+                return out;
+            }
+            """);
+
+        Assert.DoesNotContain("binlk", text, StringComparison.Ordinal);
     }
 
     [Fact]

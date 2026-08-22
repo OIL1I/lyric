@@ -54,6 +54,9 @@ internal readonly struct VmInstruction
     public readonly int SlotA;
     public readonly int SlotB;
 
+    /// <summary>The fused arithmetic forms only: the slot the result goes into.</summary>
+    public readonly int SlotDest;
+
     /// <summary>Fused constant shapes only: the immediate's bit pattern, in the encoding
     /// <c>const</c> uses for the same tag; a float arrives in <see cref="FloatValue"/>.</summary>
     public readonly ulong ConstBits;
@@ -77,6 +80,7 @@ internal readonly struct VmInstruction
         Fused = source.Fused;
         SlotA = source.SlotA;
         SlotB = source.SlotB;
+        SlotDest = source.SlotDest;
 
         // Its own field rather than Immediate: a fused branch's targets sit in
         // Immediate/Immediate2, as on condbr, so a consumer that only asks where control goes

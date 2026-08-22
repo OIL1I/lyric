@@ -169,6 +169,98 @@ public class FusedBranchTests
         Assert.Equal(1, Call(program, "main.check", LyrValue.FromF32(0.1f)));
     }
 
+    [Theory]
+    [InlineData("+", 7, 3, 10)]
+    [InlineData("-", 7, 3, 4)]
+    [InlineData("*", 7, 3, 21)]
+    [InlineData("/", 7, 3, 2)]
+    [InlineData("%", 7, 3, 1)]
+    [InlineData("&", 6, 3, 2)]
+    [InlineData("|", 6, 3, 7)]
+    [InlineData("^", 6, 3, 5)]
+    public void A_fused_operation_computes_what_the_pair_computed(
+        string op, long a, long b, long expected)
+    {
+        // Order matters for four of these: swapped operands answer differently for -, /, % and
+        // the shifts, and the arguments are chosen so they do.
+        var program = Compile($$"""
+            pub fn check(a: int, b: int): int {
+                var out = 0;
+                out = a {{op}} b;
+                return out;
+            }
+            """);
+
+        Assert.Equal(expected, Call(program, "main.check",
+            LyrValue.FromI64(a), LyrValue.FromI64(b)));
+    }
+
+    [Fact]
+    public void A_fused_operation_may_write_into_one_of_its_sources()
+    {
+        // The reason both operands are read before the destination is written. Written first,
+        // this would compute 'acc - acc'.
+        var program = Compile("""
+            pub fn check(a: int, b: int): int {
+                var acc = a;
+                acc = acc - b;
+                return acc;
+            }
+            """);
+
+        Assert.Equal(4, Call(program, "main.check", LyrValue.FromI64(7), LyrValue.FromI64(3)));
+    }
+
+    [Fact]
+    public void A_fused_division_by_zero_still_panics()
+    {
+        // The failure that is not statically decidable has to survive the fusion, and arrive as
+        // the same panic with the same code.
+        var program = Compile("""
+            pub fn check(a: int, b: int): int {
+                var out = 0;
+                out = a / b;
+                return out;
+            }
+            """);
+
+        var panic = Assert.Throws<LyricPanic>(() => Call(program, "main.check",
+            LyrValue.FromI64(1), LyrValue.FromI64(0)));
+        Assert.Equal(VmDiagnostics.DivisionByZero, panic.Code);
+    }
+
+    [Fact]
+    public void A_fused_operation_wraps_at_its_own_width()
+    {
+        // int8 arithmetic wraps at 8 bits, not at 64. The fused form has to normalize exactly as
+        // the unfused one does, or 127 + 1 stays 128 in a slot that cannot hold it.
+        var program = Compile("""
+            pub fn check(a: int8, b: int8): int {
+                var out = 0 as int8;
+                out = a + b;
+                return out as int;
+            }
+            """);
+
+        Assert.Equal(-128, Call(program, "main.check",
+            LyrValue.FromI64(127), LyrValue.FromI64(1)));
+    }
+
+    [Fact]
+    public void A_fused_comparison_writes_a_bool()
+    {
+        var program = Compile("""
+            pub fn check(a: int, b: int): int {
+                var flag = false;
+                flag = a < b;
+                return if (flag) 1 else 0;
+            }
+            """);
+
+        Assert.Equal(1, Call(program, "main.check", LyrValue.FromI64(1), LyrValue.FromI64(2)));
+        Assert.Equal(0, Call(program, "main.check", LyrValue.FromI64(2), LyrValue.FromI64(1)));
+    }
+
     [Fact]
     public void A_fused_branch_inside_a_protected_region_still_unwinds()
     {

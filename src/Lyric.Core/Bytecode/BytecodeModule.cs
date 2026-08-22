@@ -310,4 +310,8 @@ public sealed record BytecodeInstruction
     /// <c>const</c> uses for the same tag — a float lands in <see cref="FloatValue"/>, a bool in
     /// <see cref="BoolValue"/>.</summary>
     public ulong ConstBits { get; init; }
+
+    /// <summary>The fused ARITHMETIC forms only: the slot the result goes into. The fused
+    /// branches have no destination and leave it at -1.</summary>
+    public int SlotDest { get; init; } = -1;
 }
