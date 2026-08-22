@@ -14,33 +14,49 @@
 **M32 — "die Zaehlung" — is RUNNING** (started 2026-08-22, branch
 `feature/m32-instruction-count`, ships as v2.12.0, format 3.5 -> 3.6).
 
-**The measurement it starts from** (this machine, Release, two programs per shape differing only
-in iteration count so startup cancels, best of three):
+**The baseline it starts from**, from `tools/Bench` (Release, two iteration counts differenced
+so nothing that happens once is in the figure, instructions per iteration read from an
+`ExecutionBudget` rather than counted by hand):
 
-| shape | instructions/iteration | ns/iteration | **ns/instruction** |
+| case | instr/iter | ns/iter | **ns/instr** |
 |---|---:|---:|---:|
-| `while (i < n) { i += 1; }` | 9 | 58.2 | **6.5** |
-| `while (i < n) { acc += 1.5; i += 1; }` | 13 | 85.4 | **6.6** |
-| `Random.nextFloat()` (differential) | ~85 | ~555 | — |
+| loopOnly | 9.0 | 54.8 | **6.09** |
+| intAdd | 13.0 | 86.9 | **6.68** |
+| floatAdd | 13.0 | 81.2 | **6.25** |
+| maskOnly | 15.0 | 109.7 | **7.32** |
+| arrayRead | 19.0 | 119.4 | **6.29** |
 
-**The price is flat**: an `add f64` costs what a `br` costs, ~23 cycles. That is the normal price
-of a switch-dispatch stack machine, not a slow interpreter — so the lever is the NUMBER of
-dispatches, not their price. Erato's register reached the same conclusion from its own five
-shapes; this reproduces it here.
+**The price is flat**: an `add f64` costs what a `br` costs. That is the normal price of a
+switch-dispatch stack machine, not a slow interpreter — so the lever is the NUMBER of dispatches,
+not their price. The instruction counts agree exactly with the ones Erato's `bench/interp`
+reported from the outside, which is the cross-check that the two are measuring the same compiler.
+
+Beside it, the shape that decides slice 5: `Random.nextFloat()` costs ~555 ns, and
+`std.random.Random.nextInt` is **53 instructions** for a xorshift64* — six shift-and-xor rounds
+written in Lyric.
 
 The delivery list:
 
-- [ ] **slice 0** — the spec's minor-version rule says what the format actually does. It read "a
-      minor may only add skippable sections", which 3.4 was not. Without it every new opcode
-      would be a major (`lyriclang/lyric-spec#7`)
-- [ ] **slice 1** — the measuring bench: `tools/Bench` gains interpreter cases (loop, int add,
-      float add, mask, array read) with their instruction counts from `disasm`, so every later
-      claim is a delta against a number in this file
-- [ ] **slice 2** — the decode buffer, NO format change: the VM holds a struct array instead of
-      one heap `BytecodeInstruction` per instruction, and load-time specialization turns
-      `(Op, TypeTag)` into one internal opcode. Lyric is statically typed, so what CPython 3.11
-      gets from quickening at runtime is a table here. Removes per dispatch one pointer chase,
-      one static call and a second switch
+- [x] **slice 0** — the spec's minor-version rule says what the format actually does. It read
+      "a minor may only add skippable sections", which 3.4 was not — the note beside that version
+      said as much, so the document had contradicted itself since the day it shipped, at the one
+      place a planner would consult before proposing an opcode. The rule now states the
+      compatibility the format has actually delivered: per MODULE, not per version
+      (`lyriclang/lyric-spec#7`, merged; mirror synced)
+- [x] **slice 1** — the measuring bench: five interpreter cases in `tools/Bench`, Erato's names
+      so the numbers are comparable to the report that started this. Two iteration counts
+      differenced instead of a baseline case subtracted, and the instructions per iteration are
+      READ FROM A BUDGET rather than counted from a disassembly — which is what makes the table
+      survive slices 3 and 4, where the number that must fall is the one the harness reports
+- [x] **slice 2** — the decode buffer, no format change (maintainer, `066bed9`): a flat
+      `VmInstruction[]` instead of an array of `BytecodeInstruction` REFERENCES, and the frame's
+      hot state (arrays, instruction list, stack pointer) hoisted into locals of the loop.
+      **Measured, and this is the point**: the flat array alone bought NOTHING; the hoisting
+      bought 12 % on `loopOnly` and 1–2 % where an instruction does more than move a value. My
+      estimate for this slice was "plausibly 1.3–1.8×" and it was wrong in the optimistic
+      direction. What it establishes is worth more than the 12 %: the remaining ~6 ns is **the
+      dispatch itself**, not the memory around it — so nothing short of executing fewer
+      instructions will move this number, which is exactly what slices 3 and 4 do
 - [ ] **slice 3** — fusion 1, the compare-branch (format 3.6): `ldloc a; const k; lt; condbr`
       becomes one instruction. The JVM's `if_icmp*`, and the peephole has it easy — the
       `StackScheduler` already knows a comparison has exactly one consumer

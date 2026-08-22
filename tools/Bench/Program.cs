@@ -35,6 +35,10 @@ internal static class Program
 
     private sealed record Result(double NsPerOp, double BytesPerOp);
 
+    /// <param name="Template">A whole program whose loop bound is written <c>{N}</c>. It is
+    /// compiled twice, at two iteration counts, and only the difference is reported.</param>
+    private sealed record InterpreterCase(string Name, string Template);
+
     public static int Main(string[] args)
     {
         var filter = args.Length > 0 ? args[0] : null;
@@ -89,7 +93,114 @@ internal static class Program
                 $"| {result.BytesPerOp - baseline.BytesPerOp:F1} |"));
         }
 
+        Interpreter(stdlib, filter);
         return 0;
+    }
+
+    /// <summary>
+    /// What ONE instruction costs — the figure M32 is about.
+    ///
+    /// <para>Separate from the table above, and measured differently, because the question is a
+    /// different one. Up there a case is compared against a loop of the same shape to isolate an
+    /// operation. Here the loop IS the subject: what is asked is how much of a program's time is
+    /// the dispatch itself.</para>
+    ///
+    /// <para>Every case runs at TWO iteration counts and only the difference is reported. That
+    /// removes the prologue, the VM start and everything else that happens once, without needing
+    /// a baseline case to subtract — and it removes the argument about whether the baseline had
+    /// the same shape.</para>
+    ///
+    /// <para>The instruction count per iteration is MEASURED, not counted by hand from a
+    /// disassembly and not written into the case: an <see cref="ExecutionBudget"/> reports what
+    /// it charged, so the difference between the two runs divided by the difference in
+    /// iterations is exactly the instructions one iteration executes. Which matters most when the
+    /// emitter starts fusing instructions — the number that is supposed to fall is then the
+    /// number the harness reads, not one a person maintains beside it.</para>
+    ///
+    /// <para>The counting run is its own run: charging a budget puts the loop on a different
+    /// policy, so a figure taken while counting would measure the counting.</para>
+    /// </summary>
+    private static void Interpreter(string stdlib, string? filter)
+    {
+        const int Low = 250_000;
+        const int High = 500_000;
+
+        var vm = new LangVm(new HostOptions { StdlibRoot = stdlib });
+        var cases = InterpreterCases()
+            .Where(c => filter is null || c.Name.Contains(filter, StringComparison.Ordinal))
+            .ToList();
+        if (cases.Count == 0) return;
+
+        var programs = cases.ToDictionary(
+            c => c.Name,
+            c => (Low: Loaded(vm, c, Low), High: Loaded(vm, c, High)),
+            StringComparer.Ordinal);
+
+        var best = cases.ToDictionary(c => c.Name, _ => (Low: double.MaxValue, High: double.MaxValue),
+            StringComparer.Ordinal);
+
+        // Round-robin for the same reason the table above does it: one shared interpreter loop
+        // that tiered compilation keeps improving while the harness runs.
+        for (var cycle = 0; cycle < 3; cycle++)
+            foreach (var c in cases)
+            {
+                var (low, high) = programs[c.Name];
+                best[c.Name] = (Math.Min(best[c.Name].Low, Nanoseconds(low, c.Name)),
+                                Math.Min(best[c.Name].High, Nanoseconds(high, c.Name)));
+            }
+
+        Console.WriteLine();
+        Console.WriteLine($"interpreter: {High - Low} iterations differenced, "
+                          + $"{Repetitions} repetitions, minima");
+        Console.WriteLine();
+        Console.WriteLine("| case | instr/iter | ns/iter | ns/instr |");
+        Console.WriteLine("|---|---:|---:|---:|");
+
+        foreach (var c in cases)
+        {
+            var (low, high) = programs[c.Name];
+            var instructions = (Charged(high, c.Name) - Charged(low, c.Name)) / (double)(High - Low);
+            var nanos = (best[c.Name].High - best[c.Name].Low) / (High - Low);
+
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"| {c.Name} | {instructions:F1} | {nanos:F1} | {nanos / instructions:F2} |"));
+        }
+    }
+
+    /// <summary>Compiles one interpreter case at one iteration count. The raw path, as for the
+    /// native cases above: the embedding layer has nothing to do with what is measured here.
+    /// </summary>
+    private static LoadedProgram Loaded(LangVm vm, InterpreterCase c, int iterations)
+    {
+        var source = c.Template.Replace("{N}", iterations.ToString(CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
+        var module = vm.Compile(source, "bench");
+        var loaded = VmHost.Load(module.Bytes, Console.Error)
+                     ?? throw new InvalidOperationException($"case '{c.Name}' did not load");
+        return LoadedProgram.Load(loaded, RawRegistry(), Capability.None);
+    }
+
+    private static double Nanoseconds(LoadedProgram program, string name)
+    {
+        var best = long.MaxValue;
+        for (var i = 0; i < Repetitions; i++)
+        {
+            var before = Stopwatch.GetTimestamp();
+            var exit = program.RunEntry([]).AsI64;
+            best = Math.Min(best, Stopwatch.GetTimestamp() - before);
+            Require(exit, name);
+        }
+        return best * (1_000_000_000.0 / Stopwatch.Frequency);
+    }
+
+    /// <summary>How many instructions one run executes. The limit is a ceiling nothing here
+    /// approaches — exhausting it would be a panic, which is the right failure for a case that
+    /// grew a runaway loop.</summary>
+    private static long Charged(LoadedProgram program, string name)
+    {
+        var budget = new ExecutionBudget(long.MaxValue / 2);
+        Require(program.RunEntry([], budget).AsI64, name);
+        return budget.Consumed;
     }
 
     /// <summary>Turns a case into a run delegate returning the exit code.</summary>
@@ -435,6 +546,83 @@ internal static class Program
                     pass = pass + 1;
                 }
                 return if (sum > 0) 0 else 1;
+            }
+            """);
+    }
+
+    /// <summary>
+    /// Five shapes that do as little as possible, so what they measure is the dispatch.
+    ///
+    /// <para>The names are Erato's, from the <c>bench/interp</c> that produced the finding this
+    /// milestone answers — the numbers are meant to be comparable to that report, which is the
+    /// only outside measurement of this interpreter that exists.</para>
+    ///
+    /// <para>Each one differs from <c>loopOnly</c> by ONE operation in the body, so the columns
+    /// answer the question the finding raised: whether an instruction's price depends on what it
+    /// does.</para>
+    /// </summary>
+    private static IEnumerable<InterpreterCase> InterpreterCases()
+    {
+        // Nothing but the loop: the counter, the comparison, the jump. Five of its nine
+        // instructions are bookkeeping, which is what slices 3 and 4 are aimed at.
+        yield return new InterpreterCase("loopOnly", """
+            fn main(): int {
+                var i = 0;
+                while (i < {N}) {
+                    i = i + 1;
+                }
+                return if (i > 0) 0 else 1;
+            }
+            """);
+
+        yield return new InterpreterCase("intAdd", """
+            fn main(): int {
+                var i = 0;
+                var acc = 0;
+                while (i < {N}) {
+                    acc = acc + 3;
+                    i = i + 1;
+                }
+                return if (acc > 0) 0 else 1;
+            }
+            """);
+
+        yield return new InterpreterCase("floatAdd", """
+            fn main(): int {
+                var i = 0;
+                var acc = 0.0;
+                while (i < {N}) {
+                    acc = acc + 1.5;
+                    i = i + 1;
+                }
+                return if (acc > 0.0) 0 else 1;
+            }
+            """);
+
+        // Bit work: the cheapest thing an ALU does, against the float above.
+        yield return new InterpreterCase("maskOnly", """
+            fn main(): int {
+                var i = 0;
+                var acc = 1;
+                while (i < {N}) {
+                    acc = (acc + 1) & 1023;
+                    i = i + 1;
+                }
+                return if (acc >= 0) 0 else 1;
+            }
+            """);
+
+        // The one case that touches memory, and the only one carrying a bounds check.
+        yield return new InterpreterCase("arrayRead", """
+            fn main(): int {
+                let xs = [1] * 256;
+                var i = 0;
+                var acc = 0;
+                while (i < {N}) {
+                    acc = acc + xs[i & 255];
+                    i = i + 1;
+                }
+                return if (acc > 0) 0 else 1;
             }
             """);
     }
