@@ -13,10 +13,11 @@ namespace Lyric.Ir.Lowering;
 /// slot, including one no program path ever reads. An unfilled slot would be a value without a value,
 /// and the language has none.</para>
 ///
-/// <para>The order is module order then declaration order and therefore deterministic. It is at the
-/// same time the INITIALIZATION ORDER: a global may use an earlier declared one, not a later one. That
-/// is the only order that works without a dependency analysis; C# does the same for field
-/// initializers, and so does Go without its sorting.</para>
+/// <para>The order is dependency order across modules — every module after the ones it imports —
+/// then declaration order within one, and therefore deterministic. It is at the same time the
+/// INITIALIZATION ORDER: a global may use one initialized earlier, which is anything its own module
+/// declared before it and anything from a module it imports. The sema decides the same question on
+/// the same order (<c>LYR-SEM0057</c>); one walk answers both, or they would drift.</para>
 /// </summary>
 internal sealed class GlobalTable
 {
@@ -41,7 +42,7 @@ internal sealed class GlobalTable
     /// </summary>
     public void Collect(Compilation compilation, TypeResult types, TypeTable typeTable)
     {
-        foreach (var module in compilation.Modules)
+        foreach (var module in compilation.InitializationOrder())
         {
             // Native modules are NOT skipped. "They only declare signatures" holds for bodyless 'fn',
             // but a 'pub let pi: float = 3.14…' has a value, and that has to go into the Globals section

@@ -10,6 +10,38 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.8.0 — 2026-08-22
+
+Module constants initialize in dependency order, so a file compiles the same way whoever compiles
+it. The bytecode format stays **3.3**; more programs compile than before and none fewer.
+
+### Fixed
+
+- **A module-level `let` may read one from a module it imports.** The order of initialization
+  followed the order in which the entry file happened to discover the modules, so a THIRD module
+  decided whether a SECOND one compiled:
+
+  | the entry imports | `pub let doubled = a.width * 2;` in `b` |
+  |---|---|
+  | `a`, then `b` | compiled |
+  | `b`, then `a` | `LYR-SEM0057` |
+  | only `b`, which imports `a` itself | `LYR-SEM0057` |
+  | `b` on its own | `LYR-SEM0057` |
+
+  The import is the dependency statement, and the compiler had already followed it to load the
+  file. Globals now initialize module by module in dependency order — every module after the ones
+  it imports — and in declaration order within a module, which is the rule §4.3 of the
+  specification now states.
+
+  **Which file you compile no longer changes the answer.** That is the half that made this a
+  defect rather than a wart: a host compiling every file as its own entry — to read its attribute
+  rows before deciding what to load — saw errors `lyric check` never showed, and a project could
+  look green for months and still refuse to start.
+
+  Unchanged: the rule inside one module, where reading a constant declared further down is still
+  `LYR-SEM0057`, and import cycles, which the resolver refuses as `LYR-RES0005` before the
+  question arises. The diagnostic's message says what the order is now.
+
 ## v2.7.1 — 2026-08-22
 
 One fix, to a request the debug adapter left unanswered.

@@ -162,7 +162,9 @@ public sealed class TypeChecker
         _result.Indexable = _indexable;
         _result.Iterable = _iterable;
 
-        foreach (var module in _comp.Modules) ComputeGlobals(module);
+        // DEPENDENCY order, not discovery order: a module's globals are computed after those of
+        // everything it imports, so an initializer may read across an import it declared itself.
+        foreach (var module in _comp.InitializationOrder()) ComputeGlobals(module);
         foreach (var module in _comp.Modules)
         {
             _currentModule = module;
@@ -1105,10 +1107,10 @@ public sealed class TypeChecker
     /// <summary>
     /// The type of a global being read, and the place where "used before it is initialized" shows.
     ///
-    /// <para>Globals are filled in DECLARATION ORDER, first by module and then by source order;
-    /// reading a later one would see a null value nobody wrote. That is the only order without a
-    /// dependency analysis — C# does the same for field initializers, while Go sorts topologically
-    /// and rejects cycles.</para>
+    /// <para>Globals are filled module by module in IMPORT order — every module after the ones it
+    /// imports — and in declaration order within a module; reading a later one would see a null
+    /// value nobody wrote. Go sorts the same way and refuses cycles, and so does this language —
+    /// an import cycle is <c>LYR-RES0005</c> before the question ever arises.</para>
     ///
     /// <para>Only INSIDE an initializer is this an error. From a function body every global is
     /// readable wherever it stands, because the init phase is long over by then.</para>
@@ -1119,8 +1121,10 @@ public sealed class TypeChecker
         if (!_inGlobalInitializer) return LyrType.Error;
 
         return Report(span, "LYR-SEM0057",
-            $"'{symbol.Name}' is used before it is initialized; constants are initialized in " +
-            "declaration order, so an initializer may only read constants declared before it");
+            $"'{symbol.Name}' is used before it is initialized; globals are initialized module by "
+            + "module in import order and in declaration order within a module, so an initializer "
+            + "may read what its own module declared earlier and anything from a module it "
+            + "imports");
     }
 
     private LyrType CheckIdentifier(IdentifierExpr id, SymbolTable scope)

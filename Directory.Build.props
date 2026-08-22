@@ -28,7 +28,7 @@
       Lyric.Tests.Core compares the two against the generated AssemblyInformationalVersion
       attribute, so they cannot drift apart unnoticed.
     -->
-    <Version>2.7.1</Version>
+    <Version>2.8.0</Version>
   </PropertyGroup>
 
   <!--
