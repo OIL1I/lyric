@@ -187,10 +187,19 @@ internal sealed class WarningAnalyzer
         {
             if (!ReferenceEquals(_types.RefOf(attribute), canonical)) continue;
 
-            // One string field; its declared default is "". Reading the default from the struct
-            // declaration would be the general form — one field does not need it.
+            // Two string fields, both defaulting to "". Reading the defaults from the struct
+            // declaration would be the general form; two fields do not need it.
             var written = attribute.Fields.FirstOrDefault(f => f.Name == "message");
             var message = written?.Value is StringLiteralExpr s ? s.Value : "";
+
+            // The promise is checked HERE, at the declaration, and not where anything uses this:
+            // a form kept past its date is wrong whether or not anyone still calls it, and the
+            // build that has to fail is the one preparing the release that was supposed to
+            // remove it.
+            var until = attribute.Fields.FirstOrDefault(f => f.Name == "until");
+            if (until?.Value is StringLiteralExpr promise)
+                DeprecationPromise.Check(promise.Value, attribute.Span, _de);
+
             return (message, attribute.Span);
         }
         return null;

@@ -483,6 +483,13 @@ pub interface OnFunction { }
 pub struct Deprecated :: [OnModule, OnType, OnFunction] {
     /// What to use instead; shown in the warning at every use site.
     message: string = "",
+
+    /// The version this is kept until, as `"3.5"` — and it is a PROMISE the compiler enforces:
+    /// building with a toolchain that has reached that version is an error (`LYR-SEM0081`), so
+    /// the removal happens because the build stops, not because somebody remembered.
+    ///
+    /// Empty means the ordinary policy: warn now, remove at the next major.
+    until: string = "",
 }
 
 // No `Hashable` for `float`, deliberately.

@@ -1305,6 +1305,17 @@
                 "File": "stdlib/std/core.lyr",
                 "Line": 485
               }
+            },
+            {
+              "Kind": "Field",
+              "Name": "until",
+              "Signature": "until: string",
+              "Doc": "The version this is kept until, as `\"3.5\"` — and it is a PROMISE the compiler enforces:\nbuilding with a toolchain that has reached that version is an error (`LYR-SEM0081`), so\nthe removal happens because the build stops, not because somebody remembered.\n\nEmpty means the ordinary policy: warn now, remove at the next major.",
+              "Members": [],
+              "Source": {
+                "File": "stdlib/std/core.lyr",
+                "Line": 492
+              }
             }
           ],
           "Source": {

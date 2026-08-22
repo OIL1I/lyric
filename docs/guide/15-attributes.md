@@ -212,6 +212,34 @@ It changes diagnostics and nothing else — a program that ignores the warning c
 same module, and a deprecated function may keep calling itself and its deprecated siblings
 without the compiler nagging the one place allowed not to care.
 
+### Saying when it goes
+
+A deprecation makes two promises: use something else, and this will disappear. Since 2.13 the
+second one can be written down where the compiler can keep it:
+
+```lyr
+import std.core { Deprecated };
+
+@Deprecated { message = "use renew", until = "99.0" }
+pub fn old(): int {
+    return 1;
+}
+
+fn main(): int {
+    return 0;
+}
+```
+
+`until` names the version that **removes** the declaration, and building with a toolchain that
+has reached it is an error (`LYR-SEM0081`) — `until = "3.5"` fails at 3.5, not one release later.
+(The snippet above says `99.0` for the obvious reason: every snippet in this guide is compiled by
+the test suite, and one promising 3.5 would stop the build the day 3.5 arrives.)
+The check sits at the declaration, so it fires whether or not anything still calls the function:
+a form kept past its date is wrong either way, and dead code would never trip a use-site warning.
+
+Leave `until` out for the ordinary policy — warn now, remove at the next major. Write it when the
+date is a commitment somebody is entitled to rely on.
+
 Since 2.1 the same attribute — and only it — may sit on a MEMBER: a method, a field or a
 `static let` of a struct, class or enum, and on an extend method. Every other attribute
 there is refused, because the compiled module has no metadata rows for members and

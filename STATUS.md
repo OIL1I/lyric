@@ -142,6 +142,19 @@ The delivery list:
 - [x] **slice 6** — measured against a build with selection switched off and the old `nextInt`,
       on the same machine in the same session; CHANGELOG; released as **v2.12.0**
 
+**The patch train before v3.0.0 has started** (maintainer's decision, 2026-08-22). Everything
+that needs no major ships first and on its own, deprecating what it replaces; the removals are
+the major. **v2.13.0 is the first link**, and it is the mechanism the rest writes with:
+`@Deprecated { until }` plus `LYR-SEM0081`. The forms overloading replaces are the exception the
+decision names — they arrive WITH v3.0.0, so they carry a promise through v3.5 instead of being
+removed in the release that first offers their replacement.
+
+Still ahead of the major, in this order: the file-error API (three conventions today, none of
+which carries a reason), iterator chaining, member-`@Deprecated` on interface members, the
+ignored non-interface entries in a `::` list, multiple interface parents. Then the design round —
+overloading included, and it has to answer what overloading means for a language whose whole
+dispatch story is generics plus constraints.
+
 ## The gate: a register bytecode is NOT worth a major
 
 The question this milestone existed to answer, answered with its own numbers.
@@ -357,8 +370,8 @@ rejected; the constraint mechanism is this language's overloading.
 where it was declared, a program followed across its files, documentation on hover, the outline of a
 file, every place a name occurs, and completion. v1.3.0 shipped the first seven, v1.4.0 the last.
 
-4553 tests green **in Debug and Release**, bytecode format **3.6**, **eleven** binaries
-plus `lyrembed.dll`, version **2.12.0**; the specification in `lyriclang/lyric-spec` is
+4575 tests green **in Debug and Release**, bytecode format **3.6**, **eleven** binaries
+plus `lyrembed.dll`, version **2.13.0**; the specification in `lyriclang/lyric-spec` is
 **NORMATIVE**, its suite stands at 90 cases, and the toolchain's own CI runs it against the
 working tree.
 
