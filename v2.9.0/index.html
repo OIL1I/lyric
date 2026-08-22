@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lyric v2.9.0</title>
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+<header class="top">
+<a class="brand" href="">Lyric</a>
+<nav class="areas">
+<a href="guide/getting-started/">Guide</a>
+<a href="grammar/">Documentation</a>
+</nav>
+<span class="version">v2.9.0</span>
+<nav class="switcher" data-versions="../versions.json"></nav>
+</header>
+<main class="welcome">
+<h1>Lyric</h1>
+<p class="lead">A statically typed application language with a bytecode VM — standalone, and embeddable in a host with a capability-based sandbox.</p>
+<nav class="cards">
+<a class="card" href="guide/getting-started/">
+<h2>Guide</h2>
+<p>Learn the language chapter by chapter — from the first program to embedding, building and attributes.</p>
+</a>
+<a class="card" href="grammar/">
+<h2>Documentation</h2>
+<p>The reference: the grammar, the bytecode format, the standard library and the changelog.</p>
+</a>
+</nav>
+<section class="changes">
+<h2>What changed in v2.9.0 — 2026-08-22</h2>
+<p>An editor can attach to a program a host is already running. The bytecode format stays <strong>3.3</strong> and
+the language gains nothing.</p>
+<h3 id="added">Added</h3>
+<ul>
+<li><p><strong><code>DapServer</code> serves a controller you already hold.</strong> A second constructor takes a
+<code>DebugController</code> and the directory the scripts were compiled from; the client sends <code>attach</code>
+where it would otherwise send <code>launch</code>, and everything after that is the protocol as it was.
+Nothing is compiled, nothing is started — the program is running, which is the point. A game has
+no <code>main</code> to launch, and the bug worth stopping at is rarely the one at startup.</p>
+<p>One server per controller, which answers what a host with several scripts would otherwise have
+to invent: which program a <code>setBreakpoints</code> is about is decided by the connection it arrived on.
+The transport stays the host's business — the constructor takes two streams, so a socket, a pipe
+or anything else works without the adapter knowing about it. <code>lyrdbg</code> is unchanged: it launches,
+and an attaching adapter lives in the host's own process.</p>
+</li>
+<li><p><strong><code>DebugController.Detach()</code></strong> — gives the program back: breakpoints go, a parked thread is
+released, and the event stream ends. It is what a session needs when it ends without the program
+ending, and the attaching server calls it on <code>disconnect</code>. Without it a game whose editor
+crashed would stand at its breakpoint for good, and the breakpoints nobody reads any more would
+park it again on the next frame. A detached controller is spent; attaching again means a new
+one.</p>
+<p>A launched session is unaffected: there the process is the session, and ending it is the whole
+answer.</p>
+</li>
+</ul>
+<p><a href="changelog/">The full changelog →</a></p>
+</section>
+</main>
+<script src="site.js"></script>
+</body>
+</html>
