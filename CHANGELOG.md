@@ -10,6 +10,32 @@ bytecode format, the command line and the embedding API. Compiler internals are 
 
 ---
 
+## v2.10.1 — 2026-08-22
+
+One fix, reported the day 2.10.0 landed: the new enum argument was unusable in the shape an SDK
+actually writes.
+
+### Fixed
+
+- **An attribute's field default holds in every module that uses the attribute.** A default is
+  written where the attribute is DECLARED — `layout: Layout = Layout.Shared` in the SDK — and read
+  wherever someone writes `@Saved`. What a name in it MEANS is settled when its own declaration is
+  checked, and declarations were checked in discovery order, so a use could be checked before the
+  declaration it depends on. The result:
+
+  | in another module | |
+  |---|---|
+  | `@Saved { layout = save.Layout.Separate }` | compiled |
+  | `@Saved` | `LYR-SEM0069` |
+  | `@Saved { version = 2 }` | `LYR-SEM0069` |
+
+  The same code in a single file compiled, which is the tell. Declarations are checked in
+  dependency order now — every module after the ones it imports — the same order globals have
+  taken since 2.8, and for the same reason.
+
+  It applies to both forms a default can name: an enum variant (2.10) and a `let` bound to a
+  value (2.4).
+
 ## v2.10.0 — 2026-08-22
 
 An attribute argument may name an enum variant. The bytecode format goes **3.3 → 3.4**, and this

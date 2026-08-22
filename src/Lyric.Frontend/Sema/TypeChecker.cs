@@ -165,7 +165,14 @@ public sealed class TypeChecker
         // DEPENDENCY order, not discovery order: a module's globals are computed after those of
         // everything it imports, so an initializer may read across an import it declared itself.
         foreach (var module in _comp.InitializationOrder()) ComputeGlobals(module);
-        foreach (var module in _comp.Modules)
+
+        // The same order for the declarations, and for a reason that took a bug to find: an
+        // attribute's field DEFAULT is written in the module that declares the attribute and read
+        // in every module that uses it. What it means — a name for a variant, a name for a
+        // constant — is settled when its own declaration is checked, so checking a use first
+        // asked a question nobody had answered yet, and '@Saved' without arguments failed across
+        // a module line while the same code in one file compiled.
+        foreach (var module in _comp.InitializationOrder())
         {
             _currentModule = module;
             var ast = _comp.AstOf(module);
