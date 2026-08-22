@@ -911,6 +911,23 @@ public static class BytecodeReader
                         $"function '{function.Name}' at {instruction.Offset}: global index " +
                         $"{instruction.Immediate} is outside {module.Globals.Count} global(s)");
 
+                // The fused branches carry their operands as slots and their targets as block
+                // indices; both are checked here so the interpreter reads an array without asking.
+                case Op.BranchCompare or Op.BranchCompareConst
+                    when instruction.SlotA >= function.SlotTypes.Count
+                         || instruction.SlotB >= function.SlotTypes.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: local slot " +
+                        $"{Math.Max(instruction.SlotA, instruction.SlotB)} is outside " +
+                        $"{function.SlotTypes.Count} slot(s)");
+
+                case Op.BranchCompare or Op.BranchCompareConst
+                    when instruction.Immediate >= (ulong)function.BlockOffsets.Count
+                         || instruction.Immediate2 >= (ulong)function.BlockOffsets.Count:
+                    throw new MalformedBytecodeException(BytecodeDiagnostics.IndexOutOfRange,
+                        $"function '{function.Name}' at {instruction.Offset}: branch target is outside " +
+                        $"{function.BlockOffsets.Count} block(s)");
+
                 case Op.Branch when instruction.Immediate >= (ulong)function.BlockOffsets.Count:
                 case Op.CondBranch when instruction.Immediate >= (ulong)function.BlockOffsets.Count
                                         || instruction.Immediate2 >= (ulong)function.BlockOffsets.Count:
@@ -945,6 +962,14 @@ public static class BytecodeReader
             // 'conv' is numeric on both ends, and the two ends have to differ.
             Op.Convert => IsNumeric(tag) && IsNumeric(instruction.ToType!.Value)
                           && tag != instruction.ToType.Value,
+
+            // A fused branch compares in one machine operation over a word, so it accepts what
+            // the comparison it carries accepts, minus the string: an eq over references is not
+            // one of those, and the fused form has no room to call anything.
+            Op.BranchCompare or Op.BranchCompareConst =>
+                instruction.Fused is Op.Eq or Op.Ne
+                    ? IsNumeric(tag) || tag is TypeTag.Bool or TypeTag.Char
+                    : IsNumeric(tag),
             _ => true,
         };
 

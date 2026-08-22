@@ -265,6 +265,39 @@ public static class Interpreter
                         (int)(stack[--sp].AsBool ? instruction.Immediate : instruction.Immediate2)];
                     break;
 
+                // The fused branches (3.6). Four dispatches in one, and the operands never reach
+                // the operand stack: the loop test of every 'while' in the language is this
+                // instruction.
+                case Op.BranchCompare:
+                {
+                    var taken = Compare(instruction.Fused, instruction.Type,
+                        locals[instruction.SlotA], locals[instruction.SlotB]);
+                    frame.Ip = frame.Fn.BlockStart[
+                        (int)(taken ? instruction.Immediate : instruction.Immediate2)];
+                    break;
+                }
+
+                case Op.BranchCompareConst:
+                {
+                    // The constant is rebuilt exactly as 'const' would build it: an f32 stays
+                    // single precision, and an integer is brought to its width invariant. A
+                    // shortcut here would make 'i < 1' mean something else for i8 than for i64.
+                    var right = instruction.Type switch
+                    {
+                        TypeTag.F32 => LyrValue.FromF32((float)instruction.FloatValue),
+                        TypeTag.F64 => LyrValue.FromF64(instruction.FloatValue),
+                        TypeTag.Bool => LyrValue.FromBool(instruction.BoolValue),
+                        _ => LyrValue.FromBits(
+                            LyrValue.Normalize(instruction.Type, instruction.ConstBits)),
+                    };
+
+                    var taken = Compare(instruction.Fused, instruction.Type,
+                        locals[instruction.SlotA], right);
+                    frame.Ip = frame.Fn.BlockStart[
+                        (int)(taken ? instruction.Immediate : instruction.Immediate2)];
+                    break;
+                }
+
                 case Op.Call:
                 {
                     // Shared index space: imports first, then defined functions. An import gets no

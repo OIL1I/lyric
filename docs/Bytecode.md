@@ -4,7 +4,7 @@
 > marker against the canonical body. Edit it there, mirror it here.
 
 <!-- sync:body -->
-# Lyric `.lyrbc` Bytecode Format 3.5
+# Lyric `.lyrbc` Bytecode Format 3.6
 
 This document is normative. The C# serializer implements it; it does not define it. A disassembler
 or a second runtime can be written from this document alone.
@@ -12,10 +12,17 @@ or a second runtime can be written from this document alone.
 Before Lyric v1.0 the format may change incompatibly with a major version bump and without a
 migration path. A stability promise begins at v1.0.
 
-Format version **3.5** covers: scalars, locals, module-internal and native calls, structured
+Format version **3.6** covers: scalars, locals, module-internal and native calls, structured
 control flow, classes, arrays, optionals, enums, interfaces with vtable dispatch, structs with
 value semantics, exceptions, global constants, closures, host objects, source positions,
-attributes, debug information, and the names of opaque field types.
+attributes, debug information, the names of opaque field types, and fused compare-and-branch.
+
+**3.6 against 3.5**: two new opcodes, `brcmp` and `brcmpk` (§Calls and control flow), which do in
+one instruction what a comparison followed by `condbr` does in four. A module that uses one needs
+a runtime of 3.6 or newer; a module that does not is unchanged, which is the compatibility
+§Versioning describes. Nothing else moves: the fused forms compute what the instructions they
+replace computed, in the same order, with the same overflow and comparison rules — a producer may
+emit either.
 
 **3.5 against 3.4**: one new section — OpaqueFields (id 14), the name of the `opaque type` a
 field was declared with. It is skippable, and in the plainest way: no other section refers to it,
@@ -688,6 +695,8 @@ result type.
 | `0x43` | `br` | `uleb128` block | 0 | unconditional jump |
 | `0x44` | `condbr` | `uleb128` ifTrue, `uleb128` ifFalse | −1 | branch on the top `bool` |
 | `0x45` | `unreachable` | — | 0 | must never be reached |
+| `0x46` | `brcmp` | `cmp`, `T`, `uleb128` a, `uleb128` b, `uleb128` ifTrue, `uleb128` ifFalse | 0 | compare two slots and branch |
+| `0x47` | `brcmpk` | `cmp`, `T`, `uleb128` a, immediate, `uleb128` ifTrue, `uleb128` ifFalse | 0 | compare a slot with a constant and branch |
 
 `call` takes `paramCount` values off the stack, the first parameter lowest, and leaves one value
 exactly when the return type is not `void`.
@@ -695,7 +704,20 @@ exactly when the return type is not `void`.
 The index addresses a shared index space: all imports first, then all defined functions.
 
 `ret` and `retval` must match the function's return type. Every block ends with exactly one of
-`ret`, `retval`, `br`, `condbr`, `unreachable`, `throw` or `endfinally`.
+`ret`, `retval`, `br`, `condbr`, `brcmp`, `brcmpk`, `unreachable`, `throw` or `endfinally`.
+
+**The fused branches** (3.6). `brcmp` and `brcmpk` are `condbr` with the comparison folded in.
+`cmp` is one byte holding one of the comparison opcodes (`0x20`..`0x25`) — the fused forms carry
+the operation they perform rather than introducing an enumeration of their own — and `T` is the
+tag of the OPERANDS, as on the comparison itself. `brcmpk` encodes its right-hand operand exactly
+as `const` encodes a value of `T`.
+
+Both read local slots and branch to block indices; **neither touches the operand stack**, which is
+where the saving comes from. The comparison rules of §Comparisons apply unchanged, minus `string`:
+these forms compare one machine word.
+
+A producer is free to emit the unfused sequence instead — the two are equivalent by construction,
+and a producer that never emits the fused forms writes a module any 3.5 runtime accepts.
 
 ### Objects
 
@@ -876,6 +898,10 @@ safety checks.
 For `newobj`, `ldfld` and `stfld`, load-time checking means: the type index lies within the Types
 section, and for `ldfld` and `stfld` the field index lies within the field count of that exact
 type. Field access at runtime is then an unchecked array access.
+
+For `brcmp` and `brcmpk` it means: the `cmp` byte is one of `0x20`..`0x25`, the slots lie within
+the slot table, the targets within the block table, and `T` is one the comparison accepts. Their
+operands are read at runtime without a check, exactly as `ldloc`'s slot is.
 
 The reader stops at the first finding.
 

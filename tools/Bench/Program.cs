@@ -25,6 +25,10 @@ internal static class Program
 {
     private const int Repetitions = 9;
 
+    /// <summary>More trials than the table above takes, because these figures are DIFFERENCES:
+    /// two estimates, each of which has to have found its own quiet moment.</summary>
+    private const int InterpreterTrials = 15;
+
     /// <param name="Baseline">The case whose per-op figures are subtracted, so the reported
     /// number names the operation rather than the loop around it.</param>
     /// <param name="RawNatives">Run through <c>VmHost.Load</c> with a raw
@@ -122,8 +126,8 @@ internal static class Program
     /// </summary>
     private static void Interpreter(string stdlib, string? filter)
     {
-        const int Low = 250_000;
-        const int High = 500_000;
+        const int Low = 1_000_000;
+        const int High = 2_000_000;
 
         var vm = new LangVm(new HostOptions { StdlibRoot = stdlib });
         var cases = InterpreterCases()
@@ -131,40 +135,64 @@ internal static class Program
             .ToList();
         if (cases.Count == 0) return;
 
-        var programs = cases.ToDictionary(
-            c => c.Name,
-            c => (Low: Loaded(vm, c, Low), High: Loaded(vm, c, High)),
-            StringComparer.Ordinal);
-
-        var best = cases.ToDictionary(c => c.Name, _ => (Low: double.MaxValue, High: double.MaxValue),
-            StringComparer.Ordinal);
-
-        // Round-robin for the same reason the table above does it: one shared interpreter loop
-        // that tiered compilation keeps improving while the harness runs.
-        for (var cycle = 0; cycle < 3; cycle++)
-            foreach (var c in cases)
-            {
-                var (low, high) = programs[c.Name];
-                best[c.Name] = (Math.Min(best[c.Name].Low, Nanoseconds(low, c.Name)),
-                                Math.Min(best[c.Name].High, Nanoseconds(high, c.Name)));
-            }
-
         Console.WriteLine();
         Console.WriteLine($"interpreter: {High - Low} iterations differenced, "
-                          + $"{Repetitions} repetitions, minima");
+                          + $"{InterpreterTrials} interleaved trials, minima");
         Console.WriteLine();
         Console.WriteLine("| case | instr/iter | ns/iter | ns/instr |");
         Console.WriteLine("|---|---:|---:|---:|");
 
         foreach (var c in cases)
         {
-            var (low, high) = programs[c.Name];
+            var low = Loaded(vm, c, Low);
+            var high = Loaded(vm, c, High);
+
             var instructions = (Charged(high, c.Name) - Charged(low, c.Name)) / (double)(High - Low);
-            var nanos = (best[c.Name].High - best[c.Name].Low) / (High - Low);
+            var nanos = PairedDifference(low, high, c.Name) / (High - Low);
 
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
                 $"| {c.Name} | {instructions:F1} | {nanos:F1} | {nanos / instructions:F2} |"));
         }
+    }
+
+    /// <summary>
+    /// The time the extra iterations cost: the minimum of each run, differenced.
+    ///
+    /// <para><b>Minimum, not median of differences.</b> Interpreter noise is one-sided — a trial
+    /// can be interrupted, never accelerated — so the minimum over enough trials is the estimate
+    /// of the undisturbed time, and the difference of two such estimates is the undisturbed
+    /// difference. Taking the median of paired differences instead, which sounds more careful,
+    /// gives every disturbance in the SUBTRAHEND a vote in the answer: a slow low run makes the
+    /// difference too small, and nothing in a median removes that.</para>
+    ///
+    /// <para>The two runs still alternate rather than running in blocks. Not for the statistics
+    /// but for the tier: the interpreter loop is one shared method that tiered compilation keeps
+    /// improving while the harness runs, so measuring one program to completion first would
+    /// measure it colder than the other.</para>
+    /// </summary>
+    private static double PairedDifference(LoadedProgram low, LoadedProgram high, string name)
+    {
+        Require(low.RunEntry([]).AsI64, name);   // warm the tier before the clock matters
+        Require(high.RunEntry([]).AsI64, name);
+
+        var bestLow = long.MaxValue;
+        var bestHigh = long.MaxValue;
+        for (var i = 0; i < InterpreterTrials; i++)
+        {
+            bestLow = Math.Min(bestLow, Timed(low, name));
+            bestHigh = Math.Min(bestHigh, Timed(high, name));
+        }
+
+        return (bestHigh - bestLow) * (1_000_000_000.0 / Stopwatch.Frequency);
+    }
+
+    private static long Timed(LoadedProgram program, string name)
+    {
+        var before = Stopwatch.GetTimestamp();
+        var exit = program.RunEntry([]).AsI64;
+        var ticks = Stopwatch.GetTimestamp() - before;
+        Require(exit, name);
+        return ticks;
     }
 
     /// <summary>Compiles one interpreter case at one iteration count. The raw path, as for the
@@ -178,19 +206,6 @@ internal static class Program
         var loaded = VmHost.Load(module.Bytes, Console.Error)
                      ?? throw new InvalidOperationException($"case '{c.Name}' did not load");
         return LoadedProgram.Load(loaded, RawRegistry(), Capability.None);
-    }
-
-    private static double Nanoseconds(LoadedProgram program, string name)
-    {
-        var best = long.MaxValue;
-        for (var i = 0; i < Repetitions; i++)
-        {
-            var before = Stopwatch.GetTimestamp();
-            var exit = program.RunEntry([]).AsI64;
-            best = Math.Min(best, Stopwatch.GetTimestamp() - before);
-            Require(exit, name);
-        }
-        return best * (1_000_000_000.0 / Stopwatch.Frequency);
     }
 
     /// <summary>How many instructions one run executes. The limit is a ceiling nothing here

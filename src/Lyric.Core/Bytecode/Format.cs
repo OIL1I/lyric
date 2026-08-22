@@ -12,7 +12,7 @@ public static class Format
     /// <summary>An unknown major version is rejected, an unknown minor tolerated, because a new
     /// minor may only add skippable sections. Before v1.0 the major may change freely.</summary>
     public const ushort VersionMajor = 3;
-    public const ushort VersionMinor = 5;
+    public const ushort VersionMinor = 6;
 }
 
 /// <summary>
@@ -259,6 +259,29 @@ public enum Op : byte
     Branch = 0x43,      // br <uleb128 block>
     CondBranch = 0x44,  // condbr <uleb128 ifTrue> <uleb128 ifFalse>
     Unreachable = 0x45,
+
+    /// <summary>
+    /// <c>brcmp &lt;cmp&gt; &lt;type&gt; &lt;a&gt; &lt;b&gt; &lt;ifTrue&gt; &lt;ifFalse&gt;</c>
+    /// — new in 3.6. Compares two LOCAL SLOTS and branches, doing in one instruction what
+    /// <c>ldloc; ldloc; cmp; condbr</c> does in four.
+    ///
+    /// <para><c>cmp</c> is one of the comparison opcodes (<see cref="Lt"/>..<see cref="Ne"/>) as a
+    /// byte, so the fused forms need no second enumeration; <c>type</c> is the tag of the
+    /// OPERANDS, as on the unfused comparison. The two targets are block indices, as on
+    /// <see cref="CondBranch"/>.</para>
+    ///
+    /// <para>It leaves the operand stack untouched, which is what makes it a pure saving: the
+    /// values never reach the stack to begin with. Measured on this VM, an instruction costs the
+    /// same ~6 ns whatever it does — so four dispatches become one, and the work inside is
+    /// unchanged.</para>
+    /// </summary>
+    BranchCompare = 0x46,
+
+    /// <summary><c>brcmpk &lt;cmp&gt; &lt;type&gt; &lt;a&gt; &lt;immediate&gt; &lt;ifTrue&gt;
+    /// &lt;ifFalse&gt;</c> — as <see cref="BranchCompare"/>, with a CONSTANT right-hand operand
+    /// encoded exactly as <see cref="Const"/> encodes one of that type. The shape a counting loop
+    /// has: <c>i &lt; 10000</c>.</summary>
+    BranchCompareConst = 0x47,
 
     /// <summary><c>newobj &lt;uleb128 type&gt;</c> — allocates an instance with every field at its zero value.</summary>
     NewObject = 0x50,

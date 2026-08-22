@@ -44,6 +44,20 @@ internal readonly struct VmInstruction
     public readonly bool HasType;
     public readonly bool HasToType;
 
+    /// <summary>Fused forms (3.6) only: what the instruction computes — the comparison a
+    /// <c>brcmp</c> performs. Meaningless for every other opcode.</summary>
+    public readonly Op Fused;
+
+    /// <summary>Fused forms only: the operand slots. The constant shapes leave
+    /// <see cref="SlotB"/> at -1 and carry their value in <see cref="Immediate"/> or
+    /// <see cref="FloatValue"/>.</summary>
+    public readonly int SlotA;
+    public readonly int SlotB;
+
+    /// <summary>Fused constant shapes only: the immediate's bit pattern, in the encoding
+    /// <c>const</c> uses for the same tag; a float arrives in <see cref="FloatValue"/>.</summary>
+    public readonly ulong ConstBits;
+
     public VmInstruction(BytecodeInstruction source)
     {
         Immediate = source.Immediate;
@@ -59,7 +73,18 @@ internal readonly struct VmInstruction
         ToType = source.ToType.GetValueOrDefault();
 
         BoolValue = source.BoolValue;
+
+        Fused = source.Fused;
+        SlotA = source.SlotA;
+        SlotB = source.SlotB;
+
+        // Its own field rather than Immediate: a fused branch's targets sit in
+        // Immediate/Immediate2, as on condbr, so a consumer that only asks where control goes
+        // reads them in the same place whichever branch it is looking at.
+        ConstBits = source.ConstBits;
     }
+
+
 
     /// <summary>The tag as an optional again, for the one caller that wants it that way.</summary>
     public TypeTag? TypeOrNull => HasType ? Type : null;

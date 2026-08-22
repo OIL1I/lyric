@@ -164,6 +164,15 @@ public static class Disassembler
         Op.CondBranch => $"condbr bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
         Op.Unreachable => "unreachable",
 
+        // The fused branches print what they replace, so a disassembly reads like the four
+        // instructions it stands for: 'brcmp lt i64 l0, l1 -> bb2, bb3'.
+        Op.BranchCompare =>
+            $"brcmp {Mnemonic(i.Fused)} {TypeName(i.Type!.Value)} l{N((ulong)i.SlotA)}, "
+            + $"l{N((ulong)i.SlotB)} -> bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
+        Op.BranchCompareConst =>
+            $"brcmpk {Mnemonic(i.Fused)} {TypeName(i.Type!.Value)} l{N((ulong)i.SlotA)}, "
+            + $"{FusedConstText(i)} -> bb{N(i.Immediate)}, bb{N(i.Immediate2)}",
+
         Op.NewVariant => $"newvariant {TypeRefName(module, i.Immediate)}",
         Op.StructCopy => $"structcopy {TypeRefName(module, i.Immediate)}",
         Op.LoadGlobal => $"ldglobal g{N(i.Immediate)}",
@@ -205,6 +214,16 @@ public static class Disassembler
         TypeTag.Bool => i.BoolValue ? "true" : "false",
         TypeTag.String => $"s{N(i.Immediate)} {Quote(SafeString(module, i.Immediate))}",
         _ => N(i.Immediate),
+    };
+
+    /// <summary>The immediate of a fused constant shape. Its own renderer rather than
+    /// <see cref="ConstText"/>: the bits live in a different field, because the branch targets
+    /// occupy the one a <c>const</c> uses.</summary>
+    private static string FusedConstText(BytecodeInstruction i) => i.Type switch
+    {
+        TypeTag.F32 or TypeTag.F64 => Floats.Render(i.FloatValue),
+        TypeTag.Bool => i.BoolValue ? "true" : "false",
+        _ => N(i.ConstBits),
     };
 
     private static string SafeString(BytecodeModule module, ulong index) =>
